@@ -19,18 +19,18 @@ const TEAMS = ['sales', 'operations', 'design', 'purchase', 'bdm', 'management']
 const ROLES = ['member', 'manager', 'admin']
 
 export default function MembersPage() {
-  const [members, setMembers]         = useState<Member[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [showForm, setShowForm]       = useState(false)
-  const [saving, setSaving]           = useState(false)
-  const [error, setError]             = useState('')
-  const [full_name, setFullName]      = useState('')
-  const [email, setEmail]             = useState('')
-  const [phone, setPhone]             = useState('')
-  const [role, setRole]               = useState('member')
-  const [team, setTeam]               = useState('sales')
-  const [password, setPassword]       = useState('')
-  const router = useRouter()
+  const [members, setMembers]     = useState<Member[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [showForm, setShowForm]   = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState('')
+  const [full_name, setFullName]  = useState('')
+  const [email, setEmail]         = useState('')
+  const [phone, setPhone]         = useState('')
+  const [role, setRole]           = useState('member')
+  const [team, setTeam]           = useState('sales')
+  const [password, setPassword]   = useState('')
+  const router   = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
@@ -59,77 +59,36 @@ export default function MembersPage() {
       .order('full_name')
     if (data) setMembers(data)
   }
+
   const handleCreate = async () => {
-  if (!full_name.trim() || !email.trim() || !password.trim()) {
-    setError('Name, email and password are required')
-    return
-  }
-  setSaving(true)
-  setError('')
+    if (!full_name.trim() || !email.trim() || !password.trim()) {
+      setError('Name, email and password are required')
+      return
+    }
+    setSaving(true)
+    setError('')
 
-  const res = await fetch('/api/create-user', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: email.trim(),
-      password: password.trim(),
-      full_name: full_name.trim(),
-      phone: phone.trim() || null,
-      role,
-      team,
-    }),
-  })
-
-  const data = await res.json()
-
-  if (!res.ok) {
-    setError(data.error || 'Failed to create member')
-    setSaving(false)
-    return
-  }
-
-  setFullName('')
-  setEmail('')
-  setPhone('')
-  setPassword('')
-  setRole('member')
-  setTeam('sales')
-  setShowForm(false)
-  await loadMembers()
-  setSaving(false)
-}
-
-    // Create auth user
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: email.trim(),
-      password: password.trim(),
-      email_confirm: true,
+    const res = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email:     email.trim(),
+        password:  password.trim(),
+        full_name: full_name.trim(),
+        phone:     phone.trim() || null,
+        role,
+        team,
+      }),
     })
 
-    if (authError || !authData.user) {
-      setError(authError?.message || 'Failed to create user')
+    const data = await res.json()
+
+    if (!res.ok) {
+      setError(data.error || 'Failed to create member')
       setSaving(false)
       return
     }
 
-    // Insert into public users table
-    const { error: dbError } = await supabase.from('users').insert({
-      id: authData.user.id,
-      full_name: full_name.trim(),
-      email: email.trim(),
-      phone: phone.trim() || null,
-      role,
-      team,
-      is_active: true,
-    })
-
-    if (dbError) {
-      setError(dbError.message)
-      setSaving(false)
-      return
-    }
-
-    // Reset form
     setFullName('')
     setEmail('')
     setPhone('')
@@ -219,7 +178,7 @@ export default function MembersPage() {
               <div className="flex gap-2">
                 {ROLES.map(r => (
                   <button key={r} onClick={() => setRole(r)}
-                    style={role === r ? {background:'#2563eb', color:'#fff'} : {background:'#1f2937', color:'#9ca3af'}}
+                    style={role === r ? {background:'#2563eb',color:'#fff'} : {background:'#1f2937',color:'#9ca3af'}}
                     className="flex-1 py-2 rounded-xl text-xs font-semibold capitalize transition-colors">
                     {r}
                   </button>
@@ -233,7 +192,7 @@ export default function MembersPage() {
               <div className="flex flex-wrap gap-2">
                 {TEAMS.map(t => (
                   <button key={t} onClick={() => setTeam(t)}
-                    style={team === t ? {background:'#2563eb', color:'#fff'} : {background:'#1f2937', color:'#9ca3af'}}
+                    style={team === t ? {background:'#2563eb',color:'#fff'} : {background:'#1f2937',color:'#9ca3af'}}
                     className="px-3 py-2 rounded-xl text-xs font-semibold capitalize transition-colors">
                     {t}
                   </button>
@@ -253,11 +212,11 @@ export default function MembersPage() {
 
         {/* Members list */}
         <div className="flex flex-col gap-2">
-          {members.map((member, i) => (
+          {members.map((member) => (
             <div key={member.id}
-              style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: '16px', padding: '14px' }}>
+              style={{background:'#111827', border:'1px solid #1f2937', borderRadius:'16px', padding:'14px'}}>
               <div className="flex items-center gap-3">
-                <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: '#1f2937', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 600, color: '#9ca3af', flexShrink: 0 }}>
+                <div style={{width:'40px', height:'40px', borderRadius:'50%', background:'#1f2937', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'13px', fontWeight:600, color:'#9ca3af', flexShrink:0}}>
                   {member.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -267,22 +226,22 @@ export default function MembersPage() {
                 <button
                   onClick={() => toggleActive(member)}
                   style={{
-                    padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 500,
+                    padding:'4px 10px', borderRadius:'20px', fontSize:'11px', fontWeight:500,
                     background: member.is_active ? '#14532d' : '#1f2937',
-                    color: member.is_active ? '#86efac' : '#6b7280',
+                    color:      member.is_active ? '#86efac' : '#6b7280',
                   }}>
                   {member.is_active ? 'Active' : 'Inactive'}
                 </button>
               </div>
               <div className="flex gap-2 mt-3">
-                <span style={{ background: '#1f2937', color: '#9ca3af', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', textTransform: 'capitalize' }}>
+                <span style={{background:'#1f2937', color:'#9ca3af', fontSize:'11px', padding:'2px 8px', borderRadius:'20px', textTransform:'capitalize'}}>
                   {member.role}
                 </span>
-                <span style={{ background: '#1f2937', color: '#9ca3af', fontSize: '11px', padding: '2px 8px', borderRadius: '20px', textTransform: 'capitalize' }}>
+                <span style={{background:'#1f2937', color:'#9ca3af', fontSize:'11px', padding:'2px 8px', borderRadius:'20px', textTransform:'capitalize'}}>
                   {member.team}
                 </span>
                 {member.phone && (
-                  <span style={{ background: '#1f2937', color: '#9ca3af', fontSize: '11px', padding: '2px 8px', borderRadius: '20px' }}>
+                  <span style={{background:'#1f2937', color:'#9ca3af', fontSize:'11px', padding:'2px 8px', borderRadius:'20px'}}>
                     {member.phone}
                   </span>
                 )}
