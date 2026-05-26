@@ -60,13 +60,45 @@ export default function MembersPage() {
     if (data) setMembers(data)
   }
 
-  const handleCreate = async () => {
-    if (!full_name.trim() || !email.trim() || !password.trim()) {
-      setError('Name, email and password are required')
-      return
-    }
-    setSaving(true)
-    setError('')
+ const handleCreate = async () => {
+  if (!full_name.trim() || !email.trim() || !password.trim()) {
+    setError('Name, email and password are required')
+    return
+  }
+  setSaving(true)
+  setError('')
+
+  const res = await fetch('/api/create-user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: email.trim(),
+      password: password.trim(),
+      full_name: full_name.trim(),
+      phone: phone.trim() || null,
+      role,
+      team,
+    }),
+  })
+
+  const data = await res.json()
+
+  if (!res.ok) {
+    setError(data.error || 'Failed to create member')
+    setSaving(false)
+    return
+  }
+
+  setFullName('')
+  setEmail('')
+  setPhone('')
+  setPassword('')
+  setRole('member')
+  setTeam('sales')
+  setShowForm(false)
+  await loadMembers()
+  setSaving(false)
+}
 
     // Create auth user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
