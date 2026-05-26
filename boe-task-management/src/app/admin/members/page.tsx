@@ -59,8 +59,7 @@ export default function MembersPage() {
       .order('full_name')
     if (data) setMembers(data)
   }
-
- const handleCreate = async () => {
+  const handleCreate = async () => {
   if (!full_name.trim() || !email.trim() || !password.trim()) {
     setError('Name, email and password are required')
     return
