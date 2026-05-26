@@ -141,13 +141,22 @@ export default function DashboardPage() {
           <h1 className="text-white font-semibold text-base">My Tasks</h1>
           <p className="text-gray-400 text-xs mt-0.5">{profile?.full_name} · {profile?.team}</p>
         </div>
-        <div className="flex items-center gap-3">
+
+      <div className="flex items-center gap-3">
   {(profile?.role === 'admin' || profile?.role === 'manager') && (
     <button
       onClick={() => router.push('/manager')}
       className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
     >
       Team
+    </button>
+  )}
+  {profile?.role === 'admin' && (
+    <button
+      onClick={() => router.push('/admin/members')}
+      className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+    >
+      Members
     </button>
   )}
   <button
