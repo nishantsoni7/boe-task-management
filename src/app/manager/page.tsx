@@ -174,7 +174,8 @@ export default function ManagerPage() {
     <div className="min-h-screen bg-gray-950">
 
       {/* Top bar */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-4 flex items-center gap-3 sticky top-0 z-10">
+      <div className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10">
+        <div className="boe-container py-4 flex items-center gap-3">
         <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm">
           ← Back
         </button>
@@ -183,8 +184,9 @@ export default function ManagerPage() {
           Refresh
         </button>
       </div>
+      </div>
 
-      <div className="px-4 py-5 max-w-2xl mx-auto flex flex-col gap-5">
+      <div className="boe-container py-5 flex flex-col gap-5">
 
         {/* Summary cards */}
         <div className="grid grid-cols-4 gap-2">

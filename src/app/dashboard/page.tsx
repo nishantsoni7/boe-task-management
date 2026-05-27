@@ -136,7 +136,8 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-950">
       {/* Top bar */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10">
+        <div className="boe-container py-4 flex items-center justify-between">
         <div>
           <h1 className="text-white font-semibold text-base">My Tasks</h1>
           <p className="text-gray-400 text-xs mt-0.5">{profile?.full_name} · {profile?.team}</p>
@@ -170,9 +171,10 @@ export default function DashboardPage() {
   </button>
 </div>
       </div>
+      </div>
 
       {/* Content */}
-      <div className="px-4 py-6 max-w-lg mx-auto">
+      <div className="boe-container py-6">
 
         {tasks.length === 0 && (
           <div className="text-center py-16">

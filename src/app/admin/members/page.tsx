@@ -118,7 +118,8 @@ export default function MembersPage() {
     <div className="min-h-screen bg-gray-950">
 
       {/* Top bar */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-4 flex items-center gap-3 sticky top-0 z-10">
+      <div className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10">
+        <div className="boe-container-narrow py-4 flex items-center gap-3">
         <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm">
           ← Back
         </button>
@@ -130,8 +131,9 @@ export default function MembersPage() {
           {showForm ? 'Cancel' : '+ Add Member'}
         </button>
       </div>
+      </div>
 
-      <div className="px-4 py-6 max-w-lg mx-auto flex flex-col gap-4">
+      <div className="boe-container-narrow py-6 flex flex-col gap-4">
 
         {/* Add member form */}
         {showForm && (

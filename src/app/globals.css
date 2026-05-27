@@ -1,17 +1,51 @@
 @import "tailwindcss";
 
-@source "../app";
-
-@layer utilities {
-  .bg-gray-700 { background-color: #374151; }
-  .bg-blue-800 { background-color: #1e40af; }
-  .bg-yellow-800 { background-color: #854d0e; }
-  .bg-purple-800 { background-color: #6b21a8; }
-  .bg-red-800 { background-color: #991b1b; }
+.boe-container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
 }
 
-.active-pending  { background-color: #374151; color: #e5e7eb; }
-.active-started  { background-color: #1e3a8a; color: #bfdbfe; }
-.active-working  { background-color: #713f12; color: #fef08a; }
-.active-waiting  { background-color: #581c87; color: #e9d5ff; }
-.active-blocked  { background-color: #7f1d1d; color: #fecaca; }
+@media (min-width: 768px) {
+  .boe-container {
+    max-width: 720px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .boe-container {
+    max-width: 1080px;
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .boe-container {
+    max-width: 1280px;
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+  }
+}
+
+.boe-container-narrow {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 768px) {
+  .boe-container-narrow {
+    max-width: 640px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .boe-container-narrow {
+    max-width: 760px;
+  }
+}
