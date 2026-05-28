@@ -1,106 +1,41 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import type { Task, UserProfile } from '@/lib/types'
+import { isOverdue, isUpdatedToday, isOldEnoughToFlag, escalationLevel, initials, timeAgo } from '@/lib/ui'
+import { colors, font } from '@/lib/tokens'
+import { DashboardLayout } from '@/components/layout/DashboardLayout'
+import { KpiGrid, KpiCard } from '@/components/ui/KpiCard'
+import { TaskCard } from '@/components/ui/TaskCard'
+import { Avatar, LoadingScreen } from '@/components/ui/atoms'
 
-type TaskRow = {
-  id: string
-  title: string
-  status: string
-  priority: string
-  is_urgent: boolean
-  is_stale: boolean
-  stale_day_count: number
-  due_date: string | null
-  last_update_at: string | null
-  created_at: string
-  assigned_to: string
-  assignee_name: string
-  assignee_team: string
-  blocker_reason: string | null
-}
-
-type TeamMember = {
-  id: string
-  full_name: string
-  team: string
-  role: string
-}
-
-const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  pending:   { bg: '#1f2937', color: '#9ca3af' },
-  started:   { bg: '#1e3a8a', color: '#bfdbfe' },
-  working:   { bg: '#713f12', color: '#fef08a' },
-  waiting:   { bg: '#581c87', color: '#e9d5ff' },
-  blocked:   { bg: '#7f1d1d', color: '#fecaca' },
-  completed: { bg: '#14532d', color: '#bbf7d0' },
-}
-
-const PRIORITY_STYLE: Record<string, { bg: string; color: string }> = {
-  high:   { bg: '#450a0a', color: '#f87171' },
-  medium: { bg: '#422006', color: '#fbbf24' },
-  low:    { bg: '#1f2937', color: '#9ca3af' },
-}
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const hours = Math.floor(diff / 3600000)
-  if (hours < 1)  return 'just now'
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
-function isUpdatedToday(dateStr: string | null): boolean {
-  if (!dateStr) return false
-  const d = new Date(dateStr)
-  const now = new Date()
-  return d.getDate() === now.getDate() &&
-    d.getMonth() === now.getMonth() &&
-    d.getFullYear() === now.getFullYear()
-}
-
-function escalationLevel(task: TaskRow): 'overdue' | 'danger' | 'caution' | null {
-  if (!task.last_update_at) return null
-  if (task.status === 'completed' || task.status === 'waiting') return null
-  const hoursSince = (Date.now() - new Date(task.last_update_at).getTime()) / 3600000
-
-  // Overdue fast lane — 24h after deadline passes
-  if (task.due_date && new Date(task.due_date) < new Date()) {
-    if (hoursSince >= 24) return 'overdue'
-  }
-  if (hoursSince >= 72) return 'danger'
-  if (hoursSince >= 48) return 'caution'
-  return null
-}
+type FilterKey = 'all' | 'no_update' | 'overdue' | 'escalated' | 'stale' | 'blocked'
 
 export default function ManagerPage() {
-  const [tasks,   setTasks]   = useState<TaskRow[]>([])
-  const [members, setMembers] = useState<TeamMember[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filter,  setFilter]  = useState<'all' | 'no_update' | 'escalated' | 'stale' | 'blocked'>('all')
+  const [tasks,          setTasks]          = useState<Task[]>([])
+  const [members,        setMembers]        = useState<UserProfile[]>([])
+  const [loading,        setLoading]        = useState(true)
+  const [filter,         setFilter]         = useState<FilterKey>('all')
   const [selectedMember, setSelectedMember] = useState<string>('all')
-  const [currentUser, setCurrentUser] = useState<TeamMember | null>(null)
-  const router = useRouter()
-  const supabase = createClient()
+  const [profile,        setProfile]        = useState<UserProfile | null>(null)
+  const router   = useRouter()
+  const supabase = useMemo(() => createClient(), [])
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
-
-      const { data: profile } = await supabase
+      const { data: p } = await supabase
         .from('users').select('*').eq('id', user.id).single()
-
-      if (profile) {
-        if (profile.role !== 'admin' && profile.role !== 'manager') {
-          router.push('/dashboard')
-          return
+      if (p) {
+        if (p.role !== 'admin' && p.role !== 'manager') {
+          router.push('/dashboard'); return
         }
-        setCurrentUser(profile)
+        setProfile(p)
       }
-
       await loadData()
       setLoading(false)
     }
@@ -108,264 +43,458 @@ export default function ManagerPage() {
   }, [])
 
   const loadData = async () => {
-    const { data: memberData } = await supabase
-      .from('users')
-      .select('id, full_name, team, role')
-      .eq('is_active', true)
-      .order('full_name')
+    // Members and tasks are independent — fetch in parallel
+    const [{ data: memberData }, { data: taskData }] = await Promise.all([
+      supabase
+        .from('users')
+        .select('id, full_name, team, role, email, phone, is_active, created_at')
+        .eq('is_active', true)
+        .order('full_name'),
+      supabase
+        .from('tasks')
+        .select(`
+          id, title, note, status, priority, type, is_urgent, is_stale,
+          stale_day_count, due_date, last_update_at, acknowledged_at, created_at,
+          assigned_to, created_by, delegated_by, blocker_reason, team,
+          assignee:assigned_to ( full_name, team )
+        `)
+        .neq('status', 'completed')
+        .order('created_at', { ascending: false }),
+    ])
 
     if (memberData) setMembers(memberData)
 
-    // Load all non-completed tasks with assignee info
-    const { data: taskData } = await supabase
-      .from('tasks')
-      .select(`
-        id, title, status, priority, is_urgent, is_stale,
-        stale_day_count, due_date, last_update_at, created_at,
-        assigned_to, blocker_reason,
-        assignee:assigned_to ( full_name, team )
-      `)
-      .neq('status', 'completed')
-      .order('created_at', { ascending: false })
-
     if (taskData) {
-      const enriched: TaskRow[] = (taskData as any[]).map(t => ({
+      const enriched: Task[] = (taskData as any[]).map(t => ({
         ...t,
         assignee_name: t.assignee?.full_name ?? 'Unknown',
-        assignee_team: t.assignee?.team ?? '',
+        assignee_team: t.assignee?.team      ?? '',
       }))
       setTasks(enriched)
     }
   }
 
-  // Derived lists
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
+  // ── Derived lists ─────────────────────────────────────────────────────────
+  const noUpdateToday  = tasks.filter(t =>
+    isOldEnoughToFlag(t.created_at) && !isUpdatedToday(t.last_update_at)
+  )
+
+  // Overdue: any task past its deadline — mutually exclusive with silentTasks
+  const overdueTasks = tasks.filter(t => isOverdue(t.due_date))
+
+  // Silent 72h+: escalated by silence but NOT overdue — separate operational signal
+  const silentTasks = tasks.filter(t => {
+    if (isOverdue(t.due_date)) return false
+    const level = escalationLevel(t.last_update_at, t.status, t.due_date)
+    return level === 'danger' || level === 'caution'
+  })
+
+  const staleTasks   = tasks.filter(t => t.is_stale)
+  const blockedTasks = tasks.filter(t => t.status === 'blocked')
+  const urgentTasks  = tasks.filter(t => t.is_urgent)
 
   const filteredTasks = tasks.filter(t => {
     if (selectedMember !== 'all' && t.assigned_to !== selectedMember) return false
-    if (filter === 'no_update') return !isUpdatedToday(t.last_update_at)
-    if (filter === 'escalated') return escalationLevel(t) !== null
+    if (filter === 'no_update') return isOldEnoughToFlag(t.created_at) && !isUpdatedToday(t.last_update_at)
+    if (filter === 'overdue')   return isOverdue(t.due_date)
+    if (filter === 'escalated') return !isOverdue(t.due_date) && (
+      escalationLevel(t.last_update_at, t.status, t.due_date) === 'danger' ||
+      escalationLevel(t.last_update_at, t.status, t.due_date) === 'caution'
+    )
     if (filter === 'stale')     return t.is_stale
     if (filter === 'blocked')   return t.status === 'blocked'
     return true
   })
 
-  const noUpdateToday   = tasks.filter(t => !isUpdatedToday(t.last_update_at))
-  const escalatedTasks  = tasks.filter(t => escalationLevel(t) !== null)
-  const staleTasks      = tasks.filter(t => t.is_stale)
-  const blockedTasks    = tasks.filter(t => t.status === 'blocked')
-
-  // Who hasn't updated today — unique assignees
   const noUpdateMembers = [...new Map(
-    noUpdateToday.map(t => [t.assigned_to, { id: t.assigned_to, name: t.assignee_name, team: t.assignee_team }])
+    noUpdateToday.map(t => [t.assigned_to, {
+      id:    t.assigned_to,
+      name:  t.assignee_name ?? 'Unknown',
+      team:  t.assignee_team ?? '',
+      count: noUpdateToday.filter(x => x.assigned_to === t.assigned_to).length,
+    }])
   ).values()]
 
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  if (loading) return <LoadingScreen />
 
-  if (loading) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <p className="text-gray-400 text-sm">Loading...</p>
-    </div>
-  )
+  const filterTabs: { key: FilterKey; label: string }[] = [
+    { key: 'all',       label: `All (${tasks.length})`               },
+    { key: 'no_update', label: `No update (${noUpdateToday.length})` },
+    { key: 'overdue',   label: `Overdue (${overdueTasks.length})`    },
+    { key: 'escalated', label: `Silent 72h+ (${silentTasks.length})` },
+    { key: 'stale',     label: `Stale (${staleTasks.length})`        },
+    { key: 'blocked',   label: `Blocked (${blockedTasks.length})`    },
+  ]
 
   return (
-    <div className="min-h-screen bg-gray-950">
-
-      {/* Top bar */}
-      <div className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10">
-        <div className="boe-container py-4 flex items-center gap-3">
-        <button onClick={() => router.push('/dashboard')} className="text-gray-400 hover:text-white text-sm">
-          ← Back
-        </button>
-        <h1 className="text-white font-semibold text-base flex-1">Manager View</h1>
-        <button onClick={loadData} className="text-gray-400 hover:text-white text-xs px-3 py-1.5 bg-gray-800 rounded-lg">
-          Refresh
-        </button>
-      </div>
-      </div>
-
-      <div className="boe-container py-5 flex flex-col gap-5">
-
-        {/* Summary cards */}
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { label: 'Active',    value: tasks.length,           bg: '#1f2937', color: '#e5e7eb' },
-            { label: 'No update', value: noUpdateToday.length,   bg: '#422006', color: '#fbbf24' },
-            { label: 'Escalated', value: escalatedTasks.length,  bg: '#450a0a', color: '#f87171' },
-            { label: 'Blocked',   value: blockedTasks.length,    bg: '#3b0764', color: '#d8b4fe' },
-          ].map(card => (
-            <div key={card.label} style={{ background: card.bg, borderRadius: '12px', padding: '12px 10px', textAlign: 'center' }}>
-              <p style={{ fontSize: '22px', fontWeight: 600, color: card.color, lineHeight: 1 }}>{card.value}</p>
-              <p style={{ fontSize: '11px', color: card.color, opacity: 0.7, marginTop: '4px' }}>{card.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Who hasn't updated today */}
-        {noUpdateMembers.length > 0 && (
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
-              <p className="text-yellow-400 text-xs font-semibold uppercase tracking-wider">
-                No update today — {noUpdateMembers.length} {noUpdateMembers.length === 1 ? 'person' : 'people'}
-              </p>
-            </div>
-            {noUpdateMembers.map((m, i) => (
-              <div key={m.id}
-                className={`flex items-center gap-3 px-4 py-3 ${i < noUpdateMembers.length - 1 ? 'border-b border-gray-800' : ''}`}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 600, color: '#9ca3af', flexShrink: 0 }}>
-                  {m.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <p className="text-white text-sm font-medium">{m.name}</p>
-                  <p className="text-gray-500 text-xs capitalize">{m.team}</p>
-                </div>
-                <p className="text-gray-600 text-xs">
-                  {noUpdateToday.filter(t => t.assigned_to === m.id).length} task{noUpdateToday.filter(t => t.assigned_to === m.id).length !== 1 ? 's' : ''}
-                </p>
-              </div>
-            ))}
+    <DashboardLayout
+      profile={profile}
+      title="Manager View"
+      subtitle={`Team overview · ${members.length} members · Live`}
+      actions={
+        <>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            fontSize: '11px', color: colors.tertiary,
+          }}>
+            <span className="boe-pulse-dot" /> Live
           </div>
-        )}
+          <button
+            onClick={loadData}
+            className="boe-btn boe-btn-ghost"
+            style={{ fontSize: '11px' }}
+          >
+            Refresh
+          </button>
+          <button
+            onClick={() => router.push('/tasks/create')}
+            className="boe-btn boe-btn-primary"
+          >
+            + Assign Task
+          </button>
+        </>
+      }
+      onSignOut={handleLogout}
+    >
+      {/* KPI row */}
+      <KpiGrid>
+        <KpiCard label="Overdue"          value={overdueTasks.length}   meta="Past deadline"       accent="red"   />
+        <KpiCard label="No Update Today"  value={noUpdateToday.length}  meta="Members not updated" accent="amber" />
+        <KpiCard label="Active Tasks"     value={tasks.length}          meta="Across all members"  accent="blue"  />
+        <KpiCard label="Blocked"          value={blockedTasks.length}   meta="Hard stop"                         />
+      </KpiGrid>
 
-        {/* Filter tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {[
-            { key: 'all',       label: `All (${tasks.length})` },
-            { key: 'no_update', label: `No update (${noUpdateToday.length})` },
-            { key: 'escalated', label: `Escalated (${escalatedTasks.length})` },
-            { key: 'stale',     label: `Stale (${staleTasks.length})` },
-            { key: 'blocked',   label: `Blocked (${blockedTasks.length})` },
-          ].map(tab => (
-            <button key={tab.key} onClick={() => setFilter(tab.key as any)}
-              style={{
-                padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500,
-                whiteSpace: 'nowrap', flexShrink: 0, transition: 'all 0.15s',
-                background: filter === tab.key ? '#3b82f6' : '#1f2937',
-                color:      filter === tab.key ? '#ffffff'  : '#9ca3af',
-              }}>
-              {tab.label}
-            </button>
-          ))}
-        </div>
+      {/* ── Asymmetric 340px + 1fr operational layout ── */}
+      <div className="boe-manager-layout">
 
-        {/* Member filter */}
-        <select
-          value={selectedMember}
-          onChange={e => setSelectedMember(e.target.value)}
-          className="w-full bg-gray-900 text-white rounded-xl px-4 py-2.5 text-sm border border-gray-700 focus:outline-none focus:border-blue-500"
-        >
-          <option value="all">All team members</option>
-          {members.map(m => (
-            <option key={m.id} value={m.id}>{m.full_name} — {m.team}</option>
-          ))}
-        </select>
+        {/* LEFT COL — accountability signals */}
+        <div className="boe-manager-left">
 
-        {/* Task list */}
-        <div className="flex flex-col gap-2">
-          {filteredTasks.length === 0 && (
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-8 text-center">
-              <p className="text-gray-500 text-sm">No tasks in this view</p>
+          {/* Overdue panel */}
+          <div className="boe-panel-card">
+            <div className="boe-panel-card-header">
+              <span style={{ color: colors.red, fontSize: '14px' }}>⚠</span>
+              <span className="boe-panel-card-title" style={{ color: colors.red }}>
+                Overdue
+              </span>
+              <span className="boe-panel-card-count" style={{ color: colors.red }}>
+                {overdueTasks.length} task{overdueTasks.length !== 1 ? 's' : ''}
+              </span>
             </div>
-          )}
-
-          {filteredTasks.map(task => {
-            const level = escalationLevel(task)
-            const isOverdue = task.due_date && new Date(task.due_date) < new Date()
-
-            return (
-              <div key={task.id}
-                onClick={() => router.push(`/tasks/${task.id}`)}
-                style={{
-                  background: '#111827',
-                  border: `1px solid ${
-                    level === 'overdue' ? '#7f1d1d' :
-                    level === 'danger'  ? '#991b1b' :
-                    level === 'caution' ? '#78350f' :
-                    task.is_stale       ? '#1e3a5f' :
-                    '#1f2937'
-                  }`,
-                  borderRadius: '16px',
-                  padding: '14px',
-                  cursor: 'pointer',
-                }}>
-
-                {/* Escalation / stale banner */}
-                {level === 'overdue' && (
-                  <p style={{ fontSize: '11px', color: '#f87171', fontWeight: 600, marginBottom: '8px' }}>
-                    ⚠ OVERDUE — no action taken
-                  </p>
-                )}
-                {level === 'danger' && !isOverdue && (
-                  <p style={{ fontSize: '11px', color: '#f87171', fontWeight: 600, marginBottom: '8px' }}>
-                    🔴 72h — escalation reached
-                  </p>
-                )}
-                {level === 'caution' && !isOverdue && (
-                  <p style={{ fontSize: '11px', color: '#fbbf24', fontWeight: 600, marginBottom: '8px' }}>
-                    🟡 48h — no update
-                  </p>
-                )}
-                {task.is_stale && !level && (
-                  <p style={{ fontSize: '11px', color: '#60a5fa', fontWeight: 500, marginBottom: '8px' }}>
-                    Same status for {task.stale_day_count}d — no visible progress
-                  </p>
-                )}
-
-                {/* Title row */}
-                <p style={{ color: '#f9fafb', fontSize: '14px', fontWeight: 500, lineHeight: 1.4, marginBottom: '10px' }}>
-                  {task.is_urgent && <span style={{ color: '#f87171', marginRight: '6px' }}>⚡</span>}
-                  {task.title}
-                </p>
-
-                {/* Meta row */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-                  <span style={{ ...STATUS_STYLE[task.status], fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '20px' }}>
-                    {task.status}
-                  </span>
-                  <span style={{ ...PRIORITY_STYLE[task.priority], fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '20px' }}>
-                    {task.priority}
-                  </span>
-                  {isOverdue && (
-                    <span style={{ background: '#450a0a', color: '#f87171', fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '20px' }}>
-                      overdue
-                    </span>
-                  )}
-                  {task.due_date && !isOverdue && (
-                    <span style={{ background: '#1f2937', color: '#6b7280', fontSize: '11px', padding: '2px 8px', borderRadius: '20px' }}>
-                      due {formatDate(task.due_date)}
-                    </span>
-                  )}
+            <div className="boe-panel-card-body" style={{
+              padding: '10px',
+              display: 'flex', flexDirection: 'column', gap: '6px',
+            }}>
+              {overdueTasks.length === 0 ? (
+                <div style={{ padding: '8px', fontSize: '12px', color: colors.muted, textAlign: 'center' }}>
+                  No overdue tasks
                 </div>
-
-                {/* Blocker */}
-                {task.status === 'blocked' && task.blocker_reason && (
-                  <div style={{ background: '#450a0a', borderRadius: '8px', padding: '6px 10px', marginBottom: '8px' }}>
-                    <p style={{ color: '#fca5a5', fontSize: '12px' }}>⛔ {task.blocker_reason}</p>
-                  </div>
-                )}
-
-                {/* Footer */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 600, color: '#9ca3af' }}>
-                      {task.assignee_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+              ) : overdueTasks.slice(0, 5).map(t => {
+                const daysOver = t.due_date
+                  ? Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86_400_000)
+                  : null
+                return (
+                  <div
+                    key={t.id}
+                    className="boe-escalation-card"
+                    onClick={() => router.push(`/tasks/${t.id}`)}
+                  >
+                    <span style={{ fontSize: '14px', flexShrink: 0, lineHeight: 1 }}>🔴</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="boe-escalation-title">{t.title}</div>
+                      <div className="boe-escalation-sub">
+                        {t.assignee_name} · {t.assignee_team}
+                        {daysOver !== null ? ` · ${daysOver}d overdue` : ''}
+                      </div>
                     </div>
-                    <p style={{ fontSize: '12px', color: '#6b7280' }}>{task.assignee_name}</p>
+                    {daysOver !== null && (
+                      <span className="boe-escalation-time">{daysOver}d</span>
+                    )}
                   </div>
-                  <p style={{ fontSize: '11px', color: '#4b5563' }}>
-                    {task.last_update_at ? `Updated ${timeAgo(task.last_update_at)}` : 'Never updated'}
-                  </p>
-                </div>
+                )
+              })}
+            </div>
+          </div>
 
-              </div>
-            )
-          })}
+          {/* Silent 72h+ panel */}
+          <div className="boe-panel-card">
+            <div className="boe-panel-card-header">
+              <span style={{ color: colors.red, fontSize: '14px' }}>▲</span>
+              <span className="boe-panel-card-title" style={{ color: colors.red }}>
+                Silent 72h+
+              </span>
+              <span className="boe-panel-card-count" style={{ color: colors.red }}>
+                {silentTasks.length} task{silentTasks.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="boe-panel-card-body" style={{
+              padding: '10px',
+              display: 'flex', flexDirection: 'column', gap: '6px',
+            }}>
+              {silentTasks.length === 0 ? (
+                <div style={{ padding: '8px', fontSize: '12px', color: colors.muted, textAlign: 'center' }}>
+                  No silent escalations
+                </div>
+              ) : silentTasks.slice(0, 5).map(t => {
+                const h = t.last_update_at
+                  ? Math.floor((Date.now() - new Date(t.last_update_at).getTime()) / 3_600_000)
+                  : null
+                return (
+                  <div
+                    key={t.id}
+                    className="boe-escalation-card"
+                    onClick={() => router.push(`/tasks/${t.id}`)}
+                  >
+                    <span style={{ fontSize: '14px', flexShrink: 0, lineHeight: 1 }}>🔴</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="boe-escalation-title">{t.title}</div>
+                      <div className="boe-escalation-sub">
+                        {t.assignee_name} · {t.assignee_team}
+                        {h !== null ? ` · ${h}h silent` : ''}
+                      </div>
+                    </div>
+                    {h !== null && (
+                      <span className="boe-escalation-time">{h}h</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Blocked panel */}
+          <div className="boe-panel-card">
+            <div className="boe-panel-card-header">
+              <span style={{ color: colors.amber, fontSize: '13px' }}>■</span>
+              <span className="boe-panel-card-title" style={{ color: colors.amber }}>
+                Blocked
+              </span>
+              <span className="boe-panel-card-count" style={{ color: colors.amber }}>
+                {blockedTasks.length} task{blockedTasks.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="boe-panel-card-body">
+              {blockedTasks.length === 0 ? (
+                <div style={{ padding: '12px 14px', fontSize: '12px', color: colors.muted }}>
+                  No blocked tasks
+                </div>
+              ) : blockedTasks.slice(0, 5).map(t => (
+                <div
+                  key={t.id}
+                  className="boe-list-row"
+                  onClick={() => router.push(`/tasks/${t.id}`)}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '12px', fontWeight: 500, color: colors.primary,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {t.title}
+                    </div>
+                    <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '1px' }}>
+                      {t.assignee_name}
+                      {t.blocker_reason && ` · ↳ ${t.blocker_reason}`}
+                    </div>
+                  </div>
+                  <span className="boe-badge boe-badge-blocked">blocked</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* No Update Today panel */}
+          <div className="boe-panel-card">
+            <div className="boe-panel-card-header">
+              <span style={{ color: colors.amber, fontSize: '13px' }}>●</span>
+              <span className="boe-panel-card-title" style={{ color: colors.amber }}>
+                No Update Today
+              </span>
+              <span className="boe-panel-card-count">
+                {noUpdateMembers.length} member{noUpdateMembers.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="boe-panel-card-body">
+              {noUpdateMembers.length === 0 ? (
+                <div style={{ padding: '12px 14px', fontSize: '12px', color: colors.muted }}>
+                  Everyone has updated today
+                </div>
+              ) : noUpdateMembers.map(m => {
+                const latestTask = noUpdateToday.find(t => t.assigned_to === m.id)
+                const h = latestTask?.last_update_at
+                  ? Math.floor((Date.now() - new Date(latestTask.last_update_at).getTime()) / 3_600_000)
+                  : null
+                return (
+                  <div key={m.id} className="boe-no-update-row">
+                    <Avatar name={m.name} size={24} />
+                    <span className="boe-no-update-name">{m.name}</span>
+                    <span className="boe-no-update-tasks">
+                      {m.count} task{m.count !== 1 ? 's' : ''}
+                    </span>
+                    {h !== null && (
+                      <span className="boe-no-update-time">{h}h</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Stale Progress panel */}
+          <div className="boe-panel-card">
+            <div className="boe-panel-card-header">
+              <span style={{ color: '#7B62E0', fontSize: '13px' }}>◆</span>
+              <span className="boe-panel-card-title" style={{ color: '#7B62E0' }}>
+                Stale Progress
+              </span>
+              <span className="boe-panel-card-count">
+                {staleTasks.length} task{staleTasks.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="boe-panel-card-body">
+              {staleTasks.length === 0 ? (
+                <div style={{ padding: '12px 14px', fontSize: '12px', color: colors.muted }}>
+                  No stale tasks
+                </div>
+              ) : staleTasks.slice(0, 5).map(t => (
+                <div
+                  key={t.id}
+                  className="boe-list-row"
+                  onClick={() => router.push(`/tasks/${t.id}`)}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '12px', fontWeight: 500, color: colors.primary,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {t.title}
+                    </div>
+                    <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '1px' }}>
+                      {t.assignee_name} · &ldquo;{t.status}&rdquo; for {t.stale_day_count ?? 0}d
+                    </div>
+                  </div>
+                  <span className="boe-stale-badge">
+                    {t.stale_day_count ?? 0}d stale
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
 
+        {/* RIGHT COL — live task feed */}
+        <div className="boe-manager-right">
+
+          {/* Urgent panel */}
+          <div className="boe-panel-card">
+            <div className="boe-panel-card-header">
+              <span style={{ color: colors.amber, fontSize: '13px' }}>!</span>
+              <span className="boe-panel-card-title" style={{ color: colors.amber }}>Urgent</span>
+              <span className="boe-panel-card-count">{urgentTasks.length}</span>
+            </div>
+            <div className="boe-panel-card-body">
+              {urgentTasks.length === 0 ? (
+                <div style={{ padding: '10px 14px', fontSize: '12px', color: colors.muted }}>
+                  None
+                </div>
+              ) : urgentTasks.slice(0, 4).map(t => (
+                <div
+                  key={t.id}
+                  className="boe-list-row"
+                  onClick={() => router.push(`/tasks/${t.id}`)}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '12px', fontWeight: 500, color: colors.primary,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {t.title}
+                    </div>
+                    <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '1px' }}>
+                      {t.assignee_name}
+                      {t.due_date && ` · ${new Date(t.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Live feed panel — filter tabs + task list */}
+          <div className="boe-panel-card" style={{ flex: 1 }}>
+            <div className="boe-panel-card-header">
+              <span className="boe-pulse-dot" />
+              <span className="boe-panel-card-title">Live Task Feed</span>
+              <span className="boe-panel-card-count">{filteredTasks.length} tasks</span>
+            </div>
+
+            {/* Filter tabs */}
+            <div style={{
+              display: 'flex', gap: '5px', overflowX: 'auto',
+              padding: '8px 10px',
+              borderBottom: '1px solid rgba(255,255,255,0.045)',
+            }}>
+              {filterTabs.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setFilter(tab.key)}
+                  className={`boe-filter-tab${filter === tab.key ? ' boe-filter-tab-active' : ''}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Member filter */}
+            <div style={{
+              padding: '8px 10px',
+              borderBottom: '1px solid rgba(255,255,255,0.045)',
+            }}>
+              <select
+                value={selectedMember}
+                onChange={e => setSelectedMember(e.target.value)}
+                className="boe-input"
+                style={{ fontSize: '12px', padding: '6px 10px' }}
+              >
+                <option value="all">All team members</option>
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.full_name} — {m.team}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Task list */}
+            <div className="boe-panel-card-body boe-panel-scroll">
+              {filteredTasks.length === 0 ? (
+                <div style={{
+                  padding: '24px', textAlign: 'center',
+                  fontSize: '13px', color: colors.muted,
+                }}>
+                  No tasks in this view
+                </div>
+              ) : (
+                <div style={{
+                  display: 'flex', flexDirection: 'column',
+                  gap: '6px', padding: '8px',
+                }}>
+                  {filteredTasks.map(t => (
+                    <TaskCard key={t.id} task={t} showAssignee showEscalation />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
       </div>
-    </div>
+
+    </DashboardLayout>
   )
 }

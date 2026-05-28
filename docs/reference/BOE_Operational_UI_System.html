@@ -1,0 +1,425 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.sec{margin-bottom:2.5rem}
+.sec-label{font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:1rem;padding-bottom:6px;border-bottom:.5px solid var(--color-border-tertiary)}
+.card{background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem 1.25rem;margin-bottom:10px}
+.prob-card{background:var(--color-background-primary);border:.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;margin-bottom:12px}
+.prob-head{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-bottom:.5px solid var(--color-border-tertiary)}
+.prob-num{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex-shrink:0;margin-top:1px}
+.prob-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px}
+.prob-sub{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.prob-body{padding:12px 14px}
+.sol-label{font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.sol-text{font-size:12px;color:var(--color-text-secondary);line-height:1.6}
+.rule-row{display:flex;gap:10px;padding:7px 0;border-bottom:.5px solid var(--color-border-tertiary);align-items:flex-start}
+.rule-row:last-child{border-bottom:none}
+.rule-icon{color:var(--color-text-tertiary);font-size:15px;margin-top:1px;flex-shrink:0}
+.rule-text{font-size:12px;color:var(--color-text-secondary);line-height:1.5;flex:1}
+.rule-text strong{color:var(--color-text-primary);font-weight:500}
+.avoid-card{display:flex;gap:10px;padding:10px 12px;background:var(--color-background-danger);border-radius:var(--border-radius-md);margin-bottom:8px;align-items:flex-start}
+.avoid-icon{color:var(--color-text-danger);font-size:16px;flex-shrink:0;margin-top:1px}
+.avoid-title{font-size:13px;font-weight:500;color:var(--color-text-danger);margin-bottom:2px}
+.avoid-note{font-size:12px;color:var(--color-text-danger);opacity:.8;line-height:1.5}
+.keep-card{display:flex;gap:10px;padding:10px 12px;background:var(--color-background-success);border-radius:var(--border-radius-md);margin-bottom:8px;align-items:flex-start}
+.keep-icon{color:var(--color-text-success);font-size:16px;flex-shrink:0;margin-top:1px}
+.keep-title{font-size:13px;font-weight:500;color:var(--color-text-success);margin-bottom:2px}
+.keep-note{font-size:12px;color:var(--color-text-success);opacity:.8;line-height:1.5}
+.scope-row{display:grid;grid-template-columns:1fr 2fr;gap:0;border-bottom:.5px solid var(--color-border-tertiary)}
+.scope-row:last-child{border-bottom:none}
+.scope-cat{padding:10px 12px;font-size:12px;font-weight:500;color:var(--color-text-secondary);background:var(--color-background-secondary);border-right:.5px solid var(--color-border-tertiary)}
+.scope-items{padding:10px 12px}
+.scope-item{font-size:12px;color:var(--color-text-secondary);padding:2px 0;display:flex;gap:6px;align-items:flex-start}
+.scope-item::before{content:"→";color:var(--color-text-tertiary);flex-shrink:0}
+.badge{display:inline-block;font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px}
+.b-red{background:#FCEBEB;color:#A32D2D}
+.b-amber{background:#FAEEDA;color:#854F0B}
+.b-green{background:#EAF3DE;color:#3B6D11}
+.b-blue{background:var(--color-background-info);color:var(--color-text-info)}
+.b-gray{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.divider{height:.5px;background:var(--color-border-tertiary);margin:8px 0}
+.new-badge{display:inline-block;font-size:10px;font-weight:500;padding:1px 6px;border-radius:20px;background:#EEEDFE;color:#3C3489;margin-left:6px;vertical-align:middle}
+.insight{background:var(--color-background-secondary);border-left:2px solid var(--color-border-secondary);border-radius:0;padding:10px 14px;margin-top:8px;font-size:12px;color:var(--color-text-secondary);line-height:1.6}
+.insight strong{color:var(--color-text-primary);font-weight:500}
+</style>
+
+<div style="padding:1.5rem 0">
+
+<div style="margin-bottom:2rem">
+  <p style="font-size:20px;font-weight:500;color:var(--color-text-primary);margin-bottom:4px">Process consultant review — BOE Phase 1</p>
+  <p style="font-size:13px;color:var(--color-text-secondary)">12 real-world failure modes · Preventive design · Hardened scope</p>
+</div>
+
+<!-- SECTION 1: PROBLEMS + SOLUTIONS -->
+<div class="sec">
+<p class="sec-label">1 + 2. Likely problems &amp; design solutions</p>
+
+<!-- P1 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:#FCEBEB;color:#A32D2D">1</div>
+    <div>
+      <p class="prob-title">Employees avoiding updates</p>
+      <p class="prob-sub">The most common failure in any new process system. People will open the app, see a task, and close it without updating — especially if there is no immediate consequence and the interface requires effort.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">The daily update must require zero typing. Replace the update flow with a 3-second action: open notification → see task → tap one status button → done. No text, no form, no confirmation screen unless marking complete. Additionally, build a "daily digest" notification at a fixed time (e.g. 6 PM) that lists only the tasks needing an update — not all tasks, not all notifications. One focused prompt per day. Management's dashboard must visibly show "who has not updated today" as a named list — social visibility is a stronger motivator than app notifications.</p>
+    <div class="insight"><strong>Rule to add:</strong> A status tap with no text counts as a valid update and resets the escalation clock. Typing is optional, never mandatory for a daily update.</div>
+  </div>
+</div>
+
+<!-- P2 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:#FCEBEB;color:#A32D2D">2</div>
+    <div>
+      <p class="prob-title">Fake or meaningless updates</p>
+      <p class="prob-sub">"Working" tapped every day for 10 days on a task that has clearly not moved. The escalation clock resets, management sees green, but nothing is actually happening. This is the most dangerous failure — it creates a false sense of control.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">Introduce a "stale progress" detector. If a task has received the same status ("Working") for 5 or more consecutive updates without any change in status or note, the system automatically flags it with a "No visible progress" indicator — separate from the standard escalation logic. This flag is visible to the creator and manager but is not an alert to the assignee — it triggers a quiet manager review, not a panic notification. Also, if a task deadline passes while status is "Working" or "Started," it immediately enters Overdue — the assignee cannot self-mark it as on-track once the deadline is crossed.</p>
+    <div class="insight"><strong>Rule to add:</strong> Same status for 5+ consecutive days on a non-daily-update task auto-flags as "stale." Managers see this on their Team view with a distinct indicator.</div>
+  </div>
+</div>
+
+<!-- P3 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:#FAEEDA;color:#854F0B">3</div>
+    <div>
+      <p class="prob-title">Duplicate tasks</p>
+      <p class="prob-sub">Two managers create the same task for the same person on the same day — happens constantly in verbal-culture companies transitioning to systems. The assignee gets confused, updates one, ignores the other, and neither creator has full visibility.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">On task creation, before submission, the system does a soft-match check: if an open task assigned to the same person contains 3 or more of the same words in the title, show a warning — "A similar task may already exist" with a link to review it. Do not block the creation — just surface the potential duplicate so the creator can decide. Additionally, create a simple "task already exists" search on the creation screen: one search field that queries open tasks by keyword before the form is filled. This prevents the problem at the source rather than fixing it after.</p>
+    <div class="insight"><strong>Rule to add:</strong> Duplicate detection is a soft warning, not a hard block. The creator decides. But every creator must see the warning before submitting.</div>
+  </div>
+</div>
+
+<!-- P4 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:#FAEEDA;color:#854F0B">4</div>
+    <div>
+      <p class="prob-title">Vague task titles</p>
+      <p class="prob-sub">"Follow up," "Check on order," "Call client." These titles are useless in a task system. The assignee does not know what action to take, and the creator has no basis for reviewing completion quality.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">Enforce a minimum title structure through a UI hint, not a technical validation. When the title field is focused, show a greyed-out example: "e.g. Call Ramesh at Leela Hotel — confirm upholstery spec by Wednesday." Below the field, show a live character count with a soft minimum of 20 characters — if the title is under 20 characters, show a yellow hint: "Be more specific — who, what, and by when?" Never block submission. Additionally, build 5–6 task title templates for common BOE task types: "Follow up with [client] about [topic]," "Confirm [item] with [vendor/team]," "Prepare [document] for [purpose]." One-tap templates reduce typing while enforcing structure.</p>
+    <div class="insight"><strong>Rule to add:</strong> Task title templates are mandatory to build into the creation screen. They serve as education and enforcement without friction.</div>
+  </div>
+</div>
+
+<!-- P5 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:#FAEEDA;color:#854F0B">5</div>
+    <div>
+      <p class="prob-title">Seniors delegating but staying accountable</p>
+      <p class="prob-sub">A senior assigns a task to a junior. Junior fails to complete it. Senior says "I delegated it." Junior says "I was not sure what to do." The system must make clear who owns the task at every moment and who is still responsible for the outcome.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">Delegation must require an explicit acceptance step from the new assignee — not just a notification. When a task is delegated, it sits in a "Pending acceptance" state. The new assignee sees it highlighted and must tap "Accept task" or "Decline with reason." If declined, it goes back to the delegator. Until accepted, the original assignee's name remains on the task with a "Delegating…" badge — they are still on the clock. Once accepted, the full ownership chain is displayed on the task: Created by → Originally assigned to → Delegated to (current owner). This chain cannot be deleted. Managers can see the full chain on any task.</p>
+    <div class="insight"><strong>Rule to add:</strong> Delegation is not complete until the recipient accepts. Escalation clock does not transfer to the new assignee until acceptance. Original owner owns the delay.</div>
+  </div>
+</div>
+
+<!-- P6 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:#FAEEDA;color:#854F0B">6</div>
+    <div>
+      <p class="prob-title">Urgent unplanned tasks disturbing planned tasks</p>
+      <p class="prob-sub">A client calls with an urgent requirement. Management creates a new high-priority task for a person who already has 4 active tasks. The new task jumps to the top, the old tasks get silently deprioritised, and no one has discussed what gets dropped.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">When a High priority task is created for a person who already has 2 or more open High priority tasks, show the creator a load warning: "Rahul already has 3 high-priority tasks. Assign anyway, or would you like to reassign one?" This is a friction point placed specifically at the creator — the person creating the new urgent task must consciously acknowledge the load impact. Additionally, introduce an "Urgent" flag separate from the priority system — a task can be Urgent without being permanently High priority. Urgent tasks appear with a distinct red strip on the assignee's task list and push a direct notification, but they do not affect the escalation timer of existing tasks.</p>
+    <div class="insight"><strong>Rule to add:</strong> Urgent flag is a one-time alert mechanism, not a permanent status. It cannot coexist with the daily update rhythm — it bypasses it once, then falls into the normal system.</div>
+  </div>
+</div>
+
+<!-- P7 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:#FAEEDA;color:#854F0B">7</div>
+    <div>
+      <p class="prob-title">Tasks stuck because another person is blocking them</p>
+      <p class="prob-sub">An assignee sets status to "Waiting" or "Blocked" — but does not name who or what is blocking them. The task sits there. No one acts. The escalation timer still runs. The assignee gets penalised for someone else's delay.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">When an assignee selects "Waiting" or "Blocked" status, the app must require one additional field before saving: a Blocker field — either tag a team member (from the people list) or type a one-line reason (e.g. "Waiting for client to send fabric sample"). This is the only mandatory text in the entire system. The blocker name or reason appears on the task card and on the manager's Team view. If a team member is tagged, they receive a notification: "You are blocking [task name] — assigned to [name]." The escalation timer pauses for "Waiting" status but not for "Blocked" — Blocked is a hard stop that requires manager intervention.</p>
+    <div class="insight"><strong>Rule to add:</strong> Waiting = external block (timer pauses). Blocked = internal block (timer continues, manager alerted). These must be two distinct statuses, not one.</div>
+  </div>
+</div>
+
+<!-- P8 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:#FAEEDA;color:#854F0B">8</div>
+    <div>
+      <p class="prob-title">Overdue tasks becoming normal</p>
+      <p class="prob-sub">After a few weeks, people accept that tasks will always be overdue. The red "Overdue" badge loses its meaning. People stop caring. Management stops reacting. The system becomes wallpaper.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">Overdue tasks must require a mandatory deadline revision or escalation — they cannot just sit overdue indefinitely. When a task goes overdue, the assignee sees a prompt once per day: "This task is overdue. Request a deadline extension or mark as Blocked." If they request an extension, the creator is notified and must approve the new deadline. If neither action is taken within 24 hours of going overdue, it automatically escalates. This forces a decision — tasks cannot exist in a passive overdue state. Separately, management's weekly digest should show a "chronic overdue" metric — tasks that have been overdue for more than 3 days — to prevent normalisation at the organisational level.</p>
+    <div class="insight"><strong>Rule to add:</strong> An overdue task that receives no action within 24 hours auto-escalates regardless of the standard 72h timer. Overdue tasks have their own faster escalation lane.</div>
+  </div>
+</div>
+
+<!-- P9 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">9</div>
+    <div>
+      <p class="prob-title">Employees claiming they were not informed</p>
+      <p class="prob-sub">"I never got the notification." "No one told me." This is the most common verbal defence when a task is missed. In a WhatsApp culture, it is often true — messages do get buried. In a task system, it must be impossible to claim.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">Build a mandatory acknowledgement system. When a task is assigned or delegated to someone, it appears in a special "Unacknowledged" state with a distinct visual treatment. The assignee must tap "I have seen this task" — a single button — within a set window (e.g. same business day or 4 hours during working hours). Until they tap it, the task shows as "Unacknowledged" to both them and the creator. If 4 hours pass without acknowledgement, the creator gets a gentle alert. The tap timestamp is permanently logged. This is the digital equivalent of signing a receipt — it eliminates the "I wasn't informed" defence completely and with zero ambiguity.</p>
+    <div class="insight"><strong>Rule to add:</strong> Acknowledgement is a single tap — not a form. The timestamp is shown on the task detail to both parties. It cannot be deleted or edited.</div>
+  </div>
+</div>
+
+<!-- P10 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">10</div>
+    <div>
+      <p class="prob-title">Management needing clear proof of responsibility</p>
+      <p class="prob-sub">When a client complaint arrives, or an order is delayed, management needs to answer: who was responsible, what did they do, and when? Without this, accountability conversations become verbal arguments with no resolution.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">Every task must have a permanent, append-only activity log — displayed on the task detail screen in reverse chronological order. Every action is recorded with the actor name and timestamp: task created, assigned, acknowledged, status changed, delegated, deadline changed, escalated, completed. Nothing can be deleted from this log. No editing of past entries. Separately, management should have a "Task history export" — a simple list view of all completed and overdue tasks for a given person or period, filterable by date, team, or status. This is not a complex report — it is a scrollable list that can be screenshotted or shared. This feature exists not for daily use but for accountability conversations when things go wrong.</p>
+    <div class="insight"><strong>Rule to add:</strong> The activity log is read-only, permanent, and visible to all parties on the task. It is the single source of truth for any dispute.</div>
+  </div>
+</div>
+
+<!-- P11 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">11</div>
+    <div>
+      <p class="prob-title">Too many notifications causing people to ignore the app</p>
+      <p class="prob-sub">If the app sends 8 notifications a day, people start ignoring all of them within two weeks. Notification fatigue is the number one reason task apps get abandoned in non-tech companies.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">Enforce a strict notification budget per user per day — maximum 3 push notifications from the system (not counting direct messages). Priority order: (1) New task assigned to you, (2) Task blocked — you are the blocker, (3) Escalation reached. Everything else — reminders, status updates from others, acknowledgement prompts — goes into a single daily digest notification at a fixed time set by management (e.g. 9 AM summary + 6 PM reminder). Notifications from the system must never be sent between 9 PM and 8 AM. Users should not have individual notification settings in Phase 1 — this creates inconsistency. Management sets the notification schedule for the team once, and it applies to everyone.</p>
+    <div class="insight"><strong>Rule to add:</strong> 3 real-time push notifications maximum per day per user. Everything else batched into the daily digest. No late-night notifications. No per-user customisation in Phase 1.</div>
+  </div>
+</div>
+
+<!-- P12 -->
+<div class="prob-card">
+  <div class="prob-head">
+    <div class="prob-num" style="background:var(--color-background-secondary);color:var(--color-text-secondary)">12</div>
+    <div>
+      <p class="prob-title">Sales and operations teams using the app differently</p>
+      <p class="prob-sub">Sales tasks are relationship and timing driven — "Follow up with Leela Hotel by Thursday." Operations tasks are process and dependency driven — "Get quality check done before fabric dispatch." A single rigid task format serves neither well.</p>
+    </div>
+  </div>
+  <div class="prob-body">
+    <p class="sol-label" style="color:var(--color-text-info)">Design solution</p>
+    <p class="sol-text">Do not build separate modules in Phase 1. Instead, use the task type field plus title templates to serve both teams. Sales team gets templates like: "Follow up — [Client] — [Topic]" and "Proposal to be sent — [Client] — [Date]." Operations team gets templates like: "Quality check — [Item] — before [Event]" and "Vendor coordination — [Supplier] — [Requirement]." The underlying task structure is identical. The difference is only in how the creation screen guides each team at input time. In Phase 2, you can introduce team-specific task views and filters once you have real usage data showing where the differences actually matter.</p>
+    <div class="insight"><strong>Rule to add:</strong> Task templates are team-specific (Sales / Operations / Design / Purchase) but task data model is unified. One system, guided entry.</div>
+  </div>
+</div>
+
+</div>
+
+<!-- SECTION 3: RULES -->
+<div class="sec">
+<p class="sec-label">3. Rules that must be built into the app</p>
+<div class="card">
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Acknowledgement is mandatory.</strong> A task does not enter the escalation clock until the assignee acknowledges it. Unacknowledged tasks have their own alert to the creator after 4 working hours.</div>
+  </div>
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Delegation requires acceptance.</strong> Ownership does not transfer until the new assignee taps "Accept." Until then, the original owner is still accountable.</div>
+  </div>
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Waiting and Blocked are separate statuses.</strong> Waiting pauses the escalation timer. Blocked does not — it requires a named blocker and triggers a manager alert.</div>
+  </div>
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Overdue tasks escalate faster.</strong> Standard escalation: 72 hours of silence. Overdue escalation: 24 hours of no action after the deadline passes. Two separate timers.</div>
+  </div>
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Activity log is permanent and read-only.</strong> Every action on every task is logged with actor name and timestamp. Nothing can be edited or deleted from the log.</div>
+  </div>
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Maximum 3 real-time push notifications per user per day.</strong> System-set schedule, not user-customisable. Late-night notifications are blocked system-wide.</div>
+  </div>
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Same status for 5+ consecutive days triggers a "stale" flag</strong> visible only to the manager — not an alert to the assignee. Quiet signal, not a punishment.</div>
+  </div>
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Duplicate warning is mandatory before submission</strong> if a similar open task exists for the same assignee. It is a soft warning — not a hard block — but it cannot be dismissed without the creator seeing it.</div>
+  </div>
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Overdue tasks cannot self-resolve.</strong> An assignee cannot mark an overdue task complete without either the creator seeing it or a deadline extension being approved first.</div>
+  </div>
+  <div class="rule-row">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>Urgent flag is a one-time mechanism.</strong> It sends one direct push notification and creates a red visual indicator. It does not change the escalation timer or the priority ranking permanently.</div>
+  </div>
+  <div class="rule-row" style="border:none">
+    <i class="ti ti-lock rule-icon" aria-hidden="true"></i>
+    <div class="rule-text"><strong>High-priority load warning is mandatory</strong> when assigning a third High-priority task to someone who already has two open High-priority tasks. Creator must acknowledge the load before submitting.</div>
+  </div>
+</div>
+</div>
+
+<!-- SECTION 4: FEATURES TO AVOID -->
+<div class="sec">
+<p class="sec-label">4. Features to avoid in Phase 1</p>
+
+<div class="avoid-card">
+  <i class="ti ti-x avoid-icon" aria-hidden="true"></i>
+  <div><p class="avoid-title">Comments / chat inside tasks</p><p class="avoid-note">This replicates WhatsApp inside the app. People will have side conversations, lose context, and avoid the structured update system. Defer to Phase 2 — notes field is sufficient.</p></div>
+</div>
+<div class="avoid-card">
+  <i class="ti ti-x avoid-icon" aria-hidden="true"></i>
+  <div><p class="avoid-title">Subtasks or task dependencies</p><p class="avoid-note">Adds enormous complexity to accountability tracking. If two tasks are related, the note field is enough. Dependency mapping belongs in a later phase once teams have mastered basic task hygiene.</p></div>
+</div>
+<div class="avoid-card">
+  <i class="ti ti-x avoid-icon" aria-hidden="true"></i>
+  <div><p class="avoid-title">File attachments on tasks</p><p class="avoid-note">People will attach large files, the app becomes slow, and the feature becomes a crutch for vague task titles ("see attached for context"). All context should be in the title and note fields.</p></div>
+</div>
+<div class="avoid-card">
+  <i class="ti ti-x avoid-icon" aria-hidden="true"></i>
+  <div><p class="avoid-title">Custom notification settings per user</p><p class="avoid-note">Creates inconsistency across the team and gives individuals the ability to opt out of accountability. Management sets the schedule for everyone. This is non-negotiable in Phase 1.</p></div>
+</div>
+<div class="avoid-card">
+  <i class="ti ti-x avoid-icon" aria-hidden="true"></i>
+  <div><p class="avoid-title">Task categories / tags / labels</p><p class="avoid-note">In a team that is not yet used to updating tasks at all, adding a classification layer creates unnecessary friction at creation time. Templates already handle the categorisation need.</p></div>
+</div>
+<div class="avoid-card">
+  <i class="ti ti-x avoid-icon" aria-hidden="true"></i>
+  <div><p class="avoid-title">Recurring tasks (auto-creation)</p><p class="avoid-note">Sounds efficient, but recurring auto-created tasks quickly become background noise that no one takes seriously. Daily Update type tasks already serve this need without auto-creation complexity.</p></div>
+</div>
+<div class="avoid-card">
+  <i class="ti ti-x avoid-icon" aria-hidden="true"></i>
+  <div><p class="avoid-title">Analytics dashboards and charts</p><p class="avoid-note">Premature. You have no baseline data. A simple list view with filter and export is more useful in Month 1 than a chart showing trends that don't yet exist. Defer to Phase 2.</p></div>
+</div>
+<div class="avoid-card">
+  <i class="ti ti-x avoid-icon" aria-hidden="true"></i>
+  <div><p class="avoid-title">Multiple assignees on one task</p><p class="avoid-note">Destroys accountability. If two people own a task, no one owns it. If a task genuinely involves two people, it should be two tasks with clear individual ownership.</p></div>
+</div>
+</div>
+
+<!-- SECTION 5: FINAL IMPROVED SCOPE -->
+<div class="sec">
+<p class="sec-label">5. Final improved Phase 1 scope</p>
+
+<div class="card" style="padding:0;overflow:hidden">
+  <div class="scope-row">
+    <div class="scope-cat">Core task flow</div>
+    <div class="scope-items">
+      <div class="scope-item">Task creation with title templates (team-specific)</div>
+      <div class="scope-item">Single assignee with mandatory acknowledgement tap</div>
+      <div class="scope-item">Soft duplicate warning before submission</div>
+      <div class="scope-item">Priority: High / Medium / Low + separate Urgent flag</div>
+      <div class="scope-item">Task types: Daily Update / Completion</div>
+    </div>
+  </div>
+  <div class="scope-row">
+    <div class="scope-cat">Status system</div>
+    <div class="scope-items">
+      <div class="scope-item">6 statuses: Pending · Started · Working · Waiting · Blocked · Completed</div>
+      <div class="scope-item">Waiting requires named external blocker or typed reason</div>
+      <div class="scope-item">Blocked requires named internal person — they receive a notification</div>
+      <div class="scope-item">Stale flag: same status 5+ consecutive days (manager-only, silent)</div>
+    </div>
+  </div>
+  <div class="scope-row">
+    <div class="scope-cat">Delegation</div>
+    <div class="scope-items">
+      <div class="scope-item">Delegate to any team member with optional handover note</div>
+      <div class="scope-item">New assignee must Accept or Decline — no silent transfer</div>
+      <div class="scope-item">Full ownership chain displayed and permanently logged</div>
+      <div class="scope-item">Escalation clock stays with original owner until acceptance</div>
+    </div>
+  </div>
+  <div class="scope-row">
+    <div class="scope-cat">Escalation system</div>
+    <div class="scope-items">
+      <div class="scope-item">Standard: 24h caution · 48h danger · 72h senior escalation</div>
+      <div class="scope-item">Overdue fast lane: escalation within 24h of deadline passing</div>
+      <div class="scope-item">Waiting status pauses timer · Blocked does not</div>
+      <div class="scope-item">Overdue tasks require deadline extension request or Blocked status — cannot passively sit</div>
+    </div>
+  </div>
+  <div class="scope-row">
+    <div class="scope-cat">Accountability layer <span class="new-badge">new</span></div>
+    <div class="scope-items">
+      <div class="scope-item">Acknowledgement timestamp — permanent, visible to all task parties</div>
+      <div class="scope-item">Append-only activity log on every task — no editing, no deletion</div>
+      <div class="scope-item">High-priority load warning when assigning 3rd HP task to same person</div>
+      <div class="scope-item">Overdue tasks require creator acknowledgement before they can be marked complete</div>
+    </div>
+  </div>
+  <div class="scope-row">
+    <div class="scope-cat">Notifications</div>
+    <div class="scope-items">
+      <div class="scope-item">Max 3 real-time push per user per day — system enforced</div>
+      <div class="scope-item">Morning digest (9 AM): tasks needing action today</div>
+      <div class="scope-item">Evening digest (6 PM): tasks not yet updated today</div>
+      <div class="scope-item">No notifications between 9 PM and 8 AM</div>
+      <div class="scope-item">Notification schedule set by management — not by individual users</div>
+    </div>
+  </div>
+  <div class="scope-row">
+    <div class="scope-cat">Dashboard</div>
+    <div class="scope-items">
+      <div class="scope-item">Assignee view: my tasks · unacknowledged · needing update today · overdue</div>
+      <div class="scope-item">Manager view: team task status · who has not updated today (named list) · escalated · stale tasks</div>
+      <div class="scope-item">No charts — simple named lists only in Phase 1</div>
+    </div>
+  </div>
+  <div class="scope-row" style="border-bottom:none">
+    <div class="scope-cat">Intentionally deferred</div>
+    <div class="scope-items">
+      <div class="scope-item">Comments / in-task chat · File attachments · Subtasks</div>
+      <div class="scope-item">Analytics charts · Recurring auto-tasks · Multiple assignees</div>
+      <div class="scope-item">Custom notification settings · Tags and categories</div>
+      <div class="scope-item">ClickUp sync · Auto-assignment · Salary or incentive linking</div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:12px;background:var(--color-background-secondary)">
+  <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:8px">One principle to govern every future decision</p>
+  <p style="font-size:13px;color:var(--color-text-secondary);line-height:1.7">Every feature in this system must make it <em>harder to avoid accountability</em> and <em>easier to give an honest update</em> — in that order of priority. If a feature makes it easier to look busy without being productive, it does not belong in this system regardless of how useful it appears on paper.</p>
+</div>
+</div>
+
+</div>

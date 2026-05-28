@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import type { UserProfile } from '@/lib/types'
+import { colors } from '@/lib/tokens'
+import { BackBarShell } from '@/components/layout/PageShell'
 
-type User = { id: string; full_name: string; team: string; role: string }
-
-const TEMPLATES = {
+const TEMPLATES: Record<string, string[]> = {
   sales: [
     'Follow up with [Client] about [Topic]',
     'Proposal to be sent to [Client] by [Date]',
@@ -31,50 +32,42 @@ const TEMPLATES = {
   ],
 }
 
-export default function CreateTaskPage() {
-  const [title, setTitle] = useState('')
-  const [note, setNote] = useState('')
-  const [priority, setPriority] = useState('medium')
-  const [type, setType] = useState('completion')
-  const [isUrgent, setIsUrgent] = useState(false)
-  const [dueDate, setDueDate] = useState('')
-  const [assigneeId, setAssigneeId] = useState('')
-  const [team, setTeam] = useState('sales')
-  const [users, setUsers] = useState<User[]>([])
-  const [currentUser, setCurrentUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [showTemplates, setShowTemplates] = useState(false)
-  const router = useRouter()
-  const supabase = createClient()
+const TEAMS     = ['sales', 'operations', 'design', 'purchase', 'bdm', 'management']
+const PRIORITIES = ['low', 'medium', 'high'] as const
 
+export default function CreateTaskPage() {
+  const [title,         setTitle]         = useState('')
+  const [note,          setNote]          = useState('')
+  const [priority,      setPriority]      = useState('medium')
+  const [type,          setType]          = useState('completion')
+  const [isUrgent,      setIsUrgent]      = useState(false)
+  const [dueDate,       setDueDate]       = useState('')
+  const [assigneeId,    setAssigneeId]    = useState('')
+  const [team,          setTeam]          = useState('sales')
+  const [users,         setUsers]         = useState<UserProfile[]>([])
+  const [loading,       setLoading]       = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
+  const router   = useRouter()
+  const supabase = useMemo(() => createClient(), [])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
 
       const { data: profile } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .single()
-
-      if (profile) {
-        setCurrentUser(profile)
-        setTeam(profile.team)
-      }
+        .from('users').select('*').eq('id', user.id).single()
+      if (profile) setTeam(profile.team)
 
       const { data: allUsers } = await supabase
         .from('users')
-        .select('id, full_name, team, role')
-        .eq('is_active', true)
-        .order('full_name')
-
+        .select('id, full_name, team, role, email, phone, is_active, created_at')
+        .eq('is_active', true).order('full_name')
       if (allUsers) setUsers(allUsers)
     }
     init()
   }, [])
-
-  const templates = TEMPLATES[team as keyof typeof TEMPLATES] || TEMPLATES.sales
 
   const handleSubmit = async () => {
     if (!title.trim() || !assigneeId) return
@@ -83,249 +76,273 @@ export default function CreateTaskPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // Check for duplicate
     const { data: existing } = await supabase
-      .from('tasks')
-      .select('id, title')
+      .from('tasks').select('id, title')
       .eq('assigned_to', assigneeId)
       .not('status', 'eq', 'completed')
 
     const titleWords = title.toLowerCase().split(' ').filter(w => w.length > 3)
-    const duplicate = existing?.find(t => {
+    const duplicate  = existing?.find(t => {
       const matches = titleWords.filter(w => t.title.toLowerCase().includes(w))
       return matches.length >= 3
     })
 
     if (duplicate) {
-      const confirm = window.confirm(
+      const ok = window.confirm(
         `A similar task may already exist:\n"${duplicate.title}"\n\nCreate anyway?`
       )
-      if (!confirm) { setLoading(false); return }
+      if (!ok) { setLoading(false); return }
     }
 
-    const { data: task, error } = await supabase.from('tasks').insert({
-      title: title.trim(),
-      note: note.trim() || null,
-      priority,
-      type,
-      is_urgent: isUrgent,
-      due_date: dueDate || null,
-      assigned_to: assigneeId,
-      created_by: user.id,
-      team,
-      status: 'pending',
-    }).select().single()
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .insert({
+        title:       title.trim(),
+        note:        note.trim() || null,
+        priority,    type,
+        is_urgent:   isUrgent,
+        due_date:    dueDate || null,
+        assigned_to: assigneeId,
+        created_by:  user.id,
+        team,
+        status:      'pending',
+      })
+      .select().single()
 
     if (!error && task) {
       await supabase.from('task_activity_log').insert({
-        task_id: task.id,
-        actor_id: user.id,
-        action: 'created',
-        note: `Task created and assigned`,
+        task_id: task.id, actor_id: user.id,
+        action: 'created', note: 'Task created and assigned',
       })
-
       await supabase.from('notifications').insert({
-        user_id: assigneeId,
-        task_id: task.id,
-        type: 'task_assigned',
-        title: 'New task assigned to you',
-        body: title.trim(),
+        user_id:      assigneeId,
+        task_id:      task.id,
+        type:         'task_assigned',
+        title:        'New task assigned to you',
+        body:         title.trim(),
         is_push_sent: true,
       })
-
       router.push('/dashboard')
     }
-
     setLoading(false)
   }
 
+  const templates = TEMPLATES[team] ?? TEMPLATES.sales
+  const canSubmit = !loading && title.trim().length > 0 && assigneeId !== ''
+
   return (
-    <div className="min-h-screen bg-gray-950">
-      {/* Top bar */}
-      <div className="bg-gray-900 border-b border-gray-800 sticky top-0 z-10">
-        <div className="boe-container-narrow py-4 flex items-center gap-3">
-        <button onClick={() => router.back()} className="text-gray-400 hover:text-white text-sm">
-          ← Back
-        </button>
-        <h1 className="text-white font-semibold text-base flex-1">New Task</h1>
+    <BackBarShell
+      title="Create Task"
+      onBack={() => router.back()}
+      actions={
         <button
           onClick={handleSubmit}
-          disabled={loading || !title.trim() || !assigneeId}
-          className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+          disabled={!canSubmit}
+          className="boe-btn boe-btn-primary"
         >
-          {loading ? 'Saving...' : 'Create'}
+          {loading ? 'Saving...' : 'Create & Assign'}
         </button>
-      </div>
-      </div>
+      }
+    >
+      {/* Narrow centered layout — max-width 560px via BackBarShell narrow=true */}
 
-      <div className="boe-container-narrow py-6 flex flex-col gap-4">
-
-        {/* Title */}
-        <div>
-          <label className="block text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">
-            Task Title
-          </label>
-          <textarea
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="What needs to be done? Be specific — who, what, by when."
-            rows={3}
-            className="w-full bg-gray-900 text-white rounded-xl px-4 py-3 text-sm border border-gray-700 focus:outline-none focus:border-blue-500 placeholder-gray-600 resize-none"
-          />
-          {title.length > 0 && title.length < 20 && (
-            <p className="text-yellow-500 text-xs mt-1">Be more specific — who, what, and by when?</p>
-          )}
-
-          {/* Templates */}
+      {/* ── Quick Templates ───────────────────────────────────────── */}
+      <div className="boe-form-section">
+        <label className="boe-form-section-label">Quick Templates</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {templates.map((t, i) => (
+            <button
+              key={i}
+              onClick={() => { setTitle(t); setShowTemplates(false) }}
+              className={`boe-chip${title === t ? ' boe-chip-selected' : ''}`}
+              style={{ fontSize: '11px' }}
+            >
+              {t.split(' — ')[0].replace('[', '').replace(']', '')}
+            </button>
+          ))}
           <button
             onClick={() => setShowTemplates(!showTemplates)}
-            className="text-blue-400 text-xs mt-2 hover:text-blue-300"
+            style={{
+              fontSize: '11px', color: colors.blue,
+              background: 'none', border: 'none', cursor: 'pointer', padding: '5px 0',
+            }}
           >
-            {showTemplates ? 'Hide templates' : 'Use a template'}
+            {showTemplates ? '↑ less' : '↓ more'}
           </button>
-
-          {showTemplates && (
-            <div className="mt-2 flex flex-col gap-2">
-              {templates.map((t, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setTitle(t); setShowTemplates(false) }}
-                  className="text-left bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-3 py-2.5 rounded-xl transition-colors"
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
-
-        {/* Assignee */}
-        <div>
-          <label className="block text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">
-            Assign To
-          </label>
-          <select
-            value={assigneeId}
-            onChange={(e) => setAssigneeId(e.target.value)}
-            className="w-full bg-gray-900 text-white rounded-xl px-4 py-3 text-sm border border-gray-700 focus:outline-none focus:border-blue-500"
-          >
-            <option value="">Select team member</option>
-            {users.map(u => (
-              <option key={u.id} value={u.id}>
-                {u.full_name} — {u.team}
-              </option>
+        {showTemplates && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '4px' }}>
+            {templates.map((t, i) => (
+              <button
+                key={i}
+                onClick={() => { setTitle(t); setShowTemplates(false) }}
+                className="boe-card-interactive"
+                style={{
+                  padding: '8px 12px', textAlign: 'left',
+                  fontSize: '12px', color: colors.secondary,
+                }}
+              >
+                {t}
+              </button>
             ))}
-          </select>
-        </div>
+          </div>
+        )}
+      </div>
 
-        {/* Priority + Type */}
-        <div className="grid grid-cols-2 gap-3">
+      {/* ── Task Title ────────────────────────────────────────────── */}
+      <div className="boe-form-section">
+        <label className="boe-form-section-label">Task Title</label>
+        <textarea
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="e.g. Follow up — Leela Hotel — confirm fabric selection by Friday"
+          rows={2}
+          className="boe-input"
+          style={{ resize: 'none' }}
+        />
+        {title.length > 0 && title.length < 20 && (
+          <p style={{ fontSize: '11px', color: colors.amber, marginTop: '5px' }}>
+            💡 Be specific: who, what, and by when
+          </p>
+        )}
+      </div>
+
+      {/* ── Assign To + Task Type ─────────────────────────────────── */}
+      <div className="boe-form-section">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <div>
-            <label className="block text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">
-              Priority
-            </label>
-            <div className="flex gap-2">
-              {['low', 'medium', 'high'].map(p => (
+            <label className="boe-form-section-label">Assign To</label>
+            <select
+              value={assigneeId}
+              onChange={e => setAssigneeId(e.target.value)}
+              className="boe-input"
+            >
+              <option value="">Select team member</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.full_name} — {u.team}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="boe-form-section-label">Task Type</label>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {([['completion', 'Completion'], ['daily_update', 'Daily Update']] as const).map(
+                ([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setType(val)}
+                    className={`boe-chip${type === val ? ' boe-chip-selected' : ''}`}
+                    style={{ flex: 1, textAlign: 'center', fontSize: '11px' }}
+                  >
+                    {label}
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Priority + Deadline ───────────────────────────────────── */}
+      <div className="boe-form-section">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div>
+            <label className="boe-form-section-label">Priority</label>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {PRIORITIES.map(p => (
                 <button
                   key={p}
                   onClick={() => setPriority(p)}
-                  className={`flex-1 py-2 rounded-xl text-xs font-semibold capitalize transition-colors ${
-                    priority === p
-                      ? p === 'high' ? 'bg-red-600 text-white'
-                        : p === 'medium' ? 'bg-yellow-600 text-white'
-                        : 'bg-gray-600 text-white'
-                      : 'bg-gray-800 text-gray-400'
-                  }`}
+                  className={`boe-chip${priority === p ? ' boe-chip-selected' : ''}`}
+                  style={{
+                    flex: 1, textAlign: 'center', textTransform: 'capitalize',
+                    ...(p === 'high' && priority !== 'high'
+                      ? { color: colors.red, borderColor: 'rgba(217,79,79,0.2)' }
+                      : {}),
+                  }}
                 >
                   {p}
                 </button>
               ))}
             </div>
           </div>
-
           <div>
-            <label className="block text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">
-              Type
-            </label>
-            <div className="flex gap-2">
-              {[['completion', 'One-time'], ['daily_update', 'Daily']].map(([val, label]) => (
-                <button
-                  key={val}
-                  onClick={() => setType(val)}
-                  className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                    type === val ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <label className="boe-form-section-label">Deadline</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+              className="boe-input"
+              style={{ colorScheme: 'dark' }}
+            />
           </div>
         </div>
-
-        {/* Due Date */}
-        <div>
-          <label className="block text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">
-            Due Date
-          </label>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className="w-full bg-gray-900 text-white rounded-xl px-4 py-3 text-sm border border-gray-700 focus:outline-none focus:border-blue-500"
-            style={{colorScheme: 'dark'}}
-          />
-        </div>
-
-        {/* Team */}
-        <div>
-          <label className="block text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">
-            Team
-          </label>
-          <select
-            value={team}
-            onChange={(e) => setTeam(e.target.value)}
-            className="w-full bg-gray-900 text-white rounded-xl px-4 py-3 text-sm border border-gray-700 focus:outline-none focus:border-blue-500"
-          >
-            {['sales', 'operations', 'design', 'purchase', 'bdm', 'management'].map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Urgent toggle */}
-        <div
-          onClick={() => setIsUrgent(!isUrgent)}
-          className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-colors ${
-            isUrgent ? 'bg-red-950 border-red-700' : 'bg-gray-900 border-gray-700'
-          }`}
-        >
-          <div>
-            <p className={`text-sm font-semibold ${isUrgent ? 'text-red-400' : 'text-gray-300'}`}>
-              Mark as Urgent
-            </p>
-            <p className="text-gray-500 text-xs mt-0.5">Sends immediate push notification</p>
-          </div>
-          <div className={`w-10 h-6 rounded-full transition-colors ${isUrgent ? 'bg-red-600' : 'bg-gray-700'}`}>
-            <div className={`w-5 h-5 bg-white rounded-full mt-0.5 transition-transform ${isUrgent ? 'translate-x-4' : 'translate-x-0.5'}`} />
-          </div>
-        </div>
-
-        {/* Note */}
-        <div>
-          <label className="block text-gray-400 text-xs font-semibold uppercase tracking-wider mb-2">
-            Note (optional)
-          </label>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Any additional context..."
-            rows={2}
-            className="w-full bg-gray-900 text-white rounded-xl px-4 py-3 text-sm border border-gray-700 focus:outline-none focus:border-blue-500 placeholder-gray-600 resize-none"
-          />
-        </div>
-
       </div>
-    </div>
+
+      {/* ── Team ─────────────────────────────────────────────────── */}
+      <div className="boe-form-section">
+        <label className="boe-form-section-label">Team</label>
+        <select
+          value={team}
+          onChange={e => setTeam(e.target.value)}
+          className="boe-input"
+        >
+          {TEAMS.map(t => (
+            <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{t}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* ── Note ─────────────────────────────────────────────────── */}
+      <div className="boe-form-section">
+        <label className="boe-form-section-label">Note (optional)</label>
+        <textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Context or instructions for the assignee…"
+          rows={2}
+          className="boe-input"
+          style={{ resize: 'none' }}
+        />
+      </div>
+
+      {/* ── Urgent toggle ─────────────────────────────────────────── */}
+      <div
+        onClick={() => setIsUrgent(!isUrgent)}
+        className={isUrgent ? 'boe-alert-red' : 'boe-card'}
+        style={{
+          padding: '10px 13px', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}
+      >
+        <div>
+          <p style={{
+            fontSize: '13px', fontWeight: 600,
+            color: isUrgent ? colors.red : colors.primary,
+          }}>
+            Mark as Urgent
+          </p>
+          <p style={{ color: colors.muted, fontSize: '11px', marginTop: '1px' }}>
+            Sends immediate push notification
+          </p>
+        </div>
+        <div style={{
+          width: '34px', height: '20px', borderRadius: '10px',
+          background: isUrgent ? colors.red : colors.float,
+          position: 'relative', flexShrink: 0,
+          transition: 'background 0.16s',
+          border: `1px solid ${colors.border}`,
+        }}>
+          <div style={{
+            position: 'absolute', top: '2px',
+            left: isUrgent ? '15px' : '2px',
+            width: '14px', height: '14px',
+            borderRadius: '50%', background: '#fff',
+            transition: 'left 0.16s',
+          }} />
+        </div>
+      </div>
+
+    </BackBarShell>
   )
 }
