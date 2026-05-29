@@ -89,8 +89,15 @@ export default function TaskDetailPage() {
 
   const [selectedStatus, setSelectedStatus] = useState<string>('')
   const [updateNote,     setUpdateNote]     = useState('')
+  const [waitingOn,      setWaitingOn]      = useState('')
   const [noteError,      setNoteError]      = useState(false)
+  const [waitingOnError, setWaitingOnError] = useState(false)
   const [saving,         setSaving]         = useState(false)
+
+  const WAITING_ON_OPTIONS = [
+    'Client', 'Vendor', 'Design Team', 'Purchase Team',
+    'Production', 'Management', 'Transport', 'Other',
+  ]
 
   const router   = useRouter()
   const params   = useParams()
@@ -187,11 +194,16 @@ export default function TaskDetailPage() {
     if (!task) return
     const needsNote = selectedStatus === 'waiting' || selectedStatus === 'blocked'
     if (needsNote && !updateNote.trim()) { setNoteError(true); return }
+    if (selectedStatus === 'waiting' && !waitingOn) { setWaitingOnError(true); return }
     setNoteError(false)
+    setWaitingOnError(false)
     setSaving(true)
 
     if (selectedStatus !== task.status) {
-      await applyStatusChange(selectedStatus, updateNote.trim() || null)
+      const reasonParts = []
+      if (selectedStatus === 'waiting' && waitingOn) reasonParts.push(`Waiting on: ${waitingOn}`)
+      if (updateNote.trim()) reasonParts.push(updateNote.trim())
+      await applyStatusChange(selectedStatus, reasonParts.join(' — ') || null)
     } else if (updateNote.trim()) {
       const now = new Date().toISOString()
       await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
@@ -417,7 +429,7 @@ export default function TaskDetailPage() {
                     return (
                       <button
                         key={s}
-                        onClick={() => { setSelectedStatus(s); setNoteError(false) }}
+                        onClick={() => { setSelectedStatus(s); setNoteError(false); setWaitingOnError(false); if (s !== 'waiting') setWaitingOn('') }}
                         style={{
                           padding:       '5px 12px',
                           borderRadius:  '20px',
@@ -437,6 +449,33 @@ export default function TaskDetailPage() {
                   })}
                 </div>
               </div>
+
+              {/* Waiting On dropdown */}
+              {selectedStatus === 'waiting' && (
+                <div>
+                  <p style={{
+                    fontSize: '11px', fontWeight: 500, marginBottom: '6px',
+                    color: waitingOnError ? colors.red : colors.tertiary,
+                  }}>
+                    Waiting On <span style={{ color: colors.red }}>*</span>
+                    {waitingOnError && <span style={{ color: colors.red }}> — required</span>}
+                  </p>
+                  <select
+                    value={waitingOn}
+                    onChange={e => { setWaitingOn(e.target.value); setWaitingOnError(false) }}
+                    className="boe-input"
+                    style={{
+                      width: '100%',
+                      border: waitingOnError ? `1.5px solid ${colors.red}` : undefined,
+                    }}
+                  >
+                    <option value="">Select who/what you&apos;re waiting on…</option>
+                    {WAITING_ON_OPTIONS.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Notes */}
               <div>
