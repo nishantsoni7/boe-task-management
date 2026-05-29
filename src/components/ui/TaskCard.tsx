@@ -30,6 +30,8 @@ type TaskCardProps = {
   cardStyle?: React.CSSProperties
   /** Optional override for click behaviour. If omitted, navigates to /tasks/[id]. */
   onClick?: () => void
+  /** Optional content rendered inside the card below the main body. */
+  footer?: React.ReactNode
 }
 
 export function TaskCard({
@@ -38,6 +40,7 @@ export function TaskCard({
   showEscalation = false,
   cardStyle,
   onClick,
+  footer,
 }: TaskCardProps) {
   const router  = useRouter()
   const overdue = isOverdue(task.due_date)
@@ -171,6 +174,13 @@ export function TaskCard({
               {timeAgo(task.last_update_at)}
             </span>
           )}
+        </div>
+      )}
+
+      {/* Optional footer slot — e.g. Acknowledge button on dashboard */}
+      {footer && (
+        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
+          {footer}
         </div>
       )}
 

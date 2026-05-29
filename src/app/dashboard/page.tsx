@@ -311,37 +311,39 @@ export default function DashboardPage() {
                 {unacknowledged.map(task => {
                   const isAcking = acknowledging.has(task.id)
                   return (
-                    <div key={task.id}>
-                      <TaskCard
-                        task={task}
-                        onClick={() => setSelectedTask(task)}
-                        cardStyle={{
-                          backgroundColor: 'rgba(232,160,48,0.025)',
-                          borderLeftColor: colors.amber,
-                        }}
-                      />
-                      <button
-                        onClick={e => { e.stopPropagation(); handleAcknowledge(task) }}
-                        disabled={isAcking}
-                        style={{
-                          display:       'block',
-                          width:         '100%',
-                          marginTop:     '4px',
-                          padding:       '7px 0',
-                          fontSize:      '12px',
-                          fontWeight:    500,
-                          letterSpacing: '0.02em',
-                          color:         isAcking ? 'rgba(232,160,48,0.4)' : 'rgba(232,160,48,0.85)',
-                          background:    'rgba(232,160,48,0.06)',
-                          border:        '1px solid rgba(232,160,48,0.18)',
-                          borderRadius:  '6px',
-                          cursor:        isAcking ? 'default' : 'pointer',
-                          transition:    'opacity 0.15s',
-                        }}
-                      >
-                        {isAcking ? 'Acknowledging…' : '✓ Acknowledge'}
-                      </button>
-                    </div>
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      onClick={() => setSelectedTask(task)}
+                      cardStyle={{
+                        backgroundColor: 'rgba(232,160,48,0.025)',
+                        borderLeftColor: colors.amber,
+                      }}
+                      footer={
+                        <button
+                          onClick={e => { e.stopPropagation(); handleAcknowledge(task) }}
+                          disabled={isAcking}
+                          style={{
+                            display:       'block',
+                            width:         '160px',
+                            margin:        '0 auto',
+                            padding:       '9px 0',
+                            fontSize:      '13px',
+                            fontWeight:    600,
+                            letterSpacing: '0.02em',
+                            color:         isAcking ? '#B8892A' : '#FFFFFF',
+                            background:    isAcking ? 'rgba(232,160,48,0.12)' : '#E8A030',
+                            border:        '1px solid transparent',
+                            borderRadius:  '6px',
+                            cursor:        isAcking ? 'default' : 'pointer',
+                            boxShadow:     isAcking ? 'none' : '0 1px 4px rgba(232,160,48,0.35)',
+                            transition:    'opacity 0.15s',
+                          }}
+                        >
+                          {isAcking ? 'Acknowledging…' : '✓ Acknowledge'}
+                        </button>
+                      }
+                    />
                   )
                 })}
               </div>
