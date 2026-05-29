@@ -97,8 +97,8 @@ export function TaskCard({
 
       {/* Title */}
       <p style={{
-        color: colors.primary, fontSize: '13px', fontWeight: 500,
-        lineHeight: 1.4, marginBottom: '9px',
+        color: colors.primary, fontSize: '15px', fontWeight: 600,
+        lineHeight: 1.35, marginBottom: '9px',
       }}>
         {task.title}
       </p>
