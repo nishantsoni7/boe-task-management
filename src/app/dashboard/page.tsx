@@ -99,8 +99,6 @@ export default function DashboardPage() {
       if (taskData) {
         const typedTasks = taskData as unknown as Task[]
         setTasks(typedTasks)
-        const hasOverdue = typedTasks.some(t => isOverdue(t.due_date) && t.acknowledged_at)
-        if (hasOverdue) setPromptOpen(true)
       }
 
       console.log('[dashboard] TOTAL', Math.round(performance.now() - pageStart), 'ms')
@@ -115,6 +113,7 @@ export default function DashboardPage() {
   }
 
   const handleAcknowledge = async (task: Task) => {
+    // Guard: skip if already acknowledged or a write is already in flight
     if (task.acknowledged_at || acknowledging.has(task.id)) return
 
     setAcknowledging(prev => new Set([...prev, task.id]))
@@ -137,19 +136,18 @@ export default function DashboardPage() {
             to_status:   task.status,
           }),
       ])
+      // Optimistic update — moves task from Action Required → Continue Working
       setTasks(prev =>
         prev.map(t => t.id === task.id ? { ...t, acknowledged_at: now } : t)
       )
-      // ── CORRECTION ────────────────────────────────────────────────────────
-      // Remove task id from acknowledging Set after successful write + state
-      // update. Keeps the Set clean for the lifetime of the component.
-      // ──────────────────────────────────────────────────────────────────────
+      // Success: clean up in-flight Set
       setAcknowledging(prev => {
         const next = new Set(prev)
         next.delete(task.id)
         return next
       })
     } catch {
+      // Failure: also clean up so user can retry
       setAcknowledging(prev => {
         const next = new Set(prev)
         next.delete(task.id)
