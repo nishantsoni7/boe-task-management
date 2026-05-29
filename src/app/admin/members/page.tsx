@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 import { colors } from '@/lib/tokens'
-import { BackBarShell } from '@/components/layout/PageShell'
+import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 
 const TEAMS = ['sales', 'operations', 'design', 'purchase', 'bdm', 'management']
@@ -25,6 +25,7 @@ function avatarColor(name: string): string {
 const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, is_active, created_at'
 
 export default function MembersPage() {
+  const [profile,   setProfile]   = useState<UserProfile | null>(null)
   const [members,   setMembers]   = useState<UserProfile[]>([])
   const [loading,   setLoading]   = useState(true)
   const [showForm,  setShowForm]  = useState(false)
@@ -64,10 +65,10 @@ export default function MembersPage() {
       const [{ data: p }, { data: memberData }] = await Promise.all([
         supabase
           .from('users')
-          .select('role')
+          .select('id, full_name, email, phone, role, team, is_active, created_at')
           .eq('id', session.user.id)
           .single()
-          .then((r: { data: { role: string } | null; error: unknown }) => {
+          .then((r: { data: UserProfile | null; error: unknown }) => {
             console.log('[members] role fetch', Math.round(performance.now() - roleStart), 'ms')
             return r
           }),
@@ -84,6 +85,7 @@ export default function MembersPage() {
       console.log('[members] parallel data TOTAL', Math.round(performance.now() - dataStart), 'ms')
 
       if (p?.role !== 'admin') { router.push('/dashboard'); return }
+      if (p) setProfile(p as UserProfile)
       if (memberData) setMembers(memberData as UserProfile[])
 
       console.log('[members] TOTAL', Math.round(performance.now() - pageStart), 'ms')
@@ -135,6 +137,11 @@ export default function MembersPage() {
     setSaving(false)
   }
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
   const toggleActive = async (member: UserProfile) => {
     await supabase
       .from('users')
@@ -146,10 +153,10 @@ export default function MembersPage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <BackBarShell
+    <DashboardLayout
+      profile={profile}
       title="Members"
-      narrow={false}
-      onBack={() => router.push('/dashboard')}
+      subtitle={`${members.length} members · ${members.filter(m => m.is_active).length} active`}
       actions={
         <button
           onClick={() => setShowForm(!showForm)}
@@ -158,6 +165,7 @@ export default function MembersPage() {
           {showForm ? 'Cancel' : '+ Add Member'}
         </button>
       }
+      onSignOut={handleLogout}
     >
 
       {showForm && (
@@ -235,10 +243,6 @@ export default function MembersPage() {
         </div>
       )}
 
-      <p style={{ fontSize: '12px', color: colors.tertiary, marginBottom: '12px' }}>
-        {members.length} members · {members.filter(m => m.is_active).length} active
-      </p>
-
       <div className="boe-members-grid">
         {members.map(member => (
           <div key={member.id} className="boe-member-card">
@@ -291,7 +295,7 @@ export default function MembersPage() {
         ))}
       </div>
 
-    </BackBarShell>
+    </DashboardLayout>
   )
 }
 
