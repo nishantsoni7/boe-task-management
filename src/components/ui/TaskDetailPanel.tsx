@@ -97,12 +97,12 @@ export function TaskDetailPanel({ task, onClose }: Props) {
   const panelBase: React.CSSProperties = {
     position:         'fixed',
     zIndex:           50,
-    background:       '#161820',
+    background:       '#FFFFFF',
     display:          'flex',
     flexDirection:    'column',
     overflowY:        'auto',
     scrollbarWidth:   'thin',
-    scrollbarColor:   'rgba(255,255,255,0.045) transparent',
+    scrollbarColor:   'rgba(0,0,0,0.08) transparent',
     willChange:       'transform',
   }
 
@@ -111,8 +111,8 @@ export function TaskDetailPanel({ task, onClose }: Props) {
     right:           0,
     bottom:          0,
     width:           '420px',
-    borderLeft:      '1px solid rgba(255,255,255,0.08)',
-    boxShadow:       '-8px 0 32px rgba(0,0,0,0.55)',
+    borderLeft:      '1px solid rgba(0,0,0,0.1)',
+    boxShadow:       '-8px 0 32px rgba(0,0,0,0.1)',
     transform:       desktopTransform,
     transition:      `transform ${duration} ease-out`,
   }
@@ -123,8 +123,8 @@ export function TaskDetailPanel({ task, onClose }: Props) {
     right:           0,
     height:          '92vh',
     borderRadius:    '12px 12px 0 0',
-    borderTop:       '1px solid rgba(255,255,255,0.08)',
-    boxShadow:       '0 -8px 32px rgba(0,0,0,0.55)',
+    borderTop:       '1px solid rgba(0,0,0,0.1)',
+    boxShadow:       '0 -8px 32px rgba(0,0,0,0.1)',
     transform:       mobileTransform,
     transition:      `transform ${duration} ease-out`,
   }
@@ -155,8 +155,8 @@ export function TaskDetailPanel({ task, onClose }: Props) {
         {/* ── Sticky header ──────────────────────────────────────────── */}
         <div style={{
           padding:      '13px 16px 11px',
-          borderBottom: '1px solid rgba(255,255,255,0.045)',
-          background:   '#1C1F28',
+          borderBottom: '1px solid rgba(0,0,0,0.08)',
+          background:   '#F8F9FB',
           position:     'sticky',
           top:          0,
           zIndex:       1,
@@ -169,7 +169,7 @@ export function TaskDetailPanel({ task, onClose }: Props) {
             flex:       1,
             fontSize:   '13px',
             fontWeight: 600,
-            color:      '#E8EAF0',
+            color:      '#111318',
             lineHeight: 1.45,
           }}>
             {task.is_urgent && (
@@ -193,7 +193,7 @@ export function TaskDetailPanel({ task, onClose }: Props) {
             style={{
               background: 'none',
               border:     'none',
-              color:      '#5C6377',
+              color:      '#6B7384',
               cursor:     'pointer',
               fontSize:   '18px',
               lineHeight: 1,
@@ -202,8 +202,8 @@ export function TaskDetailPanel({ task, onClose }: Props) {
               marginTop:  '0px',
               transition: 'color 0.14s ease',
             }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#E8EAF0')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#5C6377')}
+            onMouseEnter={e => (e.currentTarget.style.color = '#111318')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#6B7384')}
           >
             ×
           </button>
@@ -233,10 +233,10 @@ export function TaskDetailPanel({ task, onClose }: Props) {
               <span style={{
                 fontSize:   '11px',
                 fontFamily: 'DM Mono, monospace',
-                color:      overdue ? '#D94F4F' : '#5C6377',
+                color:      overdue ? '#C13030' : '#6B7384',
                 background: overdue
-                  ? 'rgba(217,79,79,0.07)'
-                  : 'rgba(255,255,255,0.03)',
+                  ? 'rgba(217,79,79,0.08)'
+                  : 'rgba(0,0,0,0.05)',
                 padding:    '2px 6px',
                 borderRadius: '3px',
               }}>
@@ -248,7 +248,7 @@ export function TaskDetailPanel({ task, onClose }: Props) {
               marginLeft: 'auto',
               fontSize:   '10px',
               fontFamily: 'DM Mono, monospace',
-              color:      '#42475A',
+              color:      '#8C94A6',
             }}>
               {task.last_update_at
                 ? `updated ${timeAgo(task.last_update_at)}`
@@ -280,7 +280,7 @@ export function TaskDetailPanel({ task, onClose }: Props) {
               fontWeight:    700,
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
-              color:         '#5C6377',
+              color:         '#6B7384',
               marginBottom:  '7px',
             }}>
               Update Status
@@ -298,7 +298,7 @@ export function TaskDetailPanel({ task, onClose }: Props) {
                       pointerEvents: 'none',
                       // Non-current: lift text to readable secondary colour directly.
                       // Do NOT use opacity — it blends with the dark panel and kills contrast.
-                      ...(!isCurrent && { color: '#7E8698', background: '#1C1F28' }),
+                      ...(!isCurrent && { color: '#6B7384', background: '#F4F5F7' }),
                     }}
                   >
                     <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
@@ -322,15 +322,15 @@ export function TaskDetailPanel({ task, onClose }: Props) {
           <div style={{
             padding:       '9px 11px',
             borderRadius:  '8px',
-            background:    '#1C1F28',
-            border:        '1px solid rgba(255,255,255,0.09)',
+            background:    '#F4F5F7',
+            border:        '1px solid rgba(0,0,0,0.08)',
             cursor:        'default',
             userSelect:    'none',
             pointerEvents: 'none',
           }}>
             <p style={{
               fontSize:  '12px',
-              color:     '#7E8698',
+              color:     '#8C94A6',
               fontStyle: 'italic',
             }}>
               Add a note…
@@ -347,13 +347,13 @@ export function TaskDetailPanel({ task, onClose }: Props) {
               fontWeight:    700,
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
-              color:         '#5C6377',
+              color:         '#6B7384',
               marginBottom:  '8px',
             }}>
               Recent Activity
             </p>
             {/* Placeholder rows — will be replaced with real LogEntry data */}
-            <p style={{ fontSize: '11px', color: '#42475A', fontStyle: 'italic' }}>
+            <p style={{ fontSize: '11px', color: '#8C94A6', fontStyle: 'italic' }}>
               No recent activity loaded
             </p>
           </div>
@@ -361,7 +361,7 @@ export function TaskDetailPanel({ task, onClose }: Props) {
           {/* ── Details & full history — collapsed strip ────────────── */}
           <div style={{ marginTop: 'auto', paddingTop: '4px' }}>
             <div style={{
-              borderTop:      '1px solid rgba(255,255,255,0.045)',
+              borderTop:      '1px solid rgba(0,0,0,0.08)',
               paddingTop:     '10px',
               display:        'flex',
               alignItems:     'center',
@@ -371,12 +371,12 @@ export function TaskDetailPanel({ task, onClose }: Props) {
             }}>
               <span style={{
                 fontSize:   '11px',
-                color:      '#7E8698',
+                color:      '#4A5261',
                 fontWeight: 500,
               }}>
                 Details &amp; full history
               </span>
-              <span style={{ fontSize: '13px', color: '#5C6377' }}>›</span>
+              <span style={{ fontSize: '13px', color: '#6B7384' }}>›</span>
             </div>
           </div>
 

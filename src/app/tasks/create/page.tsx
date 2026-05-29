@@ -170,6 +170,7 @@ export default function CreateTaskPage() {
         </button>
       }
     >
+      <div className="boe-create-layout">
 
       {/* ── Quick Templates ───────────────────────────────────────── */}
       <div className="boe-form-section">
@@ -298,7 +299,7 @@ export default function CreateTaskPage() {
               value={dueDate}
               onChange={e => setDueDate(e.target.value)}
               className="boe-input"
-              style={{ colorScheme: 'dark' }}
+              style={{ colorScheme: 'light' }}
             />
           </div>
         </div>
@@ -368,6 +369,7 @@ export default function CreateTaskPage() {
         </div>
       </div>
 
+      </div>
     </BackBarShell>
   )
 }
