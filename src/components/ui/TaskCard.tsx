@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation'
 import type { Task } from '@/lib/types'
 import {
   statusBadgeClass,
-  priorityDotColor,
   isOverdue,
   formatShortDate,
   escalationLevel,
@@ -121,11 +120,7 @@ export function TaskCard({
           </span>
         )}
 
-        <span style={{
-          display: 'inline-block', width: '5px', height: '5px',
-          borderRadius: '50%', background: priorityDotColor(task.priority),
-          flexShrink: 0,
-        }} />
+        <PriorityBadge priority={task.priority} />
 
         {/* Right side: due date + ack state */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -185,6 +180,26 @@ export function TaskCard({
       )}
 
     </div>
+  )
+}
+
+// ─── PriorityBadge ────────────────────────────────────────────────────────────
+function PriorityBadge({ priority }: { priority: string }) {
+  const cfg: Record<string, { label: string; color: string; bg: string; border: string }> = {
+    high:   { label: 'High',   color: '#B03030', bg: 'rgba(217,79,79,0.12)',  border: 'rgba(217,79,79,0.30)' },
+    medium: { label: 'Medium', color: '#A06010', bg: 'rgba(232,160,48,0.12)', border: 'rgba(232,160,48,0.30)' },
+    low:    { label: 'Low',    color: '#6B7384', bg: 'rgba(0,0,0,0.05)',       border: 'rgba(0,0,0,0.10)'     },
+  }
+  const { label, color, bg, border } = cfg[priority] ?? cfg.low
+  return (
+    <span style={{
+      fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em',
+      textTransform: 'uppercase', color, background: bg,
+      border: `1px solid ${border}`,
+      padding: '1px 6px', borderRadius: '4px', flexShrink: 0,
+    }}>
+      {label}
+    </span>
   )
 }
 
