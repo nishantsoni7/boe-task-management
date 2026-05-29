@@ -31,6 +31,7 @@ export default function DashboardPage() {
   const [promptSaving,  setPromptSaving]  = useState(false)
   const [resolvedIds,   setResolvedIds]   = useState<Set<string>>(new Set())
   const [selectedTask,  setSelectedTask]  = useState<Task | null>(null)
+  const [acknowledging, setAcknowledging] = useState<Set<string>>(new Set())
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -111,6 +112,50 @@ export default function DashboardPage() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  const handleAcknowledge = async (task: Task) => {
+    if (task.acknowledged_at || acknowledging.has(task.id)) return
+
+    setAcknowledging(prev => new Set([...prev, task.id]))
+
+    const now = new Date().toISOString()
+    try {
+      await Promise.all([
+        supabase
+          .from('tasks')
+          .update({ acknowledged_at: now })
+          .eq('id', task.id),
+        supabase
+          .from('task_activity_log')
+          .insert({
+            task_id:     task.id,
+            actor_id:    currentUserId,
+            action:      'acknowledged',
+            note:        null,
+            from_status: task.status,
+            to_status:   task.status,
+          }),
+      ])
+      setTasks(prev =>
+        prev.map(t => t.id === task.id ? { ...t, acknowledged_at: now } : t)
+      )
+      // ── CORRECTION ────────────────────────────────────────────────────────
+      // Remove task id from acknowledging Set after successful write + state
+      // update. Keeps the Set clean for the lifetime of the component.
+      // ──────────────────────────────────────────────────────────────────────
+      setAcknowledging(prev => {
+        const next = new Set(prev)
+        next.delete(task.id)
+        return next
+      })
+    } catch {
+      setAcknowledging(prev => {
+        const next = new Set(prev)
+        next.delete(task.id)
+        return next
+      })
+    }
   }
 
   const unacknowledged  = tasks.filter(t => !t.acknowledged_at)
@@ -265,17 +310,42 @@ export default function DashboardPage() {
             )}
             {unacknowledged.length > 0 && (
               <div className="boe-dashboard-grid">
-                {unacknowledged.map(task => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    onClick={() => setSelectedTask(task)}
-                    cardStyle={{
-                      backgroundColor: 'rgba(232,160,48,0.025)',
-                      borderLeftColor: colors.amber,
-                    }}
-                  />
-                ))}
+                {unacknowledged.map(task => {
+                  const isAcking = acknowledging.has(task.id)
+                  return (
+                    <div key={task.id}>
+                      <TaskCard
+                        task={task}
+                        onClick={() => setSelectedTask(task)}
+                        cardStyle={{
+                          backgroundColor: 'rgba(232,160,48,0.025)',
+                          borderLeftColor: colors.amber,
+                        }}
+                      />
+                      <button
+                        onClick={e => { e.stopPropagation(); handleAcknowledge(task) }}
+                        disabled={isAcking}
+                        style={{
+                          display:       'block',
+                          width:         '100%',
+                          marginTop:     '4px',
+                          padding:       '7px 0',
+                          fontSize:      '12px',
+                          fontWeight:    500,
+                          letterSpacing: '0.02em',
+                          color:         isAcking ? 'rgba(232,160,48,0.4)' : 'rgba(232,160,48,0.85)',
+                          background:    'rgba(232,160,48,0.06)',
+                          border:        '1px solid rgba(232,160,48,0.18)',
+                          borderRadius:  '6px',
+                          cursor:        isAcking ? 'default' : 'pointer',
+                          transition:    'opacity 0.15s',
+                        }}
+                      >
+                        {isAcking ? 'Acknowledging…' : '✓ Acknowledge'}
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
