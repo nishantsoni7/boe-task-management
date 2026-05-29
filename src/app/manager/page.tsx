@@ -23,33 +23,23 @@ export default function ManagerPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-      const { data: p } = await supabase
-        .from('users').select('*').eq('id', user.id).single()
-      if (p) {
-        if (p.role !== 'admin' && p.role !== 'manager') {
-          router.push('/dashboard'); return
-        }
-        setProfile(p)
-      }
-      await loadData()
-      setLoading(false)
-    }
-    init()
-  }, [])
+  const loadData = useMemo(() => async () => {
+    // Members and tasks are independent — fetch in parallel (unchanged — already correct).
+    // .then() timing on each branch measures each query individually without
+    // breaking parallelism. Both start at the same instant.
+    const membersStart = performance.now()
+    const tasksStart   = performance.now()
 
-  const loadData = async () => {
-    // Members and tasks are independent — fetch in parallel
     const [{ data: memberData }, { data: taskData }] = await Promise.all([
       supabase
         .from('users')
         .select('id, full_name, team, role, email, phone, is_active, created_at')
         .eq('is_active', true)
-        .order('full_name'),
+        .order('full_name')
+        .then((r: any) => {
+          console.log('[manager] members fetch', Math.round(performance.now() - membersStart), 'ms')
+          return r
+        }),
       supabase
         .from('tasks')
         .select(`
@@ -59,7 +49,11 @@ export default function ManagerPage() {
           assignee:assigned_to ( full_name, team )
         `)
         .neq('status', 'completed')
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .then((r: any) => {
+          console.log('[manager] tasks fetch', Math.round(performance.now() - tasksStart), 'ms')
+          return r
+        }),
     ])
 
     if (memberData) setMembers(memberData)
@@ -72,22 +66,72 @@ export default function ManagerPage() {
       }))
       setTasks(enriched)
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const init = async () => {
+      const pageStart = performance.now()
+      console.log('[manager] init started')
+
+      // ── CHANGE: getUser() → getSession() ─────────────────────────────────
+      // getUser() makes a verified network call to Supabase auth servers.
+      // getSession() reads cached session from localStorage — zero network cost.
+      // Safe here: UI gate only. session.user.id is used only for the profile
+      // fetch below. Role enforcement (manager/admin check) happens immediately
+      // after and is backed by RLS on every subsequent data query.
+      // ─────────────────────────────────────────────────────────────────────
+      const authStart = performance.now()
+      const { data: { session } } = await supabase.auth.getSession()
+      console.log('[manager] getSession', Math.round(performance.now() - authStart), 'ms')
+
+      if (!session) { router.push('/login'); return }
+
+      const dataStart    = performance.now()
+      const profileStart = performance.now()
+
+      const [{ data: p }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, full_name, email, phone, role, team, is_active, created_at')
+          .eq('id', session.user.id)
+          .single()
+          .then((r: any) => {
+            console.log('[manager] profile fetch', Math.round(performance.now() - profileStart), 'ms')
+            return r
+          }),
+        loadData(),
+      ])
+
+      console.log('[manager] parallel data TOTAL', Math.round(performance.now() - dataStart), 'ms')
+
+      if (p) {
+        if (p.role !== 'admin' && p.role !== 'manager') {
+          router.push('/dashboard'); return
+        }
+        setProfile(p)
+      }
+
+      console.log('[manager] TOTAL', Math.round(performance.now() - pageStart), 'ms')
+      setLoading(false)
+    }
+    init()
+  }, [])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
   }
 
-  // ── Derived lists ─────────────────────────────────────────────────────────
-  const noUpdateToday  = tasks.filter(t =>
+  // ── Derived lists ──────────────────────────────────────────────────────────
+
+  const noUpdateToday = tasks.filter(t =>
     isOldEnoughToFlag(t.created_at) && !isUpdatedToday(t.last_update_at)
   )
 
-  // Overdue: any task past its deadline — mutually exclusive with silentTasks
   const overdueTasks = tasks.filter(t => isOverdue(t.due_date))
 
-  // Silent 72h+: escalated by silence but NOT overdue — separate operational signal
   const silentTasks = tasks.filter(t => {
     if (isOverdue(t.due_date)) return false
     const level = escalationLevel(t.last_update_at, t.status, t.due_date)
@@ -102,23 +146,33 @@ export default function ManagerPage() {
     if (selectedMember !== 'all' && t.assigned_to !== selectedMember) return false
     if (filter === 'no_update') return isOldEnoughToFlag(t.created_at) && !isUpdatedToday(t.last_update_at)
     if (filter === 'overdue')   return isOverdue(t.due_date)
-    if (filter === 'escalated') return !isOverdue(t.due_date) && (
-      escalationLevel(t.last_update_at, t.status, t.due_date) === 'danger' ||
-      escalationLevel(t.last_update_at, t.status, t.due_date) === 'caution'
-    )
-    if (filter === 'stale')     return t.is_stale
-    if (filter === 'blocked')   return t.status === 'blocked'
+    if (filter === 'escalated') {
+      if (isOverdue(t.due_date)) return false
+      const level = escalationLevel(t.last_update_at, t.status, t.due_date)
+      return level === 'danger' || level === 'caution'
+    }
+    if (filter === 'stale')   return t.is_stale
+    if (filter === 'blocked') return t.status === 'blocked'
     return true
   })
 
-  const noUpdateMembers = [...new Map(
-    noUpdateToday.map(t => [t.assigned_to, {
-      id:    t.assigned_to,
-      name:  t.assignee_name ?? 'Unknown',
-      team:  t.assignee_team ?? '',
-      count: noUpdateToday.filter(x => x.assigned_to === t.assigned_to).length,
-    }])
-  ).values()]
+  const noUpdateMembers = (() => {
+    const map = new Map<string, { id: string; name: string; team: string; count: number }>()
+    for (const t of noUpdateToday) {
+      const existing = map.get(t.assigned_to)
+      if (existing) {
+        existing.count++
+      } else {
+        map.set(t.assigned_to, {
+          id:    t.assigned_to,
+          name:  t.assignee_name ?? 'Unknown',
+          team:  t.assignee_team ?? '',
+          count: 1,
+        })
+      }
+    }
+    return [...map.values()]
+  })()
 
   if (loading) return <LoadingScreen />
 
@@ -163,10 +217,10 @@ export default function ManagerPage() {
     >
       {/* KPI row */}
       <KpiGrid>
-        <KpiCard label="Overdue"          value={overdueTasks.length}   meta="Past deadline"       accent="red"   />
-        <KpiCard label="No Update Today"  value={noUpdateToday.length}  meta="Members not updated" accent="amber" />
-        <KpiCard label="Active Tasks"     value={tasks.length}          meta="Across all members"  accent="blue"  />
-        <KpiCard label="Blocked"          value={blockedTasks.length}   meta="Hard stop"                         />
+        <KpiCard label="Overdue"         value={overdueTasks.length}  meta="Past deadline"       accent="red"   />
+        <KpiCard label="No Update Today" value={noUpdateToday.length} meta="Members not updated" accent="amber" />
+        <KpiCard label="Active Tasks"    value={tasks.length}         meta="Across all members"  accent="blue"  />
+        <KpiCard label="Blocked"         value={blockedTasks.length}  meta="Hard stop"                         />
       </KpiGrid>
 
       {/* ── Asymmetric 340px + 1fr operational layout ── */}
@@ -179,16 +233,13 @@ export default function ManagerPage() {
           <div className="boe-panel-card">
             <div className="boe-panel-card-header">
               <span style={{ color: colors.red, fontSize: '14px' }}>⚠</span>
-              <span className="boe-panel-card-title" style={{ color: colors.red }}>
-                Overdue
-              </span>
+              <span className="boe-panel-card-title" style={{ color: colors.red }}>Overdue</span>
               <span className="boe-panel-card-count" style={{ color: colors.red }}>
                 {overdueTasks.length} task{overdueTasks.length !== 1 ? 's' : ''}
               </span>
             </div>
             <div className="boe-panel-card-body" style={{
-              padding: '10px',
-              display: 'flex', flexDirection: 'column', gap: '6px',
+              padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px',
             }}>
               {overdueTasks.length === 0 ? (
                 <div style={{ padding: '8px', fontSize: '12px', color: colors.muted, textAlign: 'center' }}>
@@ -225,16 +276,13 @@ export default function ManagerPage() {
           <div className="boe-panel-card">
             <div className="boe-panel-card-header">
               <span style={{ color: colors.red, fontSize: '14px' }}>▲</span>
-              <span className="boe-panel-card-title" style={{ color: colors.red }}>
-                Silent 72h+
-              </span>
+              <span className="boe-panel-card-title" style={{ color: colors.red }}>Silent 72h+</span>
               <span className="boe-panel-card-count" style={{ color: colors.red }}>
                 {silentTasks.length} task{silentTasks.length !== 1 ? 's' : ''}
               </span>
             </div>
             <div className="boe-panel-card-body" style={{
-              padding: '10px',
-              display: 'flex', flexDirection: 'column', gap: '6px',
+              padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px',
             }}>
               {silentTasks.length === 0 ? (
                 <div style={{ padding: '8px', fontSize: '12px', color: colors.muted, textAlign: 'center' }}>
@@ -271,9 +319,7 @@ export default function ManagerPage() {
           <div className="boe-panel-card">
             <div className="boe-panel-card-header">
               <span style={{ color: colors.amber, fontSize: '13px' }}>■</span>
-              <span className="boe-panel-card-title" style={{ color: colors.amber }}>
-                Blocked
-              </span>
+              <span className="boe-panel-card-title" style={{ color: colors.amber }}>Blocked</span>
               <span className="boe-panel-card-count" style={{ color: colors.amber }}>
                 {blockedTasks.length} task{blockedTasks.length !== 1 ? 's' : ''}
               </span>
@@ -311,9 +357,7 @@ export default function ManagerPage() {
           <div className="boe-panel-card">
             <div className="boe-panel-card-header">
               <span style={{ color: colors.amber, fontSize: '13px' }}>●</span>
-              <span className="boe-panel-card-title" style={{ color: colors.amber }}>
-                No Update Today
-              </span>
+              <span className="boe-panel-card-title" style={{ color: colors.amber }}>No Update Today</span>
               <span className="boe-panel-card-count">
                 {noUpdateMembers.length} member{noUpdateMembers.length !== 1 ? 's' : ''}
               </span>
@@ -348,9 +392,7 @@ export default function ManagerPage() {
           <div className="boe-panel-card">
             <div className="boe-panel-card-header">
               <span style={{ color: '#7B62E0', fontSize: '13px' }}>◆</span>
-              <span className="boe-panel-card-title" style={{ color: '#7B62E0' }}>
-                Stale Progress
-              </span>
+              <span className="boe-panel-card-title" style={{ color: '#7B62E0' }}>Stale Progress</span>
               <span className="boe-panel-card-count">
                 {staleTasks.length} task{staleTasks.length !== 1 ? 's' : ''}
               </span>
@@ -377,9 +419,7 @@ export default function ManagerPage() {
                       {t.assignee_name} · &ldquo;{t.status}&rdquo; for {t.stale_day_count ?? 0}d
                     </div>
                   </div>
-                  <span className="boe-stale-badge">
-                    {t.stale_day_count ?? 0}d stale
-                  </span>
+                  <span className="boe-stale-badge">{t.stale_day_count ?? 0}d stale</span>
                 </div>
               ))}
             </div>
@@ -399,9 +439,7 @@ export default function ManagerPage() {
             </div>
             <div className="boe-panel-card-body">
               {urgentTasks.length === 0 ? (
-                <div style={{ padding: '10px 14px', fontSize: '12px', color: colors.muted }}>
-                  None
-                </div>
+                <div style={{ padding: '10px 14px', fontSize: '12px', color: colors.muted }}>None</div>
               ) : urgentTasks.slice(0, 4).map(t => (
                 <div
                   key={t.id}
@@ -436,8 +474,7 @@ export default function ManagerPage() {
             {/* Filter tabs */}
             <div style={{
               display: 'flex', gap: '5px', overflowX: 'auto',
-              padding: '8px 10px',
-              borderBottom: '1px solid rgba(255,255,255,0.045)',
+              padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.045)',
             }}>
               {filterTabs.map(tab => (
                 <button
@@ -451,10 +488,7 @@ export default function ManagerPage() {
             </div>
 
             {/* Member filter */}
-            <div style={{
-              padding: '8px 10px',
-              borderBottom: '1px solid rgba(255,255,255,0.045)',
-            }}>
+            <div style={{ padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.045)' }}>
               <select
                 value={selectedMember}
                 onChange={e => setSelectedMember(e.target.value)}
@@ -498,3 +532,5 @@ export default function ManagerPage() {
     </DashboardLayout>
   )
 }
+
+

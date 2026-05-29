@@ -12,7 +12,6 @@ import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 const TEAMS = ['sales', 'operations', 'design', 'purchase', 'bdm', 'management']
 const ROLES = ['member', 'manager', 'admin'] as const
 
-// Deterministic neutral avatar colors — avoids bright accent saturation
 const AVATAR_COLORS = [
   '#4A6EB5', '#8A6020', '#3A7068', '#5A4EA8',
   '#3E8060', '#3E6E40', '#7A4040', '#2A5F7A',
@@ -22,6 +21,8 @@ function avatarColor(name: string): string {
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
   return AVATAR_COLORS[h % AVATAR_COLORS.length]
 }
+
+const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, is_active, created_at'
 
 export default function MembersPage() {
   const [members,   setMembers]   = useState<UserProfile[]>([])
@@ -41,20 +42,62 @@ export default function MembersPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-      const { data: p } = await supabase
-        .from('users').select('role').eq('id', user.id).single()
+      const pageStart = performance.now()
+      console.log('[members] init started')
+
+      // ── CHANGE: getUser() → getSession() ─────────────────────────────────
+      // getUser() verified against Supabase auth server on every page load.
+      // getSession() reads cached session from localStorage — zero network cost.
+      // Safe: this is a UI gate only. Admin enforcement is handled by RLS and
+      // the role check immediately below.
+      // ─────────────────────────────────────────────────────────────────────
+      const authStart = performance.now()
+      const { data: { session } } = await supabase.auth.getSession()
+      console.log('[members] getSession', Math.round(performance.now() - authStart), 'ms')
+
+      if (!session) { router.push('/login'); return }
+
+      const dataStart    = performance.now()
+      const roleStart    = performance.now()
+      const membersStart = performance.now()
+
+      const [{ data: p }, { data: memberData }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+          .then((r: { data: { role: string } | null; error: unknown }) => {
+            console.log('[members] role fetch', Math.round(performance.now() - roleStart), 'ms')
+            return r
+          }),
+        supabase
+          .from('users')
+          .select(MEMBER_COLUMNS)
+          .order('full_name')
+          .then((r: { data: UserProfile[] | null; error: unknown }) => {
+            console.log('[members] members fetch', Math.round(performance.now() - membersStart), 'ms')
+            return r
+          }),
+      ])
+
+      console.log('[members] parallel data TOTAL', Math.round(performance.now() - dataStart), 'ms')
+
       if (p?.role !== 'admin') { router.push('/dashboard'); return }
-      await loadMembers()
+      if (memberData) setMembers(memberData as UserProfile[])
+
+      console.log('[members] TOTAL', Math.round(performance.now() - pageStart), 'ms')
       setLoading(false)
     }
     init()
   }, [])
 
   const loadMembers = async () => {
-    const { data } = await supabase.from('users').select('*').order('full_name')
-    if (data) setMembers(data)
+    const { data } = await supabase
+      .from('users')
+      .select(MEMBER_COLUMNS)
+      .order('full_name')
+    if (data) setMembers(data as UserProfile[])
   }
 
   const handleCreate = async () => {
@@ -117,7 +160,6 @@ export default function MembersPage() {
       }
     >
 
-      {/* Add member form */}
       {showForm && (
         <div className="boe-card" style={{
           padding: '16px',
@@ -193,17 +235,14 @@ export default function MembersPage() {
         </div>
       )}
 
-      {/* Count */}
       <p style={{ fontSize: '12px', color: colors.tertiary, marginBottom: '12px' }}>
         {members.length} members · {members.filter(m => m.is_active).length} active
       </p>
 
-      {/* 3-column member grid — matches reference .members-grid */}
       <div className="boe-members-grid">
         {members.map(member => (
           <div key={member.id} className="boe-member-card">
 
-            {/* Avatar + name */}
             <div className="boe-member-card-top">
               <div
                 className="boe-member-avatar"
@@ -219,7 +258,6 @@ export default function MembersPage() {
               </div>
             </div>
 
-            {/* Status badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
               <span
                 className={`boe-badge ${member.is_active ? 'boe-badge-completed' : 'boe-badge-pending'}`}
@@ -234,7 +272,6 @@ export default function MembersPage() {
               )}
             </div>
 
-            {/* Email */}
             <div style={{
               fontSize: '11px', color: colors.muted,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -242,7 +279,6 @@ export default function MembersPage() {
               {member.email}
             </div>
 
-            {/* Toggle active */}
             <button
               onClick={() => toggleActive(member)}
               className="boe-btn boe-btn-ghost"
@@ -258,3 +294,4 @@ export default function MembersPage() {
     </BackBarShell>
   )
 }
+

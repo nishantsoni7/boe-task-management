@@ -53,18 +53,39 @@ export default function CreateTaskPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
+      const pageStart = performance.now()
+      console.log('[create-task] init started')
 
+      // ── CHANGE: getUser() → getSession() ─────────────────────────────────
+      // getUser() makes a verified network call to Supabase auth servers.
+      // getSession() reads cached session from localStorage — zero network cost.
+      // Safe here: UI gate only. Data security enforced by RLS on every query.
+      // ─────────────────────────────────────────────────────────────────────
+      const authStart = performance.now()
+      const { data: { session } } = await supabase.auth.getSession()
+      console.log('[create-task] getSession', Math.round(performance.now() - authStart), 'ms')
+
+      if (!session) { router.push('/login'); return }
+
+      // NOTE: profile and users fetches are sequential here (profile → users).
+      // They have no dependency on each other — both only need session.user.id
+      // and is_active respectively. Parallelising these is a future optimisation.
+      // Not changed here per current task scope.
+      const profileStart = performance.now()
       const { data: profile } = await supabase
-        .from('users').select('*').eq('id', user.id).single()
+        .from('users').select('*').eq('id', session.user.id).single()
+      console.log('[create-task] profile fetch', Math.round(performance.now() - profileStart), 'ms')
       if (profile) setTeam(profile.team)
 
+      const usersStart = performance.now()
       const { data: allUsers } = await supabase
         .from('users')
         .select('id, full_name, team, role, email, phone, is_active, created_at')
         .eq('is_active', true).order('full_name')
+      console.log('[create-task] users fetch', Math.round(performance.now() - usersStart), 'ms')
       if (allUsers) setUsers(allUsers)
+
+      console.log('[create-task] TOTAL init', Math.round(performance.now() - pageStart), 'ms')
     }
     init()
   }, [])
@@ -73,8 +94,13 @@ export default function CreateTaskPage() {
     if (!title.trim() || !assigneeId) return
     setLoading(true)
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    // ── CHANGE: getUser() → getSession() ─────────────────────────────────
+    // Second getUser() call — used to get user.id for created_by and actor_id
+    // fields in the task insert and activity log. getSession() is safe here:
+    // the actual insert is protected by RLS; a wrong user.id would be rejected.
+    // ─────────────────────────────────────────────────────────────────────
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
 
     const { data: existing } = await supabase
       .from('tasks').select('id, title')
@@ -82,7 +108,7 @@ export default function CreateTaskPage() {
       .not('status', 'eq', 'completed')
 
     const titleWords = title.toLowerCase().split(' ').filter(w => w.length > 3)
-    const duplicate  = existing?.find(t => {
+    const duplicate  = existing?.find((t: { title: string }) => {
       const matches = titleWords.filter(w => t.title.toLowerCase().includes(w))
       return matches.length >= 3
     })
@@ -103,7 +129,7 @@ export default function CreateTaskPage() {
         is_urgent:   isUrgent,
         due_date:    dueDate || null,
         assigned_to: assigneeId,
-        created_by:  user.id,
+        created_by:  session.user.id,
         team,
         status:      'pending',
       })
@@ -111,7 +137,7 @@ export default function CreateTaskPage() {
 
     if (!error && task) {
       await supabase.from('task_activity_log').insert({
-        task_id: task.id, actor_id: user.id,
+        task_id: task.id, actor_id: session.user.id,
         action: 'created', note: 'Task created and assigned',
       })
       await supabase.from('notifications').insert({
@@ -144,7 +170,6 @@ export default function CreateTaskPage() {
         </button>
       }
     >
-      {/* Narrow centered layout — max-width 560px via BackBarShell narrow=true */}
 
       {/* ── Quick Templates ───────────────────────────────────────── */}
       <div className="boe-form-section">
