@@ -33,6 +33,12 @@ export default function MembersPage() {
   const [saving,    setSaving]    = useState(false)
   const [error,     setError]     = useState('')
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [showResetForm, setShowResetForm]   = useState(false)
+  const [resetPassword, setResetPassword]   = useState('')
+  const [resetConfirm,  setResetConfirm]    = useState('')
+  const [resetSaving,   setResetSaving]     = useState(false)
+  const [resetError,    setResetError]      = useState('')
+  const [resetSuccess,  setResetSuccess]    = useState(false)
   const [full_name, setFullName]  = useState('')
   const [email,     setEmail]     = useState('')
   const [phone,     setPhone]     = useState('')
@@ -144,6 +150,50 @@ export default function MembersPage() {
     router.push('/login')
   }
 
+  const openResetForm = () => {
+    setResetPassword('')
+    setResetConfirm('')
+    setResetError('')
+    setResetSuccess(false)
+    setShowResetForm(true)
+  }
+
+  const closeResetForm = () => {
+    setShowResetForm(false)
+    setResetPassword('')
+    setResetConfirm('')
+    setResetError('')
+    setResetSuccess(false)
+  }
+
+  const handleResetPassword = async () => {
+    if (!selectedMember) return
+    if (!resetPassword.trim()) { setResetError('New password is required'); return }
+    if (resetPassword.length < 6) { setResetError('Password must be at least 6 characters'); return }
+    if (resetPassword !== resetConfirm) { setResetError('Passwords do not match'); return }
+
+    setResetSaving(true)
+    setResetError('')
+
+    const res = await fetch('/api/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: selectedMember.id, newPassword: resetPassword }),
+    })
+    const data = await res.json()
+
+    setResetSaving(false)
+
+    if (!res.ok) {
+      setResetError(data.error || 'Failed to reset password')
+      return
+    }
+
+    setResetPassword('')
+    setResetConfirm('')
+    setResetSuccess(true)
+  }
+
   const toggleActive = async (member: UserProfile) => {
     if (togglingId) return
     setTogglingId(member.id)
@@ -163,6 +213,11 @@ export default function MembersPage() {
     }
     setTogglingId(null)
   }
+
+  useEffect(() => {
+    closeResetForm()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMember?.id])
 
   if (loading) return <LoadingScreen />
 
@@ -420,6 +475,92 @@ export default function MembersPage() {
                 <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'monospace', wordBreak: 'break-all' }}>
                   {selectedMember.id}
                 </div>
+              </div>
+            </div>
+
+            {/* ── Reset Password ──────────────────────────────────────────── */}
+            <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ paddingTop: '12px', borderTop: `1px solid ${colors.border}` }}>
+                <div style={{ fontSize: '10px', color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                  Password
+                </div>
+
+                {!showResetForm && (
+                  <button
+                    onClick={openResetForm}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '6px 12px', fontSize: '12px', width: '100%', justifyContent: 'center' }}
+                  >
+                    Reset Password
+                  </button>
+                )}
+
+                {showResetForm && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {resetSuccess ? (
+                      <div style={{
+                        padding: '10px 12px',
+                        background: '#f0faf4',
+                        border: '1px solid #b7e4c7',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        color: '#2d6a4f',
+                      }}>
+                        Password reset successfully.
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="password"
+                          value={resetPassword}
+                          onChange={e => setResetPassword(e.target.value)}
+                          placeholder="New temporary password"
+                          className="boe-input"
+                          style={{ fontSize: '12px' }}
+                        />
+                        <input
+                          type="password"
+                          value={resetConfirm}
+                          onChange={e => setResetConfirm(e.target.value)}
+                          placeholder="Confirm password"
+                          className="boe-input"
+                          style={{ fontSize: '12px' }}
+                        />
+                        {resetError && (
+                          <p style={{ fontSize: '11px', color: colors.red, margin: 0 }}>{resetError}</p>
+                        )}
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            onClick={handleResetPassword}
+                            disabled={resetSaving}
+                            className="boe-btn boe-btn-primary"
+                            style={{ flex: 1, justifyContent: 'center', padding: '7px', fontSize: '12px' }}
+                          >
+                            {resetSaving ? 'Resetting…' : 'Confirm Reset'}
+                          </button>
+                          <button
+                            onClick={closeResetForm}
+                            disabled={resetSaving}
+                            className="boe-btn boe-btn-ghost"
+                            style={{ padding: '7px 12px', fontSize: '12px' }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {resetSuccess && (
+                      <button
+                        onClick={closeResetForm}
+                        className="boe-btn boe-btn-ghost"
+                        style={{ padding: '6px 12px', fontSize: '12px', width: '100%', justifyContent: 'center' }}
+                      >
+                        Done
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
