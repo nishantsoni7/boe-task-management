@@ -150,10 +150,10 @@ body {
 
 /* ── Priority/state card variants ── */
 .boe-card-urgent {
-  border-left: 2px solid #D94F4F;
-  background-color: rgba(217,79,79,0.05);
+  border-left: 2px solid #C49A28;
+  background-color: rgba(196,154,40,0.05);
 }
-.boe-card-urgent:hover { background-color: rgba(217,79,79,0.09); }
+.boe-card-urgent:hover { background-color: rgba(196,154,40,0.09); }
 
 .boe-card-blocked {
   border-left: 2px solid #E8A030;

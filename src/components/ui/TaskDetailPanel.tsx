@@ -176,13 +176,12 @@ export function TaskDetailPanel({ task, onClose }: Props) {
               <span style={{
                 display:       'inline-block',
                 fontSize:      '9px',
-                color:         '#D94F4F',
-                fontWeight:    700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.07em',
+                color:         '#C49A28',
+                fontWeight:    600,
+                letterSpacing: '0.04em',
                 marginBottom:  '4px',
               }}>
-                ⚡ Urgent &nbsp;·&nbsp;
+                ⭐ Important &nbsp;·&nbsp;
               </span>
             )}
             {task.title}

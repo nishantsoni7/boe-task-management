@@ -430,11 +430,11 @@ export default function ManagerPage() {
         {/* RIGHT COL — live task feed */}
         <div className="boe-manager-right">
 
-          {/* Urgent panel */}
+          {/* Important panel */}
           <div className="boe-panel-card">
             <div className="boe-panel-card-header">
-              <span style={{ color: colors.amber, fontSize: '13px' }}>!</span>
-              <span className="boe-panel-card-title" style={{ color: colors.amber }}>Urgent</span>
+              <span style={{ color: '#C49A28', fontSize: '13px' }}>⭐</span>
+              <span className="boe-panel-card-title" style={{ color: '#C49A28' }}>Important</span>
               <span className="boe-panel-card-count">{urgentTasks.length}</span>
             </div>
             <div className="boe-panel-card-body">

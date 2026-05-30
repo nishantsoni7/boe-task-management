@@ -87,13 +87,13 @@ export function TaskCard({
         />
       )}
 
-      {/* Urgent flag */}
+      {/* Important flag */}
       {task.is_urgent && (
         <p style={{
-          fontSize: '10px', color: colors.red, fontWeight: 700,
-          textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '5px',
+          fontSize: '10px', color: '#C49A28', fontWeight: 600,
+          letterSpacing: '0.04em', marginBottom: '5px',
         }}>
-          ⚡ Urgent
+          ⭐ Important
         </p>
       )}
 

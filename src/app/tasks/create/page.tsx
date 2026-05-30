@@ -285,7 +285,7 @@ export default function CreateTaskPage() {
             </div>
           </div>
 
-          {/* Urgent toggle */}
+          {/* Important toggle */}
           <div
             onClick={() => setIsUrgent(!isUrgent)}
             style={{
@@ -293,21 +293,21 @@ export default function CreateTaskPage() {
               padding: '10px 13px', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               borderRadius: '8px',
-              background: isUrgent ? 'rgba(217,79,79,0.06)' : colors.raised,
-              border: `1px solid ${isUrgent ? 'rgba(217,79,79,0.2)' : colors.border}`,
+              background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
+              border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
             }}
           >
             <div>
-              <p style={{ fontSize: '13px', fontWeight: 600, color: isUrgent ? colors.red : colors.primary }}>
-                Mark as Urgent
+              <p style={{ fontSize: '13px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+                Mark Important
               </p>
               <p style={{ color: colors.muted, fontSize: '11px', marginTop: '1px' }}>
-                Sends immediate push notification
+                Shows this task with a star and keeps it visible in task lists
               </p>
             </div>
             <div style={{
               width: '34px', height: '20px', borderRadius: '10px',
-              background: isUrgent ? colors.red : colors.float,
+              background: isUrgent ? '#C49A28' : colors.float,
               position: 'relative', flexShrink: 0,
               transition: 'background 0.16s',
               border: `1px solid ${colors.border}`,

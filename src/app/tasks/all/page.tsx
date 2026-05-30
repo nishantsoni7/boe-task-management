@@ -10,7 +10,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { statusBadgeClass } from '@/lib/ui'
 
 const TASK_COLUMNS = [
-  'id', 'title', 'status', 'priority',
+  'id', 'title', 'status', 'priority', 'is_urgent',
   'due_date', 'assigned_to', 'created_by',
 ].join(', ')
 
@@ -69,7 +69,11 @@ export default function ViewAllTasksPage() {
         supabase.from('users').select('id, full_name'),
       ])
 
-      if (taskData) setTasks(taskData as unknown as Task[])
+      if (taskData) {
+        const sorted = (taskData as unknown as Task[])
+          .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
+        setTasks(sorted)
+      }
       if (userData) {
         const map: Record<string, string> = {}
         for (const u of userData) map[u.id] = u.full_name
@@ -139,7 +143,10 @@ export default function ViewAllTasksPage() {
                 onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = ''}
               >
                 {/* Task name */}
-                <div style={{ flex: 1, minWidth: 0, padding: '0 8px' }}>
+                <div style={{ flex: 1, minWidth: 0, padding: '0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {task.is_urgent && (
+                    <span style={{ fontSize: '11px', color: '#C49A28', flexShrink: 0 }}>⭐</span>
+                  )}
                   <span style={{
                     fontSize: '13px', fontWeight: 500,
                     color: overdue ? colors.red : colors.primary,

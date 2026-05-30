@@ -50,7 +50,8 @@ export default function AssignedToMePage() {
       if (profileData) setProfile(profileData as UserProfile)
 
       if (taskData) {
-        const typed = taskData as unknown as Task[]
+        const typed = (taskData as unknown as Task[])
+          .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
         setTasks(typed)
 
         // Batch-fetch names for all task creators

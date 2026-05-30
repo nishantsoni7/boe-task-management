@@ -1,0 +1,71 @@
+[1mdiff --git a/src/components/layout/DashboardLayout.tsx b/src/components/layout/DashboardLayout.tsx[m
+[1mindex 3538f9f..eafe640 100644[m
+[1m--- a/src/components/layout/DashboardLayout.tsx[m
+[1m+++ b/src/components/layout/DashboardLayout.tsx[m
+[36m@@ -52,12 +52,29 @@[m [mexport function DashboardLayout({[m
+       {/* Sidebar */}[m
+       <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>[m
+ [m
+[32m+[m[32m        {/* Primary nav */}[m
+[32m+[m[32m        <div className="boe-sidebar-section">[m
+[32m+[m[32m          <div className="boe-sidebar-label">Tasks</div>[m
+[32m+[m[32m          <NavDot[m
+[32m+[m[32m            label="My Tasks"[m
+[32m+[m[32m            dotColor={colors.blue}[m
+[32m+[m[32m            active={pathname === '/tasks/my'}[m
+[32m+[m[32m            onClick={() => navTo('/tasks/my')}[m
+[32m+[m[32m          />[m
+[32m+[m[32m          <NavDot[m
+[32m+[m[32m            label="Assigned To Me"[m
+[32m+[m[32m            dotColor={colors.amber}[m
+[32m+[m[32m            active={pathname === '/tasks/assigned-to-me'}[m
+[32m+[m[32m            onClick={() => navTo('/tasks/assigned-to-me')}[m
+[32m+[m[32m          />[m
+[32m+[m[32m        </div>[m
+[32m+[m
+         {/* Main nav group */}[m
+         <div className="boe-sidebar-section">[m
+           <div className="boe-sidebar-label">Main</div>[m
+           <NavDot[m
+             label="Dashboard"[m
+[31m-            dotColor={colors.blue}[m
+[32m+[m[32m            dotColor={colors.secondary}[m
+             active={pathname === '/dashboard'}[m
+             onClick={() => navTo('/dashboard')}[m
+           />[m
+[36m@@ -79,35 +96,6 @@[m [mexport function DashboardLayout({[m
+           )}[m
+         </div>[m
+ [m
+[31m-        {/* My Tasks quick filters */}[m
+[31m-        <div className="boe-sidebar-section">[m
+[31m-          <div className="boe-sidebar-label">My Tasks</div>[m
+[31m-          <NavDot[m
+[31m-            label="Unacknowledged"[m
+[31m-            dotColor={colors.amber}[m
+[31m-            active={false}[m
+[31m-            onClick={() => navTo('/dashboard')}[m
+[31m-          />[m
+[31m-          <NavDot[m
+[31m-            label="Pending"[m
+[31m-            dotColor={colors.muted}[m
+[31m-            active={false}[m
+[31m-            onClick={() => navTo('/dashboard')}[m
+[31m-          />[m
+[31m-          <NavDot[m
+[31m-            label="Working"[m
+[31m-            dotColor={colors.secondary}[m
+[31m-            active={false}[m
+[31m-            onClick={() => navTo('/dashboard')}[m
+[31m-          />[m
+[31m-          <NavDot[m
+[31m-            label="Overdue"[m
+[31m-            dotColor={colors.red}[m
+[31m-            active={false}[m
+[31m-            onClick={() => navTo('/dashboard')}[m
+[31m-          />[m
+[31m-        </div>[m
+[31m-[m
+         {/* Quick actions */}[m
+         <div className="boe-sidebar-section">[m
+           <div className="boe-sidebar-label">Quick</div>[m

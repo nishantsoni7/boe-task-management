@@ -217,13 +217,10 @@ function TaskRow({
         transition: 'background 0.1s',
       }}
     >
-      {/* Urgent dot */}
+      {/* Important star */}
       <div style={{ width: '12px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {task.is_urgent && (
-          <span style={{
-            width: '6px', height: '6px', borderRadius: '50%',
-            background: colors.red, boxShadow: `0 0 0 2px rgba(217,79,79,0.2)`, display: 'block',
-          }} />
+          <span style={{ fontSize: '9px', lineHeight: 1, color: '#C49A28' }}>⭐</span>
         )}
       </div>
       {/* Title + badges */}
@@ -314,8 +311,8 @@ function InlinePreview({ task, onClose }: { task: Task; onClose: () => void }) {
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
             <span className={statusBadgeClass(task.status)} />
             {task.is_urgent && (
-              <span style={{ fontSize: '10px', fontWeight: 600, color: colors.red, background: 'rgba(217,79,79,0.1)', padding: '1px 7px', borderRadius: '4px' }}>
-                Urgent
+              <span style={{ fontSize: '10px', fontWeight: 600, color: '#C49A28', background: 'rgba(196,154,40,0.1)', padding: '1px 7px', borderRadius: '4px' }}>
+                ⭐ Important
               </span>
             )}
           </div>
@@ -498,7 +495,16 @@ export default function MyTasksPage() {
       if (needsUpdate(t))                                  { needs_update.push(t);   continue }
       if (['started','working','pending','waiting'].includes(t.status)) { active.push(t) }
     }
-    return { overdue, waiting: waitingTasks, active, needs_update, non_completion }
+    const sortImportantFirst = (arr: Task[]) =>
+      [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
+
+    return {
+      overdue:        sortImportantFirst(overdue),
+      waiting:        sortImportantFirst(waitingTasks),
+      active:         sortImportantFirst(active),
+      needs_update:   sortImportantFirst(needs_update),
+      non_completion: sortImportantFirst(non_completion),
+    }
   }, [myTasks, waitingTasks])
 
   const counts: Record<TabKey, number> = {
