@@ -94,6 +94,14 @@ export function DashboardLayout({
               onClick={() => navTo('/admin/members')}
             />
           )}
+          {isAdmin && (
+            <NavDot
+              label="Settings"
+              dotColor={colors.muted}
+              active={pathname.startsWith('/settings')}
+              onClick={() => navTo('/settings')}
+            />
+          )}
         </div>
 
         {/* Quick actions */}
