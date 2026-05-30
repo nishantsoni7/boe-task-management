@@ -95,12 +95,34 @@ export function DashboardLayout({
             />
           )}
           {isAdmin && (
-            <NavDot
-              label="Settings"
-              dotColor={colors.muted}
-              active={pathname.startsWith('/settings')}
-              onClick={() => navTo('/settings')}
-            />
+            <>
+              <NavDot
+                label="Settings"
+                dotColor={colors.muted}
+                active={pathname === '/settings'}
+                onClick={() => navTo('/settings')}
+              />
+              {pathname.startsWith('/settings') && (
+                <div style={{ paddingLeft: '20px' }}>
+                  <button
+                    className={`boe-nav-item${pathname.startsWith('/settings/roles') ? ' active' : ''}`}
+                    onClick={() => navTo('/settings/roles')}
+                    style={{ fontSize: '12px' }}
+                  >
+                    <span className="boe-nav-dot" style={{ background: colors.muted }} />
+                    Roles
+                  </button>
+                  <button
+                    className={`boe-nav-item${pathname.startsWith('/settings/positions') ? ' active' : ''}`}
+                    onClick={() => navTo('/settings/positions')}
+                    style={{ fontSize: '12px' }}
+                  >
+                    <span className="boe-nav-dot" style={{ background: colors.muted }} />
+                    Positions
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
