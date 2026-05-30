@@ -178,6 +178,50 @@ export default function DashboardPage() {
     return acc
   }, {} as Record<string, number>)
 
+  const now = new Date()
+  const msPerDay = 24 * 60 * 60 * 1000
+
+  const needsAttention: { task: Task; reason: string }[] = []
+  const needsAttentionIds = new Set<string>()
+
+  // Rule 1: Pending ack >24h — unacknowledged and created more than 24h ago
+  tasks
+    .filter(t => !t.acknowledged_at && (now.getTime() - new Date(t.created_at).getTime()) > msPerDay)
+    .forEach(t => {
+      if (!needsAttentionIds.has(t.id)) {
+        needsAttentionIds.add(t.id)
+        needsAttention.push({ task: t, reason: 'Pending ack >24h' })
+      }
+    })
+
+  // Rule 2: Waiting >2d — status is waiting, last_update_at (or created_at) older than 2 days
+  tasks
+    .filter(t => {
+      if (t.status !== 'waiting') return false
+      const ref = t.last_update_at ?? t.created_at
+      return (now.getTime() - new Date(ref).getTime()) > 2 * msPerDay
+    })
+    .forEach(t => {
+      if (!needsAttentionIds.has(t.id)) {
+        needsAttentionIds.add(t.id)
+        needsAttention.push({ task: t, reason: 'Waiting >2d' })
+      }
+    })
+
+  // Rule 3: Stale working >3d — status is working, no update for more than 3 days
+  tasks
+    .filter(t => {
+      if (t.status !== 'working') return false
+      const ref = t.last_update_at ?? t.created_at
+      return (now.getTime() - new Date(ref).getTime()) > 3 * msPerDay
+    })
+    .forEach(t => {
+      if (!needsAttentionIds.has(t.id)) {
+        needsAttentionIds.add(t.id)
+        needsAttention.push({ task: t, reason: 'No update >3d' })
+      }
+    })
+
   const continueWorking = tasks
     .filter(t => t.acknowledged_at && !isOverdue(t.due_date))
     .slice()
@@ -385,6 +429,51 @@ export default function DashboardPage() {
               fontSize: '12px', color: 'rgba(94,163,79,0.8)',
             }}>
               Nothing needs your attention right now
+            </div>
+          )}
+        </div>
+
+        {/* NEEDS ATTENTION section box */}
+        <div style={{
+          marginBottom: '16px', borderRadius: '8px',
+          background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
+          alignSelf: 'flex-start', width: '100%',
+        }}>
+          <div style={{
+            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
+            textTransform: 'uppercase', marginBottom: '14px',
+            color: '#C0392B', borderLeft: '2px solid #C0392B', paddingLeft: '8px',
+          }}>
+            Needs Attention ({needsAttention.length})
+          </div>
+          {needsAttention.length > 0 ? (
+            <div className="boe-dashboard-grid">
+              {needsAttention.slice(0, 10).map(({ task, reason }) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onClick={() => setSelectedTask(task)}
+                  cardStyle={{ backgroundColor: 'rgba(192,57,43,0.03)', borderLeftColor: '#C0392B' }}
+                  footer={
+                    <div style={{
+                      fontSize: '11px', fontWeight: 600,
+                      color: '#C0392B', padding: '4px 0 0',
+                      letterSpacing: '0.02em',
+                    }}>
+                      {reason}
+                    </div>
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <div style={{
+              padding: '10px 14px', borderRadius: '6px',
+              background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.06)',
+              fontSize: '12px', color: colors.muted,
+            }}>
+              No stuck tasks right now.
             </div>
           )}
         </div>
