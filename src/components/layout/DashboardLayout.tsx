@@ -52,12 +52,29 @@ export function DashboardLayout({
       {/* Sidebar */}
       <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
 
+        {/* Primary nav */}
+        <div className="boe-sidebar-section">
+          <div className="boe-sidebar-label">Tasks</div>
+          <NavDot
+            label="My Tasks"
+            dotColor={colors.blue}
+            active={pathname === '/tasks/my'}
+            onClick={() => navTo('/tasks/my')}
+          />
+          <NavDot
+            label="Assigned To Me"
+            dotColor={colors.amber}
+            active={pathname === '/tasks/assigned-to-me'}
+            onClick={() => navTo('/tasks/assigned-to-me')}
+          />
+        </div>
+
         {/* Main nav group */}
         <div className="boe-sidebar-section">
           <div className="boe-sidebar-label">Main</div>
           <NavDot
             label="Dashboard"
-            dotColor={colors.blue}
+            dotColor={colors.secondary}
             active={pathname === '/dashboard'}
             onClick={() => navTo('/dashboard')}
           />
@@ -77,35 +94,6 @@ export function DashboardLayout({
               onClick={() => navTo('/admin/members')}
             />
           )}
-        </div>
-
-        {/* My Tasks quick filters */}
-        <div className="boe-sidebar-section">
-          <div className="boe-sidebar-label">My Tasks</div>
-          <NavDot
-            label="Unacknowledged"
-            dotColor={colors.amber}
-            active={false}
-            onClick={() => navTo('/dashboard')}
-          />
-          <NavDot
-            label="Pending"
-            dotColor={colors.muted}
-            active={false}
-            onClick={() => navTo('/dashboard')}
-          />
-          <NavDot
-            label="Working"
-            dotColor={colors.secondary}
-            active={false}
-            onClick={() => navTo('/dashboard')}
-          />
-          <NavDot
-            label="Overdue"
-            dotColor={colors.red}
-            active={false}
-            onClick={() => navTo('/dashboard')}
-          />
         </div>
 
         {/* Quick actions */}
