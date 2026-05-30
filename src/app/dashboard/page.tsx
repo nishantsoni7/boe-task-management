@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
@@ -161,6 +161,23 @@ export default function DashboardPage() {
   const pendingOverdue  = allOverdueTasks.filter(t => !resolvedIds.has(t.id))
   const actionRequired  = [...allOverdueTasks, ...unacknowledged]
 
+  const WAITING_DEPS = [
+    'Client', 'Vendor', 'Design Team', 'Purchase Team',
+    'Production', 'Management', 'Transport', 'Other',
+  ] as const
+
+  const waitingTasks = tasks.filter(t => t.status === 'waiting')
+
+  const waitingByDep = WAITING_DEPS.reduce<Record<string, number>>((acc, dep) => {
+    acc[dep] = waitingTasks.filter(t => {
+      const reason = t.blocker_reason ?? ''
+      // Format: "Waiting on: Client — note" — extract dep after "Waiting on: "
+      const match = reason.match(/^Waiting on:\s*([^—\n]+)/i)
+      return match ? match[1].trim() === dep : dep === 'Other'
+    }).length
+    return acc
+  }, {} as Record<string, number>)
+
   const continueWorking = tasks
     .filter(t => t.acknowledged_at && !isOverdue(t.due_date))
     .slice()
@@ -288,7 +305,13 @@ export default function DashboardPage() {
           <KpiCard label="In Progress"   value={continueWorking.length} meta="Acknowledged"    accent="green" />
         </KpiGrid>
 
-        <SectionLabel title="Action Required" count={actionRequired.length} />
+        <FocusSummary
+          actionCount={actionRequired.length}
+          blockerCount={waitingTasks.length}
+          overdueCount={allOverdueTasks.length}
+        />
+
+        <SectionLabel title={`ACTION REQUIRED (${actionRequired.length})`} variant="action" />
         {actionRequired.length > 0 ? (
           <div style={{ marginBottom: '24px' }}>
             {allOverdueTasks.length > 0 && (
@@ -359,7 +382,10 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <SectionLabel title="Continue Working" count={continueWorking.length} />
+        <SectionLabel title={`BLOCKERS (${waitingTasks.length})`} variant="blocker" />
+        <WaitingWidget byDep={waitingByDep} deps={WAITING_DEPS} />
+
+        <SectionLabel title={`CONTINUE WORKING (${continueWorking.length})`} />
         {continueWorking.length > 0 ? (
           <div className="boe-dashboard-grid" style={{ marginBottom: '8px' }}>
             {continueWorking.map(task => (
@@ -375,6 +401,7 @@ export default function DashboardPage() {
             No active tasks — tap + New Task to create one
           </div>
         )}
+
       </DashboardLayout>
 
       {selectedTask && (
@@ -384,18 +411,112 @@ export default function DashboardPage() {
   )
 }
 
-function SectionLabel({ title, count }: { title: string; count: number }) {
+function FocusSummary({
+  actionCount,
+  blockerCount,
+  overdueCount,
+}: {
+  actionCount: number
+  blockerCount: number
+  overdueCount: number
+}) {
   return (
-    <div className="boe-section-label" style={{ marginBottom: '10px' }}>
-      {title}
-      <span style={{
-        fontFamily: font.mono, fontSize: '10px',
-        padding: '1px 6px', borderRadius: '3px',
-        background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.045)',
-        color: colors.secondary, marginLeft: 'auto',
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: '10px',
+      padding: '11px 14px', marginBottom: '20px', borderRadius: '8px',
+      background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+    }}>
+      <span style={{ fontSize: '15px', opacity: 0.45, marginTop: '1px', lineHeight: 1 }}>◎</span>
+      <div>
+        <div style={{
+          fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
+          color: colors.muted, marginBottom: '4px', textTransform: 'uppercase',
+        }}>
+          Today&apos;s Focus
+        </div>
+        <div style={{ fontSize: '13px' }}>
+          <span style={{ color: actionCount > 0 ? colors.amber : colors.muted }}>
+            {actionCount} {actionCount === 1 ? 'task needs' : 'tasks need'} action
+          </span>
+          {' · '}
+          <span style={{ color: blockerCount > 0 ? '#C8A24A' : colors.muted }}>
+            {blockerCount} {blockerCount === 1 ? 'blocker' : 'blockers'}
+          </span>
+          {' · '}
+          <span style={{ color: overdueCount > 0 ? colors.red : colors.muted }}>
+            {overdueCount} overdue
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function WaitingWidget({
+  byDep,
+  deps,
+}: {
+  byDep: Record<string, number>
+  deps: readonly string[]
+}) {
+  const active = deps.filter(d => byDep[d] > 0)
+
+  if (active.length === 0) {
+    return (
+      <div style={{
+        padding: '10px 14px', marginBottom: '24px', borderRadius: '6px',
+        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.045)',
+        fontSize: '12px', color: colors.muted,
       }}>
-        {count}
-      </span>
+        No blockers right now
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+      gap: '8px',
+      marginBottom: '24px',
+    }}>
+      {active.map(dep => (
+        <div
+          key={dep}
+          style={{
+            padding: '10px 12px', borderRadius: '7px',
+            background: 'rgba(232,160,48,0.055)',
+            border: '1px solid rgba(232,160,48,0.14)',
+            borderLeft: '3px solid rgba(232,160,48,0.42)',
+          }}
+        >
+          <div style={{ fontSize: '11px', color: colors.secondary, fontWeight: 500, marginBottom: '5px' }}>
+            {dep}
+          </div>
+          <div style={{
+            fontFamily: font.mono, fontSize: '22px', fontWeight: 700,
+            color: '#C8A24A', lineHeight: 1,
+          }}>
+            {byDep[dep]}
+          </div>
+          <div style={{ fontSize: '10px', color: colors.muted, marginTop: '3px', letterSpacing: '0.02em' }}>
+            waiting tasks
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SectionLabel({ title, variant = 'default' }: { title: string; variant?: 'action' | 'blocker' | 'default' }) {
+  const extra: React.CSSProperties =
+    variant === 'action'  ? { color: '#D4893A', borderLeft: '2px solid #D4893A', paddingLeft: '8px' } :
+    variant === 'blocker' ? { color: 'rgba(200,162,74,0.75)', borderLeft: '2px solid rgba(200,162,74,0.35)', paddingLeft: '8px' } :
+    { color: colors.muted }
+  return (
+    <div className="boe-section-label" style={{ marginBottom: '10px', ...extra }}>
+      {title}
     </div>
   )
 }
