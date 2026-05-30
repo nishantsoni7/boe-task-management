@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
-  const { userId, full_name, team, role } = await req.json()
+  const { userId, full_name, team, role, position } = await req.json()
 
   if (!userId || !full_name?.trim()) {
     return NextResponse.json({ error: 'userId and full_name are required' }, { status: 400 })
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
 
   const { error } = await supabase
     .from('users')
-    .update({ full_name: full_name.trim(), team, role })
+    .update({ full_name: full_name.trim(), team, role, position: position || null })
     .eq('id', userId)
 
   if (error) {

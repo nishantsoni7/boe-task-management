@@ -48,6 +48,7 @@ export type UserProfile = {
   phone: string | null
   role: UserRole
   team: string
+  position: string | null
   is_active: boolean
   created_at: string
 }

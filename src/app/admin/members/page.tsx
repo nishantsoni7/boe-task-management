@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile, PasswordResetLogEntry } from '@/lib/types'
+import type { UserProfile, PasswordResetLogEntry, Position } from '@/lib/types'
 import { initials, formatFullDate } from '@/lib/ui'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -22,11 +22,12 @@ function avatarColor(name: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length]
 }
 
-const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, is_active, created_at'
+const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, position, is_active, created_at'
 
 export default function MembersPage() {
   const [profile,        setProfile]        = useState<UserProfile | null>(null)
   const [members,        setMembers]        = useState<UserProfile[]>([])
+  const [positions,      setPositions]      = useState<Position[]>([])
   const [loading,        setLoading]        = useState(true)
   const [showForm,       setShowForm]       = useState(false)
   const [selectedMember, setSelectedMember] = useState<UserProfile | null>(null)
@@ -44,6 +45,7 @@ export default function MembersPage() {
   const [editName,      setEditName]        = useState('')
   const [editTeam,      setEditTeam]        = useState('sales')
   const [editRole,      setEditRole]        = useState<'member' | 'manager' | 'admin'>('member')
+  const [editPosition,  setEditPosition]    = useState('')
   const [editSaving,    setEditSaving]      = useState(false)
   const [editError,     setEditError]       = useState('')
   const [editSuccess,   setEditSuccess]     = useState(false)
@@ -52,6 +54,7 @@ export default function MembersPage() {
   const [phone,     setPhone]     = useState('')
   const [role,      setRole]      = useState<'member' | 'manager' | 'admin'>('member')
   const [team,      setTeam]      = useState('sales')
+  const [position,  setPosition]  = useState('')
   const [password,  setPassword]  = useState('')
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -78,10 +81,10 @@ export default function MembersPage() {
       const roleStart    = performance.now()
       const membersStart = performance.now()
 
-      const [{ data: p }, { data: memberData }] = await Promise.all([
+      const [{ data: p }, { data: memberData }, { data: posData }] = await Promise.all([
         supabase
           .from('users')
-          .select('id, full_name, email, phone, role, team, is_active, created_at')
+          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
           .eq('id', session.user.id)
           .single()
           .then((r: { data: UserProfile | null; error: unknown }) => {
@@ -96,6 +99,10 @@ export default function MembersPage() {
             console.log('[members] members fetch', Math.round(performance.now() - membersStart), 'ms')
             return r
           }),
+        supabase
+          .from('positions')
+          .select('id, name, created_at')
+          .order('name'),
       ])
 
       console.log('[members] parallel data TOTAL', Math.round(performance.now() - dataStart), 'ms')
@@ -103,6 +110,7 @@ export default function MembersPage() {
       if (p?.role !== 'admin') { router.push('/dashboard'); return }
       if (p) setProfile(p as UserProfile)
       if (memberData) setMembers(memberData as UserProfile[])
+      if (posData) setPositions(posData as Position[])
 
       console.log('[members] TOTAL', Math.round(performance.now() - pageStart), 'ms')
       setLoading(false)
@@ -136,6 +144,7 @@ export default function MembersPage() {
         phone:     phone.trim() || null,
         role,
         team,
+        position:  position || null,
       }),
     })
     const data = await res.json()
@@ -147,7 +156,7 @@ export default function MembersPage() {
     }
 
     setFullName(''); setEmail(''); setPhone('')
-    setPassword(''); setRole('member'); setTeam('sales')
+    setPassword(''); setRole('member'); setTeam('sales'); setPosition('')
     setShowForm(false)
     await loadMembers()
     setSaving(false)
@@ -179,6 +188,7 @@ export default function MembersPage() {
     setEditName(selectedMember.full_name)
     setEditTeam(selectedMember.team)
     setEditRole(selectedMember.role)
+    setEditPosition(selectedMember.position ?? '')
     setEditError('')
     setEditSuccess(false)
     setShowEditForm(true)
@@ -198,12 +208,12 @@ export default function MembersPage() {
     const res = await fetch('/api/update-member', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: selectedMember.id, full_name: editName.trim(), team: editTeam, role: editRole }),
+      body: JSON.stringify({ userId: selectedMember.id, full_name: editName.trim(), team: editTeam, role: editRole, position: editPosition || null }),
     })
     const data = await res.json()
     setEditSaving(false)
     if (!res.ok) { setEditError(data.error || 'Failed to update profile'); return }
-    const updated = { ...selectedMember, full_name: editName.trim(), team: editTeam, role: editRole }
+    const updated = { ...selectedMember, full_name: editName.trim(), team: editTeam, role: editRole, position: editPosition || null }
     setSelectedMember(updated)
     setMembers(prev => prev.map(m => m.id === updated.id ? updated : m))
     setEditSuccess(true)
@@ -363,6 +373,20 @@ export default function MembersPage() {
             </div>
           </div>
 
+          <div>
+            <label className="boe-input-label">Position</label>
+            <select
+              value={position}
+              onChange={e => setPosition(e.target.value)}
+              className="boe-input"
+            >
+              <option value="">— None —</option>
+              {positions.map(p => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={handleCreate}
             disabled={saving}
@@ -514,6 +538,7 @@ export default function MembersPage() {
                 { label: 'Phone',        value: selectedMember.phone ?? '—' },
                 { label: 'Role',         value: selectedMember.role,  capitalize: true },
                 { label: 'Team',         value: selectedMember.team,  capitalize: true },
+                { label: 'Position',     value: selectedMember.position ?? '—' },
                 { label: 'Member since', value: formatFullDate(selectedMember.created_at) },
               ].map(({ label, value, capitalize }) => (
                 <div key={label}>
@@ -617,6 +642,20 @@ export default function MembersPage() {
                           >
                             {TEAMS.map(t => (
                               <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{t}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="boe-input-label">Position</label>
+                          <select
+                            value={editPosition}
+                            onChange={e => setEditPosition(e.target.value)}
+                            className="boe-input"
+                            style={{ fontSize: '12px' }}
+                          >
+                            <option value="">— None —</option>
+                            {positions.map(p => (
+                              <option key={p.id} value={p.name}>{p.name}</option>
                             ))}
                           </select>
                         </div>
