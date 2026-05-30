@@ -304,96 +304,138 @@ export default function DashboardPage() {
           overdueCount={allOverdueTasks.length}
         />
 
-        <SectionLabel title={`ACTION REQUIRED (${actionRequired.length})`} variant="action" />
-        {actionRequired.length > 0 ? (
-          <div style={{ marginBottom: '24px' }}>
-            {allOverdueTasks.length > 0 && (
-              <div className="boe-dashboard-grid">
-                {allOverdueTasks.map(task => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    onClick={() => setSelectedTask(task)}
-                    cardStyle={{ backgroundColor: 'rgba(217,79,79,0.03)' }}
-                  />
-                ))}
-              </div>
-            )}
-            {allOverdueTasks.length > 0 && unacknowledged.length > 0 && (
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.04)', margin: '10px 0' }} />
-            )}
-            {unacknowledged.length > 0 && (
-              <div className="boe-dashboard-grid">
-                {unacknowledged.map(task => {
-                  const isAcking = acknowledging.has(task.id)
-                  return (
+        {/* ACTION REQUIRED section box */}
+        <div style={{
+          marginBottom: '16px', borderRadius: '8px',
+          background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
+          alignSelf: 'flex-start', width: '100%',
+        }}>
+          <div style={{
+            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
+            textTransform: 'uppercase', marginBottom: '14px',
+            color: '#D4893A', borderLeft: '2px solid #D4893A', paddingLeft: '8px',
+          }}>
+            Action Required ({actionRequired.length})
+          </div>
+          {actionRequired.length > 0 ? (
+            <div>
+              {allOverdueTasks.length > 0 && (
+                <div className="boe-dashboard-grid">
+                  {allOverdueTasks.map(task => (
                     <TaskCard
                       key={task.id}
                       task={task}
                       onClick={() => setSelectedTask(task)}
-                      cardStyle={{
-                        backgroundColor: 'rgba(232,160,48,0.025)',
-                        borderLeftColor: colors.amber,
-                      }}
-                      footer={
-                        <button
-                          onClick={e => { e.stopPropagation(); handleAcknowledge(task) }}
-                          disabled={isAcking}
-                          style={{
-                            display:       'block',
-                            width:         '160px',
-                            margin:        '0 auto',
-                            padding:       '9px 0',
-                            fontSize:      '13px',
-                            fontWeight:    600,
-                            letterSpacing: '0.02em',
-                            color:         isAcking ? '#B8892A' : '#FFFFFF',
-                            background:    isAcking ? 'rgba(232,160,48,0.12)' : '#E8A030',
-                            border:        '1px solid transparent',
-                            borderRadius:  '6px',
-                            cursor:        isAcking ? 'default' : 'pointer',
-                            boxShadow:     isAcking ? 'none' : '0 1px 4px rgba(232,160,48,0.35)',
-                            transition:    'opacity 0.15s',
-                          }}
-                        >
-                          {isAcking ? 'Acknowledging…' : '✓ Acknowledge'}
-                        </button>
-                      }
+                      cardStyle={{ backgroundColor: 'rgba(217,79,79,0.03)' }}
                     />
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div style={{
-            padding: '10px 14px', marginBottom: '24px', borderRadius: '6px',
-            background: 'rgba(94,163,79,0.05)', border: '1px solid rgba(94,163,79,0.12)',
-            fontSize: '12px', color: 'rgba(94,163,79,0.8)',
-          }}>
-            Nothing needs your attention right now
-          </div>
-        )}
+                  ))}
+                </div>
+              )}
+              {allOverdueTasks.length > 0 && unacknowledged.length > 0 && (
+                <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', margin: '12px 0' }} />
+              )}
+              {unacknowledged.length > 0 && (
+                <div className="boe-dashboard-grid">
+                  {unacknowledged.map(task => {
+                    const isAcking = acknowledging.has(task.id)
+                    return (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onClick={() => setSelectedTask(task)}
+                        cardStyle={{
+                          backgroundColor: 'rgba(232,160,48,0.025)',
+                          borderLeftColor: colors.amber,
+                        }}
+                        footer={
+                          <button
+                            onClick={e => { e.stopPropagation(); handleAcknowledge(task) }}
+                            disabled={isAcking}
+                            style={{
+                              display:       'block',
+                              width:         '160px',
+                              margin:        '0 auto',
+                              padding:       '9px 0',
+                              fontSize:      '13px',
+                              fontWeight:    600,
+                              letterSpacing: '0.02em',
+                              color:         isAcking ? '#B8892A' : '#FFFFFF',
+                              background:    isAcking ? 'rgba(232,160,48,0.12)' : '#E8A030',
+                              border:        '1px solid transparent',
+                              borderRadius:  '6px',
+                              cursor:        isAcking ? 'default' : 'pointer',
+                              boxShadow:     isAcking ? 'none' : '0 1px 4px rgba(232,160,48,0.35)',
+                              transition:    'opacity 0.15s',
+                            }}
+                          >
+                            {isAcking ? 'Acknowledging…' : '✓ Acknowledge'}
+                          </button>
+                        }
+                      />
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{
+              padding: '10px 14px', borderRadius: '6px',
+              background: 'rgba(94,163,79,0.05)', border: '1px solid rgba(94,163,79,0.12)',
+              fontSize: '12px', color: 'rgba(94,163,79,0.8)',
+            }}>
+              Nothing needs your attention right now
+            </div>
+          )}
+        </div>
 
-        <SectionLabel title={`BLOCKERS (${waitingTasks.length})`} variant="blocker" />
-        <WaitingWidget byDep={waitingByDep} deps={WAITING_DEPS} />
-
-        <SectionLabel title={`CONTINUE WORKING (${continueWorking.length})`} />
-        {continueWorking.length > 0 ? (
-          <div className="boe-dashboard-grid" style={{ marginBottom: '8px' }}>
-            {continueWorking.map(task => (
-              <TaskCard key={task.id} task={task} onClick={() => setSelectedTask(task)} />
-            ))}
-          </div>
-        ) : (
+        {/* BLOCKERS section box */}
+        <div style={{
+          marginBottom: '16px', borderRadius: '8px',
+          background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
+          alignSelf: 'flex-start', width: '100%',
+        }}>
           <div style={{
-            padding: '10px 14px', marginBottom: '8px', borderRadius: '6px',
-            background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.045)',
-            fontSize: '12px', color: colors.muted,
+            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
+            textTransform: 'uppercase', marginBottom: '14px',
+            color: 'rgba(200,162,74,0.85)', borderLeft: '2px solid rgba(200,162,74,0.45)', paddingLeft: '8px',
           }}>
-            No active tasks — tap + New Task to create one
+            Blockers ({waitingTasks.length})
           </div>
-        )}
+          <WaitingWidget byDep={waitingByDep} deps={WAITING_DEPS} />
+        </div>
+
+        {/* CONTINUE WORKING section box */}
+        <div style={{
+          marginBottom: '16px', borderRadius: '8px',
+          background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
+          alignSelf: 'flex-start', width: '100%',
+        }}>
+          <div style={{
+            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
+            textTransform: 'uppercase', marginBottom: '14px',
+            color: colors.muted,
+          }}>
+            Continue Working ({continueWorking.length})
+          </div>
+          {continueWorking.length > 0 ? (
+            <div className="boe-dashboard-grid">
+              {continueWorking.map(task => (
+                <TaskCard key={task.id} task={task} onClick={() => setSelectedTask(task)} />
+              ))}
+            </div>
+          ) : (
+            <div style={{
+              padding: '10px 14px', borderRadius: '6px',
+              background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.06)',
+              fontSize: '12px', color: colors.muted,
+            }}>
+              No active tasks — tap + New Task to create one
+            </div>
+          )}
+        </div>
 
       </DashboardLayout>
 
@@ -479,8 +521,8 @@ function WaitingWidget({
   if (active.length === 0) {
     return (
       <div style={{
-        padding: '10px 14px', marginBottom: '24px', borderRadius: '6px',
-        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.045)',
+        padding: '10px 14px', borderRadius: '6px',
+        background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.06)',
         fontSize: '12px', color: colors.muted,
       }}>
         No blockers right now
@@ -490,10 +532,9 @@ function WaitingWidget({
 
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+      display: 'flex',
+      flexWrap: 'wrap',
       gap: '8px',
-      marginBottom: '24px',
     }}>
       {active.map(dep => (
         <div
@@ -519,18 +560,6 @@ function WaitingWidget({
           </div>
         </div>
       ))}
-    </div>
-  )
-}
-
-function SectionLabel({ title, variant = 'default' }: { title: string; variant?: 'action' | 'blocker' | 'default' }) {
-  const extra: React.CSSProperties =
-    variant === 'action'  ? { color: '#D4893A', borderLeft: '2px solid #D4893A', paddingLeft: '8px' } :
-    variant === 'blocker' ? { color: 'rgba(200,162,74,0.75)', borderLeft: '2px solid rgba(200,162,74,0.35)', paddingLeft: '8px' } :
-    { color: colors.muted }
-  return (
-    <div className="boe-section-label" style={{ marginBottom: '10px', ...extra }}>
-      {title}
     </div>
   )
 }
