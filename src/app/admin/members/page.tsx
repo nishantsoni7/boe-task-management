@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { initials } from '@/lib/ui'
+import { initials, formatFullDate } from '@/lib/ui'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
@@ -25,12 +25,14 @@ function avatarColor(name: string): string {
 const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, is_active, created_at'
 
 export default function MembersPage() {
-  const [profile,   setProfile]   = useState<UserProfile | null>(null)
-  const [members,   setMembers]   = useState<UserProfile[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [showForm,  setShowForm]  = useState(false)
+  const [profile,        setProfile]        = useState<UserProfile | null>(null)
+  const [members,        setMembers]        = useState<UserProfile[]>([])
+  const [loading,        setLoading]        = useState(true)
+  const [showForm,       setShowForm]       = useState(false)
+  const [selectedMember, setSelectedMember] = useState<UserProfile | null>(null)
   const [saving,    setSaving]    = useState(false)
   const [error,     setError]     = useState('')
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   const [full_name, setFullName]  = useState('')
   const [email,     setEmail]     = useState('')
   const [phone,     setPhone]     = useState('')
@@ -143,11 +145,23 @@ export default function MembersPage() {
   }
 
   const toggleActive = async (member: UserProfile) => {
-    await supabase
+    if (togglingId) return
+    setTogglingId(member.id)
+    const newValue = !member.is_active
+    const { error: updateError } = await supabase
       .from('users')
-      .update({ is_active: !member.is_active })
+      .update({ is_active: newValue })
       .eq('id', member.id)
-    await loadMembers()
+    if (updateError) {
+      setError(`Failed to update member: ${updateError.message}`)
+      setTogglingId(null)
+      return
+    }
+    setMembers(prev => prev.map(m => m.id === member.id ? { ...m, is_active: newValue } : m))
+    if (selectedMember?.id === member.id) {
+      setSelectedMember(prev => prev ? { ...prev, is_active: newValue } : prev)
+    }
+    setTogglingId(null)
   }
 
   if (loading) return <LoadingScreen />
@@ -243,6 +257,12 @@ export default function MembersPage() {
         </div>
       )}
 
+      {error && !showForm && (
+        <AlertBanner variant="red">
+          <p style={{ color: colors.red, fontSize: '12px' }}>{error}</p>
+        </AlertBanner>
+      )}
+
       <div className="boe-members-grid">
         {members.map(member => (
           <div key={member.id} className="boe-member-card">
@@ -283,17 +303,129 @@ export default function MembersPage() {
               {member.email}
             </div>
 
-            <button
-              onClick={() => toggleActive(member)}
-              className="boe-btn boe-btn-ghost"
-              style={{ padding: '5px 10px', fontSize: '11px', width: '100%', justifyContent: 'center' }}
-            >
-              {member.is_active ? 'Deactivate' : 'Activate'}
-            </button>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                onClick={() => setSelectedMember(member)}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '5px 10px', fontSize: '11px', flex: 1, justifyContent: 'center' }}
+              >
+                View
+              </button>
+              <button
+                onClick={() => toggleActive(member)}
+                disabled={togglingId === member.id}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '5px 10px', fontSize: '11px', flex: 1, justifyContent: 'center' }}
+              >
+                {togglingId === member.id ? '...' : member.is_active ? 'Deactivate' : 'Activate'}
+              </button>
+            </div>
 
           </div>
         ))}
       </div>
+
+      {/* ── Member profile side panel ──────────────────────────────────── */}
+      {selectedMember && (
+        <>
+          {/* Panel */}
+          <div style={{
+            position: 'fixed', top: 0, right: 0, bottom: 0,
+            width: '340px',
+            background: colors.base,
+            borderLeft: `1px solid ${colors.border}`,
+            zIndex: 50,
+            display: 'flex', flexDirection: 'column',
+            overflowY: 'auto',
+          }}>
+
+            {/* Panel header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '16px 20px',
+              borderBottom: `1px solid ${colors.border}`,
+            }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+                Member Profile
+              </span>
+              <button
+                onClick={() => setSelectedMember(null)}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '4px 8px', fontSize: '13px', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Avatar + name */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              padding: '28px 20px 20px',
+              borderBottom: `1px solid ${colors.border}`,
+              gap: '10px',
+            }}>
+              <div
+                className="boe-member-avatar"
+                style={{
+                  background: avatarColor(selectedMember.full_name),
+                  width: '56px', height: '56px',
+                  fontSize: '18px',
+                }}
+              >
+                {initials(selectedMember.full_name)}
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '15px', fontWeight: 600, color: colors.primary }}>
+                  {selectedMember.full_name}
+                </div>
+                <div style={{ fontSize: '12px', color: colors.secondary, textTransform: 'capitalize', marginTop: '2px' }}>
+                  {selectedMember.team} · {selectedMember.role}
+                </div>
+              </div>
+              <span
+                className={`boe-badge ${selectedMember.is_active ? 'boe-badge-completed' : 'boe-badge-pending'}`}
+                style={{ fontSize: '10px' }}
+              >
+                {selectedMember.is_active ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+
+            {/* Detail rows */}
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {[
+                { label: 'Email',        value: selectedMember.email },
+                { label: 'Phone',        value: selectedMember.phone ?? '—' },
+                { label: 'Role',         value: selectedMember.role,  capitalize: true },
+                { label: 'Team',         value: selectedMember.team,  capitalize: true },
+                { label: 'Member since', value: formatFullDate(selectedMember.created_at) },
+              ].map(({ label, value, capitalize }) => (
+                <div key={label}>
+                  <div style={{ fontSize: '10px', color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>
+                    {label}
+                  </div>
+                  <div style={{
+                    fontSize: '13px', color: colors.secondary,
+                    textTransform: capitalize ? 'capitalize' : undefined,
+                  }}>
+                    {value}
+                  </div>
+                </div>
+              ))}
+
+              {/* Member ID — muted, small */}
+              <div style={{ marginTop: '4px', paddingTop: '12px', borderTop: `1px solid ${colors.border}` }}>
+                <div style={{ fontSize: '10px', color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>
+                  Member ID
+                </div>
+                <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                  {selectedMember.id}
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </>
+      )}
 
     </DashboardLayout>
   )
