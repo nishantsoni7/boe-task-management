@@ -40,6 +40,13 @@ export default function MembersPage() {
   const [resetError,    setResetError]      = useState('')
   const [resetSuccess,  setResetSuccess]    = useState(false)
   const [resetHistory,  setResetHistory]    = useState<PasswordResetLogEntry[]>([])
+  const [showEditForm,  setShowEditForm]    = useState(false)
+  const [editName,      setEditName]        = useState('')
+  const [editTeam,      setEditTeam]        = useState('sales')
+  const [editRole,      setEditRole]        = useState<'member' | 'manager' | 'admin'>('member')
+  const [editSaving,    setEditSaving]      = useState(false)
+  const [editError,     setEditError]       = useState('')
+  const [editSuccess,   setEditSuccess]     = useState(false)
   const [full_name, setFullName]  = useState('')
   const [email,     setEmail]     = useState('')
   const [phone,     setPhone]     = useState('')
@@ -167,6 +174,39 @@ export default function MembersPage() {
     setResetSuccess(false)
   }
 
+  const openEditForm = () => {
+    if (!selectedMember) return
+    setEditName(selectedMember.full_name)
+    setEditTeam(selectedMember.team)
+    setEditRole(selectedMember.role)
+    setEditError('')
+    setEditSuccess(false)
+    setShowEditForm(true)
+  }
+
+  const closeEditForm = () => {
+    setShowEditForm(false)
+    setEditError('')
+    setEditSuccess(false)
+  }
+
+  const handleEditSave = async () => {
+    if (!selectedMember) return
+    if (!editName.trim()) { setEditError('Full name is required'); return }
+    setEditSaving(true)
+    setEditError('')
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ full_name: editName.trim(), team: editTeam, role: editRole })
+      .eq('id', selectedMember.id)
+    setEditSaving(false)
+    if (updateError) { setEditError(updateError.message); return }
+    const updated = { ...selectedMember, full_name: editName.trim(), team: editTeam, role: editRole }
+    setSelectedMember(updated)
+    setMembers(prev => prev.map(m => m.id === updated.id ? updated : m))
+    setEditSuccess(true)
+  }
+
   const handleResetPassword = async () => {
     if (!selectedMember) return
     if (!resetPassword.trim()) { setResetError('New password is required'); return }
@@ -233,6 +273,7 @@ export default function MembersPage() {
 
   useEffect(() => {
     closeResetForm()
+    closeEditForm()
     setResetHistory([])
     if (selectedMember) loadResetHistory(selectedMember.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -494,6 +535,114 @@ export default function MembersPage() {
                 <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'monospace', wordBreak: 'break-all' }}>
                   {selectedMember.id}
                 </div>
+              </div>
+            </div>
+
+            {/* ── Edit Profile ────────────────────────────────────────────── */}
+            <div style={{ padding: '0 20px 4px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ paddingTop: '12px', borderTop: `1px solid ${colors.border}` }}>
+                <div style={{ fontSize: '10px', color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                  Profile
+                </div>
+
+                {!showEditForm && (
+                  <button
+                    onClick={openEditForm}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '6px 12px', fontSize: '12px', width: '100%', justifyContent: 'center' }}
+                  >
+                    Edit Profile
+                  </button>
+                )}
+
+                {showEditForm && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {editSuccess ? (
+                      <>
+                        <div style={{
+                          padding: '10px 12px',
+                          background: '#f0faf4',
+                          border: '1px solid #b7e4c7',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          color: '#2d6a4f',
+                        }}>
+                          Profile updated successfully.
+                        </div>
+                        <button
+                          onClick={closeEditForm}
+                          className="boe-btn boe-btn-ghost"
+                          style={{ padding: '6px 12px', fontSize: '12px', width: '100%', justifyContent: 'center' }}
+                        >
+                          Done
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="boe-input-label">Full Name</label>
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            placeholder="Full name"
+                            className="boe-input"
+                            style={{ fontSize: '12px' }}
+                          />
+                        </div>
+                        <div>
+                          <label className="boe-input-label">Role</label>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            {ROLES.map(r => (
+                              <button
+                                key={r}
+                                onClick={() => setEditRole(r)}
+                                className={`boe-chip${editRole === r ? ' boe-chip-selected' : ''}`}
+                                style={{ flex: 1, textAlign: 'center', textTransform: 'capitalize' }}
+                              >
+                                {r}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="boe-input-label">Team</label>
+                          <select
+                            value={editTeam}
+                            onChange={e => setEditTeam(e.target.value)}
+                            className="boe-input"
+                            style={{ fontSize: '12px' }}
+                          >
+                            {TEAMS.map(t => (
+                              <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{t}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {editError && (
+                          <p style={{ fontSize: '11px', color: colors.red, margin: 0 }}>{editError}</p>
+                        )}
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            onClick={handleEditSave}
+                            disabled={editSaving}
+                            className="boe-btn boe-btn-primary"
+                            style={{ flex: 1, justifyContent: 'center', padding: '7px', fontSize: '12px' }}
+                          >
+                            {editSaving ? 'Saving…' : 'Save Changes'}
+                          </button>
+                          <button
+                            onClick={closeEditForm}
+                            disabled={editSaving}
+                            className="boe-btn boe-btn-ghost"
+                            style={{ padding: '7px 12px', fontSize: '12px' }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
