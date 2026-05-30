@@ -67,6 +67,14 @@ export function DashboardLayout({
             active={pathname === '/tasks/assigned-to-me'}
             onClick={() => navTo('/tasks/assigned-to-me')}
           />
+          {isManager && (
+            <NavDot
+              label="View All Tasks"
+              dotColor={colors.secondary}
+              active={pathname === '/tasks/all'}
+              onClick={() => navTo('/tasks/all')}
+            />
+          )}
         </div>
 
         {/* Main nav group */}
@@ -87,23 +95,23 @@ export function DashboardLayout({
             />
           )}
           {isAdmin && (
-            <NavDot
-              label="Members"
-              dotColor={colors.muted}
-              active={pathname === '/admin/members'}
-              onClick={() => navTo('/admin/members')}
-            />
-          )}
-          {isAdmin && (
             <>
               <NavDot
                 label="Settings"
                 dotColor={colors.muted}
-                active={pathname === '/settings'}
+                active={pathname === '/settings' || pathname === '/admin/members'}
                 onClick={() => navTo('/settings')}
               />
-              {pathname.startsWith('/settings') && (
+              {(pathname.startsWith('/settings') || pathname === '/admin/members') && (
                 <div style={{ paddingLeft: '20px' }}>
+                  <button
+                    className={`boe-nav-item${pathname === '/admin/members' ? ' active' : ''}`}
+                    onClick={() => navTo('/admin/members')}
+                    style={{ fontSize: '12px' }}
+                  >
+                    <span className="boe-nav-dot" style={{ background: colors.muted }} />
+                    Members
+                  </button>
                   <button
                     className={`boe-nav-item${pathname.startsWith('/settings/roles') ? ' active' : ''}`}
                     onClick={() => navTo('/settings/roles')}
@@ -130,10 +138,16 @@ export function DashboardLayout({
         <div className="boe-sidebar-section">
           <div className="boe-sidebar-label">Quick</div>
           <button
+            className={`boe-nav-item${pathname === '/tasks/create-self' ? ' active' : ''}`}
+            onClick={() => navTo('/tasks/create-self')}
+          >
+            + New Task for Self
+          </button>
+          <button
             className={`boe-nav-item${pathname === '/tasks/create' ? ' active' : ''}`}
             onClick={() => navTo('/tasks/create')}
           >
-            + New Task
+            + New Task for Team
           </button>
         </div>
 
