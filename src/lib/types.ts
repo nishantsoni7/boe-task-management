@@ -52,6 +52,16 @@ export type UserProfile = {
   created_at: string
 }
 
+// ─── Password reset log ───────────────────────────────────────────────────────
+export type PasswordResetLogEntry = {
+  id:         string
+  target_id:  string
+  actor_id:   string | null
+  reset_at:   string
+  ip_address: string | null
+  actor_name?: string | null
+}
+
 // ─── Activity log ─────────────────────────────────────────────────────────────
 export type LogEntry = {
   id: string

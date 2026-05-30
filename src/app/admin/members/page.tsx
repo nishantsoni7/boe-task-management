@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile } from '@/lib/types'
+import type { UserProfile, PasswordResetLogEntry } from '@/lib/types'
 import { initials, formatFullDate } from '@/lib/ui'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -39,6 +39,7 @@ export default function MembersPage() {
   const [resetSaving,   setResetSaving]     = useState(false)
   const [resetError,    setResetError]      = useState('')
   const [resetSuccess,  setResetSuccess]    = useState(false)
+  const [resetHistory,  setResetHistory]    = useState<PasswordResetLogEntry[]>([])
   const [full_name, setFullName]  = useState('')
   const [email,     setEmail]     = useState('')
   const [phone,     setPhone]     = useState('')
@@ -178,7 +179,7 @@ export default function MembersPage() {
     const res = await fetch('/api/reset-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: selectedMember.id, newPassword: resetPassword }),
+      body: JSON.stringify({ userId: selectedMember.id, newPassword: resetPassword, actorId: profile?.id }),
     })
     const data = await res.json()
 
@@ -192,6 +193,7 @@ export default function MembersPage() {
     setResetPassword('')
     setResetConfirm('')
     setResetSuccess(true)
+    await loadResetHistory(selectedMember.id)
   }
 
   const toggleActive = async (member: UserProfile) => {
@@ -214,8 +216,25 @@ export default function MembersPage() {
     setTogglingId(null)
   }
 
+  const loadResetHistory = async (memberId: string) => {
+    const { data } = await supabase
+      .from('password_reset_log')
+      .select(`id, target_id, actor_id, reset_at, ip_address, users:actor_id ( full_name )`)
+      .eq('target_id', memberId)
+      .order('reset_at', { ascending: false })
+      .limit(5)
+    if (data) {
+      setResetHistory((data as any[]).map(e => ({
+        ...e,
+        actor_name: e.users?.full_name ?? null,
+      })))
+    }
+  }
+
   useEffect(() => {
     closeResetForm()
+    setResetHistory([])
+    if (selectedMember) loadResetHistory(selectedMember.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMember?.id])
 
@@ -477,6 +496,31 @@ export default function MembersPage() {
                 </div>
               </div>
             </div>
+
+            {/* ── Reset History ───────────────────────────────────────────── */}
+            {resetHistory.length > 0 && (
+              <div style={{ padding: '0 20px 4px' }}>
+                <div style={{ paddingTop: '12px', borderTop: `1px solid ${colors.border}` }}>
+                  <div style={{ fontSize: '10px', color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                    Reset History
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {resetHistory.map(entry => (
+                      <div key={entry.id} style={{ fontSize: '11px', color: colors.secondary }}>
+                        <span style={{ color: colors.primary, fontWeight: 500 }}>
+                          {entry.actor_name ?? 'Unknown'}
+                        </span>
+                        <span style={{ color: colors.muted }}> · </span>
+                        {new Date(entry.reset_at).toLocaleString('en-GB', {
+                          day: '2-digit', month: 'short', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ── Reset Password ──────────────────────────────────────────── */}
             <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
