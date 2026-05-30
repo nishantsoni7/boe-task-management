@@ -32,6 +32,8 @@ export default function DashboardPage() {
   const [resolvedIds,   setResolvedIds]   = useState<Set<string>>(new Set())
   const [selectedTask,  setSelectedTask]  = useState<Task | null>(null)
   const [acknowledging, setAcknowledging] = useState<Set<string>>(new Set())
+  const [teamTasks,     setTeamTasks]     = useState<Task[]>([])
+  const [teamUsers,     setTeamUsers]     = useState<{ id: string; full_name: string }[]>([])
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -99,6 +101,21 @@ export default function DashboardPage() {
       if (taskData) {
         const typedTasks = taskData as unknown as Task[]
         setTasks(typedTasks)
+      }
+
+      if (profileData?.role === 'admin' || profileData?.role === 'manager') {
+        const [{ data: tTasks }, { data: tUsers }] = await Promise.all([
+          supabase
+            .from('tasks')
+            .select('id, assigned_to, due_date, created_at, last_update_at, status')
+            .not('status', 'eq', 'completed'),
+          supabase
+            .from('users')
+            .select('id, full_name')
+            .eq('is_active', true),
+        ])
+        if (tTasks) setTeamTasks(tTasks as unknown as Task[])
+        if (tUsers) setTeamUsers(tUsers as { id: string; full_name: string }[])
       }
 
       console.log('[dashboard] TOTAL', Math.round(performance.now() - pageStart), 'ms')
@@ -245,6 +262,22 @@ export default function DashboardPage() {
       }
       return (PRIORITY_WEIGHT[a.priority] ?? 1) - (PRIORITY_WEIGHT[b.priority] ?? 1)
     })
+
+  const escalationSummary = useMemo(() => {
+    if (teamTasks.length === 0) return []
+    const userMap = new Map(teamUsers.map(u => [u.id, u.full_name]))
+    const byAssignee = new Map<string, { name: string; count: number; oldestDate: string | null }>()
+    teamTasks.filter(t => isOverdue(t.due_date)).forEach(t => {
+      const name = userMap.get(t.assigned_to) ?? t.assigned_to.slice(0, 8)
+      if (!byAssignee.has(t.assigned_to)) {
+        byAssignee.set(t.assigned_to, { name, count: 0, oldestDate: null })
+      }
+      const entry = byAssignee.get(t.assigned_to)!
+      entry.count++
+      if (!entry.oldestDate || t.due_date! < entry.oldestDate) entry.oldestDate = t.due_date!
+    })
+    return [...byAssignee.values()].sort((a, b) => b.count - a.count)
+  }, [teamTasks, teamUsers])
 
   const handleOverdueAction = async (task: Task, action: OverdueAction) => {
     setPromptSaving(true)
@@ -535,6 +568,10 @@ export default function DashboardPage() {
           )}
         </div>
 
+        {escalationSummary.length > 0 && (
+          <EscalationSummaryCard rows={escalationSummary} escalationAge={escalationAge} />
+        )}
+
       </DashboardLayout>
 
       {selectedTask && (
@@ -602,6 +639,58 @@ function FocusSummary({
             Overdue
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function EscalationSummaryCard({
+  rows,
+  escalationAge,
+}: {
+  rows: { name: string; count: number; oldestDate: string | null }[]
+  escalationAge: (iso: string) => string
+}) {
+  return (
+    <div style={{
+      marginBottom: '16px', borderRadius: '8px',
+      background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
+      alignSelf: 'flex-start', width: '100%',
+    }}>
+      <div style={{
+        fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
+        textTransform: 'uppercase', marginBottom: '14px',
+        color: '#C0392B', borderLeft: '2px solid #C0392B', paddingLeft: '8px',
+      }}>
+        Manager Escalation Summary
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {rows.slice(0, 8).map(row => (
+          <div key={row.name} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '8px 12px', borderRadius: '6px',
+            background: 'rgba(192,57,43,0.04)', border: '1px solid rgba(192,57,43,0.10)',
+          }}>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: '#222' }}>
+              {row.name}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {row.oldestDate && (
+                <div style={{ fontSize: '11px', color: colors.muted }}>
+                  oldest {escalationAge(row.oldestDate)}
+                </div>
+              )}
+              <div style={{
+                fontSize: '13px', fontWeight: 700, color: '#C0392B',
+                background: 'rgba(192,57,43,0.08)', borderRadius: '4px',
+                padding: '2px 8px', minWidth: '28px', textAlign: 'center',
+              }}>
+                {row.count}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
