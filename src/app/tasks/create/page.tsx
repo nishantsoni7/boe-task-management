@@ -19,6 +19,8 @@ export default function CreateTaskPage() {
   const [type,        setType]        = useState('completion')
   const [isUrgent,    setIsUrgent]    = useState(false)
   const [dueDate,     setDueDate]     = useState('')
+  const [titleDirty,  setTitleDirty]  = useState(false)
+  const [dateDirty,   setDateDirty]   = useState(false)
   const [assigneeId,  setAssigneeId]  = useState('')
   const [team,        setTeam]        = useState('sales')
   const [users,       setUsers]       = useState<UserProfile[]>([])
@@ -123,6 +125,8 @@ export default function CreateTaskPage() {
       setType('completion')
       setIsUrgent(false)
       setDueDate('')
+      setTitleDirty(false)
+      setDateDirty(false)
       setAssigneeId('')
       setCreatedId(task.id)
       setSuccess(true)
@@ -130,7 +134,7 @@ export default function CreateTaskPage() {
     setLoading(false)
   }
 
-  const canSubmit = !loading && title.trim().length > 0 && assigneeId !== ''
+  const canSubmit = !loading && title.trim().length > 0 && assigneeId !== '' && dueDate !== ''
 
   if (!initDone) return <LoadingScreen />
 
@@ -198,19 +202,25 @@ export default function CreateTaskPage() {
 
           {/* Task Name */}
           <div style={{ marginBottom: '20px' }}>
-            <label className="boe-form-section-label">Task Name</label>
+            <label className="boe-form-section-label">
+              Task Name <span style={{ color: colors.red, fontWeight: 500 }}>*</span>
+            </label>
             <input
               type="text"
               value={title}
-              onChange={e => setTitle(e.target.value)}
+              onChange={e => { setTitle(e.target.value); setTitleDirty(true) }}
               placeholder="e.g. Follow up — Leela Hotel — confirm fabric selection by Friday"
               className="boe-input"
             />
-            {title.length > 0 && title.length < 20 && (
+            {titleDirty && !title.trim() ? (
+              <p style={{ fontSize: '11px', color: colors.red, marginTop: '5px' }}>
+                Task name is required
+              </p>
+            ) : title.length > 0 && title.length < 20 ? (
               <p style={{ fontSize: '11px', color: colors.amber, marginTop: '5px' }}>
                 Be specific: who, what, and by when
               </p>
-            )}
+            ) : null}
           </div>
 
           {/* Assign To + Task Type */}
@@ -273,14 +283,21 @@ export default function CreateTaskPage() {
                 </div>
               </div>
               <div>
-                <label className="boe-form-section-label">Deadline</label>
+                <label className="boe-form-section-label">
+                  Due Date <span style={{ color: colors.red, fontWeight: 500 }}>*</span>
+                </label>
                 <input
                   type="date"
                   value={dueDate}
-                  onChange={e => setDueDate(e.target.value)}
+                  onChange={e => { setDueDate(e.target.value); setDateDirty(true) }}
                   className="boe-input"
                   style={{ colorScheme: 'light' }}
                 />
+                {dateDirty && !dueDate && (
+                  <p style={{ fontSize: '11px', color: colors.red, marginTop: '5px' }}>
+                    Due date is required
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -334,6 +351,11 @@ export default function CreateTaskPage() {
               style={{ resize: 'none' }}
             />
           </div>
+
+          {/* Required fields note */}
+          <p style={{ fontSize: '11px', color: colors.muted, marginBottom: '10px' }}>
+            <span style={{ color: colors.red }}>*</span> Required fields must be completed before creating a task.
+          </p>
 
           {/* Primary action */}
           <button
