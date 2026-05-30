@@ -181,7 +181,14 @@ export default function DashboardPage() {
   const now = new Date()
   const msPerDay = 24 * 60 * 60 * 1000
 
-  const needsAttention: { task: Task; reason: string }[] = []
+  function escalationAge(refIso: string): string {
+    const ms = now.getTime() - new Date(refIso).getTime()
+    const hours = Math.floor(ms / (60 * 60 * 1000))
+    if (hours < 48) return `${hours}h`
+    return `${Math.floor(hours / 24)}d`
+  }
+
+  const needsAttention: { task: Task; reason: string; refIso: string }[] = []
   const needsAttentionIds = new Set<string>()
 
   // Rule 1: Pending ack >24h — unacknowledged and created more than 24h ago
@@ -190,7 +197,7 @@ export default function DashboardPage() {
     .forEach(t => {
       if (!needsAttentionIds.has(t.id)) {
         needsAttentionIds.add(t.id)
-        needsAttention.push({ task: t, reason: 'Pending ack >24h' })
+        needsAttention.push({ task: t, reason: 'Pending ack', refIso: t.created_at })
       }
     })
 
@@ -204,7 +211,8 @@ export default function DashboardPage() {
     .forEach(t => {
       if (!needsAttentionIds.has(t.id)) {
         needsAttentionIds.add(t.id)
-        needsAttention.push({ task: t, reason: 'Waiting >2d' })
+        const ref = t.last_update_at ?? t.created_at
+        needsAttention.push({ task: t, reason: 'Waiting', refIso: ref })
       }
     })
 
@@ -218,7 +226,8 @@ export default function DashboardPage() {
     .forEach(t => {
       if (!needsAttentionIds.has(t.id)) {
         needsAttentionIds.add(t.id)
-        needsAttention.push({ task: t, reason: 'No update >3d' })
+        const ref = t.last_update_at ?? t.created_at
+        needsAttention.push({ task: t, reason: 'No update', refIso: ref })
       }
     })
 
@@ -449,7 +458,7 @@ export default function DashboardPage() {
           </div>
           {needsAttention.length > 0 ? (
             <div className="boe-dashboard-grid">
-              {needsAttention.slice(0, 10).map(({ task, reason }) => (
+              {needsAttention.slice(0, 10).map(({ task, reason, refIso }) => (
                 <TaskCard
                   key={task.id}
                   task={task}
@@ -461,7 +470,7 @@ export default function DashboardPage() {
                       color: '#C0392B', padding: '4px 0 0',
                       letterSpacing: '0.02em',
                     }}>
-                      {reason}
+                      {reason} · {escalationAge(refIso)}
                     </div>
                   }
                 />
