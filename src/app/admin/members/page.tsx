@@ -195,12 +195,14 @@ export default function MembersPage() {
     if (!editName.trim()) { setEditError('Full name is required'); return }
     setEditSaving(true)
     setEditError('')
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({ full_name: editName.trim(), team: editTeam, role: editRole })
-      .eq('id', selectedMember.id)
+    const res = await fetch('/api/update-member', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: selectedMember.id, full_name: editName.trim(), team: editTeam, role: editRole }),
+    })
+    const data = await res.json()
     setEditSaving(false)
-    if (updateError) { setEditError(updateError.message); return }
+    if (!res.ok) { setEditError(data.error || 'Failed to update profile'); return }
     const updated = { ...selectedMember, full_name: editName.trim(), team: editTeam, role: editRole }
     setSelectedMember(updated)
     setMembers(prev => prev.map(m => m.id === updated.id ? updated : m))
