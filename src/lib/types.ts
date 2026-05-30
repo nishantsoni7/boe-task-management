@@ -62,6 +62,13 @@ export type PasswordResetLogEntry = {
   actor_name?: string | null
 }
 
+// ─── Position ─────────────────────────────────────────────────────────────────
+export type Position = {
+  id: string
+  name: string
+  created_at: string
+}
+
 // ─── Activity log ─────────────────────────────────────────────────────────────
 export type LogEntry = {
   id: string
