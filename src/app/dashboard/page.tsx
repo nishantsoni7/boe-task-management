@@ -7,7 +7,7 @@ import type { Task, UserProfile } from '@/lib/types'
 import { isOverdue } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { KpiGrid, KpiCard } from '@/components/ui/KpiCard'
+
 import { LoadingScreen } from '@/components/ui/atoms'
 import { OverduePrompt, type OverdueAction } from '@/components/ui/OverduePrompt'
 import { TaskCard } from '@/components/ui/TaskCard'
@@ -298,13 +298,6 @@ export default function DashboardPage() {
         }
         onSignOut={handleLogout}
       >
-        <KpiGrid>
-          <KpiCard label="Active Tasks"  value={tasks.length}           meta="Assigned to me"  accent="blue"  />
-          <KpiCard label="Need Update"   value={unacknowledged.length}  meta="Needs your tap"  accent="amber" />
-          <KpiCard label="Overdue"       value={allOverdueTasks.length} meta="Action required" accent="red"   />
-          <KpiCard label="In Progress"   value={continueWorking.length} meta="Acknowledged"    accent="green" />
-        </KpiGrid>
-
         <FocusSummary
           actionCount={actionRequired.length}
           blockerCount={waitingTasks.length}
@@ -422,31 +415,52 @@ function FocusSummary({
 }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: '10px',
-      padding: '11px 14px', marginBottom: '20px', borderRadius: '8px',
+      padding: '12px 14px', marginBottom: '20px', borderRadius: '8px',
       background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
       boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
     }}>
-      <span style={{ fontSize: '15px', opacity: 0.45, marginTop: '1px', lineHeight: 1 }}>◎</span>
-      <div>
+      <div style={{
+        fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
+        color: colors.muted, marginBottom: '10px', textTransform: 'uppercase',
+      }}>
+        Today&apos;s Focus
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
         <div style={{
-          fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
-          color: colors.muted, marginBottom: '4px', textTransform: 'uppercase',
+          padding: '10px 12px', borderRadius: '6px',
+          background: actionCount > 0 ? 'rgba(232,160,48,0.07)' : 'rgba(0,0,0,0.02)',
+          border: `1px solid ${actionCount > 0 ? 'rgba(232,160,48,0.2)' : 'rgba(0,0,0,0.06)'}`,
         }}>
-          Today&apos;s Focus
+          <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: font.mono, color: actionCount > 0 ? colors.amber : colors.muted, lineHeight: 1 }}>
+            {actionCount}
+          </div>
+          <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '4px' }}>
+            Tasks need action
+          </div>
         </div>
-        <div style={{ fontSize: '13px' }}>
-          <span style={{ color: actionCount > 0 ? colors.amber : colors.muted }}>
-            {actionCount} {actionCount === 1 ? 'task needs' : 'tasks need'} action
-          </span>
-          {' · '}
-          <span style={{ color: blockerCount > 0 ? '#C8A24A' : colors.muted }}>
-            {blockerCount} {blockerCount === 1 ? 'blocker' : 'blockers'}
-          </span>
-          {' · '}
-          <span style={{ color: overdueCount > 0 ? colors.red : colors.muted }}>
-            {overdueCount} overdue
-          </span>
+        <div style={{
+          padding: '10px 12px', borderRadius: '6px',
+          background: blockerCount > 0 ? 'rgba(200,162,74,0.07)' : 'rgba(0,0,0,0.02)',
+          border: `1px solid ${blockerCount > 0 ? 'rgba(200,162,74,0.2)' : 'rgba(0,0,0,0.06)'}`,
+        }}>
+          <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: font.mono, color: blockerCount > 0 ? '#C8A24A' : colors.muted, lineHeight: 1 }}>
+            {blockerCount}
+          </div>
+          <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '4px' }}>
+            Blockers
+          </div>
+        </div>
+        <div style={{
+          padding: '10px 12px', borderRadius: '6px',
+          background: overdueCount > 0 ? 'rgba(217,79,79,0.07)' : 'rgba(0,0,0,0.02)',
+          border: `1px solid ${overdueCount > 0 ? 'rgba(217,79,79,0.2)' : 'rgba(0,0,0,0.06)'}`,
+        }}>
+          <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: font.mono, color: overdueCount > 0 ? colors.red : colors.muted, lineHeight: 1 }}>
+            {overdueCount}
+          </div>
+          <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '4px' }}>
+            Overdue
+          </div>
         </div>
       </div>
     </div>
