@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
@@ -8,7 +8,10 @@ import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
-import { CheckCircle2, ExternalLink, Star, AlertCircle } from 'lucide-react'
+import {
+  CheckCircle2, ExternalLink, Star, AlertCircle,
+  List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert, CheckCircle,
+} from 'lucide-react'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const TASK_COLUMNS = [
@@ -42,16 +45,17 @@ function formatDate(d: string | null): string | null {
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
 type TabKey = 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
+type TaskType = 'all' | 'self' | 'delegated'
 
-const TABS: { key: TabKey; label: string; color: string }[] = [
-  { key: 'all',            label: 'All',             color: colors.secondary },
-  { key: 'important',      label: 'Important',       color: '#C49A28'        },
-  { key: 'unacknowledged', label: 'Unacknowledged',  color: '#9B6FD4'        },
-  { key: 'in_progress',    label: 'In Progress',     color: colors.blue      },
-  { key: 'overdue',        label: 'Overdue',         color: colors.red       },
-  { key: 'needs_update',   label: 'Pending Update',  color: colors.amber     },
-  { key: 'non_completion', label: 'Non Completion',  color: '#E05C2A'        },
-  { key: 'completed',      label: 'Completed',       color: '#4CAF7D'        },
+const TABS: { key: TabKey; label: string; color: string; Icon: React.ElementType }[] = [
+  { key: 'all',            label: 'All',             color: colors.secondary, Icon: List         },
+  { key: 'important',      label: 'Important',       color: '#C49A28',        Icon: Star         },
+  { key: 'unacknowledged', label: 'Unacknowledged',  color: '#9B6FD4',        Icon: Bell         },
+  { key: 'in_progress',    label: 'In Progress',     color: colors.blue,      Icon: PlayCircle   },
+  { key: 'overdue',        label: 'Overdue',         color: colors.red,       Icon: Clock        },
+  { key: 'needs_update',   label: 'Pending Update',  color: colors.amber,     Icon: RefreshCcw   },
+  { key: 'non_completion', label: 'Non Completion',  color: '#E05C2A',        Icon: ShieldAlert  },
+  { key: 'completed',      label: 'Completed',       color: '#4CAF7D',        Icon: CheckCircle  },
 ]
 
 // ─── Priority config ──────────────────────────────────────────────────────────
@@ -83,7 +87,7 @@ function RightPanel({
   const focus = buildFocusMessage(counts.overdue, counts.needs_update, counts.non_completion)
 
   return (
-    <div style={{ flex: 9, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <div style={{ flex: 3, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
       {/* Today Focus */}
       <div style={{
@@ -115,13 +119,14 @@ function RightPanel({
         </div>
         {TABS.map((item, i) => {
           const isActive = activeTab === item.key
+          const { Icon } = item
           return (
             <button
               key={item.key}
               onClick={() => onTabChange(item.key)}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', padding: '9px 16px',
+                justifyContent: 'space-between', padding: '8px 14px',
                 background: isActive ? `${item.color}0d` : 'transparent',
                 border: 'none',
                 borderBottom: i < TABS.length - 1 ? `1px solid ${colors.border}` : 'none',
@@ -130,16 +135,18 @@ function RightPanel({
               }}
             >
               <span style={{
+                display: 'flex', alignItems: 'center', gap: '7px',
                 fontSize: '12px', fontWeight: isActive ? 600 : 500,
                 color: isActive ? item.color : counts[item.key] > 0 ? colors.secondary : colors.muted,
               }}>
+                <Icon size={12} style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }} />
                 {item.label}
               </span>
               <span style={{
-                fontSize: '13px', fontWeight: 700,
+                fontSize: '12px', fontWeight: 700,
                 color: counts[item.key] > 0 ? item.color : colors.muted,
-                background: isActive ? `${item.color}18` : 'transparent',
-                padding: '1px 7px', borderRadius: '10px',
+                background: isActive ? `${item.color}18` : 'rgba(0,0,0,0.04)',
+                padding: '1px 7px', borderRadius: '10px', minWidth: '22px', textAlign: 'center',
               }}>
                 {counts[item.key]}
               </span>
@@ -346,8 +353,10 @@ function EmptyState({ label }: { label: string }) {
 export default function MyTasksPage() {
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [allTasks,     setAllTasks]     = useState<Task[]>([])
+  const [userId,       setUserId]       = useState<string>('')
   const [loading,      setLoading]      = useState(true)
   const [activeTab,    setActiveTab]    = useState<TabKey>('all')
+  const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isMobile,     setIsMobile]     = useState(false)
 
@@ -372,6 +381,7 @@ export default function MyTasksPage() {
       if (!session) { router.push('/login'); return }
 
       const uid = session.user.id
+      setUserId(uid)
       const [{ data: profileData }, { data: tasks }] = await Promise.all([
         supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
         supabase.from('tasks').select(TASK_COLUMNS).eq('assigned_to', uid).order('due_date', { ascending: true, nullsFirst: false }),
@@ -389,24 +399,30 @@ export default function MyTasksPage() {
     router.push('/login')
   }
 
+  const baseTasks = useMemo(() => {
+    if (taskType === 'self')      return allTasks.filter(t => t.created_by === userId)
+    if (taskType === 'delegated') return allTasks.filter(t => t.created_by !== userId)
+    return allTasks
+  }, [allTasks, taskType, userId])
+
   const buckets = useMemo(() => {
     const sortImportantFirst = (arr: Task[]) =>
       [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
 
     // "All" shows active tasks only — completed tasks are only visible in the Completed tab
-    const all            = sortImportantFirst(allTasks.filter(t => t.status !== 'completed'))
-    const important      = sortImportantFirst(allTasks.filter(t => t.is_urgent && t.status !== 'completed'))
-    const unacknowledged = sortImportantFirst(allTasks.filter(isUnacknowledged))
-    const in_progress    = sortImportantFirst(allTasks.filter(t =>
+    const all            = sortImportantFirst(baseTasks.filter(t => t.status !== 'completed'))
+    const important      = sortImportantFirst(baseTasks.filter(t => t.is_urgent && t.status !== 'completed'))
+    const unacknowledged = sortImportantFirst(baseTasks.filter(isUnacknowledged))
+    const in_progress    = sortImportantFirst(baseTasks.filter(t =>
       !isOverdue(t) && t.status !== 'completed' && ['started', 'working', 'pending'].includes(t.status)
     ))
-    const overdue        = sortImportantFirst(allTasks.filter(isOverdue))
-    const needs_update   = sortImportantFirst(allTasks.filter(needsUpdate))
-    const non_completion = sortImportantFirst(allTasks.filter(isNonCompletion))
-    const completed      = allTasks.filter(t => t.status === 'completed')
+    const overdue        = sortImportantFirst(baseTasks.filter(isOverdue))
+    const needs_update   = sortImportantFirst(baseTasks.filter(needsUpdate))
+    const non_completion = sortImportantFirst(baseTasks.filter(isNonCompletion))
+    const completed      = baseTasks.filter(t => t.status === 'completed')
 
     return { all, important, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
-  }, [allTasks])
+  }, [baseTasks])
 
   const counts: Record<TabKey, number> = {
     all:            buckets.all.length,
@@ -450,7 +466,7 @@ export default function MyTasksPage() {
         <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
 
           {/* ── Left: task list ── */}
-          <div style={{ flex: 11, minWidth: 0 }}>
+          <div style={{ flex: 7, minWidth: 0 }}>
 
             {/* Mobile: horizontal chip tab scroll */}
             {isMobile && (
@@ -470,6 +486,57 @@ export default function MyTasksPage() {
                 ))}
               </div>
             )}
+
+            {/* Page title + task-type filter cards */}
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{
+                fontSize: '15px', fontWeight: 700, color: colors.primary,
+                letterSpacing: '-0.02em', marginBottom: '10px',
+              }}>
+                My Tasks
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {(
+                  [
+                    { key: 'all' as TaskType,       label: 'View All',   count: allTasks.length                                        },
+                    { key: 'self' as TaskType,      label: 'Self Tasks', count: allTasks.filter(t => t.created_by === userId).length   },
+                    { key: 'delegated' as TaskType, label: 'Delegated',  count: allTasks.filter(t => t.created_by !== userId).length   },
+                  ]
+                ).map(item => {
+                  const isActive = taskType === item.key
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => { setTaskType(item.key); setActiveTab('all'); setSelectedTask(null); setSearch(''); setFilterStatus(''); setFilterPriority('') }}
+                      style={{
+                        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                        padding: '9px 13px',
+                        background: isActive ? colors.base : colors.raised,
+                        border: `1.5px solid ${isActive ? colors.secondary + '80' : colors.border}`,
+                        borderRadius: '8px',
+                        boxShadow: isActive ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                        cursor: 'pointer', outline: 'none', transition: 'all 0.12s', textAlign: 'left',
+                      }}
+                    >
+                      <span style={{
+                        fontSize: '16px', fontWeight: 700,
+                        color: isActive ? colors.primary : colors.muted,
+                        lineHeight: 1.2,
+                      }}>
+                        {item.count}
+                      </span>
+                      <span style={{
+                        fontSize: '11px', fontWeight: isActive ? 600 : 500,
+                        color: isActive ? colors.secondary : colors.muted,
+                        marginTop: '2px',
+                      }}>
+                        {item.label}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
 
             {/* Search + filters */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
