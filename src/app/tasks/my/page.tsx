@@ -11,6 +11,7 @@ import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert, CheckCircle,
+  LayoutList, UserCheck, Users, Search,
 } from 'lucide-react'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -117,7 +118,7 @@ function RightPanel({
         }}>
           Views
         </div>
-        {TABS.map((item, i) => {
+        {TABS.filter(t => t.key !== 'completed').map((item, i, arr) => {
           const isActive = activeTab === item.key
           const { Icon } = item
           return (
@@ -129,7 +130,7 @@ function RightPanel({
                 justifyContent: 'space-between', padding: '8px 14px',
                 background: isActive ? `${item.color}0d` : 'transparent',
                 border: 'none',
-                borderBottom: i < TABS.length - 1 ? `1px solid ${colors.border}` : 'none',
+                borderBottom: i < arr.length - 1 ? `1px solid ${colors.border}` : 'none',
                 borderLeft: `3px solid ${isActive ? item.color : 'transparent'}`,
                 cursor: 'pointer', outline: 'none', transition: 'all 0.1s', textAlign: 'left',
               }}
@@ -196,17 +197,21 @@ function ChipTab({
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
-  task, accentColor, onClick,
+  task, accentColor, userId, userMap, onClick,
 }: {
   task: Task
   accentColor: string
+  userId: string
+  userMap: Record<string, string>
   onClick: () => void
 }) {
   const [hovered, setHovered] = useState(false)
-  const overdue   = isOverdue(task)
-  const completed = task.status === 'completed'
-  const priority  = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
-  const dateStr   = formatDate(task.due_date)
+  const overdue    = isOverdue(task)
+  const completed  = task.status === 'completed'
+  const priority   = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
+  const dateStr    = formatDate(task.due_date)
+  const isSelf     = task.created_by === userId
+  const assignerName = isSelf ? null : (userMap[task.created_by] ?? 'member')
 
   const leftBarColor = overdue
     ? colors.red
@@ -273,12 +278,50 @@ function TaskCard({
         )}
       </div>
 
-      {/* Due date */}
-      <div style={{ flexShrink: 0, padding: '0 10px 0 4px' }}>
+      {/* Assigned by — fixed 140px */}
+      <div style={{
+        flexShrink: 0, width: '140px',
+        display: 'flex', alignItems: 'center',
+        paddingLeft: '8px', paddingRight: '6px',
+        overflow: 'hidden',
+      }}>
+        <span
+          title={isSelf ? 'Assigned by you' : `Assigned by ${assignerName}`}
+          style={{
+            display: 'inline-block',
+            maxWidth: '100%',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            fontSize: '10.5px', fontWeight: 600,
+            padding: '1px 7px', borderRadius: '20px',
+            ...(isSelf
+              ? { color: colors.muted,  background: 'rgba(0,0,0,0.05)'           }
+              : { color: '#6B4FA0',     background: 'rgba(155,111,212,0.10)'     }
+            ),
+          }}
+        >
+          {isSelf ? 'By you' : assignerName}
+        </span>
+      </div>
+
+      {/* Priority — fixed 52px */}
+      <div style={{
+        flexShrink: 0, width: '52px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
+          {priority.label}
+        </span>
+      </div>
+
+      {/* Due date — fixed 106px */}
+      <div style={{
+        flexShrink: 0, width: '106px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
         {dateStr ? (
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: '3px',
-            fontSize: '11.5px', fontWeight: overdue ? 600 : 500,
+            fontSize: '11px', fontWeight: overdue ? 600 : 500,
             color: overdue ? colors.red : colors.secondary,
             background: overdue ? `${colors.red}0e` : 'transparent',
             border: `1px solid ${overdue ? colors.red + '30' : 'transparent'}`,
@@ -289,22 +332,15 @@ function TaskCard({
             {dateStr}
           </span>
         ) : (
-          <span style={{ fontSize: '11px', color: colors.muted, padding: '0 6px' }}>—</span>
+          <span style={{ fontSize: '11px', color: colors.muted }}>—</span>
         )}
       </div>
 
-      {/* Priority */}
-      <div style={{ flexShrink: 0, width: '44px', textAlign: 'center', padding: '0 8px' }}>
-        <span style={{
-          fontSize: '10px', fontWeight: 600,
-          color: priority.color, opacity: 0.8,
-        }}>
-          {priority.label}
-        </span>
-      </div>
-
-      {/* Open button */}
-      <div style={{ flexShrink: 0, paddingRight: '12px', paddingLeft: '6px' }}>
+      {/* Open button — fixed 36px */}
+      <div style={{
+        flexShrink: 0, width: '36px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
         <button
           onClick={onClick}
           title="View task"
@@ -354,6 +390,7 @@ export default function MyTasksPage() {
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [allTasks,     setAllTasks]     = useState<Task[]>([])
   const [userId,       setUserId]       = useState<string>('')
+  const [userMap,      setUserMap]      = useState<Record<string, string>>({})
   const [loading,      setLoading]      = useState(true)
   const [activeTab,    setActiveTab]    = useState<TabKey>('all')
   const [taskType,     setTaskType]     = useState<TaskType>('all')
@@ -382,13 +419,19 @@ export default function MyTasksPage() {
 
       const uid = session.user.id
       setUserId(uid)
-      const [{ data: profileData }, { data: tasks }] = await Promise.all([
+      const [{ data: profileData }, { data: tasks }, { data: userData }] = await Promise.all([
         supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
         supabase.from('tasks').select(TASK_COLUMNS).eq('assigned_to', uid).order('due_date', { ascending: true, nullsFirst: false }),
+        supabase.from('users').select('id, full_name'),
       ])
 
       if (profileData) setProfile(profileData as UserProfile)
       setAllTasks((tasks ?? []) as unknown as Task[])
+      if (userData) {
+        const map: Record<string, string> = {}
+        for (const u of userData) map[u.id] = u.full_name
+        setUserMap(map)
+      }
       setLoading(false)
     }
     init()
@@ -460,7 +503,7 @@ export default function MyTasksPage() {
 
   return (
     <>
-      <DashboardLayout profile={profile} title="" onSignOut={handleLogout}>
+      <DashboardLayout profile={profile} title="My Tasks" onSignOut={handleLogout}>
 
         {/* ── Two-column workspace ── */}
         <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
@@ -487,98 +530,93 @@ export default function MyTasksPage() {
               </div>
             )}
 
-            {/* Page title + task-type filter cards */}
-            <div style={{ marginBottom: '14px' }}>
-              <div style={{
-                fontSize: '15px', fontWeight: 700, color: colors.primary,
-                letterSpacing: '-0.02em', marginBottom: '10px',
-              }}>
-                My Tasks
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {(
-                  [
-                    { key: 'all' as TaskType,       label: 'View All',   count: allTasks.length                                        },
-                    { key: 'self' as TaskType,      label: 'Self Tasks', count: allTasks.filter(t => t.created_by === userId).length   },
-                    { key: 'delegated' as TaskType, label: 'Delegated',  count: allTasks.filter(t => t.created_by !== userId).length   },
-                  ]
-                ).map(item => {
-                  const isActive = taskType === item.key
-                  return (
-                    <button
-                      key={item.key}
-                      onClick={() => { setTaskType(item.key); setActiveTab('all'); setSelectedTask(null); setSearch(''); setFilterStatus(''); setFilterPriority('') }}
-                      style={{
-                        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                        padding: '9px 13px',
-                        background: isActive ? colors.base : colors.raised,
-                        border: `1.5px solid ${isActive ? colors.secondary + '80' : colors.border}`,
-                        borderRadius: '8px',
-                        boxShadow: isActive ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-                        cursor: 'pointer', outline: 'none', transition: 'all 0.12s', textAlign: 'left',
-                      }}
-                    >
-                      <span style={{
-                        fontSize: '16px', fontWeight: 700,
-                        color: isActive ? colors.primary : colors.muted,
-                        lineHeight: 1.2,
-                      }}>
-                        {item.count}
-                      </span>
-                      <span style={{
-                        fontSize: '11px', fontWeight: isActive ? 600 : 500,
-                        color: isActive ? colors.secondary : colors.muted,
-                        marginTop: '2px',
-                      }}>
-                        {item.label}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            {/* Task-type filter cards */}
+            {(() => {
+              const TYPE_CARDS: { key: TaskType; label: string; Icon: React.ElementType; accent: string }[] = [
+                { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#5B7FA6' },
+                { key: 'self',      label: 'Self Tasks', Icon: UserCheck,  accent: '#2E9E6B' },
+                { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#9B6FD4' },
+              ]
+              const typeCounts: Record<TaskType, number> = {
+                all:       allTasks.length,
+                self:      allTasks.filter(t => t.created_by === userId).length,
+                delegated: allTasks.filter(t => t.created_by !== userId).length,
+              }
+              return (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                  {TYPE_CARDS.map(item => {
+                    const isActive = taskType === item.key
+                    const { Icon } = item
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => { setTaskType(item.key); setActiveTab('all'); setSelectedTask(null); setSearch(''); setFilterStatus(''); setFilterPriority('') }}
+                        style={{
+                          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                          padding: '9px 12px',
+                          background: isActive ? colors.base : colors.raised,
+                          border: `1.5px solid ${isActive ? item.accent + '70' : colors.border}`,
+                          borderTop: isActive ? `2.5px solid ${item.accent}` : `1.5px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          boxShadow: isActive ? `0 2px 6px ${item.accent}18` : 'none',
+                          cursor: 'pointer', outline: 'none', transition: 'all 0.12s', textAlign: 'left',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px' }}>
+                          <Icon size={13} color={isActive ? item.accent : colors.muted} />
+                          <span style={{
+                            fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            color: isActive ? item.accent : colors.muted,
+                          }}>
+                            {item.label}
+                          </span>
+                        </div>
+                        <span style={{
+                          fontSize: '18px', fontWeight: 700,
+                          color: isActive ? colors.primary : colors.muted,
+                          lineHeight: 1,
+                        }}>
+                          {typeCounts[item.key]}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })()}
 
-            {/* Search + filters */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+            {/* Search + filter toolbar */}
+            <div style={{
+              background: colors.raised,
+              border: `1.5px solid ${colors.border}`,
+              borderRadius: '8px',
+              padding: '8px 10px',
+              marginBottom: '10px',
+              display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap',
+            }}>
+              <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
               <input
                 type="text"
-                placeholder="Search tasks…"
+                placeholder="Find tasks…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 style={{
-                  flex: 1, minWidth: '160px', padding: '6px 10px',
-                  background: colors.base, border: `1.5px solid ${colors.border}`,
-                  borderRadius: '7px', outline: 'none',
+                  flex: 1, minWidth: '140px', padding: '4px 6px',
+                  background: 'transparent', border: 'none',
+                  outline: 'none',
                   fontSize: '12px', color: colors.primary,
                 }}
               />
               <select
-                value={filterStatus}
-                onChange={e => setFilterStatus(e.target.value)}
-                style={{
-                  padding: '6px 8px',
-                  background: colors.base, border: `1.5px solid ${colors.border}`,
-                  borderRadius: '7px', outline: 'none',
-                  fontSize: '12px', color: filterStatus ? colors.primary : colors.muted,
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="started">Started</option>
-                <option value="working">Working</option>
-                <option value="waiting">Waiting</option>
-                <option value="blocked">Blocked</option>
-                <option value="completed">Completed</option>
-              </select>
-              <select
                 value={filterPriority}
                 onChange={e => setFilterPriority(e.target.value)}
                 style={{
-                  padding: '6px 8px',
-                  background: colors.base, border: `1.5px solid ${colors.border}`,
-                  borderRadius: '7px', outline: 'none',
-                  fontSize: '12px', color: filterPriority ? colors.primary : colors.muted,
+                  padding: '4px 10px',
+                  minWidth: '110px',
+                  background: colors.base, border: `1px solid ${colors.border}`,
+                  borderRadius: '6px', outline: 'none',
+                  fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted,
                   cursor: 'pointer',
                 }}
               >
@@ -599,6 +637,8 @@ export default function MyTasksPage() {
                     key={task.id}
                     task={task}
                     accentColor={activeTabColor}
+                    userId={userId}
+                    userMap={userMap}
                     onClick={() => {
                       if (isMobile) {
                         setSelectedTask(prev => prev?.id === task.id ? null : task)
