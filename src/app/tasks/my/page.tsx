@@ -61,8 +61,8 @@ const TABS: { key: TabKey; label: string; color: string; Icon: React.ElementType
 
 // ─── Priority config ──────────────────────────────────────────────────────────
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: 'High', color: '#C0392B'    },
-  medium: { label: 'Med',  color: '#D4831A'    },
+  high:   { label: 'High', color: '#B06035'    },
+  medium: { label: 'Med',  color: '#C07820'    },
   low:    { label: 'Low',  color: colors.muted },
 }
 
@@ -197,13 +197,14 @@ function ChipTab({
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
-  task, accentColor, userId, userMap, onClick, onEdit, onDelete,
+  task, accentColor, userId, userMap, onClick, onView, onEdit, onDelete,
 }: {
   task: Task
   accentColor: string
   userId: string
   userMap: Record<string, string>
   onClick: () => void
+  onView: () => void
   onEdit?: () => void
   onDelete?: () => void
 }) {
@@ -218,35 +219,39 @@ function TaskCard({
   const isSelf     = task.created_by === userId
   const assignerName = isSelf ? null : (userMap[task.created_by] ?? 'member')
 
-  const leftBarColor = overdue
-    ? colors.red
-    : task.is_urgent
-      ? '#C49A28'
-      : 'transparent'
+  const isImportant = task.is_urgent && !completed
 
-  const titleColor = completed
-    ? colors.muted
-    : overdue
-      ? colors.red
-      : colors.primary
+  const cardBackground = completed
+    ? colors.base
+    : isImportant
+      ? (hovered ? 'rgba(196,154,40,0.08)' : 'rgba(196,154,40,0.04)')
+      : (hovered ? colors.raised : colors.base)
+
+  const cardBorder = isImportant
+    ? `1.5px solid rgba(196,154,40,${hovered ? '0.40' : '0.20'})`
+    : `1.5px solid ${colors.border}`
+
+  const titleColor = completed ? colors.muted : colors.primary
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center',
-        background: hovered ? colors.raised : colors.base,
-        border: `1.5px solid ${hovered ? accentColor + '55' : colors.border}`,
-        borderLeft: `3px solid ${leftBarColor}`,
+        background: cardBackground,
+        border: cardBorder,
         borderRadius: '8px',
         boxShadow: hovered
-          ? '0 3px 10px rgba(0,0,0,0.10)'
-          : '0 1px 3px rgba(0,0,0,0.05)',
+          ? '0 2px 8px rgba(0,0,0,0.09)'
+          : isImportant
+            ? '0 1px 4px rgba(196,154,40,0.08)'
+            : '0 1px 3px rgba(0,0,0,0.04)',
         opacity: completed ? 0.5 : 1,
-        transition: 'background 0.1s, box-shadow 0.12s, border-color 0.12s',
-        minHeight: '44px',
-        cursor: 'default',
+        transition: 'background 0.12s, box-shadow 0.12s, border-color 0.12s',
+        minHeight: '48px',
+        cursor: 'pointer',
       }}
     >
       {/* Star indicator */}
@@ -261,7 +266,7 @@ function TaskCard({
       </div>
 
       {/* Title + note */}
-      <div style={{ flex: 1, minWidth: 0, padding: '7px 8px 7px 0' }}>
+      <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
         <div style={{
           fontSize: '13px',
           fontWeight: task.is_urgent ? 600 : 500,
@@ -388,10 +393,10 @@ function TaskCard({
           </>
         )}
         <button
-          onClick={onClick}
+          onClick={e => { e.stopPropagation(); onView() }}
           onMouseEnter={() => setHoveredView(true)}
           onMouseLeave={() => setHoveredView(false)}
-          title="View task"
+          title="Open full page"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: '26px', height: '26px', borderRadius: '6px',
@@ -923,7 +928,7 @@ export default function MyTasksPage() {
             {visibleTasks.length === 0 ? (
               <EmptyState label={TABS.find(t => t.key === activeTab)!.label} />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {visibleTasks.map(task => (
                   <TaskCard
                     key={task.id}
@@ -931,13 +936,8 @@ export default function MyTasksPage() {
                     accentColor={activeTabColor}
                     userId={userId}
                     userMap={userMap}
-                    onClick={() => {
-                      if (isMobile) {
-                        setSelectedTask(prev => prev?.id === task.id ? null : task)
-                      } else {
-                        router.push(`/tasks/${task.id}`)
-                      }
-                    }}
+                    onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
+                    onView={() => router.push(`/tasks/${task.id}`)}
                     onEdit={task.created_by === userId ? () => setEditingTask(task) : undefined}
                     onDelete={task.created_by === userId ? () => handleDelete(task) : undefined}
                   />
@@ -963,10 +963,12 @@ export default function MyTasksPage() {
         </div>
       </DashboardLayout>
 
-      {isMobile && selectedTask && (
+      {selectedTask && (
         <TaskDetailPanel
           task={selectedTask}
+          userMap={userMap}
           onClose={() => setSelectedTask(null)}
+          onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
         />
       )}
 
