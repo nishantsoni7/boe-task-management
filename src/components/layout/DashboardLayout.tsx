@@ -58,9 +58,29 @@ export function DashboardLayout({
           <NavDot
             label="My Tasks"
             dotColor={colors.blue}
-            active={pathname === '/tasks/my'}
+            active={pathname === '/tasks/my' || pathname === '/tasks/my/completed'}
             onClick={() => navTo('/tasks/my')}
           />
+          {(pathname === '/tasks/my' || pathname === '/tasks/my/completed') && (
+            <div style={{ paddingLeft: '20px' }}>
+              <button
+                className={`boe-nav-item${pathname === '/tasks/my' ? ' active' : ''}`}
+                onClick={() => navTo('/tasks/my')}
+                style={{ fontSize: '12px' }}
+              >
+                <span className="boe-nav-dot" style={{ background: colors.blue }} />
+                In Progress
+              </button>
+              <button
+                className={`boe-nav-item${pathname === '/tasks/my/completed' ? ' active' : ''}`}
+                onClick={() => navTo('/tasks/my/completed')}
+                style={{ fontSize: '12px' }}
+              >
+                <span className="boe-nav-dot" style={{ background: '#4CAF7D' }} />
+                Completed
+              </button>
+            </div>
+          )}
           <NavDot
             label="Assigned To Me"
             dotColor={colors.amber}

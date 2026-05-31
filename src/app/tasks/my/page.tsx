@@ -208,10 +208,10 @@ function TaskCard({
   onEdit?: () => void
   onDelete?: () => void
 }) {
-  const [hovered,      setHovered]      = useState(false)
-  const [hoveredEdit,  setHoveredEdit]  = useState(false)
-  const [hoveredDel,   setHoveredDel]   = useState(false)
-  const [hoveredView,  setHoveredView]  = useState(false)
+  const [hovered,     setHovered]     = useState(false)
+  const [hoveredEdit, setHoveredEdit] = useState(false)
+  const [hoveredDel,  setHoveredDel]  = useState(false)
+  const [hoveredView, setHoveredView] = useState(false)
   const overdue    = isOverdue(task)
   const completed  = task.status === 'completed'
   const priority   = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
@@ -386,7 +386,8 @@ function TaskCard({
             >
               <Trash2 size={11} />
             </button>
-          </>) : (
+          </>
+        ) : (
           <>
             <div style={{ width: '26px', height: '26px', flexShrink: 0 }} />
             <div style={{ width: '26px', height: '26px', flexShrink: 0 }} />
@@ -859,7 +860,7 @@ export default function MyTasksPage() {
                 paddingBottom: '4px', marginBottom: '10px',
                 scrollbarWidth: 'none',
               }}>
-                {TABS.map(tab => (
+                {TABS.filter(t => t.key !== 'completed').map(tab => (
                   <ChipTab
                     key={tab.key}
                     tab={tab}
@@ -879,9 +880,9 @@ export default function MyTasksPage() {
                 { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#9B6FD4' },
               ]
               const typeCounts: Record<TaskType, number> = {
-                all:       allTasks.length,
-                self:      allTasks.filter(t => t.created_by === userId).length,
-                delegated: allTasks.filter(t => t.created_by !== userId).length,
+                all:       allTasks.filter(t => t.status !== 'completed').length,
+                self:      allTasks.filter(t => t.created_by === userId && t.status !== 'completed').length,
+                delegated: allTasks.filter(t => t.created_by !== userId && t.status !== 'completed').length,
               }
               return (
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
