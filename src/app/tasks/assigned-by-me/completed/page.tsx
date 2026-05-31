@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, TaskStatus, UserProfile } from '@/lib/types'
+import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -254,50 +254,14 @@ export default function AssignedByMeCompletedPage() {
   }
 
   const handleRestore = async (task: Task) => {
-    const now = new Date().toISOString()
-    const { error: taskErr } = await supabase
-      .from('tasks').update({ status: 'pending', last_update_at: now }).eq('id', task.id)
-    if (taskErr) { console.error('[restore] tasks update failed:', taskErr.message); return }
-
-    await supabase.from('task_activity_log').insert({
-      task_id: task.id, actor_id: userId,
-      action: 'status_changed', from_status: 'completed', to_status: 'pending',
-      note: 'Restored to In Progress',
+    const res = await fetch('/api/restore-task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: task.id }),
     })
-
+    if (!res.ok) { console.error('[restore] failed:', await res.text()); return }
     setAllTasks(prev => prev.filter(t => t.id !== task.id))
     if (selectedTask?.id === task.id) setSelectedTask(null)
-  }
-
-  const handleAddUpdate = async (note: string, newStatus: string) => {
-    if (!selectedTask) return
-    const now = new Date().toISOString()
-    const statusChanged = newStatus !== selectedTask.status
-    const trimmedNote = note.trim() || null
-
-    if (statusChanged) {
-      await supabase.from('tasks').update({ status: newStatus, last_update_at: now }).eq('id', selectedTask.id)
-      await supabase.from('task_activity_log').insert({
-        task_id: selectedTask.id, actor_id: userId,
-        action: 'status_changed', from_status: selectedTask.status,
-        to_status: newStatus, note: trimmedNote,
-      })
-      if (newStatus !== 'completed') {
-        setAllTasks(prev => prev.filter(t => t.id !== selectedTask.id))
-        setSelectedTask(null)
-      } else {
-        setSelectedTask(prev => prev ? { ...prev, status: newStatus as TaskStatus, last_update_at: now } : prev)
-        setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, status: newStatus as TaskStatus, last_update_at: now } : t))
-      }
-    } else if (trimmedNote) {
-      await supabase.from('tasks').update({ last_update_at: now }).eq('id', selectedTask.id)
-      await supabase.from('task_activity_log').insert({
-        task_id: selectedTask.id, actor_id: userId,
-        action: 'status_changed', from_status: selectedTask.status,
-        to_status: selectedTask.status, note: trimmedNote,
-      })
-      setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, last_update_at: now } : t))
-    }
   }
 
   const assigneeOptions = useMemo(() => {
@@ -402,7 +366,6 @@ export default function AssignedByMeCompletedPage() {
           onClose={() => setSelectedTask(null)}
           onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
           currentUserId={userId}
-          onAddUpdate={handleAddUpdate}
         />
       )}
     </>

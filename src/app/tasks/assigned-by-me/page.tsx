@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, TaskStatus, UserProfile } from '@/lib/types'
+import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -504,45 +504,6 @@ export default function AssignedByMePage() {
     setEditingTask(null)
   }
 
-  const handleAddUpdate = async (note: string, newStatus: string) => {
-    if (!selectedTask) return
-    const now = new Date().toISOString()
-    const statusChanged = newStatus !== selectedTask.status
-    const trimmedNote = note.trim() || null
-
-    if (statusChanged) {
-      const { error: taskErr } = await supabase
-        .from('tasks').update({ status: newStatus, last_update_at: now }).eq('id', selectedTask.id)
-      if (taskErr) { console.error('[addUpdate] tasks update failed:', taskErr.message); throw taskErr }
-
-      const { error: logErr } = await supabase.from('task_activity_log').insert({
-        task_id: selectedTask.id, actor_id: userId,
-        action: 'status_changed', from_status: selectedTask.status,
-        to_status: newStatus, note: trimmedNote,
-      })
-      if (logErr) { console.error('[addUpdate] activity log insert failed:', logErr.message); throw logErr }
-
-      if (newStatus === 'completed') {
-        setAllTasks(prev => prev.filter(t => t.id !== selectedTask.id))
-        setSelectedTask(null)
-      } else {
-        setSelectedTask(prev => prev ? { ...prev, status: newStatus as TaskStatus, last_update_at: now } : prev)
-        setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, status: newStatus as TaskStatus, last_update_at: now } : t))
-      }
-    } else if (trimmedNote) {
-      const { error: taskErr } = await supabase
-        .from('tasks').update({ last_update_at: now }).eq('id', selectedTask.id)
-      if (taskErr) { console.error('[addUpdate] tasks update failed:', taskErr.message); throw taskErr }
-
-      await supabase.from('task_activity_log').insert({
-        task_id: selectedTask.id, actor_id: userId,
-        action: 'status_changed', from_status: selectedTask.status,
-        to_status: selectedTask.status, note: trimmedNote,
-      })
-      setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, last_update_at: now } : t))
-    }
-  }
-
   const handleDelete = async (task: Task) => {
     if (task.created_by !== userId) {
       window.alert('You can only delete tasks you created.')
@@ -665,7 +626,6 @@ export default function AssignedByMePage() {
                     key={task.id}
                     task={task}
                     accentColor={activeTabColor}
-                    userId={userId}
                     userMap={userMap}
                     onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
                     onView={() => router.push(`/tasks/${task.id}`)}
@@ -693,7 +653,6 @@ export default function AssignedByMePage() {
           onClose={() => setSelectedTask(null)}
           onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
           currentUserId={userId}
-          onAddUpdate={handleAddUpdate}
         />
       )}
 
