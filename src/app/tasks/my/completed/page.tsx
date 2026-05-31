@@ -9,7 +9,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import {
-  CheckCircle2, ExternalLink, Star, AlertCircle,
+  CheckCircle2, ExternalLink, Star,
   Search, RotateCcw,
 } from 'lucide-react'
 
@@ -20,12 +20,6 @@ const TASK_COLUMNS = [
   'assigned_to', 'created_by', 'delegated_by', 'team',
 ].join(', ')
 
-const TODAY_STR = new Date().toISOString().slice(0, 10)
-
-function formatDate(d: string | null): string | null {
-  if (!d) return null
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
-}
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high:   { label: 'High', color: '#B06035'    },
@@ -34,6 +28,49 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 }
 
 // ─── Task card (completed view) ───────────────────────────────────────────────
+function InfoPanel() {
+  return (
+    <div style={{
+      width: '220px',
+      flexShrink: 0,
+      background: 'rgba(76,175,125,0.04)',
+      border: '1.5px solid rgba(76,175,125,0.18)',
+      borderRadius: '10px',
+      padding: '16px 14px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '14px',
+      alignSelf: 'flex-start',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+        <CheckCircle2 size={14} color="#4CAF7D" />
+        <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+          About Completed Tasks
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {[
+          'You can restore a completed task if it was marked completed by mistake.',
+          'Restored tasks will move back to In Progress.',
+          'Completed tasks older than 30 days may be removed from this section.',
+        ].map((text, i) => (
+          <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+            <span style={{
+              marginTop: '3px', flexShrink: 0,
+              width: '5px', height: '5px', borderRadius: '50%',
+              background: 'rgba(76,175,125,0.5)',
+              display: 'inline-block',
+            }} />
+            <span style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: '1.5' }}>
+              {text}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function CompletedTaskCard({
   task, userId, userMap, onClick, onRestore,
 }: {
@@ -48,10 +85,28 @@ function CompletedTaskCard({
   const [hoveredView,    setHoveredView]    = useState(false)
 
   const priority     = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
-  const dateStr      = formatDate(task.due_date)
   const isSelf       = task.created_by === userId
   const assignerName = isSelf ? null : (userMap[task.created_by] ?? 'member')
-  const wasOverdue   = !!task.due_date && task.due_date < TODAY_STR
+
+  const completionInfo = (() => {
+    const base = task.last_update_at
+    if (!base) return {
+      completedLabel: 'Unknown',
+      countdownLabel: 'Removal date unknown',
+      warn: false,
+    }
+    const completedAt = new Date(base)
+    const completedLabel = completedAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    const removeAt = new Date(completedAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const daysLeft = Math.ceil((removeAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+    let countdownLabel: string
+    let warn = false
+    if (daysLeft <= 0)      { countdownLabel = 'Eligible for removal'; warn = true }
+    else if (daysLeft === 1){ countdownLabel = 'Deletes tomorrow';      warn = true }
+    else if (daysLeft <= 7) { countdownLabel = `Deletes in ${daysLeft} days`; warn = true }
+    else                    { countdownLabel = `Deletes in ${daysLeft} days`; warn = false }
+    return { completedLabel, countdownLabel, warn }
+  })()
 
   return (
     <div
@@ -86,7 +141,7 @@ function CompletedTaskCard({
         <div style={{
           fontSize: '13px', fontWeight: 500, color: colors.muted,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          textDecoration: 'line-through', letterSpacing: '-0.01em',
+          letterSpacing: '-0.01em',
         }}>
           {task.title}
         </div>
@@ -136,31 +191,29 @@ function CompletedTaskCard({
         </span>
       </div>
 
-      {/* Due date — fixed 106px */}
+      {/* Completion info — fixed 140px */}
       <div style={{
-        flexShrink: 0, width: '106px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, width: '140px',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        gap: '2px', paddingLeft: '4px',
       }}>
-        {dateStr ? (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '3px',
-            fontSize: '11px', fontWeight: 500,
-            color: wasOverdue ? colors.red : colors.muted,
-            whiteSpace: 'nowrap', opacity: 0.7,
-          }}>
-            {wasOverdue && <AlertCircle size={9} />}
-            {dateStr}
-          </span>
-        ) : (
-          <span style={{ fontSize: '11px', color: colors.muted }}>—</span>
-        )}
+        <span style={{ fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap' }}>
+          <span style={{ opacity: 0.6 }}>Completed on: </span>{completionInfo.completedLabel}
+        </span>
+        <span style={{
+          fontSize: '10.5px', fontWeight: 600, whiteSpace: 'nowrap',
+          color: completionInfo.warn ? '#C07820' : colors.muted,
+          opacity: completionInfo.warn ? 1 : 0.65,
+        }}>
+          {completionInfo.countdownLabel}
+        </span>
       </div>
 
       {/* Actions: Restore + View */}
       <div style={{
-        flexShrink: 0, width: '84px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        gap: '2px',
+        flexShrink: 0, width: '140px',
+        display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+        gap: '6px', paddingRight: '10px',
       }}>
         <button
           onClick={e => { e.stopPropagation(); onRestore() }}
@@ -168,17 +221,18 @@ function CompletedTaskCard({
           onMouseLeave={() => setHoveredRestore(false)}
           title="Restore to In Progress"
           style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '26px', height: '26px', borderRadius: '6px',
-            background: hoveredRestore ? 'rgba(91,166,127,0.12)' : 'transparent',
-            border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.35)' : 'transparent'}`,
+            display: 'flex', alignItems: 'center', gap: '5px',
+            padding: '4px 10px', borderRadius: '6px', height: '28px',
+            background: hoveredRestore ? 'rgba(91,166,127,0.15)' : 'rgba(91,166,127,0.07)',
+            border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.45)' : 'rgba(91,166,127,0.25)'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredRestore ? '#4CAF7D' : colors.muted,
+            color: hoveredRestore ? '#3a9e6d' : '#4CAF7D',
+            fontSize: '11.5px', fontWeight: 600, whiteSpace: 'nowrap',
           }}
         >
           <RotateCcw size={11} />
+          Restore
         </button>
-        <div style={{ width: '26px', height: '26px', flexShrink: 0 }} />
         <button
           onClick={e => { e.stopPropagation(); onClick() }}
           onMouseEnter={() => setHoveredView(true)}
@@ -186,7 +240,7 @@ function CompletedTaskCard({
           title="View task details"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '26px', height: '26px', borderRadius: '6px',
+            width: '28px', height: '28px', borderRadius: '6px',
             background: hoveredView ? 'rgba(76,175,125,0.12)' : 'transparent',
             border: `1px solid ${hoveredView ? 'rgba(76,175,125,0.35)' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
@@ -420,26 +474,34 @@ export default function CompletedTasksPage() {
           </select>
         </div>
 
-        {/* Task list */}
-        {visibleTasks.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {visibleTasks.map(task => (
-              <CompletedTaskCard
-                key={task.id}
-                task={task}
-                userId={userId}
-                userMap={userMap}
-                onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
-                onRestore={() => handleRestore(task)}
-              />
-            ))}
-            <div style={{ padding: '4px', fontSize: '11px', color: colors.muted }}>
-              {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
-            </div>
+        {/* Two-column: task list + info panel */}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+          {/* Task list */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {visibleTasks.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {visibleTasks.map(task => (
+                  <CompletedTaskCard
+                    key={task.id}
+                    task={task}
+                    userId={userId}
+                    userMap={userMap}
+                    onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
+                    onRestore={() => handleRestore(task)}
+                  />
+                ))}
+                <div style={{ padding: '4px', fontSize: '11px', color: colors.muted }}>
+                  {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Right info panel */}
+          <InfoPanel />
+        </div>
 
       </DashboardLayout>
 
