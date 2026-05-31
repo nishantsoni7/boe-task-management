@@ -233,24 +233,7 @@ export default function TaskDetailPage() {
   return (
     <DashboardLayout profile={profile} title="" onSignOut={handleLogout}>
 
-      {/*
-        3-column desktop layout scoped to this page via an injected <style> tag.
-        On screens ≤ 1023 px (tablet/mobile) columns collapse to a single stack,
-        matching the existing breakpoint used across the rest of the app.
-      */}
-      <style>{`
-        .boe-task-3col {
-          display: grid;
-          grid-template-columns: minmax(0, 45%) minmax(0, 25%) minmax(0, 30%);
-          gap: 16px;
-          align-items: start;
-        }
-        @media (max-width: 1023px) {
-          .boe-task-3col { grid-template-columns: 1fr; }
-        }
-      `}</style>
-
-      <div className="boe-task-3col">
+<div className="boe-task-3col">
 
         {/* ══ COLUMN 1 — unified task workspace card ═════════════════════════ */}
         <div style={{ minWidth: 0 }}>

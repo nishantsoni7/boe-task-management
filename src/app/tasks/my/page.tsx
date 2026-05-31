@@ -8,7 +8,7 @@ import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
-import { CheckCircle2, ExternalLink } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Star, AlertCircle } from 'lucide-react'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const TASK_COLUMNS = [
@@ -35,135 +35,126 @@ function isUnacknowledged(task: Task) {
 function isNonCompletion(task: Task) {
   return isOverdue(task) && needsUpdate(task)
 }
-function formatDate(d: string | null) {
-  if (!d) return '—'
+function formatDate(d: string | null): string | null {
+  if (!d) return null
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
-}
-function formatRelative(d: string | null) {
-  if (!d) return '—'
-  const diffMs = NOW_MS - new Date(d).getTime()
-  const diffH  = Math.floor(diffMs / 3600000)
-  if (diffH < 1)  return 'Just now'
-  if (diffH < 24) return `${diffH}h ago`
-  const diffD = Math.floor(diffH / 24)
-  return `${diffD}d ago`
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
-type TabKey = 'all' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
+type TabKey = 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
 
 const TABS: { key: TabKey; label: string; color: string }[] = [
-  { key: 'all',            label: 'All',                  color: colors.secondary },
-  { key: 'unacknowledged', label: 'Unacknowledged',       color: '#9B6FD4'        },
-  { key: 'in_progress',    label: 'In Progress',          color: colors.blue      },
-  { key: 'overdue',        label: 'Overdue',              color: colors.red       },
-  { key: 'needs_update',   label: 'Pending Update (48h+)', color: colors.amber    },
-  { key: 'non_completion', label: 'Non Completion Zone',  color: '#E05C2A'        },
-  { key: 'completed',      label: 'Completed',            color: '#4CAF7D'        },
+  { key: 'all',            label: 'All',             color: colors.secondary },
+  { key: 'important',      label: 'Important',       color: '#C49A28'        },
+  { key: 'unacknowledged', label: 'Unacknowledged',  color: '#9B6FD4'        },
+  { key: 'in_progress',    label: 'In Progress',     color: colors.blue      },
+  { key: 'overdue',        label: 'Overdue',         color: colors.red       },
+  { key: 'needs_update',   label: 'Pending Update',  color: colors.amber     },
+  { key: 'non_completion', label: 'Non Completion',  color: '#E05C2A'        },
+  { key: 'completed',      label: 'Completed',       color: '#4CAF7D'        },
 ]
 
-// ─── Priority pill config ─────────────────────────────────────────────────────
-const PRIORITY_PILL: Record<string, { label: string; fg: string; bg: string }> = {
-  high:   { label: 'High',   fg: '#C0392B', bg: 'rgba(192,57,43,0.09)'  },
-  medium: { label: 'Medium', fg: '#D4831A', bg: 'rgba(212,131,26,0.09)' },
-  low:    { label: 'Low',    fg: colors.muted, bg: 'rgba(0,0,0,0.04)'   },
+// ─── Priority config ──────────────────────────────────────────────────────────
+const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
+  high:   { label: 'High', color: '#C0392B'    },
+  medium: { label: 'Med',  color: '#D4831A'    },
+  low:    { label: 'Low',  color: colors.muted },
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pending:   'Pending',
-  started:   'Started',
-  working:   'Working',
-  waiting:   'Waiting',
-  blocked:   'Blocked',
-  completed: 'Completed',
-}
-const STATUS_COLOR: Record<string, string> = {
-  pending:   colors.muted,
-  started:   colors.blue,
-  working:   colors.blue,
-  waiting:   colors.amber,
-  blocked:   colors.red,
-  completed: '#4CAF7D',
-}
-
-// ─── Focus Strip ──────────────────────────────────────────────────────────────
-function buildFocusMessage(overdue: number, needsUpdate: number, nonCompletion: number): { text: string; color: string } {
+// ─── Focus message ────────────────────────────────────────────────────────────
+function buildFocusMessage(overdue: number, needsUpd: number, nonCompletion: number) {
   if (nonCompletion > 0)
     return { text: `${nonCompletion} task${nonCompletion > 1 ? 's' : ''} in the risk zone`, color: '#E05C2A' }
   if (overdue > 0)
     return { text: `${overdue} overdue task${overdue > 1 ? 's' : ''} need attention`, color: colors.red }
-  if (needsUpdate > 0)
-    return { text: `${needsUpdate} task${needsUpdate > 1 ? 's' : ''} need${needsUpdate === 1 ? 's' : ''} an update`, color: colors.amber }
+  if (needsUpd > 0)
+    return { text: `${needsUpd} task${needsUpd > 1 ? 's' : ''} need${needsUpd === 1 ? 's' : ''} an update`, color: colors.amber }
   return { text: 'All tasks are on track', color: '#4CAF7D' }
 }
 
-function FocusStrip({
-  unacknowledged, overdue, needsUpdateCount, nonCompletion, activeTab, onTabChange,
+// ─── Right panel ─────────────────────────────────────────────────────────────
+function RightPanel({
+  counts, activeTab, onTabChange,
 }: {
-  unacknowledged: number
-  overdue: number
-  needsUpdateCount: number
-  nonCompletion: number
+  counts: Record<TabKey, number>
   activeTab: TabKey
   onTabChange: (k: TabKey) => void
 }) {
-  const items: { label: string; count: number; color: string; tab: TabKey }[] = [
-    { label: 'Unacknowledged',        count: unacknowledged,  color: '#9B6FD4',   tab: 'unacknowledged' },
-    { label: 'Overdue',               count: overdue,          color: colors.red,  tab: 'overdue'        },
-    { label: 'Pending Update (48h+)', count: needsUpdateCount, color: colors.amber, tab: 'needs_update'  },
-    { label: 'Non Completion Zone',   count: nonCompletion,   color: '#E05C2A',   tab: 'non_completion' },
+  const focus = buildFocusMessage(counts.overdue, counts.needs_update, counts.non_completion)
+
+  const metrics: { label: string; count: number; color: string; tab: TabKey }[] = [
+    { label: 'Important',      count: counts.important,      color: '#C49A28',    tab: 'important'      },
+    { label: 'Overdue',        count: counts.overdue,        color: colors.red,   tab: 'overdue'        },
+    { label: 'Unacknowledged', count: counts.unacknowledged, color: '#9B6FD4',    tab: 'unacknowledged' },
+    { label: 'Pending Update', count: counts.needs_update,   color: colors.amber, tab: 'needs_update'   },
   ]
 
-  const focus = buildFocusMessage(overdue, needsUpdateCount, nonCompletion)
-
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '8px',
-      height: '42px', marginBottom: '10px',
-      background: colors.base,
-      border: `1.5px solid ${colors.border}`,
-      borderRadius: '8px',
-      padding: '0 12px',
-      flexShrink: 0,
-    }}>
-      {/* Today Focus — dynamic actionable message */}
-      <div style={{ flexShrink: 0, marginRight: '2px', display: 'flex', alignItems: 'baseline', gap: '5px' }}>
-        <span style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: colors.muted }}>Today Focus:</span>
-        <span style={{ fontSize: '11.5px', fontWeight: 600, color: focus.color }}>{focus.text}</span>
-      </div>
-      <div style={{ width: '1px', height: '22px', background: colors.border, flexShrink: 0 }} />
+    <div style={{ width: '252px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
-      {/* Metrics */}
-      {items.map(item => {
-        const isActive = activeTab === item.tab
-        return (
-          <button
-            key={item.tab}
-            onClick={() => onTabChange(item.tab)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '5px',
-              padding: '4px 9px', borderRadius: '6px',
-              background: isActive ? `${item.color}12` : 'transparent',
-              border: `1.5px solid ${isActive ? item.color : 'transparent'}`,
-              cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-              flexShrink: 0,
-            }}
-          >
-            <span style={{
-              fontSize: '15px', fontWeight: 700, lineHeight: 1,
-              color: item.count > 0 ? item.color : colors.muted,
-            }}>
-              {item.count}
-            </span>
-            <span style={{
-              fontSize: '10px', fontWeight: 500, color: item.count > 0 ? item.color : colors.muted,
-              whiteSpace: 'nowrap',
-            }}>
-              {item.label}
-            </span>
-          </button>
-        )
-      })}
+      {/* Today Focus */}
+      <div style={{
+        background: colors.base, border: `1.5px solid ${colors.border}`,
+        borderRadius: '10px', padding: '14px 16px',
+      }}>
+        <div style={{
+          fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
+          textTransform: 'uppercase', color: colors.muted, marginBottom: '6px',
+        }}>
+          Today&rsquo;s Focus
+        </div>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: focus.color, lineHeight: 1.45 }}>
+          {focus.text}
+        </div>
+      </div>
+
+      {/* Metric rows */}
+      <div style={{
+        background: colors.base, border: `1.5px solid ${colors.border}`,
+        borderRadius: '10px', overflow: 'hidden',
+      }}>
+        {metrics.map((item, i) => {
+          const isActive = activeTab === item.tab
+          return (
+            <button
+              key={item.tab}
+              onClick={() => onTabChange(item.tab)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', padding: '10px 16px',
+                background: isActive ? `${item.color}0d` : 'transparent',
+                border: 'none',
+                borderBottom: i < metrics.length - 1 ? `1px solid ${colors.border}` : 'none',
+                borderLeft: `3px solid ${isActive ? item.color : 'transparent'}`,
+                cursor: 'pointer', outline: 'none', transition: 'all 0.1s', textAlign: 'left',
+              }}
+            >
+              <span style={{
+                fontSize: '12px', fontWeight: 500,
+                color: item.count > 0 ? colors.secondary : colors.muted,
+              }}>
+                {item.label}
+              </span>
+              <span style={{
+                fontSize: '16px', fontWeight: 700,
+                color: item.count > 0 ? item.color : colors.muted,
+              }}>
+                {item.count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Guidance */}
+      <div style={{
+        background: colors.raised, border: `1.5px solid ${colors.border}`,
+        borderRadius: '10px', padding: '12px 16px',
+        fontSize: '11.5px', color: colors.muted, lineHeight: 1.6,
+      }}>
+        Clear overdue and unacknowledged tasks first. Keep updates timely to avoid the non-completion zone.
+      </div>
+
     </div>
   )
 }
@@ -179,7 +170,7 @@ function TabBar({
 }) {
   return (
     <div style={{
-      display: 'flex', gap: '0',
+      display: 'flex',
       borderBottom: `1.5px solid ${colors.border}`,
       background: colors.raised,
       overflowX: 'auto',
@@ -192,7 +183,7 @@ function TabBar({
             key={tab.key}
             onClick={() => onChange(tab.key)}
             style={{
-              padding: '9px 14px',
+              padding: '9px 13px',
               display: 'flex', alignItems: 'center', gap: '5px',
               background: 'none', border: 'none', cursor: 'pointer',
               borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
@@ -245,37 +236,8 @@ function ChipTab({
   )
 }
 
-// ─── Table header ─────────────────────────────────────────────────────────────
-function TableHeader() {
-  const col = (label: string, width?: number, align: 'left' | 'right' | 'center' = 'left') => (
-    <div style={{
-      fontSize: '10px', fontWeight: 600, letterSpacing: '0.06em',
-      textTransform: 'uppercase', color: colors.muted,
-      width, flex: width ? undefined : 1,
-      textAlign: align, padding: '0 6px', whiteSpace: 'nowrap',
-    }}>
-      {label}
-    </div>
-  )
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center',
-      padding: '6px 10px', borderBottom: `1px solid ${colors.border}`,
-      background: colors.raised,
-    }}>
-      <div style={{ width: '28px', flexShrink: 0 }} />
-      {col('Task')}
-      {col('Due Date', 80, 'right')}
-      {col('Priority', 70, 'center')}
-      {col('Status', 74, 'center')}
-      {col('Updated', 72, 'right')}
-      {col('Actions', 60, 'center')}
-    </div>
-  )
-}
-
-// ─── Task row ─────────────────────────────────────────────────────────────────
-function TaskRow({
+// ─── Task card ────────────────────────────────────────────────────────────────
+function TaskCard({
   task, accentColor, onClick,
 }: {
   task: Task
@@ -283,90 +245,108 @@ function TaskRow({
   onClick: () => void
 }) {
   const [hovered, setHovered] = useState(false)
-  const overdue = isOverdue(task)
-  const pill    = PRIORITY_PILL[task.priority] ?? PRIORITY_PILL.low
-  const statusLabel = STATUS_LABEL[task.status] ?? task.status
-  const statusColor = STATUS_COLOR[task.status] ?? colors.muted
+  const overdue   = isOverdue(task)
+  const completed = task.status === 'completed'
+  const priority  = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
+  const dateStr   = formatDate(task.due_date)
+
+  const leftBarColor = overdue
+    ? colors.red
+    : task.is_urgent
+      ? '#C49A28'
+      : 'transparent'
+
+  const titleColor = completed
+    ? colors.muted
+    : overdue
+      ? colors.red
+      : colors.primary
 
   return (
     <div
-      role="button"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center',
-        padding: '7px 10px',
-        borderBottom: `1px solid ${colors.border}`,
-        cursor: 'default', minHeight: '36px',
         background: hovered ? colors.raised : colors.base,
-        borderLeft: overdue
-          ? `3px solid ${colors.red}66`
-          : task.is_urgent
-            ? '3px solid #C49A2888'
-            : '3px solid transparent',
-        transition: 'background 0.1s',
+        border: `1.5px solid ${hovered ? accentColor + '55' : colors.border}`,
+        borderLeft: `3px solid ${leftBarColor}`,
+        borderRadius: '8px',
+        boxShadow: hovered
+          ? '0 3px 10px rgba(0,0,0,0.10)'
+          : '0 1px 3px rgba(0,0,0,0.05)',
+        opacity: completed ? 0.5 : 1,
+        transition: 'background 0.1s, box-shadow 0.12s, border-color 0.12s',
+        minHeight: '44px',
+        cursor: 'default',
       }}
     >
-      {/* Checkbox */}
-      <div style={{ width: '28px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-        <input
-          type="checkbox"
-          style={{ width: '12px', height: '12px', cursor: 'pointer', flexShrink: 0, accentColor }}
-          onClick={e => e.stopPropagation()}
-          readOnly
-        />
+      {/* Star indicator */}
+      <div style={{
+        width: '28px', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {task.is_urgent
+          ? <Star size={11} fill="#C49A28" color="#C49A28" />
+          : <div style={{ width: '11px' }} />
+        }
       </div>
-      {/* Title */}
-      <div style={{ flex: 1, minWidth: 0, padding: '0 6px' }}>
-        <span style={{
-          fontSize: '12.5px',
-          fontWeight: task.is_urgent ? 650 : 500,
+
+      {/* Title + note */}
+      <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
+        <div style={{
+          fontSize: '13px',
+          fontWeight: task.is_urgent ? 600 : 500,
+          color: titleColor,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          textDecoration: completed ? 'line-through' : 'none',
           letterSpacing: '-0.01em',
-          color: overdue ? colors.red : colors.primary,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          display: 'block',
         }}>
-          {task.is_urgent && (
-            <span style={{ fontSize: '10px', marginRight: '5px', lineHeight: 1, verticalAlign: 'middle' }}>⭐</span>
-          )}
           {task.title}
-        </span>
+        </div>
+        {task.note && (
+          <div style={{
+            fontSize: '11px', color: colors.muted,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            marginTop: '2px',
+          }}>
+            {task.note}
+          </div>
+        )}
       </div>
+
       {/* Due date */}
-      <div style={{ width: '80px', textAlign: 'right', padding: '0 6px', flexShrink: 0 }}>
-        <span style={{
-          fontSize: '11.5px', fontWeight: overdue ? 600 : 400,
-          color: overdue ? colors.red : colors.secondary,
-        }}>
-          {formatDate(task.due_date)}
-        </span>
+      <div style={{ flexShrink: 0, padding: '0 4px' }}>
+        {dateStr ? (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '3px',
+            fontSize: '11.5px', fontWeight: overdue ? 600 : 500,
+            color: overdue ? colors.red : colors.secondary,
+            background: overdue ? `${colors.red}0e` : 'transparent',
+            border: `1px solid ${overdue ? colors.red + '30' : 'transparent'}`,
+            padding: '2px 6px', borderRadius: '4px',
+            whiteSpace: 'nowrap',
+          }}>
+            {overdue && <AlertCircle size={9} />}
+            {dateStr}
+          </span>
+        ) : (
+          <span style={{ fontSize: '11px', color: colors.muted, padding: '0 6px' }}>—</span>
+        )}
       </div>
+
       {/* Priority */}
-      <div style={{ width: '70px', display: 'flex', justifyContent: 'center', padding: '0 4px', flexShrink: 0 }}>
+      <div style={{ flexShrink: 0, width: '38px', textAlign: 'center', padding: '0 2px' }}>
         <span style={{
-          fontSize: '10px', fontWeight: 600, color: pill.fg, background: pill.bg,
-          padding: '2px 7px', borderRadius: '4px', whiteSpace: 'nowrap',
+          fontSize: '10px', fontWeight: 600,
+          color: priority.color, opacity: 0.8,
         }}>
-          {pill.label}
+          {priority.label}
         </span>
       </div>
-      {/* Status */}
-      <div style={{ width: '74px', display: 'flex', justifyContent: 'center', padding: '0 4px', flexShrink: 0 }}>
-        <span style={{
-          fontSize: '10px', fontWeight: 600, color: statusColor,
-          background: `${statusColor}18`, padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap',
-        }}>
-          {statusLabel}
-        </span>
-      </div>
-      {/* Updated */}
-      <div style={{ width: '72px', textAlign: 'right', padding: '0 6px', flexShrink: 0 }}>
-        <span style={{ fontSize: '11px', color: colors.muted }}>
-          {formatRelative(task.last_update_at ?? task.created_at)}
-        </span>
-      </div>
-      {/* Actions */}
-      <div style={{ width: '60px', display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+
+      {/* Open button */}
+      <div style={{ flexShrink: 0, paddingRight: '8px', paddingLeft: '2px' }}>
         <button
           onClick={onClick}
           title="View task"
@@ -389,12 +369,24 @@ function TaskRow({
 // ─── Empty state ──────────────────────────────────────────────────────────────
 function EmptyState({ label }: { label: string }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 24px', gap: '6px' }}>
-      <span style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '4px' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '48px 24px', gap: '6px',
+    }}>
+      <span style={{
+        width: '32px', height: '32px', borderRadius: '50%',
+        background: 'rgba(0,0,0,0.05)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        marginBottom: '4px',
+      }}>
         <CheckCircle2 size={14} color={colors.muted} />
       </span>
-      <span style={{ fontSize: '13px', fontWeight: 500, color: colors.secondary }}>No {label} tasks</span>
-      <span style={{ fontSize: '12px', color: colors.muted }}>You&apos;re all clear here.</span>
+      <span style={{ fontSize: '13px', fontWeight: 500, color: colors.secondary }}>
+        No {label} tasks
+      </span>
+      <span style={{ fontSize: '12px', color: colors.muted }}>
+        You&apos;re all clear here.
+      </span>
     </div>
   )
 }
@@ -450,7 +442,9 @@ export default function MyTasksPage() {
     const sortImportantFirst = (arr: Task[]) =>
       [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
 
-    const all            = sortImportantFirst(allTasks)
+    // "All" shows active tasks only — completed tasks are only visible in the Completed tab
+    const all            = sortImportantFirst(allTasks.filter(t => t.status !== 'completed'))
+    const important      = sortImportantFirst(allTasks.filter(t => t.is_urgent && t.status !== 'completed'))
     const unacknowledged = sortImportantFirst(allTasks.filter(isUnacknowledged))
     const in_progress    = sortImportantFirst(allTasks.filter(t =>
       !isOverdue(t) && t.status !== 'completed' && ['started', 'working', 'pending'].includes(t.status)
@@ -460,11 +454,12 @@ export default function MyTasksPage() {
     const non_completion = sortImportantFirst(allTasks.filter(isNonCompletion))
     const completed      = allTasks.filter(t => t.status === 'completed')
 
-    return { all, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
+    return { all, important, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
   }, [allTasks])
 
   const counts: Record<TabKey, number> = {
     all:            buckets.all.length,
+    important:      buckets.important.length,
     unacknowledged: buckets.unacknowledged.length,
     in_progress:    buckets.in_progress.length,
     overdue:        buckets.overdue.length,
@@ -500,129 +495,137 @@ export default function MyTasksPage() {
     <>
       <DashboardLayout profile={profile} title="" onSignOut={handleLogout}>
 
-        {/* ── Focus Strip (desktop) / Chip scroll (mobile) ── */}
-        {isMobile ? (
-          <div style={{
-            display: 'flex', gap: '8px', overflowX: 'auto',
-            paddingBottom: '4px', marginBottom: '10px',
-            scrollbarWidth: 'none',
-          }}>
-            {TABS.map(tab => (
-              <ChipTab
-                key={tab.key}
-                tab={tab}
-                count={counts[tab.key]}
-                isActive={activeTab === tab.key}
-                onClick={() => handleTabChange(tab.key)}
+        {/* ── Two-column workspace ── */}
+        <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+
+          {/* ── Left: task list ── */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+
+            {/* Mobile: horizontal chip tab scroll */}
+            {isMobile && (
+              <div style={{
+                display: 'flex', gap: '8px', overflowX: 'auto',
+                paddingBottom: '4px', marginBottom: '10px',
+                scrollbarWidth: 'none',
+              }}>
+                {TABS.map(tab => (
+                  <ChipTab
+                    key={tab.key}
+                    tab={tab}
+                    count={counts[tab.key]}
+                    isActive={activeTab === tab.key}
+                    onClick={() => handleTabChange(tab.key)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Search + filters */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                placeholder="Search tasks…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{
+                  flex: 1, minWidth: '160px', padding: '6px 10px',
+                  background: colors.base, border: `1.5px solid ${colors.border}`,
+                  borderRadius: '7px', outline: 'none',
+                  fontSize: '12px', color: colors.primary,
+                }}
               />
-            ))}
+              <select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                style={{
+                  padding: '6px 8px',
+                  background: colors.base, border: `1.5px solid ${colors.border}`,
+                  borderRadius: '7px', outline: 'none',
+                  fontSize: '12px', color: filterStatus ? colors.primary : colors.muted,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="started">Started</option>
+                <option value="working">Working</option>
+                <option value="waiting">Waiting</option>
+                <option value="blocked">Blocked</option>
+                <option value="completed">Completed</option>
+              </select>
+              <select
+                value={filterPriority}
+                onChange={e => setFilterPriority(e.target.value)}
+                style={{
+                  padding: '6px 8px',
+                  background: colors.base, border: `1.5px solid ${colors.border}`,
+                  borderRadius: '7px', outline: 'none',
+                  fontSize: '12px', color: filterPriority ? colors.primary : colors.muted,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">All Priority</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+
+            {/* Tab bar panel */}
+            {!isMobile && (
+              <div style={{
+                background: colors.base,
+                border: `1.5px solid ${colors.border}`,
+                borderRadius: '10px',
+                overflow: 'hidden',
+                marginBottom: '10px',
+              }}>
+                <TabBar
+                  tabs={TABS}
+                  counts={counts}
+                  activeTab={activeTab}
+                  onChange={handleTabChange}
+                />
+              </div>
+            )}
+
+            {/* Task cards */}
+            {visibleTasks.length === 0 ? (
+              <EmptyState label={TABS.find(t => t.key === activeTab)!.label} />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {visibleTasks.map(task => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    accentColor={activeTabColor}
+                    onClick={() => {
+                      if (isMobile) {
+                        setSelectedTask(prev => prev?.id === task.id ? null : task)
+                      } else {
+                        router.push(`/tasks/${task.id}`)
+                      }
+                    }}
+                  />
+                ))}
+                <div style={{
+                  padding: '4px 4px', fontSize: '11px', color: colors.muted,
+                }}>
+                  {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          <FocusStrip
-            unacknowledged={counts.unacknowledged}
-            overdue={counts.overdue}
-            needsUpdateCount={counts.needs_update}
-            nonCompletion={counts.non_completion}
-            activeTab={activeTab}
-            onTabChange={handleTabChange}
-          />
-        )}
 
-        {/* ── Search + Filters ── */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            placeholder="Search tasks…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{
-              flex: 1, minWidth: '160px',
-              padding: '6px 10px',
-              background: colors.base, border: `1.5px solid ${colors.border}`,
-              borderRadius: '7px', outline: 'none',
-              fontSize: '12px', color: colors.primary,
-            }}
-          />
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            style={{
-              padding: '6px 8px',
-              background: colors.base, border: `1.5px solid ${colors.border}`,
-              borderRadius: '7px', outline: 'none',
-              fontSize: '12px', color: filterStatus ? colors.primary : colors.muted,
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="started">Started</option>
-            <option value="working">Working</option>
-            <option value="waiting">Waiting</option>
-            <option value="blocked">Blocked</option>
-            <option value="completed">Completed</option>
-          </select>
-          <select
-            value={filterPriority}
-            onChange={e => setFilterPriority(e.target.value)}
-            style={{
-              padding: '6px 8px',
-              background: colors.base, border: `1.5px solid ${colors.border}`,
-              borderRadius: '7px', outline: 'none',
-              fontSize: '12px', color: filterPriority ? colors.primary : colors.muted,
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">All Priority</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-        </div>
-
-        {/* ── Task list ── */}
-        <div style={{
-          background: colors.base,
-          border: `1.5px solid ${colors.border}`,
-          borderRadius: '10px',
-          overflow: 'hidden',
-        }}>
+          {/* ── Right: summary panel (desktop only) ── */}
           {!isMobile && (
-            <TabBar
-              tabs={TABS}
+            <RightPanel
               counts={counts}
               activeTab={activeTab}
-              onChange={handleTabChange}
+              onTabChange={handleTabChange}
             />
           )}
 
-          {visibleTasks.length === 0 ? (
-            <EmptyState label={TABS.find(t => t.key === activeTab)!.label} />
-          ) : (
-            <>
-              <TableHeader />
-              {visibleTasks.map(task => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  accentColor={activeTabColor}
-                  onClick={() => {
-                    if (isMobile) {
-                      setSelectedTask(prev => prev?.id === task.id ? null : task)
-                    } else {
-                      router.push(`/tasks/${task.id}`)
-                    }
-                  }}
-                />
-              ))}
-              <div style={{
-                padding: '7px 18px', fontSize: '11px', color: colors.muted,
-                borderTop: `1px solid ${colors.border}`, background: colors.raised,
-              }}>
-                {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
-              </div>
-            </>
-          )}
         </div>
       </DashboardLayout>
 
