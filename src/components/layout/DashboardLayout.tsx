@@ -3,13 +3,12 @@
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import type { UserProfile } from '@/lib/types'
-import { colors, font } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { initials } from '@/lib/ui'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
 // Shell: fixed 220px sidebar + main-content (margin-left: 220px).
-// Matches reference HTML structure exactly — no persistent right panel.
-// Each page owns its own internal layout grid (dashboard-grid, manager-layout, etc.)
+// Each page owns its own internal layout grid.
 
 type DashboardLayoutProps = {
   profile: UserProfile | null
@@ -32,8 +31,7 @@ export function DashboardLayout({
   const router   = useRouter()
   const pathname = usePathname()
 
-  const isAdmin   = profile?.role === 'admin'
-  const isManager = profile?.role === 'admin' || profile?.role === 'manager'
+  const isAdmin = profile?.role === 'admin'
 
   const navTo = (path: string) => {
     router.push(path)
@@ -52,135 +50,105 @@ export function DashboardLayout({
       {/* Sidebar */}
       <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
 
-        {/* Primary nav */}
+        {/* Tasks section */}
         <div className="boe-sidebar-section">
           <div className="boe-sidebar-label">Tasks</div>
-          <NavDot
+
+          {/* New Task */}
+          <NavParent
+            label="New Task"
+            active={pathname === '/tasks/create-self' || pathname === '/tasks/create'}
+          />
+          <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
+            <NavChild
+              label="Self Task"
+              active={pathname === '/tasks/create-self'}
+              onClick={() => navTo('/tasks/create-self')}
+            />
+            <NavChild
+              label="Delegate Task"
+              active={pathname === '/tasks/create'}
+              onClick={() => navTo('/tasks/create')}
+            />
+          </div>
+
+          {/* My Tasks */}
+          <NavParent
             label="My Tasks"
-            dotColor={colors.blue}
             active={pathname === '/tasks/my' || pathname === '/tasks/my/completed'}
-            onClick={() => navTo('/tasks/my')}
           />
-          {(pathname === '/tasks/my' || pathname === '/tasks/my/completed') && (
-            <div style={{ paddingLeft: '20px' }}>
-              <button
-                className={`boe-nav-item${pathname === '/tasks/my' ? ' active' : ''}`}
-                onClick={() => navTo('/tasks/my')}
-                style={{ fontSize: '12px' }}
-              >
-                <span className="boe-nav-dot" style={{ background: colors.blue }} />
-                In Progress
-              </button>
-              <button
-                className={`boe-nav-item${pathname === '/tasks/my/completed' ? ' active' : ''}`}
-                onClick={() => navTo('/tasks/my/completed')}
-                style={{ fontSize: '12px' }}
-              >
-                <span className="boe-nav-dot" style={{ background: '#4CAF7D' }} />
-                Completed
-              </button>
-            </div>
-          )}
-          <NavDot
-            label="Assigned To Me"
-            dotColor={colors.amber}
-            active={pathname === '/tasks/assigned-to-me'}
-            onClick={() => navTo('/tasks/assigned-to-me')}
-          />
-          {isManager && (
-            <NavDot
-              label="View All Tasks"
-              dotColor={colors.secondary}
-              active={pathname === '/tasks/all'}
-              onClick={() => navTo('/tasks/all')}
+          <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
+            <NavChild
+              label="In Progress"
+              active={pathname === '/tasks/my'}
+              onClick={() => navTo('/tasks/my')}
             />
-          )}
+            <NavChild
+              label="Completed"
+              active={pathname === '/tasks/my/completed'}
+              onClick={() => navTo('/tasks/my/completed')}
+            />
+          </div>
+
+          {/* Assigned By Me */}
+          <NavParent
+            label="Assigned By Me"
+            active={pathname === '/tasks/assigned-by-me' || pathname === '/tasks/assigned-by-me/completed'}
+          />
+          <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
+            <NavChild
+              label="In Progress"
+              active={pathname === '/tasks/assigned-by-me'}
+              onClick={() => navTo('/tasks/assigned-by-me')}
+            />
+            <NavChild
+              label="Completed"
+              active={pathname === '/tasks/assigned-by-me/completed'}
+              onClick={() => navTo('/tasks/assigned-by-me/completed')}
+            />
+          </div>
         </div>
 
-        {/* Main nav group */}
-        <div className="boe-sidebar-section">
-          <div className="boe-sidebar-label">Main</div>
-          <NavDot
-            label="Dashboard"
-            dotColor={colors.secondary}
-            active={pathname === '/dashboard'}
-            onClick={() => navTo('/dashboard')}
-          />
-          {isManager && (
-            <NavDot
-              label="Manager View"
-              dotColor={colors.amber}
-              active={pathname === '/manager'}
-              onClick={() => navTo('/manager')}
+        {/* Admin section */}
+        {isAdmin && (
+          <div className="boe-sidebar-section" style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+            <div className="boe-sidebar-label">Admin</div>
+
+            {/* Settings */}
+            <NavParent
+              label="Settings"
+              active={pathname.startsWith('/settings') || pathname === '/admin/members'}
             />
-          )}
-          {isAdmin && (
-            <>
-              <NavDot
-                label="Settings"
-                dotColor={colors.muted}
-                active={pathname === '/settings' || pathname === '/admin/members'}
-                onClick={() => navTo('/settings')}
+            <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
+              <NavChild
+                label="Members"
+                active={pathname === '/admin/members'}
+                onClick={() => navTo('/admin/members')}
               />
-              {(pathname.startsWith('/settings') || pathname === '/admin/members') && (
-                <div style={{ paddingLeft: '20px' }}>
-                  <button
-                    className={`boe-nav-item${pathname === '/admin/members' ? ' active' : ''}`}
-                    onClick={() => navTo('/admin/members')}
-                    style={{ fontSize: '12px' }}
-                  >
-                    <span className="boe-nav-dot" style={{ background: colors.muted }} />
-                    Members
-                  </button>
-                  <button
-                    className={`boe-nav-item${pathname.startsWith('/settings/roles') ? ' active' : ''}`}
-                    onClick={() => navTo('/settings/roles')}
-                    style={{ fontSize: '12px' }}
-                  >
-                    <span className="boe-nav-dot" style={{ background: colors.muted }} />
-                    Roles
-                  </button>
-                  <button
-                    className={`boe-nav-item${pathname.startsWith('/settings/positions') ? ' active' : ''}`}
-                    onClick={() => navTo('/settings/positions')}
-                    style={{ fontSize: '12px' }}
-                  >
-                    <span className="boe-nav-dot" style={{ background: colors.muted }} />
-                    Positions
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Quick actions */}
-        <div className="boe-sidebar-section">
-          <div className="boe-sidebar-label">Quick</div>
-          <button
-            className={`boe-nav-item${pathname === '/tasks/create-self' ? ' active' : ''}`}
-            onClick={() => navTo('/tasks/create-self')}
-          >
-            + New Task for Self
-          </button>
-          <button
-            className={`boe-nav-item${pathname === '/tasks/create' ? ' active' : ''}`}
-            onClick={() => navTo('/tasks/create')}
-          >
-            + New Task for Team
-          </button>
-        </div>
+              <NavChild
+                label="Roles"
+                active={pathname.startsWith('/settings/roles')}
+                onClick={() => navTo('/settings/roles')}
+              />
+              <NavChild
+                label="Positions"
+                active={pathname.startsWith('/settings/positions')}
+                onClick={() => navTo('/settings/positions')}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Profile + sign out — pushed to bottom */}
         {profile && (
           <div style={{
             marginTop: 'auto',
-            borderTop: '1px solid rgba(255,255,255,0.045)',
-            padding: '10px 8px',
+            borderTop: '1px solid rgba(0,0,0,0.08)',
+            padding: '12px 8px 20px',
           }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '6px 8px', marginBottom: '2px',
+              padding: '6px 8px', marginBottom: '4px',
             }}>
               <div style={{
                 width: 24, height: 24, borderRadius: '50%',
@@ -240,7 +208,7 @@ export function DashboardLayout({
           )}
         </div>
 
-        {/* Page body — pages render their layout grids here */}
+        {/* Page body */}
         <div className="boe-page-body">
           {children}
         </div>
@@ -250,28 +218,71 @@ export function DashboardLayout({
   )
 }
 
-// ─── NavDot ───────────────────────────────────────────────────────────────────
-// Sidebar nav item with colored dot — matches reference HTML .nav-item structure.
-type NavDotProps = {
-  label: string
-  dotColor: string
-  active: boolean
-  onClick: () => void
-  badge?: number
-  badgeAmber?: boolean
+// ─── NavParent ────────────────────────────────────────────────────────────────
+// Non-clickable parent label with chevron — visually groups child items.
+type NavParentProps = { label: string; active: boolean }
+
+function NavParent({ label, active }: NavParentProps) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '8px 10px 6px',
+      borderRadius: '5px',
+      fontSize: '13px',
+      fontWeight: 600,
+      color: active ? '#111318' : '#2D3748',
+      letterSpacing: '0.01em',
+      userSelect: 'none',
+      background: active ? 'rgba(0,0,0,0.04)' : 'transparent',
+    }}>
+      {label}
+      <span style={{
+        fontSize: '11px',
+        opacity: 0.55,
+        lineHeight: 1,
+        marginLeft: '4px',
+        color: '#6B7280',
+      }}>▾</span>
+    </div>
+  )
 }
 
-function NavDot({ label, dotColor, active, onClick, badge, badgeAmber }: NavDotProps) {
+// ─── NavLeaf ──────────────────────────────────────────────────────────────────
+// Top-level clickable nav item with no children.
+type NavLeafProps = { label: string; active: boolean; onClick: () => void }
+
+function NavLeaf({ label, active, onClick }: NavLeafProps) {
   return (
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
       onClick={onClick}
+      style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
     >
-      <span className="boe-nav-dot" style={{ background: dotColor }} />
       {label}
-      {badge !== undefined && badge > 0 && (
-        <span className={`boe-nav-badge${badgeAmber ? ' amber' : ''}`}>{badge}</span>
-      )}
+    </button>
+  )
+}
+
+// ─── NavChild ─────────────────────────────────────────────────────────────────
+// Indented child nav item — sits beneath a NavParent.
+type NavChildProps = { label: string; active: boolean; onClick: () => void }
+
+function NavChild({ label, active, onClick }: NavChildProps) {
+  return (
+    <button
+      className={`boe-nav-item${active ? ' active' : ''}`}
+      onClick={onClick}
+      style={{
+        fontSize: '12px',
+        fontWeight: active ? 500 : 400,
+        color: active ? '#111318' : '#6B7280',
+        paddingLeft: '18px',
+        marginBottom: '1px',
+      }}
+    >
+      {label}
     </button>
   )
 }
