@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, UserProfile } from '@/lib/types'
+import type { Task, UserProfile, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -632,6 +632,8 @@ export default function MyTasksPage() {
   const [activeTab,    setActiveTab]    = useState<TabKey>('all')
   const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [taskLog,      setTaskLog]      = useState<LogEntry[]>([])
+  const [logLoading,   setLogLoading]   = useState(false)
   const [editingTask,  setEditingTask]  = useState<Task | null>(null)
   const [isMobile,     setIsMobile]     = useState(false)
 
@@ -675,6 +677,25 @@ export default function MyTasksPage() {
     }
     init()
   }, [])
+
+  useEffect(() => {
+    if (!selectedTask) { setTaskLog([]); return }
+    let cancelled = false
+    const fetchLog = async () => {
+      setLogLoading(true)
+      const { data } = await supabase
+        .from('task_activity_log')
+        .select(`id, action, note, from_status, to_status, created_at, actor_id, users:actor_id ( full_name )`)
+        .eq('task_id', selectedTask.id)
+        .order('created_at', { ascending: false })
+      if (!cancelled) {
+        setTaskLog((data ?? []).map((e: any) => ({ ...e, actor_name: e.users?.full_name ?? null })))
+        setLogLoading(false)
+      }
+    }
+    fetchLog()
+    return () => { cancelled = true }
+  }, [selectedTask?.id])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -967,6 +988,8 @@ export default function MyTasksPage() {
         <TaskDetailPanel
           task={selectedTask}
           userMap={userMap}
+          logEntries={taskLog}
+          logLoading={logLoading}
           onClose={() => setSelectedTask(null)}
           onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
         />

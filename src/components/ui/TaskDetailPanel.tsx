@@ -1,15 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { Task } from '@/lib/types'
+import type { Task, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { isOverdue, formatShortDate } from '@/lib/ui'
+import { isOverdue, formatShortDate, formatLogAction, formatDateTime } from '@/lib/ui'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Props = {
   task: Task
   userMap?: Record<string, string>
+  logEntries?: LogEntry[]
+  logLoading?: boolean
   onClose: () => void
   onOpenFullPage?: () => void
 }
@@ -31,13 +33,17 @@ const STATUS_COLOR: Record<string, string> = {
   completed: colors.green,
 }
 
-// ─── Static timeline items ────────────────────────────────────────────────────
+// ─── Activity dot color by action ────────────────────────────────────────────
 
-const TIMELINE_ITEMS = [
-  { text: 'Task created',               time: 'May 28, 2026 · 10:14 AM', dot: colors.green   },
-  { text: 'Status changed to In Progress', time: 'May 29, 2026 · 2:03 PM',  dot: colors.blue    },
-  { text: 'Marked as Important',        time: 'May 30, 2026 · 9:47 AM',  dot: '#C49A28'      },
-]
+function actionDotColor(action: string): string {
+  if (action === 'created')          return colors.green
+  if (action === 'status_changed')   return colors.blue
+  if (action === 'acknowledged')     return colors.secondary
+  if (action === 'progress_update')  return colors.amber
+  if (action === 'delegated')        return '#9B6FD4'
+  if (action === 'escalated')        return colors.red
+  return colors.muted
+}
 
 // ─── Meta row ─────────────────────────────────────────────────────────────────
 
@@ -61,7 +67,7 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 
 // ─── TaskDetailPanel ──────────────────────────────────────────────────────────
 
-export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage }: Props) {
+export function TaskDetailPanel({ task, userMap, logEntries, logLoading, onClose, onOpenFullPage }: Props) {
   const [open, setOpen] = useState(false)
 
   const isMobile =
@@ -95,7 +101,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage }: Prop
     ? 'Myself'
     : (userMap?.[task.created_by] ?? '—')
 
-  // ── Animation values ───────────────────────────────────────────────────
+  // Animation values
   const desktopTransform = open ? 'translateX(0)' : 'translateX(100%)'
   const mobileTransform  = open ? 'translateY(0)' : 'translateY(100%)'
   const duration         = isMobile ? '220ms' : '180ms'
@@ -155,7 +161,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage }: Prop
         style={{ ...panelBase, ...(isMobile ? mobileStyles : desktopStyles) }}
       >
 
-        {/* ── Sticky header ─────────────────────────────────────────────── */}
+        {/* Sticky header */}
         <div style={{
           padding:      '13px 16px 11px',
           borderBottom: `1px solid ${colors.border}`,
@@ -172,7 +178,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage }: Prop
                 letterSpacing: '0.06em', textTransform: 'uppercase',
                 color: '#C49A28', marginBottom: '4px',
               }}>
-                ⭐ Important
+                Important
               </div>
             )}
             <p style={{
@@ -195,11 +201,11 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage }: Prop
             onMouseEnter={e => (e.currentTarget.style.color = colors.primary)}
             onMouseLeave={e => (e.currentTarget.style.color = colors.muted)}
           >
-            ×
+            x
           </button>
         </div>
 
-        {/* ── Scrollable body ────────────────────────────────────────────── */}
+        {/* Scrollable body */}
         <div style={{
           flex:       1,
           overflowY:  'auto',
@@ -245,7 +251,11 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage }: Prop
                   fontWeight: overdue ? 600 : 400,
                 }}>
                   {formatShortDate(task.due_date)}
-                  {overdue && <span style={{ marginLeft: '5px', fontSize: '10px', color: colors.red }}>Overdue</span>}
+                  {overdue && (
+                    <span style={{ marginLeft: '5px', fontSize: '10px', color: colors.red }}>
+                      Overdue
+                    </span>
+                  )}
                 </span>
               ) : '—'}
             </MetaRow>
@@ -291,36 +301,52 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage }: Prop
             }}>
               Activity
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-              {TIMELINE_ITEMS.map((item, i) => (
-                <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  {/* Track */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                    <div style={{
-                      width: '7px', height: '7px', borderRadius: '50%',
-                      background: item.dot, marginTop: '4px', flexShrink: 0,
-                    }} />
-                    {i < TIMELINE_ITEMS.length - 1 && (
-                      <div style={{ width: '1px', flex: 1, background: colors.border, minHeight: '20px', marginTop: '3px' }} />
-                    )}
+
+            {logLoading && (
+              <p style={{ fontSize: '12px', color: colors.muted, margin: 0 }}>Loading...</p>
+            )}
+
+            {!logLoading && (!logEntries || logEntries.length === 0) && (
+              <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+                No activity recorded.
+              </p>
+            )}
+
+            {!logLoading && logEntries && logEntries.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                {logEntries.map((entry, i) => (
+                  <div key={entry.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                      <div style={{
+                        width: '7px', height: '7px', borderRadius: '50%',
+                        background: actionDotColor(entry.action), marginTop: '4px', flexShrink: 0,
+                      }} />
+                      {i < logEntries.length - 1 && (
+                        <div style={{ width: '1px', flex: 1, background: colors.border, minHeight: '20px', marginTop: '3px' }} />
+                      )}
+                    </div>
+                    <div style={{ paddingBottom: i < logEntries.length - 1 ? '12px' : '0' }}>
+                      <p style={{ fontSize: '12px', color: colors.secondary, margin: 0, lineHeight: 1.45 }}>
+                        {formatLogAction(entry.action, entry.from_status, entry.to_status)}
+                      </p>
+                      {entry.note && (
+                        <p style={{ fontSize: '11px', color: colors.secondary, margin: '2px 0 0', fontStyle: 'italic' }}>
+                          {entry.note}
+                        </p>
+                      )}
+                      <p style={{ fontSize: '10.5px', color: colors.muted, margin: '2px 0 0' }}>
+                        {entry.actor_name ? entry.actor_name + ' - ' : ''}{formatDateTime(entry.created_at)}
+                      </p>
+                    </div>
                   </div>
-                  {/* Content */}
-                  <div style={{ paddingBottom: i < TIMELINE_ITEMS.length - 1 ? '12px' : '0' }}>
-                    <p style={{ fontSize: '12px', color: colors.secondary, margin: 0, lineHeight: 1.45 }}>
-                      {item.text}
-                    </p>
-                    <p style={{ fontSize: '10.5px', color: colors.muted, margin: '2px 0 0' }}>
-                      {item.time}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
 
-        {/* ── Sticky footer ──────────────────────────────────────────────── */}
+        {/* Sticky footer */}
         <div style={{
           padding:      '10px 14px',
           borderTop:    `1px solid ${colors.border}`,
@@ -330,22 +356,24 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage }: Prop
           gap:          '8px',
           justifyContent: 'flex-end',
         }}>
-          {onOpenFullPage && <button
-            onClick={onOpenFullPage}
-            style={{
-              padding: '7px 14px', borderRadius: '7px',
-              border: `1px solid ${colors.borderSoft}`,
-              background: colors.base,
-              cursor: 'pointer',
-              fontSize: '12px', fontWeight: 600,
-              color: colors.secondary,
-              transition: 'background 0.12s',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = colors.float)}
-            onMouseLeave={e => (e.currentTarget.style.background = colors.base)}
-          >
-            Open Full Page
-          </button>}
+          {onOpenFullPage && (
+            <button
+              onClick={onOpenFullPage}
+              style={{
+                padding: '7px 14px', borderRadius: '7px',
+                border: `1px solid ${colors.borderSoft}`,
+                background: colors.base,
+                cursor: 'pointer',
+                fontSize: '12px', fontWeight: 600,
+                color: colors.secondary,
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = colors.float)}
+              onMouseLeave={e => (e.currentTarget.style.background = colors.base)}
+            >
+              Open Full Page
+            </button>
+          )}
           <button
             onClick={onClose}
             style={{
