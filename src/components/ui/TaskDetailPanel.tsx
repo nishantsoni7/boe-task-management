@@ -1,19 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { Task, LogEntry } from '@/lib/types'
+import type { Task } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { isOverdue, formatShortDate, formatLogAction, formatDateTime } from '@/lib/ui'
+import { isOverdue, formatShortDate } from '@/lib/ui'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Props = {
   task: Task
   userMap?: Record<string, string>
-  logEntries?: LogEntry[]
-  logLoading?: boolean
   onClose: () => void
   onOpenFullPage?: () => void
+  currentUserId?: string
+  onAddUpdate?: (note: string, newStatus: string) => Promise<void>
 }
 
 // ─── Priority display ─────────────────────────────────────────────────────────
@@ -31,18 +31,6 @@ const STATUS_COLOR: Record<string, string> = {
   waiting:   colors.amber,
   blocked:   colors.red,
   completed: colors.green,
-}
-
-// ─── Activity dot color by action ────────────────────────────────────────────
-
-function actionDotColor(action: string): string {
-  if (action === 'created')          return colors.green
-  if (action === 'status_changed')   return colors.blue
-  if (action === 'acknowledged')     return colors.secondary
-  if (action === 'progress_update')  return colors.amber
-  if (action === 'delegated')        return '#9B6FD4'
-  if (action === 'escalated')        return colors.red
-  return colors.muted
 }
 
 // ─── Meta row ─────────────────────────────────────────────────────────────────
@@ -67,8 +55,18 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 
 // ─── TaskDetailPanel ──────────────────────────────────────────────────────────
 
-export function TaskDetailPanel({ task, userMap, logEntries, logLoading, onClose, onOpenFullPage }: Props) {
-  const [open, setOpen] = useState(false)
+export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, currentUserId, onAddUpdate }: Props) {
+  const [open,            setOpen]           = useState(false)
+  const [updateNote,      setUpdateNote]     = useState('')
+  const [selectedStatus,  setSelectedStatus] = useState(task.status)
+  const [submitting,      setSubmitting]     = useState(false)
+  const [completingTask,  setCompletingTask] = useState(false)
+
+  // Reset form when a different task is opened
+  useEffect(() => {
+    setUpdateNote('')
+    setSelectedStatus(task.status)
+  }, [task.id, task.status])
 
   const isMobile =
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -293,56 +291,118 @@ export function TaskDetailPanel({ task, userMap, logEntries, logLoading, onClose
           {/* Divider */}
           <div style={{ height: '1px', background: colors.border }} />
 
-          {/* Activity Timeline */}
-          <div>
-            <div style={{
-              fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
-              letterSpacing: '0.07em', color: colors.muted, marginBottom: '10px',
-            }}>
-              Activity
-            </div>
-
-            {logLoading && (
-              <p style={{ fontSize: '12px', color: colors.muted, margin: 0 }}>Loading...</p>
-            )}
-
-            {!logLoading && (!logEntries || logEntries.length === 0) && (
-              <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
-                No activity recorded.
-              </p>
-            )}
-
-            {!logLoading && logEntries && logEntries.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-                {logEntries.map((entry, i) => (
-                  <div key={entry.id} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                      <div style={{
-                        width: '7px', height: '7px', borderRadius: '50%',
-                        background: actionDotColor(entry.action), marginTop: '4px', flexShrink: 0,
-                      }} />
-                      {i < logEntries.length - 1 && (
-                        <div style={{ width: '1px', flex: 1, background: colors.border, minHeight: '20px', marginTop: '3px' }} />
-                      )}
-                    </div>
-                    <div style={{ paddingBottom: i < logEntries.length - 1 ? '12px' : '0' }}>
-                      <p style={{ fontSize: '12px', color: colors.secondary, margin: 0, lineHeight: 1.45 }}>
-                        {formatLogAction(entry.action, entry.from_status, entry.to_status)}
-                      </p>
-                      {entry.note && (
-                        <p style={{ fontSize: '11px', color: colors.secondary, margin: '2px 0 0', fontStyle: 'italic' }}>
-                          {entry.note}
-                        </p>
-                      )}
-                      <p style={{ fontSize: '10.5px', color: colors.muted, margin: '2px 0 0' }}>
-                        {entry.actor_name ? entry.actor_name + ' - ' : ''}{formatDateTime(entry.created_at)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+          {/* Add Update — assignee only, not completed */}
+          {onAddUpdate && currentUserId === task.assigned_to && task.status !== 'completed' && (
+            <div>
+              <div style={{
+                fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
+                letterSpacing: '0.07em', color: colors.muted, marginBottom: '8px',
+              }}>
+                Add Update
               </div>
-            )}
-          </div>
+
+              {/* Status picker */}
+              <div style={{ marginBottom: '7px' }}>
+                <div style={{
+                  fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
+                  letterSpacing: '0.05em', color: colors.muted, marginBottom: '5px',
+                }}>
+                  Status
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                  {(['pending', 'started', 'working', 'waiting', 'blocked'] as const).map(s => {
+                    const active = selectedStatus === s
+                    const c = STATUS_COLOR[s]
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => setSelectedStatus(s)}
+                        style={{
+                          padding: '4px 11px', borderRadius: '20px',
+                          border: `1.5px solid ${active ? c : colors.border}`,
+                          background: active ? `${c}18` : 'transparent',
+                          color: active ? c : colors.muted,
+                          fontSize: '11px', fontWeight: active ? 600 : 400,
+                          cursor: 'pointer', textTransform: 'capitalize',
+                          transition: 'all 0.12s',
+                        }}
+                      >
+                        {s}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Note textarea */}
+              <textarea
+                value={updateNote}
+                onChange={e => setUpdateNote(e.target.value)}
+                placeholder="What's the latest progress… (optional)"
+                rows={2}
+                className="boe-input"
+                style={{ resize: 'none', width: '100%', boxSizing: 'border-box', fontSize: '12px' }}
+              />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', gap: '8px' }}>
+                {/* Mark as Completed — secondary, left-aligned */}
+                <button
+                  disabled={completingTask || submitting}
+                  onClick={async () => {
+                    setCompletingTask(true)
+                    try {
+                      await onAddUpdate('', 'completed')
+                    } finally {
+                      setCompletingTask(false)
+                    }
+                  }}
+                  style={{
+                    padding: '6px 12px', borderRadius: '6px',
+                    border: `1px solid ${colors.green}50`,
+                    background: completingTask || submitting ? colors.float : colors.greenTint,
+                    color: completingTask || submitting ? colors.muted : colors.green,
+                    fontSize: '11.5px', fontWeight: 600,
+                    cursor: completingTask || submitting ? 'not-allowed' : 'pointer',
+                    transition: 'background 0.12s',
+                  }}
+                >
+                  {completingTask ? 'Completing…' : 'Mark as Completed'}
+                </button>
+
+                {/* Post Update — primary action, right-aligned */}
+                {(() => {
+                  const statusChanged = selectedStatus !== task.status
+                  const hasNote = updateNote.trim().length > 0
+                  const canSubmit = !submitting && !completingTask && (statusChanged || hasNote)
+                  return (
+                    <button
+                      disabled={!canSubmit}
+                      onClick={async () => {
+                        if (!canSubmit) return
+                        setSubmitting(true)
+                        try {
+                          await onAddUpdate(updateNote.trim(), selectedStatus)
+                          setUpdateNote('')
+                        } finally {
+                          setSubmitting(false)
+                        }
+                      }}
+                      style={{
+                        padding: '6px 14px', borderRadius: '6px', border: 'none',
+                        background: canSubmit ? colors.amber : colors.float,
+                        color: canSubmit ? '#fff' : colors.muted,
+                        fontSize: '11.5px', fontWeight: 600,
+                        cursor: canSubmit ? 'pointer' : 'not-allowed',
+                        transition: 'background 0.12s',
+                      }}
+                    >
+                      {submitting ? 'Posting…' : 'Post Update'}
+                    </button>
+                  )
+                })()}
+              </div>
+            </div>
+          )}
 
         </div>
 

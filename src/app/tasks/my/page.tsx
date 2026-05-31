@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, UserProfile, LogEntry } from '@/lib/types'
+import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -632,8 +632,6 @@ export default function MyTasksPage() {
   const [activeTab,    setActiveTab]    = useState<TabKey>('all')
   const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [taskLog,      setTaskLog]      = useState<LogEntry[]>([])
-  const [logLoading,   setLogLoading]   = useState(false)
   const [editingTask,  setEditingTask]  = useState<Task | null>(null)
   const [isMobile,     setIsMobile]     = useState(false)
 
@@ -678,25 +676,6 @@ export default function MyTasksPage() {
     init()
   }, [])
 
-  useEffect(() => {
-    if (!selectedTask) { setTaskLog([]); return }
-    let cancelled = false
-    const fetchLog = async () => {
-      setLogLoading(true)
-      const { data } = await supabase
-        .from('task_activity_log')
-        .select(`id, action, note, from_status, to_status, created_at, actor_id, users:actor_id ( full_name )`)
-        .eq('task_id', selectedTask.id)
-        .order('created_at', { ascending: false })
-      if (!cancelled) {
-        setTaskLog((data ?? []).map((e: any) => ({ ...e, actor_name: e.users?.full_name ?? null })))
-        setLogLoading(false)
-      }
-    }
-    fetchLog()
-    return () => { cancelled = true }
-  }, [selectedTask?.id])
-
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
@@ -705,6 +684,69 @@ export default function MyTasksPage() {
   const handleEditSaved = (updated: Task) => {
     setAllTasks(prev => prev.map(t => t.id === updated.id ? updated : t))
     setEditingTask(null)
+  }
+
+  const handleAddUpdate = async (note: string, newStatus: string) => {
+    if (!selectedTask) return
+    const now = new Date().toISOString()
+    const statusChanged = newStatus !== selectedTask.status
+    const trimmedNote = note.trim() || null
+
+    if (statusChanged) {
+      const taskUpdates: Record<string, unknown> = { status: newStatus, last_update_at: now }
+      const { error: taskErr } = await supabase
+        .from('tasks').update(taskUpdates).eq('id', selectedTask.id)
+      if (taskErr) {
+        console.error('[addUpdate] tasks update failed:', taskErr.message)
+        throw taskErr
+      }
+
+      const { error: logErr } = await supabase
+        .from('task_activity_log')
+        .insert({
+          task_id:     selectedTask.id,
+          actor_id:    userId,
+          action:      'status_changed',
+          from_status: selectedTask.status,
+          to_status:   newStatus,
+          note:        trimmedNote,
+        })
+      if (logErr) {
+        console.error('[addUpdate] activity log insert failed:', logErr.message)
+        throw logErr
+      }
+
+      setSelectedTask(prev => prev ? { ...prev, status: newStatus as any, last_update_at: now } : prev)
+      setAllTasks(prev => prev.map(t =>
+        t.id === selectedTask.id ? { ...t, status: newStatus as any, last_update_at: now } : t
+      ))
+    } else if (trimmedNote) {
+      const { error: taskErr } = await supabase
+        .from('tasks').update({ last_update_at: now }).eq('id', selectedTask.id)
+      if (taskErr) {
+        console.error('[addUpdate] tasks update failed:', taskErr.message)
+        throw taskErr
+      }
+
+      const { error: logErr } = await supabase
+        .from('task_activity_log')
+        .insert({
+          task_id:     selectedTask.id,
+          actor_id:    userId,
+          action:      'status_changed',
+          from_status: selectedTask.status,
+          to_status:   selectedTask.status,
+          note:        trimmedNote,
+        })
+      if (logErr) {
+        console.error('[addUpdate] activity log insert failed:', logErr.message)
+        throw logErr
+      }
+
+      setAllTasks(prev => prev.map(t =>
+        t.id === selectedTask.id ? { ...t, last_update_at: now } : t
+      ))
+    }
   }
 
   const handleDelete = async (task: Task) => {
@@ -988,10 +1030,10 @@ export default function MyTasksPage() {
         <TaskDetailPanel
           task={selectedTask}
           userMap={userMap}
-          logEntries={taskLog}
-          logLoading={logLoading}
           onClose={() => setSelectedTask(null)}
           onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
+          currentUserId={userId}
+          onAddUpdate={handleAddUpdate}
         />
       )}
 

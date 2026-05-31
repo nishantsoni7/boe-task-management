@@ -121,12 +121,15 @@ export function formatLogAction(
   fromStatus?: string | null,
   toStatus?: string | null,
 ): string {
-  if (action === 'status_changed')   return `Status: ${fromStatus ?? '?'} → ${toStatus ?? '?'}`
+  if (action === 'status_changed') {
+    if (fromStatus && toStatus && fromStatus === toStatus) return 'Progress update'
+    return `Status: ${fromStatus ?? '?'} → ${toStatus ?? '?'}`
+  }
   if (action === 'acknowledged')     return 'Task acknowledged'
   if (action === 'delegated')        return 'Task delegated'
   if (action === 'created')          return 'Task created'
   if (action === 'deadline_changed') return 'Deadline updated'
   if (action === 'escalated')        return 'Escalated'
-  if (action === 'progress_update')  return 'Progress update (overdue)'
+  if (action === 'progress_update')  return 'Progress update'
   return action.replace(/_/g, ' ')
 }
