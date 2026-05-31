@@ -544,7 +544,10 @@ export default function AssignedByMePage() {
   }
 
   const handleDelete = async (task: Task) => {
-    if (task.created_by !== userId) return
+    if (task.created_by !== userId) {
+      window.alert('You can only delete tasks you created.')
+      return
+    }
     const ok = window.confirm('Delete this task? This cannot be undone.')
     if (!ok) return
     const { data: deleted, error } = await supabase.from('tasks').delete().eq('id', task.id).select('id')
