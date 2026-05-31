@@ -398,9 +398,10 @@ export default function MyTasksPage() {
   const [isMobile,     setIsMobile]     = useState(false)
 
   // Search + filter state
-  const [search,         setSearch]         = useState('')
-  const [filterStatus,   setFilterStatus]   = useState('')
-  const [filterPriority, setFilterPriority] = useState('')
+  const [search,           setSearch]           = useState('')
+  const [filterStatus,     setFilterStatus]     = useState('')
+  const [filterPriority,   setFilterPriority]   = useState('')
+  const [filterAssignedBy, setFilterAssignedBy] = useState('')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -448,6 +449,17 @@ export default function MyTasksPage() {
     return allTasks
   }, [allTasks, taskType, userId])
 
+  const assignerOptions = useMemo(() => {
+    const ids = [...new Set(baseTasks.map(t => t.created_by))]
+    const others = ids
+      .filter(id => id !== userId)
+      .map(id => ({ value: id, label: userMap[id] ?? 'Unknown' }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+    return taskType === 'all'
+      ? [{ value: userId, label: 'You' }, ...others]
+      : others
+  }, [baseTasks, taskType, userId, userMap])
+
   const buckets = useMemo(() => {
     const sortImportantFirst = (arr: Task[]) =>
       [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
@@ -480,6 +492,7 @@ export default function MyTasksPage() {
 
   const visibleTasks = useMemo(() => {
     let tasks = buckets[activeTab]
+    if (filterAssignedBy) tasks = tasks.filter(t => t.created_by === filterAssignedBy)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       tasks = tasks.filter(t => t.title.toLowerCase().includes(q))
@@ -487,7 +500,7 @@ export default function MyTasksPage() {
     if (filterStatus)   tasks = tasks.filter(t => t.status === filterStatus)
     if (filterPriority) tasks = tasks.filter(t => t.priority === filterPriority)
     return tasks
-  }, [buckets, activeTab, search, filterStatus, filterPriority])
+  }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy])
 
   function handleTabChange(key: TabKey) {
     setActiveTab(key)
@@ -495,6 +508,7 @@ export default function MyTasksPage() {
     setSearch('')
     setFilterStatus('')
     setFilterPriority('')
+    // Note: intentionally NOT resetting filterAssignedBy here — tab changes stay within same task type
   }
 
   const activeTabColor = TABS.find(t => t.key === activeTab)?.color ?? colors.secondary
@@ -550,7 +564,7 @@ export default function MyTasksPage() {
                     return (
                       <button
                         key={item.key}
-                        onClick={() => { setTaskType(item.key); setActiveTab('all'); setSelectedTask(null); setSearch(''); setFilterStatus(''); setFilterPriority('') }}
+                        onClick={() => { setTaskType(item.key); setActiveTab('all'); setSelectedTask(null); setSearch(''); setFilterStatus(''); setFilterPriority(''); setFilterAssignedBy('') }}
                         style={{
                           flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
                           padding: '9px 12px',
@@ -608,6 +622,25 @@ export default function MyTasksPage() {
                   fontSize: '12px', color: colors.primary,
                 }}
               />
+              {taskType !== 'self' && assignerOptions.length > 0 && (
+                <select
+                  value={filterAssignedBy}
+                  onChange={e => setFilterAssignedBy(e.target.value)}
+                  style={{
+                    padding: '4px 10px',
+                    minWidth: '130px',
+                    background: colors.base, border: `1px solid ${colors.border}`,
+                    borderRadius: '6px', outline: 'none',
+                    fontSize: '11.5px', color: filterAssignedBy ? colors.primary : colors.muted,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="">All Assigners</option>
+                  {assignerOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              )}
               <select
                 value={filterPriority}
                 onChange={e => setFilterPriority(e.target.value)}
