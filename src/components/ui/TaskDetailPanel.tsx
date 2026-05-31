@@ -68,8 +68,13 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
     setSelectedStatus(task.status)
   }, [task.id, task.status])
 
-  const isMobile =
-    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   // Entrance animation
   useEffect(() => {

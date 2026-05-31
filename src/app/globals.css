@@ -1277,11 +1277,6 @@ body {
   margin-top: 1px;
 }
 
-/* ── Form sections (create task) ── */
-.boe-form-section {
-  margin-bottom: 18px;
-}
-
 .boe-form-section-label {
   font-size: 10px;
   font-weight: 700;
