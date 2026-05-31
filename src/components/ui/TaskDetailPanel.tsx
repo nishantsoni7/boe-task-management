@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import type { Task } from '@/lib/types'
+import { useEffect, useState, useMemo } from 'react'
+import type { Task, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { isOverdue, formatShortDate } from '@/lib/ui'
+import { isOverdue, formatShortDate, formatDateTime, timeAgo, formatLogAction } from '@/lib/ui'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,16 +57,33 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 // ─── TaskDetailPanel ──────────────────────────────────────────────────────────
 
 export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, currentUserId, onAddUpdate }: Props) {
-  const [open,            setOpen]           = useState(false)
-  const [updateNote,      setUpdateNote]     = useState('')
-  const [selectedStatus,  setSelectedStatus] = useState(task.status)
-  const [submitting,      setSubmitting]     = useState(false)
-  const [completingTask,  setCompletingTask] = useState(false)
+  const [open,           setOpen]          = useState(false)
+  const [updateNote,     setUpdateNote]    = useState('')
+  const [selectedStatus, setSelectedStatus] = useState(task.status)
+  const [submitting,     setSubmitting]    = useState(false)
+  const [completingTask, setCompletingTask] = useState(false)
+  const [activityLog,    setActivityLog]   = useState<LogEntry[]>([])
+  const [logLoading,     setLogLoading]    = useState(true)
 
-  // Reset form when a different task is opened
+  const supabase = useMemo(() => createClient(), [])
+
+  // Reset form and reload log when a different task is opened
   useEffect(() => {
     setUpdateNote('')
     setSelectedStatus(task.status)
+    setActivityLog([])
+    setLogLoading(true)
+
+    supabase
+      .from('task_activity_log')
+      .select('id, action, note, from_status, to_status, created_at, actor_id')
+      .eq('task_id', task.id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }: { data: LogEntry[] | null }) => {
+        if (data) setActivityLog(data)
+        setLogLoading(false)
+      })
   }, [task.id, task.status])
 
   const [isMobile, setIsMobile] = useState(false)
@@ -96,15 +114,14 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
     return () => { document.body.style.overflow = prev }
   }, [])
 
-  const overdue      = isOverdue(task.due_date)
-  const priority     = PRIORITY[task.priority] ?? PRIORITY.low
-  const statusColor  = STATUS_COLOR[task.status] ?? colors.muted
+  const overdue        = isOverdue(task.due_date)
+  const priority       = PRIORITY[task.priority] ?? PRIORITY.low
+  const statusColor    = STATUS_COLOR[task.status] ?? colors.muted
   const isSelfAssigned = task.assigned_to === task.created_by
   const assignedByName = isSelfAssigned
     ? 'Myself'
     : (userMap?.[task.created_by] ?? '—')
 
-  // Animation values
   const desktopTransform = open ? 'translateX(0)' : 'translateX(100%)'
   const mobileTransform  = open ? 'translateY(0)' : 'translateY(100%)'
   const duration         = isMobile ? '220ms' : '180ms'
@@ -210,14 +227,14 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
 
         {/* Scrollable body */}
         <div style={{
-          flex:       1,
-          overflowY:  'auto',
+          flex:           1,
+          overflowY:      'auto',
           scrollbarWidth: 'thin',
           scrollbarColor: `rgba(0,0,0,0.08) transparent`,
-          padding:    '14px 16px',
-          display:    'flex',
-          flexDirection: 'column',
-          gap:        '14px',
+          padding:        '14px 16px',
+          display:        'flex',
+          flexDirection:  'column',
+          gap:            '14px',
         }}>
 
           {/* Metadata */}
@@ -265,7 +282,41 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
 
             <MetaRow label="Assigned By">{assignedByName}</MetaRow>
 
+            <MetaRow label="Last Update">
+              {task.last_update_at
+                ? <span title={formatDateTime(task.last_update_at)}>{timeAgo(task.last_update_at)}</span>
+                : <span title={formatDateTime(task.created_at)}>{timeAgo(task.created_at)} (created)</span>
+              }
+            </MetaRow>
+
+
           </div>
+
+          {/* Blocker reason — prominent section, visible above Note */}
+          {task.status === 'blocked' && task.blocker_reason && (
+            <div style={{
+              padding: '10px 12px',
+              borderRadius: '7px',
+              background: `${colors.red}0d`,
+              border: `1.5px solid ${colors.red}40`,
+              borderLeft: `3px solid ${colors.red}`,
+            }}>
+              <div style={{
+                fontSize: '9.5px', fontWeight: 700,
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+                color: colors.red, marginBottom: '5px',
+              }}>
+                Blocker Reason
+              </div>
+              <p style={{
+                fontSize: '12.5px', color: colors.red,
+                margin: 0, lineHeight: 1.55,
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>
+                {task.blocker_reason}
+              </p>
+            </div>
+          )}
 
           {/* Divider */}
           <div style={{ height: '1px', background: colors.border }} />
@@ -350,7 +401,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
               />
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', gap: '8px' }}>
-                {/* Mark as Completed — secondary, left-aligned */}
+                {/* Mark as Completed */}
                 <button
                   disabled={completingTask || submitting}
                   onClick={async () => {
@@ -374,7 +425,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
                   {completingTask ? 'Completing…' : 'Mark as Completed'}
                 </button>
 
-                {/* Post Update — primary action, right-aligned */}
+                {/* Post Update */}
                 {(() => {
                   const statusChanged = selectedStatus !== task.status
                   const hasNote = updateNote.trim().length > 0
@@ -409,16 +460,80 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
             </div>
           )}
 
+          {/* Divider */}
+          <div style={{ height: '1px', background: colors.border }} />
+
+          {/* Activity history */}
+          <div>
+            <div style={{
+              fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
+              letterSpacing: '0.07em', color: colors.muted, marginBottom: '8px',
+            }}>
+              Activity
+            </div>
+
+            {logLoading ? (
+              <p style={{ fontSize: '11.5px', color: colors.muted, margin: 0 }}>Loading…</p>
+            ) : activityLog.length === 0 ? (
+              <p style={{ fontSize: '11.5px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+                No activity recorded yet.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {activityLog.map(entry => {
+                  const actorName = userMap?.[entry.actor_id] ?? 'Someone'
+                  const label     = formatLogAction(entry.action, entry.from_status, entry.to_status)
+                  return (
+                    <div key={entry.id} style={{
+                      padding: '8px 10px', borderRadius: '6px',
+                      background: colors.raised,
+                      border: `1px solid ${colors.border}`,
+                    }}>
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between',
+                        alignItems: 'flex-start', gap: '8px', marginBottom: entry.note ? '4px' : 0,
+                      }}>
+                        <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                          {label}
+                        </span>
+                        <span style={{
+                          fontSize: '10px', color: colors.muted,
+                          whiteSpace: 'nowrap', flexShrink: 0,
+                        }}
+                          title={formatDateTime(entry.created_at)}
+                        >
+                          {timeAgo(entry.created_at)}
+                        </span>
+                      </div>
+                      {entry.note && (
+                        <p style={{
+                          fontSize: '11.5px', color: colors.secondary,
+                          margin: '0 0 3px', lineHeight: 1.5,
+                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                        }}>
+                          {entry.note}
+                        </p>
+                      )}
+                      <span style={{ fontSize: '10px', color: colors.muted }}>
+                        by {actorName}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
         </div>
 
         {/* Sticky footer */}
         <div style={{
-          padding:      '10px 14px',
-          borderTop:    `1px solid ${colors.border}`,
-          background:   colors.raised,
-          flexShrink:   0,
-          display:      'flex',
-          gap:          '8px',
+          padding:        '10px 14px',
+          borderTop:      `1px solid ${colors.border}`,
+          background:     colors.raised,
+          flexShrink:     0,
+          display:        'flex',
+          gap:            '8px',
           justifyContent: 'flex-end',
         }}>
           {onOpenFullPage && (

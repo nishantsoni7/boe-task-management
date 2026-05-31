@@ -694,7 +694,11 @@ export default function MyTasksPage() {
     const trimmedNote = note.trim() || null
 
     if (statusChanged) {
+      const needsBlockerReason = newStatus === 'blocked' || newStatus === 'waiting'
+      const clearBlockerReason = selectedTask.status === 'blocked' || selectedTask.status === 'waiting'
       const taskUpdates: Record<string, unknown> = { status: newStatus, last_update_at: now }
+      if (needsBlockerReason) taskUpdates.blocker_reason = trimmedNote
+      else if (clearBlockerReason) taskUpdates.blocker_reason = null
       const { error: taskErr } = await supabase
         .from('tasks').update(taskUpdates).eq('id', selectedTask.id)
       if (taskErr) {
@@ -717,10 +721,11 @@ export default function MyTasksPage() {
         throw logErr
       }
 
-      setSelectedTask(prev => prev ? { ...prev, status: newStatus as any, last_update_at: now } : prev)
-      setAllTasks(prev => prev.map(t =>
-        t.id === selectedTask.id ? { ...t, status: newStatus as any, last_update_at: now } : t
-      ))
+      const localPatch: Partial<Task> = { status: newStatus as Task['status'], last_update_at: now }
+      if (needsBlockerReason) localPatch.blocker_reason = trimmedNote
+      else if (clearBlockerReason) localPatch.blocker_reason = null
+      setSelectedTask(prev => prev ? { ...prev, ...localPatch } : prev)
+      setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
     } else if (trimmedNote) {
       const { error: taskErr } = await supabase
         .from('tasks').update({ last_update_at: now }).eq('id', selectedTask.id)

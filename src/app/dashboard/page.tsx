@@ -34,6 +34,7 @@ export default function DashboardPage() {
   const [acknowledging, setAcknowledging] = useState<Set<string>>(new Set())
   const [teamTasks,     setTeamTasks]     = useState<Task[]>([])
   const [teamUsers,     setTeamUsers]     = useState<{ id: string; full_name: string }[]>([])
+  const [blockedTasks,  setBlockedTasks]  = useState<Task[]>([])
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -104,7 +105,7 @@ export default function DashboardPage() {
       }
 
       if (profileData?.role === 'admin' || profileData?.role === 'manager') {
-        const [{ data: tTasks }, { data: tUsers }] = await Promise.all([
+        const [{ data: tTasks }, { data: tUsers }, { data: bTasks }] = await Promise.all([
           supabase
             .from('tasks')
             .select('id, assigned_to, due_date, created_at, last_update_at, status')
@@ -113,9 +114,16 @@ export default function DashboardPage() {
             .from('users')
             .select('id, full_name')
             .eq('is_active', true),
+          supabase
+            .from('tasks')
+            .select(TASK_COLUMNS)
+            .eq('status', 'blocked')
+            .order('created_at', { ascending: false })
+            .limit(5),
         ])
         if (tTasks) setTeamTasks(tTasks as unknown as Task[])
         if (tUsers) setTeamUsers(tUsers as { id: string; full_name: string }[])
+        if (bTasks) setBlockedTasks(bTasks as unknown as Task[])
       }
 
       console.log('[dashboard] TOTAL', Math.round(performance.now() - pageStart), 'ms')
@@ -263,6 +271,63 @@ export default function DashboardPage() {
       return (PRIORITY_WEIGHT[a.priority] ?? 1) - (PRIORITY_WEIGHT[b.priority] ?? 1)
     })
 
+  const userMap = useMemo(
+    () => Object.fromEntries(teamUsers.map(u => [u.id, u.full_name])),
+    [teamUsers]
+  )
+
+  const handleDashboardAddUpdate = async (note: string, newStatus: string) => {
+    if (!selectedTask) return
+    const now = new Date().toISOString()
+    const statusChanged = newStatus !== selectedTask.status
+    const trimmedNote = note.trim() || null
+
+    if (statusChanged) {
+      const needsBlockerReason = newStatus === 'blocked' || newStatus === 'waiting'
+      const clearBlockerReason = selectedTask.status === 'blocked' || selectedTask.status === 'waiting'
+      const taskUpdates: Record<string, unknown> = { status: newStatus, last_update_at: now }
+      if (needsBlockerReason) taskUpdates.blocker_reason = trimmedNote
+      else if (clearBlockerReason) taskUpdates.blocker_reason = null
+      await supabase.from('tasks')
+        .update(taskUpdates)
+        .eq('id', selectedTask.id)
+      await supabase.from('task_activity_log').insert({
+        task_id:     selectedTask.id,
+        actor_id:    currentUserId,
+        action:      'status_changed',
+        from_status: selectedTask.status,
+        to_status:   newStatus,
+        note:        trimmedNote,
+      })
+      const localPatch: Partial<Task> = { status: newStatus as Task['status'], last_update_at: now }
+      if (needsBlockerReason) localPatch.blocker_reason = trimmedNote
+      else if (clearBlockerReason) localPatch.blocker_reason = null
+      setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
+      // Keep in blockedTasks with new status so the sync effect can still find selectedTask;
+      // the card filters to status === 'blocked' so it will disappear from the list automatically.
+      setBlockedTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
+      setSelectedTask(prev => prev ? { ...prev, ...localPatch } : prev)
+    } else if (trimmedNote) {
+      await supabase.from('tasks')
+        .update({ last_update_at: now })
+        .eq('id', selectedTask.id)
+      await supabase.from('task_activity_log').insert({
+        task_id:     selectedTask.id,
+        actor_id:    currentUserId,
+        action:      'status_changed',
+        from_status: selectedTask.status,
+        to_status:   selectedTask.status,
+        note:        trimmedNote,
+      })
+      setTasks(prev => prev.map(t =>
+        t.id === selectedTask.id ? { ...t, last_update_at: now } : t
+      ))
+      setBlockedTasks(prev => prev.map(t =>
+        t.id === selectedTask.id ? { ...t, last_update_at: now } : t
+      ))
+    }
+  }
+
   const escalationSummary = useMemo(() => {
     if (teamTasks.length === 0) return []
     const userMap = new Map(teamUsers.map(u => [u.id, u.full_name]))
@@ -341,12 +406,13 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!selectedTask) return
     const updated = tasks.find(t => t.id === selectedTask.id)
+             ?? blockedTasks.find(t => t.id === selectedTask.id)
     if (!updated) {
       setSelectedTask(null)
     } else if (updated !== selectedTask) {
       setSelectedTask(updated)
     }
-  }, [tasks, selectedTask])
+  }, [tasks, blockedTasks, selectedTask])
 
   if (loading) return <LoadingScreen />
 
@@ -389,6 +455,14 @@ export default function DashboardPage() {
           blockerCount={waitingTasks.length}
           overdueCount={allOverdueTasks.length}
         />
+
+        {(profile?.role === 'admin' || profile?.role === 'manager') && (
+          <BlockedTasksCard
+            tasks={blockedTasks.filter(t => t.status === 'blocked')}
+            userMap={new Map(teamUsers.map(u => [u.id, u.full_name]))}
+            onView={setSelectedTask}
+          />
+        )}
 
         {/* ACTION REQUIRED section box */}
         <div style={{
@@ -575,7 +649,14 @@ export default function DashboardPage() {
       </DashboardLayout>
 
       {selectedTask && (
-        <TaskDetailPanel task={selectedTask} onClose={() => setSelectedTask(null)} />
+        <TaskDetailPanel
+          task={selectedTask}
+          userMap={userMap}
+          onClose={() => setSelectedTask(null)}
+          onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
+          currentUserId={currentUserId}
+          onAddUpdate={handleDashboardAddUpdate}
+        />
       )}
     </>
   )
@@ -692,6 +773,83 @@ function EscalationSummaryCard({
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function BlockedTasksCard({
+  tasks,
+  userMap,
+  onView,
+}: {
+  tasks: Task[]
+  userMap: Map<string, string>
+  onView: (task: Task) => void
+}) {
+  return (
+    <div style={{
+      marginBottom: '16px', borderRadius: '8px',
+      background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
+      alignSelf: 'flex-start', width: '100%',
+    }}>
+      <div style={{
+        fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
+        textTransform: 'uppercase', marginBottom: '14px',
+        color: '#8B1A1A', borderLeft: '2px solid #8B1A1A', paddingLeft: '8px',
+      }}>
+        Blocked Tasks ({tasks.length})
+      </div>
+      {tasks.length === 0 ? (
+        <div style={{
+          padding: '10px 14px', borderRadius: '6px',
+          background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.06)',
+          fontSize: '12px', color: '#888',
+        }}>
+          No blocked tasks right now
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {tasks.map(task => {
+            const assignee = userMap.get(task.assigned_to)
+            return (
+              <div key={task.id} style={{
+                display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+                gap: '12px', padding: '10px 12px', borderRadius: '7px',
+                background: 'rgba(139,26,26,0.04)', border: '1px solid rgba(139,26,26,0.12)',
+                borderLeft: '3px solid rgba(139,26,26,0.5)',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#222', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {task.title}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '11px', color: '#666' }}>
+                    {assignee && <span>👤 {assignee}</span>}
+                    {task.due_date && (
+                      <span>📅 {new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                    )}
+                    {task.blocker_reason && (
+                      <span style={{ color: '#8B1A1A', fontStyle: 'italic' }}>⛔ {task.blocker_reason}</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => onView(task)}
+                  style={{
+                    flexShrink: 0, padding: '5px 10px',
+                    fontSize: '11px', fontWeight: 600, letterSpacing: '0.02em',
+                    color: '#8B1A1A', background: 'rgba(139,26,26,0.07)',
+                    border: '1px solid rgba(139,26,26,0.18)', borderRadius: '5px',
+                    cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  View task
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
