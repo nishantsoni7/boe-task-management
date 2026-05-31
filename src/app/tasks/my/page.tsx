@@ -82,15 +82,8 @@ function RightPanel({
 }) {
   const focus = buildFocusMessage(counts.overdue, counts.needs_update, counts.non_completion)
 
-  const metrics: { label: string; count: number; color: string; tab: TabKey }[] = [
-    { label: 'Important',      count: counts.important,      color: '#C49A28',    tab: 'important'      },
-    { label: 'Overdue',        count: counts.overdue,        color: colors.red,   tab: 'overdue'        },
-    { label: 'Unacknowledged', count: counts.unacknowledged, color: '#9B6FD4',    tab: 'unacknowledged' },
-    { label: 'Pending Update', count: counts.needs_update,   color: colors.amber, tab: 'needs_update'   },
-  ]
-
   return (
-    <div style={{ width: '252px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <div style={{ flex: 9, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
       {/* Today Focus */}
       <div style={{
@@ -108,38 +101,47 @@ function RightPanel({
         </div>
       </div>
 
-      {/* Metric rows */}
+      {/* All views — replaces tab bar */}
       <div style={{
         background: colors.base, border: `1.5px solid ${colors.border}`,
         borderRadius: '10px', overflow: 'hidden',
       }}>
-        {metrics.map((item, i) => {
-          const isActive = activeTab === item.tab
+        <div style={{
+          fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
+          textTransform: 'uppercase', color: colors.muted,
+          padding: '10px 16px 6px',
+        }}>
+          Views
+        </div>
+        {TABS.map((item, i) => {
+          const isActive = activeTab === item.key
           return (
             <button
-              key={item.tab}
-              onClick={() => onTabChange(item.tab)}
+              key={item.key}
+              onClick={() => onTabChange(item.key)}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', padding: '10px 16px',
+                justifyContent: 'space-between', padding: '9px 16px',
                 background: isActive ? `${item.color}0d` : 'transparent',
                 border: 'none',
-                borderBottom: i < metrics.length - 1 ? `1px solid ${colors.border}` : 'none',
+                borderBottom: i < TABS.length - 1 ? `1px solid ${colors.border}` : 'none',
                 borderLeft: `3px solid ${isActive ? item.color : 'transparent'}`,
                 cursor: 'pointer', outline: 'none', transition: 'all 0.1s', textAlign: 'left',
               }}
             >
               <span style={{
-                fontSize: '12px', fontWeight: 500,
-                color: item.count > 0 ? colors.secondary : colors.muted,
+                fontSize: '12px', fontWeight: isActive ? 600 : 500,
+                color: isActive ? item.color : counts[item.key] > 0 ? colors.secondary : colors.muted,
               }}>
                 {item.label}
               </span>
               <span style={{
-                fontSize: '16px', fontWeight: 700,
-                color: item.count > 0 ? item.color : colors.muted,
+                fontSize: '13px', fontWeight: 700,
+                color: counts[item.key] > 0 ? item.color : colors.muted,
+                background: isActive ? `${item.color}18` : 'transparent',
+                padding: '1px 7px', borderRadius: '10px',
               }}>
-                {item.count}
+                {counts[item.key]}
               </span>
             </button>
           )
@@ -155,57 +157,6 @@ function RightPanel({
         Clear overdue and unacknowledged tasks first. Keep updates timely to avoid the non-completion zone.
       </div>
 
-    </div>
-  )
-}
-
-// ─── Tab bar ─────────────────────────────────────────────────────────────────
-function TabBar({
-  tabs, counts, activeTab, onChange,
-}: {
-  tabs: typeof TABS
-  counts: Record<TabKey, number>
-  activeTab: TabKey
-  onChange: (k: TabKey) => void
-}) {
-  return (
-    <div style={{
-      display: 'flex',
-      borderBottom: `1.5px solid ${colors.border}`,
-      background: colors.raised,
-      overflowX: 'auto',
-      scrollbarWidth: 'none',
-    }}>
-      {tabs.map(tab => {
-        const isActive = activeTab === tab.key
-        return (
-          <button
-            key={tab.key}
-            onClick={() => onChange(tab.key)}
-            style={{
-              padding: '9px 13px',
-              display: 'flex', alignItems: 'center', gap: '5px',
-              background: 'none', border: 'none', cursor: 'pointer',
-              borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
-              marginBottom: '-1.5px',
-              fontSize: '11.5px', fontWeight: isActive ? 600 : 500,
-              color: isActive ? tab.color : colors.secondary,
-              transition: 'all 0.12s', outline: 'none',
-              whiteSpace: 'nowrap', flexShrink: 0,
-            }}
-          >
-            {tab.label}
-            <span style={{
-              fontSize: '10px', fontWeight: 700,
-              color: isActive ? tab.color : colors.muted,
-              background: isActive ? `${tab.color}18` : 'rgba(0,0,0,0.05)',
-              padding: '1px 5px', borderRadius: '10px', lineHeight: 1.4,
-            }}>
-              {counts[tab.key]}
-            </span>
-          </button>
-        )
-      })}
     </div>
   )
 }
@@ -293,7 +244,7 @@ function TaskCard({
       </div>
 
       {/* Title + note */}
-      <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
+      <div style={{ flex: 1, minWidth: 0, padding: '7px 8px 7px 0' }}>
         <div style={{
           fontSize: '13px',
           fontWeight: task.is_urgent ? 600 : 500,
@@ -316,7 +267,7 @@ function TaskCard({
       </div>
 
       {/* Due date */}
-      <div style={{ flexShrink: 0, padding: '0 4px' }}>
+      <div style={{ flexShrink: 0, padding: '0 10px 0 4px' }}>
         {dateStr ? (
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: '3px',
@@ -336,7 +287,7 @@ function TaskCard({
       </div>
 
       {/* Priority */}
-      <div style={{ flexShrink: 0, width: '38px', textAlign: 'center', padding: '0 2px' }}>
+      <div style={{ flexShrink: 0, width: '44px', textAlign: 'center', padding: '0 8px' }}>
         <span style={{
           fontSize: '10px', fontWeight: 600,
           color: priority.color, opacity: 0.8,
@@ -346,7 +297,7 @@ function TaskCard({
       </div>
 
       {/* Open button */}
-      <div style={{ flexShrink: 0, paddingRight: '8px', paddingLeft: '2px' }}>
+      <div style={{ flexShrink: 0, paddingRight: '12px', paddingLeft: '6px' }}>
         <button
           onClick={onClick}
           title="View task"
@@ -499,7 +450,7 @@ export default function MyTasksPage() {
         <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
 
           {/* ── Left: task list ── */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 11, minWidth: 0 }}>
 
             {/* Mobile: horizontal chip tab scroll */}
             {isMobile && (
@@ -570,24 +521,6 @@ export default function MyTasksPage() {
                 <option value="low">Low</option>
               </select>
             </div>
-
-            {/* Tab bar panel */}
-            {!isMobile && (
-              <div style={{
-                background: colors.base,
-                border: `1.5px solid ${colors.border}`,
-                borderRadius: '10px',
-                overflow: 'hidden',
-                marginBottom: '10px',
-              }}>
-                <TabBar
-                  tabs={TABS}
-                  counts={counts}
-                  activeTab={activeTab}
-                  onChange={handleTabChange}
-                />
-              </div>
-            )}
 
             {/* Task cards */}
             {visibleTasks.length === 0 ? (
