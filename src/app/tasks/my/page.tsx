@@ -11,7 +11,7 @@ import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert, CheckCircle,
-  LayoutList, UserCheck, Users, Search,
+  LayoutList, UserCheck, Users, Search, Pencil, Trash2,
 } from 'lucide-react'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -197,15 +197,20 @@ function ChipTab({
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
-  task, accentColor, userId, userMap, onClick,
+  task, accentColor, userId, userMap, onClick, onEdit, onDelete,
 }: {
   task: Task
   accentColor: string
   userId: string
   userMap: Record<string, string>
   onClick: () => void
+  onEdit?: () => void
+  onDelete?: () => void
 }) {
-  const [hovered, setHovered] = useState(false)
+  const [hovered,      setHovered]      = useState(false)
+  const [hoveredEdit,  setHoveredEdit]  = useState(false)
+  const [hoveredDel,   setHoveredDel]   = useState(false)
+  const [hoveredView,  setHoveredView]  = useState(false)
   const overdue    = isOverdue(task)
   const completed  = task.status === 'completed'
   const priority   = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
@@ -336,25 +341,252 @@ function TaskCard({
         )}
       </div>
 
-      {/* Open button — fixed 36px */}
+      {/* Actions */}
       <div style={{
-        flexShrink: 0, width: '36px',
+        flexShrink: 0, width: '84px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: '2px',
       }}>
+        {isSelf ? (
+          <>
+            <button
+              onClick={e => { e.stopPropagation(); onEdit?.() }}
+              onMouseEnter={() => setHoveredEdit(true)}
+              onMouseLeave={() => setHoveredEdit(false)}
+              title="Edit task"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '26px', height: '26px', borderRadius: '6px',
+                background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent',
+                border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`,
+                cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
+                color: hoveredEdit ? '#5B7FA6' : colors.muted,
+              }}
+            >
+              <Pencil size={11} />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); onDelete?.() }}
+              onMouseEnter={() => setHoveredDel(true)}
+              onMouseLeave={() => setHoveredDel(false)}
+              title="Delete task"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '26px', height: '26px', borderRadius: '6px',
+                background: hoveredDel ? `${colors.red}10` : 'transparent',
+                border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`,
+                cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
+                color: hoveredDel ? colors.red : colors.muted,
+              }}
+            >
+              <Trash2 size={11} />
+            </button>
+          </>) : (
+          <>
+            <div style={{ width: '26px', height: '26px', flexShrink: 0 }} />
+            <div style={{ width: '26px', height: '26px', flexShrink: 0 }} />
+          </>
+        )}
         <button
           onClick={onClick}
+          onMouseEnter={() => setHoveredView(true)}
+          onMouseLeave={() => setHoveredView(false)}
           title="View task"
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: '26px', height: '26px', borderRadius: '6px',
-            background: hovered ? `${accentColor}14` : 'transparent',
-            border: `1px solid ${hovered ? accentColor + '44' : 'transparent'}`,
+            background: hoveredView ? `${accentColor}14` : 'transparent',
+            border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hovered ? accentColor : colors.muted,
+            color: hoveredView ? accentColor : colors.muted,
           }}
         >
           <ExternalLink size={12} />
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Edit modal ───────────────────────────────────────────────────────────────
+const PRIORITIES_EDIT = ['low', 'medium', 'high'] as const
+
+function EditTaskModal({
+  task, userId, onClose, onSaved,
+}: {
+  task: Task
+  userId: string
+  onClose: () => void
+  onSaved: (updated: Task) => void
+}) {
+  const [title,    setTitle]    = useState(task.title)
+  const [note,     setNote]     = useState(task.note ?? '')
+  const [priority, setPriority] = useState(task.priority)
+  const [dueDate,  setDueDate]  = useState((task.due_date ?? '').slice(0, 10))
+  const [isUrgent, setIsUrgent] = useState(task.is_urgent ?? false)
+  const [saving,   setSaving]   = useState(false)
+  const supabase = useMemo(() => createClient(), [])
+
+  const canSave = !saving && title.trim().length > 0
+
+  const handleSave = async () => {
+    if (task.created_by !== userId) return
+    if (!canSave) return
+    setSaving(true)
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({
+        title:     title.trim(),
+        note:      note.trim() || null,
+        priority,
+        due_date:  dueDate || null,
+        is_urgent: isUrgent,
+      })
+      .eq('id', task.id)
+      .eq('created_by', userId)
+      .select()
+      .single()
+    if (!error && data) onSaved(data as unknown as Task)
+    setSaving(false)
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: colors.base, border: `1.5px solid ${colors.border}`,
+          borderRadius: '12px', padding: '20px 20px 16px',
+          width: '100%', maxWidth: '440px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+        }}
+      >
+        <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary, marginBottom: '16px' }}>
+          Edit Task
+        </div>
+
+        {/* Title */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+            Task Name <span style={{ color: colors.red }}>*</span>
+          </label>
+          <input
+            type="text"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            className="boe-input"
+            style={{ width: '100%', boxSizing: 'border-box' }}
+          />
+        </div>
+
+        {/* Note */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+            Note <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
+          </label>
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            rows={2}
+            className="boe-input"
+            style={{ resize: 'none', width: '100%', boxSizing: 'border-box' }}
+          />
+        </div>
+
+        {/* Priority + Due Date */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+          <div>
+            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Priority</label>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {PRIORITIES_EDIT.map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPriority(p)}
+                  className={`boe-chip${priority === p ? ' boe-chip-selected' : ''}`}
+                  style={{ flex: 1, textAlign: 'center', textTransform: 'capitalize', fontSize: '10px', padding: '3px 0' }}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>Due Date</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+              className="boe-input"
+              style={{ colorScheme: 'light', width: '100%', boxSizing: 'border-box' }}
+            />
+          </div>
+        </div>
+
+        {/* Important toggle */}
+        <div
+          onClick={() => setIsUrgent(!isUrgent)}
+          style={{
+            marginBottom: '16px', padding: '8px 12px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderRadius: '8px',
+            background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
+            border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+          }}
+        >
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+            Mark Important
+          </span>
+          <div style={{
+            width: '30px', height: '17px', borderRadius: '9px',
+            background: isUrgent ? '#C49A28' : colors.float,
+            position: 'relative', flexShrink: 0,
+            transition: 'background 0.16s', border: `1px solid ${colors.border}`,
+          }}>
+            <div style={{
+              position: 'absolute', top: '1.5px',
+              left: isUrgent ? '12px' : '1.5px',
+              width: '12px', height: '12px',
+              borderRadius: '50%', background: '#fff',
+              transition: 'left 0.16s',
+            }} />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`,
+              background: 'transparent', cursor: 'pointer',
+              fontSize: '12px', fontWeight: 600, color: colors.secondary,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!canSave}
+            style={{
+              padding: '7px 18px', borderRadius: '7px', border: 'none',
+              background: canSave ? colors.primary : colors.float,
+              color: canSave ? '#fff' : colors.muted,
+              cursor: canSave ? 'pointer' : 'not-allowed',
+              fontSize: '12px', fontWeight: 600,
+              transition: 'background 0.12s',
+            }}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -395,6 +627,7 @@ export default function MyTasksPage() {
   const [activeTab,    setActiveTab]    = useState<TabKey>('all')
   const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [editingTask,  setEditingTask]  = useState<Task | null>(null)
   const [isMobile,     setIsMobile]     = useState(false)
 
   // Search + filter state
@@ -441,6 +674,32 @@ export default function MyTasksPage() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  const handleEditSaved = (updated: Task) => {
+    setAllTasks(prev => prev.map(t => t.id === updated.id ? updated : t))
+    setEditingTask(null)
+  }
+
+  const handleDelete = async (task: Task) => {
+    if (task.created_by !== userId) return
+    const ok = window.confirm('Delete this task? This cannot be undone.')
+    if (!ok) return
+    const { data: deleted, error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', task.id)
+      .select('id')
+    if (error) {
+      console.error('[delete] Supabase error:', error.message, error)
+      return
+    }
+    if (!deleted || deleted.length === 0) {
+      console.warn('[delete] No rows deleted — RLS or policy blocked deletion for task', task.id)
+      return
+    }
+    setAllTasks(prev => prev.filter(t => t.id !== task.id))
+    if (selectedTask?.id === task.id) setSelectedTask(null)
   }
 
   const baseTasks = useMemo(() => {
@@ -679,6 +938,8 @@ export default function MyTasksPage() {
                         router.push(`/tasks/${task.id}`)
                       }
                     }}
+                    onEdit={task.created_by === userId ? () => setEditingTask(task) : undefined}
+                    onDelete={task.created_by === userId ? () => handleDelete(task) : undefined}
                   />
                 ))}
                 <div style={{
@@ -706,6 +967,15 @@ export default function MyTasksPage() {
         <TaskDetailPanel
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
+        />
+      )}
+
+      {editingTask && (
+        <EditTaskModal
+          task={editingTask}
+          userId={userId}
+          onClose={() => setEditingTask(null)}
+          onSaved={handleEditSaved}
         />
       )}
     </>
