@@ -31,6 +31,14 @@ const STATUS_COLOR: Record<string, string> = {
   completed: colors.green,
 }
 
+// ─── Static timeline items ────────────────────────────────────────────────────
+
+const TIMELINE_ITEMS = [
+  { text: 'Task created',               time: 'May 28, 2026 · 10:14 AM', dot: colors.green   },
+  { text: 'Status changed to In Progress', time: 'May 29, 2026 · 2:03 PM',  dot: colors.blue    },
+  { text: 'Marked as Important',        time: 'May 30, 2026 · 9:47 AM',  dot: '#C49A28'      },
+]
+
 // ─── Meta row ─────────────────────────────────────────────────────────────────
 
 function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
@@ -275,20 +283,39 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage }: Prop
           {/* Divider */}
           <div style={{ height: '1px', background: colors.border }} />
 
-          {/* Activity */}
+          {/* Activity Timeline */}
           <div>
             <div style={{
               fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
-              letterSpacing: '0.07em', color: colors.muted, marginBottom: '7px',
+              letterSpacing: '0.07em', color: colors.muted, marginBottom: '10px',
             }}>
               Activity
             </div>
-            <p style={{
-              fontSize: '12px', color: colors.muted,
-              fontStyle: 'italic', margin: 0,
-            }}>
-              Activity timeline coming soon
-            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+              {TIMELINE_ITEMS.map((item, i) => (
+                <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                  {/* Track */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                    <div style={{
+                      width: '7px', height: '7px', borderRadius: '50%',
+                      background: item.dot, marginTop: '4px', flexShrink: 0,
+                    }} />
+                    {i < TIMELINE_ITEMS.length - 1 && (
+                      <div style={{ width: '1px', flex: 1, background: colors.border, minHeight: '20px', marginTop: '3px' }} />
+                    )}
+                  </div>
+                  {/* Content */}
+                  <div style={{ paddingBottom: i < TIMELINE_ITEMS.length - 1 ? '12px' : '0' }}>
+                    <p style={{ fontSize: '12px', color: colors.secondary, margin: 0, lineHeight: 1.45 }}>
+                      {item.text}
+                    </p>
+                    <p style={{ fontSize: '10.5px', color: colors.muted, margin: '2px 0 0' }}>
+                      {item.time}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
         </div>
