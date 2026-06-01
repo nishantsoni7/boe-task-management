@@ -5,14 +5,9 @@ import type { Task, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { isOverdue, formatShortDate, formatDateTime, timeAgo, formatLogAction, getTaskAging } from '@/lib/ui'
 import { createClient } from '@/lib/supabase/client'
+import { CheckCircle } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type WaitingOnData = {
-  type: 'team_member' | 'external'
-  userId?: string
-  text?: string
-}
 
 type Props = {
   task: Task
@@ -20,7 +15,7 @@ type Props = {
   onClose: () => void
   onOpenFullPage?: () => void
   currentUserId?: string
-  onAddUpdate?: (note: string, newStatus: string, waitingOn?: WaitingOnData) => Promise<void>
+  onAcknowledge?: () => Promise<void>
 }
 
 // ─── Priority display ─────────────────────────────────────────────────────────
@@ -62,29 +57,18 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 
 // ─── TaskDetailPanel ──────────────────────────────────────────────────────────
 
-export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, currentUserId, onAddUpdate }: Props) {
-  const [open,             setOpen]            = useState(false)
-  const [updateNote,       setUpdateNote]      = useState('')
-  const [selectedStatus,   setSelectedStatus]  = useState(task.status)
-  const [submitting,       setSubmitting]      = useState(false)
-  const [completingTask,   setCompletingTask]  = useState(false)
-  const [activityLog,      setActivityLog]     = useState<LogEntry[]>([])
-  const [logLoading,       setLogLoading]      = useState(true)
-  const [waitingOnType,    setWaitingOnType]   = useState<'team_member' | 'external'>('team_member')
-  const [waitingOnUserId,  setWaitingOnUserId] = useState('')
-  const [waitingOnText,    setWaitingOnText]   = useState('')
+export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, currentUserId, onAcknowledge }: Props) {
+  const [open,          setOpen]        = useState(false)
+  const [acknowledging, setAcknowledging] = useState(false)
+  const [activityLog,   setActivityLog] = useState<LogEntry[]>([])
+  const [logLoading,    setLogLoading]  = useState(true)
 
   const supabase = useMemo(() => createClient(), [])
 
-  // Reset form and reload log when a different task is opened
+  // Reload log when a different task is opened
   useEffect(() => {
-    setUpdateNote('')
-    setSelectedStatus(task.status)
     setActivityLog([])
     setLogLoading(true)
-    setWaitingOnType('team_member')
-    setWaitingOnUserId('')
-    setWaitingOnText('')
 
     supabase
       .from('task_activity_log')
@@ -243,10 +227,10 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
           overflowY:      'auto',
           scrollbarWidth: 'thin',
           scrollbarColor: `rgba(0,0,0,0.08) transparent`,
-          padding:        '14px 16px',
+          padding:        '12px 16px',
           display:        'flex',
           flexDirection:  'column',
-          gap:            '14px',
+          gap:            '10px',
         }}>
 
           {/* Metadata */}
@@ -328,7 +312,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
           {/* Waiting On — shown when task is in waiting status */}
           {task.status === 'waiting' && (task.waiting_on_type) && (
             <div style={{
-              padding: '10px 12px',
+              padding: '8px 10px',
               borderRadius: '7px',
               background: `${colors.amber}0d`,
               border: `1.5px solid ${colors.amber}40`,
@@ -359,7 +343,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
           {/* Blocker reason — prominent section, visible above Note */}
           {task.status === 'blocked' && task.blocker_reason && (
             <div style={{
-              padding: '10px 12px',
+              padding: '8px 10px',
               borderRadius: '7px',
               background: `${colors.red}0d`,
               border: `1.5px solid ${colors.red}40`,
@@ -385,235 +369,86 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
           {/* Divider */}
           <div style={{ height: '1px', background: colors.border }} />
 
-          {/* Note */}
+          {/* Task Description */}
           <div>
             <div style={{
               fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
               letterSpacing: '0.07em', color: colors.muted, marginBottom: '7px',
             }}>
-              Note
+              Task Description
             </div>
-            {task.note ? (
-              <p style={{
-                fontSize: '12.5px', color: colors.secondary,
-                lineHeight: 1.6, margin: 0,
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              }}>
-                {task.note}
-              </p>
-            ) : (
-              <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
-                No note added.
-              </p>
-            )}
+            <div style={{
+              padding: '7px 10px', borderRadius: '6px',
+              background: colors.raised,
+              border: `1px solid ${colors.border}`,
+            }}>
+              {task.note ? (
+                <p style={{
+                  fontSize: '12.5px', color: colors.secondary,
+                  lineHeight: 1.6, margin: 0,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                }}>
+                  {task.note}
+                </p>
+              ) : (
+                <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+                  No task description provided.
+                </p>
+              )}
+            </div>
           </div>
 
-          {/* Divider */}
-          <div style={{ height: '1px', background: colors.border }} />
-
-          {/* Add Update — assignee only, not completed */}
-          {onAddUpdate && currentUserId === task.assigned_to && task.status !== 'completed' && (
-            <div>
+          {/* Acknowledge Task — delegated, unacknowledged, assignee only */}
+          {onAcknowledge && !task.acknowledged_at && task.status !== 'completed'
+            && currentUserId === task.assigned_to && task.created_by !== currentUserId && (
+            <div style={{
+              padding: '9px 10px',
+              borderRadius: '8px',
+              border: `1.5px solid ${colors.amber}60`,
+              background: `${colors.amber}0a`,
+            }}>
               <div style={{
-                fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
-                letterSpacing: '0.07em', color: colors.muted, marginBottom: '8px',
+                fontSize: '9px', fontWeight: 700,
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                color: colors.amber, marginBottom: '8px',
               }}>
-                Add Update
+                Action Required
               </div>
-
-              {/* Status picker */}
-              <div style={{ marginBottom: '7px' }}>
-                <div style={{
-                  fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
-                  letterSpacing: '0.05em', color: colors.muted, marginBottom: '5px',
-                }}>
-                  Status
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                  {(['pending', 'started', 'working', 'waiting', 'blocked'] as const).map(s => {
-                    const active = selectedStatus === s
-                    const c = STATUS_COLOR[s]
-                    return (
-                      <button
-                        key={s}
-                        onClick={() => setSelectedStatus(s)}
-                        style={{
-                          padding: '4px 11px', borderRadius: '20px',
-                          border: `1.5px solid ${active ? c : colors.border}`,
-                          background: active ? `${c}18` : 'transparent',
-                          color: active ? c : colors.muted,
-                          fontSize: '11px', fontWeight: active ? 600 : 400,
-                          cursor: 'pointer', textTransform: 'capitalize',
-                          transition: 'all 0.12s',
-                        }}
-                      >
-                        {s}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Waiting On — shown only when selected status is waiting */}
-              {selectedStatus === 'waiting' && (
-                <div style={{
-                  padding: '10px 12px', borderRadius: '7px',
-                  background: `${colors.amber}0a`,
-                  border: `1px solid ${colors.amber}40`,
-                  marginBottom: '7px',
-                }}>
-                  <div style={{
-                    fontSize: '9.5px', fontWeight: 700,
-                    letterSpacing: '0.08em', textTransform: 'uppercase',
-                    color: colors.amber, marginBottom: '8px',
-                  }}>
-                    Waiting On <span style={{ color: colors.red }}>*</span>
-                  </div>
-
-                  {/* Type selector */}
-                  <div style={{ display: 'flex', gap: '5px', marginBottom: '8px' }}>
-                    {(['team_member', 'external'] as const).map(t => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => { setWaitingOnType(t); setWaitingOnUserId(''); setWaitingOnText('') }}
-                        style={{
-                          flex: 1, padding: '4px 8px', borderRadius: '5px',
-                          border: `1.5px solid ${waitingOnType === t ? colors.amber : colors.border}`,
-                          background: waitingOnType === t ? `${colors.amber}18` : 'transparent',
-                          color: waitingOnType === t ? colors.amber : colors.muted,
-                          fontSize: '11px', fontWeight: waitingOnType === t ? 600 : 400,
-                          cursor: 'pointer', transition: 'all 0.12s',
-                        }}
-                      >
-                        {t === 'team_member' ? 'Team Member' : 'External Dependency'}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Team member dropdown */}
-                  {waitingOnType === 'team_member' && (
-                    <select
-                      value={waitingOnUserId}
-                      onChange={e => setWaitingOnUserId(e.target.value)}
-                      className="boe-input"
-                      style={{ width: '100%', boxSizing: 'border-box', fontSize: '12px' }}
-                    >
-                      <option value="">Select team member…</option>
-                      {Object.entries(userMap ?? {})
-                        .sort((a, b) => a[1].localeCompare(b[1]))
-                        .map(([id, name]) => (
-                          <option key={id} value={id}>{name}</option>
-                        ))
-                      }
-                    </select>
-                  )}
-
-                  {/* External text input */}
-                  {waitingOnType === 'external' && (
-                    <input
-                      type="text"
-                      value={waitingOnText}
-                      onChange={e => setWaitingOnText(e.target.value)}
-                      placeholder="e.g. Client approval, Vendor quotation…"
-                      className="boe-input"
-                      style={{ width: '100%', boxSizing: 'border-box', fontSize: '12px' }}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Note textarea */}
-              <textarea
-                value={updateNote}
-                onChange={e => setUpdateNote(e.target.value)}
-                placeholder="What's the latest progress… (optional)"
-                rows={2}
-                className="boe-input"
-                style={{ resize: 'none', width: '100%', boxSizing: 'border-box', fontSize: '12px' }}
-              />
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', gap: '8px' }}>
-                {/* Mark as Completed */}
-                <button
-                  disabled={completingTask || submitting}
-                  onClick={async () => {
-                    setCompletingTask(true)
-                    try {
-                      await onAddUpdate('', 'completed')
-                    } finally {
-                      setCompletingTask(false)
-                    }
-                  }}
-                  style={{
-                    padding: '6px 12px', borderRadius: '6px',
-                    border: `1px solid ${colors.green}50`,
-                    background: completingTask || submitting ? colors.float : colors.greenTint,
-                    color: completingTask || submitting ? colors.muted : colors.green,
-                    fontSize: '11.5px', fontWeight: 600,
-                    cursor: completingTask || submitting ? 'not-allowed' : 'pointer',
-                    transition: 'background 0.12s',
-                  }}
-                >
-                  {completingTask ? 'Completing…' : 'Mark as Completed'}
-                </button>
-
-                {/* Post Update */}
-                {(() => {
-                  const statusChanged = selectedStatus !== task.status
-                  const hasNote = updateNote.trim().length > 0
-                  const waitingOnFilled = selectedStatus !== 'waiting' || (
-                    waitingOnType === 'team_member' ? !!waitingOnUserId : !!waitingOnText.trim()
-                  )
-                  const canSubmit = !submitting && !completingTask && (statusChanged || hasNote) && waitingOnFilled
-                  const waitingOn: WaitingOnData | undefined = selectedStatus === 'waiting'
-                    ? { type: waitingOnType, userId: waitingOnUserId || undefined, text: waitingOnText.trim() || undefined }
-                    : undefined
-                  return (
-                    <button
-                      disabled={!canSubmit}
-                      onClick={async () => {
-                        if (!canSubmit) return
-                        setSubmitting(true)
-                        try {
-                          await onAddUpdate(updateNote.trim(), selectedStatus, waitingOn)
-                          setUpdateNote('')
-                          if (selectedStatus !== 'waiting') {
-                            setWaitingOnType('team_member')
-                            setWaitingOnUserId('')
-                            setWaitingOnText('')
-                          }
-                        } finally {
-                          setSubmitting(false)
-                        }
-                      }}
-                      style={{
-                        padding: '6px 14px', borderRadius: '6px', border: 'none',
-                        background: canSubmit ? colors.amber : colors.float,
-                        color: canSubmit ? '#fff' : colors.muted,
-                        fontSize: '11.5px', fontWeight: 600,
-                        cursor: canSubmit ? 'pointer' : 'not-allowed',
-                        transition: 'background 0.12s',
-                      }}
-                    >
-                      {submitting ? 'Posting…' : 'Post Update'}
-                    </button>
-                  )
-                })()}
-              </div>
+              <button
+                disabled={acknowledging}
+                onClick={async () => {
+                  setAcknowledging(true)
+                  try { await onAcknowledge() } finally { setAcknowledging(false) }
+                }}
+                style={{
+                  width: '100%', padding: '8px 14px', borderRadius: '6px',
+                  border: `1.5px solid ${colors.amber}`,
+                  background: acknowledging ? colors.float : colors.amberTint,
+                  color: acknowledging ? colors.muted : '#92600A',
+                  cursor: acknowledging ? 'not-allowed' : 'pointer',
+                  fontSize: '12.5px', fontWeight: 600,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={e => { if (!acknowledging) e.currentTarget.style.background = `${colors.amber}28` }}
+                onMouseLeave={e => { e.currentTarget.style.background = acknowledging ? colors.float : colors.amberTint }}
+              >
+                <CheckCircle size={15} />
+                {acknowledging ? 'Acknowledging…' : 'Acknowledge Task'}
+              </button>
             </div>
           )}
 
           {/* Divider */}
           <div style={{ height: '1px', background: colors.border }} />
 
-          {/* Activity history */}
+          {/* Recent Update */}
           <div>
             <div style={{
               fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
               letterSpacing: '0.07em', color: colors.muted, marginBottom: '8px',
             }}>
-              Activity
+              Recent Update
             </div>
 
             {logLoading ? (
@@ -622,95 +457,92 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
               <p style={{ fontSize: '11.5px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
                 No activity recorded yet.
               </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {activityLog.map(entry => {
-                  const actorName = userMap?.[entry.actor_id] ?? 'Someone'
-                  const label     = formatLogAction(entry.action, entry.from_status, entry.to_status)
-                  return (
-                    <div key={entry.id} style={{
-                      padding: '8px 10px', borderRadius: '6px',
-                      background: colors.raised,
-                      border: `1px solid ${colors.border}`,
+            ) : (() => {
+              const entry = activityLog[0]
+              const actorName = userMap?.[entry.actor_id] ?? 'Someone'
+              const label     = formatLogAction(entry.action, entry.from_status, entry.to_status)
+              return (
+                <div style={{
+                  padding: '8px 10px', borderRadius: '6px',
+                  background: colors.raised,
+                  border: `1px solid ${colors.borderSoft}`,
+                }}>
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'flex-start', gap: '8px', marginBottom: entry.note ? '4px' : 0,
+                  }}>
+                    <span style={{ fontSize: '11px', fontWeight: 500, color: colors.secondary }}>
+                      {label}
+                    </span>
+                    <span style={{
+                      fontSize: '10px', color: colors.muted,
+                      whiteSpace: 'nowrap', flexShrink: 0,
+                    }}
+                      title={formatDateTime(entry.created_at)}
+                    >
+                      {timeAgo(entry.created_at)}
+                    </span>
+                  </div>
+                  {entry.note && (
+                    <p style={{
+                      fontSize: '11px', color: colors.muted,
+                      margin: '0 0 3px', lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     }}>
-                      <div style={{
-                        display: 'flex', justifyContent: 'space-between',
-                        alignItems: 'flex-start', gap: '8px', marginBottom: entry.note ? '4px' : 0,
-                      }}>
-                        <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
-                          {label}
-                        </span>
-                        <span style={{
-                          fontSize: '10px', color: colors.muted,
-                          whiteSpace: 'nowrap', flexShrink: 0,
-                        }}
-                          title={formatDateTime(entry.created_at)}
-                        >
-                          {timeAgo(entry.created_at)}
-                        </span>
-                      </div>
-                      {entry.note && (
-                        <p style={{
-                          fontSize: '11.5px', color: colors.secondary,
-                          margin: '0 0 3px', lineHeight: 1.5,
-                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                        }}>
-                          {entry.note}
-                        </p>
-                      )}
-                      <span style={{ fontSize: '10px', color: colors.muted }}>
-                        by {actorName}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                      {entry.note}
+                    </p>
+                  )}
+                  <span style={{ fontSize: '10px', color: colors.muted }}>
+                    by {actorName}
+                  </span>
+                </div>
+              )
+            })()}
           </div>
 
         </div>
 
         {/* Sticky footer */}
         <div style={{
-          padding:        '10px 14px',
-          borderTop:      `1px solid ${colors.border}`,
-          background:     colors.raised,
-          flexShrink:     0,
-          display:        'flex',
-          gap:            '8px',
-          justifyContent: 'flex-end',
+          padding:       '10px 14px',
+          borderTop:     `1px solid ${colors.border}`,
+          background:    colors.raised,
+          flexShrink:    0,
+          display:       'flex',
+          flexDirection: 'column',
+          gap:           '7px',
         }}>
           {onOpenFullPage && (
             <button
               onClick={onOpenFullPage}
               style={{
-                padding: '7px 14px', borderRadius: '7px',
-                border: `1px solid ${colors.borderSoft}`,
-                background: colors.base,
+                width: '100%', padding: '9px 14px', borderRadius: '7px',
+                border: 'none',
+                background: colors.blue,
+                color: '#fff',
                 cursor: 'pointer',
-                fontSize: '12px', fontWeight: 600,
-                color: colors.secondary,
-                transition: 'background 0.12s',
+                fontSize: '13px', fontWeight: 600,
+                transition: 'opacity 0.12s',
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = colors.float)}
-              onMouseLeave={e => (e.currentTarget.style.background = colors.base)}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
             >
-              Open Full Page
+              View Task Page ↗
             </button>
           )}
           <button
             onClick={onClose}
             style={{
-              padding: '7px 14px', borderRadius: '7px',
-              border: 'none',
-              background: colors.primary,
-              color: '#fff',
+              width: '100%', padding: '7px 14px', borderRadius: '7px',
+              border: `1px solid ${colors.borderSoft}`,
+              background: 'transparent',
+              color: colors.secondary,
               cursor: 'pointer',
-              fontSize: '12px', fontWeight: 600,
-              transition: 'opacity 0.12s',
+              fontSize: '12px', fontWeight: 500,
+              transition: 'background 0.12s',
             }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            onMouseEnter={e => (e.currentTarget.style.background = colors.float)}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
             Close
           </button>

@@ -9,6 +9,7 @@ import { getTaskAging } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import Link from 'next/link'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert, CheckCircle,
@@ -792,6 +793,24 @@ export default function MyTasksPage() {
     }
   }
 
+  const handleAcknowledge = async () => {
+    if (!selectedTask) return
+    const now = new Date().toISOString()
+    await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', selectedTask.id)
+    await supabase.from('task_activity_log').insert({
+      task_id: selectedTask.id, actor_id: userId, action: 'acknowledged', note: null,
+    })
+    if (selectedTask.created_by !== userId) {
+      await supabase.from('notifications').insert({
+        user_id: selectedTask.created_by, task_id: selectedTask.id, type: 'task_acknowledged',
+        title: 'Task acknowledged', body: selectedTask.title, is_push_sent: true,
+      })
+    }
+    const patch = { acknowledged_at: now }
+    setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
+    setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
+  }
+
   const handleDelete = async (task: Task) => {
     if (task.created_by !== userId) {
       window.alert('You can only delete tasks you created.')
@@ -891,6 +910,35 @@ export default function MyTasksPage() {
   return (
     <>
       <DashboardLayout profile={profile} title="My Tasks" onSignOut={handleLogout}>
+
+        {/* ── Sub-menu: In Progress / Completed ── */}
+        <div style={{
+          display: 'flex', gap: '2px',
+          borderBottom: `2px solid ${colors.border}`,
+          marginBottom: '16px',
+        }}>
+          {[
+            { label: 'In Progress', href: '/tasks/my', active: true },
+            { label: 'Completed',   href: '/tasks/my/completed', active: false },
+          ].map(tab => (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              style={{
+                padding: '7px 16px',
+                fontSize: '12.5px', fontWeight: tab.active ? 700 : 500,
+                color: tab.active ? colors.primary : colors.muted,
+                borderBottom: tab.active ? `2px solid ${colors.primary}` : '2px solid transparent',
+                marginBottom: '-2px',
+                textDecoration: 'none',
+                transition: 'color 0.12s',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </div>
 
         {/* ── Two-column workspace ── */}
         <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
@@ -1079,7 +1127,7 @@ export default function MyTasksPage() {
           onClose={() => setSelectedTask(null)}
           onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
           currentUserId={userId}
-          onAddUpdate={handleAddUpdate}
+          onAcknowledge={handleAcknowledge}
         />
       )}
 
