@@ -1350,45 +1350,113 @@ body {
 }
 
 @media (max-width: 767px) {
+  /* ── Sidebar drawer — polished panel feel ── */
   .boe-sidebar {
+    width: 272px;
     transform: translateX(-100%);
-    transition: transform 0.22s ease;
+    transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    box-shadow: none;
+    background: #F8F9FA;
+    border-right: none;
+    border-radius: 0 16px 16px 0;
+    padding: 0 0 20px;
   }
   .boe-sidebar.open {
     transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.13), 1px 0 6px rgba(0,0,0,0.06);
   }
+
+  /* ── Overlay — richer backdrop ── */
   .boe-sidebar-overlay {
     display: block;
     opacity: 0;
     pointer-events: none;
+    background: rgba(10,11,13,0.52);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
   }
   .boe-sidebar-overlay.open {
     opacity: 1;
     pointer-events: auto;
   }
+
+  /* ── Brand header ── */
+  .boe-sidebar-brand {
+    padding: 20px 18px 16px;
+    margin-bottom: 6px;
+  }
+
+  /* ── Section groups — more breathing room ── */
+  .boe-sidebar-section {
+    padding: 0 12px;
+    margin-bottom: 6px;
+  }
+
+  /* ── Section label — clearer hierarchy ── */
+  .boe-sidebar-label {
+    font-size: 9px;
+    letter-spacing: 0.13em;
+    padding: 14px 6px 6px;
+    color: #B0B8CC;
+  }
+
+  /* ── Nav items — generous tap targets ── */
+  .boe-nav-item {
+    min-height: 46px;
+    padding: 11px 12px;
+    font-size: 13.5px;
+    border-radius: 9px;
+    margin-bottom: 2px;
+  }
+
+  /* ── Active item — stronger presence ── */
+  .boe-nav-item.active {
+    background: #FFFFFF;
+    color: #111318;
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.09), 0 0 0 1px rgba(0,0,0,0.05);
+  }
+
+  .boe-nav-item.active::before {
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+  }
+
+  .boe-nav-item:hover:not(.active) {
+    background: rgba(0,0,0,0.05);
+  }
+
+  /* ── Main content ── */
   .boe-main-content {
     margin-left: 0;
     overflow-x: hidden;
   }
+
+  /* ── Menu toggle ── */
   .boe-menu-toggle {
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 40px;
+    min-height: 40px;
   }
+
+  /* ── Page layout ── */
   .boe-page-header {
     padding: 11px 14px 10px;
   }
   .boe-page-body {
     padding: 14px 12px;
   }
+
+  /* ── Buttons ── */
   .boe-btn {
     padding: 9px 13px;
     min-height: 44px;
   }
-  .boe-nav-item {
-    min-height: 44px;
-    padding: 10px 10px;
-  }
+
+  /* ── Grid collapses ── */
   .boe-dashboard-grid    { grid-template-columns: 1fr; }
   .boe-two-col-section   { grid-template-columns: 1fr; }
   .boe-members-grid      { grid-template-columns: 1fr; }
