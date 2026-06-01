@@ -8,6 +8,7 @@ import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import Link from 'next/link'
 import {
   CheckCircle2, ExternalLink, Star,
   Search, RotateCcw,
@@ -360,14 +361,33 @@ export default function CompletedTasksPage() {
     <>
       <DashboardLayout profile={profile} title="My Tasks" onSignOut={handleLogout}>
 
-        {/* Header row */}
-        <div style={{ marginBottom: '14px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#4CAF7D' }}>
-            Completed Tasks
-          </div>
-          <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-            {allTasks.length} task{allTasks.length !== 1 ? 's' : ''} completed
-          </div>
+        {/* Sub-menu: In Progress / Completed */}
+        <div style={{
+          display: 'flex', gap: '2px',
+          borderBottom: `2px solid ${colors.border}`,
+          marginBottom: '16px',
+        }}>
+          {[
+            { label: 'In Progress', href: '/tasks/my',           active: false },
+            { label: 'Completed',   href: '/tasks/my/completed', active: true  },
+          ].map(tab => (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              style={{
+                padding: '7px 16px',
+                fontSize: '12.5px', fontWeight: tab.active ? 700 : 500,
+                color: tab.active ? colors.primary : colors.muted,
+                borderBottom: tab.active ? `2px solid ${colors.primary}` : '2px solid transparent',
+                marginBottom: '-2px',
+                textDecoration: 'none',
+                transition: 'color 0.12s',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {tab.label}
+            </Link>
+          ))}
         </div>
 
         {/* Search + filter toolbar */}
