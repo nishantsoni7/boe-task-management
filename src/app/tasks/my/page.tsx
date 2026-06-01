@@ -200,7 +200,7 @@ function ChipTab({
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
-  task, accentColor, userId, userMap, onClick, onView, onEdit, onDelete,
+  task, accentColor, userId, userMap, onClick, onView, onEdit, onDelete, isMobile,
 }: {
   task: Task
   accentColor: string
@@ -210,6 +210,7 @@ function TaskCard({
   onView: () => void
   onEdit?: () => void
   onDelete?: () => void
+  isMobile?: boolean
 }) {
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
@@ -235,6 +236,72 @@ function TaskCard({
     : `1.5px solid ${colors.border}`
 
   const titleColor = completed ? colors.muted : colors.primary
+
+  if (isMobile) {
+    return (
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={onClick}
+        style={{
+          background: cardBackground,
+          border: cardBorder,
+          borderRadius: '8px',
+          opacity: completed ? 0.6 : 1,
+          cursor: 'pointer',
+          padding: '10px 12px',
+        }}
+      >
+        {/* Row 1: star + title + actions */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
+          {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
+          <div style={{
+            flex: 1, minWidth: 0,
+            fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500,
+            color: titleColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            textDecoration: completed ? 'line-through' : 'none',
+          }}>
+            {task.title}
+          </div>
+          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+            {isSelf && (
+              <>
+                <button onClick={e => { e.stopPropagation(); onEdit?.() }} title="Edit"
+                  onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#5B7FA6' : colors.muted }}>
+                  <Pencil size={12} />
+                </button>
+                <button onClick={e => { e.stopPropagation(); onDelete?.() }} title="Delete"
+                  onMouseEnter={() => setHoveredDel(true)} onMouseLeave={() => setHoveredDel(false)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredDel ? `${colors.red}10` : 'transparent', border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredDel ? colors.red : colors.muted }}>
+                  <Trash2 size={12} />
+                </button>
+              </>
+            )}
+            <button onClick={e => { e.stopPropagation(); onView() }} title="View full page"
+              onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? `${accentColor}14` : 'transparent', border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? accentColor : colors.muted }}>
+              <ExternalLink size={12} />
+            </button>
+          </div>
+        </div>
+        {/* Row 2: meta badges */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {!isSelf && assignerName && (
+            <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
+              {assignerName}
+            </span>
+          )}
+          <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
+          {dateStr && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
+              {overdue && <AlertCircle size={9} />}{dateStr}
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -1097,6 +1164,7 @@ export default function MyTasksPage() {
                     onView={() => router.push(`/tasks/${task.id}`)}
                     onEdit={task.created_by === userId ? () => setEditingTask(task) : undefined}
                     onDelete={task.created_by === userId ? () => handleDelete(task) : undefined}
+                    isMobile={isMobile}
                   />
                 ))}
                 <div style={{

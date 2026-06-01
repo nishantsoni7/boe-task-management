@@ -35,9 +35,17 @@ export default function DashboardPage() {
   const [assignerNames,      setAssignerNames]      = useState<Record<string, string>>({})
   const [completedTasksData, setCompletedTasksData] = useState<Task[]>([])
   const [assignedByMeTasksAll, setAssignedByMeTasksAll] = useState<Task[]>([])
+  const [isMobile,           setIsMobile]           = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     const init = async () => {
@@ -150,6 +158,24 @@ export default function DashboardPage() {
     router.push('/login')
   }
 
+  const handleAcknowledge = async () => {
+    if (!selectedTask) return
+    const now = new Date().toISOString()
+    await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', selectedTask.id)
+    await supabase.from('task_activity_log').insert({
+      task_id: selectedTask.id, actor_id: currentUserId, action: 'acknowledged', note: null,
+    })
+    if (selectedTask.created_by !== currentUserId) {
+      await supabase.from('notifications').insert({
+        user_id: selectedTask.created_by, task_id: selectedTask.id, type: 'task_acknowledged',
+        title: 'Task acknowledged', body: selectedTask.title, is_push_sent: true,
+      })
+    }
+    const patch = { acknowledged_at: now }
+    setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
+    setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
+  }
+
   const userMap = useMemo(
     () => Object.fromEntries(teamUsers.map(u => [u.id, u.full_name])),
     [teamUsers]
@@ -236,7 +262,7 @@ export default function DashboardPage() {
         {/* ── Top summary cards — always 3 ── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
           gap: '16px',
           marginBottom: '24px',
         }}>
@@ -463,6 +489,7 @@ export default function DashboardPage() {
 
         {/* ── Bottom summary bar ── */}
         <BottomSummaryBar
+          isMobile={isMobile}
           items={[
             {
               icon: <CheckCircleIcon color="#16A34A" />,
@@ -507,6 +534,7 @@ export default function DashboardPage() {
         <TaskListDrawer
           title={previewList.title}
           items={previewList.items}
+          isMobile={isMobile}
           onClose={() => setPreviewList(null)}
           onSelectTask={task => { setPreviewList(null); setSelectedTask(task) }}
         />
@@ -515,6 +543,7 @@ export default function DashboardPage() {
       {escalationPreview && !selectedTask && (
         <EscalationListDrawer
           items={adminEscalations}
+          isMobile={isMobile}
           onClose={() => setEscalationPreview(false)}
           onSelectTask={task => { setEscalationPreview(false); setSelectedTask(task) }}
         />
@@ -527,6 +556,14 @@ export default function DashboardPage() {
           onClose={() => setSelectedTask(null)}
           onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
           currentUserId={currentUserId}
+          onAcknowledge={
+            !selectedTask.acknowledged_at &&
+            selectedTask.assigned_to === currentUserId &&
+            selectedTask.created_by !== currentUserId &&
+            selectedTask.status !== 'completed'
+              ? handleAcknowledge
+              : undefined
+          }
         />
       )}
     </>
@@ -806,11 +843,13 @@ function QuickSummaryCard({
 function TaskListDrawer({
   title,
   items,
+  isMobile,
   onClose,
   onSelectTask,
 }: {
   title: string
   items: Task[]
+  isMobile?: boolean
   onClose: () => void
   onSelectTask: (task: Task) => void
 }) {
@@ -829,7 +868,7 @@ function TaskListDrawer({
       {/* Drawer */}
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0,
-        width: '420px',
+        width: isMobile ? '100%' : '420px',
         background: '#fff',
         boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
         zIndex: 50,
@@ -962,10 +1001,12 @@ function PriorityChip({ priority }: { priority: string }) {
 
 function EscalationListDrawer({
   items,
+  isMobile,
   onClose,
   onSelectTask,
 }: {
   items: { task: Task; owner: string; days: number; reason: string }[]
+  isMobile?: boolean
   onClose: () => void
   onSelectTask: (task: Task) => void
 }) {
@@ -973,7 +1014,7 @@ function EscalationListDrawer({
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.25)', zIndex: 40 }} />
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: '420px',
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: isMobile ? '100%' : '420px',
         background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
         zIndex: 50, display: 'flex', flexDirection: 'column',
       }}>
@@ -1132,7 +1173,56 @@ type BottomSummaryItem = {
   onClick: () => void
 }
 
-function BottomSummaryBar({ items }: { items: BottomSummaryItem[] }) {
+function BottomSummaryBar({ items, isMobile }: { items: BottomSummaryItem[]; isMobile?: boolean }) {
+  if (isMobile) {
+    return (
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '10px',
+        marginBottom: '12px',
+      }}>
+        {items.map(item => (
+          <div
+            key={item.label}
+            onClick={item.onClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && item.onClick()}
+            style={{
+              background: '#fff',
+              border: '1px solid #E5E7EB',
+              borderRadius: '10px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '12px 14px',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{
+              width: '30px', height: '30px', borderRadius: '50%',
+              background: item.iconBg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              {item.icon}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {item.label}
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: '#111827', lineHeight: 1, letterSpacing: '-0.02em' }}>
+                {item.count}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div style={{
       background: '#fff',

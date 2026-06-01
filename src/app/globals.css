@@ -1330,11 +1330,15 @@ body {
   }
   .boe-main-content {
     margin-left: 0;
+    overflow-x: hidden;
   }
   .boe-menu-toggle {
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+  .boe-page-body {
+    padding: 14px 12px;
   }
   .boe-dashboard-grid    { grid-template-columns: 1fr; }
   .boe-two-col-section   { grid-template-columns: 1fr; }

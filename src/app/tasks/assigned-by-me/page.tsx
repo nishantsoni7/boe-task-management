@@ -139,7 +139,7 @@ function RightPanel({
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
-  task, accentColor, userMap, onClick, onView, onEdit, onDelete,
+  task, accentColor, userMap, onClick, onView, onEdit, onDelete, isMobile,
 }: {
   task: Task
   accentColor: string
@@ -148,6 +148,7 @@ function TaskCard({
   onView: () => void
   onEdit?: () => void
   onDelete?: () => void
+  isMobile?: boolean
 }) {
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
@@ -168,6 +169,50 @@ function TaskCard({
   const cardBorder = isImportant
     ? `1.5px solid rgba(196,154,40,${hovered ? '0.40' : '0.20'})`
     : `1.5px solid ${colors.border}`
+
+  if (isMobile) {
+    return (
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={onClick}
+        style={{ background: cardBackground, border: cardBorder, borderRadius: '8px', cursor: 'pointer', padding: '10px 12px' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
+          {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
+          <div style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {task.title}
+          </div>
+          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+            <button onClick={e => { e.stopPropagation(); onEdit?.() }}
+              onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
+              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#5B7FA6' : colors.muted }}>
+              <Pencil size={12} />
+            </button>
+            <button onClick={e => { e.stopPropagation(); onDelete?.() }}
+              onMouseEnter={() => setHoveredDel(true)} onMouseLeave={() => setHoveredDel(false)}
+              title="Delete" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredDel ? `${colors.red}10` : 'transparent', border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredDel ? colors.red : colors.muted }}>
+              <Trash2 size={12} />
+            </button>
+            <button onClick={e => { e.stopPropagation(); onView() }}
+              onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
+              title="View" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? `${accentColor}14` : 'transparent', border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? accentColor : colors.muted }}>
+              <ExternalLink size={12} />
+            </button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#2E7D6B', background: 'rgba(46,158,107,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
+          <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
+          {dateStr && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
+              {overdue && <AlertCircle size={9} />}{dateStr}
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -474,6 +519,7 @@ export default function AssignedByMePage() {
   const [activeTab,    setActiveTab]    = useState<TabKey>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [editingTask,  setEditingTask]  = useState<Task | null>(null)
+  const [isMobile,     setIsMobile]     = useState(false)
 
   const [search,         setSearch]         = useState('')
   const [filterAssignee, setFilterAssignee] = useState('')
@@ -481,6 +527,13 @@ export default function AssignedByMePage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     const init = async () => {
@@ -649,6 +702,7 @@ export default function AssignedByMePage() {
                     onView={() => router.push(`/tasks/${task.id}`)}
                     onEdit={() => setEditingTask(task)}
                     onDelete={() => handleDelete(task)}
+                    isMobile={isMobile}
                   />
                 ))}
                 <div style={{ padding: '4px 4px', fontSize: '11px', color: colors.muted }}>
@@ -658,8 +712,8 @@ export default function AssignedByMePage() {
             )}
           </div>
 
-          {/* Right: views panel */}
-          <RightPanel counts={counts} activeTab={activeTab} onTabChange={handleTabChange} />
+          {/* Right: views panel — hidden on mobile */}
+          {!isMobile && <RightPanel counts={counts} activeTab={activeTab} onTabChange={handleTabChange} />}
 
         </div>
       </DashboardLayout>

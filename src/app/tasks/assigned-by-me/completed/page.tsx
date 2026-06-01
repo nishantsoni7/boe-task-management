@@ -56,12 +56,13 @@ function InfoPanel() {
 }
 
 function CompletedTaskCard({
-  task, userMap, onClick, onRestore,
+  task, userMap, onClick, onRestore, isMobile,
 }: {
   task: Task
   userMap: Record<string, string>
   onClick: () => void
   onRestore: () => void
+  isMobile?: boolean
 }) {
   const [hovered,        setHovered]        = useState(false)
   const [hoveredRestore, setHoveredRestore] = useState(false)
@@ -85,6 +86,39 @@ function CompletedTaskCard({
     else                     { countdownLabel = `Deletes in ${daysLeft} days`; warn = false }
     return { completedLabel, countdownLabel, warn }
   })()
+
+  if (isMobile) {
+    return (
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={onClick}
+        style={{ background: hovered ? colors.raised : colors.base, border: `1.5px solid ${colors.border}`, borderRadius: '8px', opacity: 0.82, cursor: 'pointer', padding: '10px 12px' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
+          {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
+          <div style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: 500, color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</div>
+          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+            <button onClick={e => { e.stopPropagation(); onRestore() }}
+              onMouseEnter={() => setHoveredRestore(true)} onMouseLeave={() => setHoveredRestore(false)}
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: hoveredRestore ? 'rgba(91,166,127,0.15)' : 'rgba(91,166,127,0.07)', border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.45)' : 'rgba(91,166,127,0.25)'}`, cursor: 'pointer', outline: 'none', color: hoveredRestore ? '#3a9e6d' : '#4CAF7D', fontSize: '11px', fontWeight: 600 }}>
+              <RotateCcw size={11} />
+            </button>
+            <button onClick={e => { e.stopPropagation(); onClick() }}
+              onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? 'rgba(76,175,125,0.12)' : 'transparent', border: `1px solid ${hoveredView ? 'rgba(76,175,125,0.35)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? '#4CAF7D' : colors.muted }}>
+              <ExternalLink size={12} />
+            </button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#2E7D6B', background: 'rgba(46,158,107,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
+          <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.7 }}>{priority.label}</span>
+          <span style={{ fontSize: '10.5px', color: completionInfo.warn ? '#C07820' : colors.muted, whiteSpace: 'nowrap' }}>{completionInfo.completedLabel}</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -210,6 +244,7 @@ export default function AssignedByMeCompletedPage() {
   const [userMap,      setUserMap]      = useState<Record<string, string>>({})
   const [loading,      setLoading]      = useState(true)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [isMobile,     setIsMobile]     = useState(false)
 
   const [search,         setSearch]         = useState('')
   const [filterPriority, setFilterPriority] = useState('')
@@ -217,6 +252,13 @@ export default function AssignedByMeCompletedPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     const init = async () => {
@@ -346,6 +388,7 @@ export default function AssignedByMeCompletedPage() {
                     userMap={userMap}
                     onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
                     onRestore={() => handleRestore(task)}
+                    isMobile={isMobile}
                   />
                 ))}
                 <div style={{ padding: '4px', fontSize: '11px', color: colors.muted }}>
@@ -354,7 +397,7 @@ export default function AssignedByMeCompletedPage() {
               </div>
             )}
           </div>
-          <InfoPanel />
+          {!isMobile && <InfoPanel />}
         </div>
 
       </DashboardLayout>
