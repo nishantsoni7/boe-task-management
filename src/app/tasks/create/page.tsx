@@ -28,8 +28,16 @@ export default function CreateTaskPage() {
   const [initDone,    setInitDone]    = useState(false)
   const [success,     setSuccess]     = useState(false)
   const [createdId,   setCreatedId]   = useState<string | null>(null)
+  const [isMobile,    setIsMobile]    = useState(false)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -148,7 +156,7 @@ export default function CreateTaskPage() {
       {/* Success banner */}
       {success && (
         <div style={{
-          maxWidth: '90%',
+          maxWidth: isMobile ? '100%' : '90%',
           marginBottom: '16px',
           padding: '11px 16px',
           borderRadius: '8px',
@@ -188,7 +196,7 @@ export default function CreateTaskPage() {
       )}
 
       {/* Two-column: form left, tips right */}
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', maxWidth: '90%' }}>
+      <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '0' : '20px', alignItems: 'flex-start', maxWidth: isMobile ? '100%' : '90%' }}>
 
         {/* ── Form card ───────────────────────────────────────────────── */}
         <div style={{
@@ -380,8 +388,8 @@ export default function CreateTaskPage() {
 
         </div>
 
-        {/* ── Tips card ───────────────────────────────────────────────── */}
-        <div style={{
+        {/* ── Tips card — desktop only ────────────────────────────────── */}
+        {!isMobile && <div style={{
           flex: 2, minWidth: 0,
           background: colors.base,
           border: `1px solid ${colors.border}`,
@@ -417,7 +425,7 @@ export default function CreateTaskPage() {
               </div>
             </div>
           ))}
-        </div>
+        </div>}
 
       </div>
     </DashboardLayout>

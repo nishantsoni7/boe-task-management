@@ -314,7 +314,7 @@ export default function DashboardPage() {
               onClick={() => unacknowledgedForMe.length > 0 && setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '18px 20px 14px',
+                padding: isMobile ? '14px 14px 12px' : '18px 20px 14px',
                 borderBottom: '1px solid #F3F4F6',
                 cursor: unacknowledgedForMe.length > 0 ? 'pointer' : 'default',
                 transition: 'background 0.12s',
@@ -373,7 +373,7 @@ export default function DashboardPage() {
                 onClick={() => adminEscalations.length > 0 && setEscalationPreview(true)}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '18px 20px 14px',
+                  padding: isMobile ? '14px 14px 12px' : '18px 20px 14px',
                   borderBottom: '1px solid #F3F4F6',
                   cursor: adminEscalations.length > 0 ? 'pointer' : 'default',
                   transition: 'background 0.12s',
@@ -411,6 +411,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <>
+                  {!isMobile && (
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: '1fr auto auto auto',
@@ -426,8 +427,43 @@ export default function DashboardPage() {
                     <span>Overdue by</span>
                     <span>Reason</span>
                   </div>
+                  )}
                   {adminEscalations.slice(0, 8).map(({ task, owner, days, reason }) => {
                     const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
+                    if (isMobile) {
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => setSelectedTask(task)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={e => e.key === 'Enter' && setSelectedTask(task)}
+                          style={{
+                            padding: '10px 14px',
+                            borderBottom: '1px solid #F9FAFB',
+                            cursor: 'pointer',
+                            transition: 'background 0.12s',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+                          onMouseLeave={e => (e.currentTarget.style.background = '')}
+                        >
+                          <div style={{
+                            fontSize: '13px', fontWeight: 500, color: '#111827',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            marginBottom: '5px',
+                          }}>
+                            {task.title}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '12px', color: '#374151', fontWeight: 500 }}>
+                              {owner.split(' ')[0]}
+                            </span>
+                            <span style={{ fontSize: '12px', fontWeight: 700, color: daysColor }}>{days}d</span>
+                            <ReasonBadge reason={reason} />
+                          </div>
+                        </div>
+                      )
+                    }
                     return (
                       <div
                         key={task.id}
@@ -611,7 +647,7 @@ function UnacknowledgedTasksSection({
                 background: '#fff',
                 border: isLate ? '1.5px solid #EF4444' : '1px solid #E5E7EB',
                 borderRadius: '10px',
-                padding: '14px 18px',
+                padding: '12px 14px',
                 boxShadow: isLate
                   ? '0 1px 6px rgba(239,68,68,0.10)'
                   : '0 1px 4px rgba(0,0,0,0.05)',
