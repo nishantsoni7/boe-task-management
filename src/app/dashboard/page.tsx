@@ -633,7 +633,7 @@ function UnacknowledgedTasksSection({
             : null
           const isDueOverdue = task.due_date && new Date(task.due_date) < now
           const notePreview = task.note
-            ? task.note.length > 120 ? task.note.slice(0, 120) + '…' : task.note
+            ? task.note.length > 80 ? task.note.slice(0, 80) + '…' : task.note
             : null
 
           return (
@@ -968,7 +968,7 @@ function TaskListDrawer({
                   <div style={{
                     fontSize: '14px', fontWeight: 500, color: '#111827',
                     marginBottom: '6px',
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    lineHeight: 1.4,
                   }}>
                     {task.title}
                   </div>
@@ -1088,7 +1088,7 @@ function EscalationListDrawer({
                 onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
                 onMouseLeave={e => (e.currentTarget.style.background = '')}
               >
-                <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827', marginBottom: '6px', lineHeight: 1.4 }}>
                   {task.title}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

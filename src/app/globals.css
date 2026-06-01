@@ -1383,7 +1383,11 @@ body {
   }
   .boe-btn {
     padding: 9px 13px;
-    min-height: 40px;
+    min-height: 44px;
+  }
+  .boe-nav-item {
+    min-height: 44px;
+    padding: 10px 10px;
   }
   .boe-dashboard-grid    { grid-template-columns: 1fr; }
   .boe-two-col-section   { grid-template-columns: 1fr; }

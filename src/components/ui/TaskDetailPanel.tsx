@@ -198,7 +198,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
               </div>
             )}
             <p style={{
-              fontSize: '13px', fontWeight: 600,
+              fontSize: '15px', fontWeight: 600,
               color: colors.primary, lineHeight: 1.45, margin: 0,
             }}>
               {task.title}
@@ -211,13 +211,17 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
               background: 'none', border: 'none',
               color: colors.muted, cursor: 'pointer',
               fontSize: '18px', lineHeight: 1,
-              padding: '0 2px', flexShrink: 0,
-              transition: 'color 0.14s',
+              padding: '8px', flexShrink: 0,
+              minWidth: '40px', minHeight: '40px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: '6px',
+              transition: 'color 0.14s, background 0.14s',
+              marginRight: '-6px',
             }}
-            onMouseEnter={e => (e.currentTarget.style.color = colors.primary)}
-            onMouseLeave={e => (e.currentTarget.style.color = colors.muted)}
+            onMouseEnter={e => { e.currentTarget.style.color = colors.primary; e.currentTarget.style.background = colors.float }}
+            onMouseLeave={e => { e.currentTarget.style.color = colors.muted; e.currentTarget.style.background = 'none' }}
           >
-            x
+            ×
           </button>
         </div>
 

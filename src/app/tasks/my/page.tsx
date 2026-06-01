@@ -180,11 +180,12 @@ function ChipTab({
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: '5px',
-        padding: '5px 12px',
+        padding: '8px 13px',
         background: isActive ? tab.color : colors.base,
         border: `1.5px solid ${isActive ? tab.color : colors.border}`,
         borderRadius: '20px', cursor: 'pointer', whiteSpace: 'nowrap',
         flexShrink: 0, outline: 'none', transition: 'all 0.15s',
+        minHeight: '36px',
       }}
     >
       <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#fff' : colors.secondary }}>
@@ -267,20 +268,20 @@ function TaskCard({
               <>
                 <button onClick={e => { e.stopPropagation(); onEdit?.() }} title="Edit"
                   onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#5B7FA6' : colors.muted }}>
-                  <Pencil size={12} />
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#5B7FA6' : colors.muted }}>
+                  <Pencil size={13} />
                 </button>
                 <button onClick={e => { e.stopPropagation(); onDelete?.() }} title="Delete"
                   onMouseEnter={() => setHoveredDel(true)} onMouseLeave={() => setHoveredDel(false)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredDel ? `${colors.red}10` : 'transparent', border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredDel ? colors.red : colors.muted }}>
-                  <Trash2 size={12} />
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredDel ? `${colors.red}10` : 'transparent', border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredDel ? colors.red : colors.muted }}>
+                  <Trash2 size={13} />
                 </button>
               </>
             )}
             <button onClick={e => { e.stopPropagation(); onView() }} title="View full page"
               onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? `${accentColor}14` : 'transparent', border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? accentColor : colors.muted }}>
-              <ExternalLink size={12} />
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredView ? `${accentColor}14` : 'transparent', border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? accentColor : colors.muted }}>
+              <ExternalLink size={13} />
             </button>
           </div>
         </div>
@@ -1065,57 +1066,65 @@ export default function MyTasksPage() {
               borderRadius: '8px',
               padding: '8px 10px',
               marginBottom: '10px',
-              display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap',
+              display: 'flex', flexDirection: 'column', gap: '8px',
             }}>
-              <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
-              <input
-                type="text"
-                placeholder="Find tasks…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                style={{
-                  flex: 1, minWidth: '140px', padding: '4px 6px',
-                  background: 'transparent', border: 'none',
-                  outline: 'none',
-                  fontSize: '12px', color: colors.primary,
-                }}
-              />
-              {taskType !== 'self' && assignerOptions.length > 0 && (
-                <select
-                  value={filterAssignedBy}
-                  onChange={e => setFilterAssignedBy(e.target.value)}
+              {/* Search row */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
+                <input
+                  type="text"
+                  placeholder="Find tasks…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
                   style={{
-                    padding: '4px 10px',
-                    minWidth: '130px',
-                    background: colors.base, border: `1px solid ${colors.border}`,
-                    borderRadius: '6px', outline: 'none',
-                    fontSize: '11.5px', color: filterAssignedBy ? colors.primary : colors.muted,
-                    cursor: 'pointer',
+                    flex: 1, padding: '4px 6px',
+                    background: 'transparent', border: 'none',
+                    outline: 'none',
+                    fontSize: '12px', color: colors.primary,
                   }}
-                >
-                  <option value="">All Assigners</option>
-                  {assignerOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                />
+              </div>
+              {/* Filter row */}
+              {(taskType !== 'self' && assignerOptions.length > 0 || true) && (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {taskType !== 'self' && assignerOptions.length > 0 && (
+                    <select
+                      value={filterAssignedBy}
+                      onChange={e => setFilterAssignedBy(e.target.value)}
+                      style={{
+                        flex: 1, minWidth: '120px',
+                        padding: '6px 10px',
+                        background: colors.base, border: `1px solid ${colors.border}`,
+                        borderRadius: '6px', outline: 'none',
+                        fontSize: '11.5px', color: filterAssignedBy ? colors.primary : colors.muted,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="">All Assigners</option>
+                      {assignerOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  )}
+                  <select
+                    value={filterPriority}
+                    onChange={e => setFilterPriority(e.target.value)}
+                    style={{
+                      flex: 1, minWidth: '100px',
+                      padding: '6px 10px',
+                      background: colors.base, border: `1px solid ${colors.border}`,
+                      borderRadius: '6px', outline: 'none',
+                      fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="">All Priority</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
               )}
-              <select
-                value={filterPriority}
-                onChange={e => setFilterPriority(e.target.value)}
-                style={{
-                  padding: '4px 10px',
-                  minWidth: '110px',
-                  background: colors.base, border: `1px solid ${colors.border}`,
-                  borderRadius: '6px', outline: 'none',
-                  fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted,
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="">All Priority</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
             </div>
 
             {/* Task cards */}

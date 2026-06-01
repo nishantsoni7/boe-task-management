@@ -186,18 +186,18 @@ function TaskCard({
           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
             <button onClick={e => { e.stopPropagation(); onEdit?.() }}
               onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
-              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#5B7FA6' : colors.muted }}>
-              <Pencil size={12} />
+              title="Edit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#5B7FA6' : colors.muted }}>
+              <Pencil size={13} />
             </button>
             <button onClick={e => { e.stopPropagation(); onDelete?.() }}
               onMouseEnter={() => setHoveredDel(true)} onMouseLeave={() => setHoveredDel(false)}
-              title="Delete" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredDel ? `${colors.red}10` : 'transparent', border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredDel ? colors.red : colors.muted }}>
-              <Trash2 size={12} />
+              title="Delete" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredDel ? `${colors.red}10` : 'transparent', border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredDel ? colors.red : colors.muted }}>
+              <Trash2 size={13} />
             </button>
             <button onClick={e => { e.stopPropagation(); onView() }}
               onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
-              title="View" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', background: hoveredView ? `${accentColor}14` : 'transparent', border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? accentColor : colors.muted }}>
-              <ExternalLink size={12} />
+              title="View" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredView ? `${accentColor}14` : 'transparent', border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? accentColor : colors.muted }}>
+              <ExternalLink size={13} />
             </button>
           </div>
         </div>
@@ -653,38 +653,44 @@ export default function AssignedByMePage() {
             <div style={{
               background: colors.raised, border: `1.5px solid ${colors.border}`,
               borderRadius: '8px', padding: '8px 10px', marginBottom: '10px',
-              display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap',
+              display: 'flex', flexDirection: 'column', gap: '8px',
             }}>
-              <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
-              <input
-                type="text"
-                placeholder="Find tasks…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                style={{ flex: 1, minWidth: '140px', padding: '4px 6px', background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary }}
-              />
-              {assigneeOptions.length > 0 && (
+              {/* Search row */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
+                <input
+                  type="text"
+                  placeholder="Find tasks…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  style={{ flex: 1, padding: '4px 6px', background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary }}
+                />
+              </div>
+              {/* Filter row */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {assigneeOptions.length > 0 && (
+                  <select
+                    value={filterAssignee}
+                    onChange={e => setFilterAssignee(e.target.value)}
+                    style={{ flex: 1, minWidth: '120px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
+                  >
+                    <option value="">All Assignees</option>
+                    {assigneeOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                )}
                 <select
-                  value={filterAssignee}
-                  onChange={e => setFilterAssignee(e.target.value)}
-                  style={{ padding: '4px 10px', minWidth: '130px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
+                  value={filterPriority}
+                  onChange={e => setFilterPriority(e.target.value)}
+                  style={{ flex: 1, minWidth: '100px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
                 >
-                  <option value="">All Assignees</option>
-                  {assigneeOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
+                  <option value="">All Priority</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
                 </select>
-              )}
-              <select
-                value={filterPriority}
-                onChange={e => setFilterPriority(e.target.value)}
-                style={{ padding: '4px 10px', minWidth: '110px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
-              >
-                <option value="">All Priority</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
+              </div>
             </div>
 
             {/* Task cards */}
