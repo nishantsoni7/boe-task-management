@@ -10,6 +10,7 @@ import {
   initials,
   timeAgo,
   timeSince,
+  getTaskAging,
 } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
 
@@ -135,6 +136,7 @@ export function TaskCard({
         )}
 
         <PriorityBadge priority={task.priority} />
+        <AgingBadge task={task} />
 
         {/* Right side: due date + ack state */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -213,6 +215,26 @@ function PriorityBadge({ priority }: { priority: string }) {
       padding: '1px 6px', borderRadius: '4px', flexShrink: 0,
     }}>
       {label}
+    </span>
+  )
+}
+
+// ─── AgingBadge ───────────────────────────────────────────────────────────────
+function AgingBadge({ task }: { task: Task }) {
+  const aging = getTaskAging(task)
+  if (!aging) return null
+  const color = aging.severity === 'danger' ? colors.red : colors.amber
+  return (
+    <span style={{
+      fontSize: '10px', fontWeight: 700,
+      color,
+      background: `${color}12`,
+      border: `1px solid ${color}30`,
+      padding: '1px 6px', borderRadius: '4px',
+      flexShrink: 0,
+      letterSpacing: '0.03em',
+    }}>
+      {aging.label}
     </span>
   )
 }

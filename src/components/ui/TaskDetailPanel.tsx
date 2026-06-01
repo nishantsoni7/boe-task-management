@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import type { Task, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { isOverdue, formatShortDate, formatDateTime, timeAgo, formatLogAction } from '@/lib/ui'
+import { isOverdue, formatShortDate, formatDateTime, timeAgo, formatLogAction, getTaskAging } from '@/lib/ui'
 import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -301,6 +301,27 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
               }
             </MetaRow>
 
+            {(() => {
+              const aging = getTaskAging(task)
+              if (!aging) return null
+              const color = aging.severity === 'danger' ? '#D94F4F' : '#E8A030'
+              return (
+                <MetaRow label="Aging">
+                  <span style={{
+                    fontSize: '11px', fontWeight: 700,
+                    color,
+                    background: `${color}12`,
+                    border: `1px solid ${color}30`,
+                    padding: '2px 8px', borderRadius: '4px',
+                  }}>
+                    {aging.label}
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#6B7384', marginLeft: '6px' }}>
+                    {aging.message}
+                  </span>
+                </MetaRow>
+              )
+            })()}
 
           </div>
 

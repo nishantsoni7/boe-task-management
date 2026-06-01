@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
+import { getTaskAging } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -287,6 +288,22 @@ function TaskCard({
             {task.note}
           </div>
         )}
+        {(() => {
+          const aging = getTaskAging(task)
+          if (!aging) return null
+          const color = aging.severity === 'danger' ? '#D94F4F' : '#E8A030'
+          return (
+            <span style={{
+              display: 'inline-block', marginTop: '3px',
+              fontSize: '10px', fontWeight: 700,
+              color, background: `${color}12`,
+              border: `1px solid ${color}30`,
+              padding: '1px 6px', borderRadius: '4px',
+            }}>
+              {aging.label}
+            </span>
+          )
+        })()}
       </div>
 
       {/* Assigned by — fixed 140px */}

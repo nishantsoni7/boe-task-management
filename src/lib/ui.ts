@@ -115,6 +115,39 @@ export function escalationLevel(
   return null
 }
 
+// ─── Task aging ───────────────────────────────────────────────────────────────
+
+export type TaskAging = {
+  label: string
+  severity: 'warning' | 'danger'
+  daysSinceUpdate: number
+  message: string
+}
+
+export function getTaskAging(task: {
+  status: string
+  last_update_at: string | null
+  created_at: string
+}): TaskAging | null {
+  if (task.status === 'completed') return null
+  const ref = task.last_update_at ?? task.created_at
+  const days = (Date.now() - new Date(ref).getTime()) / 86_400_000
+  const d = Math.floor(days)
+  if (task.status === 'blocked' && days >= 3) {
+    return { label: 'Blocked too long', severity: 'danger',  daysSinceUpdate: d, message: `Blocked for ${d}d — needs resolution` }
+  }
+  if (task.status === 'waiting' && days >= 3) {
+    return { label: 'Waiting too long', severity: 'warning', daysSinceUpdate: d, message: `Waiting for ${d}d — no update` }
+  }
+  if (days >= 7) {
+    return { label: 'Stale',        severity: 'danger',  daysSinceUpdate: d, message: `No update for ${d}d` }
+  }
+  if (days >= 3) {
+    return { label: 'Needs update', severity: 'warning', daysSinceUpdate: d, message: `No update for ${d}d` }
+  }
+  return null
+}
+
 // ─── Activity log label ───────────────────────────────────────────────────────
 export function formatLogAction(
   action: string,

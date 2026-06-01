@@ -50,6 +50,20 @@ export function DashboardLayout({
       {/* Sidebar */}
       <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
 
+        {/* Top-level nav */}
+        <div className="boe-sidebar-section">
+          <NavLeaf
+            label="Dashboard"
+            active={pathname === '/dashboard'}
+            onClick={() => navTo('/dashboard')}
+          />
+          <NavLeaf
+            label="Members"
+            active={pathname === '/admin/members'}
+            onClick={() => navTo('/admin/members')}
+          />
+        </div>
+
         {/* Tasks section */}
         <div className="boe-sidebar-section">
           <div className="boe-sidebar-label">Tasks</div>

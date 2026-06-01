@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Task, LogEntry, TaskStatus, UserProfile } from '@/lib/types'
 import {
   isOverdue, formatFullDate, formatDateTime,
-  formatLogAction, timeAgo,
+  formatLogAction, timeAgo, getTaskAging,
 } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -595,10 +595,38 @@ export default function TaskDetailPage() {
               <span style={summaryValue}>{assigneeName}</span>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: task.is_urgent ? `1px solid ${colors.border}` : 'none' }}>
-              <span style={summaryLabel}>Assigned By</span>
-              <span style={summaryValue}>{creatorName ?? '—'}</span>
-            </div>
+            {(() => {
+              const aging = getTaskAging(task)
+              if (!aging) return (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: task.is_urgent ? `1px solid ${colors.border}` : 'none' }}>
+                  <span style={summaryLabel}>Assigned By</span>
+                  <span style={summaryValue}>{creatorName ?? '—'}</span>
+                </div>
+              )
+              const agingColor = aging.severity === 'danger' ? colors.red : colors.amber
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
+                    <span style={summaryLabel}>Assigned By</span>
+                    <span style={summaryValue}>{creatorName ?? '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: task.is_urgent ? `1px solid ${colors.border}` : 'none' }}>
+                    <span style={summaryLabel}>Aging</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{
+                        fontSize: '11px', fontWeight: 700,
+                        color: agingColor, background: `${agingColor}14`,
+                        border: `1px solid ${agingColor}30`,
+                        padding: '2px 8px', borderRadius: '10px',
+                      }}>
+                        {aging.label}
+                      </span>
+                      <span style={{ fontSize: '10px', color: colors.muted }}>{aging.daysSinceUpdate}d</span>
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
 
             {task.is_urgent && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0' }}>

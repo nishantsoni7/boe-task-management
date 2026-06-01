@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
+import { getTaskAging } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -19,6 +20,7 @@ const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
   'is_urgent', 'due_date', 'acknowledged_at',
   'created_at', 'last_update_at', 'blocker_reason',
+  'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text',
   'assigned_to', 'created_by', 'delegated_by', 'team',
 ].join(', ')
 
@@ -209,6 +211,22 @@ function TaskCard({
             {task.note}
           </div>
         )}
+        {(() => {
+          const aging = getTaskAging(task)
+          if (!aging) return null
+          const color = aging.severity === 'danger' ? '#D94F4F' : '#E8A030'
+          return (
+            <span style={{
+              display: 'inline-block', marginTop: '3px',
+              fontSize: '10px', fontWeight: 700,
+              color, background: `${color}12`,
+              border: `1px solid ${color}30`,
+              padding: '1px 6px', borderRadius: '4px',
+            }}>
+              {aging.label}
+            </span>
+          )
+        })()}
       </div>
 
       {/* Assigned to — fixed 140px */}
