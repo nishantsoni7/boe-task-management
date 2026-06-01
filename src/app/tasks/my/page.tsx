@@ -19,6 +19,7 @@ const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
   'is_urgent', 'due_date', 'acknowledged_at',
   'created_at', 'last_update_at', 'blocker_reason',
+  'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text',
   'assigned_to', 'created_by', 'delegated_by', 'team',
 ].join(', ')
 
@@ -687,18 +688,28 @@ export default function MyTasksPage() {
     setEditingTask(null)
   }
 
-  const handleAddUpdate = async (note: string, newStatus: string) => {
+  const handleAddUpdate = async (note: string, newStatus: string, waitingOn?: { type: 'team_member' | 'external'; userId?: string; text?: string }) => {
     if (!selectedTask) return
     const now = new Date().toISOString()
     const statusChanged = newStatus !== selectedTask.status
     const trimmedNote = note.trim() || null
 
     if (statusChanged) {
-      const needsBlockerReason = newStatus === 'blocked' || newStatus === 'waiting'
-      const clearBlockerReason = selectedTask.status === 'blocked' || selectedTask.status === 'waiting'
+      const needsBlockerReason = newStatus === 'blocked'
+      const clearBlockerReason = selectedTask.status === 'blocked'
+      const clearWaiting = selectedTask.status === 'waiting' && newStatus !== 'waiting'
       const taskUpdates: Record<string, unknown> = { status: newStatus, last_update_at: now }
       if (needsBlockerReason) taskUpdates.blocker_reason = trimmedNote
       else if (clearBlockerReason) taskUpdates.blocker_reason = null
+      if (newStatus === 'waiting' && waitingOn) {
+        taskUpdates.waiting_on_type    = waitingOn.type
+        taskUpdates.waiting_on_user_id = waitingOn.type === 'team_member' ? (waitingOn.userId ?? null) : null
+        taskUpdates.waiting_on_text    = waitingOn.type === 'external'    ? (waitingOn.text    ?? null) : null
+      } else if (clearWaiting) {
+        taskUpdates.waiting_on_type    = null
+        taskUpdates.waiting_on_user_id = null
+        taskUpdates.waiting_on_text    = null
+      }
       const { error: taskErr } = await supabase
         .from('tasks').update(taskUpdates).eq('id', selectedTask.id)
       if (taskErr) {
@@ -724,6 +735,15 @@ export default function MyTasksPage() {
       const localPatch: Partial<Task> = { status: newStatus as Task['status'], last_update_at: now }
       if (needsBlockerReason) localPatch.blocker_reason = trimmedNote
       else if (clearBlockerReason) localPatch.blocker_reason = null
+      if (newStatus === 'waiting' && waitingOn) {
+        localPatch.waiting_on_type    = waitingOn.type
+        localPatch.waiting_on_user_id = waitingOn.type === 'team_member' ? (waitingOn.userId ?? null) : null
+        localPatch.waiting_on_text    = waitingOn.type === 'external'    ? (waitingOn.text    ?? null) : null
+      } else if (clearWaiting) {
+        localPatch.waiting_on_type    = null
+        localPatch.waiting_on_user_id = null
+        localPatch.waiting_on_text    = null
+      }
       setSelectedTask(prev => prev ? { ...prev, ...localPatch } : prev)
       setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
     } else if (trimmedNote) {

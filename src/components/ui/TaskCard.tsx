@@ -120,6 +120,20 @@ export function TaskCard({
           </span>
         )}
 
+        {task.status === 'waiting' && task.waiting_on_type && (
+          <span style={{
+            fontSize: '11px', color: colors.amber,
+            background: 'rgba(232,160,48,0.08)',
+            padding: '2px 6px', borderRadius: '3px',
+            fontFamily: font.mono,
+          }}>
+            ⏳ {task.waiting_on_type === 'external'
+              ? (task.waiting_on_text ?? 'External')
+              : 'Team member'
+            }
+          </span>
+        )}
+
         <PriorityBadge priority={task.priority} />
 
         {/* Right side: due date + ack state */}

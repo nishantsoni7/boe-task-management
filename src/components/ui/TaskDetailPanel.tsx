@@ -8,13 +8,19 @@ import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type WaitingOnData = {
+  type: 'team_member' | 'external'
+  userId?: string
+  text?: string
+}
+
 type Props = {
   task: Task
   userMap?: Record<string, string>
   onClose: () => void
   onOpenFullPage?: () => void
   currentUserId?: string
-  onAddUpdate?: (note: string, newStatus: string) => Promise<void>
+  onAddUpdate?: (note: string, newStatus: string, waitingOn?: WaitingOnData) => Promise<void>
 }
 
 // ─── Priority display ─────────────────────────────────────────────────────────
@@ -57,13 +63,16 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 // ─── TaskDetailPanel ──────────────────────────────────────────────────────────
 
 export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, currentUserId, onAddUpdate }: Props) {
-  const [open,           setOpen]          = useState(false)
-  const [updateNote,     setUpdateNote]    = useState('')
-  const [selectedStatus, setSelectedStatus] = useState(task.status)
-  const [submitting,     setSubmitting]    = useState(false)
-  const [completingTask, setCompletingTask] = useState(false)
-  const [activityLog,    setActivityLog]   = useState<LogEntry[]>([])
-  const [logLoading,     setLogLoading]    = useState(true)
+  const [open,             setOpen]            = useState(false)
+  const [updateNote,       setUpdateNote]      = useState('')
+  const [selectedStatus,   setSelectedStatus]  = useState(task.status)
+  const [submitting,       setSubmitting]      = useState(false)
+  const [completingTask,   setCompletingTask]  = useState(false)
+  const [activityLog,      setActivityLog]     = useState<LogEntry[]>([])
+  const [logLoading,       setLogLoading]      = useState(true)
+  const [waitingOnType,    setWaitingOnType]   = useState<'team_member' | 'external'>('team_member')
+  const [waitingOnUserId,  setWaitingOnUserId] = useState('')
+  const [waitingOnText,    setWaitingOnText]   = useState('')
 
   const supabase = useMemo(() => createClient(), [])
 
@@ -73,6 +82,9 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
     setSelectedStatus(task.status)
     setActivityLog([])
     setLogLoading(true)
+    setWaitingOnType('team_member')
+    setWaitingOnUserId('')
+    setWaitingOnText('')
 
     supabase
       .from('task_activity_log')
@@ -292,6 +304,37 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
 
           </div>
 
+          {/* Waiting On — shown when task is in waiting status */}
+          {task.status === 'waiting' && (task.waiting_on_type) && (
+            <div style={{
+              padding: '10px 12px',
+              borderRadius: '7px',
+              background: `${colors.amber}0d`,
+              border: `1.5px solid ${colors.amber}40`,
+              borderLeft: `3px solid ${colors.amber}`,
+            }}>
+              <div style={{
+                fontSize: '9.5px', fontWeight: 700,
+                letterSpacing: '0.08em', textTransform: 'uppercase',
+                color: colors.amber, marginBottom: '5px',
+              }}>
+                Waiting On
+              </div>
+              <p style={{
+                fontSize: '12.5px', color: colors.amber,
+                margin: 0, lineHeight: 1.55,
+              }}>
+                {task.waiting_on_type === 'team_member'
+                  ? (userMap?.[task.waiting_on_user_id ?? ''] ?? 'Team member')
+                  : (task.waiting_on_text ?? '—')
+                }
+              </p>
+              <p style={{ fontSize: '10px', color: colors.muted, margin: '3px 0 0' }}>
+                {task.waiting_on_type === 'team_member' ? 'Team Member' : 'External Dependency'}
+              </p>
+            </div>
+          )}
+
           {/* Blocker reason — prominent section, visible above Note */}
           {task.status === 'blocked' && task.blocker_reason && (
             <div style={{
@@ -390,6 +433,75 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
                 </div>
               </div>
 
+              {/* Waiting On — shown only when selected status is waiting */}
+              {selectedStatus === 'waiting' && (
+                <div style={{
+                  padding: '10px 12px', borderRadius: '7px',
+                  background: `${colors.amber}0a`,
+                  border: `1px solid ${colors.amber}40`,
+                  marginBottom: '7px',
+                }}>
+                  <div style={{
+                    fontSize: '9.5px', fontWeight: 700,
+                    letterSpacing: '0.08em', textTransform: 'uppercase',
+                    color: colors.amber, marginBottom: '8px',
+                  }}>
+                    Waiting On <span style={{ color: colors.red }}>*</span>
+                  </div>
+
+                  {/* Type selector */}
+                  <div style={{ display: 'flex', gap: '5px', marginBottom: '8px' }}>
+                    {(['team_member', 'external'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => { setWaitingOnType(t); setWaitingOnUserId(''); setWaitingOnText('') }}
+                        style={{
+                          flex: 1, padding: '4px 8px', borderRadius: '5px',
+                          border: `1.5px solid ${waitingOnType === t ? colors.amber : colors.border}`,
+                          background: waitingOnType === t ? `${colors.amber}18` : 'transparent',
+                          color: waitingOnType === t ? colors.amber : colors.muted,
+                          fontSize: '11px', fontWeight: waitingOnType === t ? 600 : 400,
+                          cursor: 'pointer', transition: 'all 0.12s',
+                        }}
+                      >
+                        {t === 'team_member' ? 'Team Member' : 'External Dependency'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Team member dropdown */}
+                  {waitingOnType === 'team_member' && (
+                    <select
+                      value={waitingOnUserId}
+                      onChange={e => setWaitingOnUserId(e.target.value)}
+                      className="boe-input"
+                      style={{ width: '100%', boxSizing: 'border-box', fontSize: '12px' }}
+                    >
+                      <option value="">Select team member…</option>
+                      {Object.entries(userMap ?? {})
+                        .sort((a, b) => a[1].localeCompare(b[1]))
+                        .map(([id, name]) => (
+                          <option key={id} value={id}>{name}</option>
+                        ))
+                      }
+                    </select>
+                  )}
+
+                  {/* External text input */}
+                  {waitingOnType === 'external' && (
+                    <input
+                      type="text"
+                      value={waitingOnText}
+                      onChange={e => setWaitingOnText(e.target.value)}
+                      placeholder="e.g. Client approval, Vendor quotation…"
+                      className="boe-input"
+                      style={{ width: '100%', boxSizing: 'border-box', fontSize: '12px' }}
+                    />
+                  )}
+                </div>
+              )}
+
               {/* Note textarea */}
               <textarea
                 value={updateNote}
@@ -429,7 +541,13 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
                 {(() => {
                   const statusChanged = selectedStatus !== task.status
                   const hasNote = updateNote.trim().length > 0
-                  const canSubmit = !submitting && !completingTask && (statusChanged || hasNote)
+                  const waitingOnFilled = selectedStatus !== 'waiting' || (
+                    waitingOnType === 'team_member' ? !!waitingOnUserId : !!waitingOnText.trim()
+                  )
+                  const canSubmit = !submitting && !completingTask && (statusChanged || hasNote) && waitingOnFilled
+                  const waitingOn: WaitingOnData | undefined = selectedStatus === 'waiting'
+                    ? { type: waitingOnType, userId: waitingOnUserId || undefined, text: waitingOnText.trim() || undefined }
+                    : undefined
                   return (
                     <button
                       disabled={!canSubmit}
@@ -437,8 +555,13 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
                         if (!canSubmit) return
                         setSubmitting(true)
                         try {
-                          await onAddUpdate(updateNote.trim(), selectedStatus)
+                          await onAddUpdate(updateNote.trim(), selectedStatus, waitingOn)
                           setUpdateNote('')
+                          if (selectedStatus !== 'waiting') {
+                            setWaitingOnType('team_member')
+                            setWaitingOnUserId('')
+                            setWaitingOnText('')
+                          }
                         } finally {
                           setSubmitting(false)
                         }

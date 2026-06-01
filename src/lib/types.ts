@@ -32,6 +32,9 @@ export type Task = {
   created_by: string
   delegated_by: string | null
   blocker_reason: string | null
+  waiting_on_type: 'team_member' | 'external' | null
+  waiting_on_user_id: string | null
+  waiting_on_text: string | null
   team: string
   // Manager view enrichment (joined from assignee relation)
   is_stale?: boolean

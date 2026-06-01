@@ -19,6 +19,7 @@ const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
   'is_urgent', 'due_date', 'acknowledged_at',
   'created_at', 'last_update_at', 'blocker_reason',
+  'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text',
   'assigned_to', 'created_by', 'delegated_by', 'team',
 ].join(', ')
 
@@ -195,10 +196,8 @@ export default function DashboardPage() {
 
   const waitingByDep = WAITING_DEPS.reduce<Record<string, number>>((acc, dep) => {
     acc[dep] = waitingTasks.filter(t => {
-      const reason = t.blocker_reason ?? ''
-      // Format: "Waiting on: Client — note" — extract dep after "Waiting on: "
-      const match = reason.match(/^Waiting on:\s*([^—\n]+)/i)
-      return match ? match[1].trim() === dep : dep === 'Other'
+      if (dep === 'Other') return !t.waiting_on_text || t.waiting_on_type === 'team_member'
+      return t.waiting_on_type === 'external' && t.waiting_on_text === dep
     }).length
     return acc
   }, {} as Record<string, number>)
@@ -276,21 +275,32 @@ export default function DashboardPage() {
     [teamUsers]
   )
 
-  const handleDashboardAddUpdate = async (note: string, newStatus: string) => {
+  const handleDashboardAddUpdate = async (note: string, newStatus: string, waitingOn?: { type: 'team_member' | 'external'; userId?: string; text?: string }) => {
     if (!selectedTask) return
     const now = new Date().toISOString()
     const statusChanged = newStatus !== selectedTask.status
     const trimmedNote = note.trim() || null
 
     if (statusChanged) {
-      const needsBlockerReason = newStatus === 'blocked' || newStatus === 'waiting'
-      const clearBlockerReason = selectedTask.status === 'blocked' || selectedTask.status === 'waiting'
+      const needsBlockerReason = newStatus === 'blocked'
+      const clearBlockerReason = selectedTask.status === 'blocked'
+      const clearWaiting = selectedTask.status === 'waiting' && newStatus !== 'waiting'
       const taskUpdates: Record<string, unknown> = { status: newStatus, last_update_at: now }
       if (needsBlockerReason) taskUpdates.blocker_reason = trimmedNote
       else if (clearBlockerReason) taskUpdates.blocker_reason = null
+      if (newStatus === 'waiting' && waitingOn) {
+        taskUpdates.waiting_on_type    = waitingOn.type
+        taskUpdates.waiting_on_user_id = waitingOn.type === 'team_member' ? (waitingOn.userId ?? null) : null
+        taskUpdates.waiting_on_text    = waitingOn.type === 'external'    ? (waitingOn.text    ?? null) : null
+      } else if (clearWaiting) {
+        taskUpdates.waiting_on_type    = null
+        taskUpdates.waiting_on_user_id = null
+        taskUpdates.waiting_on_text    = null
+      }
       await supabase.from('tasks')
         .update(taskUpdates)
         .eq('id', selectedTask.id)
+
       await supabase.from('task_activity_log').insert({
         task_id:     selectedTask.id,
         actor_id:    currentUserId,
@@ -302,6 +312,15 @@ export default function DashboardPage() {
       const localPatch: Partial<Task> = { status: newStatus as Task['status'], last_update_at: now }
       if (needsBlockerReason) localPatch.blocker_reason = trimmedNote
       else if (clearBlockerReason) localPatch.blocker_reason = null
+      if (newStatus === 'waiting' && waitingOn) {
+        localPatch.waiting_on_type    = waitingOn.type
+        localPatch.waiting_on_user_id = waitingOn.type === 'team_member' ? (waitingOn.userId ?? null) : null
+        localPatch.waiting_on_text    = waitingOn.type === 'external'    ? (waitingOn.text    ?? null) : null
+      } else if (clearWaiting) {
+        localPatch.waiting_on_type    = null
+        localPatch.waiting_on_user_id = null
+        localPatch.waiting_on_text    = null
+      }
       setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
       // Keep in blockedTasks with new status so the sync effect can still find selectedTask;
       // the card filters to status === 'blocked' so it will disappear from the list automatically.
@@ -367,7 +386,9 @@ export default function DashboardPage() {
         const newStatus = action.type
         await Promise.all([
           supabase.from('tasks')
-            .update({ status: newStatus, blocker_reason: action.reason, last_update_at: now })
+            .update(newStatus === 'waiting'
+              ? { status: newStatus, waiting_on_type: 'external', waiting_on_text: action.reason, waiting_on_user_id: null, last_update_at: now }
+              : { status: newStatus, blocker_reason: action.reason, last_update_at: now })
             .eq('id', task.id),
           supabase.from('task_activity_log').insert({
             task_id: task.id, actor_id: currentUserId, action: 'status_changed',
@@ -376,7 +397,9 @@ export default function DashboardPage() {
         ])
         setTasks(prev => prev.map(t =>
           t.id === task.id
-            ? { ...t, status: newStatus, blocker_reason: action.reason, last_update_at: now }
+            ? newStatus === 'waiting'
+              ? { ...t, status: newStatus, waiting_on_type: 'external' as const, waiting_on_text: action.reason, waiting_on_user_id: null, last_update_at: now }
+              : { ...t, status: newStatus, blocker_reason: action.reason, last_update_at: now }
             : t
         ))
 
