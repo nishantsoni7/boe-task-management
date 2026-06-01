@@ -243,6 +243,9 @@ export default function TaskDetailPage() {
   const riskOverdue  = overdue && task.status !== 'completed'
   const assigneeName = isAssignee ? (profile?.full_name ?? 'You') : (task.assignee_name ?? '—')
 
+  // Delegated task not yet acknowledged — block all modifications
+  const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at
+
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
     : isAssignee                    ? 'Assigned To Me'
     : isDelegated                   ? 'Delegated Task'
@@ -390,8 +393,21 @@ export default function TaskDetailPage() {
               )}
             </div>
 
-            {/* § Update Status — assignee only, task not completed */}
-            {isAssignee && task.status !== 'completed' && (
+            {/* § Unacknowledged notice */}
+            {isUnacknowledged && (
+              <div style={{
+                borderTop: `1px solid ${colors.border}`,
+                padding: '14px 20px',
+                background: colors.amberTint,
+              }}>
+                <p style={{ fontSize: '12px', color: colors.amber, fontWeight: 600, margin: 0 }}>
+                  ⚠️ Please acknowledge this task before updating it.
+                </p>
+              </div>
+            )}
+
+            {/* § Update Status — assignee only, task not completed, acknowledged */}
+            {isAssignee && task.status !== 'completed' && !isUnacknowledged && (
               <div style={{
                 borderTop: `1px solid ${colors.border}`,
                 padding: '14px 20px',
@@ -677,7 +693,7 @@ export default function TaskDetailPage() {
                   <CircleCheckBig size={14} color={colors.green} strokeWidth={2.2} />
                   <span style={{ fontSize: '12px', fontWeight: 600, color: colors.green }}>Task Completed</span>
                 </div>
-              ) : isAssignee ? (
+              ) : isAssignee && !isUnacknowledged ? (
                 <button
                   onClick={async () => {
                     setMarkingComplete(true)
