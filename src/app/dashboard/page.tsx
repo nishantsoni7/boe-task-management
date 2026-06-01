@@ -2,18 +2,13 @@
 
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { isOverdue } from '@/lib/ui'
-import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-
 import { LoadingScreen } from '@/components/ui/atoms'
-import { OverduePrompt, type OverdueAction } from '@/components/ui/OverduePrompt'
-import { TaskCard } from '@/components/ui/TaskCard'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
-
-const PRIORITY_WEIGHT: Record<string, number> = { high: 0, medium: 1, low: 2 }
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -24,113 +19,97 @@ const TASK_COLUMNS = [
 ].join(', ')
 
 export default function DashboardPage() {
-  const [profile,       setProfile]       = useState<UserProfile | null>(null)
-  const [tasks,         setTasks]         = useState<Task[]>([])
-  const [loading,       setLoading]       = useState(true)
-  const [currentUserId, setCurrentUserId] = useState('')
-  const [promptOpen,    setPromptOpen]    = useState(false)
-  const [promptSaving,  setPromptSaving]  = useState(false)
-  const [resolvedIds,   setResolvedIds]   = useState<Set<string>>(new Set())
-  const [selectedTask,  setSelectedTask]  = useState<Task | null>(null)
-  const [acknowledging, setAcknowledging] = useState<Set<string>>(new Set())
-  const [teamTasks,     setTeamTasks]     = useState<Task[]>([])
-  const [teamUsers,     setTeamUsers]     = useState<{ id: string; full_name: string }[]>([])
-  const [blockedTasks,  setBlockedTasks]  = useState<Task[]>([])
+  const [profile,            setProfile]            = useState<UserProfile | null>(null)
+  const [tasks,              setTasks]              = useState<Task[]>([])
+  const [loading,            setLoading]            = useState(true)
+  const [currentUserId,      setCurrentUserId]      = useState('')
+  const [selectedTask,       setSelectedTask]       = useState<Task | null>(null)
+  const [teamUsers,          setTeamUsers]          = useState<{ id: string; full_name: string }[]>([])
+  const [escalationTasks,    setEscalationTasks]    = useState<Task[]>([])
+  const [myCompletedCount,   setMyCompletedCount]   = useState(0)
+  const [assignedByMeInProg, setAssignedByMeInProg] = useState(0)
+  const [assignedByMeComp,   setAssignedByMeComp]   = useState(0)
+  const [blockedCount,       setBlockedCount]       = useState(0)
+  const [previewList,        setPreviewList]        = useState<{ type: 'action' | 'blocked'; items: Task[] } | null>(null)
+  const [escalationPreview,  setEscalationPreview]  = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
-      const pageStart = performance.now()
-      console.log('[dashboard] init started')
-
-      // ── CHANGE 1 ──────────────────────────────────────────────────────────
-      // Was: supabase.auth.getUser()
-      // Now: supabase.auth.getSession()
-      //
-      // getUser() makes a verified network call to Supabase auth servers.
-      // getSession() reads the cached session from localStorage — zero network
-      // cost. Safe here because:
-      //   (a) this is a client-side UI gate only (redirect to /login)
-      //   (b) real data security is enforced by Supabase RLS on every query
-      //   (c) user.id is only used to filter queries; wrong id = RLS rejection
-      // ──────────────────────────────────────────────────────────────────────
-      const authStart = performance.now()
       const { data: { session } } = await supabase.auth.getSession()
-      console.log('[dashboard] getSession', Math.round(performance.now() - authStart), 'ms')
-
       if (!session) { router.push('/login'); return }
       setCurrentUserId(session.user.id)
-
-      // ── CHANGE 2 ──────────────────────────────────────────────────────────
-      // Profile and tasks remain in Promise.all (parallel — was already correct).
-      // Each branch now has its own .then() timing log so we can see whether
-      // profile or tasks is the slower query without breaking parallelism.
-      // Both start at the same instant; each reports when it individually finishes.
-      // ──────────────────────────────────────────────────────────────────────
-      const dataStart    = performance.now()
-      const profileStart = performance.now()
-      const tasksStart   = performance.now()
 
       const [{ data: profileData }, { data: taskData }] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
           .eq('id', session.user.id)
-          .single()
-          .then((r: any) => {
-            console.log('[dashboard] profile fetch', Math.round(performance.now() - profileStart), 'ms')
-            return r
-          }),
+          .single(),
         supabase
           .from('tasks')
           .select(TASK_COLUMNS)
           .eq('assigned_to', session.user.id)
           .not('status', 'eq', 'completed')
-          .order('created_at', { ascending: false })
-          .then((r: any) => {
-            console.log('[dashboard] tasks fetch', Math.round(performance.now() - tasksStart), 'ms')
-            return r
-          }),
+          .order('created_at', { ascending: false }),
       ])
 
-      console.log('[dashboard] parallel data TOTAL', Math.round(performance.now() - dataStart), 'ms')
-
       if (profileData) setProfile(profileData)
+      if (taskData) setTasks(taskData as unknown as Task[])
 
-      if (taskData) {
-        const typedTasks = taskData as unknown as Task[]
-        setTasks(typedTasks)
+      // Counts for bottom summary cards
+      const [{ count: compCount }, { data: abmTasks }] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_to', session.user.id)
+          .eq('status', 'completed'),
+        supabase
+          .from('tasks')
+          .select('id, status')
+          .eq('created_by', session.user.id)
+          .neq('assigned_to', session.user.id),
+      ])
+      if (compCount != null) setMyCompletedCount(compCount)
+      if (abmTasks) {
+        const abm = abmTasks as { id: string; status: string }[]
+        setAssignedByMeInProg(abm.filter(t => t.status !== 'completed').length)
+        setAssignedByMeComp(abm.filter(t => t.status === 'completed').length)
       }
 
       if (profileData?.role === 'admin' || profileData?.role === 'manager') {
-        const [{ data: tTasks }, { data: tUsers }, { data: bTasks }] = await Promise.all([
+        const [{ data: tUsers }, { data: eTasks }, { count: bCount }] = await Promise.all([
+          supabase.from('users').select('id, full_name').eq('is_active', true),
+          profileData?.role === 'admin'
+            ? supabase
+                .from('tasks')
+                .select(TASK_COLUMNS)
+                .not('status', 'eq', 'completed')
+            : Promise.resolve({ data: null }),
           supabase
             .from('tasks')
-            .select('id, assigned_to, due_date, created_at, last_update_at, status')
-            .not('status', 'eq', 'completed'),
-          supabase
-            .from('users')
-            .select('id, full_name')
-            .eq('is_active', true),
-          supabase
-            .from('tasks')
-            .select(TASK_COLUMNS)
-            .eq('status', 'blocked')
-            .order('created_at', { ascending: false })
-            .limit(5),
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'blocked'),
         ])
-        if (tTasks) setTeamTasks(tTasks as unknown as Task[])
         if (tUsers) setTeamUsers(tUsers as { id: string; full_name: string }[])
-        if (bTasks) setBlockedTasks(bTasks as unknown as Task[])
+        if (eTasks) setEscalationTasks(eTasks as unknown as Task[])
+        if (bCount != null) setBlockedCount(bCount)
+      } else {
+        // For non-admin, count their own blocked tasks
+        const { count: bCount } = await supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_to', session.user.id)
+          .eq('status', 'blocked')
+        if (bCount != null) setBlockedCount(bCount)
       }
 
-      console.log('[dashboard] TOTAL', Math.round(performance.now() - pageStart), 'ms')
       setLoading(false)
     }
     init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleLogout = async () => {
@@ -138,538 +117,308 @@ export default function DashboardPage() {
     router.push('/login')
   }
 
-  const handleAcknowledge = async (task: Task) => {
-    // Guard: skip if already acknowledged or a write is already in flight
-    if (task.acknowledged_at || acknowledging.has(task.id)) return
-
-    setAcknowledging(prev => new Set([...prev, task.id]))
-
-    const now = new Date().toISOString()
-    try {
-      await Promise.all([
-        supabase
-          .from('tasks')
-          .update({ acknowledged_at: now })
-          .eq('id', task.id),
-        supabase
-          .from('task_activity_log')
-          .insert({
-            task_id:     task.id,
-            actor_id:    currentUserId,
-            action:      'acknowledged',
-            note:        null,
-            from_status: task.status,
-            to_status:   task.status,
-          }),
-      ])
-      // Optimistic update — moves task from Action Required → Continue Working
-      setTasks(prev =>
-        prev.map(t => t.id === task.id ? { ...t, acknowledged_at: now } : t)
-      )
-      // Success: clean up in-flight Set
-      setAcknowledging(prev => {
-        const next = new Set(prev)
-        next.delete(task.id)
-        return next
-      })
-    } catch {
-      // Failure: also clean up so user can retry
-      setAcknowledging(prev => {
-        const next = new Set(prev)
-        next.delete(task.id)
-        return next
-      })
-    }
-  }
-
-  const unacknowledged  = tasks.filter(t => !t.acknowledged_at)
-  const allOverdueTasks = tasks.filter(t => isOverdue(t.due_date) && t.acknowledged_at)
-  const pendingOverdue  = allOverdueTasks.filter(t => !resolvedIds.has(t.id))
-  const actionRequired  = [...allOverdueTasks, ...unacknowledged]
-
-  const WAITING_DEPS = [
-    'Client', 'Vendor', 'Design Team', 'Purchase Team',
-    'Production', 'Management', 'Transport', 'Other',
-  ] as const
-
-  const waitingTasks = tasks.filter(t => t.status === 'waiting')
-
-  const waitingByDep = WAITING_DEPS.reduce<Record<string, number>>((acc, dep) => {
-    acc[dep] = waitingTasks.filter(t => {
-      if (dep === 'Other') return !t.waiting_on_text || t.waiting_on_type === 'team_member'
-      return t.waiting_on_type === 'external' && t.waiting_on_text === dep
-    }).length
-    return acc
-  }, {} as Record<string, number>)
-
-  const now = new Date()
-  const msPerDay = 24 * 60 * 60 * 1000
-
-  function escalationAge(refIso: string): string {
-    const ms = now.getTime() - new Date(refIso).getTime()
-    const hours = Math.floor(ms / (60 * 60 * 1000))
-    if (hours < 48) return `${hours}h`
-    return `${Math.floor(hours / 24)}d`
-  }
-
-  const needsAttention: { task: Task; reason: string; refIso: string }[] = []
-  const needsAttentionIds = new Set<string>()
-
-  // Rule 1: Pending ack >24h — unacknowledged and created more than 24h ago
-  tasks
-    .filter(t => !t.acknowledged_at && (now.getTime() - new Date(t.created_at).getTime()) > msPerDay)
-    .forEach(t => {
-      if (!needsAttentionIds.has(t.id)) {
-        needsAttentionIds.add(t.id)
-        needsAttention.push({ task: t, reason: 'Pending ack', refIso: t.created_at })
-      }
-    })
-
-  // Rule 2: Waiting >2d — status is waiting, last_update_at (or created_at) older than 2 days
-  tasks
-    .filter(t => {
-      if (t.status !== 'waiting') return false
-      const ref = t.last_update_at ?? t.created_at
-      return (now.getTime() - new Date(ref).getTime()) > 2 * msPerDay
-    })
-    .forEach(t => {
-      if (!needsAttentionIds.has(t.id)) {
-        needsAttentionIds.add(t.id)
-        const ref = t.last_update_at ?? t.created_at
-        needsAttention.push({ task: t, reason: 'Waiting', refIso: ref })
-      }
-    })
-
-  // Rule 3: Stale working >3d — status is working, no update for more than 3 days
-  tasks
-    .filter(t => {
-      if (t.status !== 'working') return false
-      const ref = t.last_update_at ?? t.created_at
-      return (now.getTime() - new Date(ref).getTime()) > 3 * msPerDay
-    })
-    .forEach(t => {
-      if (!needsAttentionIds.has(t.id)) {
-        needsAttentionIds.add(t.id)
-        const ref = t.last_update_at ?? t.created_at
-        needsAttention.push({ task: t, reason: 'No update', refIso: ref })
-      }
-    })
-
-  const continueWorking = tasks
-    .filter(t => t.acknowledged_at && !isOverdue(t.due_date))
-    .slice()
-    .sort((a, b) => {
-      if (a.is_urgent !== b.is_urgent) return a.is_urgent ? -1 : 1
-      const aHasDue = a.due_date != null
-      const bHasDue = b.due_date != null
-      if (aHasDue !== bHasDue) return aHasDue ? -1 : 1
-      if (aHasDue && bHasDue) {
-        const dateDiff = new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime()
-        if (dateDiff !== 0) return dateDiff
-      }
-      return (PRIORITY_WEIGHT[a.priority] ?? 1) - (PRIORITY_WEIGHT[b.priority] ?? 1)
-    })
-
   const userMap = useMemo(
     () => Object.fromEntries(teamUsers.map(u => [u.id, u.full_name])),
     [teamUsers]
   )
 
+  const now = new Date()
+  const msPerDay = 24 * 60 * 60 * 1000
+
+  const unacknowledged  = tasks.filter(t => !t.acknowledged_at)
+  const allOverdueTasks = tasks.filter(t => isOverdue(t.due_date) && t.acknowledged_at)
+  const actionRequired  = [...allOverdueTasks, ...unacknowledged]
+
+  const adminEscalations: { task: Task; owner: string; days: number; reason: string }[] = []
+  if (profile?.role === 'admin') {
+    for (const t of escalationTasks) {
+      const ref  = new Date(t.last_update_at ?? t.created_at)
+      const days = Math.floor((now.getTime() - ref.getTime()) / msPerDay)
+      const owner = userMap[t.assigned_to] ?? t.assigned_to.slice(0, 8)
+      if (t.status === 'blocked' && days > 5) {
+        adminEscalations.push({ task: t, owner, days, reason: 'Blocked' })
+      } else if (t.status === 'waiting' && days > 5) {
+        adminEscalations.push({ task: t, owner, days, reason: 'Waiting' })
+      } else if (['working', 'pending', 'started'].includes(t.status) && days > 7) {
+        adminEscalations.push({ task: t, owner, days, reason: 'Stale' })
+      }
+    }
+    adminEscalations.sort((a, b) => b.days - a.days)
+  }
+
   const handleDashboardAddUpdate = async (note: string, newStatus: string, waitingOn?: { type: 'team_member' | 'external'; userId?: string; text?: string }) => {
     if (!selectedTask) return
-    const now = new Date().toISOString()
+    const ts = new Date().toISOString()
     const statusChanged = newStatus !== selectedTask.status
     const trimmedNote = note.trim() || null
 
     if (statusChanged) {
-      const needsBlockerReason = newStatus === 'blocked'
-      const clearBlockerReason = selectedTask.status === 'blocked'
-      const clearWaiting = selectedTask.status === 'waiting' && newStatus !== 'waiting'
-      const taskUpdates: Record<string, unknown> = { status: newStatus, last_update_at: now }
-      if (needsBlockerReason) taskUpdates.blocker_reason = trimmedNote
-      else if (clearBlockerReason) taskUpdates.blocker_reason = null
+      const taskUpdates: Record<string, unknown> = { status: newStatus, last_update_at: ts }
+      if (newStatus === 'blocked') taskUpdates.blocker_reason = trimmedNote
+      else if (selectedTask.status === 'blocked') taskUpdates.blocker_reason = null
       if (newStatus === 'waiting' && waitingOn) {
         taskUpdates.waiting_on_type    = waitingOn.type
         taskUpdates.waiting_on_user_id = waitingOn.type === 'team_member' ? (waitingOn.userId ?? null) : null
         taskUpdates.waiting_on_text    = waitingOn.type === 'external'    ? (waitingOn.text    ?? null) : null
-      } else if (clearWaiting) {
+      } else if (selectedTask.status === 'waiting' && newStatus !== 'waiting') {
         taskUpdates.waiting_on_type    = null
         taskUpdates.waiting_on_user_id = null
         taskUpdates.waiting_on_text    = null
       }
-      await supabase.from('tasks')
-        .update(taskUpdates)
-        .eq('id', selectedTask.id)
-
+      await supabase.from('tasks').update(taskUpdates).eq('id', selectedTask.id)
       await supabase.from('task_activity_log').insert({
-        task_id:     selectedTask.id,
-        actor_id:    currentUserId,
-        action:      'status_changed',
-        from_status: selectedTask.status,
-        to_status:   newStatus,
-        note:        trimmedNote,
+        task_id: selectedTask.id, actor_id: currentUserId, action: 'status_changed',
+        from_status: selectedTask.status, to_status: newStatus, note: trimmedNote,
       })
-      const localPatch: Partial<Task> = { status: newStatus as Task['status'], last_update_at: now }
-      if (needsBlockerReason) localPatch.blocker_reason = trimmedNote
-      else if (clearBlockerReason) localPatch.blocker_reason = null
-      if (newStatus === 'waiting' && waitingOn) {
-        localPatch.waiting_on_type    = waitingOn.type
-        localPatch.waiting_on_user_id = waitingOn.type === 'team_member' ? (waitingOn.userId ?? null) : null
-        localPatch.waiting_on_text    = waitingOn.type === 'external'    ? (waitingOn.text    ?? null) : null
-      } else if (clearWaiting) {
-        localPatch.waiting_on_type    = null
-        localPatch.waiting_on_user_id = null
-        localPatch.waiting_on_text    = null
-      }
-      setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
-      // Keep in blockedTasks with new status so the sync effect can still find selectedTask;
-      // the card filters to status === 'blocked' so it will disappear from the list automatically.
-      setBlockedTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
-      setSelectedTask(prev => prev ? { ...prev, ...localPatch } : prev)
+      const patch: Partial<Task> = { status: newStatus as Task['status'], last_update_at: ts }
+      if (newStatus === 'blocked') patch.blocker_reason = trimmedNote
+      setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
+      setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
     } else if (trimmedNote) {
-      await supabase.from('tasks')
-        .update({ last_update_at: now })
-        .eq('id', selectedTask.id)
+      await supabase.from('tasks').update({ last_update_at: ts }).eq('id', selectedTask.id)
       await supabase.from('task_activity_log').insert({
-        task_id:     selectedTask.id,
-        actor_id:    currentUserId,
-        action:      'status_changed',
-        from_status: selectedTask.status,
-        to_status:   selectedTask.status,
-        note:        trimmedNote,
+        task_id: selectedTask.id, actor_id: currentUserId, action: 'status_changed',
+        from_status: selectedTask.status, to_status: selectedTask.status, note: trimmedNote,
       })
-      setTasks(prev => prev.map(t =>
-        t.id === selectedTask.id ? { ...t, last_update_at: now } : t
-      ))
-      setBlockedTasks(prev => prev.map(t =>
-        t.id === selectedTask.id ? { ...t, last_update_at: now } : t
-      ))
+      setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, last_update_at: ts } : t))
     }
   }
-
-  const escalationSummary = useMemo(() => {
-    if (teamTasks.length === 0) return []
-    const userMap = new Map(teamUsers.map(u => [u.id, u.full_name]))
-    const byAssignee = new Map<string, { name: string; count: number; oldestDate: string | null }>()
-    teamTasks.filter(t => isOverdue(t.due_date)).forEach(t => {
-      const name = userMap.get(t.assigned_to) ?? t.assigned_to.slice(0, 8)
-      if (!byAssignee.has(t.assigned_to)) {
-        byAssignee.set(t.assigned_to, { name, count: 0, oldestDate: null })
-      }
-      const entry = byAssignee.get(t.assigned_to)!
-      entry.count++
-      if (!entry.oldestDate || t.due_date! < entry.oldestDate) entry.oldestDate = t.due_date!
-    })
-    return [...byAssignee.values()].sort((a, b) => b.count - a.count)
-  }, [teamTasks, teamUsers])
-
-  const handleOverdueAction = async (task: Task, action: OverdueAction) => {
-    setPromptSaving(true)
-    const now = new Date().toISOString()
-    try {
-      if (action.type === 'continue') {
-        await Promise.all([
-          supabase.from('tasks')
-            .update({ last_update_at: now })
-            .eq('id', task.id),
-          supabase.from('task_activity_log').insert({
-            task_id: task.id, actor_id: currentUserId,
-            action: 'progress_update', note: action.note || null,
-            from_status: task.status, to_status: task.status,
-          }),
-        ])
-        setTasks(prev => prev.map(t =>
-          t.id === task.id ? { ...t, last_update_at: now } : t
-        ))
-
-      } else if (action.type === 'blocked' || action.type === 'waiting') {
-        const newStatus = action.type
-        await Promise.all([
-          supabase.from('tasks')
-            .update(newStatus === 'waiting'
-              ? { status: newStatus, waiting_on_type: 'external', waiting_on_text: action.reason, waiting_on_user_id: null, last_update_at: now }
-              : { status: newStatus, blocker_reason: action.reason, last_update_at: now })
-            .eq('id', task.id),
-          supabase.from('task_activity_log').insert({
-            task_id: task.id, actor_id: currentUserId, action: 'status_changed',
-            note: action.reason, from_status: task.status, to_status: newStatus,
-          }),
-        ])
-        setTasks(prev => prev.map(t =>
-          t.id === task.id
-            ? newStatus === 'waiting'
-              ? { ...t, status: newStatus, waiting_on_type: 'external' as const, waiting_on_text: action.reason, waiting_on_user_id: null, last_update_at: now }
-              : { ...t, status: newStatus, blocker_reason: action.reason, last_update_at: now }
-            : t
-        ))
-
-      } else if (action.type === 'completed') {
-        await Promise.all([
-          supabase.from('tasks')
-            .update({ status: 'completed', completed_at: now, last_update_at: now })
-            .eq('id', task.id),
-          supabase.from('task_activity_log').insert({
-            task_id: task.id, actor_id: currentUserId, action: 'status_changed',
-            note: null, from_status: task.status, to_status: 'completed',
-          }),
-        ])
-        setTasks(prev => prev.filter(t => t.id !== task.id))
-      }
-    } finally {
-      setPromptSaving(false)
-    }
-    setResolvedIds(prev => new Set([...prev, task.id]))
-  }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (promptOpen && pendingOverdue.length === 0) setPromptOpen(false)
-  }, [pendingOverdue.length, promptOpen])
 
   useEffect(() => {
     if (!selectedTask) return
-    const updated = tasks.find(t => t.id === selectedTask.id)
-             ?? blockedTasks.find(t => t.id === selectedTask.id)
-    if (!updated) {
-      setSelectedTask(null)
-    } else if (updated !== selectedTask) {
-      setSelectedTask(updated)
+    const inTasks = tasks.find(t => t.id === selectedTask.id)
+    if (inTasks) {
+      if (inTasks !== selectedTask) setSelectedTask(inTasks)
+      return
     }
-  }, [tasks, blockedTasks, selectedTask])
+    const inEscalations = escalationTasks.find(t => t.id === selectedTask.id)
+    if (!inEscalations) setSelectedTask(null)
+  }, [tasks, escalationTasks, selectedTask])
 
   if (loading) return <LoadingScreen />
 
-  const currentOverdueTask = pendingOverdue[0] ?? null
+  const isAdmin = profile?.role === 'admin'
 
   return (
     <>
-      {promptOpen && currentOverdueTask && (
-        <OverduePrompt
-          key={currentOverdueTask.id}
-          tasks={pendingOverdue}
-          currentIdx={0}
-          saving={promptSaving}
-          onAction={handleOverdueAction}
-        />
-      )}
-
       <DashboardLayout
         profile={profile}
         title="Dashboard"
-        subtitle={
-          profile
-            ? `${new Date().toLocaleDateString('en-IN', {
-                weekday: 'long', day: 'numeric', month: 'long',
-              })} · ${profile.team}`
-            : undefined
-        }
+        subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
         actions={
-          <button
-            onClick={() => router.push('/tasks/create')}
-            className="boe-btn boe-btn-primary"
-          >
+          <button onClick={() => router.push('/tasks/create')} className="boe-btn boe-btn-primary">
             + New Task
           </button>
         }
         onSignOut={handleLogout}
       >
-        <FocusSummary
-          actionCount={actionRequired.length}
-          blockerCount={waitingTasks.length}
-          overdueCount={allOverdueTasks.length}
-        />
-
-        {(profile?.role === 'admin' || profile?.role === 'manager') && (
-          <BlockedTasksCard
-            tasks={blockedTasks.filter(t => t.status === 'blocked')}
-            userMap={new Map(teamUsers.map(u => [u.id, u.full_name]))}
-            onView={setSelectedTask}
+        {/* ── Top summary cards ── */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isAdmin ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)',
+          gap: '16px',
+          marginBottom: '24px',
+        }}>
+          <SummaryCard
+            onClick={() => setPreviewList({ type: 'action', items: actionRequired })}
+            icon={<AlertIcon />}
+            iconBg="rgba(234,136,33,0.12)"
+            count={actionRequired.length}
+            countColor="#D4893A"
+            label="Action Required"
+            sublabel="Tasks need your attention"
           />
-        )}
+          <SummaryCard
+            onClick={() => setPreviewList({
+              type: 'blocked',
+              items: isAdmin
+                ? escalationTasks.filter(t => t.status === 'blocked')
+                : tasks.filter(t => t.status === 'blocked'),
+            })}
+            icon={<FlagIcon />}
+            iconBg="rgba(220,53,53,0.10)"
+            count={blockedCount}
+            countColor="#C0392B"
+            label="Blocked"
+            sublabel="Tasks are blocked"
+          />
+          {isAdmin && (
+            <SummaryCard
+              onClick={() => setEscalationPreview(true)}
+              icon={<TimerIcon />}
+              iconBg="rgba(59,130,246,0.10)"
+              count={adminEscalations.length}
+              countColor="#2563EB"
+              label="Escalations"
+              sublabel="Require management attention"
+            />
+          )}
+        </div>
 
-        {/* ACTION REQUIRED section box */}
-        <div style={{
-          marginBottom: '16px', borderRadius: '8px',
-          background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
-          alignSelf: 'flex-start', width: '100%',
-        }}>
-          <div style={{
-            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
-            textTransform: 'uppercase', marginBottom: '14px',
-            color: '#D4893A', borderLeft: '2px solid #D4893A', paddingLeft: '8px',
+        {/* ── Admin escalations table ── */}
+        {isAdmin && (
+          <div id="escalations" style={{
+            background: '#fff',
+            border: '1px solid #E5E7EB',
+            borderRadius: '12px',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            marginBottom: '24px',
+            overflow: 'hidden',
           }}>
-            Action Required ({actionRequired.length})
-          </div>
-          {actionRequired.length > 0 ? (
-            <div>
-              {allOverdueTasks.length > 0 && (
-                <div className="boe-dashboard-grid">
-                  {allOverdueTasks.map(task => (
-                    <TaskCard
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '18px 24px 14px',
+              borderBottom: '1px solid #F3F4F6',
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '15px', color: '#111827', letterSpacing: '-0.01em' }}>
+                    ESCALATIONS
+                  </span>
+                  <span style={{
+                    background: '#EFF6FF', color: '#2563EB',
+                    fontWeight: 700, fontSize: '13px',
+                    borderRadius: '999px', padding: '1px 10px',
+                  }}>
+                    {adminEscalations.length}
+                  </span>
+                </div>
+                <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '3px' }}>
+                  Tasks that need your immediate attention
+                </div>
+              </div>
+              {adminEscalations.length > 5 && (
+                <span style={{ fontSize: '13px', color: '#2563EB', fontWeight: 600, cursor: 'pointer' }}>
+                  View all escalations →
+                </span>
+              )}
+            </div>
+
+            {adminEscalations.length === 0 ? (
+              <div style={{ padding: '32px 24px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
+                No escalations right now
+              </div>
+            ) : (
+              <>
+                {/* Table header */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 180px 80px 100px',
+                  padding: '10px 24px',
+                  fontSize: '12px', fontWeight: 600,
+                  color: '#9CA3AF', letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  borderBottom: '1px solid #F3F4F6',
+                }}>
+                  <span>Task</span>
+                  <span>Owner</span>
+                  <span>Days</span>
+                  <span>Reason</span>
+                </div>
+
+                {/* Table rows */}
+                {adminEscalations.slice(0, 10).map(({ task, owner, days, reason }) => {
+                  const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
+                  return (
+                    <div
                       key={task.id}
-                      task={task}
                       onClick={() => setSelectedTask(task)}
-                      cardStyle={{ backgroundColor: 'rgba(217,79,79,0.03)' }}
-                    />
-                  ))}
-                </div>
-              )}
-              {allOverdueTasks.length > 0 && unacknowledged.length > 0 && (
-                <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', margin: '12px 0' }} />
-              )}
-              {unacknowledged.length > 0 && (
-                <div className="boe-dashboard-grid">
-                  {unacknowledged.map(task => {
-                    const isAcking = acknowledging.has(task.id)
-                    return (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        onClick={() => setSelectedTask(task)}
-                        cardStyle={{
-                          backgroundColor: 'rgba(232,160,48,0.025)',
-                          borderLeftColor: colors.amber,
-                        }}
-                        footer={
-                          <button
-                            onClick={e => { e.stopPropagation(); handleAcknowledge(task) }}
-                            disabled={isAcking}
-                            style={{
-                              display:       'block',
-                              width:         '160px',
-                              margin:        '0 auto',
-                              padding:       '9px 0',
-                              fontSize:      '13px',
-                              fontWeight:    600,
-                              letterSpacing: '0.02em',
-                              color:         isAcking ? '#B8892A' : '#FFFFFF',
-                              background:    isAcking ? 'rgba(232,160,48,0.12)' : '#E8A030',
-                              border:        '1px solid transparent',
-                              borderRadius:  '6px',
-                              cursor:        isAcking ? 'default' : 'pointer',
-                              boxShadow:     isAcking ? 'none' : '0 1px 4px rgba(232,160,48,0.35)',
-                              transition:    'opacity 0.15s',
-                            }}
-                          >
-                            {isAcking ? 'Acknowledging…' : '✓ Acknowledge'}
-                          </button>
-                        }
-                      />
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{
-              padding: '10px 14px', borderRadius: '6px',
-              background: 'rgba(94,163,79,0.05)', border: '1px solid rgba(94,163,79,0.12)',
-              fontSize: '12px', color: 'rgba(94,163,79,0.8)',
-            }}>
-              Nothing needs your attention right now
-            </div>
-          )}
-        </div>
-
-        {/* NEEDS ATTENTION section box */}
-        <div style={{
-          marginBottom: '16px', borderRadius: '8px',
-          background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
-          alignSelf: 'flex-start', width: '100%',
-        }}>
-          <div style={{
-            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
-            textTransform: 'uppercase', marginBottom: '14px',
-            color: '#C0392B', borderLeft: '2px solid #C0392B', paddingLeft: '8px',
-          }}>
-            Needs Attention ({needsAttention.length})
-          </div>
-          {needsAttention.length > 0 ? (
-            <div className="boe-dashboard-grid">
-              {needsAttention.slice(0, 10).map(({ task, reason, refIso }) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onClick={() => setSelectedTask(task)}
-                  cardStyle={{ backgroundColor: 'rgba(192,57,43,0.03)', borderLeftColor: '#C0392B' }}
-                  footer={
-                    <div style={{
-                      fontSize: '11px', fontWeight: 600,
-                      color: '#C0392B', padding: '4px 0 0',
-                      letterSpacing: '0.02em',
-                    }}>
-                      {reason} · {escalationAge(refIso)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => e.key === 'Enter' && setSelectedTask(task)}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 180px 80px 100px',
+                        alignItems: 'center',
+                        padding: '14px 24px',
+                        borderBottom: '1px solid #F9FAFB',
+                        cursor: 'pointer',
+                        transition: 'background 0.12s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+                      onMouseLeave={e => (e.currentTarget.style.background = '')}
+                    >
+                      <div style={{
+                        fontSize: '14px', fontWeight: 500, color: '#111827',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        paddingRight: '16px',
+                      }}>
+                        {task.title}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{
+                          width: '28px', height: '28px', borderRadius: '50%',
+                          background: '#E5E7EB',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '11px', fontWeight: 700, color: '#374151',
+                          flexShrink: 0,
+                        }}>
+                          {owner.slice(0, 2).toUpperCase()}
+                        </div>
+                        <span style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>
+                          {owner}
+                        </span>
+                      </div>
+                      <div style={{
+                        fontSize: '14px', fontWeight: 700, color: daysColor,
+                        fontVariantNumeric: 'tabular-nums',
+                      }}>
+                        {days}d
+                      </div>
+                      <div>
+                        <ReasonBadge reason={reason} />
+                      </div>
                     </div>
-                  }
-                />
-              ))}
-            </div>
-          ) : (
-            <div style={{
-              padding: '10px 14px', borderRadius: '6px',
-              background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.06)',
-              fontSize: '12px', color: colors.muted,
-            }}>
-              No stuck tasks right now.
-            </div>
-          )}
-        </div>
+                  )
+                })}
 
-        {/* BLOCKERS section box */}
-        <div style={{
-          marginBottom: '16px', borderRadius: '8px',
-          background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
-          alignSelf: 'flex-start', width: '100%',
-        }}>
-          <div style={{
-            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
-            textTransform: 'uppercase', marginBottom: '14px',
-            color: 'rgba(200,162,74,0.85)', borderLeft: '2px solid rgba(200,162,74,0.45)', paddingLeft: '8px',
-          }}>
-            Blockers ({waitingTasks.length})
+                <div style={{ padding: '12px 24px', fontSize: '13px', color: '#9CA3AF', borderTop: '1px solid #F3F4F6' }}>
+                  Showing {Math.min(adminEscalations.length, 10)} of {adminEscalations.length} escalation{adminEscalations.length !== 1 ? 's' : ''}
+                </div>
+              </>
+            )}
           </div>
-          <WaitingWidget byDep={waitingByDep} deps={WAITING_DEPS} />
-        </div>
-
-        {/* CONTINUE WORKING section box */}
-        <div style={{
-          marginBottom: '16px', borderRadius: '8px',
-          background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
-          alignSelf: 'flex-start', width: '100%',
-        }}>
-          <div style={{
-            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
-            textTransform: 'uppercase', marginBottom: '14px',
-            color: colors.muted,
-          }}>
-            Continue Working ({continueWorking.length})
-          </div>
-          {continueWorking.length > 0 ? (
-            <div className="boe-dashboard-grid">
-              {continueWorking.map(task => (
-                <TaskCard key={task.id} task={task} onClick={() => setSelectedTask(task)} />
-              ))}
-            </div>
-          ) : (
-            <div style={{
-              padding: '10px 14px', borderRadius: '6px',
-              background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.06)',
-              fontSize: '12px', color: colors.muted,
-            }}>
-              No active tasks — tap + New Task to create one
-            </div>
-          )}
-        </div>
-
-        {escalationSummary.length > 0 && (
-          <EscalationSummaryCard rows={escalationSummary} escalationAge={escalationAge} />
         )}
 
+        {/* ── Bottom summary row ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <QuickSummaryCard
+            icon={<TaskListIcon />}
+            title="MY TASKS"
+            viewAllHref="/tasks/my"
+            rows={[
+              { label: 'In Progress', count: tasks.filter(t => t.status !== 'completed').length, color: '#2563EB', href: '/tasks/my' },
+              { label: 'Completed',   count: myCompletedCount,                                    color: '#16A34A', href: '/tasks/my/completed' },
+            ]}
+          />
+          <QuickSummaryCard
+            icon={<AssignedIcon />}
+            title="ASSIGNED BY ME"
+            viewAllHref="/tasks/assigned-by-me"
+            rows={[
+              { label: 'In Progress', count: assignedByMeInProg, color: '#2563EB', href: '/tasks/assigned-by-me' },
+              { label: 'Completed',   count: assignedByMeComp,   color: '#16A34A', href: '/tasks/assigned-by-me/completed' },
+            ]}
+          />
+        </div>
       </DashboardLayout>
+
+      {previewList && !selectedTask && (
+        <TaskListDrawer
+          title={previewList.type === 'action' ? 'Action Required' : 'Blocked Tasks'}
+          items={previewList.items}
+          onClose={() => setPreviewList(null)}
+          onSelectTask={task => { setPreviewList(null); setSelectedTask(task) }}
+        />
+      )}
+
+      {escalationPreview && !selectedTask && (
+        <EscalationListDrawer
+          items={adminEscalations}
+          onClose={() => setEscalationPreview(false)}
+          onSelectTask={task => { setEscalationPreview(false); setSelectedTask(task) }}
+        />
+      )}
 
       {selectedTask && (
         <TaskDetailPanel
@@ -685,251 +434,456 @@ export default function DashboardPage() {
   )
 }
 
-function FocusSummary({
-  actionCount,
-  blockerCount,
-  overdueCount,
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function SummaryCard({
+  href,
+  onClick,
+  icon,
+  iconBg,
+  count,
+  countColor,
+  label,
+  sublabel,
 }: {
-  actionCount: number
-  blockerCount: number
-  overdueCount: number
+  href?: string
+  onClick?: () => void
+  icon: React.ReactNode
+  iconBg: string
+  count: number
+  countColor: string
+  label: string
+  sublabel: string
 }) {
-  return (
-    <div style={{
-      padding: '12px 14px', marginBottom: '20px', borderRadius: '8px',
-      background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-    }}>
+  const isInteractive = !!(href || onClick)
+  const cardStyle: React.CSSProperties = {
+    background: '#fff',
+    border: '1px solid #E5E7EB',
+    borderRadius: '12px',
+    padding: '20px 22px',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    textDecoration: 'none',
+    cursor: isInteractive ? 'pointer' : 'default',
+    transition: 'box-shadow 0.15s, border-color 0.15s',
+  }
+  const handleMouseEnter = isInteractive
+    ? (e: React.MouseEvent<HTMLElement>) => {
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.10)'
+        e.currentTarget.style.borderColor = '#D1D5DB'
+      }
+    : undefined
+  const handleMouseLeave = isInteractive
+    ? (e: React.MouseEvent<HTMLElement>) => {
+        e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'
+        e.currentTarget.style.borderColor = '#E5E7EB'
+      }
+    : undefined
+
+  const inner = (
+    <>
       <div style={{
-        fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
-        color: colors.muted, marginBottom: '10px', textTransform: 'uppercase',
+        width: '48px', height: '48px', borderRadius: '12px',
+        background: iconBg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
       }}>
-        Today&apos;s Focus
+        {icon}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-        <div style={{
-          padding: '10px 12px', borderRadius: '6px',
-          background: actionCount > 0 ? 'rgba(232,160,48,0.07)' : 'rgba(0,0,0,0.02)',
-          border: `1px solid ${actionCount > 0 ? 'rgba(232,160,48,0.2)' : 'rgba(0,0,0,0.06)'}`,
-        }}>
-          <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: font.mono, color: actionCount > 0 ? colors.amber : colors.muted, lineHeight: 1 }}>
-            {actionCount}
-          </div>
-          <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '4px' }}>
-            Tasks need action
-          </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: '28px', fontWeight: 800, color: countColor, lineHeight: 1, letterSpacing: '-0.02em' }}>
+          {count}
         </div>
-        <div style={{
-          padding: '10px 12px', borderRadius: '6px',
-          background: blockerCount > 0 ? 'rgba(200,162,74,0.07)' : 'rgba(0,0,0,0.02)',
-          border: `1px solid ${blockerCount > 0 ? 'rgba(200,162,74,0.2)' : 'rgba(0,0,0,0.06)'}`,
-        }}>
-          <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: font.mono, color: blockerCount > 0 ? '#C8A24A' : colors.muted, lineHeight: 1 }}>
-            {blockerCount}
-          </div>
-          <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '4px' }}>
-            Blockers
-          </div>
+        <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginTop: '3px' }}>
+          {label}
         </div>
-        <div style={{
-          padding: '10px 12px', borderRadius: '6px',
-          background: overdueCount > 0 ? 'rgba(217,79,79,0.07)' : 'rgba(0,0,0,0.02)',
-          border: `1px solid ${overdueCount > 0 ? 'rgba(217,79,79,0.2)' : 'rgba(0,0,0,0.06)'}`,
-        }}>
-          <div style={{ fontSize: '22px', fontWeight: 700, fontFamily: font.mono, color: overdueCount > 0 ? colors.red : colors.muted, lineHeight: 1 }}>
-            {overdueCount}
-          </div>
-          <div style={{ fontSize: '11px', color: colors.secondary, marginTop: '4px' }}>
-            Overdue
-          </div>
+        <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
+          {sublabel}
         </div>
       </div>
+      {isInteractive && <div style={{ color: '#D1D5DB', fontSize: '18px' }}>›</div>}
+    </>
+  )
+
+  if (href) {
+    return (
+      <Link href={href} style={cardStyle} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+        {inner}
+      </Link>
+    )
+  }
+  return (
+    <div style={cardStyle} onClick={onClick} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+      {inner}
     </div>
   )
 }
 
-function EscalationSummaryCard({
+function QuickSummaryCard({
+  icon,
+  title,
+  viewAllHref,
   rows,
-  escalationAge,
 }: {
-  rows: { name: string; count: number; oldestDate: string | null }[]
-  escalationAge: (iso: string) => string
+  icon: React.ReactNode
+  title: string
+  viewAllHref: string
+  rows: { label: string; count: number; color: string; href: string }[]
 }) {
   return (
     <div style={{
-      marginBottom: '16px', borderRadius: '8px',
-      background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
-      alignSelf: 'flex-start', width: '100%',
+      background: '#fff',
+      border: '1px solid #E5E7EB',
+      borderRadius: '12px',
+      padding: '20px 22px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
     }}>
-      <div style={{
-        fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
-        textTransform: 'uppercase', marginBottom: '14px',
-        color: '#C0392B', borderLeft: '2px solid #C0392B', paddingLeft: '8px',
-      }}>
-        Manager Escalation Summary
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ color: '#6B7280' }}>{icon}</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#374151', letterSpacing: '0.05em' }}>
+            {title}
+          </span>
+        </div>
+        <Link href={viewAllHref} style={{ fontSize: '12px', color: '#2563EB', fontWeight: 600, textDecoration: 'none' }}>
+          View all
+        </Link>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {rows.slice(0, 8).map(row => (
-          <div key={row.name} style={{
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {rows.map(row => (
+          <Link key={row.label} href={row.href} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '8px 12px', borderRadius: '6px',
-            background: 'rgba(192,57,43,0.04)', border: '1px solid rgba(192,57,43,0.10)',
-          }}>
-            <div style={{ fontSize: '13px', fontWeight: 500, color: '#222' }}>
-              {row.name}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              {row.oldestDate && (
-                <div style={{ fontSize: '11px', color: colors.muted }}>
-                  oldest {escalationAge(row.oldestDate)}
-                </div>
-              )}
-              <div style={{
-                fontSize: '13px', fontWeight: 700, color: '#C0392B',
-                background: 'rgba(192,57,43,0.08)', borderRadius: '4px',
-                padding: '2px 8px', minWidth: '28px', textAlign: 'center',
-              }}>
-                {row.count}
-              </div>
-            </div>
-          </div>
+            padding: '10px 14px',
+            background: '#F9FAFB',
+            borderRadius: '8px',
+            border: '1px solid #F3F4F6',
+            textDecoration: 'none',
+            cursor: 'pointer',
+            transition: 'background 0.12s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
+          onMouseLeave={e => (e.currentTarget.style.background = '#F9FAFB')}
+          >
+            <span style={{ fontSize: '14px', color: '#374151', fontWeight: 500 }}>{row.label}</span>
+            <span style={{
+              fontSize: '13px', fontWeight: 700,
+              color: row.color,
+              background: row.color === '#2563EB' ? '#EFF6FF' : '#F0FDF4',
+              borderRadius: '6px',
+              padding: '2px 10px',
+              minWidth: '28px',
+              textAlign: 'center',
+            }}>
+              {row.count}
+            </span>
+          </Link>
         ))}
       </div>
     </div>
   )
 }
 
-function BlockedTasksCard({
-  tasks,
-  userMap,
-  onView,
+function TaskListDrawer({
+  title,
+  items,
+  onClose,
+  onSelectTask,
 }: {
-  tasks: Task[]
-  userMap: Map<string, string>
-  onView: (task: Task) => void
+  title: string
+  items: Task[]
+  onClose: () => void
+  onSelectTask: (task: Task) => void
 }) {
   return (
-    <div style={{
-      marginBottom: '16px', borderRadius: '8px',
-      background: '#F8F9FB', border: '1px solid rgba(0,0,0,0.08)',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '16px',
-      alignSelf: 'flex-start', width: '100%',
-    }}>
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.25)',
+          zIndex: 40,
+        }}
+      />
+
+      {/* Drawer */}
       <div style={{
-        fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
-        textTransform: 'uppercase', marginBottom: '14px',
-        color: '#8B1A1A', borderLeft: '2px solid #8B1A1A', paddingLeft: '8px',
+        position: 'fixed', top: 0, right: 0, bottom: 0,
+        width: '420px',
+        background: '#fff',
+        boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
+        zIndex: 50,
+        display: 'flex',
+        flexDirection: 'column',
       }}>
-        Blocked Tasks ({tasks.length})
-      </div>
-      {tasks.length === 0 ? (
+        {/* Header */}
         <div style={{
-          padding: '10px 14px', borderRadius: '6px',
-          background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.06)',
-          fontSize: '12px', color: '#888',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '20px 24px',
+          borderBottom: '1px solid #F3F4F6',
+          flexShrink: 0,
         }}>
-          No blocked tasks right now
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '15px', color: '#111827' }}>{title}</div>
+            <div style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '2px' }}>
+              {items.length} task{items.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#6B7280', fontSize: '20px', lineHeight: 1,
+              padding: '4px 8px', borderRadius: '6px',
+            }}
+            aria-label="Close"
+          >
+            ×
+          </button>
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {tasks.map(task => {
-            const assignee = userMap.get(task.assigned_to)
-            return (
-              <div key={task.id} style={{
-                display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-                gap: '12px', padding: '10px 12px', borderRadius: '7px',
-                background: 'rgba(139,26,26,0.04)', border: '1px solid rgba(139,26,26,0.12)',
-                borderLeft: '3px solid rgba(139,26,26,0.5)',
-              }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#222', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+
+        {/* List */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+          {items.length === 0 ? (
+            <div style={{
+              padding: '48px 24px', textAlign: 'center',
+              color: '#9CA3AF', fontSize: '14px',
+            }}>
+              No tasks here.
+            </div>
+          ) : (
+            items.map(task => {
+              const isOverdueTask = task.due_date && new Date(task.due_date) < new Date()
+              return (
+                <div
+                  key={task.id}
+                  onClick={() => onSelectTask(task)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
+                  style={{
+                    padding: '14px 24px',
+                    borderBottom: '1px solid #F9FAFB',
+                    cursor: 'pointer',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '')}
+                >
+                  <div style={{
+                    fontSize: '14px', fontWeight: 500, color: '#111827',
+                    marginBottom: '6px',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
                     {task.title}
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '11px', color: '#666' }}>
-                    {assignee && <span>👤 {assignee}</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <StatusChip status={task.status} />
+                    {task.priority && <PriorityChip priority={task.priority} />}
                     {task.due_date && (
-                      <span>📅 {new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
-                    )}
-                    {task.blocker_reason && (
-                      <span style={{ color: '#8B1A1A', fontStyle: 'italic' }}>⛔ {task.blocker_reason}</span>
+                      <span style={{
+                        fontSize: '11px', fontWeight: 500,
+                        color: isOverdueTask ? '#C0392B' : '#6B7280',
+                      }}>
+                        Due {new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      </span>
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => onView(task)}
-                  style={{
-                    flexShrink: 0, padding: '5px 10px',
-                    fontSize: '11px', fontWeight: 600, letterSpacing: '0.02em',
-                    color: '#8B1A1A', background: 'rgba(139,26,26,0.07)',
-                    border: '1px solid rgba(139,26,26,0.18)', borderRadius: '5px',
-                    cursor: 'pointer', whiteSpace: 'nowrap',
-                  }}
-                >
-                  View task
-                </button>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function StatusChip({ status }: { status: string }) {
+  const map: Record<string, { color: string; bg: string }> = {
+    pending:   { color: '#6B7280', bg: '#F3F4F6' },
+    started:   { color: '#7C3AED', bg: '#F5F3FF' },
+    working:   { color: '#1D4ED8', bg: '#EFF6FF' },
+    waiting:   { color: '#92400E', bg: '#FFFBEB' },
+    blocked:   { color: '#991B1B', bg: '#FEF2F2' },
+    completed: { color: '#166534', bg: '#F0FDF4' },
+  }
+  const s = map[status] ?? { color: '#374151', bg: '#F3F4F6' }
+  return (
+    <span style={{
+      fontSize: '11px', fontWeight: 600,
+      color: s.color, background: s.bg,
+      borderRadius: '5px', padding: '2px 8px',
+      textTransform: 'capitalize',
+    }}>
+      {status}
+    </span>
+  )
+}
+
+function PriorityChip({ priority }: { priority: string }) {
+  const map: Record<string, { color: string; bg: string }> = {
+    high:   { color: '#991B1B', bg: '#FEF2F2' },
+    medium: { color: '#92400E', bg: '#FFFBEB' },
+    low:    { color: '#374151', bg: '#F3F4F6' },
+  }
+  const s = map[priority] ?? { color: '#374151', bg: '#F3F4F6' }
+  return (
+    <span style={{
+      fontSize: '11px', fontWeight: 600,
+      color: s.color, background: s.bg,
+      borderRadius: '5px', padding: '2px 8px',
+      textTransform: 'capitalize',
+    }}>
+      {priority}
+    </span>
+  )
+}
+
+function EscalationListDrawer({
+  items,
+  onClose,
+  onSelectTask,
+}: {
+  items: { task: Task; owner: string; days: number; reason: string }[]
+  onClose: () => void
+  onSelectTask: (task: Task) => void
+}) {
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.25)', zIndex: 40 }} />
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: '420px',
+        background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
+        zIndex: 50, display: 'flex', flexDirection: 'column',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '20px 24px', borderBottom: '1px solid #F3F4F6', flexShrink: 0,
+        }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '15px', color: '#111827' }}>Escalations</div>
+            <div style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '2px' }}>
+              {items.length} task{items.length !== 1 ? 's' : ''} requiring attention
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', fontSize: '20px', lineHeight: 1, padding: '4px 8px', borderRadius: '6px' }}
+            aria-label="Close"
+          >×</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+          {items.length === 0 ? (
+            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
+              No escalations right now.
+            </div>
+          ) : items.map(({ task, owner, days, reason }) => {
+            const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
+            return (
+              <div
+                key={task.id}
+                onClick={() => onSelectTask(task)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
+                style={{ padding: '14px 24px', borderBottom: '1px solid #F9FAFB', cursor: 'pointer', transition: 'background 0.1s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+                onMouseLeave={e => (e.currentTarget.style.background = '')}
+              >
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {task.title}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: '#374151' }}>
+                      {owner.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#374151' }}>{owner}</span>
+                  </div>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: daysColor }}>{days}d</span>
+                  <ReasonBadge reason={reason} />
+                </div>
               </div>
             )
           })}
         </div>
-      )}
-    </div>
-  )
-}
-
-function WaitingWidget({
-  byDep,
-  deps,
-}: {
-  byDep: Record<string, number>
-  deps: readonly string[]
-}) {
-  const active = deps.filter(d => byDep[d] > 0)
-
-  if (active.length === 0) {
-    return (
-      <div style={{
-        padding: '10px 14px', borderRadius: '6px',
-        background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.06)',
-        fontSize: '12px', color: colors.muted,
-      }}>
-        No blockers right now
       </div>
-    )
-  }
-
-  return (
-    <div style={{
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: '8px',
-    }}>
-      {active.map(dep => (
-        <div
-          key={dep}
-          style={{
-            padding: '10px 12px', borderRadius: '7px',
-            background: 'rgba(232,160,48,0.055)',
-            border: '1px solid rgba(232,160,48,0.14)',
-            borderLeft: '3px solid rgba(232,160,48,0.42)',
-          }}
-        >
-          <div style={{ fontSize: '11px', color: colors.secondary, fontWeight: 500, marginBottom: '5px' }}>
-            {dep}
-          </div>
-          <div style={{
-            fontFamily: font.mono, fontSize: '22px', fontWeight: 700,
-            color: '#C8A24A', lineHeight: 1,
-          }}>
-            {byDep[dep]}
-          </div>
-          <div style={{ fontSize: '10px', color: colors.muted, marginTop: '3px', letterSpacing: '0.02em' }}>
-            waiting tasks
-          </div>
-        </div>
-      ))}
-    </div>
+    </>
   )
 }
 
+function ReasonBadge({ reason }: { reason: string }) {
+  const styles: Record<string, { color: string; bg: string; border: string }> = {
+    Blocked: { color: '#991B1B', bg: '#FEF2F2', border: '#FECACA' },
+    Waiting: { color: '#92400E', bg: '#FFFBEB', border: '#FDE68A' },
+    Stale:   { color: '#BE185D', bg: '#FDF2F8', border: '#FBCFE8' },
+  }
+  const s = styles[reason] ?? { color: '#374151', bg: '#F3F4F6', border: '#E5E7EB' }
+  return (
+    <span style={{
+      fontSize: '12px', fontWeight: 600,
+      color: s.color, background: s.bg,
+      border: `1px solid ${s.border}`,
+      borderRadius: '6px', padding: '3px 10px',
+      whiteSpace: 'nowrap',
+    }}>
+      {reason}
+    </span>
+  )
+}
 
+function AlertIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D4893A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+  )
+}
+
+function FlagIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C0392B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+      <line x1="4" y1="22" x2="4" y2="15" />
+    </svg>
+  )
+}
+
+function TimerIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <line x1="3" y1="9" x2="21" y2="9" />
+      <line x1="9" y1="21" x2="9" y2="9" />
+    </svg>
+  )
+}
+
+function TaskListIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  )
+}
+
+function AssignedIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  )
+}
