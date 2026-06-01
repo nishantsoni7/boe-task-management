@@ -2,6 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
+import {
+  LayoutDashboard, Users, PlusCircle, ClipboardList, CheckSquare,
+  Settings, ChevronRight, LogOut, Briefcase,
+} from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { initials } from '@/lib/ui'
@@ -58,15 +62,28 @@ export function DashboardLayout({
       {/* Sidebar */}
       <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
 
+        {/* Brand header */}
+        <div className="boe-sidebar-brand">
+          <div className="boe-sidebar-brand-icon">
+            <Briefcase size={15} color="#E8A030" strokeWidth={2} />
+          </div>
+          <div>
+            <div className="boe-sidebar-brand-name">BOE</div>
+            <div className="boe-sidebar-brand-sub">Task Management</div>
+          </div>
+        </div>
+
         {/* Top-level nav */}
         <div className="boe-sidebar-section">
           <NavLeaf
             label="Dashboard"
+            icon={<LayoutDashboard size={15} strokeWidth={1.8} />}
             active={pathname === '/dashboard'}
             onClick={() => navTo('/dashboard')}
           />
           <NavLeaf
             label="Members"
+            icon={<Users size={15} strokeWidth={1.8} />}
             active={pathname === '/admin/members'}
             onClick={() => navTo('/admin/members')}
           />
@@ -79,9 +96,10 @@ export function DashboardLayout({
           {/* New Task */}
           <NavParent
             label="New Task"
+            icon={<PlusCircle size={15} strokeWidth={1.8} />}
             active={pathname === '/tasks/create-self' || pathname === '/tasks/create'}
           />
-          <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
+          <NavGroup>
             <NavChild
               label="Self Task"
               active={pathname === '/tasks/create-self'}
@@ -92,15 +110,16 @@ export function DashboardLayout({
               active={pathname === '/tasks/create'}
               onClick={() => navTo('/tasks/create')}
             />
-          </div>
+          </NavGroup>
 
           {/* My Tasks */}
           <NavParent
             label="My Tasks"
+            icon={<ClipboardList size={15} strokeWidth={1.8} />}
             active={pathname === '/tasks/my' || pathname === '/tasks/my/completed'}
             count={taskCounts ? (taskCounts.myInProgress ?? 0) + (taskCounts.myCompleted ?? 0) : undefined}
           />
-          <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
+          <NavGroup>
             <NavChild
               label="In Progress"
               active={pathname === '/tasks/my'}
@@ -113,15 +132,16 @@ export function DashboardLayout({
               onClick={() => navTo('/tasks/my/completed')}
               count={taskCounts?.myCompleted}
             />
-          </div>
+          </NavGroup>
 
           {/* Assigned By Me */}
           <NavParent
             label="Assigned By Me"
+            icon={<CheckSquare size={15} strokeWidth={1.8} />}
             active={pathname === '/tasks/assigned-by-me' || pathname === '/tasks/assigned-by-me/completed'}
             count={taskCounts?.assignedByMeInProgress}
           />
-          <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
+          <NavGroup>
             <NavChild
               label="In Progress"
               active={pathname === '/tasks/assigned-by-me'}
@@ -133,20 +153,20 @@ export function DashboardLayout({
               active={pathname === '/tasks/assigned-by-me/completed'}
               onClick={() => navTo('/tasks/assigned-by-me/completed')}
             />
-          </div>
+          </NavGroup>
         </div>
 
         {/* Admin section */}
         {isAdmin && (
-          <div className="boe-sidebar-section" style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+          <div className="boe-sidebar-section" style={{ borderTop: '1px solid rgba(0,0,0,0.07)', paddingTop: '4px' }}>
             <div className="boe-sidebar-label">Admin</div>
 
-            {/* Settings */}
             <NavParent
               label="Settings"
+              icon={<Settings size={15} strokeWidth={1.8} />}
               active={pathname.startsWith('/settings') || pathname === '/admin/members'}
             />
-            <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
+            <NavGroup>
               <NavChild
                 label="Members"
                 active={pathname === '/admin/members'}
@@ -162,7 +182,7 @@ export function DashboardLayout({
                 active={pathname.startsWith('/settings/positions')}
                 onClick={() => navTo('/settings/positions')}
               />
-            </div>
+            </NavGroup>
           </div>
         )}
 
@@ -170,32 +190,32 @@ export function DashboardLayout({
         {profile && (
           <div style={{
             marginTop: 'auto',
-            borderTop: '1px solid rgba(0,0,0,0.08)',
-            padding: '12px 8px 20px',
+            borderTop: '1px solid rgba(0,0,0,0.07)',
+            padding: '10px 10px 4px',
           }}>
             <div style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '6px 8px', marginBottom: '4px',
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '8px 10px 6px',
             }}>
               <div style={{
-                width: 24, height: 24, borderRadius: '50%',
-                background: '#2A3040',
-                border: `1px solid ${colors.border}`,
+                width: 30, height: 30, borderRadius: '8px',
+                background: '#1A2035',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '10px', fontWeight: 700,
-                color: colors.secondary, flexShrink: 0,
+                fontSize: '11px', fontWeight: 700,
+                color: '#E8A030', flexShrink: 0,
+                letterSpacing: '0.02em',
               }}>
                 {initials(profile.full_name)}
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{
-                  fontSize: '12px', fontWeight: 500, color: colors.primary,
+                  fontSize: '12.5px', fontWeight: 600, color: '#111318',
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                 }}>
                   {profile.full_name}
                 </div>
                 <div style={{
-                  fontSize: '10px', color: colors.tertiary,
+                  fontSize: '10.5px', color: '#8C94A6',
                   textTransform: 'capitalize',
                 }}>
                   {profile.role} · {profile.team}
@@ -205,8 +225,9 @@ export function DashboardLayout({
             <button
               onClick={onSignOut}
               className="boe-nav-item"
-              style={{ color: colors.muted, fontSize: '12px' }}
+              style={{ color: '#8C94A6', fontSize: '12.5px', gap: '8px' }}
             >
+              <LogOut size={14} strokeWidth={1.8} />
               Sign out
             </button>
           </div>
@@ -246,59 +267,74 @@ export function DashboardLayout({
 }
 
 // ─── NavParent ────────────────────────────────────────────────────────────────
-// Non-clickable parent label with chevron — visually groups child items.
-type NavParentProps = { label: string; active: boolean; count?: number }
+// Non-clickable parent label — visually groups child items.
+type NavParentProps = { label: string; active: boolean; count?: number; icon?: React.ReactNode }
 
-function NavParent({ label, active, count }: NavParentProps) {
+function NavParent({ label, active, count, icon }: NavParentProps) {
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '8px 10px 6px',
-      borderRadius: '5px',
+      padding: '7px 10px',
+      borderRadius: '7px',
       fontSize: '13px',
-      fontWeight: 600,
-      color: active ? '#111318' : '#2D3748',
-      letterSpacing: '0.01em',
+      fontWeight: 500,
+      color: active ? '#111318' : '#3D4455',
       userSelect: 'none',
       background: active ? 'rgba(0,0,0,0.04)' : 'transparent',
+      marginBottom: '1px',
     }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ color: active ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+          {icon}
+        </span>
         {label}
         {count != null && count > 0 && (
           <span style={{
-            fontSize: '10px', fontWeight: 700,
-            color: '#6B7280', background: '#F3F4F6',
+            fontSize: '10px', fontWeight: 600,
+            color: '#8C94A6', background: 'rgba(0,0,0,0.07)',
             borderRadius: '999px', padding: '1px 6px',
-            lineHeight: '14px',
+            lineHeight: '15px',
           }}>{count}</span>
         )}
       </span>
-      <span style={{
-        fontSize: '11px',
-        opacity: 0.55,
-        lineHeight: 1,
-        marginLeft: '4px',
-        color: '#6B7280',
-      }}>▾</span>
+      <ChevronRight size={12} strokeWidth={2} style={{ opacity: 0.4, transform: 'rotate(90deg)' }} />
     </div>
   )
 }
 
 // ─── NavLeaf ──────────────────────────────────────────────────────────────────
 // Top-level clickable nav item with no children.
-type NavLeafProps = { label: string; active: boolean; onClick: () => void }
+type NavLeafProps = { label: string; active: boolean; onClick: () => void; icon?: React.ReactNode }
 
-function NavLeaf({ label, active, onClick }: NavLeafProps) {
+function NavLeaf({ label, active, onClick, icon }: NavLeafProps) {
   return (
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
       onClick={onClick}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
     >
+      <span style={{ color: active ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+        {icon}
+      </span>
       {label}
     </button>
+  )
+}
+
+// ─── NavGroup ─────────────────────────────────────────────────────────────────
+// Container for child nav items — adds left-border visual guide.
+function NavGroup({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      marginLeft: '18px',
+      marginBottom: '4px',
+      paddingLeft: '10px',
+      borderLeft: '1px solid rgba(0,0,0,0.08)',
+    }}>
+      {children}
+    </div>
   )
 }
 
@@ -312,24 +348,20 @@ function NavChild({ label, active, onClick, count }: NavChildProps) {
       className={`boe-nav-item${active ? ' active' : ''}`}
       onClick={onClick}
       style={{
-        fontSize: '12px',
+        fontSize: '12.5px',
         fontWeight: active ? 500 : 400,
-        color: active ? '#111318' : '#6B7280',
-        paddingLeft: '18px',
+        color: active ? '#111318' : '#707A92',
+        padding: '5px 8px',
         marginBottom: '1px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        width: '100%',
       }}
     >
-      <span>{label}</span>
+      <span style={{ flex: 1 }}>{label}</span>
       {count != null && count > 0 && (
         <span style={{
           fontSize: '10px', fontWeight: 600,
-          color: '#9CA3AF', background: '#F3F4F6',
+          color: '#8C94A6', background: 'rgba(0,0,0,0.07)',
           borderRadius: '999px', padding: '1px 6px',
-          lineHeight: '14px', marginRight: '4px',
+          lineHeight: '15px', marginLeft: 'auto',
         }}>{count}</span>
       )}
     </button>

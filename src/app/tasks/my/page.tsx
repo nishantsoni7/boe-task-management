@@ -9,7 +9,6 @@ import { getTaskAging } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
-import Link from 'next/link'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert, CheckCircle,
@@ -977,35 +976,6 @@ export default function MyTasksPage() {
   return (
     <>
       <DashboardLayout profile={profile} title="My Tasks" onSignOut={handleLogout}>
-
-        {/* ── Sub-menu: In Progress / Completed ── */}
-        <div style={{
-          display: 'flex', gap: '2px',
-          borderBottom: `2px solid ${colors.border}`,
-          marginBottom: '16px',
-        }}>
-          {[
-            { label: 'In Progress', href: '/tasks/my', active: true },
-            { label: 'Completed',   href: '/tasks/my/completed', active: false },
-          ].map(tab => (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              style={{
-                padding: '7px 16px',
-                fontSize: '12.5px', fontWeight: tab.active ? 700 : 500,
-                color: tab.active ? colors.primary : colors.muted,
-                borderBottom: tab.active ? `2px solid ${colors.primary}` : '2px solid transparent',
-                marginBottom: '-2px',
-                textDecoration: 'none',
-                transition: 'color 0.12s',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {tab.label}
-            </Link>
-          ))}
-        </div>
 
         {/* ── Two-column workspace ── */}
         <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
