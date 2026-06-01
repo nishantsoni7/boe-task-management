@@ -989,6 +989,13 @@ body {
   gap: 9px;
 }
 
+.boe-two-col-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
 /* ── Manager View: asymmetric 340px + 1fr ── */
 .boe-manager-layout {
   display: grid;
@@ -1330,6 +1337,7 @@ body {
     justify-content: center;
   }
   .boe-dashboard-grid    { grid-template-columns: 1fr; }
+  .boe-two-col-section   { grid-template-columns: 1fr; }
   .boe-members-grid      { grid-template-columns: 1fr; }
   .boe-kpi-grid          { grid-template-columns: repeat(2, 1fr); }
 }

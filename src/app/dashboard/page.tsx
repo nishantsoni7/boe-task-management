@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const [blockedCount,       setBlockedCount]       = useState(0)
   const [previewList,        setPreviewList]        = useState<{ type: 'action' | 'blocked'; items: Task[] } | null>(null)
   const [escalationPreview,  setEscalationPreview]  = useState(false)
+  const [assignerNames,      setAssignerNames]      = useState<Record<string, string>>({})
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -58,6 +59,28 @@ export default function DashboardPage() {
 
       if (profileData) setProfile(profileData)
       if (taskData) setTasks(taskData as unknown as Task[])
+
+      // Fetch names of task creators for "Assigned By" display on unacknowledged cards
+      if (taskData) {
+        const creatorIds = [...new Set(
+          (taskData as { created_by: string; assigned_to: string }[])
+            .filter(t => t.created_by !== session.user.id)
+            .map(t => t.created_by)
+        )]
+        if (creatorIds.length > 0) {
+          const { data: creators } = await supabase
+            .from('users')
+            .select('id, full_name')
+            .in('id', creatorIds)
+          if (creators) {
+            const map: Record<string, string> = {}
+            for (const u of creators as { id: string; full_name: string }[]) {
+              map[u.id] = u.full_name
+            }
+            setAssignerNames(map)
+          }
+        }
+      }
 
       // Counts for bottom summary cards
       const [{ count: compCount }, { data: abmTasks }] = await Promise.all([
@@ -126,6 +149,9 @@ export default function DashboardPage() {
   const msPerDay = 24 * 60 * 60 * 1000
 
   const unacknowledged  = tasks.filter(t => !t.acknowledged_at)
+  // Tasks assigned to me by someone else that I haven't acknowledged yet
+  const unacknowledgedForMe = tasks.filter(t => !t.acknowledged_at && t.created_by !== currentUserId)
+  const mergedUserMap   = { ...assignerNames, ...userMap }
   const allOverdueTasks = tasks.filter(t => isOverdue(t.due_date) && t.acknowledged_at)
   const actionRequired  = [...allOverdueTasks, ...unacknowledged]
 
@@ -161,6 +187,8 @@ export default function DashboardPage() {
 
   const isAdmin = profile?.role === 'admin'
 
+  const totalOverdue = tasks.filter(t => isOverdue(t.due_date)).length
+
   return (
     <>
       <DashboardLayout
@@ -174,21 +202,29 @@ export default function DashboardPage() {
         }
         onSignOut={handleLogout}
       >
-        {/* ── Top summary cards ── */}
+        {/* ── Top summary cards — always 3 ── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: isAdmin ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)',
+          gridTemplateColumns: 'repeat(3, 1fr)',
           gap: '16px',
           marginBottom: '24px',
         }}>
           <SummaryCard
-            onClick={() => setPreviewList({ type: 'action', items: actionRequired })}
+            onClick={() => setPreviewList({ type: 'action', items: tasks.filter(t => isOverdue(t.due_date)) })}
             icon={<AlertIcon />}
+            iconBg="rgba(220,53,53,0.10)"
+            count={totalOverdue}
+            countColor="#C0392B"
+            label="Total Overdue Tasks"
+            sublabel="Tasks past their due date"
+          />
+          <SummaryCard
+            icon={<BellIcon />}
             iconBg="rgba(234,136,33,0.12)"
-            count={actionRequired.length}
+            count={unacknowledgedForMe.length}
             countColor="#D4893A"
-            label="Action Required"
-            sublabel="Tasks need your attention"
+            label="Total Unacknowledged Tasks"
+            sublabel="Waiting for your acknowledgement"
           />
           <SummaryCard
             onClick={() => setPreviewList({
@@ -198,149 +234,186 @@ export default function DashboardPage() {
                 : tasks.filter(t => t.status === 'blocked'),
             })}
             icon={<FlagIcon />}
-            iconBg="rgba(220,53,53,0.10)"
+            iconBg="rgba(59,130,246,0.10)"
             count={blockedCount}
-            countColor="#C0392B"
-            label="Blocked"
-            sublabel="Tasks are blocked"
+            countColor="#2563EB"
+            label="Blocked Tasks"
+            sublabel="Tasks currently blocked"
           />
-          {isAdmin && (
-            <SummaryCard
-              onClick={() => setEscalationPreview(true)}
-              icon={<TimerIcon />}
-              iconBg="rgba(59,130,246,0.10)"
-              count={adminEscalations.length}
-              countColor="#2563EB"
-              label="Escalations"
-              sublabel="Require management attention"
-            />
-          )}
         </div>
 
-        {/* ── Admin escalations table ── */}
-        {isAdmin && (
-          <div id="escalations" style={{
+        {/* ── Two-column: Unacknowledged | Escalations ── */}
+        <div className={isAdmin ? 'boe-two-col-section' : undefined} style={{ marginBottom: '24px' }}>
+          {/* Left: Unacknowledged Tasks */}
+          <div style={{
             background: '#fff',
             border: '1px solid #E5E7EB',
             borderRadius: '12px',
             boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-            marginBottom: '24px',
             overflow: 'hidden',
           }}>
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '18px 24px 14px',
+              padding: '18px 20px 14px',
               borderBottom: '1px solid #F3F4F6',
             }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span style={{ fontWeight: 700, fontSize: '15px', color: '#111827', letterSpacing: '-0.01em' }}>
-                    ESCALATIONS
+                    Unacknowledged Tasks
                   </span>
                   <span style={{
-                    background: '#EFF6FF', color: '#2563EB',
-                    fontWeight: 700, fontSize: '13px',
+                    background: '#FEF2F2', color: '#B91C1C',
+                    fontWeight: 700, fontSize: '12px',
                     borderRadius: '999px', padding: '1px 10px',
                   }}>
-                    {adminEscalations.length}
+                    {unacknowledgedForMe.length}
                   </span>
                 </div>
                 <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '3px' }}>
-                  Tasks that need your immediate attention
+                  Please acknowledge your assigned tasks to take action.
                 </div>
               </div>
-              {adminEscalations.length > 5 && (
-                <span style={{ fontSize: '13px', color: '#2563EB', fontWeight: 600, cursor: 'pointer' }}>
-                  View all escalations →
-                </span>
-              )}
             </div>
-
-            {adminEscalations.length === 0 ? (
-              <div style={{ padding: '32px 24px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-                No escalations right now
+            {unacknowledgedForMe.length === 0 ? (
+              <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
+                No unacknowledged tasks
               </div>
             ) : (
-              <>
-                {/* Table header */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 180px 80px 100px',
-                  padding: '10px 24px',
-                  fontSize: '12px', fontWeight: 600,
-                  color: '#9CA3AF', letterSpacing: '0.04em',
-                  textTransform: 'uppercase',
-                  borderBottom: '1px solid #F3F4F6',
-                }}>
-                  <span>Task</span>
-                  <span>Owner</span>
-                  <span>Days</span>
-                  <span>Reason</span>
-                </div>
-
-                {/* Table rows */}
-                {adminEscalations.slice(0, 10).map(({ task, owner, days, reason }) => {
-                  const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
-                  return (
-                    <div
-                      key={task.id}
-                      onClick={() => setSelectedTask(task)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={e => e.key === 'Enter' && setSelectedTask(task)}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 180px 80px 100px',
-                        alignItems: 'center',
-                        padding: '14px 24px',
-                        borderBottom: '1px solid #F9FAFB',
-                        cursor: 'pointer',
-                        transition: 'background 0.12s',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '')}
-                    >
-                      <div style={{
-                        fontSize: '14px', fontWeight: 500, color: '#111827',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        paddingRight: '16px',
-                      }}>
-                        {task.title}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{
-                          width: '28px', height: '28px', borderRadius: '50%',
-                          background: '#E5E7EB',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '11px', fontWeight: 700, color: '#374151',
-                          flexShrink: 0,
-                        }}>
-                          {owner.slice(0, 2).toUpperCase()}
-                        </div>
-                        <span style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>
-                          {owner}
-                        </span>
-                      </div>
-                      <div style={{
-                        fontSize: '14px', fontWeight: 700, color: daysColor,
-                        fontVariantNumeric: 'tabular-nums',
-                      }}>
-                        {days}d
-                      </div>
-                      <div>
-                        <ReasonBadge reason={reason} />
-                      </div>
-                    </div>
-                  )
-                })}
-
-                <div style={{ padding: '12px 24px', fontSize: '13px', color: '#9CA3AF', borderTop: '1px solid #F3F4F6' }}>
-                  Showing {Math.min(adminEscalations.length, 10)} of {adminEscalations.length} escalation{adminEscalations.length !== 1 ? 's' : ''}
-                </div>
-              </>
+              <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <UnacknowledgedTasksSection
+                  tasks={unacknowledgedForMe}
+                  userMap={mergedUserMap}
+                  now={now}
+                  onPreview={task => setSelectedTask(task)}
+                  compact
+                />
+              </div>
             )}
           </div>
-        )}
+
+          {/* Right: Escalations (admin only) */}
+          {isAdmin && (
+            <div id="escalations" style={{
+              background: '#fff',
+              border: '1px solid #E5E7EB',
+              borderRadius: '12px',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '18px 20px 14px',
+                borderBottom: '1px solid #F3F4F6',
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontWeight: 700, fontSize: '15px', color: '#111827', letterSpacing: '-0.01em' }}>
+                      Escalations
+                    </span>
+                    <span style={{
+                      background: '#EFF6FF', color: '#2563EB',
+                      fontWeight: 700, fontSize: '12px',
+                      borderRadius: '999px', padding: '1px 10px',
+                    }}>
+                      {adminEscalations.length}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '3px' }}>
+                    Tasks that need your immediate attention
+                  </div>
+                </div>
+                {adminEscalations.length > 5 && (
+                  <span
+                    onClick={() => setEscalationPreview(true)}
+                    style={{ fontSize: '12px', color: '#2563EB', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    View all →
+                  </span>
+                )}
+              </div>
+
+              {adminEscalations.length === 0 ? (
+                <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
+                  No escalations right now
+                </div>
+              ) : (
+                <>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr auto auto auto',
+                    padding: '10px 20px',
+                    fontSize: '11px', fontWeight: 600,
+                    color: '#9CA3AF', letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    borderBottom: '1px solid #F3F4F6',
+                    gap: '8px',
+                  }}>
+                    <span>Task</span>
+                    <span>Owner</span>
+                    <span>Overdue by</span>
+                    <span>Reason</span>
+                  </div>
+                  {adminEscalations.slice(0, 8).map(({ task, owner, days, reason }) => {
+                    const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
+                    return (
+                      <div
+                        key={task.id}
+                        onClick={() => setSelectedTask(task)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={e => e.key === 'Enter' && setSelectedTask(task)}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr auto auto auto',
+                          alignItems: 'center',
+                          padding: '10px 20px',
+                          borderBottom: '1px solid #F9FAFB',
+                          cursor: 'pointer',
+                          gap: '8px',
+                          transition: 'background 0.12s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '')}
+                      >
+                        <div style={{
+                          fontSize: '13px', fontWeight: 500, color: '#111827',
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          minWidth: 0,
+                        }}>
+                          {task.title}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                          <div style={{
+                            width: '24px', height: '24px', borderRadius: '50%',
+                            background: '#E5E7EB',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '10px', fontWeight: 700, color: '#374151',
+                            flexShrink: 0,
+                          }}>
+                            {owner.slice(0, 2).toUpperCase()}
+                          </div>
+                          <span style={{ fontSize: '12px', color: '#374151', fontWeight: 500 }}>
+                            {owner.split(' ')[0]}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: daysColor, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                          {days}d
+                        </div>
+                        <div>
+                          <ReasonBadge reason={reason} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div style={{ padding: '10px 20px', fontSize: '12px', color: '#9CA3AF', borderTop: '1px solid #F3F4F6' }}>
+                    Showing {Math.min(adminEscalations.length, 8)} of {adminEscalations.length}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* ── Bottom summary row ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
@@ -396,6 +469,125 @@ export default function DashboardPage() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+function UnacknowledgedTasksSection({
+  tasks,
+  userMap,
+  now,
+  onPreview,
+  compact,
+}: {
+  tasks: Task[]
+  userMap: Record<string, string>
+  now: Date
+  onPreview: (task: Task) => void
+  compact?: boolean
+}) {
+  const msPerDay = 24 * 60 * 60 * 1000
+  return (
+    <div style={compact ? {} : { marginBottom: '24px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {tasks.map(task => {
+          const isLate = (now.getTime() - new Date(task.created_at).getTime()) > msPerDay
+          const assignedByName = userMap[task.created_by] ?? '—'
+          const dueDateStr = task.due_date
+            ? new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            : null
+          const isDueOverdue = task.due_date && new Date(task.due_date) < now
+          const notePreview = task.note
+            ? task.note.length > 120 ? task.note.slice(0, 120) + '…' : task.note
+            : null
+
+          return (
+            <div
+              key={task.id}
+              style={{
+                background: '#fff',
+                border: isLate ? '1.5px solid #EF4444' : '1px solid #E5E7EB',
+                borderRadius: '10px',
+                padding: '14px 18px',
+                boxShadow: isLate
+                  ? '0 1px 6px rgba(239,68,68,0.10)'
+                  : '0 1px 4px rgba(0,0,0,0.05)',
+              }}
+            >
+              {/* Title row */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '6px' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: '14px', fontWeight: 600, color: '#111827',
+                    lineHeight: 1.4,
+                  }}>
+                    {task.title}
+                  </div>
+                  {isLate && (
+                    <span style={{
+                      display: 'inline-block', marginTop: '4px',
+                      fontSize: '10px', fontWeight: 700,
+                      color: '#B91C1C', background: '#FEF2F2',
+                      borderRadius: '4px', padding: '1px 7px',
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                    }}>
+                      Overdue acknowledgement
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => onPreview(task)}
+                  style={{
+                    flexShrink: 0,
+                    background: '#F3F4F6',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '6px',
+                    padding: '4px 12px',
+                    fontSize: '12px', fontWeight: 600, color: '#374151',
+                    cursor: 'pointer',
+                    transition: 'background 0.12s',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#E5E7EB')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#F3F4F6')}
+                >
+                  Preview
+                </button>
+              </div>
+
+              {/* Note preview */}
+              {notePreview && (
+                <p style={{
+                  fontSize: '12px', color: '#6B7280',
+                  margin: '0 0 8px', lineHeight: 1.5,
+                }}>
+                  {notePreview}
+                </p>
+              )}
+
+              {/* Meta row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', color: '#6B7280' }}>
+                  <span style={{ fontWeight: 600, color: '#374151' }}>Assigned by:</span> {assignedByName}
+                </span>
+                {dueDateStr && (
+                  <span style={{ fontSize: '12px', color: isDueOverdue ? '#B91C1C' : '#6B7280', fontWeight: isDueOverdue ? 600 : 400 }}>
+                    <span style={{ fontWeight: 600, color: isDueOverdue ? '#B91C1C' : '#374151' }}>Due:</span> {dueDateStr}
+                  </span>
+                )}
+                <span style={{
+                  fontSize: '11px', fontWeight: 600,
+                  color: '#92600A', background: '#FFFBEB',
+                  border: '1px solid #FDE68A',
+                  borderRadius: '5px', padding: '1px 8px',
+                }}>
+                  Pending acknowledgement
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 function SummaryCard({
   href,
@@ -793,6 +985,15 @@ function ReasonBadge({ reason }: { reason: string }) {
     }}>
       {reason}
     </span>
+  )
+}
+
+function BellIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D4893A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
   )
 }
 
