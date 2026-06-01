@@ -146,44 +146,6 @@ export default function DashboardPage() {
     adminEscalations.sort((a, b) => b.days - a.days)
   }
 
-  const handleDashboardAddUpdate = async (note: string, newStatus: string, waitingOn?: { type: 'team_member' | 'external'; userId?: string; text?: string }) => {
-    if (!selectedTask) return
-    const ts = new Date().toISOString()
-    const statusChanged = newStatus !== selectedTask.status
-    const trimmedNote = note.trim() || null
-
-    if (statusChanged) {
-      const taskUpdates: Record<string, unknown> = { status: newStatus, last_update_at: ts }
-      if (newStatus === 'blocked') taskUpdates.blocker_reason = trimmedNote
-      else if (selectedTask.status === 'blocked') taskUpdates.blocker_reason = null
-      if (newStatus === 'waiting' && waitingOn) {
-        taskUpdates.waiting_on_type    = waitingOn.type
-        taskUpdates.waiting_on_user_id = waitingOn.type === 'team_member' ? (waitingOn.userId ?? null) : null
-        taskUpdates.waiting_on_text    = waitingOn.type === 'external'    ? (waitingOn.text    ?? null) : null
-      } else if (selectedTask.status === 'waiting' && newStatus !== 'waiting') {
-        taskUpdates.waiting_on_type    = null
-        taskUpdates.waiting_on_user_id = null
-        taskUpdates.waiting_on_text    = null
-      }
-      await supabase.from('tasks').update(taskUpdates).eq('id', selectedTask.id)
-      await supabase.from('task_activity_log').insert({
-        task_id: selectedTask.id, actor_id: currentUserId, action: 'status_changed',
-        from_status: selectedTask.status, to_status: newStatus, note: trimmedNote,
-      })
-      const patch: Partial<Task> = { status: newStatus as Task['status'], last_update_at: ts }
-      if (newStatus === 'blocked') patch.blocker_reason = trimmedNote
-      setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
-      setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
-    } else if (trimmedNote) {
-      await supabase.from('tasks').update({ last_update_at: ts }).eq('id', selectedTask.id)
-      await supabase.from('task_activity_log').insert({
-        task_id: selectedTask.id, actor_id: currentUserId, action: 'status_changed',
-        from_status: selectedTask.status, to_status: selectedTask.status, note: trimmedNote,
-      })
-      setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, last_update_at: ts } : t))
-    }
-  }
-
   useEffect(() => {
     if (!selectedTask) return
     const inTasks = tasks.find(t => t.id === selectedTask.id)
@@ -427,7 +389,6 @@ export default function DashboardPage() {
           onClose={() => setSelectedTask(null)}
           onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
           currentUserId={currentUserId}
-          onAddUpdate={handleDashboardAddUpdate}
         />
       )}
     </>
