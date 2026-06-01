@@ -10,6 +10,12 @@ import { initials } from '@/lib/ui'
 // Shell: fixed 220px sidebar + main-content (margin-left: 220px).
 // Each page owns its own internal layout grid.
 
+type TaskCounts = {
+  myInProgress?: number
+  myCompleted?: number
+  assignedByMeInProgress?: number
+}
+
 type DashboardLayoutProps = {
   profile: UserProfile | null
   title: string
@@ -17,6 +23,7 @@ type DashboardLayoutProps = {
   actions?: React.ReactNode
   onSignOut: () => void
   children: React.ReactNode
+  taskCounts?: TaskCounts
 }
 
 export function DashboardLayout({
@@ -26,6 +33,7 @@ export function DashboardLayout({
   actions,
   onSignOut,
   children,
+  taskCounts,
 }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
@@ -90,17 +98,20 @@ export function DashboardLayout({
           <NavParent
             label="My Tasks"
             active={pathname === '/tasks/my' || pathname === '/tasks/my/completed'}
+            count={taskCounts ? (taskCounts.myInProgress ?? 0) + (taskCounts.myCompleted ?? 0) : undefined}
           />
           <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
             <NavChild
               label="In Progress"
               active={pathname === '/tasks/my'}
               onClick={() => navTo('/tasks/my')}
+              count={taskCounts?.myInProgress}
             />
             <NavChild
               label="Completed"
               active={pathname === '/tasks/my/completed'}
               onClick={() => navTo('/tasks/my/completed')}
+              count={taskCounts?.myCompleted}
             />
           </div>
 
@@ -108,12 +119,14 @@ export function DashboardLayout({
           <NavParent
             label="Assigned By Me"
             active={pathname === '/tasks/assigned-by-me' || pathname === '/tasks/assigned-by-me/completed'}
+            count={taskCounts?.assignedByMeInProgress}
           />
           <div style={{ paddingLeft: '12px', marginBottom: '4px' }}>
             <NavChild
               label="In Progress"
               active={pathname === '/tasks/assigned-by-me'}
               onClick={() => navTo('/tasks/assigned-by-me')}
+              count={taskCounts?.assignedByMeInProgress}
             />
             <NavChild
               label="Completed"
@@ -234,9 +247,9 @@ export function DashboardLayout({
 
 // ─── NavParent ────────────────────────────────────────────────────────────────
 // Non-clickable parent label with chevron — visually groups child items.
-type NavParentProps = { label: string; active: boolean }
+type NavParentProps = { label: string; active: boolean; count?: number }
 
-function NavParent({ label, active }: NavParentProps) {
+function NavParent({ label, active, count }: NavParentProps) {
   return (
     <div style={{
       display: 'flex',
@@ -251,7 +264,17 @@ function NavParent({ label, active }: NavParentProps) {
       userSelect: 'none',
       background: active ? 'rgba(0,0,0,0.04)' : 'transparent',
     }}>
-      {label}
+      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {label}
+        {count != null && count > 0 && (
+          <span style={{
+            fontSize: '10px', fontWeight: 700,
+            color: '#6B7280', background: '#F3F4F6',
+            borderRadius: '999px', padding: '1px 6px',
+            lineHeight: '14px',
+          }}>{count}</span>
+        )}
+      </span>
       <span style={{
         fontSize: '11px',
         opacity: 0.55,
@@ -281,9 +304,9 @@ function NavLeaf({ label, active, onClick }: NavLeafProps) {
 
 // ─── NavChild ─────────────────────────────────────────────────────────────────
 // Indented child nav item — sits beneath a NavParent.
-type NavChildProps = { label: string; active: boolean; onClick: () => void }
+type NavChildProps = { label: string; active: boolean; onClick: () => void; count?: number }
 
-function NavChild({ label, active, onClick }: NavChildProps) {
+function NavChild({ label, active, onClick, count }: NavChildProps) {
   return (
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
@@ -294,9 +317,21 @@ function NavChild({ label, active, onClick }: NavChildProps) {
         color: active ? '#111318' : '#6B7280',
         paddingLeft: '18px',
         marginBottom: '1px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
       }}
     >
-      {label}
+      <span>{label}</span>
+      {count != null && count > 0 && (
+        <span style={{
+          fontSize: '10px', fontWeight: 600,
+          color: '#9CA3AF', background: '#F3F4F6',
+          borderRadius: '999px', padding: '1px 6px',
+          lineHeight: '14px', marginRight: '4px',
+        }}>{count}</span>
+      )}
     </button>
   )
 }

@@ -30,9 +30,11 @@ export default function DashboardPage() {
   const [assignedByMeInProg, setAssignedByMeInProg] = useState(0)
   const [assignedByMeComp,   setAssignedByMeComp]   = useState(0)
   const [blockedCount,       setBlockedCount]       = useState(0)
-  const [previewList,        setPreviewList]        = useState<{ type: 'action' | 'blocked'; items: Task[] } | null>(null)
+  const [previewList,        setPreviewList]        = useState<{ title: string; items: Task[] } | null>(null)
   const [escalationPreview,  setEscalationPreview]  = useState(false)
   const [assignerNames,      setAssignerNames]      = useState<Record<string, string>>({})
+  const [completedTasksData, setCompletedTasksData] = useState<Task[]>([])
+  const [assignedByMeTasksAll, setAssignedByMeTasksAll] = useState<Task[]>([])
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -82,24 +84,32 @@ export default function DashboardPage() {
         }
       }
 
-      // Counts for bottom summary cards
-      const [{ count: compCount }, { data: abmTasks }] = await Promise.all([
+      // Counts + data for bottom summary cards and preview panels
+      const [{ data: completedData }, { data: abmTasks }] = await Promise.all([
         supabase
           .from('tasks')
-          .select('id', { count: 'exact', head: true })
+          .select(TASK_COLUMNS)
           .eq('assigned_to', session.user.id)
-          .eq('status', 'completed'),
+          .eq('status', 'completed')
+          .order('last_update_at', { ascending: false })
+          .limit(50),
         supabase
           .from('tasks')
-          .select('id, status')
+          .select(TASK_COLUMNS)
           .eq('created_by', session.user.id)
-          .neq('assigned_to', session.user.id),
+          .neq('assigned_to', session.user.id)
+          .not('status', 'eq', 'completed'),
       ])
-      if (compCount != null) setMyCompletedCount(compCount)
+      if (completedData) {
+        const completed = completedData as unknown as Task[]
+        setMyCompletedCount(completed.length)
+        setCompletedTasksData(completed)
+      }
       if (abmTasks) {
-        const abm = abmTasks as { id: string; status: string }[]
-        setAssignedByMeInProg(abm.filter(t => t.status !== 'completed').length)
-        setAssignedByMeComp(abm.filter(t => t.status === 'completed').length)
+        const abm = abmTasks as unknown as Task[]
+        setAssignedByMeInProg(abm.length)
+        setAssignedByMeTasksAll(abm)
+        setAssignedByMeComp(0)
       }
 
       if (profileData?.role === 'admin' || profileData?.role === 'manager') {
@@ -189,6 +199,22 @@ export default function DashboardPage() {
 
   const totalOverdue = tasks.filter(t => isOverdue(t.due_date)).length
 
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
+  const tomorrowStart = new Date(todayStart.getTime() + msPerDay)
+  const weekEnd = new Date(todayStart.getTime() + 7 * msPerDay)
+
+  const dueTodayTasks = tasks.filter(t => {
+    if (!t.due_date) return false
+    const d = new Date(t.due_date); d.setHours(0, 0, 0, 0)
+    return d.getTime() === todayStart.getTime()
+  })
+  const dueThisWeekTasks = tasks.filter(t => {
+    if (!t.due_date) return false
+    const d = new Date(t.due_date)
+    return d >= tomorrowStart && d < weekEnd
+  })
+  const activeProjectsTasks = tasks.filter(t => ['working', 'started', 'pending'].includes(t.status))
+
   return (
     <>
       <DashboardLayout
@@ -201,6 +227,11 @@ export default function DashboardPage() {
           </button>
         }
         onSignOut={handleLogout}
+        taskCounts={{
+          myInProgress: tasks.length,
+          myCompleted: myCompletedCount,
+          assignedByMeInProgress: assignedByMeInProg,
+        }}
       >
         {/* ── Top summary cards — always 3 ── */}
         <div style={{
@@ -210,7 +241,7 @@ export default function DashboardPage() {
           marginBottom: '24px',
         }}>
           <SummaryCard
-            onClick={() => setPreviewList({ type: 'action', items: tasks.filter(t => isOverdue(t.due_date)) })}
+            onClick={() => setPreviewList({ title: 'Overdue Tasks', items: tasks.filter(t => isOverdue(t.due_date)) })}
             icon={<AlertIcon />}
             iconBg="rgba(220,53,53,0.10)"
             count={totalOverdue}
@@ -219,6 +250,7 @@ export default function DashboardPage() {
             sublabel="Tasks past their due date"
           />
           <SummaryCard
+            onClick={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
             icon={<BellIcon />}
             iconBg="rgba(234,136,33,0.12)"
             count={unacknowledgedForMe.length}
@@ -228,7 +260,7 @@ export default function DashboardPage() {
           />
           <SummaryCard
             onClick={() => setPreviewList({
-              type: 'blocked',
+              title: 'Blocked Tasks',
               items: isAdmin
                 ? escalationTasks.filter(t => t.status === 'blocked')
                 : tasks.filter(t => t.status === 'blocked'),
@@ -252,11 +284,18 @@ export default function DashboardPage() {
             boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
             overflow: 'hidden',
           }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '18px 20px 14px',
-              borderBottom: '1px solid #F3F4F6',
-            }}>
+            <div
+              onClick={() => unacknowledgedForMe.length > 0 && setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '18px 20px 14px',
+                borderBottom: '1px solid #F3F4F6',
+                cursor: unacknowledgedForMe.length > 0 ? 'pointer' : 'default',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => { if (unacknowledgedForMe.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '' }}
+            >
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span style={{ fontWeight: 700, fontSize: '15px', color: '#111827', letterSpacing: '-0.01em' }}>
@@ -274,6 +313,9 @@ export default function DashboardPage() {
                   Please acknowledge your assigned tasks to take action.
                 </div>
               </div>
+              {unacknowledgedForMe.length > 0 && (
+                <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>View all →</span>
+              )}
             </div>
             {unacknowledgedForMe.length === 0 ? (
               <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
@@ -301,11 +343,18 @@ export default function DashboardPage() {
               boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
               overflow: 'hidden',
             }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '18px 20px 14px',
-                borderBottom: '1px solid #F3F4F6',
-              }}>
+              <div
+                onClick={() => adminEscalations.length > 0 && setEscalationPreview(true)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '18px 20px 14px',
+                  borderBottom: '1px solid #F3F4F6',
+                  cursor: adminEscalations.length > 0 ? 'pointer' : 'default',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={e => { if (adminEscalations.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
+                onMouseLeave={e => { e.currentTarget.style.background = '' }}
+              >
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontWeight: 700, fontSize: '15px', color: '#111827', letterSpacing: '-0.01em' }}>
@@ -323,11 +372,8 @@ export default function DashboardPage() {
                     Tasks that need your immediate attention
                   </div>
                 </div>
-                {adminEscalations.length > 5 && (
-                  <span
-                    onClick={() => setEscalationPreview(true)}
-                    style={{ fontSize: '12px', color: '#2563EB', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  >
+                {adminEscalations.length > 0 && (
+                  <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
                     View all →
                   </span>
                 )}
@@ -415,32 +461,51 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* ── Bottom summary row ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <QuickSummaryCard
-            icon={<TaskListIcon />}
-            title="MY TASKS"
-            viewAllHref="/tasks/my"
-            rows={[
-              { label: 'In Progress', count: tasks.filter(t => t.status !== 'completed').length, color: '#2563EB', href: '/tasks/my' },
-              { label: 'Completed',   count: myCompletedCount,                                    color: '#16A34A', href: '/tasks/my/completed' },
-            ]}
-          />
-          <QuickSummaryCard
-            icon={<AssignedIcon />}
-            title="ASSIGNED BY ME"
-            viewAllHref="/tasks/assigned-by-me"
-            rows={[
-              { label: 'In Progress', count: assignedByMeInProg, color: '#2563EB', href: '/tasks/assigned-by-me' },
-              { label: 'Completed',   count: assignedByMeComp,   color: '#16A34A', href: '/tasks/assigned-by-me/completed' },
-            ]}
-          />
-        </div>
+        {/* ── Bottom summary bar ── */}
+        <BottomSummaryBar
+          items={[
+            {
+              icon: <CheckCircleIcon color="#16A34A" />,
+              iconBg: 'rgba(22,163,74,0.10)',
+              count: myCompletedCount,
+              label: 'Tasks Completed',
+              subtext: 'This month',
+              onClick: () => setPreviewList({ title: 'Completed Tasks', items: completedTasksData }),
+            },
+            {
+              icon: <CalendarIcon color="#D97706" />,
+              iconBg: 'rgba(217,119,6,0.10)',
+              count: dueTodayTasks.length,
+              label: 'Due Today',
+              subtext: 'Tasks due today',
+              onClick: () => setPreviewList({ title: 'Due Today', items: dueTodayTasks }),
+            },
+            {
+              icon: <CalendarWeekIcon color="#7C3AED" />,
+              iconBg: 'rgba(124,58,237,0.10)',
+              count: dueThisWeekTasks.length,
+              label: 'Due This Week',
+              subtext: 'Tasks due this week',
+              onClick: () => setPreviewList({ title: 'Due This Week', items: dueThisWeekTasks }),
+            },
+            {
+              icon: <TimerIcon />,
+              iconBg: 'rgba(37,99,235,0.10)',
+              count: activeProjectsTasks.length,
+              label: 'Active Projects',
+              subtext: 'In progress',
+              onClick: () => setPreviewList({ title: 'Active Tasks', items: activeProjectsTasks }),
+            },
+          ]}
+        />
+
+        {/* ── Tip bar ── */}
+        <TipBar />
       </DashboardLayout>
 
       {previewList && !selectedTask && (
         <TaskListDrawer
-          title={previewList.type === 'action' ? 'Action Required' : 'Blocked Tasks'}
+          title={previewList.title}
           items={previewList.items}
           onClose={() => setPreviewList(null)}
           onSelectTask={task => { setPreviewList(null); setSelectedTask(task) }}
@@ -501,6 +566,10 @@ function UnacknowledgedTasksSection({
           return (
             <div
               key={task.id}
+              onClick={() => onPreview(task)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => e.key === 'Enter' && onPreview(task)}
               style={{
                 background: '#fff',
                 border: isLate ? '1.5px solid #EF4444' : '1px solid #E5E7EB',
@@ -509,47 +578,41 @@ function UnacknowledgedTasksSection({
                 boxShadow: isLate
                   ? '0 1px 6px rgba(239,68,68,0.10)'
                   : '0 1px 4px rgba(0,0,0,0.05)',
+                cursor: 'pointer',
+                transition: 'box-shadow 0.12s, border-color 0.12s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.boxShadow = isLate
+                  ? '0 3px 10px rgba(239,68,68,0.18)'
+                  : '0 3px 10px rgba(0,0,0,0.09)'
+                if (!isLate) e.currentTarget.style.borderColor = '#D1D5DB'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.boxShadow = isLate
+                  ? '0 1px 6px rgba(239,68,68,0.10)'
+                  : '0 1px 4px rgba(0,0,0,0.05)'
+                if (!isLate) e.currentTarget.style.borderColor = '#E5E7EB'
               }}
             >
               {/* Title row */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '6px' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    fontSize: '14px', fontWeight: 600, color: '#111827',
-                    lineHeight: 1.4,
-                  }}>
-                    {task.title}
-                  </div>
-                  {isLate && (
-                    <span style={{
-                      display: 'inline-block', marginTop: '4px',
-                      fontSize: '10px', fontWeight: 700,
-                      color: '#B91C1C', background: '#FEF2F2',
-                      borderRadius: '4px', padding: '1px 7px',
-                      letterSpacing: '0.04em', textTransform: 'uppercase',
-                    }}>
-                      Overdue acknowledgement
-                    </span>
-                  )}
+              <div style={{ marginBottom: '6px' }}>
+                <div style={{
+                  fontSize: '14px', fontWeight: 600, color: '#111827',
+                  lineHeight: 1.4,
+                }}>
+                  {task.title}
                 </div>
-                <button
-                  onClick={() => onPreview(task)}
-                  style={{
-                    flexShrink: 0,
-                    background: '#F3F4F6',
-                    border: '1px solid #E5E7EB',
-                    borderRadius: '6px',
-                    padding: '4px 12px',
-                    fontSize: '12px', fontWeight: 600, color: '#374151',
-                    cursor: 'pointer',
-                    transition: 'background 0.12s',
-                    whiteSpace: 'nowrap',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#E5E7EB')}
-                  onMouseLeave={e => (e.currentTarget.style.background = '#F3F4F6')}
-                >
-                  Preview
-                </button>
+                {isLate && (
+                  <span style={{
+                    display: 'inline-block', marginTop: '4px',
+                    fontSize: '10px', fontWeight: 700,
+                    color: '#B91C1C', background: '#FEF2F2',
+                    borderRadius: '4px', padding: '1px 7px',
+                    letterSpacing: '0.04em', textTransform: 'uppercase',
+                  }}>
+                    Overdue acknowledgement
+                  </span>
+                )}
               </div>
 
               {/* Note preview */}
@@ -612,25 +675,25 @@ function SummaryCard({
   const cardStyle: React.CSSProperties = {
     background: '#fff',
     border: '1px solid #E5E7EB',
-    borderRadius: '12px',
-    padding: '20px 22px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    borderRadius: '10px',
+    padding: '12px 16px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
     display: 'flex',
     alignItems: 'center',
-    gap: '16px',
+    gap: '12px',
     textDecoration: 'none',
     cursor: isInteractive ? 'pointer' : 'default',
     transition: 'box-shadow 0.15s, border-color 0.15s',
   }
   const handleMouseEnter = isInteractive
     ? (e: React.MouseEvent<HTMLElement>) => {
-        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.10)'
+        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.09)'
         e.currentTarget.style.borderColor = '#D1D5DB'
       }
     : undefined
   const handleMouseLeave = isInteractive
     ? (e: React.MouseEvent<HTMLElement>) => {
-        e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'
+        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'
         e.currentTarget.style.borderColor = '#E5E7EB'
       }
     : undefined
@@ -638,25 +701,27 @@ function SummaryCard({
   const inner = (
     <>
       <div style={{
-        width: '48px', height: '48px', borderRadius: '12px',
+        width: '38px', height: '38px', borderRadius: '10px',
         background: iconBg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         flexShrink: 0,
       }}>
         {icon}
       </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: '28px', fontWeight: 800, color: countColor, lineHeight: 1, letterSpacing: '-0.02em' }}>
-          {count}
-        </div>
-        <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginTop: '3px' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
           {label}
         </div>
-        <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
+        <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px' }}>
           {sublabel}
         </div>
       </div>
-      {isInteractive && <div style={{ color: '#D1D5DB', fontSize: '18px' }}>›</div>}
+      <div style={{
+        fontSize: '26px', fontWeight: 800, color: countColor,
+        lineHeight: 1, letterSpacing: '-0.02em', flexShrink: 0,
+      }}>
+        {count}
+      </div>
     </>
   )
 
@@ -1018,11 +1083,137 @@ function FlagIcon() {
 
 function TimerIcon() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
       <line x1="3" y1="9" x2="21" y2="9" />
       <line x1="9" y1="21" x2="9" y2="9" />
     </svg>
+  )
+}
+
+function CheckCircleIcon({ color }: { color: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  )
+}
+
+function CalendarIcon({ color }: { color: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  )
+}
+
+function CalendarWeekIcon({ color }: { color: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+      <line x1="8" y1="14" x2="16" y2="14" />
+    </svg>
+  )
+}
+
+type BottomSummaryItem = {
+  icon: React.ReactNode
+  iconBg: string
+  count: number
+  label: string
+  subtext: string
+  onClick: () => void
+}
+
+function BottomSummaryBar({ items }: { items: BottomSummaryItem[] }) {
+  return (
+    <div style={{
+      background: '#fff',
+      border: '1px solid #E5E7EB',
+      borderRadius: '12px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      display: 'flex',
+      alignItems: 'stretch',
+      overflow: 'hidden',
+      marginBottom: '12px',
+    }}>
+      {items.map((item, i) => (
+        <React.Fragment key={item.label}>
+          {i > 0 && (
+            <div style={{ width: '1px', background: '#F3F4F6', flexShrink: 0, alignSelf: 'stretch' }} />
+          )}
+          <div
+            onClick={item.onClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && item.onClick()}
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '12px 16px',
+              cursor: 'pointer',
+              transition: 'background 0.12s',
+              minWidth: 0,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+            onMouseLeave={e => (e.currentTarget.style.background = '')}
+          >
+            <div style={{
+              width: '30px', height: '30px', borderRadius: '50%',
+              background: item.iconBg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              {item.icon}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {item.label}
+              </div>
+              <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '1px' }}>
+                {item.subtext}
+              </div>
+            </div>
+            <div style={{ fontSize: '20px', fontWeight: 800, color: '#111827', lineHeight: 1, letterSpacing: '-0.02em', flexShrink: 0 }}>
+              {item.count}
+            </div>
+          </div>
+        </React.Fragment>
+      ))}
+    </div>
+  )
+}
+
+function TipBar() {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
+      background: '#EFF6FF',
+      border: '1px solid #BFDBFE',
+      borderRadius: '8px',
+      padding: '10px 16px',
+      marginBottom: '8px',
+    }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span style={{ fontSize: '13px', color: '#1E40AF' }}>
+        <strong>Tip:</strong> Acknowledge tasks to update status, add notes, or mark as completed.
+      </span>
+    </div>
   )
 }
 
