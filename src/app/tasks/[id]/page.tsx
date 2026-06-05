@@ -127,11 +127,14 @@ export default function TaskDetailPage() {
     await supabase.from('task_activity_log').insert({
       task_id: task.id, actor_id: currentUserId, action: 'acknowledged', note: null,
     })
-    if (task.created_by !== currentUserId) {
-      await supabase.from('notifications').insert({
-        user_id: task.created_by, task_id: task.id, type: 'task_acknowledged',
-        title: 'Task acknowledged', body: task.title, is_push_sent: true,
-      })
+    if (task.created_by && task.created_by !== currentUserId) {
+      fetch('/api/notify-status-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, title: 'Task acknowledged' }),
+      }).then(res => {
+        if (!res.ok) res.json().then(d => console.error('[acknowledge] notification failed:', d))
+      }).catch(err => console.error('[acknowledge] notification fetch error:', err))
     }
     setTask({ ...task, acknowledged_at: now })
     await loadLog(task.id)
@@ -160,6 +163,15 @@ export default function TaskDetailPage() {
       to_status:   newStatus,
       note:        reason ?? null,
     })
+    if (task.created_by && task.created_by !== currentUserId) {
+      fetch('/api/notify-status-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by }),
+      }).then(res => {
+        if (!res.ok) res.json().then(d => console.error('[applyStatusChange] notification failed:', d))
+      }).catch(err => console.error('[applyStatusChange] notification fetch error:', err))
+    }
     const localPatch: Partial<Task> = { status: newStatus as TaskStatus, last_update_at: now }
     if (newStatus === 'blocked')   localPatch.blocker_reason = reason
     if (oldStatus === 'blocked' && newStatus !== 'blocked') localPatch.blocker_reason = null
@@ -203,6 +215,15 @@ export default function TaskDetailPage() {
           action: 'status_changed', from_status: task.status, to_status: selectedStatus,
           note: updateNote.trim() || null,
         })
+        if (task.created_by && task.created_by !== currentUserId) {
+          fetch('/api/notify-status-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by }),
+          }).then(res => {
+            if (!res.ok) res.json().then(d => console.error('[saveUpdate/waiting] notification failed:', d))
+          }).catch(err => console.error('[saveUpdate/waiting] notification fetch error:', err))
+        }
         const localPatch: Partial<Task> = {
           status:            selectedStatus as TaskStatus,
           last_update_at:    now,

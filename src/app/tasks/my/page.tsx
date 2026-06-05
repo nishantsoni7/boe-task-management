@@ -873,11 +873,14 @@ export default function MyTasksPage() {
     await supabase.from('task_activity_log').insert({
       task_id: selectedTask.id, actor_id: userId, action: 'acknowledged', note: null,
     })
-    if (selectedTask.created_by !== userId) {
-      await supabase.from('notifications').insert({
-        user_id: selectedTask.created_by, task_id: selectedTask.id, type: 'task_acknowledged',
-        title: 'Task acknowledged', body: selectedTask.title, is_push_sent: true,
-      })
+    if (selectedTask.created_by && selectedTask.created_by !== userId) {
+      fetch('/api/notify-status-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: selectedTask.id, taskTitle: selectedTask.title, createdBy: selectedTask.created_by, title: 'Task acknowledged' }),
+      }).then(res => {
+        if (!res.ok) res.json().then(d => console.error('[my-tasks/acknowledge] notification failed:', d))
+      }).catch(err => console.error('[my-tasks/acknowledge] notification fetch error:', err))
     }
     const patch = { acknowledged_at: now }
     setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
