@@ -176,6 +176,7 @@ export default function MembersPage() {
     setShowForm(false)
     await loadMembers()
     setSaving(false)
+    showSuccess('Member created successfully.')
   }
 
   const handleDelete = async (member: UserProfile) => {
