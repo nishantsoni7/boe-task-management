@@ -412,7 +412,7 @@ export default function CompletedTasksPage() {
 
   return (
     <>
-      <DashboardLayout profile={profile} title="My Tasks" onSignOut={handleLogout}>
+      <DashboardLayout profile={profile} title="My Tasks – Completed" onSignOut={handleLogout}>
 
         {/* Search + filter toolbar */}
         <div style={{
