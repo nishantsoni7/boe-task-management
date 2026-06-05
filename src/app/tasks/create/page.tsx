@@ -28,6 +28,7 @@ export default function CreateTaskPage() {
   const [initDone,    setInitDone]    = useState(false)
   const [success,     setSuccess]     = useState(false)
   const [createdId,   setCreatedId]   = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [isMobile,    setIsMobile]    = useState(false)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -73,6 +74,7 @@ export default function CreateTaskPage() {
   const handleSubmit = async () => {
     if (!title.trim() || !assigneeId) return
     setLoading(true)
+    setSubmitError(null)
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
@@ -113,32 +115,35 @@ export default function CreateTaskPage() {
       })
       .select().single()
 
-    if (!error && task) {
-      await supabase.from('task_activity_log').insert({
-        task_id: task.id, actor_id: session.user.id,
-        action: 'created', note: 'Task created and assigned',
-      })
-      await supabase.from('notifications').insert({
-        user_id:      assigneeId,
-        task_id:      task.id,
-        type:         'task_assigned',
-        title:        'New task assigned to you',
-        body:         title.trim(),
-        is_push_sent: true,
-      })
-      // Reset form and show success — stay on page
-      setTitle('')
-      setDescription('')
-      setPriority('medium')
-      setType('completion')
-      setIsUrgent(false)
-      setDueDate('')
-      setTitleDirty(false)
-      setDateDirty(false)
-      setAssigneeId('')
-      setCreatedId(task.id)
-      setSuccess(true)
+    if (error || !task) {
+      setSubmitError('Failed to create task. Please check your connection and try again.')
+      setLoading(false)
+      return
     }
+    await supabase.from('task_activity_log').insert({
+      task_id: task.id, actor_id: session.user.id,
+      action: 'created', note: 'Task created and assigned',
+    })
+    await supabase.from('notifications').insert({
+      user_id:      assigneeId,
+      task_id:      task.id,
+      type:         'task_assigned',
+      title:        'New task assigned to you',
+      body:         title.trim(),
+      is_push_sent: true,
+    })
+    // Reset form and show success — stay on page
+    setTitle('')
+    setDescription('')
+    setPriority('medium')
+    setType('completion')
+    setIsUrgent(false)
+    setDueDate('')
+    setTitleDirty(false)
+    setDateDirty(false)
+    setAssigneeId('')
+    setCreatedId(task.id)
+    setSuccess(true)
     setLoading(false)
   }
 
@@ -188,6 +193,30 @@ export default function CreateTaskPage() {
           </div>
           <button
             onClick={() => setSuccess(false)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Error banner */}
+      {submitError && (
+        <div style={{
+          maxWidth: isMobile ? '100%' : '90%',
+          marginBottom: '16px',
+          padding: '11px 16px',
+          borderRadius: '8px',
+          background: colors.redTint,
+          border: `1px solid rgba(217,79,79,0.25)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '12px',
+        }}>
+          <p style={{ fontSize: '13px', fontWeight: 500, color: colors.red }}>
+            {submitError}
+          </p>
+          <button
+            onClick={() => setSubmitError(null)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px', lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
           >
             ×

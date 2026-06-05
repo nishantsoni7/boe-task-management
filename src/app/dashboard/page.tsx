@@ -93,20 +93,31 @@ export default function DashboardPage() {
       }
 
       // Counts + data for bottom summary cards and preview panels
-      const [{ data: completedData }, { data: abmTasks }] = await Promise.all([
+      const monthStart = new Date()
+      monthStart.setDate(1)
+      monthStart.setHours(0, 0, 0, 0)
+      const monthStartISO = monthStart.toISOString()
+
+      const [{ data: completedData }, { data: abmTasks }, { count: abmCompCount }] = await Promise.all([
         supabase
           .from('tasks')
           .select(TASK_COLUMNS)
           .eq('assigned_to', session.user.id)
           .eq('status', 'completed')
-          .order('last_update_at', { ascending: false })
-          .limit(50),
+          .gte('last_update_at', monthStartISO)
+          .order('last_update_at', { ascending: false }),
         supabase
           .from('tasks')
           .select(TASK_COLUMNS)
           .eq('created_by', session.user.id)
           .neq('assigned_to', session.user.id)
           .not('status', 'eq', 'completed'),
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('created_by', session.user.id)
+          .neq('assigned_to', session.user.id)
+          .eq('status', 'completed'),
       ])
       if (completedData) {
         const completed = completedData as unknown as Task[]
@@ -117,7 +128,7 @@ export default function DashboardPage() {
         const abm = abmTasks as unknown as Task[]
         setAssignedByMeInProg(abm.length)
         setAssignedByMeTasksAll(abm)
-        setAssignedByMeComp(0)
+        setAssignedByMeComp(abmCompCount ?? 0)
       }
 
       if (profileData?.role === 'admin' || profileData?.role === 'manager') {

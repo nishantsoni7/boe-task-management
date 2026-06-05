@@ -78,7 +78,7 @@ export function timeSince(iso: string): string {
 // ─── Task state helpers ───────────────────────────────────────────────────────
 export function isOverdue(dueDate: string | null): boolean {
   if (!dueDate) return false
-  return new Date(dueDate) < new Date()
+  return dueDate < new Date().toISOString().slice(0, 10)
 }
 
 export function isUpdatedToday(lastUpdateAt: string | null): boolean {
