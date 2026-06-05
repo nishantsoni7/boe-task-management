@@ -171,8 +171,14 @@ export default function DashboardPage() {
 
   const handleAcknowledge = async () => {
     if (!selectedTask) return
+    if (selectedTask.assigned_to !== currentUserId) return
+    if (selectedTask.created_by === currentUserId) return
     const now = new Date().toISOString()
-    await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', selectedTask.id)
+    const { error } = await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', selectedTask.id)
+    if (error) {
+      alert('Failed to acknowledge task. Please try again.')
+      return
+    }
     await supabase.from('task_activity_log').insert({
       task_id: selectedTask.id, actor_id: currentUserId, action: 'acknowledged', note: null,
     })
@@ -200,7 +206,7 @@ export default function DashboardPage() {
   const unacknowledgedForMe = tasks.filter(t => !t.acknowledged_at && t.created_by !== currentUserId)
   const mergedUserMap   = { ...assignerNames, ...userMap }
   const allOverdueTasks = tasks.filter(t => isOverdue(t.due_date) && t.acknowledged_at)
-  const actionRequired  = [...allOverdueTasks, ...unacknowledged]
+  const actionRequired  = [...allOverdueTasks, ...unacknowledgedForMe]
 
   const adminEscalations: { task: Task; owner: string; days: number; reason: string }[] = []
   if (profile?.role === 'admin') {

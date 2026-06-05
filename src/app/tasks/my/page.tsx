@@ -36,7 +36,7 @@ function needsUpdate(task: Task) {
   return NOW_MS - new Date(task.last_update_at ?? task.created_at).getTime() > H48
 }
 function isUnacknowledged(task: Task) {
-  return !task.acknowledged_at && task.status !== 'completed'
+  return !task.acknowledged_at && task.status !== 'completed' && task.created_by !== task.assigned_to
 }
 function isNonCompletion(task: Task) {
   return isOverdue(task) && needsUpdate(task)
@@ -862,8 +862,14 @@ export default function MyTasksPage() {
 
   const handleAcknowledge = async () => {
     if (!selectedTask) return
+    if (selectedTask.assigned_to !== userId) return
+    if (selectedTask.created_by === userId) return
     const now = new Date().toISOString()
-    await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', selectedTask.id)
+    const { error } = await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', selectedTask.id)
+    if (error) {
+      alert('Failed to acknowledge task. Please try again.')
+      return
+    }
     await supabase.from('task_activity_log').insert({
       task_id: selectedTask.id, actor_id: userId, action: 'acknowledged', note: null,
     })

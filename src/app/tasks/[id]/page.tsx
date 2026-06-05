@@ -116,8 +116,14 @@ export default function TaskDetailPage() {
 
   const acknowledge = async () => {
     if (!task) return
+    if (task.assigned_to !== currentUserId) return
+    if (task.created_by === currentUserId) return
     const now = new Date().toISOString()
-    await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', task.id)
+    const { error } = await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', task.id)
+    if (error) {
+      alert('Failed to acknowledge task. Please try again.')
+      return
+    }
     await supabase.from('task_activity_log').insert({
       task_id: task.id, actor_id: currentUserId, action: 'acknowledged', note: null,
     })
