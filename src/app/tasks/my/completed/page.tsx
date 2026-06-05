@@ -51,7 +51,7 @@ function InfoPanel() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {[
           'You can restore a completed task if it was marked completed by mistake.',
-          'Restored tasks will move back to In Progress.',
+          'Restored tasks will move back to Pending.',
           'Completed tasks older than 30 days may be removed from this section.',
         ].map((text, i) => (
           <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
