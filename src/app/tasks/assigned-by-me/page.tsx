@@ -36,7 +36,7 @@ function needsUpdate(task: Task) {
   return NOW_MS - new Date(task.last_update_at ?? task.created_at).getTime() > H48
 }
 function isUnacknowledged(task: Task) {
-  return !task.acknowledged_at && task.status !== 'completed'
+  return !task.acknowledged_at && task.status !== 'completed' && task.created_by !== task.assigned_to
 }
 function isNonCompletion(task: Task) {
   return isOverdue(task) && needsUpdate(task)
