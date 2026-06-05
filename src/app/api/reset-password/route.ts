@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   })
 
   if (logError) {
-    return NextResponse.json({ error: `Password reset succeeded but audit log failed: ${logError.message}` }, { status: 500 })
+    console.error('password_reset_log insert failed:', logError.message)
   }
 
   return NextResponse.json({ success: true })
