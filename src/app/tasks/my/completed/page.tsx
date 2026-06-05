@@ -133,6 +133,7 @@ function CompletedTaskCard({
               onMouseEnter={() => setHoveredRestore(true)} onMouseLeave={() => setHoveredRestore(false)}
               style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: hoveredRestore ? 'rgba(91,166,127,0.15)' : 'rgba(91,166,127,0.07)', border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.45)' : 'rgba(91,166,127,0.25)'}`, cursor: 'pointer', outline: 'none', color: hoveredRestore ? '#3a9e6d' : '#4CAF7D', fontSize: '11px', fontWeight: 600 }}>
               <RotateCcw size={11} />
+              Restore
             </button>
             <button onClick={e => { e.stopPropagation(); onClick() }}
               onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
