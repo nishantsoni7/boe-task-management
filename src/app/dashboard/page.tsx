@@ -117,7 +117,8 @@ export default function DashboardPage() {
           .select('id', { count: 'exact', head: true })
           .eq('created_by', session.user.id)
           .neq('assigned_to', session.user.id)
-          .eq('status', 'completed'),
+          .eq('status', 'completed')
+          .gte('last_update_at', monthStartISO),
       ])
       if (completedData) {
         const completed = completedData as unknown as Task[]
