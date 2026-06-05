@@ -244,6 +244,8 @@ export default function DashboardPage() {
   const isAdmin = profile?.role === 'admin'
 
   const totalOverdue = tasks.filter(t => isOverdue(t.due_date)).length
+  const waitingTasks = tasks.filter(t => t.status === 'waiting')
+  const waitingCount = waitingTasks.length
 
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
   const tomorrowStart = new Date(todayStart.getTime() + msPerDay)
@@ -282,7 +284,7 @@ export default function DashboardPage() {
         {/* ── Top summary cards — always 3 ── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)',
           gap: '16px',
           marginBottom: '24px',
         }}>
@@ -317,6 +319,15 @@ export default function DashboardPage() {
             countColor="#2563EB"
             label="Blocked Tasks"
             sublabel="Tasks currently blocked"
+          />
+          <SummaryCard
+            onClick={() => setPreviewList({ title: 'Waiting Tasks', items: waitingTasks })}
+            icon={<HourglassIcon />}
+            iconBg="rgba(146,64,14,0.10)"
+            count={waitingCount}
+            countColor="#92400E"
+            label="Waiting Tasks"
+            sublabel="Tasks waiting on someone"
           />
         </div>
 
@@ -1165,6 +1176,17 @@ function AlertIcon() {
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="8" x2="12" y2="12" />
       <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+  )
+}
+
+function HourglassIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 22h14" />
+      <path d="M5 2h14" />
+      <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" />
+      <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
     </svg>
   )
 }
