@@ -154,8 +154,13 @@ export default function TaskDetailPage() {
     }
     if (newStatus === 'completed') updates.completed_at = now
 
-    await supabase.from('tasks').update(updates).eq('id', task.id)
-    await supabase.from('task_activity_log').insert({
+    const { error: taskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
+    if (taskErr) {
+      console.error('[applyStatusChange] tasks update failed:', taskErr.message)
+      window.alert('Failed to update task status. Please try again.')
+      return
+    }
+    const { error: logErr } = await supabase.from('task_activity_log').insert({
       task_id:     task.id,
       actor_id:    currentUserId,
       action:      'status_changed',
@@ -163,6 +168,7 @@ export default function TaskDetailPage() {
       to_status:   newStatus,
       note:        reason ?? null,
     })
+    if (logErr) console.error('[applyStatusChange] activity log insert failed:', logErr.message)
     if (task.created_by && task.created_by !== currentUserId) {
       fetch('/api/notify-status-update', {
         method: 'POST',
@@ -208,13 +214,19 @@ export default function TaskDetailPage() {
           waiting_on_text:   waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
         }
         if (task.status === 'blocked') updates.blocker_reason = null
-        await supabase.from('tasks').update(updates).eq('id', task.id)
-
-        await supabase.from('task_activity_log').insert({
+        const { error: waitTaskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
+        if (waitTaskErr) {
+          console.error('[saveUpdate/waiting] tasks update failed:', waitTaskErr.message)
+          window.alert('Failed to save update. Please try again.')
+          setSaving(false)
+          return
+        }
+        const { error: waitLogErr } = await supabase.from('task_activity_log').insert({
           task_id: task.id, actor_id: currentUserId,
           action: 'status_changed', from_status: task.status, to_status: selectedStatus,
           note: updateNote.trim() || null,
         })
+        if (waitLogErr) console.error('[saveUpdate/waiting] activity log insert failed:', waitLogErr.message)
         if (task.created_by && task.created_by !== currentUserId) {
           fetch('/api/notify-status-update', {
             method: 'POST',
@@ -240,13 +252,20 @@ export default function TaskDetailPage() {
       }
     } else if (updateNote.trim()) {
       const now = new Date().toISOString()
-      await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
-      await supabase.from('task_activity_log').insert({
+      const { error: noteTaskErr } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
+      if (noteTaskErr) {
+        console.error('[saveUpdate/note] tasks update failed:', noteTaskErr.message)
+        window.alert('Failed to save update. Please try again.')
+        setSaving(false)
+        return
+      }
+      const { error: noteLogErr } = await supabase.from('task_activity_log').insert({
         task_id:  task.id,
         actor_id: currentUserId,
         action:   'progress_update',
         note:     updateNote.trim(),
       })
+      if (noteLogErr) console.error('[saveUpdate/note] activity log insert failed:', noteLogErr.message)
       setTask({ ...task, last_update_at: now })
       await loadLog(task.id)
     }
