@@ -132,15 +132,13 @@ export default function DashboardPage() {
         setAssignedByMeComp(abmCompCount ?? 0)
       }
 
-      if (profileData?.role === 'admin' || profileData?.role === 'manager') {
+      if (profileData?.role === 'admin') {
         const [{ data: tUsers }, { data: eTasks }, { count: bCount }] = await Promise.all([
           supabase.from('users').select('id, full_name').eq('is_active', true),
-          profileData?.role === 'admin'
-            ? supabase
-                .from('tasks')
-                .select(TASK_COLUMNS)
-                .not('status', 'eq', 'completed')
-            : Promise.resolve({ data: null }),
+          supabase
+            .from('tasks')
+            .select(TASK_COLUMNS)
+            .not('status', 'eq', 'completed'),
           supabase
             .from('tasks')
             .select('id', { count: 'exact', head: true })
@@ -149,8 +147,18 @@ export default function DashboardPage() {
         if (tUsers) setTeamUsers(tUsers as { id: string; full_name: string }[])
         if (eTasks) setEscalationTasks(eTasks as unknown as Task[])
         if (bCount != null) setBlockedCount(bCount)
+      } else if (profileData?.role === 'manager') {
+        const { data: tUsers } = await supabase.from('users').select('id, full_name').eq('is_active', true)
+        if (tUsers) setTeamUsers(tUsers as { id: string; full_name: string }[])
+        // Use same scope as the preview drawer: only this manager's own blocked tasks
+        const { count: bCount } = await supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_to', session.user.id)
+          .eq('status', 'blocked')
+        if (bCount != null) setBlockedCount(bCount)
       } else {
-        // For non-admin, count their own blocked tasks
+        // Normal user: count their own blocked tasks
         const { count: bCount } = await supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
