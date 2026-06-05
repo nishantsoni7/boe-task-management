@@ -54,6 +54,10 @@ export type UserProfile = {
   position: string | null
   is_active: boolean
   created_at: string
+  is_deleted?: boolean
+  deleted_at?: string | null
+  deleted_by?: string | null
+  deletion_scheduled_at?: string | null
 }
 
 // ─── Password reset log ───────────────────────────────────────────────────────
