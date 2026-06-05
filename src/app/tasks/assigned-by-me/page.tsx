@@ -390,7 +390,8 @@ function EditTaskModal({
   const [priority, setPriority] = useState(task.priority)
   const [dueDate,  setDueDate]  = useState((task.due_date ?? '').slice(0, 10))
   const [isUrgent, setIsUrgent] = useState(task.is_urgent ?? false)
-  const [saving,   setSaving]   = useState(false)
+  const [saving,    setSaving]    = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
 
   const canSave = !saving && title.trim().length > 0
@@ -399,6 +400,7 @@ function EditTaskModal({
     if (task.created_by !== userId) return
     if (!canSave) return
     setSaving(true)
+    setSaveError(null)
     const { data, error } = await supabase
       .from('tasks')
       .update({
@@ -412,7 +414,11 @@ function EditTaskModal({
       .eq('created_by', userId)
       .select()
       .single()
-    if (!error && data) onSaved(data as unknown as Task)
+    if (!error && data) {
+      onSaved(data as unknown as Task)
+    } else if (error) {
+      setSaveError('Failed to save changes. Please try again.')
+    }
     setSaving(false)
   }
 
@@ -485,6 +491,9 @@ function EditTaskModal({
           </div>
         </div>
 
+        {saveError && (
+          <div style={{ fontSize: '12px', color: colors.red, marginBottom: '10px' }}>{saveError}</div>
+        )}
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`, background: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: colors.secondary }}>Cancel</button>
           <button onClick={handleSave} disabled={!canSave} style={{ padding: '7px 18px', borderRadius: '7px', border: 'none', background: canSave ? colors.primary : colors.float, color: canSave ? '#fff' : colors.muted, cursor: canSave ? 'pointer' : 'not-allowed', fontSize: '12px', fontWeight: 600, transition: 'background 0.12s' }}>
