@@ -105,9 +105,21 @@ export function escalationLevel(
   lastUpdateAt: string | null,
   status: string,
   dueDate: string | null,
+  createdAt?: string,
 ): 'overdue' | 'danger' | 'caution' | null {
+  if (status === 'completed') return null
+
+  if (status === 'waiting') {
+    const ref = lastUpdateAt ?? createdAt
+    if (!ref) return null
+    const days = (Date.now() - new Date(ref).getTime()) / 86_400_000
+    if (days > 10) return 'overdue'
+    if (days >= 6)  return 'danger'
+    if (days >= 3)  return 'caution'
+    return null
+  }
+
   if (!lastUpdateAt) return null
-  if (status === 'completed' || status === 'waiting') return null
   const hoursSince = (Date.now() - new Date(lastUpdateAt).getTime()) / 3_600_000
   if (dueDate && new Date(dueDate) < new Date() && hoursSince >= 24) return 'overdue'
   if (hoursSince >= 72) return 'danger'

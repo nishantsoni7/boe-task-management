@@ -45,7 +45,7 @@ export function TaskCard({
   const router  = useRouter()
   const overdue = isOverdue(task.due_date)
   const level   = showEscalation
-    ? escalationLevel(task.last_update_at, task.status, task.due_date)
+    ? escalationLevel(task.last_update_at, task.status, task.due_date, task.created_at)
     : null
 
   const getCardModifier = (): string => {

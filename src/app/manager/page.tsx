@@ -134,7 +134,7 @@ export default function ManagerPage() {
 
   const silentTasks = tasks.filter(t => {
     if (isOverdue(t.due_date)) return false
-    const level = escalationLevel(t.last_update_at, t.status, t.due_date)
+    const level = escalationLevel(t.last_update_at, t.status, t.due_date, t.created_at)
     return level === 'danger' || level === 'caution'
   })
 
@@ -148,7 +148,7 @@ export default function ManagerPage() {
     if (filter === 'overdue')   return isOverdue(t.due_date)
     if (filter === 'escalated') {
       if (isOverdue(t.due_date)) return false
-      const level = escalationLevel(t.last_update_at, t.status, t.due_date)
+      const level = escalationLevel(t.last_update_at, t.status, t.due_date, t.created_at)
       return level === 'danger' || level === 'caution'
     }
     if (filter === 'stale')   return t.is_stale
