@@ -300,7 +300,7 @@ export default function AssignedByMeCompletedPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ taskId: task.id }),
     })
-    if (!res.ok) { console.error('[restore] failed:', await res.text()); return }
+    if (!res.ok) { console.error('[restore] failed:', await res.text()); window.alert('Failed to restore task. Please try again.'); return }
     setAllTasks(prev => prev.filter(t => t.id !== task.id))
     if (selectedTask?.id === task.id) setSelectedTask(null)
   }
