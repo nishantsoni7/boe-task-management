@@ -43,7 +43,6 @@ function InfoPanel() {
         {[
           'Tasks you delegated that have been marked completed.',
           'You can restore a task if it was completed by mistake.',
-          'Completed tasks older than 30 days may be removed.',
         ].map((text, i) => (
           <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
             <span style={{ marginTop: '3px', flexShrink: 0, width: '5px', height: '5px', borderRadius: '50%', background: 'rgba(76,175,125,0.5)', display: 'inline-block' }} />
