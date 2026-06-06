@@ -354,7 +354,7 @@ export default function DashboardPage() {
               onClick={() => unacknowledgedForMe.length > 0 && setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: isMobile ? '14px 14px 12px' : '18px 20px 14px',
+                padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
                 borderBottom: '1px solid #F3F4F6',
                 cursor: unacknowledgedForMe.length > 0 ? 'pointer' : 'default',
                 transition: 'background 0.12s',
@@ -363,20 +363,20 @@ export default function DashboardPage() {
               onMouseLeave={e => { e.currentTarget.style.background = '' }}
             >
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '15px', color: '#111827', letterSpacing: '-0.01em' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
                     Unacknowledged Tasks
                   </span>
                   <span style={{
                     background: '#FEF2F2', color: '#B91C1C',
-                    fontWeight: 700, fontSize: '12px',
-                    borderRadius: '999px', padding: '1px 10px',
+                    fontWeight: 700, fontSize: '11px',
+                    borderRadius: '999px', padding: '1px 8px',
                   }}>
                     {unacknowledgedForMe.length}
                   </span>
                 </div>
-                <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '3px' }}>
-                  Please acknowledge your assigned tasks to take action.
+                <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
+                  Please acknowledge your assigned tasks to keep things moving.
                 </div>
               </div>
               {unacknowledgedForMe.length > 0 && (
@@ -385,18 +385,16 @@ export default function DashboardPage() {
             </div>
             {unacknowledgedForMe.length === 0 ? (
               <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-                No unacknowledged tasks
+                No unacknowledged tasks.
               </div>
             ) : (
-              <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <UnacknowledgedTasksSection
-                  tasks={unacknowledgedForMe}
-                  userMap={mergedUserMap}
-                  now={now}
-                  onPreview={task => setSelectedTask(task)}
-                  compact
-                />
-              </div>
+              <UnacknowledgedTasksSection
+                tasks={unacknowledgedForMe}
+                userMap={mergedUserMap}
+                now={now}
+                onPreview={task => setSelectedTask(task)}
+                compact
+              />
             )}
           </div>
 
@@ -413,7 +411,7 @@ export default function DashboardPage() {
                 onClick={() => adminEscalations.length > 0 && setEscalationPreview(true)}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: isMobile ? '14px 14px 12px' : '18px 20px 14px',
+                  padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
                   borderBottom: '1px solid #F3F4F6',
                   cursor: adminEscalations.length > 0 ? 'pointer' : 'default',
                   transition: 'background 0.12s',
@@ -422,20 +420,20 @@ export default function DashboardPage() {
                 onMouseLeave={e => { e.currentTarget.style.background = '' }}
               >
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontWeight: 700, fontSize: '15px', color: '#111827', letterSpacing: '-0.01em' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
                       Escalations
                     </span>
                     <span style={{
                       background: '#EFF6FF', color: '#2563EB',
-                      fontWeight: 700, fontSize: '12px',
-                      borderRadius: '999px', padding: '1px 10px',
+                      fontWeight: 700, fontSize: '11px',
+                      borderRadius: '999px', padding: '1px 8px',
                     }}>
                       {adminEscalations.length}
                     </span>
                   </div>
-                  <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '3px' }}>
-                    Tasks that need your immediate attention
+                  <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
+                    Tasks that need your immediate attention.
                   </div>
                 </div>
                 {adminEscalations.length > 0 && (
@@ -447,117 +445,68 @@ export default function DashboardPage() {
 
               {adminEscalations.length === 0 ? (
                 <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-                  No escalations right now
+                  No escalations right now.
                 </div>
               ) : (
-                <>
-                  {!isMobile && (
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr auto auto auto',
-                    padding: '10px 20px',
-                    fontSize: '11px', fontWeight: 600,
-                    color: '#9CA3AF', letterSpacing: '0.04em',
-                    textTransform: 'uppercase',
-                    borderBottom: '1px solid #F3F4F6',
-                    gap: '8px',
-                  }}>
-                    <span>Task</span>
-                    <span>Owner</span>
-                    <span>Overdue by</span>
-                    <span>Reason</span>
-                  </div>
-                  )}
-                  {adminEscalations.slice(0, 8).map(({ task, owner, days, reason }) => {
-                    const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
-                    if (isMobile) {
-                      return (
-                        <div
-                          key={task.id}
-                          onClick={() => setSelectedTask(task)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={e => e.key === 'Enter' && setSelectedTask(task)}
-                          style={{
-                            padding: '10px 14px',
-                            borderBottom: '1px solid #F9FAFB',
-                            cursor: 'pointer',
-                            transition: 'background 0.12s',
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
-                          onMouseLeave={e => (e.currentTarget.style.background = '')}
-                        >
-                          <div style={{
-                            fontSize: '13px', fontWeight: 500, color: '#111827',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            marginBottom: '5px',
-                          }}>
-                            {task.title}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '12px', color: '#374151', fontWeight: 500 }}>
-                              {owner.split(' ')[0]}
-                            </span>
-                            <span style={{ fontSize: '12px', fontWeight: 700, color: daysColor }}>{days}d</span>
-                            <ReasonBadge reason={reason} />
-                          </div>
-                        </div>
-                      )
-                    }
-                    return (
-                      <div
-                        key={task.id}
-                        onClick={() => setSelectedTask(task)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={e => e.key === 'Enter' && setSelectedTask(task)}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '1fr auto auto auto',
-                          alignItems: 'center',
-                          padding: '10px 20px',
-                          borderBottom: '1px solid #F9FAFB',
-                          cursor: 'pointer',
-                          gap: '8px',
-                          transition: 'background 0.12s',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '')}
-                      >
+                adminEscalations.slice(0, 8).map(({ task, owner, days, reason }, idx) => {
+                  const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
+                  const isLast = idx === Math.min(adminEscalations.length, 8) - 1
+                  return (
+                    <div
+                      key={task.id}
+                      onClick={() => setSelectedTask(task)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => e.key === 'Enter' && setSelectedTask(task)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '10px 14px',
+                        borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
+                        cursor: 'pointer',
+                        transition: 'background 0.12s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
+                      onMouseLeave={e => (e.currentTarget.style.background = '')}
+                    >
+                      {/* Avatar */}
+                      <div style={{
+                        width: '28px', height: '28px', borderRadius: '50%',
+                        background: '#E5E7EB',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '10px', fontWeight: 700, color: '#374151',
+                        flexShrink: 0,
+                      }}>
+                        {owner.slice(0, 2).toUpperCase()}
+                      </div>
+
+                      {/* Content */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
-                          fontSize: '13px', fontWeight: 500, color: '#111827',
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                          minWidth: 0,
+                          fontSize: '13px', fontWeight: 600, color: '#111827',
+                          lineHeight: 1.3, marginBottom: '3px',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
                           {task.title}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                          <div style={{
-                            width: '24px', height: '24px', borderRadius: '50%',
-                            background: '#E5E7EB',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '10px', fontWeight: 700, color: '#374151',
-                            flexShrink: 0,
-                          }}>
-                            {owner.slice(0, 2).toUpperCase()}
-                          </div>
-                          <span style={{ fontSize: '12px', color: '#374151', fontWeight: 500 }}>
-                            {owner.split(' ')[0]}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '13px', fontWeight: 700, color: daysColor, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                          {days}d
-                        </div>
-                        <div>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', flexWrap: 'wrap',
+                          gap: '3px', fontSize: '11px', color: '#9CA3AF',
+                        }}>
                           <ReasonBadge reason={reason} />
+                          <span>•</span>
+                          <span style={{ color: '#6B7280' }}>{owner.split(' ')[0]}</span>
+                          <span>•</span>
+                          <span style={{ fontWeight: 600, color: daysColor }}>{days}d overdue</span>
                         </div>
                       </div>
-                    )
-                  })}
-                  <div style={{ padding: '10px 20px', fontSize: '12px', color: '#9CA3AF', borderTop: '1px solid #F3F4F6' }}>
-                    Showing {Math.min(adminEscalations.length, 8)} of {adminEscalations.length}
-                  </div>
-                </>
+
+                      {/* Chevron */}
+                      <ChevronRightIcon />
+                    </div>
+                  )
+                })
               )}
             </div>
           )}
@@ -648,6 +597,14 @@ export default function DashboardPage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+function ChevronRightIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  )
+}
+
 function UnacknowledgedTasksSection({
   tasks,
   userMap,
@@ -664,103 +621,104 @@ function UnacknowledgedTasksSection({
   const msPerDay = 24 * 60 * 60 * 1000
   return (
     <div style={compact ? {} : { marginBottom: '24px' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {tasks.map(task => {
-          const isLate = (now.getTime() - new Date(task.created_at).getTime()) > msPerDay
-          const assignedByName = userMap[task.created_by] ?? '—'
-          const dueDateStr = task.due_date
-            ? new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-            : null
-          const isDueOverdue = task.due_date && new Date(task.due_date) < now
-          const notePreview = task.note
-            ? task.note.length > 80 ? task.note.slice(0, 80) + '…' : task.note
-            : null
+      {tasks.map((task, idx) => {
+        const isLate = (now.getTime() - new Date(task.created_at).getTime()) > msPerDay
+        const isDueOverdue = task.due_date && new Date(task.due_date) < now
+        const isOverdueRow = isLate || isDueOverdue
+        const assignedByName = userMap[task.created_by] ?? '—'
+        const dueDateStr = task.due_date
+          ? new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+          : null
+        const isLast = idx === tasks.length - 1
 
-          return (
-            <div
-              key={task.id}
-              onClick={() => onPreview(task)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && onPreview(task)}
-              style={{
-                background: '#fff',
-                border: isLate ? '1.5px solid #EF4444' : '1px solid #E5E7EB',
-                borderRadius: '10px',
-                padding: '12px 14px',
-                boxShadow: isLate
-                  ? '0 1px 6px rgba(239,68,68,0.10)'
-                  : '0 1px 4px rgba(0,0,0,0.05)',
-                cursor: 'pointer',
-                transition: 'box-shadow 0.12s, border-color 0.12s',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.boxShadow = isLate
-                  ? '0 3px 10px rgba(239,68,68,0.18)'
-                  : '0 3px 10px rgba(0,0,0,0.09)'
-                if (!isLate) e.currentTarget.style.borderColor = '#D1D5DB'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.boxShadow = isLate
-                  ? '0 1px 6px rgba(239,68,68,0.10)'
-                  : '0 1px 4px rgba(0,0,0,0.05)'
-                if (!isLate) e.currentTarget.style.borderColor = '#E5E7EB'
-              }}
-            >
-              {/* Title row */}
-              <div style={{ marginBottom: '6px' }}>
-                <div style={{
-                  fontSize: '14px', fontWeight: 600, color: '#111827',
-                  lineHeight: 1.4,
-                }}>
-                  {task.title}
-                </div>
-                {isLate && (
-                  <span style={{
-                    display: 'inline-block', marginTop: '4px',
-                    fontSize: '10px', fontWeight: 700,
-                    color: '#B91C1C', background: '#FEF2F2',
-                    borderRadius: '4px', padding: '1px 7px',
-                    letterSpacing: '0.04em', textTransform: 'uppercase',
-                  }}>
-                    Overdue acknowledgement
-                  </span>
-                )}
+        return (
+          <div
+            key={task.id}
+            onClick={() => onPreview(task)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && onPreview(task)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
+              cursor: 'pointer',
+              transition: 'background 0.12s',
+              minHeight: '52px',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
+            onMouseLeave={e => (e.currentTarget.style.background = '')}
+          >
+            {/* Left accent — fixed height, centered */}
+            <div style={{
+              width: '3px',
+              height: '38px',
+              flexShrink: 0,
+              background: isOverdueRow ? '#EF4444' : 'transparent',
+              borderRadius: '2px',
+              marginLeft: '1px',
+            }} />
+
+            {/* Icon */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              paddingLeft: '10px', flexShrink: 0,
+            }}>
+              <div style={{
+                width: '26px', height: '26px', borderRadius: '50%',
+                background: isOverdueRow ? '#FEF2F2' : '#F3F4F6',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                  stroke={isOverdueRow ? '#EF4444' : '#9CA3AF'}
+                  strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
               </div>
+            </div>
 
-              {/* Note preview */}
-              {notePreview && (
-                <p style={{
-                  fontSize: '12px', color: '#6B7280',
-                  margin: '0 0 8px', lineHeight: 1.5,
-                }}>
-                  {notePreview}
-                </p>
-              )}
-
-              {/* Meta row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '12px', color: '#6B7280' }}>
-                  <span style={{ fontWeight: 600, color: '#374151' }}>Assigned by:</span> {assignedByName}
-                </span>
+            {/* Main content */}
+            <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 10px 10px' }}>
+              <div style={{
+                fontSize: '13px', fontWeight: 600, color: '#111827',
+                lineHeight: 1.3, marginBottom: '3px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {task.title}
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center', flexWrap: 'wrap',
+                gap: '3px', fontSize: '11px', color: '#9CA3AF',
+              }}>
+                <span style={{ color: '#6B7280' }}>{assignedByName.split(' ')[0]}</span>
                 {dueDateStr && (
-                  <span style={{ fontSize: '12px', color: isDueOverdue ? '#B91C1C' : '#6B7280', fontWeight: isDueOverdue ? 600 : 400 }}>
-                    <span style={{ fontWeight: 600, color: isDueOverdue ? '#B91C1C' : '#374151' }}>Due:</span> {dueDateStr}
-                  </span>
+                  <>
+                    <span>•</span>
+                    <span style={{ color: isDueOverdue ? '#B91C1C' : '#6B7280' }}>{dueDateStr}</span>
+                  </>
                 )}
+                <span>•</span>
                 <span style={{
-                  fontSize: '11px', fontWeight: 600,
-                  color: '#92600A', background: '#FFFBEB',
-                  border: '1px solid #FDE68A',
-                  borderRadius: '5px', padding: '1px 8px',
+                  fontSize: '10px', fontWeight: 600,
+                  color: isOverdueRow ? '#B91C1C' : '#92600A',
+                  background: isOverdueRow ? '#FEF2F2' : '#FFFBEB',
+                  borderRadius: '4px', padding: '0 5px',
                 }}>
-                  Pending acknowledgement
+                  {isOverdueRow ? 'Overdue' : 'Pending'}
                 </span>
               </div>
             </div>
-          )
-        })}
-      </div>
+
+            {/* Chevron */}
+            <div style={{ paddingRight: '12px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+              <ChevronRightIcon />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -1159,10 +1117,9 @@ function ReasonBadge({ reason }: { reason: string }) {
   const s = styles[reason] ?? { color: '#374151', bg: '#F3F4F6', border: '#E5E7EB' }
   return (
     <span style={{
-      fontSize: '12px', fontWeight: 600,
+      fontSize: '10px', fontWeight: 600,
       color: s.color, background: s.bg,
-      border: `1px solid ${s.border}`,
-      borderRadius: '6px', padding: '3px 10px',
+      borderRadius: '4px', padding: '1px 6px',
       whiteSpace: 'nowrap',
     }}>
       {reason}
