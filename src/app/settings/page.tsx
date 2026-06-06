@@ -7,6 +7,7 @@ import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { useViewAs } from '@/hooks/useViewAs'
 
 const SETTING_CARDS = [
   {
@@ -24,6 +25,7 @@ const SETTING_CARDS = [
 ]
 
 export default function SettingsPage() {
+  const { viewAsUserId, exitViewMode } = useViewAs()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const router   = useRouter()
@@ -39,6 +41,7 @@ export default function SettingsPage() {
         .eq('id', session.user.id)
         .single()
       if (data?.role !== 'admin') { router.push('/dashboard'); return }
+      if (viewAsUserId) { exitViewMode(); router.push('/dashboard'); return }
       setProfile(data as UserProfile)
       setLoading(false)
     }

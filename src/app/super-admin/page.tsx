@@ -7,6 +7,7 @@ import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { useViewAs } from '@/hooks/useViewAs'
 import { Trash2 } from 'lucide-react'
 type RelationFilter = 'all' | 'created_by' | 'assigned_to' | 'delegated_by'
 
@@ -18,6 +19,7 @@ function formatDate(d: string | null) {
 }
 
 export default function SuperAdminPage() {
+  const { viewAsUserId, exitViewMode } = useViewAs()
   const [profile,    setProfile]    = useState<UserProfile | null>(null)
   const [members,    setMembers]    = useState<UserProfile[]>([])
   const [tasks,      setTasks]      = useState<Task[]>([])
@@ -48,6 +50,7 @@ export default function SuperAdminPage() {
       ])
 
       if (p?.role !== 'admin') { router.push('/dashboard'); return }
+      if (viewAsUserId) { exitViewMode(); router.push('/dashboard'); return }
       setProfile(p as UserProfile)
       if (Array.isArray(membersRes?.members)) setMembers(membersRes.members as UserProfile[])
       if (usersData) {

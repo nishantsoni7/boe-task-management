@@ -8,6 +8,7 @@ import { initials, formatFullDate } from '@/lib/ui'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
+import { useViewAs } from '@/hooks/useViewAs'
 
 const TEAMS = ['sales', 'after_sales', 'operations', 'design', 'purchase', 'procurement', 'bdm', 'management', 'production', 'accounts', 'dispatch']
 const ROLES = ['member', 'manager', 'admin'] as const
@@ -25,6 +26,7 @@ function avatarColor(name: string): string {
 const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, position, is_active, created_at, is_deleted, deleted_at, deletion_scheduled_at'
 
 export default function MembersPage() {
+  const { viewAsUserId, exitViewMode } = useViewAs()
   const [profile,        setProfile]        = useState<UserProfile | null>(null)
   const [members,        setMembers]        = useState<UserProfile[]>([])
   const [positions,      setPositions]      = useState<Position[]>([])
@@ -122,6 +124,7 @@ export default function MembersPage() {
       console.log('[members] parallel data TOTAL', Math.round(performance.now() - dataStart), 'ms')
 
       if (p?.role !== 'admin') { router.push('/dashboard'); return }
+      if (viewAsUserId) { exitViewMode(); router.push('/dashboard'); return }
       if (p) setProfile(p as UserProfile)
       if (Array.isArray(membersRes?.members)) setMembers(membersRes.members as UserProfile[])
       if (posData) setPositions(posData as Position[])

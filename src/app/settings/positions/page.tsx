@@ -7,8 +7,10 @@ import type { UserProfile, Position } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { useViewAs } from '@/hooks/useViewAs'
 
 export default function PositionsPage() {
+  const { viewAsUserId, exitViewMode } = useViewAs()
   const [profile, setProfile]       = useState<UserProfile | null>(null)
   const [loading, setLoading]       = useState(true)
   const [positions, setPositions]   = useState<Position[]>([])
@@ -30,6 +32,7 @@ export default function PositionsPage() {
         .eq('id', session.user.id)
         .single()
       if (data?.role !== 'admin') { router.push('/dashboard'); return }
+      if (viewAsUserId) { exitViewMode(); router.push('/dashboard'); return }
       setProfile(data as UserProfile)
       await loadPositions()
       setLoading(false)

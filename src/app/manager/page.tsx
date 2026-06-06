@@ -10,10 +10,12 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { KpiGrid, KpiCard } from '@/components/ui/KpiCard'
 import { TaskCard } from '@/components/ui/TaskCard'
 import { Avatar, LoadingScreen } from '@/components/ui/atoms'
+import { useViewAs } from '@/hooks/useViewAs'
 
 type FilterKey = 'all' | 'no_update' | 'overdue' | 'escalated' | 'stale' | 'blocked'
 
 export default function ManagerPage() {
+  const { viewAsUserId } = useViewAs()
   const [tasks,          setTasks]          = useState<Task[]>([])
   const [members,        setMembers]        = useState<UserProfile[]>([])
   const [loading,        setLoading]        = useState(true)
@@ -205,12 +207,14 @@ export default function ManagerPage() {
           >
             Refresh
           </button>
-          <button
-            onClick={() => router.push('/tasks/create')}
-            className="boe-btn boe-btn-primary"
-          >
-            + Assign Task
-          </button>
+          {!viewAsUserId && (
+            <button
+              onClick={() => router.push('/tasks/create')}
+              className="boe-btn boe-btn-primary"
+            >
+              + Assign Task
+            </button>
+          )}
         </>
       }
       onSignOut={handleLogout}

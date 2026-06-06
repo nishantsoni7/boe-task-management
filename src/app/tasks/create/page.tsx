@@ -7,11 +7,13 @@ import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { useViewAs } from '@/hooks/useViewAs'
 import { Target, CalendarDays, FileText } from 'lucide-react'
 
 const PRIORITIES = ['low', 'medium', 'high'] as const
 
 export default function CreateTaskPage() {
+  const { viewAsUserId } = useViewAs()
   const [profile,     setProfile]     = useState<UserProfile | null>(null)
   const [title,       setTitle]       = useState('')
   const [description, setDescription] = useState('')
@@ -46,6 +48,7 @@ export default function CreateTaskPage() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { router.push('/login'); return }
+        if (viewAsUserId) { router.push('/dashboard'); return }
 
         const [{ data: profileData }, { data: allUsers }] = await Promise.all([
           supabase.from('users').select('*').eq('id', session.user.id).single(),
