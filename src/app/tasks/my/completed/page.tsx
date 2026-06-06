@@ -8,6 +8,7 @@ import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import { useViewAs } from '@/hooks/useViewAs'
 import {
   CheckCircle2, ExternalLink, Star,
   Search, RotateCcw,
@@ -327,6 +328,7 @@ function EmptyState() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function CompletedTasksPage() {
+  const { viewAsUserId } = useViewAs()
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [allTasks,     setAllTasks]     = useState<Task[]>([])
   const [userId,       setUserId]       = useState<string>('')
@@ -354,7 +356,8 @@ export default function CompletedTasksPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const uid = session.user.id
+      const loggedInId = session.user.id
+      const uid = viewAsUserId ?? loggedInId
       setUserId(uid)
       const [{ data: profileData }, { data: tasks }, { data: userData }] = await Promise.all([
         supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
@@ -372,7 +375,7 @@ export default function CompletedTasksPage() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [viewAsUserId])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

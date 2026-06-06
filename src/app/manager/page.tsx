@@ -112,6 +112,7 @@ export default function ManagerPage() {
         if (p.role !== 'admin' && p.role !== 'manager') {
           router.push('/dashboard'); return
         }
+        if (viewAsUserId) { router.push('/dashboard'); return }
         setProfile(p)
       }
 
