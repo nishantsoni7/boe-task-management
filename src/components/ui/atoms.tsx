@@ -102,6 +102,7 @@ type LoadingScreenProps = {
 export function LoadingScreen({ message = 'Loading...' }: LoadingScreenProps) {
   return (
     <div className="boe-loading">
+      <div className="boe-loading-spinner" />
       <p>{message}</p>
     </div>
   )

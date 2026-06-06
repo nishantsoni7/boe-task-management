@@ -771,17 +771,34 @@ body {
 /* ─────────────────────────────────────────────────────
    LOADING STATE
 ───────────────────────────────────────────────────── */
+@keyframes boe-spin {
+  to { transform: rotate(360deg); }
+}
+
 .boe-loading {
   min-height: 100vh;
   background: #F4F5F7;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 16px;
+}
+
+.boe-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid #E4E6EB;
+  border-top-color: #5585E8;
+  animation: boe-spin 0.75s linear infinite;
 }
 
 .boe-loading p {
-  color: #6B7384;
+  color: #8C94A6;
   font-size: 13px;
+  font-weight: 500;
+  margin: 0;
 }
 
 /* ─────────────────────────────────────────────────────

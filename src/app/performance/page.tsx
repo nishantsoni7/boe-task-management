@@ -4,12 +4,55 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 import type {
   UserProfile, PerformanceData, PerformanceAudit, TrendDay,
   ScoreBreakdown, TrendClassification,
 } from '@/lib/types'
+
+// ─── Progress loader ──────────────────────────────────────────────────────────
+function PerformanceProgressLoader({ progress }: { progress: number }) {
+  const pct = Math.round(progress)
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: '#fff',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      gap: 24, padding: '0 32px',
+      pointerEvents: 'all',
+    }}>
+      <div style={{ textAlign: 'center', maxWidth: 420 }}>
+        <div style={{
+          fontSize: 15, fontWeight: 600, color: '#111318',
+          lineHeight: 1.6, marginBottom: 6,
+        }}>
+          Good things take a little time.
+        </div>
+        <div style={{ fontSize: 13, color: '#8C94A6', lineHeight: 1.6 }}>
+          Please wait while we prepare your performance report.
+        </div>
+      </div>
+
+      <div style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{
+          width: '100%', height: 6, background: '#EEF0F4',
+          borderRadius: 999, overflow: 'hidden',
+        }}>
+          <div style={{
+            width: `${pct}%`, height: '100%',
+            background: 'linear-gradient(90deg, #5585E8, #45A870)',
+            borderRadius: 999,
+            transition: 'width 0.25s ease',
+          }} />
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#8C94A6' }}>
+          {pct}%
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ─── Score ring (SVG) ─────────────────────────────────────────────────────────
 function ScoreRing({ score, rating }: { score: number; rating: string }) {
@@ -410,6 +453,8 @@ export default function PerformancePage() {
   const [perfLoading,  setPerfLoading]  = useState(false)
   const [audit,        setAudit]        = useState<PerformanceAudit | null>(null)
   const [auditLoading, setAuditLoading] = useState(false)
+  const [progress,     setProgress]     = useState(0)
+  const [showLoader,   setShowLoader]   = useState(true)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -485,7 +530,27 @@ export default function PerformancePage() {
 
   const handleEodSaved = () => { if (token) fetchPerf(period, token) }
 
-  if (loading) return <LoadingScreen />
+  // Drive the estimated progress bar.
+  // While data is still loading: tick up gradually toward 90.
+  // Once both auth and the first perf fetch are done: snap to 100, then hide.
+  const dataReady = !loading && !perfLoading
+  useEffect(() => {
+    if (!showLoader) return
+    if (dataReady) {
+      setProgress(100)
+      const t = setTimeout(() => setShowLoader(false), 650)
+      return () => clearTimeout(t)
+    }
+    const iv = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 90) return prev
+        return Math.min(90, prev + Math.random() * 2.5 + 0.5)
+      })
+    }, 120)
+    return () => clearInterval(iv)
+  }, [dataReady, showLoader])
+
+  if (showLoader) return <PerformanceProgressLoader progress={progress} />
 
   const today  = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const viewedProfile    = viewAsProfile ?? profile

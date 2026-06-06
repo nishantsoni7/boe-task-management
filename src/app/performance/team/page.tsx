@@ -4,11 +4,54 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
-import { LoadingScreen } from '@/components/ui/atoms'
 import type {
   UserProfile, MemberPerfEntry, PerformanceRating,
   TrendClassification, ScoreBreakdown,
 } from '@/lib/types'
+
+// ─── Progress loader ──────────────────────────────────────────────────────────
+function TeamProgressLoader({ progress }: { progress: number }) {
+  const pct = Math.round(progress)
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: '#fff',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      gap: 24, padding: '0 32px',
+      pointerEvents: 'all',
+    }}>
+      <div style={{ textAlign: 'center', maxWidth: 420 }}>
+        <div style={{
+          fontSize: 15, fontWeight: 600, color: '#111318',
+          lineHeight: 1.6, marginBottom: 6,
+        }}>
+          Good things take a little time.
+        </div>
+        <div style={{ fontSize: 13, color: '#8C94A6', lineHeight: 1.6 }}>
+          Please wait while we prepare your team performance report.
+        </div>
+      </div>
+
+      <div style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{
+          width: '100%', height: 6, background: '#EEF0F4',
+          borderRadius: 999, overflow: 'hidden',
+        }}>
+          <div style={{
+            width: `${pct}%`, height: '100%',
+            background: 'linear-gradient(90deg, #5585E8, #45A870)',
+            borderRadius: 999,
+            transition: 'width 0.25s ease',
+          }} />
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#8C94A6' }}>
+          {pct}%
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function ratingColor(rating: PerformanceRating | string) {
@@ -214,6 +257,8 @@ export default function TeamPerformancePage() {
   const [loading,    setLoading]    = useState(true)
   const [sortBy,     setSortBy]     = useState<SortKey>('score')
   const [filterTeam, setFilterTeam] = useState('')
+  const [progress,   setProgress]   = useState(0)
+  const [showLoader, setShowLoader] = useState(true)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -320,7 +365,23 @@ export default function TeamPerformancePage() {
 
   const goToMemberPerf = (userId: string) => router.push(`/performance?userId=${userId}`)
 
-  if (loading) return <LoadingScreen />
+  useEffect(() => {
+    if (!showLoader) return
+    if (!loading) {
+      setProgress(100)
+      const t = setTimeout(() => setShowLoader(false), 650)
+      return () => clearTimeout(t)
+    }
+    const iv = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 90) return prev
+        return Math.min(90, prev + Math.random() * 2.5 + 0.5)
+      })
+    }, 120)
+    return () => clearInterval(iv)
+  }, [loading, showLoader])
+
+  if (showLoader) return <TeamProgressLoader progress={progress} />
 
   const avgScore      = members.length ? Math.round(members.reduce((s, m) => s + m.score, 0) / members.length) : 0
   const totalOverdue  = members.reduce((s, m) => s + m.overdueCount, 0)
