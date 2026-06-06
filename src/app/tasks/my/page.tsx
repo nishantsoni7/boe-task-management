@@ -9,6 +9,7 @@ import { getTaskAging } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import { useViewAs } from '@/hooks/useViewAs'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert, CheckCircle,
@@ -738,6 +739,7 @@ export default function MyTasksPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -751,15 +753,23 @@ export default function MyTasksPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const uid = session.user.id
+      const loggedInId = session.user.id
+      const uid = viewAsUserId ?? loggedInId
       setUserId(uid)
-      const [{ data: profileData }, { data: tasks }, { data: userData }] = await Promise.all([
-        supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
+
+      const [{ data: callerProfile }, { data: tasks }, { data: userData }] = await Promise.all([
+        supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', loggedInId).single(),
         supabase.from('tasks').select(TASK_COLUMNS).eq('assigned_to', uid).order('due_date', { ascending: true, nullsFirst: false }),
         supabase.from('users').select('id, full_name'),
       ])
 
-      if (profileData) setProfile(profileData as UserProfile)
+      if (viewAsUserId && callerProfile?.role !== 'admin') {
+        exitViewMode()
+        router.push('/dashboard')
+        return
+      }
+
+      if (callerProfile) setProfile(callerProfile as UserProfile)
       setAllTasks((tasks ?? []) as unknown as Task[])
       if (userData) {
         const map: Record<string, string> = {}
@@ -769,7 +779,7 @@ export default function MyTasksPage() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -993,7 +1003,11 @@ export default function MyTasksPage() {
 
   return (
     <>
-      <DashboardLayout profile={profile} title="My Tasks" onSignOut={handleLogout}>
+      <DashboardLayout
+        profile={profile}
+        title="My Tasks"
+        onSignOut={handleLogout}
+      >
 
         {/* ── Two-column workspace ── */}
         <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
@@ -1158,8 +1172,8 @@ export default function MyTasksPage() {
                     userMap={userMap}
                     onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
                     onView={() => router.push(`/tasks/${task.id}`)}
-                    onEdit={task.created_by === userId ? () => setEditingTask(task) : undefined}
-                    onDelete={task.created_by === userId ? () => handleDelete(task) : undefined}
+                    onEdit={!viewAsUserId && task.created_by === userId ? () => setEditingTask(task) : undefined}
+                    onDelete={!viewAsUserId && task.created_by === userId ? () => handleDelete(task) : undefined}
                     isMobile={isMobile}
                   />
                 ))}
@@ -1191,7 +1205,7 @@ export default function MyTasksPage() {
           onClose={() => setSelectedTask(null)}
           onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
           currentUserId={userId}
-          onAcknowledge={handleAcknowledge}
+          onAcknowledge={viewAsUserId ? undefined : handleAcknowledge}
         />
       )}
 

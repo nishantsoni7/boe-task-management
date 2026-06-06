@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { useViewAs } from '@/hooks/useViewAs'
 import type {
   UserProfile, PerformanceData, PerformanceAudit, TrendDay,
   ScoreBreakdown, TrendClassification,
@@ -412,36 +413,46 @@ export default function PerformancePage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
       setToken(session.access_token)
-      const { data: profileData } = await supabase
+      const { data: callerProfile } = await supabase
         .from('users')
         .select('id, full_name, email, phone, role, team, position, is_active, created_at')
         .eq('id', session.user.id)
         .single()
-      if (profileData) setProfile(profileData as UserProfile)
+      if (viewAsUserId && callerProfile?.role !== 'admin') {
+        exitViewMode()
+        router.push('/dashboard')
+        return
+      }
+      if (callerProfile) setProfile(callerProfile as UserProfile)
       setLoading(false)
     }
     init()
-  }, [supabase, router])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, router, viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchPerf = useCallback(async (p: Period, t: string) => {
     if (!t) return
     setPerfLoading(true)
     setAudit(null)
     try {
-      const res = await fetch(`/api/performance-metrics?period=${p}`, {
+      const params = new URLSearchParams({ period: p })
+      if (viewAsUserId) params.set('userId', viewAsUserId)
+      const res = await fetch(`/api/performance-metrics?${params.toString()}`, {
         headers: { Authorization: `Bearer ${t}` },
       })
       if (res.ok) setPerfData(await res.json())
     } finally {
       setPerfLoading(false)
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewAsUserId])
 
   useEffect(() => {
     if (token) fetchPerf(period, token)
@@ -477,7 +488,8 @@ export default function PerformancePage() {
   if (loading) return <LoadingScreen />
 
   const today  = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const isAdminOrManager = profile?.role === 'admin' || profile?.role === 'manager'
+  const viewedProfile    = viewAsProfile ?? profile
+  const isAdminOrManager = viewedProfile?.role === 'admin' || viewedProfile?.role === 'manager'
 
   const periodLabel: Record<Period, string> = { daily: 'Today', weekly: 'This Week', monthly: 'This Month' }
 

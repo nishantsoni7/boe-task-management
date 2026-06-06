@@ -1,18 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   Settings, ChevronRight, LogOut, Briefcase, ShieldCheck, TrendingUp,
+  Eye, X, ChevronDown, Users,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
-import { colors } from '@/lib/tokens'
 import { initials } from '@/lib/ui'
+import { useViewAs } from '@/hooks/useViewAs'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
-// Shell: fixed 220px sidebar + main-content (margin-left: 220px).
-// Each page owns its own internal layout grid.
 
 type TaskCounts = {
   myInProgress?: number
@@ -39,16 +39,52 @@ export function DashboardLayout({
   children,
   taskCounts,
 }: DashboardLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen]   = useState(false)
+  const [members,     setMembers]       = useState<UserProfile[]>([])
+  const [switcherOpen, setSwitcherOpen] = useState(false)
+
   const router   = useRouter()
   const pathname = usePathname()
+  const supabase = useMemo(() => createClient(), [])
 
-  const isAdmin          = profile?.role === 'admin'
-  const isAdminOrManager = isAdmin || profile?.role === 'manager'
+  const { viewAsUserId, viewAsProfile, enterViewMode, exitViewMode } = useViewAs()
+
+  const isRealAdmin = profile?.role === 'admin'
+  const inViewMode  = !!viewAsUserId
+
+  // Sidebar nav reflects the viewed user's role when in view mode
+  const navProfile       = viewAsProfile ?? profile
+  const isAdmin          = navProfile?.role === 'admin'
+  const isAdminOrManager = isAdmin || navProfile?.role === 'manager'
+
+  // Fetch members once for the switcher (admin only)
+  useEffect(() => {
+    if (!isRealAdmin) return
+    supabase
+      .from('users')
+      .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+      .eq('is_active', true)
+      .order('full_name')
+      .then((res: { data: UserProfile[] | null }) => {
+        if (res.data) setMembers(res.data)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRealAdmin])
 
   const navTo = (path: string) => {
     router.push(path)
     setSidebarOpen(false)
+  }
+
+  const handleEnterViewMode = (member: UserProfile) => {
+    enterViewMode(member.id, member)
+    setSwitcherOpen(false)
+    router.push('/dashboard')
+  }
+
+  const handleExitViewMode = () => {
+    exitViewMode()
+    router.push('/dashboard')
   }
 
   return (
@@ -120,24 +156,28 @@ export function DashboardLayout({
         <div className="boe-sidebar-section">
           <div className="boe-sidebar-label">Tasks</div>
 
-          {/* New Task */}
-          <NavParent
-            label="New Task"
-            icon={<PlusCircle size={15} strokeWidth={1.8} />}
-            active={pathname === '/tasks/create-self' || pathname === '/tasks/create'}
-          />
-          <NavGroup>
-            <NavChild
-              label="Self Task"
-              active={pathname === '/tasks/create-self'}
-              onClick={() => navTo('/tasks/create-self')}
-            />
-            <NavChild
-              label="Delegate Task"
-              active={pathname === '/tasks/create'}
-              onClick={() => navTo('/tasks/create')}
-            />
-          </NavGroup>
+          {/* New Task — hidden in view mode (read-only) */}
+          {!inViewMode && (
+            <>
+              <NavParent
+                label="New Task"
+                icon={<PlusCircle size={15} strokeWidth={1.8} />}
+                active={pathname === '/tasks/create-self' || pathname === '/tasks/create'}
+              />
+              <NavGroup>
+                <NavChild
+                  label="Self Task"
+                  active={pathname === '/tasks/create-self'}
+                  onClick={() => navTo('/tasks/create-self')}
+                />
+                <NavChild
+                  label="Delegate Task"
+                  active={pathname === '/tasks/create'}
+                  onClick={() => navTo('/tasks/create')}
+                />
+              </NavGroup>
+            </>
+          )}
 
           {/* My Tasks */}
           <NavParent
@@ -183,8 +223,8 @@ export function DashboardLayout({
           </NavGroup>
         </div>
 
-        {/* Admin section */}
-        {isAdmin && (
+        {/* Admin section — hidden when in view mode as non-admin */}
+        {isAdmin && !inViewMode && (
           <div className="boe-sidebar-section" style={{ borderTop: '1px solid rgba(0,0,0,0.07)', paddingTop: '4px' }}>
             <div className="boe-sidebar-label">Admin</div>
 
@@ -220,50 +260,169 @@ export function DashboardLayout({
           </div>
         )}
 
-        {/* Profile + sign out — pushed to bottom */}
+        {/* ── Bottom profile / account section ── */}
         {profile && (
           <div style={{
             marginTop: 'auto',
             borderTop: '1px solid rgba(0,0,0,0.07)',
-            padding: '10px 10px 4px',
+            padding: '10px 10px 6px',
           }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '8px 10px 6px',
-            }}>
-              <div style={{
-                width: 30, height: 30, borderRadius: '8px',
-                background: '#1A2035',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '11px', fontWeight: 700,
-                color: '#E8A030', flexShrink: 0,
-                letterSpacing: '0.02em',
-              }}>
-                {initials(profile.full_name)}
-              </div>
-              <div style={{ minWidth: 0 }}>
+
+            {inViewMode ? (
+              /* ── View mode active ── */
+              <div style={{ padding: '8px 10px 6px' }}>
                 <div style={{
-                  fontSize: '12.5px', fontWeight: 600, color: '#111318',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  fontSize: '10px', fontWeight: 700, color: '#D97706',
+                  textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px',
                 }}>
-                  {profile.full_name}
+                  Viewing As
                 </div>
-                <div style={{
-                  fontSize: '10.5px', color: '#8C94A6',
-                  textTransform: 'capitalize',
-                }}>
-                  {profile.role} · {profile.team}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '7px',
+                    background: '#FEF3C7',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '11px', fontWeight: 700, color: '#D97706', flexShrink: 0,
+                  }}>
+                    {initials(viewAsProfile?.full_name ?? '')}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#111318', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {viewAsProfile?.full_name}
+                    </div>
+                    <div style={{ fontSize: '10.5px', color: '#D97706', textTransform: 'capitalize' }}>
+                      {viewAsProfile?.role} · {viewAsProfile?.team}
+                    </div>
+                  </div>
                 </div>
+                <button
+                  onClick={handleExitViewMode}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: '6px', fontSize: '12px', fontWeight: 600,
+                    color: '#92400E', background: '#FEF3C7',
+                    border: '1px solid #FDE68A', borderRadius: '7px',
+                    padding: '6px 10px', cursor: 'pointer',
+                  }}
+                >
+                  <X size={12} strokeWidth={2.5} />
+                  Exit View Mode
+                </button>
               </div>
-            </div>
-            <button
-              onClick={onSignOut}
-              className="boe-nav-item"
-              style={{ color: '#8C94A6', fontSize: '12.5px', gap: '8px' }}
-            >
-              <LogOut size={14} strokeWidth={1.8} />
-              Sign out
-            </button>
+            ) : (
+              /* ── Normal mode ── */
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px 6px' }}>
+                  <div style={{
+                    width: 30, height: 30, borderRadius: '8px',
+                    background: '#1A2035',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '11px', fontWeight: 700,
+                    color: '#E8A030', flexShrink: 0,
+                    letterSpacing: '0.02em',
+                  }}>
+                    {initials(profile.full_name)}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#111318', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {profile.full_name}
+                    </div>
+                    <div style={{ fontSize: '10.5px', color: '#8C94A6', textTransform: 'capitalize' }}>
+                      {profile.role} · {profile.team}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Switch User button — admin only */}
+                {isRealAdmin && members.length > 0 && (
+                  <div style={{ position: 'relative', margin: '4px 0 6px' }}>
+                    <button
+                      onClick={() => setSwitcherOpen(o => !o)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        fontSize: '12px', fontWeight: 500,
+                        color: '#3D4455', background: 'rgba(0,0,0,0.04)',
+                        border: '1px solid rgba(0,0,0,0.08)', borderRadius: '7px',
+                        padding: '6px 10px', cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Users size={13} strokeWidth={1.8} />
+                        Switch User
+                      </span>
+                      <ChevronDown size={12} strokeWidth={2} style={{ transform: switcherOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                    </button>
+
+                    {switcherOpen && (
+                      <>
+                        {/* Click-away backdrop */}
+                        <div
+                          style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+                          onClick={() => setSwitcherOpen(false)}
+                        />
+                        <div style={{
+                          position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, right: 0,
+                          background: '#fff',
+                          border: '1px solid #E5E7EB',
+                          borderRadius: '10px',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                          zIndex: 50,
+                          maxHeight: '260px',
+                          overflowY: 'auto',
+                          padding: '6px',
+                        }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 8px 6px' }}>
+                            View as member
+                          </div>
+                          {members
+                            .filter(m => m.id !== profile.id)
+                            .map(member => (
+                              <button
+                                key={member.id}
+                                onClick={() => handleEnterViewMode(member)}
+                                style={{
+                                  width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                                  padding: '7px 8px', borderRadius: '7px',
+                                  background: 'none', border: 'none', cursor: 'pointer',
+                                  textAlign: 'left', transition: 'background 0.1s',
+                                }}
+                                onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+                                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                              >
+                                <div style={{
+                                  width: 26, height: 26, borderRadius: '6px',
+                                  background: '#1A2035',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: '10px', fontWeight: 700, color: '#E8A030', flexShrink: 0,
+                                }}>
+                                  {initials(member.full_name)}
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: '12.5px', fontWeight: 500, color: '#111318', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {member.full_name}
+                                  </div>
+                                  <div style={{ fontSize: '10.5px', color: '#8C94A6', textTransform: 'capitalize' }}>
+                                    {member.role}
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  onClick={onSignOut}
+                  className="boe-nav-item"
+                  style={{ color: '#8C94A6', fontSize: '12.5px', gap: '8px' }}
+                >
+                  <LogOut size={14} strokeWidth={1.8} />
+                  Sign out
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -292,6 +451,55 @@ export function DashboardLayout({
 
         {/* Page body */}
         <div className="boe-page-body">
+
+          {/* ── Admin View Mode amber banner ── */}
+          {inViewMode && viewAsProfile && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexWrap: 'wrap', gap: '8px',
+              padding: '12px 20px',
+              background: '#FFFBEB',
+              border: '1.5px solid #FCD34D',
+              borderRadius: '10px',
+              marginBottom: '20px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Eye size={16} color="#D97706" strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#78350F', letterSpacing: '-0.01em' }}>
+                    ADMIN VIEW MODE — Viewing as <strong>{viewAsProfile.full_name}</strong>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#92400E', marginTop: '1px' }}>
+                    You are observing this user&apos;s workspace. All actions are disabled.
+                  </div>
+                </div>
+                <span style={{
+                  fontSize: '10px', fontWeight: 700,
+                  color: '#B45309', background: '#FEF3C7',
+                  borderRadius: '4px', padding: '2px 8px',
+                  border: '1px solid #FDE68A',
+                  whiteSpace: 'nowrap',
+                }}>
+                  READ ONLY
+                </span>
+              </div>
+              <button
+                onClick={handleExitViewMode}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  fontSize: '12px', fontWeight: 600,
+                  color: '#92400E', background: '#FEF3C7',
+                  border: '1px solid #FDE68A', borderRadius: '6px',
+                  padding: '6px 14px', cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <X size={12} strokeWidth={2.5} />
+                Exit View Mode
+              </button>
+            </div>
+          )}
+
           {children}
         </div>
 
@@ -301,19 +509,14 @@ export function DashboardLayout({
 }
 
 // ─── NavParent ────────────────────────────────────────────────────────────────
-// Non-clickable parent label — visually groups child items.
 type NavParentProps = { label: string; active: boolean; count?: number; icon?: React.ReactNode }
 
 function NavParent({ label, active, count, icon }: NavParentProps) {
   return (
     <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: '7px 10px',
-      borderRadius: '7px',
-      fontSize: '13px',
-      fontWeight: 500,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '7px 10px', borderRadius: '7px',
+      fontSize: '13px', fontWeight: 500,
       color: active ? '#111318' : '#3D4455',
       userSelect: 'none',
       background: active ? 'rgba(0,0,0,0.04)' : 'transparent',
@@ -326,10 +529,8 @@ function NavParent({ label, active, count, icon }: NavParentProps) {
         {label}
         {count != null && count > 0 && (
           <span style={{
-            fontSize: '10px', fontWeight: 600,
-            color: '#8C94A6', background: 'rgba(0,0,0,0.07)',
-            borderRadius: '999px', padding: '1px 6px',
-            lineHeight: '15px',
+            fontSize: '10px', fontWeight: 600, color: '#8C94A6',
+            background: 'rgba(0,0,0,0.07)', borderRadius: '999px', padding: '1px 6px', lineHeight: '15px',
           }}>{count}</span>
         )}
       </span>
@@ -339,7 +540,6 @@ function NavParent({ label, active, count, icon }: NavParentProps) {
 }
 
 // ─── NavLeaf ──────────────────────────────────────────────────────────────────
-// Top-level clickable nav item with no children.
 type NavLeafProps = { label: string; active: boolean; onClick: () => void; icon?: React.ReactNode }
 
 function NavLeaf({ label, active, onClick, icon }: NavLeafProps) {
@@ -358,22 +558,15 @@ function NavLeaf({ label, active, onClick, icon }: NavLeafProps) {
 }
 
 // ─── NavGroup ─────────────────────────────────────────────────────────────────
-// Container for child nav items — adds left-border visual guide.
 function NavGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{
-      marginLeft: '18px',
-      marginBottom: '4px',
-      paddingLeft: '10px',
-      borderLeft: '1px solid rgba(0,0,0,0.08)',
-    }}>
+    <div style={{ marginLeft: '18px', marginBottom: '4px', paddingLeft: '10px', borderLeft: '1px solid rgba(0,0,0,0.08)' }}>
       {children}
     </div>
   )
 }
 
 // ─── NavChild ─────────────────────────────────────────────────────────────────
-// Indented child nav item — sits beneath a NavParent.
 type NavChildProps = { label: string; active: boolean; onClick: () => void; count?: number }
 
 function NavChild({ label, active, onClick, count }: NavChildProps) {
@@ -381,21 +574,14 @@ function NavChild({ label, active, onClick, count }: NavChildProps) {
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
       onClick={onClick}
-      style={{
-        fontSize: '12.5px',
-        fontWeight: active ? 500 : 400,
-        color: active ? '#111318' : '#707A92',
-        padding: '5px 8px',
-        marginBottom: '1px',
-      }}
+      style={{ fontSize: '12.5px', fontWeight: active ? 500 : 400, color: active ? '#111318' : '#707A92', padding: '5px 8px', marginBottom: '1px' }}
     >
       <span style={{ flex: 1 }}>{label}</span>
       {count != null && count > 0 && (
         <span style={{
-          fontSize: '10px', fontWeight: 600,
-          color: '#8C94A6', background: 'rgba(0,0,0,0.07)',
-          borderRadius: '999px', padding: '1px 6px',
-          lineHeight: '15px', marginLeft: 'auto',
+          fontSize: '10px', fontWeight: 600, color: '#8C94A6',
+          background: 'rgba(0,0,0,0.07)', borderRadius: '999px',
+          padding: '1px 6px', lineHeight: '15px', marginLeft: 'auto',
         }}>{count}</span>
       )}
     </button>

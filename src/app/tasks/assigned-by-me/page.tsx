@@ -9,6 +9,7 @@ import { getTaskAging } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import { useViewAs } from '@/hooks/useViewAs'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert,
@@ -536,6 +537,7 @@ export default function AssignedByMePage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -549,10 +551,12 @@ export default function AssignedByMePage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const uid = session.user.id
+      const loggedInId = session.user.id
+      const uid = viewAsUserId ?? loggedInId
       setUserId(uid)
-      const [{ data: profileData }, { data: tasks }, { data: userData }] = await Promise.all([
-        supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
+
+      const [{ data: callerProfile }, { data: tasks }, { data: userData }] = await Promise.all([
+        supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', loggedInId).single(),
         supabase.from('tasks').select(TASK_COLUMNS)
           .eq('created_by', uid)
           .not('assigned_to', 'is', null)
@@ -562,7 +566,13 @@ export default function AssignedByMePage() {
         supabase.from('users').select('id, full_name'),
       ])
 
-      if (profileData) setProfile(profileData as UserProfile)
+      if (viewAsUserId && callerProfile?.role !== 'admin') {
+        exitViewMode()
+        router.push('/dashboard')
+        return
+      }
+
+      if (callerProfile) setProfile(callerProfile as UserProfile)
       setAllTasks((tasks ?? []) as unknown as Task[])
       if (userData) {
         const map: Record<string, string> = {}
@@ -572,7 +582,7 @@ export default function AssignedByMePage() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

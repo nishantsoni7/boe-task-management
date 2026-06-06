@@ -8,7 +8,6 @@ import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { Trash2 } from 'lucide-react'
-
 type RelationFilter = 'all' | 'created_by' | 'assigned_to' | 'delegated_by'
 
 const STATUS_OPTIONS = ['pending', 'started', 'working', 'waiting', 'blocked', 'completed']

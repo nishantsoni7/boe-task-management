@@ -9,6 +9,7 @@ import { isOverdue } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import { useViewAs } from '@/hooks/useViewAs'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -39,6 +40,7 @@ export default function DashboardPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -51,30 +53,44 @@ export default function DashboardPage() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-      setCurrentUserId(session.user.id)
 
-      const [{ data: profileData }, { data: taskData }] = await Promise.all([
+      // In view-as mode, verify the logged-in user is still admin
+      const loggedInId = session.user.id
+
+      // Use viewAs userId for data queries when active (admin must be logged in)
+      const uid = viewAsUserId ?? loggedInId
+      setCurrentUserId(uid)
+
+      const [{ data: callerProfile }, { data: taskData }] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
-          .eq('id', session.user.id)
+          .eq('id', loggedInId)
           .single(),
         supabase
           .from('tasks')
           .select(TASK_COLUMNS)
-          .eq('assigned_to', session.user.id)
+          .eq('assigned_to', uid)
           .not('status', 'eq', 'completed')
           .order('created_at', { ascending: false }),
       ])
 
-      if (profileData) setProfile(profileData)
+      // Block non-admins from using view mode
+      if (viewAsUserId && callerProfile?.role !== 'admin') {
+        exitViewMode()
+        router.push('/dashboard')
+        return
+      }
+
+      // profile prop is always the logged-in user; DashboardLayout reads viewAsProfile from context
+      if (callerProfile) setProfile(callerProfile as UserProfile)
       if (taskData) setTasks(taskData as unknown as Task[])
 
       // Fetch names of task creators for "Assigned By" display on unacknowledged cards
       if (taskData) {
         const creatorIds = [...new Set(
           (taskData as { created_by: string; assigned_to: string }[])
-            .filter(t => t.created_by !== session.user.id)
+            .filter(t => t.created_by !== uid)
             .map(t => t.created_by)
         )]
         if (creatorIds.length > 0) {
@@ -102,21 +118,21 @@ export default function DashboardPage() {
         supabase
           .from('tasks')
           .select(TASK_COLUMNS)
-          .eq('assigned_to', session.user.id)
+          .eq('assigned_to', uid)
           .eq('status', 'completed')
           .gte('last_update_at', monthStartISO)
           .order('last_update_at', { ascending: false }),
         supabase
           .from('tasks')
           .select(TASK_COLUMNS)
-          .eq('created_by', session.user.id)
-          .neq('assigned_to', session.user.id)
+          .eq('created_by', uid)
+          .neq('assigned_to', uid)
           .not('status', 'eq', 'completed'),
         supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
-          .eq('created_by', session.user.id)
-          .neq('assigned_to', session.user.id)
+          .eq('created_by', uid)
+          .neq('assigned_to', uid)
           .eq('status', 'completed')
           .gte('last_update_at', monthStartISO),
       ])
@@ -132,7 +148,8 @@ export default function DashboardPage() {
         setAssignedByMeComp(abmCompCount ?? 0)
       }
 
-      if (profileData?.role === 'admin') {
+      const viewedProfile = viewAsProfile ?? callerProfile
+      if (viewedProfile?.role === 'admin') {
         const [{ data: tUsers }, { data: eTasks }, { count: bCount }] = await Promise.all([
           supabase.from('users').select('id, full_name').eq('is_active', true),
           supabase
@@ -147,14 +164,14 @@ export default function DashboardPage() {
         if (tUsers) setTeamUsers(tUsers as { id: string; full_name: string }[])
         if (eTasks) setEscalationTasks(eTasks as unknown as Task[])
         if (bCount != null) setBlockedCount(bCount)
-      } else if (profileData?.role === 'manager') {
+      } else if (viewedProfile?.role === 'manager') {
         const { data: tUsers } = await supabase.from('users').select('id, full_name').eq('is_active', true)
         if (tUsers) setTeamUsers(tUsers as { id: string; full_name: string }[])
         // Use same scope as the preview drawer: only this manager's own blocked tasks
         const { count: bCount } = await supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
-          .eq('assigned_to', session.user.id)
+          .eq('assigned_to', uid)
           .eq('status', 'blocked')
         if (bCount != null) setBlockedCount(bCount)
       } else {
@@ -162,7 +179,7 @@ export default function DashboardPage() {
         const { count: bCount } = await supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
-          .eq('assigned_to', session.user.id)
+          .eq('assigned_to', uid)
           .eq('status', 'blocked')
         if (bCount != null) setBlockedCount(bCount)
       }
@@ -171,7 +188,8 @@ export default function DashboardPage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Re-run when view mode changes so the correct user's data is fetched
+  }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -250,7 +268,7 @@ export default function DashboardPage() {
 
   if (loading) return <LoadingScreen />
 
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = (viewAsProfile ?? profile)?.role === 'admin'
 
   const totalOverdue = tasks.filter(t => isOverdue(t.due_date)).length
   const waitingTasks = tasks.filter(t => t.status === 'waiting')
@@ -279,9 +297,9 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
         actions={
-          <button onClick={() => router.push('/tasks/create')} className="boe-btn boe-btn-primary">
-            + New Task
-          </button>
+          !viewAsUserId
+            ? <button onClick={() => router.push('/tasks/create')} className="boe-btn boe-btn-primary">+ New Task</button>
+            : undefined
         }
         onSignOut={handleLogout}
         taskCounts={{
@@ -582,6 +600,7 @@ export default function DashboardPage() {
           onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
           currentUserId={currentUserId}
           onAcknowledge={
+            !viewAsUserId &&
             !selectedTask.acknowledged_at &&
             selectedTask.assigned_to === currentUserId &&
             selectedTask.created_by !== currentUserId &&
