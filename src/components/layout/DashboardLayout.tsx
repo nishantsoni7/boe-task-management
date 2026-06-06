@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, PlusCircle, ClipboardList, CheckSquare,
+  LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   Settings, ChevronRight, LogOut, Briefcase,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
@@ -80,12 +80,6 @@ export function DashboardLayout({
             icon={<LayoutDashboard size={15} strokeWidth={1.8} />}
             active={pathname === '/dashboard'}
             onClick={() => navTo('/dashboard')}
-          />
-          <NavLeaf
-            label="Members"
-            icon={<Users size={15} strokeWidth={1.8} />}
-            active={pathname === '/admin/members'}
-            onClick={() => navTo('/admin/members')}
           />
         </div>
 
