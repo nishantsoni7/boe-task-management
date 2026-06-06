@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
-  Settings, ChevronRight, LogOut, Briefcase,
+  Settings, ChevronRight, LogOut, Briefcase, ShieldCheck, TrendingUp,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
@@ -43,7 +43,8 @@ export function DashboardLayout({
   const router   = useRouter()
   const pathname = usePathname()
 
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin          = profile?.role === 'admin'
+  const isAdminOrManager = isAdmin || profile?.role === 'manager'
 
   const navTo = (path: string) => {
     router.push(path)
@@ -81,6 +82,38 @@ export function DashboardLayout({
             active={pathname === '/dashboard'}
             onClick={() => navTo('/dashboard')}
           />
+        </div>
+
+        {/* Performance */}
+        <div className="boe-sidebar-section">
+          {isAdminOrManager ? (
+            <>
+              <NavParent
+                label="Performance"
+                icon={<TrendingUp size={15} strokeWidth={1.8} />}
+                active={pathname.startsWith('/performance')}
+              />
+              <NavGroup>
+                <NavChild
+                  label="My Performance"
+                  active={pathname === '/performance'}
+                  onClick={() => navTo('/performance')}
+                />
+                <NavChild
+                  label="Team Performance"
+                  active={pathname === '/performance/team'}
+                  onClick={() => navTo('/performance/team')}
+                />
+              </NavGroup>
+            </>
+          ) : (
+            <NavLeaf
+              label="Performance"
+              icon={<TrendingUp size={15} strokeWidth={1.8} />}
+              active={pathname.startsWith('/performance')}
+              onClick={() => navTo('/performance')}
+            />
+          )}
         </div>
 
         {/* Tasks section */}
@@ -177,6 +210,13 @@ export function DashboardLayout({
                 onClick={() => navTo('/settings/positions')}
               />
             </NavGroup>
+
+            <NavLeaf
+              label="Super Admin"
+              icon={<ShieldCheck size={15} strokeWidth={1.8} />}
+              active={pathname === '/super-admin'}
+              onClick={() => navTo('/super-admin')}
+            />
           </div>
         )}
 
