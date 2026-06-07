@@ -172,10 +172,15 @@ function classifyAttendanceDays(
   attendanceRecords: EngineAttendanceRecord[],
   rates: PayrollRates,
 ): DayResult[] {
-  // TODO: build a Map<date, EngineAttendanceRecord> from attendanceRecords for O(1) lookup
-  // TODO: for each working day, call classifySingleDay()
-  // TODO: collect and return all DayResults
-  throw new Error('classifyAttendanceDays: not implemented')
+  const byDate = new Map(attendanceRecords.map(r => [r.attendance_date, r]))
+  return workingDays.map(date => classifySingleDay(date, byDate.get(date), rates))
+}
+
+// Returns minutes-since-midnight in IST for an ISO timestamptz string.
+function istMinutes(ts: string): number {
+  const istMs = new Date(ts).getTime() + 330 * 60 * 1000
+  const d = new Date(istMs)
+  return d.getUTCHours() * 60 + d.getUTCMinutes()
 }
 
 function classifySingleDay(
@@ -183,21 +188,56 @@ function classifySingleDay(
   record: EngineAttendanceRecord | undefined,
   rates: PayrollRates,
 ): DayResult {
-  // TODO: no record or both punches null → full_absent
-  // TODO: one punch null → missing_punch (isolated: only missing_punch_in or missing_punch_out line, 2h fixed, no other deductions)
-  // TODO: compute effective_hours_worked (subtract 1h lunch if straddles 1–2 PM window, in IST)
-  // TODO: classify by effective hours:
-  //   < 2h           → full_absent
-  //   ≥ 2h and < 4h  → short_present
-  //   = 4h exactly   → half_day
-  //   > 4h and < 8.5 → present_with_shortfall
-  //   ≥ 8.5          → full_present
-  // TODO: compute late_arrival deduction (only on present days, only when check_in_at > 10:15 IST)
-  // TODO: compute early_checkout deduction (only on present days, only when check_out_at < 18:30 IST)
-  // TODO: compute short_hours deduction for short_present and present_with_shortfall
-  // NOTE: late/early/short_hours are NOT computed on missing_punch days
-  // NOTE: corrupt record (check_out before check_in) → treat as full_absent
-  throw new Error('classifySingleDay: not implemented')
+  const absent: DayResult = { date, classification: 'full_absent', effective_hours_worked: 0, deduction_lines: [] }
+
+  // No record or both punches missing → full_absent
+  if (!record || (record.check_in_at == null && record.check_out_at == null)) return absent
+
+  // Missing punch: exactly one punch present → isolated 2h deduction, no other lines
+  if (record.check_in_at == null || record.check_out_at == null) {
+    const type = record.check_in_at == null ? 'missing_punch_in' : 'missing_punch_out'
+    return {
+      date,
+      classification: 'missing_punch',
+      effective_hours_worked: 0,
+      deduction_lines: [{
+        line_date: date,
+        deduction_type: type,
+        hours_deducted: 2,
+        amount_deducted: 2 * rates.per_hour_rate,
+      }],
+    }
+  }
+
+  const inMs  = new Date(record.check_in_at).getTime()
+  const outMs = new Date(record.check_out_at).getTime()
+
+  // Corrupt record: check_out before check_in → full_absent
+  if (outMs <= inMs) return absent
+
+  const rawHours = (outMs - inMs) / 3_600_000
+
+  // Lunch deduction: subtract 1h if check_in < 14:00 AND check_out > 13:00 (IST)
+  const inMin  = istMinutes(record.check_in_at)
+  const outMin = istMinutes(record.check_out_at)
+  const lunchDeducted = inMin < 14 * 60 && outMin > 13 * 60
+  const effectiveHours = rawHours - (lunchDeducted ? 1 : 0)
+
+  // Classify by effective hours
+  let classification: DayResult['classification']
+  if (effectiveHours >= 8.5) {
+    classification = 'full_present'
+  } else if (effectiveHours > 4) {
+    classification = 'present_with_shortfall'
+  } else if (effectiveHours === 4) {
+    classification = 'half_day'
+  } else if (effectiveHours >= 2) {
+    classification = 'short_present'
+  } else {
+    return { ...absent }
+  }
+
+  return { date, classification, effective_hours_worked: effectiveHours, deduction_lines: [] }
 }
 
 // ─── Step 6: Monthly aggregation ─────────────────────────────────────────────
