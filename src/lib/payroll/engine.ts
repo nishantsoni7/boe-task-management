@@ -58,8 +58,8 @@ export function generatePayrollForEmployee(
   // Step 9 — Compute deduction amounts
   const totalDeductions = computeTotalDeductions(leaveState, rates)
 
-  // Step 10 — Compute gross salary (with proration if mid-month joiner)
-  const grossSalary = computeGrossSalary(employee, period)
+  // Step 10 — Compute gross salary
+  const grossSalary = computeGrossSalary(employee, totalDeductions)
 
   // Step 11 — Load pending adjustment total
   const pendingAdjustmentTotal = sumPendingAdjustments(pendingAdjustments)
@@ -369,14 +369,9 @@ function computeTotalDeductions(
 
 function computeGrossSalary(
   employee: EngineEmployee,
-  period: EnginePeriod,
+  totalDeductions: TotalDeductions,
 ): number {
-  // TODO: if joining_date is null or falls before this month → gross = monthly_salary (no proration)
-  // TODO: if joining_date falls within this payroll month:
-  //   eligible_payable_days = calendar days from joining_date to last day of month (inclusive)
-  //   gross = monthly_salary / 30 × eligible_payable_days
-  // NOTE: divisor is always 30 (not working days) per the frozen spec
-  throw new Error('computeGrossSalary: not implemented')
+  return Math.max(0, employee.monthly_salary - totalDeductions.total_deduction)
 }
 
 // ─── Step 11: Pending adjustments ────────────────────────────────────────────
