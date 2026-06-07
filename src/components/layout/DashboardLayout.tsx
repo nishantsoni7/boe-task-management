@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   Settings, ChevronRight, LogOut, Briefcase, ShieldCheck, TrendingUp,
-  Eye, X, ChevronDown, Users,
+  Eye, X, ChevronDown, Users, Home,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
@@ -112,6 +112,14 @@ export function DashboardLayout({
 
         {/* Main nav */}
         <div className="boe-sidebar-section">
+          {/* 0. BOE Home */}
+          <NavLeaf
+            label="BOE Home"
+            icon={<Home size={15} strokeWidth={1.8} />}
+            active={pathname === '/'}
+            onClick={() => navTo('/')}
+          />
+
           {/* 1. Dashboard */}
           <NavLeaf
             label="Dashboard"
