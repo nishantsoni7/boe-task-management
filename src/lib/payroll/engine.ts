@@ -423,7 +423,8 @@ const HOURLY_DEDUCTION_TYPES = new Set<string>([
 ])
 
 function assembleResult(p: AssembleParams): EngineResult {
-  const deduction_lines: PendingDeductionLine[] = p.dayResults.flatMap(day =>
+  // Hourly deduction lines (missing punch, late arrival, short hours)
+  const hourlyLines: PendingDeductionLine[] = p.dayResults.flatMap(day =>
     day.deduction_lines.map(line => {
       if (p.leaveState.leave_absorbed_deductions && HOURLY_DEDUCTION_TYPES.has(line.deduction_type)) {
         return { ...line, amount_deducted: 0 }
@@ -431,6 +432,28 @@ function assembleResult(p: AssembleParams): EngineResult {
       return line
     }),
   )
+
+  // Absent-day deduction lines — one per full_absent day.
+  // The first `remaining_absent_days` carry the monetary deduction; absorbed days get amount=0.
+  const absentDays = p.dayResults.filter(d => d.classification === 'full_absent')
+  const absentLines: PendingDeductionLine[] = absentDays.map((day, i) => ({
+    line_date: day.date,
+    deduction_type: 'absent',
+    hours_deducted: 8.5,
+    amount_deducted: i < p.leaveState.remaining_absent_days ? p.rates.per_day_rate : 0,
+  }))
+
+  // Half-day deduction lines — one per half_day.
+  // The first `remaining_half_days` carry the monetary deduction; absorbed ones get amount=0.
+  const halfDays = p.dayResults.filter(d => d.classification === 'half_day')
+  const halfDayLines: PendingDeductionLine[] = halfDays.map((day, i) => ({
+    line_date: day.date,
+    deduction_type: 'half_day',
+    hours_deducted: 4.25,
+    amount_deducted: i < p.leaveState.remaining_half_days ? p.rates.per_day_rate / 2 : 0,
+  }))
+
+  const deduction_lines: PendingDeductionLine[] = [...absentLines, ...halfDayLines, ...hourlyLines]
 
   return {
     payroll_period_id:        p.period.id,
