@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   Settings, ChevronRight, LogOut, Briefcase, ShieldCheck, TrendingUp,
-  Eye, X, ChevronDown, Users, Home,
+  Eye, X, ChevronDown, Users, Home, Banknote,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
@@ -216,7 +216,17 @@ export function DashboardLayout({
             />
           )}
 
-          {/* 6 & 7. Settings + Super Admin — admin only, hidden in view mode */}
+          {/* 6. Payroll — real-admin only, hidden in view mode */}
+          {isRealAdmin && !inViewMode && (
+            <NavLeaf
+              label="Payroll"
+              icon={<Banknote size={15} strokeWidth={1.8} />}
+              active={pathname.startsWith('/payroll')}
+              onClick={() => navTo('/payroll')}
+            />
+          )}
+
+          {/* 7 & 8. Settings + Super Admin — admin only, hidden in view mode */}
           {isAdmin && !inViewMode && (
             <>
               <CollapsibleNav

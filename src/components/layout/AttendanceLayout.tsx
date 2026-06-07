@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, Upload, Home, LogOut, Briefcase, ClipboardList,
+  LayoutDashboard, Users, Upload, Home, LogOut, Briefcase, ClipboardList, Banknote,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
@@ -101,6 +101,20 @@ export function AttendanceLayout({
               </button>
             )
           })}
+
+          {/* Payroll — admin only */}
+          {profile?.role === 'admin' && (
+            <button
+              className={`boe-nav-item${pathname.startsWith('/payroll') ? ' active' : ''}`}
+              onClick={() => navTo('/payroll')}
+              style={{ fontWeight: pathname.startsWith('/payroll') ? 600 : 400, marginBottom: '2px' }}
+            >
+              <span style={{ color: pathname.startsWith('/payroll') ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+                <Banknote size={15} strokeWidth={1.8} />
+              </span>
+              Payroll
+            </button>
+          )}
         </div>
 
         {/* Bottom profile section */}
