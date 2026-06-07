@@ -262,6 +262,8 @@ export type PayrollResult = {
   net_salary: number | null
   status: PayrollResultStatus
   admin_notes: string | null
+  half_day_count: number | null
+  generated_at: string | null
   created_at: string
   updated_at: string
 }
