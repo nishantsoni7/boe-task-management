@@ -419,11 +419,50 @@ type AssembleParams = {
   paidLeaveAvailable: number
 }
 
+const HOURLY_DEDUCTION_TYPES = new Set<string>([
+  'late_arrival',
+  'missing_punch_in',
+  'missing_punch_out',
+  'short_hours',
+])
+
 function assembleResult(p: AssembleParams): EngineResult {
-  // TODO: collect all deduction_lines from p.dayResults into a flat array
-  // TODO: zero out amount_deducted on hourly lines if leaveState.leave_absorbed_deductions = true
-  // TODO: map p.pendingAdjustments to applied_adjustment_ids
-  // TODO: set generated_at = new Date().toISOString()
-  // TODO: populate all EngineResult fields from the assembled params
-  throw new Error('assembleResult: not implemented')
+  const deduction_lines: PendingDeductionLine[] = p.dayResults.flatMap(day =>
+    day.deduction_lines.map(line => {
+      if (p.leaveState.leave_absorbed_deductions && HOURLY_DEDUCTION_TYPES.has(line.deduction_type)) {
+        return { ...line, amount_deducted: 0 }
+      }
+      return line
+    }),
+  )
+
+  return {
+    payroll_period_id:        p.period.id,
+    employee_id:              p.employee.id,
+
+    monthly_salary:           p.employee.monthly_salary,
+    gross_salary:             p.grossSalary,
+
+    working_days_in_month:    p.aggregates.working_days_in_month,
+    days_present:             p.aggregates.days_present,
+    days_absent:              p.aggregates.days_absent,
+    days_on_leave:            p.leaveState.paid_leave_used,
+    half_day_count:           p.aggregates.half_day_count,
+    paid_leave_available:     p.leaveState.paid_leave_available,
+    paid_leave_used:          p.leaveState.paid_leave_used,
+
+    late_deduction_hours:     p.aggregates.late_deduction_hours,
+    short_hours_deduction:    p.aggregates.short_hours_deduction,
+    missing_punch_hours:      p.aggregates.missing_punch_hours,
+
+    leave_absorbed_deductions: p.leaveState.leave_absorbed_deductions,
+
+    total_deductions:         p.totalDeductions.total_deduction,
+    pending_adjustment_total: p.pendingAdjustmentTotal.net_adjustment,
+    net_salary:               p.netSalary,
+
+    deduction_lines,
+    applied_adjustment_ids:   p.pendingAdjustments.map(adj => adj.id),
+    generated_at:             new Date().toISOString(),
+  }
 }
