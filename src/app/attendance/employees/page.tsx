@@ -7,6 +7,7 @@ import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import Link from 'next/link'
 
 type EmployeeRow = Pick<
   UserProfile,
@@ -622,7 +623,7 @@ export default function EmployeeMasterPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Emp. Code', 'Fingerprint Code', 'Name', 'Department', 'Designation', 'Joining Date', 'Monthly Salary', 'Office Timing', 'Status', ...(showEdit ? [''] : [])].map((h, i) => (
+                  {['Emp. Code', 'Fingerprint Code', 'Name', 'Department', 'Designation', 'Joining Date', 'Monthly Salary', 'Office Timing', 'Status', '', ...(showEdit ? [''] : [])].map((h, i) => (
                     <th key={i} style={HEAD}>{h}</th>
                   ))}
                 </tr>
@@ -630,7 +631,7 @@ export default function EmployeeMasterPage() {
               <tbody>
                 {visible.length === 0 ? (
                   <tr>
-                    <td colSpan={showEdit ? 10 : 9} style={{ ...CELL, textAlign: 'center', color: colors.tertiary, padding: '40px 14px' }}>
+                    <td colSpan={showEdit ? 11 : 10} style={{ ...CELL, textAlign: 'center', color: colors.tertiary, padding: '40px 14px' }}>
                       No employees found.
                     </td>
                   </tr>
@@ -666,6 +667,20 @@ export default function EmployeeMasterPage() {
                         }} />
                         {emp.is_active ? 'Active' : 'Inactive'}
                       </span>
+                    </td>
+                    <td style={{ ...CELL, width: 60 }}>
+                      <Link
+                        href={`/attendance/employees/${emp.id}`}
+                        style={{
+                          display: 'inline-block',
+                          padding: '4px 12px', fontSize: 12, fontWeight: 500,
+                          border: `1px solid ${colors.border}`, borderRadius: 6,
+                          color: colors.secondary, textDecoration: 'none',
+                          background: 'transparent',
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = colors.raised }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                      >View</Link>
                     </td>
                     {showEdit && (
                       <td style={{ ...CELL, width: 60 }}>
