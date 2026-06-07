@@ -44,14 +44,14 @@ export function generatePayrollForEmployee(
   // Step 3 — Build the working-day calendar
   const calendar = buildWorkingDayCalendar(employee, period, holidays)
 
-  // Step 4 — Compute paid leave entitlement
-  const paidLeaveAvailable = computePaidLeaveEntitlement(employee, calendar)
-
-  // Step 5 — Classify each working day and produce per-day deduction lines
+  // Step 4 — Classify each working day and produce per-day deduction lines
   const dayResults = classifyAttendanceDays(calendar.workingDays, attendanceRecords, rates)
 
-  // Step 6 — Aggregate across all working days
+  // Step 5 — Aggregate across all working days
   const aggregates = aggregateMonthlyTotals(dayResults, calendar)
+
+  // Step 6 — Compute paid leave entitlement (based on actual days present)
+  const paidLeaveAvailable = computePaidLeaveEntitlement(aggregates.days_present)
 
   // Step 7 + 8 — Apply paid leave absorption (all three stages)
   const leaveState = applyLeaveAbsorption(aggregates, paidLeaveAvailable)
@@ -68,6 +68,11 @@ export function generatePayrollForEmployee(
   // Step 12 — Compute final net salary
   const netSalary = computeNetSalary(grossSalary, totalDeductions, pendingAdjustmentTotal)
 
+  // Step 12a — Full-absence floor (BOE rule): 0 present days → ₹0 net salary.
+  // per_day_rate = salary/30 means a fully-absent employee would otherwise keep
+  // salary for non-working days (e.g. 4 Sundays). This guard eliminates that residual.
+  const netSalaryFinal = aggregates.days_present === 0 ? 0 : netSalary
+
   // Step 13 — Assemble final result (written to DB by caller)
   return assembleResult({
     employee,
@@ -79,7 +84,7 @@ export function generatePayrollForEmployee(
     grossSalary,
     totalDeductions,
     pendingAdjustmentTotal,
-    netSalary,
+    netSalary: netSalaryFinal,
     pendingAdjustments,
     paidLeaveAvailable,
   })
@@ -152,22 +157,16 @@ function buildWorkingDayCalendar(
   return { workingDays, fullMonthWorkingDays }
 }
 
-// ─── Step 4: Paid leave entitlement ──────────────────────────────────────────
+// ─── Step 6: Paid leave entitlement ──────────────────────────────────────────
 
-function computePaidLeaveEntitlement(
-  employee: EngineEmployee,
-  calendar: CalendarResult,
-): number {
-  // No joining_date means the employee was present the full month.
-  if (employee.joining_date == null) return 1
-
-  const ratio = calendar.workingDays.length / calendar.fullMonthWorkingDays
-  // Round to nearest 0.5: multiply by 2, round, divide by 2.
-  // Result is clamped to [0, 1] by the ratio itself (workingDays ≤ fullMonthWorkingDays).
-  return Math.round(ratio * 2) / 2
+function computePaidLeaveEntitlement(daysPresent: number): number {
+  // BOE rule: leave earned is based on actual days present in the month.
+  if (daysPresent <= 10) return 0
+  if (daysPresent <= 15) return 0.5
+  return 1
 }
 
-// ─── Step 5: Classify attendance days ────────────────────────────────────────
+// ─── Step 4: Classify attendance days ────────────────────────────────────────
 
 function classifyAttendanceDays(
   workingDays: string[],
@@ -242,7 +241,7 @@ function classifySingleDay(
   return { date, classification, effective_hours_worked: effectiveHours, deduction_lines: [] }
 }
 
-// ─── Step 6: Monthly aggregation ─────────────────────────────────────────────
+// ─── Step 5: Monthly aggregation ─────────────────────────────────────────────
 
 function aggregateMonthlyTotals(
   dayResults: DayResult[],

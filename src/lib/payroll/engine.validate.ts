@@ -178,14 +178,14 @@ scenario('S03  Two half-days — absorbed by one paid leave (stage 2)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S04  One half-day — absorbed by 0.5 paid leave (stage 2b, mid-month joiner)
+// S04  One half-day — absorbed by 0.5 paid leave (stage 2b)
 //
-// Joining: Jun 16  →  13 in-scope days  →  ratio 13/26 = 0.50  →  leave = 0.5
-// Inputs:  12 full-present + Jun 30 half-day
-// Leave:   stage-2b absorbs 1 half-day with 0.5 leave → paid_leave_used = 0.5
+// Inputs:  12 full-present + Jun 30 half-day  →  days_present = 13
+// Leave:   13 present > 10 and ≤ 15  →  leave = 0.5
+//          stage-2b absorbs 1 half-day with 0.5 leave → paid_leave_used = 0.5
 // Expect:  0 deductions, gross = net = 30 000
 // ─────────────────────────────────────────────────────────────────────────────
-scenario('S04  One half-day — absorbed by 0.5 paid leave (joining Jun 16)', () => {
+scenario('S04  One half-day — absorbed by 0.5 paid leave (13 present days)', () => {
   const e    = emp({ joining_date: '2026-06-16' })
   // 13 in-scope working days: 16,17,18,19,20,22,23,24,25,26,27,29,30
   const days = juneWorkDays().filter(d => d >= '2026-06-16')
@@ -233,12 +233,12 @@ scenario('S05  Missing punch-out — absorbed by unused paid leave (stage 3)', (
 // ─────────────────────────────────────────────────────────────────────────────
 // S06  Missing punch-in — deduction charged (leave = 0)
 //
-// Joining: Jun 25  →  5 in-scope days  →  ratio 5/26 ≈ 0.19  →  leave = 0
-// Inputs:  4 full-present + Jun 30 missing punch-in (no check_in)
+// Inputs:  4 full-present + Jun 30 missing punch-in  →  days_present = 5
+// Leave:   5 present ≤ 10  →  leave = 0
 // Deduct:  2 h × PHR  ≈  235.294
 // Expect:  gross ≈ 29 764.706, net ≈ 29 764.706
 // ─────────────────────────────────────────────────────────────────────────────
-scenario('S06  Missing punch-in — deduction charged (leave = 0, joining Jun 25)', () => {
+scenario('S06  Missing punch-in — deduction charged (leave = 0, 5 present days)', () => {
   const e    = emp({ joining_date: '2026-06-25' })
   // 5 in-scope working days: 25, 26, 27, 29, 30
   const days = juneWorkDays().filter(d => d >= '2026-06-25')
@@ -267,9 +267,10 @@ scenario('S06  Missing punch-in — deduction charged (leave = 0, joining Jun 25
 // S07  Missing punch-out — deduction charged (leave = 0)
 //
 // Same setup as S06 but check_out is null on Jun 30.
+// days_present = 5  →  ≤ 10  →  leave = 0
 // Deduct:  2 h × PHR  ≈  235.294  (same monetary result, different type)
 // ─────────────────────────────────────────────────────────────────────────────
-scenario('S07  Missing punch-out — deduction charged (leave = 0, joining Jun 25)', () => {
+scenario('S07  Missing punch-out — deduction charged (leave = 0, 5 present days)', () => {
   const e    = emp({ joining_date: '2026-06-25' })
   const days = juneWorkDays().filter(d => d >= '2026-06-25')
   const records = days.map((d, i) =>
@@ -293,7 +294,8 @@ scenario('S07  Missing punch-out — deduction charged (leave = 0, joining Jun 2
 //
 // Rule: missing punch is the SOLE deduction source for that day.
 //       Even a late check-in (10:30 IST) does NOT generate a late_arrival line.
-// Inputs:  Jun 30: check_in = 10:30 IST (late), check_out = null → missing_punch_out
+// Inputs:  4 full-present + Jun 30: check_in = 10:30 IST (late), check_out = null
+//          days_present = 5  →  ≤ 10  →  leave = 0
 // Expect:  exactly 1 deduction line, type = missing_punch_out, hours = 2, no late_arrival
 // ─────────────────────────────────────────────────────────────────────────────
 scenario('S08  Missing punch isolation — late check-in present, only missing_punch_out deducted', () => {
@@ -319,8 +321,7 @@ scenario('S08  Missing punch isolation — late check-in present, only missing_p
 // ─────────────────────────────────────────────────────────────────────────────
 // S09  Absent day — no leave balance to absorb it
 //
-// Joining: Jun 25  →  leave = 0
-// Inputs:  4 full-present + Jun 30 absent (no record)
+// Inputs:  4 full-present + Jun 30 absent  →  days_present = 4  →  ≤ 10  →  leave = 0
 // Deduct:  1 × PDR = 1 000
 // Expect:  gross = 29 000, net = 29 000
 // ─────────────────────────────────────────────────────────────────────────────
@@ -339,14 +340,13 @@ scenario('S09  Absent day — no leave balance, full deduction applied', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S10  Mid-month joiner — 0.5 leave cannot absorb an absent day (needs ≥ 1)
+// S10  0.5 leave cannot absorb an absent day (needs ≥ 1)
 //
-// Joining: Jun 16  →  13 in-scope days  →  leave = 0.5
-// Inputs:  12 full-present + Jun 30 absent
+// Inputs:  12 full-present + Jun 30 absent  →  days_present = 12  →  10 < 12 ≤ 15  →  leave = 0.5
 // Deduct:  stage-1 skipped (leave < 1); 1 × PDR = 1 000
 // Expect:  gross = 29 000, net = 29 000
 // ─────────────────────────────────────────────────────────────────────────────
-scenario('S10  Mid-month joiner — 0.5 leave cannot absorb absent day (needs ≥ 1)', () => {
+scenario('S10  0.5 leave cannot absorb absent day (needs ≥ 1), 12 present days', () => {
   const e    = emp({ joining_date: '2026-06-16' })
   const days = juneWorkDays().filter(d => d >= '2026-06-16')
   const records = days.filter(d => d !== '2026-06-30').map(recFull)
@@ -383,13 +383,13 @@ scenario('S11  Sundays excluded — working_days_in_month = 26 (not 30)', () => 
 //
 // Employee: salary = 3 000, PDR = 100
 // Inputs:   Jun 1 present; all other 25 working days absent (no records)
-// Leave:    stage-1 absorbs 1 absent → 24 remaining → deduction = 2 400
-// Gross:    max(0, 3 000 − 2 400) = 600
-// Adj:      −5 000  →  net = max(0, 600 − 5 000) = 0
+//           days_present = 1  →  ≤ 10  →  leave = 0  (no absorption)
+// Deduct:   25 × PDR = 2 500
+// Gross:    3 000 − 2 500 = 500
+// Adj:      −5 000  →  net = max(0, 500 − 5 000) = 0
 // ─────────────────────────────────────────────────────────────────────────────
 scenario('S12  Net salary floor at zero — large negative adjustment clamps to 0', () => {
   const e    = emp({ monthly_salary: 3_000 })
-  const pdr3 = 3_000 / 30   // 100
   const adjustments: EnginePendingAdjustment[] = [
     { id: 'adj1', amount: -5_000, description: 'Large recovery deduction' },
   ]
@@ -398,8 +398,8 @@ scenario('S12  Net salary floor at zero — large negative adjustment clamps to 
   const r = resultOf(generatePayrollForEmployee(e, PERIOD, records, [], adjustments))
 
   chk('days_absent',                r.days_absent,               25)
-  chk('paid_leave_used',            r.paid_leave_used,            1)  // absorbed 1 absent
-  chk('total_deductions',           r.total_deductions,        2_400)  // 24 × 100
+  chk('paid_leave_used',            r.paid_leave_used,            0)  // 1 present ≤ 10 → no leave
+  chk('total_deductions',           r.total_deductions,        2_500)  // 25 × 100
   chk('gross_salary',               r.gross_salary,            3_000)
   chk('pending_adjustment_total',   r.pending_adjustment_total, -5_000)
   chk('net_salary = 0 (floored)',   r.net_salary,                  0)
@@ -504,6 +504,33 @@ scenario('S15  Mixed — absent absorbed, half-day + missing punch charged, adju
   chk('net_salary',                 r.net_salary,                 expectedNet)
   // Both adjustment IDs recorded
   chk('applied_adjustment_ids.length', r.applied_adjustment_ids.length, 2)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S16  Fully absent — 0 present days → net salary floored to ₹0 (BOE rule)
+//
+// Employee: salary = 55 000 (Dhruv scenario), no joining_date
+// Inputs:   zero attendance records for all 26 working days
+//           days_present = 0  →  ≤ 10  →  leave = 0
+// Deduct:   26 × (55 000 / 30) ≈ 47 666.67  (raw, stored in total_deductions)
+// Net:      full-absence floor applies → 0  (overrides the residual 7 333.33)
+// ─────────────────────────────────────────────────────────────────────────────
+scenario('S16  Fully absent — 0 present days → net salary floored to ₹0', () => {
+  const DHRUV_SALARY = 55_000
+  const e   = emp({ monthly_salary: DHRUV_SALARY })
+  const pdr = DHRUV_SALARY / 30
+  // No attendance records at all
+  const r = resultOf(generatePayrollForEmployee(e, PERIOD, [], [], []))
+
+  const expectedDeduction = 26 * pdr   // all 26 working days absent
+
+  chk('days_present',         r.days_present,         0)
+  chk('days_absent',          r.days_absent,          26)
+  chk('paid_leave_available', r.paid_leave_available,  0)
+  chk('paid_leave_used',      r.paid_leave_used,       0)
+  chk('gross_salary',         r.gross_salary,          DHRUV_SALARY)
+  chk('total_deductions',     r.total_deductions,      expectedDeduction)
+  chk('net_salary = 0',       r.net_salary,            0)
 })
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
