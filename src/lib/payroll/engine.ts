@@ -335,7 +335,7 @@ function applyLeaveAbsorption(
   // Stage 3: absorb hourly deductions (leave must not yet be used)
   if (paid_leave_used === 0) {
     const threshold = paidLeaveAvailable * 8.5
-    if (total_hourly_hours <= threshold) {
+    if (total_hourly_hours > 0 && total_hourly_hours <= threshold) {
       leave_absorbed_deductions = true
       paid_leave_used = paidLeaveAvailable
     }
