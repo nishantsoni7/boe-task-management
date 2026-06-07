@@ -101,9 +101,9 @@ function runGuards(employee: EngineEmployee, period: EnginePeriod): EngineSkip |
 // ─── Step 2: Monetary rates ───────────────────────────────────────────────────
 
 function computeRates(monthlySalary: number): PayrollRates {
-  // TODO: per_day_rate = monthly_salary / 30 (fixed divisor, always 30)
-  // TODO: per_hour_rate = per_day_rate / 8.5
-  throw new Error('computeRates: not implemented')
+  const per_day_rate = monthlySalary / 30
+  const per_hour_rate = per_day_rate / 8.5
+  return { per_day_rate, per_hour_rate }
 }
 
 // ─── Step 3: Working-day calendar ────────────────────────────────────────────
@@ -118,13 +118,36 @@ function buildWorkingDayCalendar(
   period: EnginePeriod,
   holidays: EngineHoliday[],
 ): CalendarResult {
-  // TODO: enumerate every calendar day in (period.payroll_month, period.payroll_year)
-  // TODO: exclude Sundays (day of week = 0)
-  // TODO: exclude dates present in holidays
-  // TODO: fullMonthWorkingDays = count before applying joining_date exclusion
-  // TODO: exclude dates before employee.joining_date → workingDays
-  // NOTE: all time comparisons must use IST (UTC+5:30)
-  throw new Error('buildWorkingDayCalendar: not implemented')
+  const { payroll_month, payroll_year } = period
+  const holidaySet = new Set(holidays.map(h => h.holiday_date))
+
+  // Build all YYYY-MM-DD strings for the month.
+  // Date.UTC(year, month, 0) gives the last day of the previous month,
+  // so using payroll_month (1-based) here gives last day of the target month.
+  const daysInMonth = new Date(Date.UTC(payroll_year, payroll_month, 0)).getUTCDate()
+  const mm = String(payroll_month).padStart(2, '0')
+
+  const allDays: string[] = []
+  for (let d = 1; d <= daysInMonth; d++) {
+    allDays.push(`${payroll_year}-${mm}-${String(d).padStart(2, '0')}`)
+  }
+
+  // Exclude Sundays (UTC day-of-week = 0) and holidays.
+  // UTC construction is correct here because dates are date-only values —
+  // day-of-week is the same in IST and UTC for any given calendar date.
+  const nonSundayNonHoliday = allDays.filter(date => {
+    const dow = new Date(`${date}T00:00:00Z`).getUTCDay()
+    return dow !== 0 && !holidaySet.has(date)
+  })
+
+  const fullMonthWorkingDays = nonSundayNonHoliday.length
+
+  // Exclude dates before joining_date. ISO date strings sort lexicographically.
+  const workingDays = employee.joining_date == null
+    ? nonSundayNonHoliday
+    : nonSundayNonHoliday.filter(date => date >= employee.joining_date!)
+
+  return { workingDays, fullMonthWorkingDays }
 }
 
 // ─── Step 4: Paid leave entitlement ──────────────────────────────────────────
@@ -133,11 +156,13 @@ function computePaidLeaveEntitlement(
   employee: EngineEmployee,
   calendar: CalendarResult,
 ): number {
-  // TODO: entitlement = 1 × (calendar.workingDays.length / calendar.fullMonthWorkingDays)
-  // TODO: round to nearest 0.5
-  // TODO: joining_date null → full-month employee, entitlement = 1
-  // Result is 0, 0.5, or 1
-  throw new Error('computePaidLeaveEntitlement: not implemented')
+  // No joining_date means the employee was present the full month.
+  if (employee.joining_date == null) return 1
+
+  const ratio = calendar.workingDays.length / calendar.fullMonthWorkingDays
+  // Round to nearest 0.5: multiply by 2, round, divide by 2.
+  // Result is clamped to [0, 1] by the ratio itself (workingDays ≤ fullMonthWorkingDays).
+  return Math.round(ratio * 2) / 2
 }
 
 // ─── Step 5: Classify attendance days ────────────────────────────────────────
