@@ -67,12 +67,12 @@ function parseXLS(buffer: Buffer): EmployeeBlock[] {
 
     // Rows relative to Empcode row:
     // +2 = day numbers (not needed, we use col index directly)
-    // +4 = IN, +5 = OUT, +6 = WORK, +8 = OT, +9 = Status
-    const inRow     = r + 4
-    const outRow    = r + 5
-    const workRow   = r + 6
-    const otRow     = r + 8
-    const statusRow = r + 9
+    // +3 = IN, +4 = OUT, +5 = WORK, +7 = OT, +8 = Status
+    const inRow     = r + 3
+    const outRow    = r + 4
+    const workRow   = r + 5
+    const otRow     = r + 7
+    const statusRow = r + 8
 
     const days: DayRecord[] = []
     for (let day = 1; day <= 31; day++) {
@@ -99,7 +99,9 @@ function parseXLS(buffer: Buffer): EmployeeBlock[] {
 
 // ─── Time helpers ─────────────────────────────────────────────────────────────
 
-// Convert "HH:MM" + date parts → ISO timestamp string, or null
+// Convert "HH:MM" IST + date parts → UTC ISO timestamp string, or null.
+// Fingerprint machine times are IST (UTC+5:30). We subtract 330 minutes so the
+// stored UTC value is correct. Date.UTC handles minute values outside 0-59.
 function toTimestamp(hhmm: string, year: number, month: number, day: number): string | null {
   if (!hhmm || hhmm === '--:--') return null
   const parts = hhmm.split(':')
@@ -107,7 +109,7 @@ function toTimestamp(hhmm: string, year: number, month: number, day: number): st
   const hh = parseInt(parts[0], 10)
   const mm = parseInt(parts[1], 10)
   if (isNaN(hh) || isNaN(mm)) return null
-  const d = new Date(Date.UTC(year, month - 1, day, hh, mm, 0))
+  const d = new Date(Date.UTC(year, month - 1, day, hh, mm - 330, 0))
   return isNaN(d.getTime()) ? null : d.toISOString()
 }
 

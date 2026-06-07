@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, CalendarClock, LogIn, LogOut as LogOutIcon,
-  Upload, Calculator, Wallet, MessageSquareWarning, Home, LogOut, Briefcase,
+  Upload, Calculator, Wallet, MessageSquareWarning, Home, LogOut, Briefcase, ClipboardList,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
@@ -42,6 +42,7 @@ export function AttendanceLayout({
     { label: 'Late Arrival',         path: '/attendance/late',     icon: <LogIn size={15} strokeWidth={1.8} /> },
     { label: 'Early Departure',      path: '/attendance/early',    icon: <LogOutIcon size={15} strokeWidth={1.8} /> },
     { label: 'Attendance Upload',    path: '/attendance/upload',   icon: <Upload size={15} strokeWidth={1.8} /> },
+    { label: 'Attendance Records',   path: '/attendance/records',  icon: <ClipboardList size={15} strokeWidth={1.8} /> },
     { label: 'Salary Calculation',   path: '/attendance/salary',   icon: <Calculator size={15} strokeWidth={1.8} /> },
     { label: 'My Salary',            path: '/attendance/my-salary', icon: <Wallet size={15} strokeWidth={1.8} /> },
     { label: 'Salary Concerns',      path: '/attendance/concerns', icon: <MessageSquareWarning size={15} strokeWidth={1.8} /> },
