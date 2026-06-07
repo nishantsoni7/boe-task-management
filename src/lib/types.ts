@@ -300,6 +300,14 @@ export type PayrollPendingAdjustment = {
   created_at: string
 }
 
+// ─── Payroll holidays ─────────────────────────────────────────────────────────
+export type PayrollHoliday = {
+  id: string
+  holiday_date: string   // ISO date string, e.g. "2026-08-15"
+  description: string | null
+  created_at: string
+}
+
 // ─── Activity log ─────────────────────────────────────────────────────────────
 export type LogEntry = {
   id: string
