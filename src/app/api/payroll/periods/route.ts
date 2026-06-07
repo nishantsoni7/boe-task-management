@@ -62,3 +62,58 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ periods: result })
 }
+
+// POST /api/payroll/periods
+// Creates a new payroll period for the given month/year.
+// Returns 409 if a period already exists for that month/year.
+export async function POST(req: NextRequest) {
+  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
+  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const svc = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+
+  const { data: { user: caller }, error: authErr } = await svc.auth.getUser(token)
+  if (authErr || !caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: callerProfile } = await svc
+    .from('users')
+    .select('role')
+    .eq('id', caller.id)
+    .single()
+  if (callerProfile?.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const body = await req.json().catch(() => null)
+  const month = Number(body?.month)
+  const year  = Number(body?.year)
+
+  if (!month || month < 1 || month > 12 || !year || year < 2000 || year > 2100) {
+    return NextResponse.json({ error: 'Invalid month or year' }, { status: 400 })
+  }
+
+  // Check for duplicate
+  const { data: existing } = await svc
+    .from('payroll_periods')
+    .select('id')
+    .eq('payroll_month', month)
+    .eq('payroll_year', year)
+    .maybeSingle()
+
+  if (existing) {
+    return NextResponse.json({ error: `Payroll period for this month already exists` }, { status: 409 })
+  }
+
+  const { data: created, error: insertErr } = await svc
+    .from('payroll_periods')
+    .insert({ payroll_month: month, payroll_year: year, status: 'draft' })
+    .select()
+    .single()
+
+  if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 })
+
+  return NextResponse.json({ period: created }, { status: 201 })
+}

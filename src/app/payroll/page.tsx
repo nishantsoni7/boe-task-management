@@ -54,12 +54,16 @@ function StatusBadge({ status }: { status: PayrollPeriodRow['status'] }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PayrollPage() {
-  const [profile,  setProfile]  = useState<UserProfile | null>(null)
-  const [periods,  setPeriods]  = useState<PayrollPeriodRow[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [token,    setToken]    = useState('')
-  const [busy,     setBusy]     = useState<Record<string, boolean>>({})
-  const [error,    setError]    = useState<string | null>(null)
+  const [profile,      setProfile]      = useState<UserProfile | null>(null)
+  const [periods,      setPeriods]      = useState<PayrollPeriodRow[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [token,        setToken]        = useState('')
+  const [busy,         setBusy]         = useState<Record<string, boolean>>({})
+  const [error,        setError]        = useState<string | null>(null)
+  const [createMonth,  setCreateMonth]  = useState(new Date().getMonth() + 1)
+  const [createYear,   setCreateYear]   = useState(new Date().getFullYear())
+  const [creating,     setCreating]     = useState(false)
+  const [createError,  setCreateError]  = useState<string | null>(null)
 
   const router  = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -142,6 +146,26 @@ export default function PayrollPage() {
     }
   }
 
+  const handleCreatePeriod = async () => {
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const res = await fetch('/api/payroll/periods', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ month: createMonth, year: createYear }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setCreateError(json.error ?? 'Failed to create period'); return }
+      await loadPeriods(token)
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
@@ -165,6 +189,73 @@ export default function PayrollPage() {
           {error}
         </div>
       )}
+
+      {/* Create Period */}
+      <div style={{
+        background: '#fff', borderRadius: 12,
+        border: '1px solid rgba(0,0,0,0.08)',
+        padding: '20px 24px', marginBottom: 20,
+      }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318', marginBottom: 14 }}>
+          Create Payroll Period
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Month</label>
+            <select
+              value={createMonth}
+              onChange={e => setCreateMonth(Number(e.target.value))}
+              style={{
+                padding: '7px 12px', borderRadius: 7, fontSize: 13,
+                border: '1px solid rgba(0,0,0,0.15)', background: '#fafafa',
+                color: '#111318', cursor: 'pointer', minWidth: 130,
+              }}
+            >
+              {MONTHS.map((m, i) => (
+                <option key={m} value={i + 1}>{m}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#6B7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Year</label>
+            <select
+              value={createYear}
+              onChange={e => setCreateYear(Number(e.target.value))}
+              style={{
+                padding: '7px 12px', borderRadius: 7, fontSize: 13,
+                border: '1px solid rgba(0,0,0,0.15)', background: '#fafafa',
+                color: '#111318', cursor: 'pointer', minWidth: 90,
+              }}
+            >
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleCreatePeriod}
+            disabled={creating}
+            style={{
+              padding: '7px 18px', borderRadius: 7, fontSize: 13, fontWeight: 700,
+              cursor: creating ? 'not-allowed' : 'pointer',
+              border: 'none',
+              background: creating ? 'rgba(0,0,0,0.08)' : '#1A2035',
+              color: creating ? '#8C94A6' : '#E8A030',
+            }}
+          >
+            {creating ? 'Creating…' : 'Create Period'}
+          </button>
+        </div>
+        {createError && (
+          <div style={{
+            marginTop: 10, padding: '7px 12px', borderRadius: 7,
+            background: 'rgba(239,68,68,0.08)', color: '#DC2626',
+            border: '1px solid rgba(239,68,68,0.2)', fontSize: 12.5,
+          }}>
+            {createError}
+          </div>
+        )}
+      </div>
 
       {/* Table card */}
       <div style={{
