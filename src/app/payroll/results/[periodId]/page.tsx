@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { DashboardLayout } from '@/components/layout/DashboardLayout'
+import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ export default function PayrollResultsPage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <DashboardLayout
+    <AttendanceLayout
       profile={profile}
       title="Payroll Results"
       subtitle="Results for this payroll period"
@@ -145,7 +146,7 @@ export default function PayrollResultsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
-                  {['Employee', 'Working Days', 'Gross Salary', 'Deductions', 'Adjustments', 'Net Salary', 'Status'].map(h => (
+                  {['Employee', 'Working Days', 'Gross Salary', 'Deductions', 'Adjustments', 'Net Salary', 'Status', ''].map(h => (
                     <th key={h} style={{
                       padding: '11px 16px', textAlign: 'left',
                       fontSize: 11.5, fontWeight: 700,
@@ -193,6 +194,20 @@ export default function PayrollResultsPage() {
                     <td style={{ padding: '12px 16px' }}>
                       <StatusBadge status={r.status} />
                     </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <Link
+                        href={`/payroll/results/${periodId}/${r.employee_id}`}
+                        style={{
+                          fontSize: 12.5, fontWeight: 600,
+                          color: '#4F6FD0', textDecoration: 'none',
+                          padding: '4px 10px', borderRadius: 6,
+                          border: '1px solid rgba(79,111,208,0.3)',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        View Details
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -200,6 +215,6 @@ export default function PayrollResultsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </AttendanceLayout>
   )
 }
