@@ -102,8 +102,14 @@ export type LeaveState = {
 
 export type EnginePendingAdjustment = {
   id: string
-  amount: number   // positive = credit, negative = deduction
+  amount: number   // positive = add to salary, negative = deduct from salary
   description: string
+}
+
+export type PendingAdjustmentsSummary = {
+  additions: number
+  deductions: number
+  net_adjustment: number
 }
 
 // ─── Engine output ────────────────────────────────────────────────────────────

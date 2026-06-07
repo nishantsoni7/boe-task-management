@@ -17,6 +17,7 @@ import type {
   LeaveState,
   PendingDeductionLine,
   TotalDeductions,
+  PendingAdjustmentsSummary,
 } from './types'
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
@@ -376,10 +377,19 @@ function computeGrossSalary(
 
 // ─── Step 11: Pending adjustments ────────────────────────────────────────────
 
-function sumPendingAdjustments(adjustments: EnginePendingAdjustment[]): number {
-  // TODO: return sum of all adjustment.amount values
-  // positive = credit, negative = deduction
-  throw new Error('sumPendingAdjustments: not implemented')
+function sumPendingAdjustments(adjustments: EnginePendingAdjustment[]): PendingAdjustmentsSummary {
+  let additions = 0
+  let deductions = 0
+
+  for (const adj of adjustments) {
+    if (adj.amount > 0) {
+      additions += adj.amount
+    } else if (adj.amount < 0) {
+      deductions += Math.abs(adj.amount)
+    }
+  }
+
+  return { additions, deductions, net_adjustment: additions - deductions }
 }
 
 // ─── Step 12: Net salary ──────────────────────────────────────────────────────
@@ -387,7 +397,7 @@ function sumPendingAdjustments(adjustments: EnginePendingAdjustment[]): number {
 function computeNetSalary(
   grossSalary: number,
   totalDeductions: TotalDeductions,
-  pendingAdjustmentTotal: number,
+  pendingAdjustmentTotal: PendingAdjustmentsSummary,
 ): number {
   // TODO: return grossSalary - totalDeductions + pendingAdjustmentTotal
   throw new Error('computeNetSalary: not implemented')
@@ -404,7 +414,7 @@ type AssembleParams = {
   dayResults: DayResult[]
   grossSalary: number
   totalDeductions: TotalDeductions
-  pendingAdjustmentTotal: number
+  pendingAdjustmentTotal: PendingAdjustmentsSummary
   netSalary: number
   pendingAdjustments: EnginePendingAdjustment[]
   paidLeaveAvailable: number
