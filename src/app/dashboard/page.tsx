@@ -54,14 +54,23 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      // In view-as mode, verify the logged-in user is still admin
       const loggedInId = session.user.id
-
-      // Use viewAs userId for data queries when active (admin must be logged in)
       const uid = viewAsUserId ?? loggedInId
       setCurrentUserId(uid)
 
-      const [{ data: callerProfile }, { data: taskData }] = await Promise.all([
+      const monthStart = new Date()
+      monthStart.setDate(1)
+      monthStart.setHours(0, 0, 0, 0)
+      const monthStartISO = monthStart.toISOString()
+
+      // Batch 1: profile + all user-specific task queries in one parallel round-trip
+      const [
+        { data: callerProfile },
+        { data: taskData },
+        { data: completedData },
+        { data: abmTasks },
+        { count: abmCompCount },
+      ] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
@@ -73,48 +82,6 @@ export default function DashboardPage() {
           .eq('assigned_to', uid)
           .not('status', 'eq', 'completed')
           .order('created_at', { ascending: false }),
-      ])
-
-      // Block non-admins from using view mode
-      if (viewAsUserId && callerProfile?.role !== 'admin') {
-        exitViewMode()
-        router.push('/dashboard')
-        return
-      }
-
-      // profile prop is always the logged-in user; DashboardLayout reads viewAsProfile from context
-      if (callerProfile) setProfile(callerProfile as UserProfile)
-      if (taskData) setTasks(taskData as unknown as Task[])
-
-      // Fetch names of task creators for "Assigned By" display on unacknowledged cards
-      if (taskData) {
-        const creatorIds = [...new Set(
-          (taskData as { created_by: string; assigned_to: string }[])
-            .filter(t => t.created_by !== uid)
-            .map(t => t.created_by)
-        )]
-        if (creatorIds.length > 0) {
-          const { data: creators } = await supabase
-            .from('users')
-            .select('id, full_name')
-            .in('id', creatorIds)
-          if (creators) {
-            const map: Record<string, string> = {}
-            for (const u of creators as { id: string; full_name: string }[]) {
-              map[u.id] = u.full_name
-            }
-            setAssignerNames(map)
-          }
-        }
-      }
-
-      // Counts + data for bottom summary cards and preview panels
-      const monthStart = new Date()
-      monthStart.setDate(1)
-      monthStart.setHours(0, 0, 0, 0)
-      const monthStartISO = monthStart.toISOString()
-
-      const [{ data: completedData }, { data: abmTasks }, { count: abmCompCount }] = await Promise.all([
         supabase
           .from('tasks')
           .select(TASK_COLUMNS)
@@ -136,6 +103,16 @@ export default function DashboardPage() {
           .eq('status', 'completed')
           .gte('last_update_at', monthStartISO),
       ])
+
+      // Block non-admins from using view mode
+      if (viewAsUserId && callerProfile?.role !== 'admin') {
+        exitViewMode()
+        router.push('/dashboard')
+        return
+      }
+
+      if (callerProfile) setProfile(callerProfile as UserProfile)
+      if (taskData) setTasks(taskData as unknown as Task[])
       if (completedData) {
         const completed = completedData as unknown as Task[]
         setMyCompletedCount(completed.length)
@@ -148,42 +125,62 @@ export default function DashboardPage() {
         setAssignedByMeComp(abmCompCount ?? 0)
       }
 
+      // Batch 2: role-specific queries + creator names — all in parallel
       const viewedProfile = viewAsProfile ?? callerProfile
-      if (viewedProfile?.role === 'admin') {
-        const [{ data: tUsers }, { data: eTasks }, { count: bCount }] = await Promise.all([
-          supabase.from('users').select('id, full_name').eq('is_active', true),
-          supabase
-            .from('tasks')
-            .select(TASK_COLUMNS)
-            .not('status', 'eq', 'completed'),
-          supabase
-            .from('tasks')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'blocked'),
-        ])
-        if (tUsers) setTeamUsers(tUsers as { id: string; full_name: string }[])
-        if (eTasks) setEscalationTasks(eTasks as unknown as Task[])
-        if (bCount != null) setBlockedCount(bCount)
-      } else if (viewedProfile?.role === 'manager') {
-        const { data: tUsers } = await supabase.from('users').select('id, full_name').eq('is_active', true)
-        if (tUsers) setTeamUsers(tUsers as { id: string; full_name: string }[])
-        // Use same scope as the preview drawer: only this manager's own blocked tasks
-        const { count: bCount } = await supabase
-          .from('tasks')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_to', uid)
-          .eq('status', 'blocked')
-        if (bCount != null) setBlockedCount(bCount)
-      } else {
-        // Normal user: count their own blocked tasks
-        const { count: bCount } = await supabase
-          .from('tasks')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_to', uid)
-          .eq('status', 'blocked')
-        if (bCount != null) setBlockedCount(bCount)
+      const creatorIds = [...new Set(
+        (taskData as { created_by: string; assigned_to: string }[] ?? [])
+          .filter(t => t.created_by !== uid)
+          .map(t => t.created_by)
+      )]
+
+      const batch2: Promise<unknown>[] = []
+
+      if (creatorIds.length > 0) {
+        batch2.push(
+          supabase.from('users').select('id, full_name').in('id', creatorIds).then(({ data: creators }: { data: { id: string; full_name: string }[] | null }) => {
+            if (creators) {
+              const map: Record<string, string> = {}
+              for (const u of creators) map[u.id] = u.full_name
+              setAssignerNames(map)
+            }
+          })
+        )
       }
 
+      type UserRow = { id: string; full_name: string }
+      type CountResult = { count: number | null }
+
+      if (viewedProfile?.role === 'admin') {
+        batch2.push(
+          supabase.from('users').select('id, full_name').eq('is_active', true).then(({ data: tUsers }: { data: UserRow[] | null }) => {
+            if (tUsers) setTeamUsers(tUsers)
+          }),
+          supabase.from('tasks').select(TASK_COLUMNS).not('status', 'eq', 'completed').then(({ data: eTasks }: { data: unknown[] | null }) => {
+            if (eTasks) {
+              const all = eTasks as unknown as Task[]
+              setEscalationTasks(all)
+              setBlockedCount(all.filter(t => t.status === 'blocked').length)
+            }
+          }),
+        )
+      } else if (viewedProfile?.role === 'manager') {
+        batch2.push(
+          supabase.from('users').select('id, full_name').eq('is_active', true).then(({ data: tUsers }: { data: UserRow[] | null }) => {
+            if (tUsers) setTeamUsers(tUsers)
+          }),
+          supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('assigned_to', uid).eq('status', 'blocked').then(({ count: bCount }: CountResult) => {
+            if (bCount != null) setBlockedCount(bCount)
+          }),
+        )
+      } else {
+        batch2.push(
+          supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('assigned_to', uid).eq('status', 'blocked').then(({ count: bCount }: CountResult) => {
+            if (bCount != null) setBlockedCount(bCount)
+          }),
+        )
+      }
+
+      await Promise.all(batch2)
       setLoading(false)
     }
     init()
@@ -238,22 +235,26 @@ export default function DashboardPage() {
   const allOverdueTasks = tasks.filter(t => isOverdue(t.due_date) && t.acknowledged_at)
   const actionRequired  = [...allOverdueTasks, ...unacknowledgedForMe]
 
-  const adminEscalations: { task: Task; owner: string; days: number; reason: string }[] = []
-  if (profile?.role === 'admin') {
+  const adminEscalations = useMemo(() => {
+    if ((viewAsProfile ?? profile)?.role !== 'admin') return []
+    const result: { task: Task; owner: string; days: number; reason: string }[] = []
+    const nowMs = Date.now()
+    const ms = 24 * 60 * 60 * 1000
     for (const t of escalationTasks) {
       const ref  = new Date(t.last_update_at ?? t.created_at)
-      const days = Math.floor((now.getTime() - ref.getTime()) / msPerDay)
+      const days = Math.floor((nowMs - ref.getTime()) / ms)
       const owner = userMap[t.assigned_to] ?? t.assigned_to.slice(0, 8)
       if (t.status === 'blocked' && days > 5) {
-        adminEscalations.push({ task: t, owner, days, reason: 'Blocked' })
+        result.push({ task: t, owner, days, reason: 'Blocked' })
       } else if (t.status === 'waiting' && days > 5) {
-        adminEscalations.push({ task: t, owner, days, reason: 'Waiting' })
+        result.push({ task: t, owner, days, reason: 'Waiting' })
       } else if (['working', 'pending', 'started'].includes(t.status) && days > 7) {
-        adminEscalations.push({ task: t, owner, days, reason: 'Stale' })
+        result.push({ task: t, owner, days, reason: 'Stale' })
       }
     }
-    adminEscalations.sort((a, b) => b.days - a.days)
-  }
+    result.sort((a, b) => b.days - a.days)
+    return result
+  }, [escalationTasks, userMap, profile, viewAsProfile])
 
   useEffect(() => {
     if (!selectedTask) return
@@ -569,8 +570,6 @@ export default function DashboardPage() {
           ]}
         />
 
-        {/* ── Tip bar ── */}
-        <TipBar />
       </DashboardLayout>
 
       {previewList && !selectedTask && (
@@ -1342,30 +1341,6 @@ function BottomSummaryBar({ items, isMobile }: { items: BottomSummaryItem[]; isM
           </div>
         </React.Fragment>
       ))}
-    </div>
-  )
-}
-
-function TipBar() {
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: '10px',
-      background: '#EFF6FF',
-      border: '1px solid #BFDBFE',
-      borderRadius: '8px',
-      padding: '10px 16px',
-      marginBottom: '8px',
-    }}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="8" x2="12" y2="12" />
-        <line x1="12" y1="16" x2="12.01" y2="16" />
-      </svg>
-      <span style={{ fontSize: '13px', color: '#1E40AF' }}>
-        <strong>Tip:</strong> Acknowledge tasks to update status, add notes, or mark as completed.
-      </span>
     </div>
   )
 }
