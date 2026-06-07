@@ -71,7 +71,11 @@ export default function AttendanceRecordsPage() {
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [records,   setRecords]   = useState<AttendanceRecord[]>([])
   const [fetching,  setFetching]  = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [token,     setToken]     = useState('')
+  const [total,     setTotal]     = useState<number | null>(null)
+  const [page,      setPage]      = useState(1)
+  const PAGE_SIZE = 50
 
   const [employeeId, setEmployeeId] = useState('')
   const [fromDate,   setFromDate]   = useState('')
@@ -108,25 +112,57 @@ export default function AttendanceRecordsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleSearch = async () => {
+  const fetchPage = async (targetPage: number) => {
     setFetching(true)
     const params = new URLSearchParams()
     if (employeeId) params.set('employee_id', employeeId)
     if (fromDate)   params.set('from', fromDate)
     if (toDate)     params.set('to', toDate)
+    params.set('page', String(targetPage))
 
     const res  = await fetch(`/api/attendance/records?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` },
     })
     const json = await res.json()
-    if (res.ok) setRecords(json.records)
+    if (res.ok) {
+      setRecords(json.records)
+      setTotal(json.total)
+      setPage(targetPage)
+    }
     setFetching(false)
+  }
+
+  const handleSearch = () => fetchPage(1)
+
+  const handleExportCSV = async () => {
+    setExporting(true)
+    const params = new URLSearchParams()
+    if (employeeId) params.set('employee_id', employeeId)
+    if (fromDate)   params.set('from', fromDate)
+    if (toDate)     params.set('to', toDate)
+    params.set('format', 'csv')
+
+    const res = await fetch(`/api/attendance/records?${params}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+    if (res.ok) {
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = 'attendance-records.csv'
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+    setExporting(false)
   }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
   }
+
+  const totalPages = total !== null ? Math.ceil(total / PAGE_SIZE) : 1
 
   if (loading) return <LoadingScreen />
 
@@ -219,6 +255,32 @@ export default function AttendanceRecordsPage() {
           </div>
         </div>
 
+        {/* ── Results header: count + export ── */}
+        {total !== null && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: colors.secondary }}>
+              {total} record{total !== 1 ? 's' : ''} found
+            </span>
+            <button
+              onClick={handleExportCSV}
+              disabled={exporting || total === 0}
+              style={{
+                padding: '7px 16px', fontSize: 12, fontWeight: 600, borderRadius: 7,
+                border: `1px solid ${colors.border}`, cursor: exporting || total === 0 ? 'not-allowed' : 'pointer',
+                background: colors.base, color: colors.primary, opacity: exporting || total === 0 ? 0.5 : 1,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              {exporting ? 'Exporting…' : 'Export CSV'}
+            </button>
+          </div>
+        )}
+
         {/* ── Table ── */}
         {records.length > 0 ? (
           <div style={{
@@ -274,8 +336,40 @@ export default function AttendanceRecordsPage() {
                 </tbody>
               </table>
             </div>
-            <div style={{ padding: '10px 16px', borderTop: `1px solid ${colors.border}`, fontSize: 12, color: colors.tertiary }}>
-              {records.length} record{records.length !== 1 ? 's' : ''}
+
+            {/* ── Pagination footer ── */}
+            <div style={{
+              padding: '12px 16px', borderTop: `1px solid ${colors.border}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              fontSize: 12, color: colors.tertiary,
+            }}>
+              <span>
+                Page {page} of {totalPages}
+              </span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => fetchPage(page - 1)}
+                  disabled={fetching || page <= 1}
+                  style={{
+                    padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6,
+                    border: `1px solid ${colors.border}`, cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                    background: colors.base, color: colors.primary, opacity: page <= 1 ? 0.4 : 1,
+                  }}
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => fetchPage(page + 1)}
+                  disabled={fetching || page >= totalPages}
+                  style={{
+                    padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6,
+                    border: `1px solid ${colors.border}`, cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+                    background: colors.base, color: colors.primary, opacity: page >= totalPages ? 0.4 : 1,
+                  }}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         ) : (
