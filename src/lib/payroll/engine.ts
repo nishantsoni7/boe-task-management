@@ -16,6 +16,7 @@ import type {
   PayrollRates,
   LeaveState,
   PendingDeductionLine,
+  TotalDeductions,
 } from './types'
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
@@ -356,12 +357,12 @@ function applyLeaveAbsorption(
 function computeTotalDeductions(
   leaveState: LeaveState,
   rates: PayrollRates,
-): number {
-  // TODO: absent_deduction     = leaveState.remaining_absent_days × rates.per_day_rate
-  // TODO: half_day_deduction   = leaveState.remaining_half_days × (rates.per_day_rate / 2)
-  // TODO: hourly_deduction     = leaveState.remaining_hourly_hours × rates.per_hour_rate
-  // TODO: return sum of all three
-  throw new Error('computeTotalDeductions: not implemented')
+): TotalDeductions {
+  const absent_deduction   = leaveState.remaining_absent_days  * rates.per_day_rate
+  const half_day_deduction = leaveState.remaining_half_days    * (rates.per_day_rate / 2)
+  const hourly_deduction   = leaveState.remaining_hourly_hours * rates.per_hour_rate
+  const total_deduction    = absent_deduction + half_day_deduction + hourly_deduction
+  return { absent_deduction, half_day_deduction, hourly_deduction, total_deduction }
 }
 
 // ─── Step 10: Gross salary with proration ────────────────────────────────────
@@ -390,7 +391,7 @@ function sumPendingAdjustments(adjustments: EnginePendingAdjustment[]): number {
 
 function computeNetSalary(
   grossSalary: number,
-  totalDeductions: number,
+  totalDeductions: TotalDeductions,
   pendingAdjustmentTotal: number,
 ): number {
   // TODO: return grossSalary - totalDeductions + pendingAdjustmentTotal
@@ -407,7 +408,7 @@ type AssembleParams = {
   leaveState: LeaveState
   dayResults: DayResult[]
   grossSalary: number
-  totalDeductions: number
+  totalDeductions: TotalDeductions
   pendingAdjustmentTotal: number
   netSalary: number
   pendingAdjustments: EnginePendingAdjustment[]

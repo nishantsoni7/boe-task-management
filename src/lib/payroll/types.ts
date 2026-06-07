@@ -149,6 +149,15 @@ export type EngineResult = {
   generated_at: string
 }
 
+// ─── Step 9: Deduction breakdown ─────────────────────────────────────────────
+
+export type TotalDeductions = {
+  absent_deduction: number
+  half_day_deduction: number
+  hourly_deduction: number
+  total_deduction: number
+}
+
 // ─── Guard failure ────────────────────────────────────────────────────────────
 
 export type EngineSkip = {
