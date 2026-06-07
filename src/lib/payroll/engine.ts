@@ -246,16 +246,56 @@ function aggregateMonthlyTotals(
   dayResults: DayResult[],
   calendar: CalendarResult,
 ): MonthlyAggregates {
-  // TODO: sum across all DayResults:
-  //   days_present (full_present + present_with_shortfall + short_present + missing_punch)
-  //   days_absent  (full_absent)
-  //   half_day_count
-  //   late_deduction_hours
-  //   short_hours_deduction
-  //   missing_punch_hours
-  // TODO: working_days_in_month = calendar.workingDays.length
-  // TODO: full_month_working_days = calendar.fullMonthWorkingDays
-  throw new Error('aggregateMonthlyTotals: not implemented')
+  let days_present = 0
+  let days_absent = 0
+  let half_day_count = 0
+  let late_deduction_hours = 0
+  let short_hours_deduction = 0
+  let missing_punch_hours = 0
+
+  for (const day of dayResults) {
+    switch (day.classification) {
+      case 'full_present':
+      case 'present_with_shortfall':
+      case 'short_present':
+      case 'missing_punch':
+        days_present++
+        break
+      case 'half_day':
+        days_present++
+        half_day_count++
+        break
+      case 'full_absent':
+        days_absent++
+        break
+    }
+
+    for (const line of day.deduction_lines) {
+      switch (line.deduction_type) {
+        case 'late_arrival':
+          late_deduction_hours += line.hours_deducted
+          break
+        case 'short_hours':
+          short_hours_deduction += line.hours_deducted
+          break
+        case 'missing_punch_in':
+        case 'missing_punch_out':
+          missing_punch_hours += line.hours_deducted
+          break
+      }
+    }
+  }
+
+  return {
+    working_days_in_month: calendar.workingDays.length,
+    full_month_working_days: calendar.fullMonthWorkingDays,
+    days_present,
+    days_absent,
+    half_day_count,
+    late_deduction_hours,
+    short_hours_deduction,
+    missing_punch_hours,
+  }
 }
 
 // ─── Steps 7 + 8: Leave absorption ───────────────────────────────────────────
