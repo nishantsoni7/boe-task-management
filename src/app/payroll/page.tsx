@@ -225,6 +225,7 @@ export default function PayrollPage() {
                         isBusy={!!busy[p.id]}
                         onGenerate={() => handleGenerate(p)}
                         onLock={() => handleLock(p)}
+                        onViewResults={() => router.push(`/payroll/results/${p.id}`)}
                       />
                     </td>
                   </tr>
@@ -245,11 +246,13 @@ type ActionButtonsProps = {
   isBusy: boolean
   onGenerate: () => void
   onLock: () => void
+  onViewResults: () => void
 }
 
-function ActionButtons({ period, isBusy, onGenerate, onLock }: ActionButtonsProps) {
-  const isLocked = period.status === 'locked'
-  const canLock  = period.status === 'generated'
+function ActionButtons({ period, isBusy, onGenerate, onLock, onViewResults }: ActionButtonsProps) {
+  const isLocked     = period.status === 'locked'
+  const canLock      = period.status === 'generated'
+  const hasResults   = period.status === 'generated' || period.status === 'locked'
 
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -286,16 +289,17 @@ function ActionButtons({ period, isBusy, onGenerate, onLock }: ActionButtonsProp
         {isLocked ? 'Locked' : 'Lock'}
       </button>
 
-      {/* View Results — placeholder */}
+      {/* View Results */}
       <button
-        disabled
-        title="Coming soon"
+        onClick={onViewResults}
+        disabled={!hasResults}
+        title={hasResults ? undefined : 'Generate payroll first'}
         style={{
           padding: '5px 12px', borderRadius: 6, fontSize: 12.5, fontWeight: 600,
-          cursor: 'not-allowed',
-          border: '1px solid rgba(0,0,0,0.08)',
-          background: 'rgba(0,0,0,0.03)',
-          color: '#8C94A6',
+          cursor: hasResults ? 'pointer' : 'not-allowed',
+          border: `1px solid ${hasResults ? 'rgba(59,130,246,0.35)' : 'rgba(0,0,0,0.08)'}`,
+          background: hasResults ? 'rgba(59,130,246,0.08)' : 'rgba(0,0,0,0.03)',
+          color: hasResults ? '#1D4ED8' : '#8C94A6',
           whiteSpace: 'nowrap',
         }}
       >
