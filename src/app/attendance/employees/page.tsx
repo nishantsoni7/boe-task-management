@@ -19,10 +19,12 @@ type EmployeeRow = Pick<
   | 'joining_date'
   | 'monthly_salary'
   | 'office_timing'
+  | 'fingerprint_employee_code'
 >
 
 type EditState = {
   employee_code: string
+  fingerprint_employee_code: string
   joining_date: string
   monthly_salary: string
   office_timing: string
@@ -87,10 +89,11 @@ function EditModal({
   onSaved: (updated: Partial<EmployeeRow>) => void
 }) {
   const [form, setForm] = useState<EditState>({
-    employee_code:  emp.employee_code  ?? '',
-    joining_date:   emp.joining_date   ?? '',
-    monthly_salary: emp.monthly_salary != null ? String(emp.monthly_salary) : '',
-    office_timing:  emp.office_timing  ?? '',
+    employee_code:             emp.employee_code             ?? '',
+    fingerprint_employee_code: emp.fingerprint_employee_code ?? '',
+    joining_date:              emp.joining_date              ?? '',
+    monthly_salary:            emp.monthly_salary != null ? String(emp.monthly_salary) : '',
+    office_timing:             emp.office_timing             ?? '',
   })
   const [saving, setSaving]   = useState(false)
   const [error,  setError]    = useState<string | null>(null)
@@ -110,21 +113,23 @@ function EditModal({
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          id:             emp.id,
-          employee_code:  form.employee_code,
-          joining_date:   form.joining_date,
-          monthly_salary: form.monthly_salary,
-          office_timing:  form.office_timing,
+          id:                        emp.id,
+          employee_code:             form.employee_code,
+          fingerprint_employee_code: form.fingerprint_employee_code,
+          joining_date:              form.joining_date,
+          monthly_salary:            form.monthly_salary,
+          office_timing:             form.office_timing,
         }),
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error ?? 'Update failed'); setSaving(false); return }
       setSuccess(true)
       onSaved({
-        employee_code:  form.employee_code  || null,
-        joining_date:   form.joining_date   || null,
-        monthly_salary: form.monthly_salary !== '' ? Number(form.monthly_salary) : null,
-        office_timing:  form.office_timing  || null,
+        employee_code:             form.employee_code             || null,
+        fingerprint_employee_code: form.fingerprint_employee_code || null,
+        joining_date:              form.joining_date              || null,
+        monthly_salary:            form.monthly_salary !== '' ? Number(form.monthly_salary) : null,
+        office_timing:             form.office_timing             || null,
       })
       setTimeout(onClose, 900)
     } catch {
@@ -190,6 +195,11 @@ function EditModal({
           <div>
             <label style={labelStyle}>Employee Code</label>
             <input style={inputStyle} value={form.employee_code} onChange={set('employee_code')} placeholder="e.g. BOE-001" />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Fingerprint Code</label>
+            <input style={inputStyle} value={form.fingerprint_employee_code} onChange={set('fingerprint_employee_code')} placeholder="e.g. 0014" />
           </div>
 
           <div>
@@ -418,7 +428,7 @@ export default function EmployeeMasterPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Emp. Code', 'Name', 'Department', 'Designation', 'Joining Date', 'Monthly Salary', 'Office Timing', 'Status', ...(showEdit ? [''] : [])].map((h, i) => (
+                  {['Emp. Code', 'Fingerprint Code', 'Name', 'Department', 'Designation', 'Joining Date', 'Monthly Salary', 'Office Timing', 'Status', ...(showEdit ? [''] : [])].map((h, i) => (
                     <th key={i} style={HEAD}>{h}</th>
                   ))}
                 </tr>
@@ -426,7 +436,7 @@ export default function EmployeeMasterPage() {
               <tbody>
                 {visible.length === 0 ? (
                   <tr>
-                    <td colSpan={showEdit ? 9 : 8} style={{ ...CELL, textAlign: 'center', color: colors.tertiary, padding: '40px 14px' }}>
+                    <td colSpan={showEdit ? 10 : 9} style={{ ...CELL, textAlign: 'center', color: colors.tertiary, padding: '40px 14px' }}>
                       No employees found.
                     </td>
                   </tr>
@@ -439,6 +449,9 @@ export default function EmployeeMasterPage() {
                   >
                     <td style={{ ...CELL, fontFamily: 'monospace', fontSize: 12, color: colors.tertiary }}>
                       {fmt(emp.employee_code)}
+                    </td>
+                    <td style={{ ...CELL, fontFamily: 'monospace', fontSize: 12, color: colors.tertiary }}>
+                      {fmt(emp.fingerprint_employee_code)}
                     </td>
                     <td style={{ ...CELL, fontWeight: 600 }}>{emp.full_name}</td>
                     <td style={CELL}>{fmt(emp.team)}</td>

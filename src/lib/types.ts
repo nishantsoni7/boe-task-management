@@ -60,6 +60,7 @@ export type UserProfile = {
   joining_date: string | null
   monthly_salary: number | null
   office_timing: string | null
+  fingerprint_employee_code: string | null
   is_deleted?: boolean
   deleted_at?: string | null
   deleted_by?: string | null

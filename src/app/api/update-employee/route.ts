@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null)
   if (!body?.id) return NextResponse.json({ error: 'Missing employee id' }, { status: 400 })
 
-  const { id, employee_code, joining_date, monthly_salary, office_timing } = body
+  const { id, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code } = body
 
   // Confirm employee exists in users table
   const { data: target, error: targetError } = await serviceClient
@@ -44,10 +44,11 @@ export async function PATCH(req: NextRequest) {
   }
 
   const patch: Record<string, unknown> = {}
-  if (employee_code  !== undefined) patch.employee_code  = employee_code  || null
-  if (joining_date   !== undefined) patch.joining_date   = joining_date   || null
-  if (monthly_salary !== undefined) patch.monthly_salary = monthly_salary !== '' ? Number(monthly_salary) : null
-  if (office_timing  !== undefined) patch.office_timing  = office_timing  || null
+  if (employee_code             !== undefined) patch.employee_code             = employee_code             || null
+  if (joining_date              !== undefined) patch.joining_date              = joining_date              || null
+  if (monthly_salary            !== undefined) patch.monthly_salary            = monthly_salary !== '' ? Number(monthly_salary) : null
+  if (office_timing             !== undefined) patch.office_timing             = office_timing             || null
+  if (fingerprint_employee_code !== undefined) patch.fingerprint_employee_code = fingerprint_employee_code || null
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
