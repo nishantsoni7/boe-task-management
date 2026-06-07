@@ -823,7 +823,7 @@ body {
 
 /* ── Sidebar — fixed, full height ── */
 .boe-sidebar {
-  width: 232px;
+  width: 260px;
   flex-shrink: 0;
   background: #F8F9FA;
   border-right: 1px solid rgba(0,0,0,0.07);
@@ -972,7 +972,7 @@ body {
 
 /* ── Main content — offset by sidebar width ── */
 .boe-main-content {
-  margin-left: 232px;
+  margin-left: 260px;
   flex: 1;
   min-height: 100vh;
   display: flex;

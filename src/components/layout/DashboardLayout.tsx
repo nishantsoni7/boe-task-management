@@ -110,83 +110,43 @@ export function DashboardLayout({
           </div>
         </div>
 
-        {/* Top-level nav */}
+        {/* Main nav */}
         <div className="boe-sidebar-section">
+          {/* 1. Dashboard */}
           <NavLeaf
             label="Dashboard"
             icon={<LayoutDashboard size={15} strokeWidth={1.8} />}
             active={pathname === '/dashboard'}
             onClick={() => navTo('/dashboard')}
           />
-        </div>
 
-        {/* Performance */}
-        <div className="boe-sidebar-section">
-          {isAdminOrManager ? (
-            <>
-              <NavParent
-                label="Performance"
-                icon={<TrendingUp size={15} strokeWidth={1.8} />}
-                active={pathname.startsWith('/performance')}
-              />
-              <NavGroup>
-                <NavChild
-                  label="My Performance"
-                  active={pathname === '/performance'}
-                  onClick={() => navTo('/performance')}
-                />
-                <NavChild
-                  label="Team Performance"
-                  active={pathname === '/performance/team'}
-                  onClick={() => navTo('/performance/team')}
-                />
-              </NavGroup>
-            </>
-          ) : (
-            <NavLeaf
-              label="Performance"
-              icon={<TrendingUp size={15} strokeWidth={1.8} />}
-              active={pathname.startsWith('/performance')}
-              onClick={() => navTo('/performance')}
-            />
-          )}
-        </div>
-
-        {/* Tasks section */}
-        <div className="boe-sidebar-section">
-          <div className="boe-sidebar-label">Tasks</div>
-
-          {/* New Task — hidden in view mode (read-only) */}
+          {/* 2. New Task — hidden in view mode (read-only) */}
           {!inViewMode && (
-            <>
-              <NavParent
-                label="New Task"
-                icon={<PlusCircle size={15} strokeWidth={1.8} />}
-                active={pathname === '/tasks/create-self' || pathname === '/tasks/create'}
+            <CollapsibleNav
+              label="New Task"
+              icon={<PlusCircle size={15} strokeWidth={1.8} />}
+              active={pathname === '/tasks/create-self' || pathname === '/tasks/create'}
+            >
+              <NavChild
+                label="Self Task"
+                active={pathname === '/tasks/create-self'}
+                onClick={() => navTo('/tasks/create-self')}
               />
-              <NavGroup>
-                <NavChild
-                  label="Self Task"
-                  active={pathname === '/tasks/create-self'}
-                  onClick={() => navTo('/tasks/create-self')}
-                />
-                <NavChild
-                  label="Delegate Task"
-                  active={pathname === '/tasks/create'}
-                  onClick={() => navTo('/tasks/create')}
-                />
-              </NavGroup>
-            </>
+              <NavChild
+                label="Delegate Task"
+                active={pathname === '/tasks/create'}
+                onClick={() => navTo('/tasks/create')}
+              />
+            </CollapsibleNav>
           )}
 
-          {/* My Tasks */}
-          <NavParent
+          {/* 3. My Tasks */}
+          <CollapsibleNav
             label="My Tasks"
             icon={<ClipboardList size={15} strokeWidth={1.8} />}
             active={pathname === '/tasks/my' || pathname === '/tasks/my/completed'}
             count={taskCounts ? (taskCounts.myInProgress ?? 0) + (taskCounts.myCompleted ?? 0) : undefined}
-          />
-          <NavGroup>
+          >
             <NavChild
               label="In Progress"
               active={pathname === '/tasks/my'}
@@ -199,16 +159,15 @@ export function DashboardLayout({
               onClick={() => navTo('/tasks/my/completed')}
               count={taskCounts?.myCompleted}
             />
-          </NavGroup>
+          </CollapsibleNav>
 
-          {/* Assigned By Me */}
-          <NavParent
+          {/* 4. Assigned By Me */}
+          <CollapsibleNav
             label="Assigned By Me"
             icon={<CheckSquare size={15} strokeWidth={1.8} />}
             active={pathname === '/tasks/assigned-by-me' || pathname === '/tasks/assigned-by-me/completed'}
             count={taskCounts?.assignedByMeInProgress}
-          />
-          <NavGroup>
+          >
             <NavChild
               label="In Progress"
               active={pathname === '/tasks/assigned-by-me'}
@@ -220,45 +179,69 @@ export function DashboardLayout({
               active={pathname === '/tasks/assigned-by-me/completed'}
               onClick={() => navTo('/tasks/assigned-by-me/completed')}
             />
-          </NavGroup>
-        </div>
+          </CollapsibleNav>
 
-        {/* Admin section — hidden when in view mode as non-admin */}
-        {isAdmin && !inViewMode && (
-          <div className="boe-sidebar-section" style={{ borderTop: '1px solid rgba(0,0,0,0.07)', paddingTop: '4px' }}>
-            <div className="boe-sidebar-label">Admin</div>
-
-            <NavParent
-              label="Settings"
-              icon={<Settings size={15} strokeWidth={1.8} />}
-              active={pathname.startsWith('/settings') || pathname === '/admin/members'}
-            />
-            <NavGroup>
+          {/* 5. Performance */}
+          {isAdminOrManager ? (
+            <CollapsibleNav
+              label="Performance"
+              icon={<TrendingUp size={15} strokeWidth={1.8} />}
+              active={pathname.startsWith('/performance')}
+            >
               <NavChild
-                label="Members"
-                active={pathname === '/admin/members'}
-                onClick={() => navTo('/admin/members')}
+                label="My Performance"
+                active={pathname === '/performance'}
+                onClick={() => navTo('/performance')}
               />
               <NavChild
-                label="Roles"
-                active={pathname.startsWith('/settings/roles')}
-                onClick={() => navTo('/settings/roles')}
+                label="Team Performance"
+                active={pathname === '/performance/team'}
+                onClick={() => navTo('/performance/team')}
               />
-              <NavChild
-                label="Positions"
-                active={pathname.startsWith('/settings/positions')}
-                onClick={() => navTo('/settings/positions')}
-              />
-            </NavGroup>
-
+            </CollapsibleNav>
+          ) : (
             <NavLeaf
-              label="Super Admin"
-              icon={<ShieldCheck size={15} strokeWidth={1.8} />}
-              active={pathname === '/super-admin'}
-              onClick={() => navTo('/super-admin')}
+              label="Performance"
+              icon={<TrendingUp size={15} strokeWidth={1.8} />}
+              active={pathname.startsWith('/performance')}
+              onClick={() => navTo('/performance')}
             />
-          </div>
-        )}
+          )}
+
+          {/* 6 & 7. Settings + Super Admin — admin only, hidden in view mode */}
+          {isAdmin && !inViewMode && (
+            <>
+              <CollapsibleNav
+                label="Settings"
+                icon={<Settings size={15} strokeWidth={1.8} />}
+                active={pathname.startsWith('/settings') || pathname === '/admin/members'}
+              >
+                <NavChild
+                  label="Members"
+                  active={pathname === '/admin/members'}
+                  onClick={() => navTo('/admin/members')}
+                />
+                <NavChild
+                  label="Roles"
+                  active={pathname.startsWith('/settings/roles')}
+                  onClick={() => navTo('/settings/roles')}
+                />
+                <NavChild
+                  label="Positions"
+                  active={pathname.startsWith('/settings/positions')}
+                  onClick={() => navTo('/settings/positions')}
+                />
+              </CollapsibleNav>
+
+              <NavLeaf
+                label="Super Admin"
+                icon={<ShieldCheck size={15} strokeWidth={1.8} />}
+                active={pathname === '/super-admin'}
+                onClick={() => navTo('/super-admin')}
+              />
+            </>
+          )}
+        </div>
 
         {/* ── Bottom profile / account section ── */}
         {profile && (
@@ -508,34 +491,49 @@ export function DashboardLayout({
   )
 }
 
-// ─── NavParent ────────────────────────────────────────────────────────────────
-type NavParentProps = { label: string; active: boolean; count?: number; icon?: React.ReactNode }
+// ─── CollapsibleNav ───────────────────────────────────────────────────────────
+type CollapsibleNavProps = {
+  label: string
+  active: boolean
+  count?: number
+  icon?: React.ReactNode
+  children: React.ReactNode
+}
 
-function NavParent({ label, active, count, icon }: NavParentProps) {
+function CollapsibleNav({ label, active, count, icon, children }: CollapsibleNavProps) {
+  const [open, setOpen] = useState(active)
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '7px 10px', borderRadius: '7px',
-      fontSize: '13px', fontWeight: 500,
-      color: active ? '#111318' : '#3D4455',
-      userSelect: 'none',
-      background: active ? 'rgba(0,0,0,0.04)' : 'transparent',
-      marginBottom: '1px',
-    }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span style={{ color: active ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
-          {icon}
+    <>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%',
+          padding: '7px 10px', borderRadius: '7px',
+          fontSize: '13px', fontWeight: 500,
+          color: active ? '#111318' : '#3D4455',
+          background: active ? 'rgba(0,0,0,0.04)' : 'transparent',
+          border: 'none', cursor: 'pointer',
+          marginBottom: '1px',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ color: active ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+            {icon}
+          </span>
+          {label}
+          {count != null && count > 0 && (
+            <span style={{
+              fontSize: '10px', fontWeight: 600, color: '#8C94A6',
+              background: 'rgba(0,0,0,0.07)', borderRadius: '999px', padding: '1px 6px', lineHeight: '15px',
+            }}>{count}</span>
+          )}
         </span>
-        {label}
-        {count != null && count > 0 && (
-          <span style={{
-            fontSize: '10px', fontWeight: 600, color: '#8C94A6',
-            background: 'rgba(0,0,0,0.07)', borderRadius: '999px', padding: '1px 6px', lineHeight: '15px',
-          }}>{count}</span>
-        )}
-      </span>
-      <ChevronRight size={12} strokeWidth={2} style={{ opacity: 0.4, transform: 'rotate(90deg)' }} />
-    </div>
+        <ChevronRight size={12} strokeWidth={2} style={{ opacity: 0.4, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />
+      </button>
+      {open && <NavGroup>{children}</NavGroup>}
+    </>
   )
 }
 
