@@ -36,6 +36,7 @@ export type Task = {
   waiting_on_user_id: string | null
   waiting_on_text: string | null
   team: string
+  attachment_url: string | null
   // Manager view enrichment (joined from assignee relation)
   is_stale?: boolean
   stale_day_count?: number

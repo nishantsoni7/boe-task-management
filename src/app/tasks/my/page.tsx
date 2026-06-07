@@ -757,10 +757,9 @@ export default function MyTasksPage() {
       const uid = viewAsUserId ?? loggedInId
       setUserId(uid)
 
-      const [{ data: callerProfile }, { data: tasks }, { data: userData }] = await Promise.all([
+      const [{ data: callerProfile }, { data: tasks }] = await Promise.all([
         supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', loggedInId).single(),
         supabase.from('tasks').select(TASK_COLUMNS).eq('assigned_to', uid).order('due_date', { ascending: true, nullsFirst: false }),
-        supabase.from('users').select('id, full_name'),
       ])
 
       if (viewAsUserId && callerProfile?.role !== 'admin') {
@@ -771,10 +770,20 @@ export default function MyTasksPage() {
 
       if (callerProfile) setProfile(callerProfile as UserProfile)
       setAllTasks((tasks ?? []) as unknown as Task[])
-      if (userData) {
-        const map: Record<string, string> = {}
-        for (const u of userData) map[u.id] = u.full_name
-        setUserMap(map)
+
+      // Only fetch user records for the unique creators that actually appear in this
+      // user's task list — avoids pulling down every user in the org.
+      const creatorIds = [...new Set((tasks ?? []).map((t: { created_by: string }) => t.created_by))]
+      if (creatorIds.length > 0) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('id, full_name')
+          .in('id', creatorIds)
+        if (userData) {
+          const map: Record<string, string> = {}
+          for (const u of userData) map[u.id] = u.full_name
+          setUserMap(map)
+        }
       }
       setLoading(false)
     }

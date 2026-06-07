@@ -349,6 +349,36 @@ export default function TaskDetailPage() {
                   No task description added.
                 </p>
               )}
+
+              {/* Attachment */}
+              {task.attachment_url && (
+                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    fontSize: '10px', fontWeight: 700,
+                    letterSpacing: '0.08em', textTransform: 'uppercase',
+                    color: colors.muted, flexShrink: 0,
+                  }}>
+                    Attachment
+                  </span>
+                  <a
+                    href={task.attachment_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '5px',
+                      fontSize: '12px', fontWeight: 500,
+                      color: colors.blue,
+                      textDecoration: 'none',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      border: `1px solid ${colors.blueTint}`,
+                      background: colors.blueTint,
+                    }}
+                  >
+                    View Attachment
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* § Current Status */}
