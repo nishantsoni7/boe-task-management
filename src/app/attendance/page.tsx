@@ -13,9 +13,9 @@ import Link from 'next/link'
 
 type DashboardCounts = {
   total: number
+  present_today: number
   checked_in: number
-  checked_out: number
-  not_checked_in: number
+  absent_today: number
 }
 
 // ─── Module cards ─────────────────────────────────────────────────────────────
@@ -127,14 +127,14 @@ export default function AttendancePage() {
         {/* ── Stat cards ── */}
         {counts ? (
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 28 }}>
-            <StatCard label="Total Employees"  value={counts.total}           accent={colors.primary} />
-            <StatCard label="Checked In Today" value={counts.checked_in}      accent="#3B82F6" />
-            <StatCard label="Checked Out"      value={counts.checked_out}     accent="#10B981" />
-            <StatCard label="Not Checked In"   value={counts.not_checked_in}  accent="#F59E0B" />
+            <StatCard label="Total Employees" value={counts.total}         accent={colors.primary} />
+            <StatCard label="Present Today"   value={counts.present_today} accent="#10B981" />
+            <StatCard label="Checked In"      value={counts.checked_in}    accent="#3B82F6" />
+            <StatCard label="Absent Today"    value={counts.absent_today}  accent="#EF4444" />
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 28 }}>
-            {['Total Employees', 'Checked In Today', 'Checked Out', 'Not Checked In'].map(label => (
+            {['Total Employees', 'Present Today', 'Checked In', 'Absent Today'].map(label => (
               <div key={label} style={{
                 background: colors.base, border: `1px solid ${colors.border}`,
                 borderRadius: 10, padding: '18px 20px', flex: 1, minWidth: 130,
