@@ -55,6 +55,11 @@ export type UserProfile = {
   position: string | null
   is_active: boolean
   created_at: string
+  // Employee Master V1 fields (nullable — backfilled gradually)
+  employee_code: string | null
+  joining_date: string | null
+  monthly_salary: number | null
+  office_timing: string | null
   is_deleted?: boolean
   deleted_at?: string | null
   deleted_by?: string | null

@@ -10,7 +10,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 
 const MODULE_CARDS = [
-  { title: 'Employee Master',    description: 'View and manage employee records.',         dotColor: colors.blue   },
+  { title: 'Employee Master',    description: 'View and manage employee records.',         dotColor: colors.blue,  href: '/attendance/employees' },
   { title: 'Leave Requests',     description: 'Submit and track leave applications.',       dotColor: colors.green  },
   { title: 'Late Arrival',       description: 'Log and review late arrival records.',       dotColor: '#F59E0B'     },
   { title: 'Early Departure',    description: 'Log and review early departure records.',    dotColor: '#F97316'     },
@@ -65,17 +65,18 @@ export default function AttendancePage() {
           Back to Home
         </Link>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {MODULE_CARDS.map(card => (
-            <div
-              key={card.title}
-              style={{
-                background: colors.base,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 10,
-                padding: '20px',
-                cursor: 'default',
-              }}
-            >
+          {MODULE_CARDS.map(card => {
+            const inner = (
+              <div
+                key={card.title}
+                style={{
+                  background: colors.base,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 10,
+                  padding: '20px',
+                  cursor: card.href ? 'pointer' : 'default',
+                }}
+              >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                 <span style={{
                   width: 10, height: 10, borderRadius: '50%',
@@ -89,7 +90,11 @@ export default function AttendancePage() {
                 {card.description}
               </p>
             </div>
-          ))}
+            )
+            return card.href
+              ? <Link key={card.title} href={card.href} style={{ textDecoration: 'none' }}>{inner}</Link>
+              : <div key={card.title}>{inner}</div>
+          })}
         </div>
       </div>
     </AttendanceLayout>
