@@ -30,6 +30,15 @@ type EditState = {
   office_timing: string
 }
 
+type AddState = {
+  full_name: string
+  employee_code: string
+  fingerprint_employee_code: string
+  team: string
+}
+
+const TEAMS = ['sales', 'operations', 'design', 'purchase', 'bdm', 'management']
+
 const OFFICE_TIMINGS = [
   { value: 'General Shift',  label: 'General Shift — 10:00 AM – 06:30 PM' },
   { value: 'Factory Shift',  label: 'Factory Shift — 09:00 AM – 06:00 PM' },
@@ -73,6 +82,173 @@ function fmtDate(val: string | null | undefined) {
 
 function canEdit(role: string | undefined) {
   return role === 'admin' || role === 'manager'
+}
+
+// ─── Add Employee Modal ───────────────────────────────────────────────────────
+
+function AddModal({
+  token,
+  onClose,
+  onCreated,
+}: {
+  token: string
+  onClose: () => void
+  onCreated: (emp: EmployeeRow) => void
+}) {
+  const [form, setForm] = useState<AddState>({
+    full_name: '', employee_code: '', fingerprint_employee_code: '', team: '',
+  })
+  const [saving, setSaving]   = useState(false)
+  const [error,  setError]    = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  const set = (key: keyof AddState) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(f => ({ ...f, [key]: e.target.value }))
+
+  const handleCreate = async () => {
+    if (!form.full_name.trim())     { setError('Name is required'); return }
+    if (!form.employee_code.trim()) { setError('Employee HR code is required'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const res  = await fetch('/api/create-employee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(form),
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error ?? 'Create failed'); setSaving(false); return }
+      setSuccess(true)
+      onCreated({
+        id:                        json.id,
+        full_name:                 form.full_name.trim(),
+        employee_code:             form.employee_code.trim() || null,
+        fingerprint_employee_code: form.fingerprint_employee_code.trim() || null,
+        team:                      form.team.trim() || '',
+        position:                  null,
+        is_active:                 true,
+        joining_date:              null,
+        monthly_salary:            null,
+        office_timing:             null,
+      })
+      setTimeout(onClose, 900)
+    } catch {
+      setError('Network error, please retry.')
+      setSaving(false)
+    }
+  }
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 600, color: colors.tertiary,
+    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4, display: 'block',
+  }
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '8px 10px', fontSize: 13,
+    border: `1px solid ${colors.border}`, borderRadius: 7,
+    background: colors.base, color: colors.primary, outline: 'none',
+    boxSizing: 'border-box',
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.35)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{
+        background: colors.base,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 12,
+        width: '100%', maxWidth: 460,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '16px 20px',
+          borderBottom: `1px solid ${colors.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: colors.primary }}>Add Attendance Employee</div>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: colors.tertiary, lineHeight: 1, padding: 4 }}
+            aria-label="Close"
+          >×</button>
+        </div>
+
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={labelStyle}>Full Name <span style={{ color: '#EF4444' }}>*</span></label>
+            <input style={inputStyle} value={form.full_name} onChange={set('full_name')} placeholder="e.g. Ashok Choudhary" autoFocus />
+          </div>
+          <div>
+            <label style={labelStyle}>Employee HR Code <span style={{ color: '#EF4444' }}>*</span></label>
+            <input style={inputStyle} value={form.employee_code} onChange={set('employee_code')} placeholder="e.g. BOE-017" />
+          </div>
+          <div>
+            <label style={labelStyle}>Fingerprint Code</label>
+            <input style={inputStyle} value={form.fingerprint_employee_code} onChange={set('fingerprint_employee_code')} placeholder="e.g. 0017" />
+            <div style={{ fontSize: 11, color: colors.tertiary, marginTop: 4 }}>
+              Machine code from fingerprint export (0017, 0027 …)
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Department / Team</label>
+            <select style={inputStyle} value={form.team} onChange={e => setForm(f => ({ ...f, team: e.target.value }))}>
+              <option value="">— Select team —</option>
+              {TEAMS.map(t => (
+                <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{t.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+          </div>
+
+          {error && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 7, fontSize: 13,
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+              color: '#DC2626',
+            }}>{error}</div>
+          )}
+          {success && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 7, fontSize: 13,
+              background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)',
+              color: '#059669',
+            }}>Employee created successfully!</div>
+          )}
+        </div>
+
+        <div style={{
+          padding: '12px 20px',
+          borderTop: `1px solid ${colors.border}`,
+          display: 'flex', justifyContent: 'flex-end', gap: 10,
+        }}>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{
+              padding: '8px 18px', fontSize: 13, borderRadius: 7, cursor: 'pointer',
+              border: `1px solid ${colors.border}`, background: 'transparent', color: colors.secondary,
+            }}
+          >Cancel</button>
+          <button
+            onClick={handleCreate}
+            disabled={saving || success}
+            style={{
+              padding: '8px 18px', fontSize: 13, fontWeight: 600, borderRadius: 7,
+              cursor: saving || success ? 'not-allowed' : 'pointer',
+              border: 'none', background: '#3B82F6', color: '#fff',
+              opacity: saving || success ? 0.7 : 1,
+            }}
+          >{saving ? 'Creating…' : 'Create Employee'}</button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
@@ -279,6 +455,7 @@ export default function EmployeeMasterPage() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [token, setToken]         = useState('')
   const [editEmp, setEditEmp]     = useState<EmployeeRow | null>(null)
+  const [showAdd, setShowAdd]     = useState(false)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
@@ -320,6 +497,10 @@ export default function EmployeeMasterPage() {
 
   const handleSaved = (id: string, updated: Partial<EmployeeRow>) => {
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e))
+  }
+
+  const handleCreated = (emp: EmployeeRow) => {
+    setEmployees(prev => [...prev, emp])
   }
 
   const visible = useMemo(() => {
@@ -415,6 +596,19 @@ export default function EmployeeMasterPage() {
           <span style={{ fontSize: 12, color: colors.tertiary, whiteSpace: 'nowrap' }}>
             {visible.length} employee{visible.length !== 1 ? 's' : ''}
           </span>
+
+          {showEdit && (
+            <button
+              onClick={() => setShowAdd(true)}
+              style={{
+                padding: '7px 16px', fontSize: 13, fontWeight: 600, borderRadius: 8,
+                border: 'none', background: '#3B82F6', color: '#fff', cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              + Add Employee
+            </button>
+          )}
         </div>
 
         {/* Table */}
@@ -496,6 +690,14 @@ export default function EmployeeMasterPage() {
         </div>
 
       </div>
+
+      {showAdd && (
+        <AddModal
+          token={token}
+          onClose={() => setShowAdd(false)}
+          onCreated={emp => { handleCreated(emp); }}
+        />
+      )}
 
       {editEmp && (
         <EditModal

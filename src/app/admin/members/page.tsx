@@ -10,7 +10,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 
-const TEAMS = ['sales', 'after_sales', 'operations', 'design', 'purchase', 'procurement', 'bdm', 'management', 'production', 'accounts', 'dispatch']
+const TEAMS = ['sales', 'operations', 'design', 'purchase', 'bdm', 'management']
 const ROLES = ['member', 'manager', 'admin'] as const
 
 const AVATAR_COLORS = [

@@ -1,63 +1,118 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import * as XLSX from 'xlsx'
 
 const ALLOWED_ROLES = ['admin', 'manager']
 
-// ─── CSV helpers ──────────────────────────────────────────────────────────────
+// ─── XLS parser ───────────────────────────────────────────────────────────────
 
-function parseCSV(text: string): Record<string, string>[] {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
-  const nonEmpty = lines.map(l => l.trim()).filter(Boolean)
-  if (nonEmpty.length < 2) return []
-
-  const headers = nonEmpty[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
-  const rows: Record<string, string>[] = []
-
-  for (let i = 1; i < nonEmpty.length; i++) {
-    const cells = splitCSVLine(nonEmpty[i])
-    if (cells.length === 0) continue
-    const row: Record<string, string> = {}
-    headers.forEach((h, idx) => { row[h] = (cells[idx] ?? '').trim().replace(/"/g, '') })
-    rows.push(row)
-  }
-  return rows
+type DayRecord = {
+  day: number
+  in: string
+  out: string
+  work: string
+  ot: string
+  status: string
 }
 
-// Handles quoted fields with commas inside them
-function splitCSVLine(line: string): string[] {
-  const result: string[] = []
-  let current = ''
-  let inQuotes = false
-  for (const ch of line) {
-    if (ch === '"') { inQuotes = !inQuotes }
-    else if (ch === ',' && !inQuotes) { result.push(current); current = '' }
-    else { current += ch }
-  }
-  result.push(current)
-  return result
+type EmployeeBlock = {
+  empcode: string
+  name: string
+  year: number
+  month: number // 1-based
+  days: DayRecord[]
 }
 
-// Normalise a time-only string ("09:30" or "09:30:00") combined with a date
-// into a full ISO timestamp. If the value already looks like an ISO datetime,
-// return as-is. Returns null for empty/invalid values.
-function toTimestamp(value: string, date: string): string | null {
-  if (!value) return null
-  const v = value.trim()
-  if (!v) return null
-
-  // Already a full datetime (contains T or a space + time after the date part)
-  if (v.includes('T') || (v.length > 10 && v[10] === ' ')) {
-    const d = new Date(v)
-    return isNaN(d.getTime()) ? null : d.toISOString()
+function parseMonthYear(sheet: XLSX.WorkSheet): { year: number; month: number } | null {
+  // Scan first few rows for a cell containing a month name pattern like "May-2026"
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const range = XLSX.utils.decode_range(sheet['!ref'] ?? 'A1')
+  for (let r = range.s.r; r <= Math.min(range.e.r, 10); r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })]
+      if (!cell) continue
+      const v = String(cell.v ?? '')
+      const m = v.match(/(\w{3})-(\d{4})/)
+      if (m) {
+        const monthIdx = monthNames.findIndex(n => n.toLowerCase() === m[1].toLowerCase())
+        if (monthIdx !== -1) return { year: parseInt(m[2]), month: monthIdx + 1 }
+      }
+    }
   }
-
-  // Time-only: HH:MM or HH:MM:SS
-  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(v)) {
-    const d = new Date(`${date}T${v.length === 5 ? v + ':00' : v}`)
-    return isNaN(d.getTime()) ? null : d.toISOString()
-  }
-
   return null
+}
+
+function cellStr(sheet: XLSX.WorkSheet, r: number, c: number): string {
+  const cell = sheet[XLSX.utils.encode_cell({ r, c })]
+  if (!cell) return ''
+  return String(cell.v ?? '').trim()
+}
+
+function parseXLS(buffer: Buffer): EmployeeBlock[] {
+  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  const monthYear = parseMonthYear(ws)
+  if (!monthYear) throw new Error('Could not detect report month/year from file')
+
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
+  const blocks: EmployeeBlock[] = []
+
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const col0 = cellStr(ws, r, 0)
+    if (col0 !== 'Empcode') continue
+
+    const empcode = cellStr(ws, r, 2).trim()
+    const name    = cellStr(ws, r, 7).trim()
+    if (!empcode) continue
+
+    // Rows relative to Empcode row:
+    // +2 = day numbers (not needed, we use col index directly)
+    // +4 = IN, +5 = OUT, +6 = WORK, +8 = OT, +9 = Status
+    const inRow     = r + 4
+    const outRow    = r + 5
+    const workRow   = r + 6
+    const otRow     = r + 8
+    const statusRow = r + 9
+
+    const days: DayRecord[] = []
+    for (let day = 1; day <= 31; day++) {
+      const c   = day // col 1 = day 1, col 2 = day 2, …, col 31 = day 31
+      const inV = cellStr(ws, inRow, c)
+      // Skip days with no punch data
+      if (!inV || inV === '--:--') continue
+
+      days.push({
+        day,
+        in:     inV,
+        out:    cellStr(ws, outRow, c),
+        work:   cellStr(ws, workRow, c),
+        ot:     cellStr(ws, otRow, c),
+        status: cellStr(ws, statusRow, c),
+      })
+    }
+
+    blocks.push({ empcode, name, year: monthYear.year, month: monthYear.month, days })
+  }
+
+  return blocks
+}
+
+// ─── Time helpers ─────────────────────────────────────────────────────────────
+
+// Convert "HH:MM" + date parts → ISO timestamp string, or null
+function toTimestamp(hhmm: string, year: number, month: number, day: number): string | null {
+  if (!hhmm || hhmm === '--:--') return null
+  const parts = hhmm.split(':')
+  if (parts.length < 2) return null
+  const hh = parseInt(parts[0], 10)
+  const mm = parseInt(parts[1], 10)
+  if (isNaN(hh) || isNaN(mm)) return null
+  const d = new Date(Date.UTC(year, month - 1, day, hh, mm, 0))
+  return isNaN(d.getTime()) ? null : d.toISOString()
+}
+
+function toDateStr(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -80,105 +135,131 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden: admin or manager role required' }, { status: 403 })
   }
 
-  // Read CSV from multipart form
-  let csvText = ''
+  // Read file from multipart form
+  let fileBuffer: Buffer
   try {
     const form = await req.formData()
     const file = form.get('file')
     if (!file || typeof file === 'string') {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
     }
-    csvText = await (file as File).text()
+    fileBuffer = Buffer.from(await (file as File).arrayBuffer())
   } catch {
     return NextResponse.json({ error: 'Failed to read uploaded file' }, { status: 400 })
   }
 
-  const rows = parseCSV(csvText)
-  if (rows.length === 0) {
-    return NextResponse.json({ error: 'CSV is empty or has no data rows' }, { status: 400 })
+  // Parse XLS
+  let blocks: EmployeeBlock[]
+  try {
+    blocks = parseXLS(fileBuffer)
+  } catch (e) {
+    return NextResponse.json({ error: `Failed to parse file: ${(e as Error).message}` }, { status: 400 })
   }
 
-  // Validate required headers
-  const required = ['employee_code', 'attendance_date', 'check_in_at']
-  const firstRow = rows[0]
-  const missing  = required.filter(h => !(h in firstRow))
-  if (missing.length > 0) {
-    return NextResponse.json({ error: `Missing CSV columns: ${missing.join(', ')}` }, { status: 400 })
+  if (blocks.length === 0) {
+    return NextResponse.json({ error: 'No employee blocks found in the file' }, { status: 400 })
   }
 
-  // Fetch all employee_code → user_id mappings in one query
+  // Fetch all fingerprint_employee_code → user_id mappings
   const { data: empRows, error: empErr } = await svc
     .from('users')
-    .select('id, employee_code')
-    .not('employee_code', 'is', null)
+    .select('id, fingerprint_employee_code')
+    .not('fingerprint_employee_code', 'is', null)
   if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 })
 
-  const codeToId = new Map<string, string>()
+  const fingerprintToId = new Map<string, string>()
   for (const e of empRows ?? []) {
-    if (e.employee_code) codeToId.set(e.employee_code.trim().toLowerCase(), e.id)
+    if (e.fingerprint_employee_code) {
+      fingerprintToId.set(e.fingerprint_employee_code.trim(), e.id)
+    }
   }
 
-  // Process rows
-  const summary = { total: rows.length, imported: 0, updated: 0, skipped: 0, errors: [] as string[] }
+  const summary = {
+    total: 0,
+    imported: 0,
+    updated: 0,
+    skipped: 0,
+    unmappedCodes: [] as string[],
+    errors: [] as string[],
+  }
 
-  for (let i = 0; i < rows.length; i++) {
-    const row      = rows[i]
-    const lineNum  = i + 2 // 1-based, +1 for header
-    const code     = (row['employee_code'] ?? '').trim().toLowerCase()
-    const dateRaw  = (row['attendance_date'] ?? '').trim()
-    const ciRaw    = (row['check_in_at'] ?? '').trim()
-    const coRaw    = (row['check_out_at'] ?? '').trim()
+  // Build all valid upsert rows and track which user+date pairs are involved
+  type UpsertRow = {
+    user_id: string
+    attendance_date: string
+    check_in_at: string
+    check_out_at: string | null
+    status: string
+  }
 
-    if (!code) { summary.skipped++; summary.errors.push(`Row ${lineNum}: missing employee_code`); continue }
-    if (!dateRaw) { summary.skipped++; summary.errors.push(`Row ${lineNum}: missing attendance_date`); continue }
+  const upsertRows: UpsertRow[] = []
+  const involvedKeys = new Set<string>() // "userId|dateStr"
 
-    const userId = codeToId.get(code)
+  for (const block of blocks) {
+    const userId = fingerprintToId.get(block.empcode)
     if (!userId) {
-      summary.skipped++
-      summary.errors.push(`Row ${lineNum}: employee_code "${row['employee_code']}" not found`)
+      summary.unmappedCodes.push(block.empcode)
+      summary.skipped += block.days.length
+      summary.total   += block.days.length
       continue
     }
 
-    const checkInAt  = toTimestamp(ciRaw, dateRaw)
-    const checkOutAt = toTimestamp(coRaw, dateRaw)
+    for (const day of block.days) {
+      summary.total++
+      const dateStr    = toDateStr(block.year, block.month, day.day)
+      const checkInAt  = toTimestamp(day.in,  block.year, block.month, day.day)
+      const checkOutAt = toTimestamp(day.out, block.year, block.month, day.day)
 
-    if (!checkInAt) {
-      summary.skipped++
-      summary.errors.push(`Row ${lineNum}: invalid or missing check_in_at`)
-      continue
+      if (!checkInAt) {
+        summary.skipped++
+        summary.errors.push(`${block.empcode} ${dateStr}: invalid IN time "${day.in}"`)
+        continue
+      }
+
+      involvedKeys.add(`${userId}|${dateStr}`)
+      upsertRows.push({
+        user_id:         userId,
+        attendance_date: dateStr,
+        check_in_at:     checkInAt,
+        check_out_at:    checkOutAt,
+        status:          checkOutAt ? 'present' : 'checked_in',
+      })
     }
+  }
 
-    const status = checkOutAt ? 'present' : 'checked_in'
-
-    // Check if record exists (to track imported vs updated in summary)
+  // Single query to find which records already exist (to distinguish imported vs updated)
+  const existingKeys = new Set<string>()
+  if (involvedKeys.size > 0) {
+    const userIds  = [...new Set(upsertRows.map(r => r.user_id))]
+    const dates    = [...new Set(upsertRows.map(r => r.attendance_date))]
     const { data: existing } = await svc
       .from('attendance_records')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('attendance_date', dateRaw)
-      .maybeSingle()
+      .select('user_id, attendance_date')
+      .in('user_id', userIds)
+      .in('attendance_date', dates)
+    for (const row of existing ?? []) {
+      existingKeys.add(`${row.user_id}|${row.attendance_date}`)
+    }
+  }
 
+  // Single batch upsert for all valid rows
+  if (upsertRows.length > 0) {
     const { error: upsertErr } = await svc
       .from('attendance_records')
-      .upsert(
-        {
-          user_id:         userId,
-          attendance_date: dateRaw,
-          check_in_at:     checkInAt,
-          check_out_at:    checkOutAt,
-          status,
-        },
-        { onConflict: 'user_id,attendance_date' }
-      )
+      .upsert(upsertRows, { onConflict: 'user_id,attendance_date' })
 
     if (upsertErr) {
-      summary.skipped++
-      summary.errors.push(`Row ${lineNum}: ${upsertErr.message}`)
-      continue
+      return NextResponse.json({ error: `Batch upsert failed: ${upsertErr.message}` }, { status: 500 })
     }
 
-    if (existing) { summary.updated++ } else { summary.imported++ }
+    for (const row of upsertRows) {
+      const key = `${row.user_id}|${row.attendance_date}`
+      if (existingKeys.has(key)) { summary.updated++ } else { summary.imported++ }
+    }
   }
+
+  // Deduplicate unmapped codes
+  summary.unmappedCodes = [...new Set(summary.unmappedCodes)]
 
   return NextResponse.json({ summary })
 }

@@ -16,15 +16,11 @@ type ImportSummary = {
   imported: number
   updated: number
   skipped: number
+  unmappedCodes: string[]
   errors: string[]
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const SAMPLE_CSV = `employee_code,attendance_date,check_in_at,check_out_at
-BOE-001,2026-06-07,09:05:00,18:32:00
-BOE-002,2026-06-07,09:11:00,
-BOE-003,2026-06-07,09:00:00,18:00:00`
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -99,15 +95,6 @@ export default function AttendanceUploadPage() {
     setUploading(false)
   }
 
-  const downloadSample = () => {
-    const blob = new Blob([SAMPLE_CSV], { type: 'text/csv' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href     = url
-    a.download = 'attendance_sample.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
 
   if (loading) return <LoadingScreen />
 
@@ -156,11 +143,11 @@ export default function AttendanceUploadPage() {
           borderRadius: 10, padding: '24px',
         }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: colors.primary, marginBottom: 4 }}>
-            CSV Import
+            Fingerprint Machine Import
           </div>
           <div style={{ fontSize: 12, color: colors.tertiary, marginBottom: 20, lineHeight: 1.6 }}>
-            Upload a CSV exported from your fingerprint attendance machine.
-            Records are matched by <code style={{ background: colors.raised, padding: '1px 5px', borderRadius: 4 }}>employee_code</code>.
+            Upload the monthly attendance report exported from the fingerprint machine (<code style={{ background: colors.raised, padding: '1px 5px', borderRadius: 4 }}>.xls</code> or <code style={{ background: colors.raised, padding: '1px 5px', borderRadius: 4 }}>.xlsx</code>).
+            Employees are matched by <strong>fingerprint employee code</strong> (e.g. 0014, 0017).
             Existing records for the same employee + date will be updated.
           </div>
 
@@ -171,12 +158,12 @@ export default function AttendanceUploadPage() {
             fontFamily: 'monospace', fontSize: 11.5, color: colors.secondary,
             lineHeight: 1.7,
           }}>
-            <div style={{ fontWeight: 700, marginBottom: 4, fontFamily: 'inherit', color: colors.tertiary, textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.06em' }}>Expected columns</div>
-            employee_code, attendance_date, check_in_at, check_out_at
+            <div style={{ fontWeight: 700, marginBottom: 4, fontFamily: 'inherit', color: colors.tertiary, textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.06em' }}>Expected file</div>
+            Monthly performance report from fingerprint machine
             <div style={{ marginTop: 6, color: colors.tertiary, fontSize: 11 }}>
-              • attendance_date: YYYY-MM-DD<br />
-              • check_in_at / check_out_at: HH:MM:SS or full ISO datetime<br />
-              • check_out_at may be empty (employee not yet checked out)
+              • Format: XLS/XLSX monthly attendance export<br />
+              • Employee codes must be mapped in Employee Master<br />
+              • Days with no punch (--:--) are automatically skipped
             </div>
           </div>
 
@@ -188,7 +175,7 @@ export default function AttendanceUploadPage() {
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,text/csv"
+              accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={handleFileChange}
               disabled={!canImport}
               style={inputStyle}
@@ -212,18 +199,9 @@ export default function AttendanceUploadPage() {
                 opacity: !file || uploading || !canImport ? 0.5 : 1,
               }}
             >
-              {uploading ? 'Importing…' : 'Import CSV'}
+              {uploading ? 'Importing…' : 'Import File'}
             </button>
 
-            <button
-              onClick={downloadSample}
-              style={{
-                padding: '9px 16px', fontSize: 13, borderRadius: 7, cursor: 'pointer',
-                border: `1px solid ${colors.border}`, background: 'transparent', color: colors.secondary,
-              }}
-            >
-              Download Sample
-            </button>
           </div>
         </div>
 
@@ -264,6 +242,18 @@ export default function AttendanceUploadPage() {
                 ))}
               </div>
             </div>
+
+            {/* Unmapped codes */}
+            {summary.unmappedCodes?.length > 0 && (
+              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${colors.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                  Unmapped fingerprint codes ({summary.unmappedCodes.length})
+                </div>
+                <div style={{ fontSize: 12, color: '#F59E0B', lineHeight: 1.7 }}>
+                  {summary.unmappedCodes.join(', ')} — add these codes in Employee Master → Fingerprint Code field.
+                </div>
+              </div>
+            )}
 
             {/* Error details */}
             {summary.errors.length > 0 && (
