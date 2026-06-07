@@ -223,6 +223,18 @@ export type MemberPerfEntry = {
   completedThisWeek: number
 }
 
+// ─── Payroll period ───────────────────────────────────────────────────────────
+export type PayrollPeriodStatus = 'draft' | 'locked'
+
+export type PayrollPeriod = {
+  id: string
+  payroll_month: number   // 1–12
+  payroll_year: number
+  status: PayrollPeriodStatus
+  notes: string | null
+  created_at: string
+}
+
 // ─── Activity log ─────────────────────────────────────────────────────────────
 export type LogEntry = {
   id: string
