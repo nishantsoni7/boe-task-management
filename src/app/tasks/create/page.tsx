@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -8,30 +8,35 @@ import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
-import { Target, CalendarDays, FileText } from 'lucide-react'
+import { Target, CalendarDays, FileText, Paperclip, X } from 'lucide-react'
 
 const PRIORITIES = ['low', 'medium', 'high'] as const
+const MAX_FILE_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export default function CreateTaskPage() {
   const { viewAsUserId } = useViewAs()
-  const [profile,     setProfile]     = useState<UserProfile | null>(null)
-  const [title,       setTitle]       = useState('')
-  const [description, setDescription] = useState('')
-  const [priority,    setPriority]    = useState('medium')
-  const [type,        setType]        = useState('completion')
-  const [isUrgent,    setIsUrgent]    = useState(false)
-  const [dueDate,     setDueDate]     = useState('')
-  const [titleDirty,  setTitleDirty]  = useState(false)
-  const [dateDirty,   setDateDirty]   = useState(false)
-  const [assigneeId,  setAssigneeId]  = useState('')
-  const [team,        setTeam]        = useState('sales')
-  const [users,       setUsers]       = useState<UserProfile[]>([])
-  const [loading,     setLoading]     = useState(false)
-  const [initDone,    setInitDone]    = useState(false)
-  const [success,     setSuccess]     = useState(false)
-  const [createdId,   setCreatedId]   = useState<string | null>(null)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const [isMobile,    setIsMobile]    = useState(false)
+  const [profile,        setProfile]        = useState<UserProfile | null>(null)
+  const [title,          setTitle]          = useState('')
+  const [description,    setDescription]    = useState('')
+  const [priority,       setPriority]       = useState('')
+  const [type] = useState('completion')
+  const [isUrgent,       setIsUrgent]       = useState(false)
+  const [dueDate,        setDueDate]        = useState('')
+  const [titleDirty,     setTitleDirty]     = useState(false)
+  const [dateDirty,      setDateDirty]      = useState(false)
+  const [priorityDirty,  setPriorityDirty]  = useState(false)
+  const [assigneeId,     setAssigneeId]     = useState('')
+  const [team,           setTeam]           = useState('sales')
+  const [users,          setUsers]          = useState<UserProfile[]>([])
+  const [loading,        setLoading]        = useState(false)
+  const [initDone,       setInitDone]       = useState(false)
+  const [success,        setSuccess]        = useState(false)
+  const [createdId,      setCreatedId]      = useState<string | null>(null)
+  const [submitError,    setSubmitError]    = useState<string | null>(null)
+  const [isMobile,       setIsMobile]       = useState(false)
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [attachError,    setAttachError]    = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
@@ -74,8 +79,22 @@ export default function CreateTaskPage() {
     router.push('/login')
   }
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null
+    setAttachError(null)
+    if (file && file.size > MAX_FILE_BYTES) {
+      setAttachError('File must be 10 MB or smaller.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+    setAttachmentFile(file)
+  }
+
   const handleSubmit = async () => {
-    if (!title.trim() || !assigneeId) return
+    setTitleDirty(true)
+    setDateDirty(true)
+    setPriorityDirty(true)
+    if (!title.trim() || !assigneeId || !priority) return
     setLoading(true)
     setSubmitError(null)
 
@@ -100,21 +119,40 @@ export default function CreateTaskPage() {
       if (!ok) { setLoading(false); return }
     }
 
-    // fileLink is UI-only — no dedicated schema column yet, not saved
+    // Upload attachment if selected
+    let attachmentUrl: string | null = null
+    if (attachmentFile) {
+      const ext  = attachmentFile.name.split('.').pop() ?? 'bin'
+      const path = `${session.user.id}/${Date.now()}.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from('task-attachments')
+        .upload(path, attachmentFile)
+      if (uploadError) {
+        setSubmitError('File upload failed. Task was not created — please try again.')
+        setLoading(false)
+        return
+      }
+      const { data: urlData } = supabase.storage
+        .from('task-attachments')
+        .getPublicUrl(path)
+      attachmentUrl = urlData.publicUrl
+    }
+
     const notePayload = description.trim() || null
 
     const { data: task, error } = await supabase
       .from('tasks')
       .insert({
-        title:       title.trim(),
-        note:        notePayload,
-        priority,    type,
-        is_urgent:   isUrgent,
-        due_date:    dueDate || null,
-        assigned_to: assigneeId,
-        created_by:  session.user.id,
+        title:          title.trim(),
+        note:           notePayload,
+        priority,       type,
+        is_urgent:      isUrgent,
+        due_date:       dueDate || null,
+        assigned_to:    assigneeId,
+        created_by:     session.user.id,
         team,
-        status:      'pending',
+        status:         'pending',
+        attachment_url: attachmentUrl,
       })
       .select().single()
 
@@ -138,19 +176,21 @@ export default function CreateTaskPage() {
     // Reset form and show success — stay on page
     setTitle('')
     setDescription('')
-    setPriority('medium')
-    setType('completion')
+    setPriority('')
     setIsUrgent(false)
     setDueDate('')
     setTitleDirty(false)
     setDateDirty(false)
+    setPriorityDirty(false)
     setAssigneeId('')
+    setAttachmentFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
     setCreatedId(task.id)
     setSuccess(true)
     setLoading(false)
   }
 
-  const canSubmit = !loading && title.trim().length > 0 && assigneeId !== '' && dueDate !== ''
+  const canSubmit = !loading && title.trim().length > 0 && assigneeId !== '' && dueDate !== '' && priority !== ''
 
   if (!initDone) return <LoadingScreen />
 
@@ -241,7 +281,7 @@ export default function CreateTaskPage() {
         }}>
 
           {/* Task Name */}
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '14px' }}>
             <label className="boe-form-section-label">
               Task Name <span style={{ color: colors.red, fontWeight: 500 }}>*</span>
             </label>
@@ -253,147 +293,193 @@ export default function CreateTaskPage() {
               className="boe-input"
             />
             {titleDirty && !title.trim() ? (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '5px' }}>
-                Task name is required
-              </p>
+              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Task name is required</p>
             ) : title.length > 0 && title.length < 20 ? (
-              <p style={{ fontSize: '11px', color: colors.amber, marginTop: '5px' }}>
-                Be specific: who, what, and by when
-              </p>
+              <p style={{ fontSize: '11px', color: colors.amber, marginTop: '4px' }}>Be specific: who, what, and by when</p>
             ) : null}
           </div>
 
-          {/* Assign To + Task Type */}
-          <div style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label className="boe-form-section-label">Assign To</label>
-                <select
-                  value={assigneeId}
-                  onChange={e => setAssigneeId(e.target.value)}
-                  className="boe-input"
-                >
-                  <option value="">Select team member</option>
-                  {users.map(u => (
-                    <option key={u.id} value={u.id}>{u.full_name} — {u.team}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="boe-form-section-label">Task Type</label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {([['completion', 'Completion'], ['daily_update', 'Daily Update']] as const).map(
-                    ([val, label]) => (
-                      <button
-                        key={val}
-                        onClick={() => setType(val)}
-                        className={`boe-chip${type === val ? ' boe-chip-selected' : ''}`}
-                        style={{ flex: 1, textAlign: 'center', fontSize: '11px' }}
-                      >
-                        {label}
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
-            </div>
+          {/* Assign To */}
+          <div style={{ marginBottom: '14px' }}>
+            <label className="boe-form-section-label">
+              Assign To <span style={{ color: colors.red, fontWeight: 500 }}>*</span>
+            </label>
+            <select
+              value={assigneeId}
+              onChange={e => setAssigneeId(e.target.value)}
+              className="boe-input"
+            >
+              <option value="">Select team member</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.full_name} — {u.team}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Priority + Deadline */}
-          <div style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label className="boe-form-section-label">Priority</label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {PRIORITIES.map(p => (
+          {/* Priority + Due Date row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+            <div>
+              <label className="boe-form-section-label">
+                Priority <span style={{ color: colors.red, fontWeight: 500 }}>*</span>
+              </label>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                {PRIORITIES.map(p => {
+                  const selected = priority === p
+                  const cfg = {
+                    low:    { bg: '#16a34a', border: 'rgba(22,163,74,0.4)',  text: '#16a34a' },
+                    medium: { bg: '#d97706', border: 'rgba(217,119,6,0.4)',  text: '#d97706' },
+                    high:   { bg: '#dc2626', border: 'rgba(220,38,38,0.4)',  text: '#dc2626' },
+                  }[p]!
+                  return (
                     <button
                       key={p}
-                      onClick={() => setPriority(p)}
-                      className={`boe-chip${priority === p ? ' boe-chip-selected' : ''}`}
+                      onClick={() => { setPriority(p); setPriorityDirty(true) }}
                       style={{
                         flex: 1, textAlign: 'center', textTransform: 'capitalize',
-                        ...(p === 'high' && priority !== 'high'
-                          ? { color: colors.red, borderColor: 'rgba(217,79,79,0.2)' }
-                          : {}),
+                        fontSize: '12px', fontWeight: selected ? 700 : 500,
+                        padding: '6px 4px',
+                        borderRadius: '6px',
+                        border: `1px solid ${selected ? cfg.bg : cfg.border}`,
+                        background: selected ? cfg.bg : 'transparent',
+                        color: selected ? '#fff' : cfg.text,
+                        cursor: 'pointer',
+                        transition: 'all 0.12s',
                       }}
                     >
                       {p}
                     </button>
-                  ))}
-                </div>
+                  )
+                })}
               </div>
-              <div>
-                <label className="boe-form-section-label">
-                  Due Date <span style={{ color: colors.red, fontWeight: 500 }}>*</span>
-                </label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={e => { setDueDate(e.target.value); setDateDirty(true) }}
-                  className="boe-input"
-                  style={{ colorScheme: 'light' }}
-                />
-                {dateDirty && !dueDate && (
-                  <p style={{ fontSize: '11px', color: colors.red, marginTop: '5px' }}>
-                    Due date is required
-                  </p>
-                )}
-              </div>
+              {priorityDirty && !priority && (
+                <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Priority is required</p>
+              )}
             </div>
-          </div>
-
-          {/* Important toggle */}
-          <div
-            onClick={() => setIsUrgent(!isUrgent)}
-            style={{
-              marginBottom: '20px',
-              padding: '10px 13px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              borderRadius: '8px',
-              background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
-              border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
-            }}
-          >
             <div>
-              <p style={{ fontSize: '13px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
-                Mark Important
-              </p>
-              <p style={{ color: colors.muted, fontSize: '11px', marginTop: '1px' }}>
-                Shows this task with a star and keeps it visible in task lists
-              </p>
-            </div>
-            <div style={{
-              width: '34px', height: '20px', borderRadius: '10px',
-              background: isUrgent ? '#C49A28' : colors.float,
-              position: 'relative', flexShrink: 0,
-              transition: 'background 0.16s',
-              border: `1px solid ${colors.border}`,
-            }}>
-              <div style={{
-                position: 'absolute', top: '2px',
-                left: isUrgent ? '15px' : '2px',
-                width: '14px', height: '14px',
-                borderRadius: '50%', background: '#fff',
-                transition: 'left 0.16s',
-              }} />
+              <label className="boe-form-section-label">
+                Due Date <span style={{ color: colors.red, fontWeight: 500 }}>*</span>
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={e => { setDueDate(e.target.value); setDateDirty(true) }}
+                className="boe-input"
+                style={{ colorScheme: 'light' }}
+              />
+              {dateDirty && !dueDate && (
+                <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Due date is required</p>
+              )}
             </div>
           </div>
 
           {/* Description */}
-          <div style={{ marginBottom: '24px' }}>
+          <div style={{ marginBottom: '14px' }}>
             <label className="boe-form-section-label">Description <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span></label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Context or instructions for the assignee…"
-              rows={3}
+              rows={4}
               className="boe-input"
               style={{ resize: 'none' }}
             />
           </div>
 
+          {/* Mark Important + Attachment — side by side on desktop */}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+
+            {/* Mark Important — label lives inside the box */}
+            <div
+              onClick={() => setIsUrgent(!isUrgent)}
+              style={{
+                padding: '11px 13px', cursor: 'pointer', height: '42px', boxSizing: 'border-box',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                borderRadius: '8px',
+                background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
+                border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+              }}
+            >
+              <p style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+                {isUrgent ? 'Marked Important' : 'Mark Important'}
+              </p>
+              <div style={{
+                width: '34px', height: '20px', borderRadius: '10px',
+                background: isUrgent ? '#C49A28' : colors.float,
+                position: 'relative', flexShrink: 0,
+                transition: 'background 0.16s',
+                border: `1px solid ${colors.border}`,
+              }}>
+                <div style={{
+                  position: 'absolute', top: '2px',
+                  left: isUrgent ? '15px' : '2px',
+                  width: '14px', height: '14px',
+                  borderRadius: '50%', background: '#fff',
+                  transition: 'left 0.16s',
+                }} />
+              </div>
+            </div>
+
+            {/* Attachment — no external label */}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                id="task-attachment"
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+                accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+              />
+              {attachmentFile ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '11px 12px', height: '42px', boxSizing: 'border-box',
+                  borderRadius: '8px',
+                  background: colors.raised,
+                  border: `1px solid ${colors.border}`,
+                }}>
+                  <Paperclip size={13} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: '12px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {attachmentFile.name}
+                  </span>
+                  <span style={{ fontSize: '11px', color: colors.muted, flexShrink: 0 }}>
+                    {(attachmentFile.size / 1024).toFixed(0)} KB
+                  </span>
+                  <button
+                    onClick={() => {
+                      setAttachmentFile(null)
+                      setAttachError(null)
+                      if (fileInputRef.current) fileInputRef.current.value = ''
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                  >
+                    <X size={13} color={colors.muted} strokeWidth={2} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    width: '100%', height: '42px', boxSizing: 'border-box',
+                    borderRadius: '8px',
+                    border: `1.5px dashed ${colors.border}`,
+                    background: colors.raised,
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  }}
+                >
+                  <Paperclip size={13} color={colors.secondary} strokeWidth={1.8} />
+                  <span style={{ fontSize: '12px', color: colors.secondary }}>Attach a file</span>
+                  <span style={{ fontSize: '11px', color: colors.muted }}>— max 10 MB</span>
+                </button>
+              )}
+              {attachError && (
+                <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>
+              )}
+            </div>
+          </div>
+
           {/* Required fields note */}
-          <p style={{ fontSize: '11px', color: colors.muted, marginBottom: '10px' }}>
+          <p style={{ fontSize: '11px', color: colors.muted, marginBottom: '8px' }}>
             <span style={{ color: colors.red }}>*</span> Required fields must be completed before creating a task.
           </p>
 
@@ -415,7 +501,7 @@ export default function CreateTaskPage() {
               letterSpacing: '0.01em',
             }}
           >
-            {loading ? 'Saving…' : 'Create & Assign'}
+            {loading ? (attachmentFile ? 'Uploading & Saving…' : 'Saving…') : 'Create & Assign'}
           </button>
 
         </div>
