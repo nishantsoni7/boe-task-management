@@ -399,8 +399,7 @@ function computeNetSalary(
   totalDeductions: TotalDeductions,
   pendingAdjustmentTotal: PendingAdjustmentsSummary,
 ): number {
-  // TODO: return grossSalary - totalDeductions + pendingAdjustmentTotal
-  throw new Error('computeNetSalary: not implemented')
+  return Math.max(0, grossSalary + pendingAdjustmentTotal.net_adjustment)
 }
 
 // ─── Step 13: Assemble engine result ─────────────────────────────────────────
