@@ -21,6 +21,9 @@ type EmployeeRow = Pick<
   | 'monthly_salary'
   | 'office_timing'
   | 'fingerprint_employee_code'
+  | 'payroll_active'
+  | 'employment_type'
+  | 'payroll_notes'
 >
 
 type EditState = {
@@ -29,6 +32,9 @@ type EditState = {
   joining_date: string
   monthly_salary: string
   office_timing: string
+  payroll_active: boolean
+  employment_type: string
+  payroll_notes: string
 }
 
 type AddState = {
@@ -131,6 +137,9 @@ function AddModal({
         joining_date:              null,
         monthly_salary:            null,
         office_timing:             null,
+        payroll_active:            true,
+        employment_type:           null,
+        payroll_notes:             null,
       })
       setTimeout(onClose, 900)
     } catch {
@@ -271,6 +280,9 @@ function EditModal({
     joining_date:              emp.joining_date              ?? '',
     monthly_salary:            emp.monthly_salary != null ? String(emp.monthly_salary) : '',
     office_timing:             emp.office_timing             ?? '',
+    payroll_active:            emp.payroll_active            ?? true,
+    employment_type:           emp.employment_type           ?? '',
+    payroll_notes:             emp.payroll_notes             ?? '',
   })
   const [saving, setSaving]   = useState(false)
   const [error,  setError]    = useState<string | null>(null)
@@ -296,6 +308,9 @@ function EditModal({
           joining_date:              form.joining_date,
           monthly_salary:            form.monthly_salary,
           office_timing:             form.office_timing,
+          payroll_active:            form.payroll_active,
+          employment_type:           form.employment_type,
+          payroll_notes:             form.payroll_notes,
         }),
       })
       const json = await res.json()
@@ -307,6 +322,9 @@ function EditModal({
         joining_date:              form.joining_date              || null,
         monthly_salary:            form.monthly_salary !== '' ? Number(form.monthly_salary) : null,
         office_timing:             form.office_timing             || null,
+        payroll_active:            form.payroll_active,
+        employment_type:           (form.employment_type as 'permanent' | 'contract') || null,
+        payroll_notes:             form.payroll_notes             || null,
       })
       setTimeout(onClose, 900)
     } catch {
@@ -397,6 +415,45 @@ function EditModal({
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+          </div>
+
+          {/* Payroll configuration */}
+          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Payroll Configuration
+            </div>
+
+            <div>
+              <label style={labelStyle}>Employment Type</label>
+              <select style={inputStyle} value={form.employment_type} onChange={set('employment_type')}>
+                <option value="">— Select type —</option>
+                <option value="permanent">Permanent</option>
+                <option value="contract">Contract</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                id="payroll_active_toggle"
+                type="checkbox"
+                checked={form.payroll_active}
+                onChange={e => setForm(f => ({ ...f, payroll_active: e.target.checked }))}
+                style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#3B82F6' }}
+              />
+              <label htmlFor="payroll_active_toggle" style={{ fontSize: 13, color: colors.primary, cursor: 'pointer' }}>
+                Payroll Active
+              </label>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Payroll Notes</label>
+              <textarea
+                style={{ ...inputStyle, resize: 'vertical', minHeight: 72 }}
+                value={form.payroll_notes}
+                onChange={e => setForm(f => ({ ...f, payroll_notes: e.target.value }))}
+                placeholder="e.g. On probation, salary revision pending…"
+              />
+            </div>
           </div>
 
           {error && (
@@ -623,7 +680,7 @@ export default function EmployeeMasterPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Emp. Code', 'Fingerprint Code', 'Name', 'Department', 'Designation', 'Joining Date', 'Monthly Salary', 'Office Timing', 'Status', '', ...(showEdit ? [''] : [])].map((h, i) => (
+                  {['Emp. Code', 'Name', 'Department', 'Joining Date', 'Monthly Salary', 'Status', '', ...(showEdit ? [''] : [])].map((h, i) => (
                     <th key={i} style={HEAD}>{h}</th>
                   ))}
                 </tr>
@@ -631,7 +688,7 @@ export default function EmployeeMasterPage() {
               <tbody>
                 {visible.length === 0 ? (
                   <tr>
-                    <td colSpan={showEdit ? 11 : 10} style={{ ...CELL, textAlign: 'center', color: colors.tertiary, padding: '40px 14px' }}>
+                    <td colSpan={showEdit ? 8 : 7} style={{ ...CELL, textAlign: 'center', color: colors.tertiary, padding: '40px 14px' }}>
                       No employees found.
                     </td>
                   </tr>
@@ -645,15 +702,10 @@ export default function EmployeeMasterPage() {
                     <td style={{ ...CELL, fontFamily: 'monospace', fontSize: 12, color: colors.tertiary }}>
                       {fmt(emp.employee_code)}
                     </td>
-                    <td style={{ ...CELL, fontFamily: 'monospace', fontSize: 12, color: colors.tertiary }}>
-                      {fmt(emp.fingerprint_employee_code)}
-                    </td>
                     <td style={{ ...CELL, fontWeight: 600 }}>{emp.full_name}</td>
                     <td style={CELL}>{fmt(emp.team)}</td>
-                    <td style={{ ...CELL, color: colors.secondary }}>{fmt(emp.position)}</td>
                     <td style={CELL}>{fmtDate(emp.joining_date)}</td>
                     <td style={{ ...CELL, fontVariantNumeric: 'tabular-nums' }}>{fmtSalary(emp.monthly_salary)}</td>
-                    <td style={{ ...CELL, color: colors.secondary }}>{fmt(emp.office_timing)}</td>
                     <td style={CELL}>
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: 5,

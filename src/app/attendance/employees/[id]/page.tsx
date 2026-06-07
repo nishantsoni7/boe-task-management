@@ -13,7 +13,8 @@ import Link from 'next/link'
 
 type EmployeeDetail = Pick<
   UserProfile,
-  'id' | 'full_name' | 'team' | 'position' | 'role' | 'employee_code' | 'fingerprint_employee_code' | 'is_active'
+  | 'id' | 'full_name' | 'team' | 'position' | 'role' | 'employee_code' | 'fingerprint_employee_code' | 'is_active'
+  | 'joining_date' | 'monthly_salary' | 'payroll_active' | 'employment_type' | 'payroll_notes'
 >
 
 type AttendanceRecord = {
@@ -119,7 +120,7 @@ export default function EmployeeDetailPage() {
           .single(),
         supabase
           .from('users')
-          .select('id, full_name, team, position, role, employee_code, fingerprint_employee_code, is_active')
+          .select('id, full_name, team, position, role, employee_code, fingerprint_employee_code, is_active, joining_date, monthly_salary, payroll_active, employment_type, payroll_notes')
           .eq('id', id)
           .single(),
       ])
@@ -251,6 +252,38 @@ export default function EmployeeDetailPage() {
               <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Role</div>
               <div style={{ fontSize: 13, color: colors.primary, textTransform: 'capitalize' }}>{fmt(emp.role)}</div>
             </div>
+          </div>
+
+          {/* Payroll config row */}
+          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.border}` }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Joining Date</div>
+              <div style={{ fontSize: 13, color: colors.primary }}>
+                {emp.joining_date ? new Date(emp.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Monthly Salary</div>
+              <div style={{ fontSize: 13, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+                {emp.monthly_salary != null ? '₹' + Number(emp.monthly_salary).toLocaleString('en-IN') : '—'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Employment Type</div>
+              <div style={{ fontSize: 13, color: colors.primary, textTransform: 'capitalize' }}>{fmt(emp.employment_type)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Payroll Active</div>
+              <div style={{ fontSize: 13, color: emp.payroll_active ? '#059669' : '#6B7280', fontWeight: 600 }}>
+                {emp.payroll_active ? 'Yes' : 'No'}
+              </div>
+            </div>
+            {emp.payroll_notes && (
+              <div style={{ flexBasis: '100%' }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Payroll Notes</div>
+                <div style={{ fontSize: 13, color: colors.secondary }}>{emp.payroll_notes}</div>
+              </div>
+            )}
           </div>
         </div>
 

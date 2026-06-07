@@ -61,6 +61,10 @@ export type UserProfile = {
   monthly_salary: number | null
   office_timing: string | null
   fingerprint_employee_code: string | null
+  // Payroll configuration fields (V2)
+  payroll_active: boolean
+  employment_type: 'permanent' | 'contract' | null
+  payroll_notes: string | null
   is_deleted?: boolean
   deleted_at?: string | null
   deleted_by?: string | null
