@@ -21,6 +21,20 @@ type EmployeeRow = Pick<
   | 'office_timing'
 >
 
+type EditState = {
+  employee_code: string
+  joining_date: string
+  monthly_salary: string
+  office_timing: string
+}
+
+const OFFICE_TIMINGS = [
+  { value: 'General Shift',  label: 'General Shift — 10:00 AM – 06:30 PM' },
+  { value: 'Factory Shift',  label: 'Factory Shift — 09:00 AM – 06:00 PM' },
+  { value: 'Sales Shift',    label: 'Sales Shift — 10:00 AM – 06:30 PM' },
+  { value: 'Half Day',       label: 'Half Day — 10:00 AM – 01:30 PM' },
+]
+
 const CELL: React.CSSProperties = {
   padding: '11px 14px',
   fontSize: 13,
@@ -55,6 +69,197 @@ function fmtDate(val: string | null | undefined) {
   return new Date(val).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+function canEdit(role: string | undefined) {
+  return role === 'admin' || role === 'manager'
+}
+
+// ─── Edit Modal ───────────────────────────────────────────────────────────────
+
+function EditModal({
+  emp,
+  token,
+  onClose,
+  onSaved,
+}: {
+  emp: EmployeeRow
+  token: string
+  onClose: () => void
+  onSaved: (updated: Partial<EmployeeRow>) => void
+}) {
+  const [form, setForm] = useState<EditState>({
+    employee_code:  emp.employee_code  ?? '',
+    joining_date:   emp.joining_date   ?? '',
+    monthly_salary: emp.monthly_salary != null ? String(emp.monthly_salary) : '',
+    office_timing:  emp.office_timing  ?? '',
+  })
+  const [saving, setSaving]   = useState(false)
+  const [error,  setError]    = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  const set = (key: keyof EditState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [key]: e.target.value }))
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/update-employee', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id:             emp.id,
+          employee_code:  form.employee_code,
+          joining_date:   form.joining_date,
+          monthly_salary: form.monthly_salary,
+          office_timing:  form.office_timing,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error ?? 'Update failed'); setSaving(false); return }
+      setSuccess(true)
+      onSaved({
+        employee_code:  form.employee_code  || null,
+        joining_date:   form.joining_date   || null,
+        monthly_salary: form.monthly_salary !== '' ? Number(form.monthly_salary) : null,
+        office_timing:  form.office_timing  || null,
+      })
+      setTimeout(onClose, 900)
+    } catch {
+      setError('Network error, please retry.')
+      setSaving(false)
+    }
+  }
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 600, color: colors.tertiary,
+    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4, display: 'block',
+  }
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '8px 10px', fontSize: 13,
+    border: `1px solid ${colors.border}`, borderRadius: 7,
+    background: colors.base, color: colors.primary, outline: 'none',
+    boxSizing: 'border-box',
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.35)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{
+        background: colors.base,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 12,
+        width: '100%', maxWidth: 460,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+        overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '16px 20px',
+          borderBottom: `1px solid ${colors.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: colors.primary }}>{emp.full_name}</div>
+            <div style={{ fontSize: 12, color: colors.tertiary, marginTop: 2 }}>
+              {emp.team ?? '—'} · {emp.position ?? '—'}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: 20, color: colors.tertiary, lineHeight: 1, padding: 4,
+            }}
+            aria-label="Close"
+          >×</button>
+        </div>
+
+        {/* Form */}
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          <div>
+            <label style={labelStyle}>Employee Code</label>
+            <input style={inputStyle} value={form.employee_code} onChange={set('employee_code')} placeholder="e.g. BOE-001" />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Joining Date</label>
+            <input style={inputStyle} type="date" value={form.joining_date} onChange={set('joining_date')} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Monthly Salary (₹)</label>
+            <input style={inputStyle} type="number" min="0" step="1" value={form.monthly_salary} onChange={set('monthly_salary')} placeholder="e.g. 25000" />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Office Timing</label>
+            <select style={inputStyle} value={form.office_timing} onChange={set('office_timing')}>
+              <option value="">— Select shift —</option>
+              {OFFICE_TIMINGS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {error && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 7, fontSize: 13,
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+              color: '#DC2626',
+            }}>{error}</div>
+          )}
+
+          {success && (
+            <div style={{
+              padding: '8px 12px', borderRadius: 7, fontSize: 13,
+              background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)',
+              color: '#059669',
+            }}>Saved successfully!</div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '12px 20px',
+          borderTop: `1px solid ${colors.border}`,
+          display: 'flex', justifyContent: 'flex-end', gap: 10,
+        }}>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{
+              padding: '8px 18px', fontSize: 13, borderRadius: 7, cursor: 'pointer',
+              border: `1px solid ${colors.border}`, background: 'transparent', color: colors.secondary,
+            }}
+          >Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving || success}
+            style={{
+              padding: '8px 18px', fontSize: 13, fontWeight: 600, borderRadius: 7, cursor: saving || success ? 'not-allowed' : 'pointer',
+              border: 'none', background: '#3B82F6', color: '#fff',
+              opacity: saving || success ? 0.7 : 1,
+            }}
+          >{saving ? 'Saving…' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function EmployeeMasterPage() {
   const [profile, setProfile]     = useState<UserProfile | null>(null)
   const [employees, setEmployees] = useState<EmployeeRow[]>([])
@@ -62,6 +267,8 @@ export default function EmployeeMasterPage() {
   const [search, setSearch]       = useState('')
   const [loading, setLoading]     = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [token, setToken]         = useState('')
+  const [editEmp, setEditEmp]     = useState<EmployeeRow | null>(null)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
@@ -70,13 +277,14 @@ export default function EmployeeMasterPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
+      setToken(session.access_token)
+
       const [{ data: me }, empRes] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing')
           .eq('id', session.user.id)
           .single(),
-        // Direct browser query is blocked by RLS — use service-role API route instead
         fetch('/api/employee-list', {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
         }).then(r => r.json()),
@@ -98,6 +306,10 @@ export default function EmployeeMasterPage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
+  }
+
+  const handleSaved = (id: string, updated: Partial<EmployeeRow>) => {
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e))
   }
 
   const visible = useMemo(() => {
@@ -124,6 +336,8 @@ export default function EmployeeMasterPage() {
     inactive: employees.filter(e => !e.is_active).length,
   }
 
+  const showEdit = canEdit(profile?.role)
+
   return (
     <AttendanceLayout
       profile={profile}
@@ -146,7 +360,6 @@ export default function EmployeeMasterPage() {
         {/* Toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
 
-          {/* Filter tabs */}
           <div style={{ display: 'flex', gap: 4, background: colors.raised, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 3 }}>
             {(['active', 'inactive', 'all'] as const).map(f => (
               <button
@@ -171,7 +384,6 @@ export default function EmployeeMasterPage() {
             ))}
           </div>
 
-          {/* Search */}
           <input
             type="text"
             placeholder="Search by name, department, designation…"
@@ -206,15 +418,15 @@ export default function EmployeeMasterPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Emp. Code', 'Name', 'Department', 'Designation', 'Joining Date', 'Monthly Salary', 'Office Timing', 'Status'].map(h => (
-                    <th key={h} style={HEAD}>{h}</th>
+                  {['Emp. Code', 'Name', 'Department', 'Designation', 'Joining Date', 'Monthly Salary', 'Office Timing', 'Status', ...(showEdit ? [''] : [])].map((h, i) => (
+                    <th key={i} style={HEAD}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {visible.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ ...CELL, textAlign: 'center', color: colors.tertiary, padding: '40px 14px' }}>
+                    <td colSpan={showEdit ? 9 : 8} style={{ ...CELL, textAlign: 'center', color: colors.tertiary, padding: '40px 14px' }}>
                       No employees found.
                     </td>
                   </tr>
@@ -228,9 +440,7 @@ export default function EmployeeMasterPage() {
                     <td style={{ ...CELL, fontFamily: 'monospace', fontSize: 12, color: colors.tertiary }}>
                       {fmt(emp.employee_code)}
                     </td>
-                    <td style={{ ...CELL, fontWeight: 600 }}>
-                      {emp.full_name}
-                    </td>
+                    <td style={{ ...CELL, fontWeight: 600 }}>{emp.full_name}</td>
                     <td style={CELL}>{fmt(emp.team)}</td>
                     <td style={{ ...CELL, color: colors.secondary }}>{fmt(emp.position)}</td>
                     <td style={CELL}>{fmtDate(emp.joining_date)}</td>
@@ -238,13 +448,8 @@ export default function EmployeeMasterPage() {
                     <td style={{ ...CELL, color: colors.secondary }}>{fmt(emp.office_timing)}</td>
                     <td style={CELL}>
                       <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        padding: '3px 9px',
-                        borderRadius: 20,
-                        fontSize: 11,
-                        fontWeight: 600,
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
                         background: emp.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(156,163,175,0.15)',
                         color: emp.is_active ? '#059669' : '#6B7280',
                       }}>
@@ -255,6 +460,21 @@ export default function EmployeeMasterPage() {
                         {emp.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
+                    {showEdit && (
+                      <td style={{ ...CELL, width: 60 }}>
+                        <button
+                          onClick={() => setEditEmp(emp)}
+                          style={{
+                            padding: '4px 12px', fontSize: 12, fontWeight: 500,
+                            border: `1px solid ${colors.border}`, borderRadius: 6,
+                            background: 'transparent', color: colors.secondary,
+                            cursor: 'pointer',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = colors.raised }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                        >Edit</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -263,6 +483,15 @@ export default function EmployeeMasterPage() {
         </div>
 
       </div>
+
+      {editEmp && (
+        <EditModal
+          emp={editEmp}
+          token={token}
+          onClose={() => setEditEmp(null)}
+          onSaved={updated => { handleSaved(editEmp.id, updated); }}
+        />
+      )}
     </AttendanceLayout>
   )
 }
