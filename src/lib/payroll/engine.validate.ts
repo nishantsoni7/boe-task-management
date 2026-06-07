@@ -248,15 +248,15 @@ scenario('S06  Missing punch-in — deduction charged (leave = 0, joining Jun 25
   const r = resultOf(generatePayrollForEmployee(e, PERIOD, records, [], []))
 
   const deduction = 2 * PHR              // 2000 / 8.5  ≈ 235.294
-  const gross     = SALARY - deduction   //             ≈ 29 764.706
+  const net       = SALARY - deduction   //             ≈ 29 764.706
 
   chk('working_days_in_month',      r.working_days_in_month,      5)
   chk('paid_leave_available',       r.paid_leave_available,       0)
   chk('missing_punch_hours',        r.missing_punch_hours,        2)
   chk('leave_absorbed_deductions',  r.leave_absorbed_deductions,  false)
   chk('total_deductions',           r.total_deductions,           deduction)
-  chk('gross_salary',               r.gross_salary,               gross)
-  chk('net_salary',                 r.net_salary,                 gross)
+  chk('gross_salary',               r.gross_salary,               SALARY)
+  chk('net_salary',                 r.net_salary,                 net)
   const line = r.deduction_lines[0]
   chk('line.deduction_type',        line?.deduction_type,   'missing_punch_in')
   chk('line.hours_deducted',        line?.hours_deducted,   2)
@@ -278,11 +278,11 @@ scenario('S07  Missing punch-out — deduction charged (leave = 0, joining Jun 2
   const r = resultOf(generatePayrollForEmployee(e, PERIOD, records, [], []))
 
   const deduction = 2 * PHR
-  const gross     = SALARY - deduction
+  const net       = SALARY - deduction
 
   chk('total_deductions',  r.total_deductions,  deduction)
-  chk('gross_salary',      r.gross_salary,      gross)
-  chk('net_salary',        r.net_salary,        gross)
+  chk('gross_salary',      r.gross_salary,      SALARY)
+  chk('net_salary',        r.net_salary,        net)
   const line = r.deduction_lines[0]
   chk('line.deduction_type',  line?.deduction_type,  'missing_punch_out')
   chk('line.hours_deducted',  line?.hours_deducted,  2)
@@ -333,8 +333,8 @@ scenario('S09  Absent day — no leave balance, full deduction applied', () => {
   chk('paid_leave_available',  r.paid_leave_available,  0)
   chk('days_absent',           r.days_absent,           1)
   chk('paid_leave_used',       r.paid_leave_used,       0)
-  chk('total_deductions',      r.total_deductions,      PDR)          // 1 000
-  chk('gross_salary',          r.gross_salary,          SALARY - PDR) // 29 000
+  chk('total_deductions',      r.total_deductions,      PDR)    // 1 000
+  chk('gross_salary',          r.gross_salary,          SALARY) // 30 000
   chk('net_salary',            r.net_salary,            SALARY - PDR)
 })
 
@@ -356,8 +356,8 @@ scenario('S10  Mid-month joiner — 0.5 leave cannot absorb absent day (needs �
   chk('paid_leave_available',  r.paid_leave_available,   0.5)
   chk('paid_leave_used',       r.paid_leave_used,        0)
   chk('days_absent',           r.days_absent,            1)
-  chk('total_deductions',      r.total_deductions,       PDR)          // 1 000
-  chk('gross_salary',          r.gross_salary,           SALARY - PDR) // 29 000
+  chk('total_deductions',      r.total_deductions,       PDR)    // 1 000
+  chk('gross_salary',          r.gross_salary,           SALARY) // 30 000
   chk('net_salary',            r.net_salary,             SALARY - PDR)
 })
 
@@ -400,7 +400,7 @@ scenario('S12  Net salary floor at zero — large negative adjustment clamps to 
   chk('days_absent',                r.days_absent,               25)
   chk('paid_leave_used',            r.paid_leave_used,            1)  // absorbed 1 absent
   chk('total_deductions',           r.total_deductions,        2_400)  // 24 × 100
-  chk('gross_salary',               r.gross_salary,              600)
+  chk('gross_salary',               r.gross_salary,            3_000)
   chk('pending_adjustment_total',   r.pending_adjustment_total, -5_000)
   chk('net_salary = 0 (floored)',   r.net_salary,                  0)
 })
@@ -490,9 +490,8 @@ scenario('S15  Mixed — absent absorbed, half-day + missing punch charged, adju
   const halfDeduction   = PDR / 2        // 500
   const hourlyDeduction = 2 * PHR        // ≈ 235.294
   const totalDeduction  = halfDeduction + hourlyDeduction  // ≈ 735.294
-  const expectedGross   = SALARY - totalDeduction          // ≈ 29 264.706
   const netAdj          = 500 - 200                        // 300
-  const expectedNet     = expectedGross + netAdj           // ≈ 29 564.706
+  const expectedNet     = SALARY - totalDeduction + netAdj // ≈ 29 564.706
 
   chk('days_absent',                r.days_absent,                1)
   chk('paid_leave_used',            r.paid_leave_used,            1)
@@ -500,7 +499,7 @@ scenario('S15  Mixed — absent absorbed, half-day + missing punch charged, adju
   chk('missing_punch_hours',        r.missing_punch_hours,        2)
   chk('leave_absorbed_deductions',  r.leave_absorbed_deductions,  false)
   chk('total_deductions',           r.total_deductions,           totalDeduction)
-  chk('gross_salary',               r.gross_salary,               expectedGross)
+  chk('gross_salary',               r.gross_salary,               SALARY)
   chk('pending_adjustment_total',   r.pending_adjustment_total,   300)
   chk('net_salary',                 r.net_salary,                 expectedNet)
   // Both adjustment IDs recorded

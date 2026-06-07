@@ -60,7 +60,7 @@ export function generatePayrollForEmployee(
   const totalDeductions = computeTotalDeductions(leaveState, rates)
 
   // Step 10 — Compute gross salary
-  const grossSalary = computeGrossSalary(employee, totalDeductions)
+  const grossSalary = computeGrossSalary(employee)
 
   // Step 11 — Load pending adjustment total
   const pendingAdjustmentTotal = sumPendingAdjustments(pendingAdjustments)
@@ -366,13 +366,10 @@ function computeTotalDeductions(
   return { absent_deduction, half_day_deduction, hourly_deduction, total_deduction }
 }
 
-// ─── Step 10: Gross salary with proration ────────────────────────────────────
+// ─── Step 10: Gross salary snapshot ──────────────────────────────────────────
 
-function computeGrossSalary(
-  employee: EngineEmployee,
-  totalDeductions: TotalDeductions,
-): number {
-  return Math.max(0, employee.monthly_salary - totalDeductions.total_deduction)
+function computeGrossSalary(employee: EngineEmployee): number {
+  return employee.monthly_salary
 }
 
 // ─── Step 11: Pending adjustments ────────────────────────────────────────────
@@ -399,7 +396,7 @@ function computeNetSalary(
   totalDeductions: TotalDeductions,
   pendingAdjustmentTotal: PendingAdjustmentsSummary,
 ): number {
-  return Math.max(0, grossSalary + pendingAdjustmentTotal.net_adjustment)
+  return Math.max(0, grossSalary - totalDeductions.total_deduction + pendingAdjustmentTotal.net_adjustment)
 }
 
 // ─── Step 13: Assemble engine result ─────────────────────────────────────────
