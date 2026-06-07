@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   Settings, ChevronRight, LogOut, Briefcase, ShieldCheck, TrendingUp,
-  Eye, X, ChevronDown, Users, Home, Banknote,
+  Eye, X, ChevronDown, Users, Home,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
@@ -213,16 +213,6 @@ export function DashboardLayout({
               icon={<TrendingUp size={15} strokeWidth={1.8} />}
               active={pathname.startsWith('/performance')}
               onClick={() => navTo('/performance')}
-            />
-          )}
-
-          {/* 6. Payroll — real-admin only, hidden in view mode */}
-          {isRealAdmin && !inViewMode && (
-            <NavLeaf
-              label="Payroll"
-              icon={<Banknote size={15} strokeWidth={1.8} />}
-              active={pathname.startsWith('/payroll')}
-              onClick={() => navTo('/payroll')}
             />
           )}
 
