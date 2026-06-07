@@ -304,13 +304,51 @@ function applyLeaveAbsorption(
   aggregates: MonthlyAggregates,
   paidLeaveAvailable: number,
 ): LeaveState {
-  // TODO Stage 1: absorb one full absent day (only if paidLeaveAvailable >= 1)
-  // TODO Stage 2: absorb two half-days (only if paidLeaveAvailable >= 1 and leave unused)
-  // TODO Stage 2b: absorb one half-day (only if paidLeaveAvailable = 0.5 and leave unused)
-  // TODO Stage 3: absorb hourly deductions if total_hourly_hours <= (paidLeaveAvailable × 8.5) and leave unused
-  //   set leave_absorbed_deductions = true, remaining_hourly_hours = 0
-  // Each stage is skipped if leave was already consumed by a prior stage
-  throw new Error('applyLeaveAbsorption: not implemented')
+  let remaining_absent_days = aggregates.days_absent
+  let remaining_half_days   = aggregates.half_day_count
+  let paid_leave_used       = 0
+  let leave_absorbed_deductions = false
+
+  const total_hourly_hours =
+    aggregates.late_deduction_hours +
+    aggregates.short_hours_deduction +
+    aggregates.missing_punch_hours
+
+  // Stage 1: absorb one full absent day
+  if (paidLeaveAvailable >= 1 && remaining_absent_days >= 1) {
+    remaining_absent_days -= 1
+    paid_leave_used = 1
+  }
+
+  // Stage 2: absorb two half-days (leave must not yet be used)
+  if (paid_leave_used === 0 && paidLeaveAvailable >= 1 && remaining_half_days >= 2) {
+    remaining_half_days -= 2
+    paid_leave_used = 1
+  }
+
+  // Stage 2b: absorb one half-day with 0.5 leave (leave must not yet be used)
+  if (paid_leave_used === 0 && paidLeaveAvailable === 0.5 && remaining_half_days >= 1) {
+    remaining_half_days -= 1
+    paid_leave_used = 0.5
+  }
+
+  // Stage 3: absorb hourly deductions (leave must not yet be used)
+  if (paid_leave_used === 0) {
+    const threshold = paidLeaveAvailable * 8.5
+    if (total_hourly_hours <= threshold) {
+      leave_absorbed_deductions = true
+      paid_leave_used = paidLeaveAvailable
+    }
+  }
+
+  return {
+    paid_leave_available: paidLeaveAvailable,
+    paid_leave_used,
+    leave_absorbed_deductions,
+    remaining_absent_days,
+    remaining_half_days,
+    remaining_hourly_hours: leave_absorbed_deductions ? 0 : total_hourly_hours,
+  }
 }
 
 // ─── Step 9: Deduction amounts ────────────────────────────────────────────────
