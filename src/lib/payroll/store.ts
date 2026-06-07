@@ -234,6 +234,22 @@ export async function writeEngineResult(
   return resultId
 }
 
+// ─── Period status ────────────────────────────────────────────────────────────
+
+export type PeriodStatus = 'draft' | 'generated' | 'locked'
+
+export async function setPeriodStatus(
+  svc: Svc,
+  periodId: string,
+  status: PeriodStatus,
+): Promise<void> {
+  const { error } = await svc
+    .from('payroll_periods')
+    .update({ status })
+    .eq('id', periodId)
+  if (error) throw new Error(`setPeriodStatus: ${error.message}`)
+}
+
 export async function markAdjustmentsApplied(
   svc: Svc,
   adjustmentIds: string[],

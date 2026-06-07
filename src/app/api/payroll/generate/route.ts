@@ -28,6 +28,7 @@ import {
   writeEngineResult,
   markAdjustmentsApplied,
   finalizeGenerationRow,
+  setPeriodStatus,
 } from '@/lib/payroll/store'
 
 export async function POST(req: NextRequest) {
@@ -71,6 +72,14 @@ export async function POST(req: NextRequest) {
     period = await fetchPeriod(svc, payroll_period_id)
   } catch {
     return NextResponse.json({ error: 'Payroll period not found' }, { status: 404 })
+  }
+
+  // ── Lock guard ──────────────────────────────────────────────────────────────
+  if (period.status === 'locked') {
+    return NextResponse.json(
+      { error: 'Payroll period is locked — generation and regeneration are not allowed.' },
+      { status: 422 },
+    )
   }
 
   // ── Fetch employees ─────────────────────────────────────────────────────────
@@ -163,6 +172,14 @@ export async function POST(req: NextRequest) {
       ? `${failedIds.length} employee(s) failed — see failed_employee_ids`
       : undefined,
   }).catch(err => console.error('[payroll/generate] finalizeGenerationRow error:', err))
+
+  // ── Promote period to 'generated' ───────────────────────────────────────────
+  // Non-fatal: a status update failure must not mask primary outcomes.
+  if (generatedCount > 0) {
+    await setPeriodStatus(svc, payroll_period_id, 'generated').catch(err =>
+      console.error('[payroll/generate] setPeriodStatus error:', err),
+    )
+  }
 
   return NextResponse.json({
     generation: {
