@@ -235,6 +235,71 @@ export type PayrollPeriod = {
   created_at: string
 }
 
+// ─── Payroll results ──────────────────────────────────────────────────────────
+export type PayrollResultStatus = 'draft' | 'locked'
+
+export type PayrollResult = {
+  id: string
+  payroll_period_id: string
+  employee_id: string
+  monthly_salary: number
+  // Attendance summary
+  working_days_in_month: number | null
+  days_present: number | null
+  days_absent: number | null
+  days_on_leave: number | null
+  paid_leave_available: number | null
+  paid_leave_used: number | null
+  // Deduction hours
+  late_deduction_hours: number | null
+  short_hours_deduction: number | null
+  missing_punch_hours: number | null
+  leave_absorbed_deductions: boolean
+  // Monetary totals
+  gross_salary: number | null
+  total_deductions: number | null
+  pending_adjustment_total: number
+  net_salary: number | null
+  status: PayrollResultStatus
+  admin_notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type DeductionType =
+  | 'late_arrival'
+  | 'early_checkout'
+  | 'missing_punch_in'
+  | 'missing_punch_out'
+  | 'absent'
+  | 'half_day'
+  | 'short_hours'
+
+export type PayrollDeductionLine = {
+  id: string
+  payroll_result_id: string
+  line_date: string
+  deduction_type: DeductionType
+  hours_deducted: number
+  amount_deducted: number
+  is_overridden: boolean
+  override_reason: string | null
+  created_at: string
+}
+
+export type PendingAdjustmentStatus = 'pending' | 'applied' | 'cancelled'
+
+export type PayrollPendingAdjustment = {
+  id: string
+  employee_id: string
+  applied_in_period_id: string | null
+  payroll_result_id: string | null
+  description: string
+  amount: number   // positive = credit, negative = deduction
+  status: PendingAdjustmentStatus
+  created_at: string
+}
+
 // ─── Activity log ─────────────────────────────────────────────────────────────
 export type LogEntry = {
   id: string
