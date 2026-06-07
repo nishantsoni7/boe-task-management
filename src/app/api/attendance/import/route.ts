@@ -182,6 +182,7 @@ export async function POST(req: NextRequest) {
     updated: 0,
     skipped: 0,
     unmappedCodes: [] as string[],
+    unmappedCount: 0,
     errors: [] as string[],
   }
 
@@ -262,6 +263,7 @@ export async function POST(req: NextRequest) {
 
   // Deduplicate unmapped codes
   summary.unmappedCodes = [...new Set(summary.unmappedCodes)]
+  summary.unmappedCount = summary.unmappedCodes.length
 
   return NextResponse.json({ summary })
 }

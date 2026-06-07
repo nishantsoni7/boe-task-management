@@ -17,6 +17,7 @@ type ImportSummary = {
   updated: number
   skipped: number
   unmappedCodes: string[]
+  unmappedCount: number
   errors: string[]
 }
 
@@ -243,14 +244,70 @@ export default function AttendanceUploadPage() {
               </div>
             </div>
 
-            {/* Unmapped codes */}
+            {/* Unmapped codes — prominent warning */}
             {summary.unmappedCodes?.length > 0 && (
-              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${colors.border}` }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                  Unmapped fingerprint codes ({summary.unmappedCodes.length})
+              <div style={{
+                margin: '0 16px 16px',
+                borderRadius: 10,
+                border: '1.5px solid #F59E0B',
+                background: 'rgba(245,158,11,0.07)',
+                overflow: 'hidden',
+              }}>
+                {/* Warning header */}
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  padding: '14px 16px 10px',
+                  borderBottom: '1px solid rgba(245,158,11,0.2)',
+                }}>
+                  <span style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: '#92400E', marginBottom: 3 }}>
+                      {summary.unmappedCodes.length} fingerprint code{summary.unmappedCodes.length !== 1 ? 's' : ''} not mapped — attendance skipped
+                    </div>
+                    <div style={{ fontSize: 12.5, color: '#78350F', lineHeight: 1.55 }}>
+                      All attendance days for these employees were <strong>not imported</strong>. To fix this, open
+                      Employee Master, find each employee, and set their <strong>Fingerprint Code</strong> to match
+                      the code below. Then re-upload this file.
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: '#F59E0B', lineHeight: 1.7 }}>
-                  {summary.unmappedCodes.join(', ')} — add these codes in Employee Master → Fingerprint Code field.
+
+                {/* Code chips */}
+                <div style={{ padding: '10px 16px 12px', display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                  {summary.unmappedCodes.map(code => (
+                    <span key={code} style={{
+                      display: 'inline-block',
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      background: 'rgba(245,158,11,0.15)',
+                      border: '1px solid rgba(245,158,11,0.4)',
+                      fontFamily: 'monospace',
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      color: '#92400E',
+                      letterSpacing: '0.03em',
+                    }}>
+                      {code}
+                    </span>
+                  ))}
+                </div>
+
+                {/* CTA */}
+                <div style={{ padding: '0 16px 14px' }}>
+                  <Link
+                    href="/attendance/employees"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '7px 16px',
+                      borderRadius: 7,
+                      fontSize: 12.5, fontWeight: 600,
+                      background: '#F59E0B', color: '#fff',
+                      textDecoration: 'none',
+                      border: 'none',
+                    }}
+                  >
+                    Go to Employee Master →
+                  </Link>
                 </div>
               </div>
             )}
