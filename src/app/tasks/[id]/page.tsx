@@ -921,6 +921,10 @@ export default function TaskDetailPage() {
               ) : (
                 <button
                   onClick={async () => {
+                    const confirmed = window.confirm(
+                      'Are you sure this task is completed? This will move it out of active work.'
+                    )
+                    if (!confirmed) return
                     setMarkingComplete(true)
                     await applyStatusChange('completed', null)
                     setMarkingComplete(false)

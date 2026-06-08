@@ -39,11 +39,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  const { data: completionLog } = await supabase
+    .from('task_activity_log')
+    .select('from_status')
+    .eq('task_id', taskId)
+    .eq('to_status', 'completed')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  const restoreStatus = completionLog?.from_status ?? 'working'
+
   const now = new Date().toISOString()
 
   const { error: updateErr } = await supabase
     .from('tasks')
-    .update({ status: 'pending', last_update_at: now })
+    .update({ status: restoreStatus, completed_at: null, last_update_at: now })
     .eq('id', taskId)
 
   if (updateErr) {
@@ -55,8 +66,8 @@ export async function POST(req: NextRequest) {
     actor_id:    user.id,
     action:      'status_changed',
     from_status: 'completed',
-    to_status:   'pending',
-    note:        'Restored to In Progress',
+    to_status:   restoreStatus,
+    note:        'Restored from completed',
   })
 
   return NextResponse.json({ success: true })
