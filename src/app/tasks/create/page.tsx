@@ -128,7 +128,8 @@ export default function CreateTaskPage() {
         .from('task-attachments')
         .upload(path, attachmentFile)
       if (uploadError) {
-        setSubmitError('File upload failed. Task was not created — please try again.')
+        console.error('[storage upload error]', uploadError)
+        setSubmitError(`File upload failed: ${uploadError.message}. Task was not created — please try again.`)
         setLoading(false)
         return
       }
@@ -140,24 +141,27 @@ export default function CreateTaskPage() {
 
     const notePayload = description.trim() || null
 
+    const taskPayload: Record<string, unknown> = {
+      title:       title.trim(),
+      note:        notePayload,
+      priority,    type,
+      is_urgent:   isUrgent,
+      due_date:    dueDate || null,
+      assigned_to: assigneeId,
+      created_by:  session.user.id,
+      team,
+      status:      'pending',
+    }
+    if (attachmentUrl !== null) taskPayload.attachment_url = attachmentUrl
+
     const { data: task, error } = await supabase
       .from('tasks')
-      .insert({
-        title:          title.trim(),
-        note:           notePayload,
-        priority,       type,
-        is_urgent:      isUrgent,
-        due_date:       dueDate || null,
-        assigned_to:    assigneeId,
-        created_by:     session.user.id,
-        team,
-        status:         'pending',
-        attachment_url: attachmentUrl,
-      })
+      .insert(taskPayload)
       .select().single()
 
     if (error || !task) {
-      setSubmitError('Failed to create task. Please check your connection and try again.')
+      console.error('[tasks insert error]', error)
+      setSubmitError(error?.message ?? 'Failed to create task. Please check your connection and try again.')
       setLoading(false)
       return
     }

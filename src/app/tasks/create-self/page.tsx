@@ -111,6 +111,7 @@ export default function CreateSelfTaskPage() {
         .from('task-attachments')
         .upload(path, attachmentFile)
       if (uploadError) {
+        console.error('[storage upload error]', uploadError)
         setLoading(false)
         return
       }
@@ -122,20 +123,22 @@ export default function CreateSelfTaskPage() {
 
     const notePayload = description.trim() || null
 
+    const taskPayload: Record<string, unknown> = {
+      title:       title.trim(),
+      note:        notePayload,
+      priority,    type,
+      is_urgent:   isUrgent,
+      due_date:    dueDate || null,
+      assigned_to: profile.id,
+      created_by:  session.user.id,
+      team:        profile.team,
+      status:      'pending',
+    }
+    if (attachmentUrl !== null) taskPayload.attachment_url = attachmentUrl
+
     const { data: task, error } = await supabase
       .from('tasks')
-      .insert({
-        title:          title.trim(),
-        note:           notePayload,
-        priority,       type,
-        is_urgent:      isUrgent,
-        due_date:       dueDate || null,
-        assigned_to:    profile.id,
-        created_by:     session.user.id,
-        team:           profile.team,
-        status:         'pending',
-        attachment_url: attachmentUrl,
-      })
+      .insert(taskPayload)
       .select().single()
 
     if (!error && task) {
