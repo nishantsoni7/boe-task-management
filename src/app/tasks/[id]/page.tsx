@@ -354,7 +354,7 @@ export default function TaskDetailPage() {
     const { error: logErr } = await supabase.from('task_activity_log').insert({
       task_id:        task.id,
       actor_id:       currentUserId,
-      action:         'details_shared',
+      action:         'progress_update',
       note:           updateNote.trim() || null,
       attachment_url: attachmentUrl ?? null,
     })
