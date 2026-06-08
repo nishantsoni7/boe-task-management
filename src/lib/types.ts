@@ -310,6 +310,21 @@ export type PayrollHoliday = {
   created_at: string
 }
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+export type Notification = {
+  id: string
+  user_id: string
+  task_id: string | null
+  type: string
+  title: string
+  body: string | null
+  is_read: boolean
+  is_push_sent: boolean
+  is_digest: boolean
+  created_at: string
+  read_at: string | null
+}
+
 // ─── Activity log ─────────────────────────────────────────────────────────────
 export type LogEntry = {
   id: string

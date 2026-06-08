@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   Settings, ChevronRight, LogOut, Briefcase, ShieldCheck, TrendingUp,
-  Eye, X, ChevronDown, Users, Home,
+  Eye, X, ChevronDown, Users, Home, Bell,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
@@ -35,6 +35,7 @@ export function DashboardLayout({
   const [members,     setMembers]       = useState<UserProfile[]>([])
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const [navCounts,   setNavCounts]     = useState({ myActive: 0, assignedByMeActive: 0 })
+  const [unreadNotifs, setUnreadNotifs] = useState(0)
 
   const router   = useRouter()
   const pathname = usePathname()
@@ -91,6 +92,18 @@ export function DashboardLayout({
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewAsUserId])
+
+  // Unread notification badge — scoped to the logged-in user via the service-role
+  // API route (independent of view mode). Refreshes on navigation so it clears
+  // after visiting /notifications and marking items read.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/notifications?count=1')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => { if (!cancelled && data) setUnreadNotifs(data.unreadCount ?? 0) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [pathname])
 
   const navTo = (path: string) => {
     router.push(path)
@@ -154,6 +167,15 @@ export function DashboardLayout({
             icon={<LayoutDashboard size={15} strokeWidth={1.8} />}
             active={pathname === '/dashboard'}
             onClick={() => navTo('/dashboard')}
+          />
+
+          {/* 1b. Notifications */}
+          <NavLeaf
+            label="Notifications"
+            icon={<Bell size={15} strokeWidth={1.8} />}
+            active={pathname === '/notifications'}
+            onClick={() => navTo('/notifications')}
+            badge={unreadNotifs || undefined}
           />
 
           {/* 2. New Task — hidden in view mode (read-only) */}
@@ -585,9 +607,9 @@ function CollapsibleNav({ label, active, count, icon, children }: CollapsibleNav
 }
 
 // ─── NavLeaf ──────────────────────────────────────────────────────────────────
-type NavLeafProps = { label: string; active: boolean; onClick: () => void; icon?: React.ReactNode }
+type NavLeafProps = { label: string; active: boolean; onClick: () => void; icon?: React.ReactNode; badge?: number }
 
-function NavLeaf({ label, active, onClick, icon }: NavLeafProps) {
+function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
   return (
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
@@ -598,6 +620,16 @@ function NavLeaf({ label, active, onClick, icon }: NavLeafProps) {
         {icon}
       </span>
       {label}
+      {badge != null && badge > 0 && (
+        <span style={{
+          marginLeft: 'auto',
+          fontSize: '10px', fontWeight: 700, color: '#ffffff',
+          background: '#D94F4F', borderRadius: '999px',
+          padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
+        }}>
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </button>
   )
 }

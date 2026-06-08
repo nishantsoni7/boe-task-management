@@ -143,7 +143,7 @@ export default function TaskDetailPage() {
       fetch('/api/notify-status-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, title: 'Task acknowledged' }),
+        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'acknowledged', actorName: profile?.full_name }),
       }).then(res => {
         if (!res.ok) res.json().then(d => console.error('[acknowledge] notification failed:', d))
       }).catch(err => console.error('[acknowledge] notification fetch error:', err))
@@ -186,7 +186,7 @@ export default function TaskDetailPage() {
       fetch('/api/notify-status-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by }),
+        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: newStatus, actorName: profile?.full_name }),
       }).then(res => {
         if (!res.ok) res.json().then(d => console.error('[applyStatusChange] notification failed:', d))
       }).catch(err => console.error('[applyStatusChange] notification fetch error:', err))
@@ -272,7 +272,7 @@ export default function TaskDetailPage() {
           fetch('/api/notify-status-update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by }),
+            body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'waiting', actorName: profile?.full_name }),
           }).then(res => {
             if (!res.ok) res.json().then(d => console.error('[saveUpdate/waiting] notification failed:', d))
           }).catch(err => console.error('[saveUpdate/waiting] notification fetch error:', err))
