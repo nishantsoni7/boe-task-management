@@ -396,7 +396,43 @@ export default function TaskDetailPage() {
   const agingColor = aging ? (aging.severity === 'danger' ? colors.red : colors.amber) : colors.muted
 
   return (
-    <DashboardLayout profile={profile} title="Task Details" onSignOut={handleLogout}>
+    <DashboardLayout
+      profile={profile}
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => router.back()}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '4px',
+              fontSize: '13px', fontWeight: 600,
+              color: colors.muted,
+              background: 'none', border: 'none',
+              cursor: 'pointer', padding: '3px 8px',
+              borderRadius: '6px',
+              transition: 'background 0.15s',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = colors.float)}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+            aria-label="Go back"
+          >
+            ← Back
+          </button>
+          <span>Task Details</span>
+          <span style={{
+            fontSize: '11px', fontWeight: 700,
+            letterSpacing: '0.06em', textTransform: 'uppercase',
+            color: relationColor,
+            background: relationColor + '14',
+            border: `1px solid ${relationColor}28`,
+            padding: '3px 10px', borderRadius: '20px',
+          }}>
+            {relationLabel}
+          </span>
+        </div>
+      }
+      onSignOut={handleLogout}
+    >
 
       <div className="boe-task-2col">
 
@@ -405,39 +441,31 @@ export default function TaskDetailPage() {
 
             {/* ─ A. Task Summary Card ─ */}
             <div className="boe-card" style={{
-              padding: '20px 22px',
+              padding: '14px 22px',
               background: '#ffffff',
               borderLeft: `3px solid ${relationColor}`,
             }}>
-              {/* Relation badge */}
-              <div style={{ marginBottom: '8px' }}>
-                <span style={{
-                  fontSize: '10px', fontWeight: 700,
-                  letterSpacing: '0.07em', textTransform: 'uppercase',
-                  color: relationColor,
-                  background: relationColor + '14',
-                  border: `1px solid ${relationColor}28`,
-                  padding: '2px 8px', borderRadius: '20px',
+              {/* Task title */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
+                {task.is_urgent && (
+                  <span style={{ fontSize: '15px', lineHeight: '1.35', flexShrink: 0, marginTop: '1px' }} title="Starred">⭐</span>
+                )}
+                <h2 style={{
+                  fontSize: '18px', fontWeight: 800,
+                  color: colors.primary, lineHeight: 1.3,
+                  letterSpacing: '-0.02em', margin: 0,
                 }}>
-                  {relationLabel}
-                </span>
+                  {task.title}
+                </h2>
               </div>
 
-              {/* Task title */}
-              <h2 style={{
-                fontSize: '18px', fontWeight: 800,
-                color: colors.primary, lineHeight: 1.3,
-                letterSpacing: '-0.02em', margin: '0 0 6px',
-              }}>
-                {task.title}
-              </h2>
-
-              {/* Creator line */}
+              {/* Assigned by */}
               {creatorName && (
-                <p style={{ fontSize: '11.5px', color: colors.muted, margin: '0 0 10px' }}>
-                  By <strong style={{ color: colors.tertiary }}>{creatorName}</strong>
-                  {task.is_urgent && <span style={{ marginLeft: '8px', color: '#C49A28', fontWeight: 600 }}>⭐ Starred</span>}
-                </p>
+                <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '14px' }}>👤</span>
+                  <span style={{ fontSize: '13px', color: colors.muted, fontWeight: 500 }}>Assigned by:</span>
+                  <strong style={{ fontSize: '14px', color: colors.primary, fontWeight: 700 }}>{creatorName}</strong>
+                </div>
               )}
 
               {/* Due date chip + inline edit */}
@@ -742,7 +770,7 @@ export default function TaskDetailPage() {
                           type="button"
                           onClick={() => { setWaitingOnType(t); setWaitingOnUserId(''); setWaitingOnText(''); setWaitingOnError(false) }}
                           style={{
-                            flex: 1, padding: '5px 8px', borderRadius: '6px',
+                            flex: 1, padding: '6px 8px', borderRadius: '7px',
                             border: `1.5px solid ${waitingOnType === t ? colors.amber : colors.border}`,
                             background: waitingOnType === t ? `${colors.amber}18` : colors.float,
                             color: waitingOnType === t ? colors.amber : colors.tertiary,
