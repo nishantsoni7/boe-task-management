@@ -11,7 +11,7 @@ import {
 import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { CircleCheckBig } from 'lucide-react'
+import { CircleCheckBig, UserCheck, UserRound } from 'lucide-react'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
@@ -377,7 +377,9 @@ export default function TaskDetailPage() {
   const isSelfTask   = isCreator && isAssignee
   const isDelegated  = !isAssignee && task.created_by === currentUserId
   const riskOverdue  = overdue && task.status !== 'completed'
-  const assigneeName = isAssignee ? (profile?.full_name ?? 'You') : (task.assignee_name ?? '—')
+  const assigneeName = isAssignee
+    ? (profile?.full_name ?? 'You')
+    : (teamMembers.find(m => m.id === task.assigned_to)?.full_name ?? task.assignee_name ?? 'Unknown')
 
   const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at
 
@@ -480,12 +482,19 @@ export default function TaskDetailPage() {
                 </h2>
               </div>
 
-              {/* Assigned by */}
-              {creatorName && (
+              {/* Assigned by / Assigned to (delegated) */}
+              {(isDelegated ? assigneeName : creatorName) && (
                 <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '14px' }}>👤</span>
-                  <span style={{ fontSize: '13px', color: colors.muted, fontWeight: 500 }}>Assigned by:</span>
-                  <strong style={{ fontSize: '14px', color: colors.primary, fontWeight: 700 }}>{creatorName}</strong>
+                  {isDelegated
+                    ? <UserCheck size={15} color="#2563EB" />
+                    : <UserRound size={15} color="#2563EB" />
+                  }
+                  <span style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>
+                    {isDelegated ? 'Assigned To:' : 'Assigned by:'}
+                  </span>
+                  <span style={{ fontSize: '13px', color: '#2563EB', fontWeight: 600 }}>
+                    {isDelegated ? assigneeName : creatorName}
+                  </span>
                 </div>
               )}
 
@@ -689,7 +698,7 @@ export default function TaskDetailPage() {
                     onMouseEnter={e => { e.currentTarget.style.borderColor = statusColor; e.currentTarget.style.color = statusColor }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.color = colors.secondary }}
                   >
-                    Change Status
+                    Update Status
                   </button>
                 )}
               </div>
@@ -697,12 +706,11 @@ export default function TaskDetailPage() {
               {/* Waiting On */}
               {task.status === 'waiting' && task.waiting_on_type && (
                 <p style={{ fontSize: '12px', color: colors.secondary, margin: '0 0 4px', lineHeight: 1.5 }}>
-                  <span style={{ fontWeight: 700, color: statusColor }}>Waiting on: </span>
+                  <span style={{ fontWeight: 700, color: statusColor }}>Waiting for: </span>
                   {task.waiting_on_type === 'team_member'
                     ? (teamMembers.find(m => m.id === task.waiting_on_user_id)?.full_name ?? 'Team member')
                     : (task.waiting_on_text ?? '—')
                   }
-                  <span style={{ fontSize: '10.5px', color: colors.muted }}> ({task.waiting_on_type === 'team_member' ? 'Team Member' : 'External'})</span>
                 </p>
               )}
 
@@ -717,10 +725,11 @@ export default function TaskDetailPage() {
               {/* Latest note */}
               {!noteIsDuplicateOfBlocker && currentStatusNote && (
                 <p style={{
-                  fontSize: '14px', color: colors.primary,
+                  fontSize: '12px', color: colors.secondary,
                   lineHeight: 1.6, margin: '4px 0',
                   fontWeight: 500,
                 }}>
+                  <span style={{ fontWeight: 700, color: statusColor }}>Reason: </span>
                   {currentStatusNote}
                 </p>
               )}
