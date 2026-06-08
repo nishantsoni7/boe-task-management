@@ -15,7 +15,7 @@ import { CircleCheckBig } from 'lucide-react'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
-const PROGRESS_STATUSES: TaskStatus[] = ['working', 'waiting', 'blocked']
+const PROGRESS_STATUSES: TaskStatus[] = ['waiting', 'blocked']
 
 const STATUS_COLORS: Record<string, string> = {
   pending:   colors.muted,
@@ -52,18 +52,20 @@ export default function TaskDetailPage() {
   const [loading,         setLoading]         = useState(true)
 
   const [selectedStatus,   setSelectedStatus]  = useState<string>('')
-  const [updateNote,       setUpdateNote]      = useState('')
   const [waitingOnType,    setWaitingOnType]   = useState<'team_member' | 'external'>('team_member')
   const [waitingOnUserId,  setWaitingOnUserId] = useState('')
   const [waitingOnText,    setWaitingOnText]   = useState('')
-  const [noteError,        setNoteError]       = useState(false)
   const [waitingOnError,   setWaitingOnError]  = useState(false)
   const [saving,           setSaving]          = useState(false)
   const [markingComplete,  setMarkingComplete] = useState(false)
+  const [modalOpen,        setModalOpen]       = useState(false)
+  const [modalStatus,      setModalStatus]     = useState<string>('')
   const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
 
-  const [updateFile,     setUpdateFile]     = useState<File | null>(null)
-  const [uploadError,    setUploadError]    = useState<string | null>(null)
+  const [commentNote,        setCommentNote]        = useState('')
+  const [commentFile,        setCommentFile]        = useState<File | null>(null)
+  const [commentSaving,      setCommentSaving]      = useState(false)
+  const [commentUploadError, setCommentUploadError] = useState<string | null>(null)
 
   const [editingDueDate,   setEditingDueDate]   = useState(false)
   const [editingPriority,  setEditingPriority]  = useState(false)
@@ -131,24 +133,31 @@ export default function TaskDetailPage() {
     if (task.assigned_to !== currentUserId) return
     if (task.created_by === currentUserId) return
     const now = new Date().toISOString()
-    const { error } = await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', task.id)
+    const oldStatus = task.status
+    const { error } = await supabase.from('tasks').update({
+      acknowledged_at: now,
+      status: 'working',
+      last_update_at: now,
+    }).eq('id', task.id)
     if (error) {
       alert('Failed to acknowledge task. Please try again.')
       return
     }
-    await supabase.from('task_activity_log').insert({
-      task_id: task.id, actor_id: currentUserId, action: 'acknowledged', note: null,
-    })
+    await supabase.from('task_activity_log').insert([
+      { task_id: task.id, actor_id: currentUserId, action: 'acknowledged', note: null },
+      { task_id: task.id, actor_id: currentUserId, action: 'status_changed', from_status: oldStatus, to_status: 'working', note: null },
+    ])
     if (task.created_by && task.created_by !== currentUserId) {
       fetch('/api/notify-status-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'acknowledged', actorName: profile?.full_name }),
+        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'working', actorName: profile?.full_name }),
       }).then(res => {
         if (!res.ok) res.json().then(d => console.error('[acknowledge] notification failed:', d))
       }).catch(err => console.error('[acknowledge] notification fetch error:', err))
     }
-    setTask({ ...task, acknowledged_at: now })
+    setTask({ ...task, acknowledged_at: now, status: 'working' as TaskStatus, last_update_at: now })
+    setSelectedStatus('working')
     await loadLog(task.id)
   }
 
@@ -208,173 +217,114 @@ export default function TaskDetailPage() {
     if (newStatus === 'completed') setTimeout(() => router.push('/dashboard'), 800)
   }
 
-  const uploadUpdateAttachment = async (): Promise<string | null> => {
-    if (!updateFile || !task) return null
-    const ext  = updateFile.name.split('.').pop() ?? 'bin'
+  const saveStatus = async () => {
+    if (!task) return
+    if (selectedStatus === task.status) return
+    if (selectedStatus === 'waiting') {
+      const filled = waitingOnType === 'team_member' ? !!waitingOnUserId : !!waitingOnText.trim()
+      if (!filled) { setWaitingOnError(true); return }
+    }
+    setWaitingOnError(false)
+    setSaving(true)
+
+    if (selectedStatus === 'waiting') {
+      const now = new Date().toISOString()
+      const updates: Record<string, unknown> = {
+        status:             selectedStatus,
+        last_update_at:     now,
+        waiting_on_type:    waitingOnType,
+        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
+        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
+      }
+      if (task.status === 'blocked') updates.blocker_reason = null
+      const { error: taskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
+      if (taskErr) {
+        console.error('[saveStatus/waiting] tasks update failed:', taskErr.message)
+        window.alert('Failed to save status. Please try again.')
+        setSaving(false)
+        return
+      }
+      await supabase.from('task_activity_log').insert({
+        task_id: task.id, actor_id: currentUserId,
+        action: 'status_changed', from_status: task.status, to_status: selectedStatus,
+        note: null,
+      })
+      const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
+      if (recipient && recipient !== currentUserId) {
+        fetch('/api/notify-status-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'waiting', actorName: profile?.full_name }),
+        }).catch(err => console.error('[saveStatus/waiting] notification fetch error:', err))
+      }
+      const localPatch: Partial<Task> = {
+        status:             selectedStatus as TaskStatus,
+        last_update_at:     now,
+        waiting_on_type:    waitingOnType,
+        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
+        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
+      }
+      if (task.status === 'blocked') localPatch.blocker_reason = null
+      setTask({ ...task, ...localPatch })
+      setSelectedStatus(selectedStatus)
+      await loadLog(task.id)
+    } else {
+      await applyStatusChange(selectedStatus, null)
+    }
+
+    setSaving(false)
+  }
+
+  const uploadCommentAttachment = async (): Promise<string | null> => {
+    if (!commentFile || !task) return null
+    const ext  = commentFile.name.split('.').pop() ?? 'bin'
     const path = `updates/${task.id}/${Date.now()}.${ext}`
     const { error } = await supabase.storage
       .from('task-attachments')
-      .upload(path, updateFile, { upsert: false })
+      .upload(path, commentFile, { upsert: false })
     if (error) {
-      setUploadError('Attachment upload failed. Update was saved without it.')
+      setCommentUploadError('Attachment upload failed. Comment was saved without it.')
       return null
     }
     const { data } = supabase.storage.from('task-attachments').getPublicUrl(path)
     return data.publicUrl
   }
 
-  const saveUpdate = async () => {
+  const saveComment = async () => {
     if (!task) return
-    if (selectedStatus === 'blocked' && !updateNote.trim()) { setNoteError(true); return }
-    if (selectedStatus === 'waiting') {
-      const filled = waitingOnType === 'team_member' ? !!waitingOnUserId : !!waitingOnText.trim()
-      if (!filled) { setWaitingOnError(true); return }
-    }
-    setNoteError(false)
-    setWaitingOnError(false)
-    setUploadError(null)
-    setSaving(true)
-
-    const attachmentUrl = await uploadUpdateAttachment()
-
-    const hasStatusChange = selectedStatus !== task.status
-    const hasNote         = !!updateNote.trim()
-    const hasAttachment   = !!attachmentUrl
-
-    if (!hasStatusChange && !hasNote && !hasAttachment) {
-      setSaving(false)
-      return
-    }
-
-    if (hasStatusChange) {
-      if (selectedStatus === 'waiting') {
-        const now = new Date().toISOString()
-        const updates: Record<string, unknown> = {
-          status:            selectedStatus,
-          last_update_at:    now,
-          waiting_on_type:   waitingOnType,
-          waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
-          waiting_on_text:   waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
-        }
-        if (task.status === 'blocked') updates.blocker_reason = null
-        const { error: waitTaskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
-        if (waitTaskErr) {
-          console.error('[saveUpdate/waiting] tasks update failed:', waitTaskErr.message)
-          window.alert('Failed to save update. Please try again.')
-          setSaving(false)
-          return
-        }
-        const { error: waitLogErr } = await supabase.from('task_activity_log').insert({
-          task_id: task.id, actor_id: currentUserId,
-          action: 'status_changed', from_status: task.status, to_status: selectedStatus,
-          note: updateNote.trim() || null,
-          attachment_url: attachmentUrl ?? null,
-        })
-        if (waitLogErr) console.error('[saveUpdate/waiting] activity log insert failed:', waitLogErr.message)
-        {
-          const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
-          if (recipient && recipient !== currentUserId) {
-            fetch('/api/notify-status-update', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'waiting', actorName: profile?.full_name }),
-            }).then(res => {
-              if (!res.ok) res.json().then(d => console.error('[saveUpdate/waiting] notification failed:', d))
-            }).catch(err => console.error('[saveUpdate/waiting] notification fetch error:', err))
-          }
-        }
-        const localPatch: Partial<Task> = {
-          status:            selectedStatus as TaskStatus,
-          last_update_at:    now,
-          waiting_on_type:   waitingOnType,
-          waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
-          waiting_on_text:   waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
-        }
-        if (task.status === 'blocked') localPatch.blocker_reason = null
-        setTask({ ...task, ...localPatch })
-        setSelectedStatus(selectedStatus)
-        await loadLog(task.id)
-      } else {
-        await applyStatusChange(selectedStatus, updateNote.trim() || null, attachmentUrl)
-      }
-    } else if (hasNote || hasAttachment) {
-      const now = new Date().toISOString()
-      const { error: noteTaskErr } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
-      if (noteTaskErr) {
-        console.error('[saveUpdate/note] tasks update failed:', noteTaskErr.message)
-        window.alert('Failed to save update. Please try again.')
-        setSaving(false)
-        return
-      }
-      const { error: noteLogErr } = await supabase.from('task_activity_log').insert({
-        task_id:        task.id,
-        actor_id:       currentUserId,
-        action:         'progress_update',
-        note:           updateNote.trim() || null,
-        attachment_url: attachmentUrl ?? null,
-      })
-      if (noteLogErr) console.error('[saveUpdate/note] activity log insert failed:', noteLogErr.message)
-      {
-        const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
-        if (recipient && recipient !== currentUserId) {
-          fetch('/api/notify-status-update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'progress_update', actorName: profile?.full_name }),
-          }).then(res => {
-            if (!res.ok) res.json().then(d => console.error('[saveUpdate/note] notification failed:', d))
-          }).catch(err => console.error('[saveUpdate/note] notification fetch error:', err))
-        }
-      }
-      setTask({ ...task, last_update_at: now })
-      await loadLog(task.id)
-    }
-
-    setUpdateNote('')
-    setUpdateFile(null)
-    setSaving(false)
-  }
-
-  const saveWaitingResponse = async () => {
-    if (!task) return
-    const hasNote       = !!updateNote.trim()
-    const attachmentUrl = await uploadUpdateAttachment()
+    const hasNote = !!commentNote.trim()
+    const attachmentUrl = await uploadCommentAttachment()
     const hasAttachment = !!attachmentUrl
-    if (!hasNote && !hasAttachment) { setSaving(false); return }
+    if (!hasNote && !hasAttachment) { setCommentSaving(false); return }
 
-    setSaving(true)
+    setCommentSaving(true)
     const now = new Date().toISOString()
     const { error: taskErr } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
-    if (taskErr) {
-      console.error('[saveWaitingResponse] tasks update failed:', taskErr.message)
-      window.alert('Failed to send details. Please try again.')
-      setSaving(false)
-      return
-    }
+    if (taskErr) console.error('[saveComment] tasks timestamp update failed:', taskErr.message)
     const { error: logErr } = await supabase.from('task_activity_log').insert({
       task_id:        task.id,
       actor_id:       currentUserId,
-      action:         'progress_update',
-      note:           updateNote.trim() || null,
+      action:         'note_added',
+      note:           commentNote.trim() || null,
       attachment_url: attachmentUrl ?? null,
     })
-    if (logErr) console.error('[saveWaitingResponse] activity log insert failed:', logErr.message)
+    if (logErr) console.error('[saveComment] activity log insert failed:', logErr.message)
     const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
     if (recipient && recipient !== currentUserId) {
       fetch('/api/notify-status-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'details_shared', actorName: profile?.full_name }),
+        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'comment_added', actorName: profile?.full_name }),
       }).then(res => {
-        if (!res.ok) res.json().then(d => console.error('[saveWaitingResponse] notification failed:', d))
-      }).catch(err => console.error('[saveWaitingResponse] notification fetch error:', err))
+        if (!res.ok) res.json().then(d => console.error('[saveComment] notification failed:', d))
+      }).catch(err => console.error('[saveComment] notification fetch error:', err))
     }
     setTask({ ...task, last_update_at: now })
     await loadLog(task.id)
-    setUpdateNote('')
-    setUpdateFile(null)
-    setUploadError(null)
-    setSaving(false)
+    setCommentNote('')
+    setCommentFile(null)
+    setCommentUploadError(null)
+    setCommentSaving(false)
   }
 
   const saveDueDate = async () => {
@@ -430,9 +380,6 @@ export default function TaskDetailPage() {
   const assigneeName = isAssignee ? (profile?.full_name ?? 'You') : (task.assignee_name ?? '—')
 
   const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at
-  const isWaitingOnMe   = task.status === 'waiting'
-    && task.waiting_on_type === 'team_member'
-    && task.waiting_on_user_id === currentUserId
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
     : isAssignee                    ? 'Assigned To Me'
@@ -688,11 +635,12 @@ export default function TaskDetailPage() {
               background: statusTint,
               borderLeft: `3px solid ${statusColor}`,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              {/* Top row: label + badge left, Change Status button right */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
                 <span style={{
                   fontSize: '10px', fontWeight: 700,
                   letterSpacing: '0.08em', textTransform: 'uppercase',
-                  color: statusColor,
+                  color: statusColor, flexShrink: 0,
                 }}>
                   Current Status
                 </span>
@@ -702,9 +650,37 @@ export default function TaskDetailPage() {
                   padding: '4px 14px', borderRadius: '20px',
                   background: statusColor,
                   boxShadow: `0 1px 4px ${statusColor}40`,
+                  flexShrink: 0,
                 }}>
                   {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
                 </span>
+
+                {isAssignee && task.status !== 'completed' && !isUnacknowledged && (
+                  <button
+                    onClick={() => {
+                      setModalStatus('')
+                      setWaitingOnType('team_member')
+                      setWaitingOnUserId('')
+                      setWaitingOnText('')
+                      setWaitingOnError(false)
+                      setModalOpen(true)
+                    }}
+                    style={{
+                      marginLeft: 'auto',
+                      padding: '5px 13px', borderRadius: '7px',
+                      border: `1.5px solid ${colors.border}`,
+                      background: '#ffffff',
+                      color: colors.secondary,
+                      fontSize: '11.5px', fontWeight: 600,
+                      cursor: 'pointer', fontFamily: font.body,
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = statusColor; e.currentTarget.style.color = statusColor }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.color = colors.secondary }}
+                  >
+                    Change Status
+                  </button>
+                )}
               </div>
 
               {/* Waiting On */}
@@ -727,7 +703,7 @@ export default function TaskDetailPage() {
                 </p>
               )}
 
-              {/* Latest note — focal point */}
+              {/* Latest note */}
               {!noteIsDuplicateOfBlocker && currentStatusNote && (
                 <p style={{
                   fontSize: '14px', color: colors.primary,
@@ -758,31 +734,26 @@ export default function TaskDetailPage() {
               </div>
             )}
 
-            {/* ─ C. Waiting-on-me: Share Details ─ */}
-            {isWaitingOnMe && task.status !== 'completed' && (
+            {/* ─ C. Conversation ─ */}
+            {(isCreator || isAssignee) && task.status !== 'completed' && (
               <div className="boe-card" style={{
                 padding: '16px 20px',
-                display: 'flex', flexDirection: 'column', gap: '12px',
+                display: 'flex', flexDirection: 'column', gap: '10px',
                 background: '#ffffff',
-                borderLeft: `3px solid ${colors.amber}`,
               }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{
-                    fontSize: '13px', fontWeight: 700, color: colors.amber,
-                  }}>
-                    Share Details &amp; Request Unblock
-                  </span>
-                  <span style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5 }}>
-                    Share the requested information. The assignee will be notified and can move the task back to Working or Completed.
-                  </span>
-                </div>
-
+                <span style={{
+                  fontSize: '10px', fontWeight: 700,
+                  letterSpacing: '0.09em', textTransform: 'uppercase',
+                  color: colors.muted,
+                }}>
+                  Conversation
+                </span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <div style={{ position: 'relative' }}>
                     <textarea
-                      value={updateNote}
-                      onChange={e => setUpdateNote(e.target.value)}
-                      placeholder="Add requested details or context…"
+                      value={commentNote}
+                      onChange={e => setCommentNote(e.target.value)}
+                      placeholder="Add a comment or share details…"
                       className="boe-input"
                       style={{
                         resize: 'none', height: '72px', paddingBottom: '36px',
@@ -798,8 +769,8 @@ export default function TaskDetailPage() {
                         position: 'absolute', bottom: '9px', right: '10px',
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         width: '28px', height: '28px', borderRadius: '50%',
-                        background: updateFile ? colors.blueTint : '#ffffff',
-                        border: `1.5px solid ${updateFile ? colors.blue + '55' : colors.border}`,
+                        background: commentFile ? colors.blueTint : '#ffffff',
+                        border: `1.5px solid ${commentFile ? colors.blue + '55' : colors.border}`,
                         fontSize: '13px', cursor: 'pointer', userSelect: 'none',
                         transition: 'all 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                       }}
@@ -808,241 +779,41 @@ export default function TaskDetailPage() {
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
-                        onChange={e => { setUpdateFile(e.target.files?.[0] ?? null); setUploadError(null) }}
+                        onChange={e => { setCommentFile(e.target.files?.[0] ?? null); setCommentUploadError(null) }}
                         style={{ display: 'none' }}
                       />
                     </label>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '10px', color: updateFile ? colors.blue : colors.muted, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {updateFile
-                        ? `📎 ${updateFile.name} (${(updateFile.size / 1024).toFixed(0)} KB)`
-                        : uploadError ? <span style={{ color: colors.red }}>{uploadError}</span> : ''}
+                    <span style={{ fontSize: '10px', color: commentFile ? colors.blue : colors.muted, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {commentFile
+                        ? `📎 ${commentFile.name} (${(commentFile.size / 1024).toFixed(0)} KB)`
+                        : commentUploadError ? <span style={{ color: colors.red }}>{commentUploadError}</span> : ''}
                     </span>
+                    <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{commentNote.length}/1000</span>
                     <button
-                      onClick={async () => { setSaving(true); await saveWaitingResponse() }}
-                      disabled={saving}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        padding: '6px 18px', borderRadius: '7px',
-                        border: `1.5px solid ${colors.amber}`,
-                        background: colors.amber, color: '#ffffff',
-                        fontSize: '12px', fontWeight: 600,
-                        cursor: saving ? 'not-allowed' : 'pointer',
-                        fontFamily: font.body,
-                        opacity: saving ? 0.6 : 1, transition: 'all 0.15s',
-                        boxShadow: `0 2px 6px ${colors.amber}38`,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {saving ? 'Sending…' : 'Send Details'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ─ C. Update Status Card ─ */}
-            {!isWaitingOnMe && (isAssignee || isCreator) && task.status !== 'completed' && !isUnacknowledged && (
-              <div className="boe-card" style={{
-                padding: '16px 20px',
-                display: 'flex', flexDirection: 'column', gap: '12px',
-                background: '#ffffff',
-              }}>
-
-                {/* Row: label + pills */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{
-                    fontSize: '10px', fontWeight: 700,
-                    letterSpacing: '0.09em', textTransform: 'uppercase',
-                    color: colors.muted, flexShrink: 0, whiteSpace: 'nowrap',
-                  }}>
-                    Update Status
-                  </span>
-                  <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
-                    {PROGRESS_STATUSES.map(s => {
-                      const active = selectedStatus === s
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => {
-                            setSelectedStatus(s)
-                            setNoteError(false)
-                            setWaitingOnError(false)
-                            if (s !== 'waiting') {
-                              setWaitingOnType('team_member')
-                              setWaitingOnUserId('')
-                              setWaitingOnText('')
-                            }
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: '6px 0', borderRadius: '7px',
-                            border: `1.5px solid ${active ? STATUS_COLORS[s] : colors.border}`,
-                            background: active ? STATUS_TINTS[s] : '#ffffff',
-                            color: active ? STATUS_COLORS[s] : colors.tertiary,
-                            fontSize: '11.5px', fontWeight: active ? 700 : 500,
-                            cursor: 'pointer', textTransform: 'capitalize',
-                            transition: 'all 0.15s',
-                            boxShadow: active ? `0 1px 5px ${STATUS_COLORS[s]}30` : 'none',
-                            fontFamily: font.body,
-                          }}
-                        >
-                          {s}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Waiting On selector */}
-                {selectedStatus === 'waiting' && (
-                  <div style={{
-                    padding: '10px 12px', borderRadius: '8px',
-                    background: `${colors.amber}08`,
-                    border: `1.5px solid ${waitingOnError ? colors.red : colors.amber + '40'}`,
-                  }}>
-                    <p style={{
-                      fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
-                      letterSpacing: '0.07em', marginBottom: '8px',
-                      color: waitingOnError ? colors.red : colors.amber,
-                    }}>
-                      Waiting On <span style={{ color: colors.red }}>*</span>
-                      {waitingOnError && <span> — required</span>}
-                    </p>
-                    <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-                      {(['team_member', 'external'] as const).map(t => (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => { setWaitingOnType(t); setWaitingOnUserId(''); setWaitingOnText(''); setWaitingOnError(false) }}
-                          style={{
-                            flex: 1, padding: '6px 8px', borderRadius: '7px',
-                            border: `1.5px solid ${waitingOnType === t ? colors.amber : colors.border}`,
-                            background: waitingOnType === t ? `${colors.amber}18` : colors.float,
-                            color: waitingOnType === t ? colors.amber : colors.tertiary,
-                            fontSize: '11.5px', fontWeight: waitingOnType === t ? 600 : 400,
-                            cursor: 'pointer', transition: 'all 0.12s',
-                          }}
-                        >
-                          {t === 'team_member' ? 'Team Member' : 'External Dependency'}
-                        </button>
-                      ))}
-                    </div>
-                    {waitingOnType === 'team_member' && (
-                      <select
-                        value={waitingOnUserId}
-                        onChange={e => { setWaitingOnUserId(e.target.value); setWaitingOnError(false) }}
-                        className="boe-input"
-                        style={{ width: '100%', border: waitingOnError ? `1.5px solid ${colors.red}` : undefined }}
-                      >
-                        <option value="">Select team member…</option>
-                        {teamMembers.map(m => (
-                          <option key={m.id} value={m.id}>{m.full_name}</option>
-                        ))}
-                      </select>
-                    )}
-                    {waitingOnType === 'external' && (
-                      <input
-                        type="text"
-                        value={waitingOnText}
-                        onChange={e => { setWaitingOnText(e.target.value); setWaitingOnError(false) }}
-                        placeholder="e.g. Client approval, Vendor quotation, Architect drawing…"
-                        className="boe-input"
-                        style={{ width: '100%', boxSizing: 'border-box', border: waitingOnError ? `1.5px solid ${colors.red}` : undefined }}
-                      />
-                    )}
-                  </div>
-                )}
-
-                {/* Textarea + footer row */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {noteError && selectedStatus === 'blocked' && (
-                    <p style={{ fontSize: '11px', color: colors.red, margin: 0 }}>Note required for blocked status.</p>
-                  )}
-                  <div style={{ position: 'relative' }}>
-                    <textarea
-                      value={updateNote}
-                      onChange={e => { setUpdateNote(e.target.value); if (noteError) setNoteError(false) }}
-                      placeholder="Add update or notes…"
-                      className="boe-input"
-                      style={{
-                        resize: 'none',
-                        height: '72px',
-                        paddingBottom: '36px',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        border: noteError ? `1.5px solid ${colors.red}` : `1.5px solid ${colors.border}`,
-                        background: '#F0F2F5',
-                        borderRadius: '8px',
-                        fontSize: '12.5px',
-                        lineHeight: 1.5,
-                      }}
-                    />
-                    <label
-                      title="Attach a file"
-                      style={{
-                        position: 'absolute', bottom: '9px', right: '10px',
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: '28px', height: '28px',
-                        borderRadius: '50%',
-                        background: updateFile ? colors.blueTint : '#ffffff',
-                        border: `1.5px solid ${updateFile ? colors.blue + '55' : colors.border}`,
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        userSelect: 'none',
-                        transition: 'all 0.15s',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                      }}
-                    >
-                      📎
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
-                        onChange={e => { setUpdateFile(e.target.files?.[0] ?? null); setUploadError(null) }}
-                        style={{ display: 'none' }}
-                      />
-                    </label>
-                  </div>
-
-                  {/* Footer: file info + char count + submit */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '10px', color: updateFile ? colors.blue : colors.muted, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {updateFile
-                        ? `📎 ${updateFile.name} (${(updateFile.size / 1024).toFixed(0)} KB)`
-                        : uploadError
-                          ? <span style={{ color: colors.red }}>{uploadError}</span>
-                          : ''}
-                    </span>
-                    <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{updateNote.length}/1000</span>
-                    <button
-                      onClick={saveUpdate}
-                      disabled={saving || markingComplete}
+                      onClick={async () => { setCommentSaving(true); await saveComment() }}
+                      disabled={commentSaving}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: '5px',
                         padding: '6px 18px', borderRadius: '7px',
                         border: `1.5px solid ${colors.blue}`,
-                        background: colors.blue,
-                        color: '#ffffff',
+                        background: colors.blue, color: '#ffffff',
                         fontSize: '12px', fontWeight: 600,
-                        cursor: saving || markingComplete ? 'not-allowed' : 'pointer',
+                        cursor: commentSaving ? 'not-allowed' : 'pointer',
                         fontFamily: font.body,
-                        opacity: saving || markingComplete ? 0.6 : 1,
-                        transition: 'all 0.15s',
+                        opacity: commentSaving ? 0.6 : 1, transition: 'all 0.15s',
                         boxShadow: '0 2px 6px rgba(85,133,232,0.25)',
                         flexShrink: 0,
                       }}
                     >
-                      {saving ? 'Saving…' : 'Update Status'}
+                      {commentSaving ? 'Sending…' : 'Send Update'}
                     </button>
                   </div>
-                  {uploadError && !updateFile && (
-                    <p style={{ fontSize: '11px', color: colors.red, margin: 0 }}>{uploadError}</p>
-                  )}
                 </div>
-
               </div>
             )}
+
 
         </div>
 
@@ -1240,6 +1011,231 @@ export default function TaskDetailPage() {
         </div>{/* end right column */}
 
       </div>
+
+      {/* ── Change Status Modal ─────────────────────────────────────────── */}
+      {modalOpen && (
+        <div
+          onClick={() => setModalOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#ffffff', borderRadius: '12px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+              width: '100%', maxWidth: '420px',
+              padding: '24px',
+              display: 'flex', flexDirection: 'column', gap: '16px',
+            }}
+          >
+            {/* Modal header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Change Status</span>
+              <button
+                onClick={() => setModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: colors.muted, lineHeight: 1, padding: '2px 6px', borderRadius: '6px', fontFamily: font.body }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Status options */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {([
+                { value: 'working', label: 'Resume Working', show: task.status === 'waiting' || task.status === 'blocked' },
+                { value: 'waiting', label: 'Waiting',        show: true },
+                { value: 'blocked', label: 'Blocked',        show: true },
+              ] as { value: string; label: string; show: boolean }[])
+                .filter(o => o.show && o.value !== task.status)
+                .map(({ value: s, label }) => {
+                  const active = modalStatus === s
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        setModalStatus(active ? '' : s)
+                        setWaitingOnType('team_member')
+                        setWaitingOnUserId('')
+                        setWaitingOnText('')
+                        setWaitingOnError(false)
+                      }}
+                      style={{
+                        padding: '10px 14px', borderRadius: '8px', textAlign: 'left',
+                        border: `1.5px solid ${active ? STATUS_COLORS[s] : colors.border}`,
+                        background: active ? STATUS_TINTS[s] : colors.float,
+                        color: active ? STATUS_COLORS[s] : colors.secondary,
+                        fontSize: '13px', fontWeight: active ? 700 : 500,
+                        cursor: 'pointer', transition: 'all 0.12s',
+                        fontFamily: font.body,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  )
+                })
+              }
+            </div>
+
+            {/* Waiting-on sub-form */}
+            {modalStatus === 'waiting' && (
+              <div style={{
+                padding: '12px', borderRadius: '8px',
+                background: `${colors.amber}08`,
+                border: `1.5px solid ${waitingOnError ? colors.red : colors.amber + '40'}`,
+                display: 'flex', flexDirection: 'column', gap: '10px',
+              }}>
+                <p style={{
+                  fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '0.07em', margin: 0,
+                  color: waitingOnError ? colors.red : colors.amber,
+                }}>
+                  Waiting On <span style={{ color: colors.red }}>*</span>
+                  {waitingOnError && <span> — required</span>}
+                </p>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {(['team_member', 'external'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => { setWaitingOnType(t); setWaitingOnUserId(''); setWaitingOnText(''); setWaitingOnError(false) }}
+                      style={{
+                        flex: 1, padding: '7px 8px', borderRadius: '7px',
+                        border: `1.5px solid ${waitingOnType === t ? colors.amber : colors.border}`,
+                        background: waitingOnType === t ? `${colors.amber}18` : '#ffffff',
+                        color: waitingOnType === t ? colors.amber : colors.tertiary,
+                        fontSize: '11.5px', fontWeight: waitingOnType === t ? 600 : 400,
+                        cursor: 'pointer', transition: 'all 0.12s', fontFamily: font.body,
+                      }}
+                    >
+                      {t === 'team_member' ? 'Team Member' : 'External Dependency'}
+                    </button>
+                  ))}
+                </div>
+                {waitingOnType === 'team_member' && (
+                  <select
+                    value={waitingOnUserId}
+                    onChange={e => { setWaitingOnUserId(e.target.value); setWaitingOnError(false) }}
+                    className="boe-input"
+                    style={{ width: '100%', border: waitingOnError ? `1.5px solid ${colors.red}` : undefined }}
+                  >
+                    <option value="">Select team member…</option>
+                    {teamMembers.map(m => (
+                      <option key={m.id} value={m.id}>{m.full_name}</option>
+                    ))}
+                  </select>
+                )}
+                {waitingOnType === 'external' && (
+                  <input
+                    type="text"
+                    value={waitingOnText}
+                    onChange={e => { setWaitingOnText(e.target.value); setWaitingOnError(false) }}
+                    placeholder="e.g. Client approval, Vendor quotation, Architect drawing…"
+                    className="boe-input"
+                    style={{ width: '100%', boxSizing: 'border-box', border: waitingOnError ? `1.5px solid ${colors.red}` : undefined }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Modal actions */}
+            {modalStatus && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button
+                  onClick={() => setModalOpen(false)}
+                  disabled={saving}
+                  style={{
+                    padding: '7px 16px', borderRadius: '7px',
+                    border: `1.5px solid ${colors.border}`,
+                    background: 'transparent', color: colors.tertiary,
+                    fontSize: '12px', fontWeight: 500,
+                    cursor: 'pointer', fontFamily: font.body,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (modalStatus === 'waiting') {
+                      const filled = waitingOnType === 'team_member' ? !!waitingOnUserId : !!waitingOnText.trim()
+                      if (!filled) { setWaitingOnError(true); return }
+                    }
+                    setSelectedStatus(modalStatus)
+                    setSaving(true)
+                    setWaitingOnError(false)
+
+                    if (modalStatus === 'waiting') {
+                      const now = new Date().toISOString()
+                      const updates: Record<string, unknown> = {
+                        status: 'waiting', last_update_at: now,
+                        waiting_on_type:    waitingOnType,
+                        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
+                        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
+                      }
+                      if (task.status === 'blocked') updates.blocker_reason = null
+                      const { error: taskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
+                      if (taskErr) {
+                        console.error('[modal/waiting] tasks update failed:', taskErr.message)
+                        window.alert('Failed to save status. Please try again.')
+                        setSaving(false)
+                        return
+                      }
+                      await supabase.from('task_activity_log').insert({
+                        task_id: task.id, actor_id: currentUserId,
+                        action: 'status_changed', from_status: task.status, to_status: 'waiting', note: null,
+                      })
+                      const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
+                      if (recipient && recipient !== currentUserId) {
+                        fetch('/api/notify-status-update', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'waiting', actorName: profile?.full_name }),
+                        }).catch(err => console.error('[modal/waiting] notification fetch error:', err))
+                      }
+                      const localPatch: Partial<Task> = {
+                        status: 'waiting' as TaskStatus, last_update_at: now,
+                        waiting_on_type:    waitingOnType,
+                        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
+                        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
+                      }
+                      if (task.status === 'blocked') localPatch.blocker_reason = null
+                      setTask({ ...task, ...localPatch })
+                      setSelectedStatus('waiting')
+                      await loadLog(task.id)
+                    } else {
+                      await applyStatusChange(modalStatus, null)
+                    }
+
+                    setSaving(false)
+                    setModalOpen(false)
+                  }}
+                  disabled={saving}
+                  style={{
+                    padding: '7px 18px', borderRadius: '7px',
+                    border: `1.5px solid ${STATUS_COLORS[modalStatus] ?? colors.blue}`,
+                    background: STATUS_COLORS[modalStatus] ?? colors.blue,
+                    color: '#ffffff',
+                    fontSize: '12px', fontWeight: 600,
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    fontFamily: font.body,
+                    opacity: saving ? 0.6 : 1,
+                    transition: 'all 0.15s',
+                    boxShadow: `0 2px 6px ${(STATUS_COLORS[modalStatus] ?? colors.blue)}38`,
+                  }}
+                >
+                  {saving ? 'Saving…' : 'Save Status'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </DashboardLayout>
   )
 }
