@@ -63,6 +63,13 @@ export default function TaskDetailPage() {
   const [markingComplete,  setMarkingComplete] = useState(false)
   const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
 
+  // Creator-only: edit due date + priority
+  const [editingMeta,   setEditingMeta]   = useState(false)
+  const [editDueDate,   setEditDueDate]   = useState('')
+  const [editPriority,  setEditPriority]  = useState<'high' | 'medium' | 'low'>('medium')
+  const [savingMeta,    setSavingMeta]    = useState(false)
+  const [metaSaveMsg,   setMetaSaveMsg]   = useState<{ ok: boolean; text: string } | null>(null)
+
   const router   = useRouter()
   const params   = useParams()
   const supabase = useMemo(() => createClient(), [])
@@ -274,6 +281,44 @@ export default function TaskDetailPage() {
     setSaving(false)
   }
 
+  const saveMetaChanges = async () => {
+    if (!task) return
+    setSavingMeta(true)
+    setMetaSaveMsg(null)
+    const updates: Record<string, unknown> = {}
+    const logEntries: { action: string; note: string }[] = []
+    if (editDueDate !== (task.due_date ?? '')) {
+      updates.due_date = editDueDate || null
+      logEntries.push({ action: 'deadline_changed', note: editDueDate ? `Due date set to ${editDueDate}` : 'Due date cleared' })
+    }
+    if (editPriority !== task.priority) {
+      updates.priority = editPriority
+      logEntries.push({ action: 'priority_changed', note: `Priority changed from ${task.priority} to ${editPriority}` })
+    }
+    if (Object.keys(updates).length === 0) {
+      setEditingMeta(false)
+      setSavingMeta(false)
+      return
+    }
+    const { error } = await supabase.from('tasks').update(updates).eq('id', task.id)
+    if (error) {
+      setMetaSaveMsg({ ok: false, text: 'Failed to save. Please try again.' })
+      setSavingMeta(false)
+      return
+    }
+    for (const entry of logEntries) {
+      await supabase.from('task_activity_log').insert({
+        task_id: task.id, actor_id: currentUserId,
+        action: entry.action, note: entry.note,
+      })
+    }
+    setTask({ ...task, ...updates as Partial<Task> })
+    await loadLog(task.id)
+    setMetaSaveMsg({ ok: true, text: 'Saved successfully.' })
+    setEditingMeta(false)
+    setSavingMeta(false)
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
@@ -284,7 +329,8 @@ export default function TaskDetailPage() {
 
   const overdue      = isOverdue(task.due_date ?? null)
   const isAssignee   = task.assigned_to === currentUserId
-  const isSelfTask   = task.created_by === currentUserId && task.assigned_to === currentUserId
+  const isCreator    = task.created_by === currentUserId
+  const isSelfTask   = isCreator && isAssignee
   const isDelegated  = !isAssignee && task.created_by === currentUserId
   const riskOverdue  = overdue && task.status !== 'completed'
   const assigneeName = isAssignee ? (profile?.full_name ?? 'You') : (task.assignee_name ?? '—')
@@ -754,6 +800,113 @@ export default function TaskDetailPage() {
                 <p style={{ fontSize: '11px', color: colors.amber, fontWeight: 600, textAlign: 'center' }}>
                   ⏳ Awaiting acknowledgement
                 </p>
+              </div>
+            )}
+
+            {/* Creator-only: Edit Due Date & Priority */}
+            {isCreator && task.status !== 'completed' && (
+              <div style={{ marginTop: '14px', borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
+                {!editingMeta ? (
+                  <button
+                    onClick={() => {
+                      setEditDueDate(task.due_date ?? '')
+                      setEditPriority(task.priority)
+                      setMetaSaveMsg(null)
+                      setEditingMeta(true)
+                    }}
+                    style={{
+                      width: '100%', padding: '7px 14px', borderRadius: '7px',
+                      border: `1.5px solid ${colors.border}`,
+                      background: 'transparent', color: colors.tertiary,
+                      fontSize: '12px', fontWeight: 500,
+                      cursor: 'pointer', fontFamily: font.body,
+                    }}
+                  >
+                    Edit Due Date / Priority
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted }}>
+                      Edit Due Date &amp; Priority
+                    </span>
+
+                    <div>
+                      <p style={{ fontSize: '11px', color: colors.tertiary, marginBottom: '4px', fontWeight: 500 }}>Due Date</p>
+                      <input
+                        type="date"
+                        value={editDueDate}
+                        onChange={e => setEditDueDate(e.target.value)}
+                        className="boe-input"
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+
+                    <div>
+                      <p style={{ fontSize: '11px', color: colors.tertiary, marginBottom: '4px', fontWeight: 500 }}>Priority</p>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {(['high', 'medium', 'low'] as const).map(p => {
+                          const ps = PRIORITY_COLORS[p]
+                          const active = editPriority === p
+                          return (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setEditPriority(p)}
+                              style={{
+                                flex: 1, padding: '5px 8px', borderRadius: '5px',
+                                border: `1.5px solid ${active ? ps.fg : colors.border}`,
+                                background: active ? ps.bg : 'transparent',
+                                color: active ? ps.fg : colors.tertiary,
+                                fontSize: '11.5px', fontWeight: active ? 600 : 400,
+                                cursor: 'pointer', textTransform: 'capitalize',
+                                fontFamily: font.body, transition: 'all 0.12s',
+                              }}
+                            >
+                              {p}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {metaSaveMsg && (
+                      <p style={{ fontSize: '11px', color: metaSaveMsg.ok ? colors.green : colors.red, margin: 0 }}>
+                        {metaSaveMsg.text}
+                      </p>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        onClick={saveMetaChanges}
+                        disabled={savingMeta}
+                        style={{
+                          flex: 1, padding: '7px 12px', borderRadius: '7px',
+                          border: `1.5px solid ${colors.blue}`,
+                          background: colors.blueTint, color: colors.blue,
+                          fontSize: '12px', fontWeight: 600,
+                          cursor: savingMeta ? 'not-allowed' : 'pointer',
+                          fontFamily: font.body, opacity: savingMeta ? 0.6 : 1,
+                        }}
+                      >
+                        {savingMeta ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => { setEditingMeta(false); setMetaSaveMsg(null) }}
+                        disabled={savingMeta}
+                        style={{
+                          padding: '7px 12px', borderRadius: '7px',
+                          border: `1.5px solid ${colors.border}`,
+                          background: 'transparent', color: colors.tertiary,
+                          fontSize: '12px', fontWeight: 500,
+                          cursor: savingMeta ? 'not-allowed' : 'pointer',
+                          fontFamily: font.body,
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

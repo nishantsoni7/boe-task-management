@@ -174,6 +174,7 @@ export function formatLogAction(
   if (action === 'delegated')        return 'Task delegated'
   if (action === 'created')          return 'Task created'
   if (action === 'deadline_changed') return 'Deadline updated'
+  if (action === 'priority_changed') return 'Priority updated'
   if (action === 'escalated')        return 'Escalated'
   if (action === 'progress_update')  return 'Progress update'
   return action.replace(/_/g, ' ')
