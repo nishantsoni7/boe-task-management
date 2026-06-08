@@ -58,10 +58,8 @@ function composeTitle(action?: string, actorName?: string): string {
   switch (action) {
     case 'acknowledged':
       return actor ? `${actor} acknowledged task` : 'Task acknowledged'
-    case 'progress_update':
-      return actor ? `${actor} added an update` : 'Task updated'
-    case 'details_shared':
-      return actor ? `${actor} shared details — ready to unblock` : 'Details shared — ready to unblock'
+    case 'comment_added':
+      return actor ? `${actor} added a comment` : 'New comment on task'
     case 'completed':
       return actor ? `${actor} completed task` : 'Task completed'
     case 'waiting':
