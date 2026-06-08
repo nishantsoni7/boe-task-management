@@ -63,6 +63,10 @@ export default function TaskDetailPage() {
   const [markingComplete,  setMarkingComplete] = useState(false)
   const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
 
+  // Status update attachment
+  const [updateFile,     setUpdateFile]     = useState<File | null>(null)
+  const [uploadError,    setUploadError]    = useState<string | null>(null)
+
   // Creator-only: edit due date + priority
   const [editingMeta,   setEditingMeta]   = useState(false)
   const [editDueDate,   setEditDueDate]   = useState('')
@@ -109,14 +113,15 @@ export default function TaskDetailPage() {
   const loadLog = async (taskId: string) => {
     const { data } = await supabase
       .from('task_activity_log')
-      .select(`id, action, note, from_status, to_status, created_at, actor_id,
+      .select(`id, action, note, from_status, to_status, created_at, actor_id, attachment_url,
                users:actor_id ( full_name )`)
       .eq('task_id', taskId)
       .order('created_at', { ascending: false })
     if (data) {
       setLog((data as any[]).map(e => ({
         ...e,
-        actor_name: e.users?.full_name ?? null,
+        actor_name:     e.users?.full_name ?? null,
+        attachment_url: e.attachment_url ?? null,
       })))
     }
   }
@@ -147,7 +152,7 @@ export default function TaskDetailPage() {
     await loadLog(task.id)
   }
 
-  const applyStatusChange = async (newStatus: string, reason: string | null) => {
+  const applyStatusChange = async (newStatus: string, reason: string | null, attachmentUrl?: string | null) => {
     if (!task) return
     const oldStatus = task.status
     const now = new Date().toISOString()
@@ -168,12 +173,13 @@ export default function TaskDetailPage() {
       return
     }
     const { error: logErr } = await supabase.from('task_activity_log').insert({
-      task_id:     task.id,
-      actor_id:    currentUserId,
-      action:      'status_changed',
-      from_status: oldStatus,
-      to_status:   newStatus,
-      note:        reason ?? null,
+      task_id:        task.id,
+      actor_id:       currentUserId,
+      action:         'status_changed',
+      from_status:    oldStatus,
+      to_status:      newStatus,
+      note:           reason ?? null,
+      attachment_url: attachmentUrl ?? null,
     })
     if (logErr) console.error('[applyStatusChange] activity log insert failed:', logErr.message)
     if (task.created_by && task.created_by !== currentUserId) {
@@ -199,6 +205,21 @@ export default function TaskDetailPage() {
     if (newStatus === 'completed') setTimeout(() => router.push('/dashboard'), 800)
   }
 
+  const uploadUpdateAttachment = async (): Promise<string | null> => {
+    if (!updateFile || !task) return null
+    const ext  = updateFile.name.split('.').pop() ?? 'bin'
+    const path = `updates/${task.id}/${Date.now()}.${ext}`
+    const { error } = await supabase.storage
+      .from('task-attachments')
+      .upload(path, updateFile, { upsert: false })
+    if (error) {
+      setUploadError('Attachment upload failed. Update was saved without it.')
+      return null
+    }
+    const { data } = supabase.storage.from('task-attachments').getPublicUrl(path)
+    return data.publicUrl
+  }
+
   const saveUpdate = async () => {
     if (!task) return
     if (selectedStatus === 'blocked' && !updateNote.trim()) { setNoteError(true); return }
@@ -208,9 +229,23 @@ export default function TaskDetailPage() {
     }
     setNoteError(false)
     setWaitingOnError(false)
+    setUploadError(null)
     setSaving(true)
 
-    if (selectedStatus !== task.status) {
+    // Upload attachment first (if any), then proceed regardless
+    const attachmentUrl = await uploadUpdateAttachment()
+
+    const hasStatusChange = selectedStatus !== task.status
+    const hasNote         = !!updateNote.trim()
+    const hasAttachment   = !!attachmentUrl
+
+    // Nothing to save
+    if (!hasStatusChange && !hasNote && !hasAttachment) {
+      setSaving(false)
+      return
+    }
+
+    if (hasStatusChange) {
       if (selectedStatus === 'waiting') {
         const now = new Date().toISOString()
         const updates: Record<string, unknown> = {
@@ -232,6 +267,7 @@ export default function TaskDetailPage() {
           task_id: task.id, actor_id: currentUserId,
           action: 'status_changed', from_status: task.status, to_status: selectedStatus,
           note: updateNote.trim() || null,
+          attachment_url: attachmentUrl ?? null,
         })
         if (waitLogErr) console.error('[saveUpdate/waiting] activity log insert failed:', waitLogErr.message)
         if (task.created_by && task.created_by !== currentUserId) {
@@ -255,9 +291,9 @@ export default function TaskDetailPage() {
         setSelectedStatus(selectedStatus)
         await loadLog(task.id)
       } else {
-        await applyStatusChange(selectedStatus, updateNote.trim() || null)
+        await applyStatusChange(selectedStatus, updateNote.trim() || null, attachmentUrl)
       }
-    } else if (updateNote.trim()) {
+    } else if (hasNote || hasAttachment) {
       const now = new Date().toISOString()
       const { error: noteTaskErr } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
       if (noteTaskErr) {
@@ -267,10 +303,11 @@ export default function TaskDetailPage() {
         return
       }
       const { error: noteLogErr } = await supabase.from('task_activity_log').insert({
-        task_id:  task.id,
-        actor_id: currentUserId,
-        action:   'progress_update',
-        note:     updateNote.trim(),
+        task_id:        task.id,
+        actor_id:       currentUserId,
+        action:         'progress_update',
+        note:           updateNote.trim() || null,
+        attachment_url: attachmentUrl ?? null,
       })
       if (noteLogErr) console.error('[saveUpdate/note] activity log insert failed:', noteLogErr.message)
       setTask({ ...task, last_update_at: now })
@@ -278,6 +315,7 @@ export default function TaskDetailPage() {
     }
 
     setUpdateNote('')
+    setUpdateFile(null)
     setSaving(false)
   }
 
@@ -663,6 +701,27 @@ export default function TaskDetailPage() {
                   </p>
                 </div>
 
+                {/* Attachment for this update */}
+                <div>
+                  <p style={{ fontSize: '11px', fontWeight: 500, marginBottom: '5px', color: colors.tertiary }}>
+                    Attachment <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
+                  </p>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
+                    onChange={e => { setUpdateFile(e.target.files?.[0] ?? null); setUploadError(null) }}
+                    style={{ fontSize: '12px', color: colors.secondary, width: '100%' }}
+                  />
+                  {updateFile && (
+                    <p style={{ fontSize: '11px', color: colors.blue, marginTop: '3px' }}>
+                      {updateFile.name} ({(updateFile.size / 1024).toFixed(0)} KB)
+                    </p>
+                  )}
+                  {uploadError && (
+                    <p style={{ fontSize: '11px', color: colors.red, marginTop: '3px' }}>{uploadError}</p>
+                  )}
+                </div>
+
                 <div>
                   <button
                     onClick={saveUpdate}
@@ -1006,6 +1065,21 @@ export default function TaskDetailPage() {
                           <p style={{ color: colors.muted, fontSize: '11px', marginTop: '1px', lineHeight: 1.3 }}>
                             {entry.note}
                           </p>
+                        )}
+                        {entry.attachment_url && (
+                          <a
+                            href={entry.attachment_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '4px',
+                              fontSize: '10px', fontWeight: 500,
+                              color: colors.blue, marginTop: '3px',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            📎 View Attachment
+                          </a>
                         )}
                         <p style={{ color: colors.muted, fontSize: '10px', marginTop: '1px', fontFamily: font.mono, opacity: 0.75 }}>
                           {formatDateTime(entry.created_at)}

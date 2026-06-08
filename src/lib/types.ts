@@ -320,4 +320,5 @@ export type LogEntry = {
   created_at: string
   actor_id: string
   actor_name?: string
+  attachment_url?: string | null
 }
