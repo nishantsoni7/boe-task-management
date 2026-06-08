@@ -15,7 +15,6 @@ import { CircleCheckBig } from 'lucide-react'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
-// Progress states for Update Status pills — completed is a separate action
 const PROGRESS_STATUSES: TaskStatus[] = ['working', 'waiting', 'blocked']
 
 const STATUS_COLORS: Record<string, string> = {
@@ -63,16 +62,17 @@ export default function TaskDetailPage() {
   const [markingComplete,  setMarkingComplete] = useState(false)
   const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
 
-  // Status update attachment
   const [updateFile,     setUpdateFile]     = useState<File | null>(null)
   const [uploadError,    setUploadError]    = useState<string | null>(null)
 
-  // Creator-only: edit due date + priority
-  const [editingMeta,   setEditingMeta]   = useState(false)
-  const [editDueDate,   setEditDueDate]   = useState('')
-  const [editPriority,  setEditPriority]  = useState<'high' | 'medium' | 'low'>('medium')
-  const [savingMeta,    setSavingMeta]    = useState(false)
-  const [metaSaveMsg,   setMetaSaveMsg]   = useState<{ ok: boolean; text: string } | null>(null)
+  const [editingDueDate,   setEditingDueDate]   = useState(false)
+  const [editingPriority,  setEditingPriority]  = useState(false)
+  const [editDueDate,      setEditDueDate]      = useState('')
+  const [editPriority,     setEditPriority]     = useState<'high' | 'medium' | 'low'>('medium')
+  const [savingDueDate,    setSavingDueDate]    = useState(false)
+  const [savingPriority,   setSavingPriority]   = useState(false)
+  const [dueDateMsg,       setDueDateMsg]       = useState<{ ok: boolean; text: string } | null>(null)
+  const [priorityMsg,      setPriorityMsg]      = useState<{ ok: boolean; text: string } | null>(null)
 
   const router   = useRouter()
   const params   = useParams()
@@ -232,14 +232,12 @@ export default function TaskDetailPage() {
     setUploadError(null)
     setSaving(true)
 
-    // Upload attachment first (if any), then proceed regardless
     const attachmentUrl = await uploadUpdateAttachment()
 
     const hasStatusChange = selectedStatus !== task.status
     const hasNote         = !!updateNote.trim()
     const hasAttachment   = !!attachmentUrl
 
-    // Nothing to save
     if (!hasStatusChange && !hasNote && !hasAttachment) {
       setSaving(false)
       return
@@ -319,42 +317,40 @@ export default function TaskDetailPage() {
     setSaving(false)
   }
 
-  const saveMetaChanges = async () => {
+  const saveDueDate = async () => {
     if (!task) return
-    setSavingMeta(true)
-    setMetaSaveMsg(null)
-    const updates: Record<string, unknown> = {}
-    const logEntries: { action: string; note: string }[] = []
-    if (editDueDate !== (task.due_date ?? '')) {
-      updates.due_date = editDueDate || null
-      logEntries.push({ action: 'deadline_changed', note: editDueDate ? `Due date set to ${editDueDate}` : 'Due date cleared' })
-    }
-    if (editPriority !== task.priority) {
-      updates.priority = editPriority
-      logEntries.push({ action: 'priority_changed', note: `Priority changed from ${task.priority} to ${editPriority}` })
-    }
-    if (Object.keys(updates).length === 0) {
-      setEditingMeta(false)
-      setSavingMeta(false)
-      return
-    }
+    setSavingDueDate(true)
+    setDueDateMsg(null)
+    if (editDueDate === (task.due_date ?? '')) { setEditingDueDate(false); setSavingDueDate(false); return }
+    const updates = { due_date: editDueDate || null }
     const { error } = await supabase.from('tasks').update(updates).eq('id', task.id)
-    if (error) {
-      setMetaSaveMsg({ ok: false, text: 'Failed to save. Please try again.' })
-      setSavingMeta(false)
-      return
-    }
-    for (const entry of logEntries) {
-      await supabase.from('task_activity_log').insert({
-        task_id: task.id, actor_id: currentUserId,
-        action: entry.action, note: entry.note,
-      })
-    }
+    if (error) { setDueDateMsg({ ok: false, text: 'Failed to save.' }); setSavingDueDate(false); return }
+    await supabase.from('task_activity_log').insert({
+      task_id: task.id, actor_id: currentUserId,
+      action: 'deadline_changed', note: editDueDate ? `Due date set to ${editDueDate}` : 'Due date cleared',
+    })
     setTask({ ...task, ...updates as Partial<Task> })
     await loadLog(task.id)
-    setMetaSaveMsg({ ok: true, text: 'Saved successfully.' })
-    setEditingMeta(false)
-    setSavingMeta(false)
+    setEditingDueDate(false)
+    setSavingDueDate(false)
+  }
+
+  const savePriority = async () => {
+    if (!task) return
+    setSavingPriority(true)
+    setPriorityMsg(null)
+    if (editPriority === task.priority) { setEditingPriority(false); setSavingPriority(false); return }
+    const updates = { priority: editPriority }
+    const { error } = await supabase.from('tasks').update(updates).eq('id', task.id)
+    if (error) { setPriorityMsg({ ok: false, text: 'Failed to save.' }); setSavingPriority(false); return }
+    await supabase.from('task_activity_log').insert({
+      task_id: task.id, actor_id: currentUserId,
+      action: 'priority_changed', note: `Priority changed from ${task.priority} to ${editPriority}`,
+    })
+    setTask({ ...task, ...updates as Partial<Task> })
+    await loadLog(task.id)
+    setEditingPriority(false)
+    setSavingPriority(false)
   }
 
   const handleLogout = async () => {
@@ -373,7 +369,6 @@ export default function TaskDetailPage() {
   const riskOverdue  = overdue && task.status !== 'completed'
   const assigneeName = isAssignee ? (profile?.full_name ?? 'You') : (task.assignee_name ?? '—')
 
-  // Delegated task not yet acknowledged — block all modifications
   const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
@@ -390,7 +385,6 @@ export default function TaskDetailPage() {
   const statusTint    = STATUS_TINTS[task.status]  ?? colors.float
   const priorityStyle = PRIORITY_COLORS[task.priority] ?? PRIORITY_COLORS.low
 
-  // Current Status: first log entry that has a note (log is newest-first)
   const latestNoteEntry   = log.find(e => e.note) ?? null
   const currentStatusNote = latestNoteEntry?.note ?? null
   const noteIsDuplicateOfBlocker =
@@ -398,92 +392,225 @@ export default function TaskDetailPage() {
     currentStatusNote !== null &&
     currentStatusNote === task.blocker_reason
 
-  const summaryLabel: React.CSSProperties = { color: colors.muted, fontSize: '11px', flexShrink: 0 }
-  const summaryValue: React.CSSProperties = { fontSize: '12px', fontWeight: 500, color: colors.secondary, textAlign: 'right' }
+  const aging = getTaskAging(task)
+  const agingColor = aging ? (aging.severity === 'danger' ? colors.red : colors.amber) : colors.muted
 
   return (
-    <DashboardLayout profile={profile} title="" onSignOut={handleLogout}>
+    <DashboardLayout profile={profile} title="Task Details" onSignOut={handleLogout}>
 
-<div className="boe-task-3col">
+      <div className="boe-task-2col">
 
-        {/* ══ COLUMN 1 — unified task workspace card ═════════════════════════ */}
-        <div style={{ minWidth: 0 }}>
-          <div className="boe-card" style={{ padding: '0', overflow: 'hidden' }}>
+        {/* ══ LEFT COLUMN ══════════════════════════════════════════════════ */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
 
-            {/* § Task title + description */}
-            <div style={{ padding: '18px 20px' }}>
+            {/* ─ A. Task Summary Card ─ */}
+            <div className="boe-card" style={{
+              padding: '20px 22px',
+              background: '#ffffff',
+              borderLeft: `3px solid ${relationColor}`,
+            }}>
+              {/* Relation badge */}
+              <div style={{ marginBottom: '8px' }}>
+                <span style={{
+                  fontSize: '10px', fontWeight: 700,
+                  letterSpacing: '0.07em', textTransform: 'uppercase',
+                  color: relationColor,
+                  background: relationColor + '14',
+                  border: `1px solid ${relationColor}28`,
+                  padding: '2px 8px', borderRadius: '20px',
+                }}>
+                  {relationLabel}
+                </span>
+              </div>
+
+              {/* Task title */}
               <h2 style={{
-                fontSize: '16px', fontWeight: 700,
-                color: colors.primary, lineHeight: 1.4,
-                letterSpacing: '-0.01em', margin: '0 0 10px',
+                fontSize: '18px', fontWeight: 800,
+                color: colors.primary, lineHeight: 1.3,
+                letterSpacing: '-0.02em', margin: '0 0 6px',
               }}>
                 {task.title}
               </h2>
 
+              {/* Creator line */}
+              {creatorName && (
+                <p style={{ fontSize: '11.5px', color: colors.muted, margin: '0 0 10px' }}>
+                  By <strong style={{ color: colors.tertiary }}>{creatorName}</strong>
+                  {task.is_urgent && <span style={{ marginLeft: '8px', color: '#C49A28', fontWeight: 600 }}>⭐ Starred</span>}
+                </p>
+              )}
+
+              {/* Due date chip + inline edit */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'flex-start' }}>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '4px 10px', borderRadius: '20px',
+                    background: riskOverdue ? colors.redTint : colors.float,
+                    border: `1px solid ${riskOverdue ? colors.red + '40' : colors.border}`,
+                  }}>
+                    <span style={{ fontSize: '11.5px', color: riskOverdue ? colors.red : colors.secondary, fontWeight: 500 }}>
+                      {task.due_date ? <>Due: <strong>{formatFullDate(task.due_date)}</strong>{riskOverdue && ' · Overdue'}</> : 'No due date'}
+                    </span>
+                    {isCreator && task.status !== 'completed' && !editingDueDate && (
+                      <button
+                        onClick={() => { setEditDueDate(task.due_date ? task.due_date.slice(0, 10) : ''); setDueDateMsg(null); setEditingDueDate(true); setEditingPriority(false) }}
+                        style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                  {editingDueDate && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <input
+                        type="date"
+                        value={editDueDate}
+                        onChange={e => setEditDueDate(e.target.value)}
+                        className="boe-input"
+                        style={{ width: '150px', boxSizing: 'border-box' }}
+                      />
+                      <button
+                        onClick={saveDueDate}
+                        disabled={savingDueDate}
+                        style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingDueDate ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingDueDate ? 0.6 : 1 }}
+                      >
+                        {savingDueDate ? '…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => { setEditingDueDate(false); setDueDateMsg(null) }}
+                        disabled={savingDueDate}
+                        style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                      >
+                        Cancel
+                      </button>
+                      {dueDateMsg && <span style={{ fontSize: '11px', color: dueDateMsg.ok ? colors.green : colors.red }}>{dueDateMsg.text}</span>}
+                    </div>
+                  )}
+                </div>
+
+                {/* Priority chip + inline edit */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '4px 10px', borderRadius: '20px',
+                    background: priorityStyle.bg,
+                    border: `1px solid ${priorityStyle.fg}30`,
+                  }}>
+                    <span style={{ fontSize: '11.5px', color: priorityStyle.fg, fontWeight: 600 }}>
+                      Priority: {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                    </span>
+                    {isCreator && task.status !== 'completed' && !editingPriority && (
+                      <button
+                        onClick={() => { setEditPriority(task.priority); setPriorityMsg(null); setEditingPriority(true); setEditingDueDate(false) }}
+                        style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                  {editingPriority && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {(['high', 'medium', 'low'] as const).map(p => {
+                        const ps = PRIORITY_COLORS[p]
+                        const active = editPriority === p
+                        return (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setEditPriority(p)}
+                            style={{
+                              padding: '5px 10px', borderRadius: '5px',
+                              border: `1.5px solid ${active ? ps.fg : colors.border}`,
+                              background: active ? ps.bg : 'transparent',
+                              color: active ? ps.fg : colors.tertiary,
+                              fontSize: '11.5px', fontWeight: active ? 600 : 400,
+                              cursor: 'pointer', textTransform: 'capitalize',
+                              fontFamily: font.body, transition: 'all 0.12s',
+                            }}
+                          >
+                            {p}
+                          </button>
+                        )
+                      })}
+                      <button
+                        onClick={savePriority}
+                        disabled={savingPriority}
+                        style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingPriority ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingPriority ? 0.6 : 1 }}
+                      >
+                        {savingPriority ? '…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => { setEditingPriority(false); setPriorityMsg(null) }}
+                        disabled={savingPriority}
+                        style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                      >
+                        Cancel
+                      </button>
+                      {priorityMsg && <span style={{ fontSize: '11px', color: priorityMsg.ok ? colors.green : colors.red }}>{priorityMsg.text}</span>}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Description */}
               {task.note ? (
                 <p style={{
-                  fontSize: '13px', fontWeight: 400,
-                  color: colors.secondary, lineHeight: 1.65,
-                  margin: 0, whiteSpace: 'pre-wrap',
+                  fontSize: '13px', color: colors.secondary, lineHeight: 1.7,
+                  margin: '12px 0 0', whiteSpace: 'pre-wrap',
                 }}>
                   {task.note}
                 </p>
               ) : (
-                <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
-                  No task description added.
+                <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: '12px 0 0' }}>
+                  No description.
                 </p>
               )}
 
-              {/* Attachment */}
+              {/* Task attachment */}
               {task.attachment_url && (
-                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{
-                    fontSize: '10px', fontWeight: 700,
-                    letterSpacing: '0.08em', textTransform: 'uppercase',
-                    color: colors.muted, flexShrink: 0,
-                  }}>
-                    Attachment
-                  </span>
+                <div style={{ marginTop: '10px' }}>
                   <a
                     href={task.attachment_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: '5px',
-                      fontSize: '12px', fontWeight: 500,
-                      color: colors.blue,
-                      textDecoration: 'none',
-                      padding: '4px 10px',
-                      borderRadius: '6px',
-                      border: `1px solid ${colors.blueTint}`,
+                      fontSize: '11.5px', fontWeight: 500,
+                      color: colors.blue, textDecoration: 'none',
+                      padding: '4px 10px', borderRadius: '6px',
+                      border: `1px solid ${colors.blue}28`,
                       background: colors.blueTint,
                     }}
                   >
-                    View Attachment
+                    📎 View Attachment
                   </a>
                 </div>
               )}
             </div>
 
-            {/* § Current Status */}
-            <div style={{
-              borderTop: `1px solid ${colors.border}`,
-              padding: '14px 20px',
-              display: 'flex', flexDirection: 'column', gap: '10px',
+            {/* ─ B. Current Status Card ─ */}
+            <div className="boe-card" style={{
+              padding: '16px 20px',
+              background: statusTint,
+              borderLeft: `3px solid ${statusColor}`,
             }}>
-              {/* Header row: label + status pill */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                 <span style={{
                   fontSize: '10px', fontWeight: 700,
                   letterSpacing: '0.08em', textTransform: 'uppercase',
-                  color: colors.muted,
+                  color: statusColor,
                 }}>
                   Current Status
                 </span>
                 <span style={{
-                  fontSize: '11px', fontWeight: 600,
-                  color: statusColor, background: statusTint,
-                  padding: '2px 9px', borderRadius: '10px',
+                  fontSize: '13px', fontWeight: 700, letterSpacing: '0.01em',
+                  color: '#ffffff',
+                  padding: '4px 14px', borderRadius: '20px',
+                  background: statusColor,
+                  boxShadow: `0 1px 4px ${statusColor}40`,
                 }}>
                   {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
                 </span>
@@ -491,74 +618,48 @@ export default function TaskDetailPage() {
 
               {/* Waiting On */}
               {task.status === 'waiting' && task.waiting_on_type && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                  <span style={{
-                    fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
-                    letterSpacing: '0.05em', color: statusColor, flexShrink: 0,
-                  }}>
-                    Waiting On
-                  </span>
-                  <span style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.4 }}>
-                    {task.waiting_on_type === 'team_member'
-                      ? (teamMembers.find(m => m.id === task.waiting_on_user_id)?.full_name ?? 'Team member')
-                      : (task.waiting_on_text ?? '—')
-                    }
-                  </span>
-                  <span style={{ fontSize: '10px', color: colors.muted }}>
-                    ({task.waiting_on_type === 'team_member' ? 'Team Member' : 'External'})
-                  </span>
-                </div>
+                <p style={{ fontSize: '12px', color: colors.secondary, margin: '0 0 4px', lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 700, color: statusColor }}>Waiting on: </span>
+                  {task.waiting_on_type === 'team_member'
+                    ? (teamMembers.find(m => m.id === task.waiting_on_user_id)?.full_name ?? 'Team member')
+                    : (task.waiting_on_text ?? '—')
+                  }
+                  <span style={{ fontSize: '10.5px', color: colors.muted }}> ({task.waiting_on_type === 'team_member' ? 'Team Member' : 'External'})</span>
+                </p>
               )}
 
               {/* Blocker */}
               {task.status === 'blocked' && task.blocker_reason && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                  <span style={{
-                    fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
-                    letterSpacing: '0.05em', color: statusColor, flexShrink: 0,
-                  }}>
-                    Blocker
-                  </span>
-                  <span style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.4 }}>
-                    {task.blocker_reason}
-                  </span>
-                </div>
+                <p style={{ fontSize: '12px', color: colors.secondary, margin: '0 0 4px', lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 700, color: statusColor }}>Blocker: </span>
+                  {task.blocker_reason}
+                </p>
               )}
 
-              {/* Latest remark — hidden when it duplicates the blocker line */}
-              {!noteIsDuplicateOfBlocker && (
-                currentStatusNote ? (
-                  <p style={{ fontSize: '13px', color: colors.primary, lineHeight: 1.55, margin: 0 }}>
-                    {currentStatusNote}
-                  </p>
-                ) : (
-                  <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
-                    No status update added yet.
-                  </p>
-                )
+              {/* Latest note — focal point */}
+              {!noteIsDuplicateOfBlocker && currentStatusNote && (
+                <p style={{
+                  fontSize: '14px', color: colors.primary,
+                  lineHeight: 1.6, margin: '4px 0',
+                  fontWeight: 500,
+                }}>
+                  {currentStatusNote}
+                </p>
               )}
 
-              {/* Meta: updated by + time */}
               {latestNoteEntry && (
-                <p style={{ fontSize: '10px', color: colors.muted, margin: 0 }}>
-                  Updated by{' '}
-                  {latestNoteEntry.actor_name && (
-                    <span style={{ fontWeight: 600, color: colors.tertiary }}>
-                      {latestNoteEntry.actor_name}
-                    </span>
-                  )}
-                  {' · '}
-                  {timeAgo(latestNoteEntry.created_at)}
+                <p style={{ fontSize: '10.5px', color: statusColor, margin: '4px 0 0', fontWeight: 500 }}>
+                  Updated by{latestNoteEntry.actor_name && <strong> {latestNoteEntry.actor_name}</strong>} · {timeAgo(latestNoteEntry.created_at)}
                 </p>
               )}
             </div>
 
             {/* § Unacknowledged notice */}
             {isUnacknowledged && (
-              <div style={{
-                borderTop: `1px solid ${colors.border}`,
-                padding: '14px 20px',
+              <div className="boe-card" style={{
+                padding: '12px 18px',
                 background: colors.amberTint,
+                borderLeft: `3px solid ${colors.amber}`,
               }}>
                 <p style={{ fontSize: '12px', color: colors.amber, fontWeight: 600, margin: 0 }}>
                   ⚠️ Please acknowledge this task before updating it.
@@ -566,58 +667,65 @@ export default function TaskDetailPage() {
               </div>
             )}
 
-            {/* § Update Status — assignee only, task not completed, acknowledged */}
+            {/* ─ C. Update Status Card ─ */}
             {isAssignee && task.status !== 'completed' && !isUnacknowledged && (
-              <div style={{
-                borderTop: `1px solid ${colors.border}`,
-                padding: '14px 20px',
-                display: 'flex', flexDirection: 'column', gap: '10px',
+              <div className="boe-card" style={{
+                padding: '16px 20px',
+                display: 'flex', flexDirection: 'column', gap: '12px',
+                background: '#ffffff',
               }}>
-                <span style={{
-                  fontSize: '10px', fontWeight: 700,
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                  color: colors.muted,
-                }}>
-                  Update Status
-                </span>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {PROGRESS_STATUSES.map(s => {
-                    const active = selectedStatus === s
-                    return (
-                      <button
-                        key={s}
-                        onClick={() => {
-                          setSelectedStatus(s)
-                          setNoteError(false)
-                          setWaitingOnError(false)
-                          if (s !== 'waiting') {
-                            setWaitingOnType('team_member')
-                            setWaitingOnUserId('')
-                            setWaitingOnText('')
-                          }
-                        }}
-                        style={{
-                          padding: '5px 13px', borderRadius: '20px',
-                          border: `1.5px solid ${active ? STATUS_COLORS[s] : colors.border}`,
-                          background: active ? STATUS_TINTS[s] : 'transparent',
-                          color: active ? STATUS_COLORS[s] : colors.tertiary,
-                          fontSize: '12px', fontWeight: active ? 600 : 400,
-                          cursor: 'pointer', textTransform: 'capitalize',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        {s}
-                      </button>
-                    )
-                  })}
+                {/* Row: label + pills */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{
+                    fontSize: '10px', fontWeight: 700,
+                    letterSpacing: '0.09em', textTransform: 'uppercase',
+                    color: colors.muted, flexShrink: 0, whiteSpace: 'nowrap',
+                  }}>
+                    Update Status
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+                    {PROGRESS_STATUSES.map(s => {
+                      const active = selectedStatus === s
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => {
+                            setSelectedStatus(s)
+                            setNoteError(false)
+                            setWaitingOnError(false)
+                            if (s !== 'waiting') {
+                              setWaitingOnType('team_member')
+                              setWaitingOnUserId('')
+                              setWaitingOnText('')
+                            }
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '6px 0', borderRadius: '7px',
+                            border: `1.5px solid ${active ? STATUS_COLORS[s] : colors.border}`,
+                            background: active ? STATUS_TINTS[s] : '#ffffff',
+                            color: active ? STATUS_COLORS[s] : colors.tertiary,
+                            fontSize: '11.5px', fontWeight: active ? 700 : 500,
+                            cursor: 'pointer', textTransform: 'capitalize',
+                            transition: 'all 0.15s',
+                            boxShadow: active ? `0 1px 5px ${STATUS_COLORS[s]}30` : 'none',
+                            fontFamily: font.body,
+                          }}
+                        >
+                          {s}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
 
+                {/* Waiting On selector */}
                 {selectedStatus === 'waiting' && (
                   <div style={{
-                    padding: '10px 12px', borderRadius: '7px',
-                    background: `${colors.amber}0a`,
-                    border: `1px solid ${waitingOnError ? colors.red : colors.amber + '40'}`,
+                    padding: '10px 12px', borderRadius: '8px',
+                    background: `${colors.amber}08`,
+                    border: `1.5px solid ${waitingOnError ? colors.red : colors.amber + '40'}`,
                   }}>
                     <p style={{
                       fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
@@ -627,8 +735,6 @@ export default function TaskDetailPage() {
                       Waiting On <span style={{ color: colors.red }}>*</span>
                       {waitingOnError && <span> — required</span>}
                     </p>
-
-                    {/* Type selector */}
                     <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
                       {(['team_member', 'external'] as const).map(t => (
                         <button
@@ -636,9 +742,9 @@ export default function TaskDetailPage() {
                           type="button"
                           onClick={() => { setWaitingOnType(t); setWaitingOnUserId(''); setWaitingOnText(''); setWaitingOnError(false) }}
                           style={{
-                            flex: 1, padding: '5px 8px', borderRadius: '5px',
+                            flex: 1, padding: '5px 8px', borderRadius: '6px',
                             border: `1.5px solid ${waitingOnType === t ? colors.amber : colors.border}`,
-                            background: waitingOnType === t ? `${colors.amber}18` : 'transparent',
+                            background: waitingOnType === t ? `${colors.amber}18` : colors.float,
                             color: waitingOnType === t ? colors.amber : colors.tertiary,
                             fontSize: '11.5px', fontWeight: waitingOnType === t ? 600 : 400,
                             cursor: 'pointer', transition: 'all 0.12s',
@@ -648,8 +754,6 @@ export default function TaskDetailPage() {
                         </button>
                       ))}
                     </div>
-
-                    {/* Team member dropdown */}
                     {waitingOnType === 'team_member' && (
                       <select
                         value={waitingOnUserId}
@@ -663,8 +767,6 @@ export default function TaskDetailPage() {
                         ))}
                       </select>
                     )}
-
-                    {/* External text input */}
                     {waitingOnType === 'external' && (
                       <input
                         type="text"
@@ -678,310 +780,117 @@ export default function TaskDetailPage() {
                   </div>
                 )}
 
-                <div>
-                  <p style={{
-                    fontSize: '11px', fontWeight: 500, marginBottom: '5px',
-                    color: noteError ? colors.red : colors.tertiary,
-                  }}>
-                    Notes
-                    {selectedStatus === 'blocked' && (
-                      <span style={{ color: colors.red }}> (required for blocked)</span>
-                    )}
-                  </p>
-                  <textarea
-                    value={updateNote}
-                    onChange={e => { setUpdateNote(e.target.value); if (noteError) setNoteError(false) }}
-                    placeholder="Add your update or notes..."
-                    rows={3}
-                    className="boe-input"
-                    style={{ resize: 'none', border: noteError ? `1.5px solid ${colors.red}` : undefined }}
-                  />
-                  <p style={{ textAlign: 'right', fontSize: '10px', color: colors.muted, marginTop: '2px' }}>
-                    {updateNote.length} / 1000
-                  </p>
+                {/* Textarea + footer row */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {noteError && selectedStatus === 'blocked' && (
+                    <p style={{ fontSize: '11px', color: colors.red, margin: 0 }}>Note required for blocked status.</p>
+                  )}
+                  <div style={{ position: 'relative' }}>
+                    <textarea
+                      value={updateNote}
+                      onChange={e => { setUpdateNote(e.target.value); if (noteError) setNoteError(false) }}
+                      placeholder="Add update or notes…"
+                      className="boe-input"
+                      style={{
+                        resize: 'none',
+                        height: '72px',
+                        paddingBottom: '36px',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        border: noteError ? `1.5px solid ${colors.red}` : `1.5px solid ${colors.border}`,
+                        background: '#F0F2F5',
+                        borderRadius: '8px',
+                        fontSize: '12.5px',
+                        lineHeight: 1.5,
+                      }}
+                    />
+                    <label
+                      title="Attach a file"
+                      style={{
+                        position: 'absolute', bottom: '9px', right: '10px',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: '28px', height: '28px',
+                        borderRadius: '50%',
+                        background: updateFile ? colors.blueTint : '#ffffff',
+                        border: `1.5px solid ${updateFile ? colors.blue + '55' : colors.border}`,
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        transition: 'all 0.15s',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                      }}
+                    >
+                      📎
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
+                        onChange={e => { setUpdateFile(e.target.files?.[0] ?? null); setUploadError(null) }}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                  </div>
+
+                  {/* Footer: file info + char count + submit */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '10px', color: updateFile ? colors.blue : colors.muted, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {updateFile
+                        ? `📎 ${updateFile.name} (${(updateFile.size / 1024).toFixed(0)} KB)`
+                        : uploadError
+                          ? <span style={{ color: colors.red }}>{uploadError}</span>
+                          : ''}
+                    </span>
+                    <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{updateNote.length}/1000</span>
+                    <button
+                      onClick={saveUpdate}
+                      disabled={saving || markingComplete}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '6px 18px', borderRadius: '7px',
+                        border: `1.5px solid ${colors.blue}`,
+                        background: colors.blue,
+                        color: '#ffffff',
+                        fontSize: '12px', fontWeight: 600,
+                        cursor: saving || markingComplete ? 'not-allowed' : 'pointer',
+                        fontFamily: font.body,
+                        opacity: saving || markingComplete ? 0.6 : 1,
+                        transition: 'all 0.15s',
+                        boxShadow: '0 2px 6px rgba(85,133,232,0.25)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {saving ? 'Saving…' : 'Update Status'}
+                    </button>
+                  </div>
+                  {uploadError && !updateFile && (
+                    <p style={{ fontSize: '11px', color: colors.red, margin: 0 }}>{uploadError}</p>
+                  )}
                 </div>
 
-                {/* Attachment for this update */}
-                <div>
-                  <p style={{ fontSize: '11px', fontWeight: 500, marginBottom: '5px', color: colors.tertiary }}>
-                    Attachment <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
-                  </p>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
-                    onChange={e => { setUpdateFile(e.target.files?.[0] ?? null); setUploadError(null) }}
-                    style={{ fontSize: '12px', color: colors.secondary, width: '100%' }}
-                  />
-                  {updateFile && (
-                    <p style={{ fontSize: '11px', color: colors.blue, marginTop: '3px' }}>
-                      {updateFile.name} ({(updateFile.size / 1024).toFixed(0)} KB)
-                    </p>
-                  )}
-                  {uploadError && (
-                    <p style={{ fontSize: '11px', color: colors.red, marginTop: '3px' }}>{uploadError}</p>
-                  )}
-                </div>
-
-                <div>
-                  <button
-                    onClick={saveUpdate}
-                    disabled={saving || markingComplete}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '6px',
-                      padding: '8px 18px', borderRadius: '7px',
-                      border: `1.5px solid ${colors.blue}`,
-                      background: colors.blueTint,
-                      color: colors.blue,
-                      fontSize: '12px', fontWeight: 600,
-                      cursor: saving || markingComplete ? 'not-allowed' : 'pointer',
-                      fontFamily: font.body,
-                      opacity: saving || markingComplete ? 0.6 : 1,
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {saving ? 'Saving…' : 'Update Status'}
-                  </button>
-                </div>
               </div>
             )}
 
-          </div>
         </div>
 
-        {/* ══ COLUMN 2 — Task Summary ════════════════════════════════════════ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0', minWidth: 0 }}>
-          <div className="boe-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '0' }}>
+        {/* ══ RIGHT COLUMN ════════════════════════════════════════════════ */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
 
-            <div style={{ marginBottom: '12px' }}>
-              <span style={{
-                display: 'inline-block',
-                fontSize: '11px', fontWeight: 700,
-                color: relationColor,
-                background: relationColor + '14',
-                border: `1px solid ${relationColor}30`,
-                padding: '4px 10px', borderRadius: '20px',
-              }}>
-                {relationLabel}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
-              <span style={summaryLabel}>Status</span>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: statusColor, background: statusTint, padding: '2px 8px', borderRadius: '10px' }}>
-                {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
-              <span style={summaryLabel}>Priority</span>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: priorityStyle.fg, background: priorityStyle.bg, padding: '2px 8px', borderRadius: '10px' }}>
-                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
-              <span style={summaryLabel}>Due Date</span>
-              <span style={{ ...summaryValue, color: riskOverdue ? colors.red : colors.secondary }}>
-                {task.due_date ? formatFullDate(task.due_date) : '—'}
-                {riskOverdue && <span style={{ fontSize: '10px', marginLeft: '4px', color: colors.red }}>· Overdue</span>}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
-              <span style={summaryLabel}>Owner</span>
-              <span style={summaryValue}>{assigneeName}</span>
-            </div>
-
-            {(() => {
-              const aging = getTaskAging(task)
-              if (!aging) return (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: task.is_urgent ? `1px solid ${colors.border}` : 'none' }}>
-                  <span style={summaryLabel}>Assigned By</span>
-                  <span style={summaryValue}>{creatorName ?? '—'}</span>
-                </div>
-              )
-              const agingColor = aging.severity === 'danger' ? colors.red : colors.amber
-              return (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: `1px solid ${colors.border}` }}>
-                    <span style={summaryLabel}>Assigned By</span>
-                    <span style={summaryValue}>{creatorName ?? '—'}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0', borderBottom: task.is_urgent ? `1px solid ${colors.border}` : 'none' }}>
-                    <span style={summaryLabel}>Aging</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <span style={{
-                        fontSize: '11px', fontWeight: 700,
-                        color: agingColor, background: `${agingColor}14`,
-                        border: `1px solid ${agingColor}30`,
-                        padding: '2px 8px', borderRadius: '10px',
-                      }}>
-                        {aging.label}
-                      </span>
-                      <span style={{ fontSize: '10px', color: colors.muted }}>{aging.daysSinceUpdate}d</span>
-                    </div>
-                  </div>
-                </>
-              )
-            })()}
-
-            {task.is_urgent && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '6px 0' }}>
-                <span style={summaryLabel}>Important</span>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#C49A28', background: 'rgba(196,154,40,0.1)', padding: '2px 8px', borderRadius: '10px' }}>
-                  ⭐ Yes
-                </span>
-              </div>
-            )}
-
-            {/* Acknowledge — delegated + unacknowledged only */}
-            {!task.acknowledged_at && isAssignee && task.created_by !== currentUserId && (
-              <div style={{ marginTop: '12px', borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
-                <button
-                  onClick={acknowledge}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                    padding: '8px 14px', borderRadius: '7px',
-                    border: `1.5px solid ${colors.amber}50`,
-                    background: colors.amberTint,
-                    color: colors.amber,
-                    fontSize: '12px', fontWeight: 600,
-                    cursor: 'pointer', fontFamily: font.body,
-                    transition: 'background 0.15s',
-                  }}
-                >
-                  Tap to Acknowledge
-                </button>
-              </div>
-            )}
-            {!task.acknowledged_at && !isAssignee && (
-              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
-                <p style={{ fontSize: '11px', color: colors.amber, fontWeight: 600, textAlign: 'center' }}>
-                  ⏳ Awaiting acknowledgement
-                </p>
-              </div>
-            )}
-
-            {/* Creator-only: Edit Due Date & Priority */}
-            {isCreator && task.status !== 'completed' && (
-              <div style={{ marginTop: '14px', borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
-                {!editingMeta ? (
-                  <button
-                    onClick={() => {
-                      setEditDueDate(task.due_date ?? '')
-                      setEditPriority(task.priority)
-                      setMetaSaveMsg(null)
-                      setEditingMeta(true)
-                    }}
-                    style={{
-                      width: '100%', padding: '7px 14px', borderRadius: '7px',
-                      border: `1.5px solid ${colors.border}`,
-                      background: 'transparent', color: colors.tertiary,
-                      fontSize: '12px', fontWeight: 500,
-                      cursor: 'pointer', fontFamily: font.body,
-                    }}
-                  >
-                    Edit Due Date / Priority
-                  </button>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted }}>
-                      Edit Due Date &amp; Priority
-                    </span>
-
-                    <div>
-                      <p style={{ fontSize: '11px', color: colors.tertiary, marginBottom: '4px', fontWeight: 500 }}>Due Date</p>
-                      <input
-                        type="date"
-                        value={editDueDate}
-                        onChange={e => setEditDueDate(e.target.value)}
-                        className="boe-input"
-                        style={{ width: '100%', boxSizing: 'border-box' }}
-                      />
-                    </div>
-
-                    <div>
-                      <p style={{ fontSize: '11px', color: colors.tertiary, marginBottom: '4px', fontWeight: 500 }}>Priority</p>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        {(['high', 'medium', 'low'] as const).map(p => {
-                          const ps = PRIORITY_COLORS[p]
-                          const active = editPriority === p
-                          return (
-                            <button
-                              key={p}
-                              type="button"
-                              onClick={() => setEditPriority(p)}
-                              style={{
-                                flex: 1, padding: '5px 8px', borderRadius: '5px',
-                                border: `1.5px solid ${active ? ps.fg : colors.border}`,
-                                background: active ? ps.bg : 'transparent',
-                                color: active ? ps.fg : colors.tertiary,
-                                fontSize: '11.5px', fontWeight: active ? 600 : 400,
-                                cursor: 'pointer', textTransform: 'capitalize',
-                                fontFamily: font.body, transition: 'all 0.12s',
-                              }}
-                            >
-                              {p}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-
-                    {metaSaveMsg && (
-                      <p style={{ fontSize: '11px', color: metaSaveMsg.ok ? colors.green : colors.red, margin: 0 }}>
-                        {metaSaveMsg.text}
-                      </p>
-                    )}
-
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button
-                        onClick={saveMetaChanges}
-                        disabled={savingMeta}
-                        style={{
-                          flex: 1, padding: '7px 12px', borderRadius: '7px',
-                          border: `1.5px solid ${colors.blue}`,
-                          background: colors.blueTint, color: colors.blue,
-                          fontSize: '12px', fontWeight: 600,
-                          cursor: savingMeta ? 'not-allowed' : 'pointer',
-                          fontFamily: font.body, opacity: savingMeta ? 0.6 : 1,
-                        }}
-                      >
-                        {savingMeta ? 'Saving…' : 'Save'}
-                      </button>
-                      <button
-                        onClick={() => { setEditingMeta(false); setMetaSaveMsg(null) }}
-                        disabled={savingMeta}
-                        style={{
-                          padding: '7px 12px', borderRadius: '7px',
-                          border: `1.5px solid ${colors.border}`,
-                          background: 'transparent', color: colors.tertiary,
-                          fontSize: '12px', fontWeight: 500,
-                          cursor: savingMeta ? 'not-allowed' : 'pointer',
-                          fontFamily: font.body,
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Mark Task Completed / completed state */}
-            <div style={{ marginTop: '14px', borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
+          {/* ─ A. Complete Task Card ─ */}
+          {(task.status === 'completed' || (isAssignee && !isUnacknowledged)) && (
+            <div className="boe-card" style={{
+              padding: '14px',
+              background: colors.greenTint,
+              borderColor: `${colors.green}30`,
+            }}>
               {task.status === 'completed' ? (
                 <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  padding: '10px 14px', borderRadius: '7px',
-                  background: colors.greenTint,
-                  border: `1px solid ${colors.green}28`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                  padding: '11px 14px', borderRadius: '8px',
+                  background: '#ffffff', border: `1px solid ${colors.green}28`,
                 }}>
-                  <CircleCheckBig size={14} color={colors.green} strokeWidth={2.2} />
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: colors.green }}>Task Completed</span>
+                  <CircleCheckBig size={16} color={colors.green} strokeWidth={2.2} />
+                  <span style={{ fontSize: '13.5px', fontWeight: 700, color: colors.green }}>Task Completed</span>
                 </div>
-              ) : isAssignee && !isUnacknowledged ? (
+              ) : (
                 <button
                   onClick={async () => {
                     setMarkingComplete(true)
@@ -990,79 +899,136 @@ export default function TaskDetailPage() {
                   }}
                   disabled={saving || markingComplete}
                   style={{
-                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                    padding: '11px 14px', borderRadius: '7px',
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    padding: '12px 14px', borderRadius: '8px',
                     border: `1.5px solid ${colors.green}`,
-                    background: colors.greenTint,
-                    color: colors.green,
-                    fontSize: '13px', fontWeight: 600,
+                    background: colors.green, color: '#ffffff',
+                    fontSize: '14px', fontWeight: 700,
                     cursor: saving || markingComplete ? 'not-allowed' : 'pointer',
                     fontFamily: font.body,
                     opacity: saving || markingComplete ? 0.6 : 1,
                     transition: 'all 0.15s',
+                    boxShadow: `0 2px 8px ${colors.green}38`,
                   }}
                 >
-                  <CircleCheckBig size={15} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                  <CircleCheckBig size={17} strokeWidth={2.4} style={{ flexShrink: 0 }} />
                   {markingComplete ? 'Marking Complete…' : 'Mark Task Completed'}
                 </button>
-              ) : null}
+              )}
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* ══ COLUMN 3 — Activity (far right, internal scroll) ══════════════ */}
-        <div style={{ minWidth: 0 }}>
-          {log.length > 0 ? (
-            <div className="boe-card" style={{ overflow: 'hidden', padding: '0', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '9px 14px 8px', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
+          {/* Acknowledge / awaiting */}
+          {!task.acknowledged_at && isAssignee && task.created_by !== currentUserId && (
+            <div className="boe-card" style={{ padding: '12px 14px' }}>
+              <button
+                onClick={acknowledge}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  padding: '8px 14px', borderRadius: '7px',
+                  border: `1.5px solid ${colors.amber}50`,
+                  background: colors.amberTint, color: colors.amber,
+                  fontSize: '12px', fontWeight: 600,
+                  cursor: 'pointer', fontFamily: font.body,
+                  transition: 'background 0.15s',
+                }}
+              >
+                Tap to Acknowledge
+              </button>
+            </div>
+          )}
+          {!task.acknowledged_at && !isAssignee && (
+            <div className="boe-card" style={{ padding: '10px 14px', textAlign: 'center' }}>
+              <p style={{ fontSize: '11px', color: colors.amber, fontWeight: 600, margin: 0 }}>
+                ⏳ Awaiting acknowledgement
+              </p>
+            </div>
+          )}
+
+          {/* Aging badge */}
+          {aging && (
+            <div className="boe-card" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+              <span style={{ fontSize: '11px', color: colors.muted }}>Aging</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <span style={{
-                  fontSize: '10px', fontWeight: 700,
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                  color: colors.muted,
+                  fontSize: '11px', fontWeight: 700,
+                  color: agingColor, background: `${agingColor}14`,
+                  border: `1px solid ${agingColor}30`,
+                  padding: '2px 8px', borderRadius: '10px',
                 }}>
-                  Activity
+                  {aging.label}
                 </span>
+                <span style={{ fontSize: '10px', color: colors.muted }}>{aging.daysSinceUpdate}d</span>
               </div>
-              {/* Internal scroll — page height unaffected by entry count */}
-              <div style={{
-                maxHeight: '480px',
-                overflowY: 'auto',
-                scrollbarWidth: 'thin',
-                scrollbarColor: 'rgba(0,0,0,0.08) transparent',
+            </div>
+          )}
+
+          {/* Activity */}
+          <div className="boe-card" style={{ overflow: 'hidden', padding: '0' }}>
+            <div style={{ padding: '10px 14px 9px', borderBottom: `1px solid ${colors.border}` }}>
+              <span style={{
+                fontSize: '11px', fontWeight: 700,
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                color: colors.secondary,
               }}>
+                Activity
+              </span>
+            </div>
+            {log.length === 0 ? (
+              <div style={{ padding: '14px', opacity: 0.5 }}>
+                <p style={{ fontSize: '11px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+                  No activity yet.
+                </p>
+              </div>
+            ) : (
+              <div style={{ padding: '4px 0' }}>
                 {log.map((entry, i) => {
                   const dotColor =
                     entry.action === 'acknowledged'     ? colors.green
                     : entry.action === 'status_changed' && entry.to_status
                       ? (STATUS_COLORS[entry.to_status] ?? colors.muted)
                     : colors.muted
-
                   return (
                     <div
                       key={entry.id}
                       style={{
-                        display: 'flex', gap: '8px', alignItems: 'flex-start',
-                        padding: '7px 12px',
-                        borderBottom: i < log.length - 1 ? `1px solid ${colors.border}` : 'none',
+                        display: 'flex', gap: '0', alignItems: 'stretch',
+                        padding: '0',
                       }}
                     >
-                      <span style={{
-                        width: '6px', height: '6px', borderRadius: '50%',
-                        background: dotColor, flexShrink: 0, marginTop: '4px',
-                      }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* Timeline rail */}
+                      <div style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        width: '32px', flexShrink: 0, paddingTop: '12px',
+                      }}>
+                        <div style={{
+                          width: '8px', height: '8px', borderRadius: '50%',
+                          background: dotColor, border: `2px solid #ffffff`,
+                          boxShadow: `0 0 0 1.5px ${dotColor}`,
+                          flexShrink: 0, zIndex: 1,
+                        }} />
+                        {i < log.length - 1 && (
+                          <div style={{
+                            width: '1.5px', flex: 1, minHeight: '12px',
+                            background: colors.border, marginTop: '3px',
+                          }} />
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div style={{ flex: 1, minWidth: 0, padding: '10px 14px 10px 0' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px', alignItems: 'baseline', flexWrap: 'wrap' }}>
-                          <p style={{ color: colors.secondary, fontSize: '11px', lineHeight: 1.3 }}>
+                          <p style={{ color: colors.secondary, fontSize: '12px', lineHeight: 1.35, fontWeight: 600, margin: 0 }}>
                             {formatLogAction(entry.action, entry.from_status, entry.to_status)}
                           </p>
                           {entry.actor_name && (
-                            <span style={{ color: colors.muted, fontSize: '10px', flexShrink: 0 }}>
+                            <span style={{ color: colors.muted, fontSize: '10.5px', flexShrink: 0 }}>
                               {entry.actor_name}
                             </span>
                           )}
                         </div>
                         {entry.note && (
-                          <p style={{ color: colors.muted, fontSize: '11px', marginTop: '1px', lineHeight: 1.3 }}>
+                          <p style={{ color: colors.secondary, fontSize: '12px', marginTop: '3px', lineHeight: 1.5, margin: '3px 0 0' }}>
                             {entry.note}
                           </p>
                         )}
@@ -1073,7 +1039,7 @@ export default function TaskDetailPage() {
                             rel="noopener noreferrer"
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: '4px',
-                              fontSize: '10px', fontWeight: 500,
+                              fontSize: '10.5px', fontWeight: 500,
                               color: colors.blue, marginTop: '3px',
                               textDecoration: 'none',
                             }}
@@ -1081,7 +1047,7 @@ export default function TaskDetailPage() {
                             📎 View Attachment
                           </a>
                         )}
-                        <p style={{ color: colors.muted, fontSize: '10px', marginTop: '1px', fontFamily: font.mono, opacity: 0.75 }}>
+                        <p style={{ color: colors.muted, fontSize: '10px', marginTop: '3px', fontFamily: font.mono }}>
                           {formatDateTime(entry.created_at)}
                         </p>
                       </div>
@@ -1089,19 +1055,10 @@ export default function TaskDetailPage() {
                   )
                 })}
               </div>
-            </div>
-          ) : (
-            /* Empty state — keeps column visible but doesn't add noise */
-            <div className="boe-card" style={{ padding: '14px', opacity: 0.5 }}>
-              <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted }}>
-                Activity
-              </span>
-              <p style={{ fontSize: '11px', color: colors.muted, fontStyle: 'italic', marginTop: '8px', marginBottom: 0 }}>
-                No activity yet.
-              </p>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+
+        </div>{/* end right column */}
 
       </div>
     </DashboardLayout>

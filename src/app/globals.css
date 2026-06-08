@@ -130,6 +130,18 @@ body {
   .boe-task-3col { grid-template-columns: 1fr; }
 }
 
+.boe-task-2col {
+  display: grid;
+  grid-template-columns: minmax(0, 65fr) minmax(0, 35fr);
+  gap: 24px;
+  align-items: start;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+@media (max-width: 1023px) {
+  .boe-task-2col { grid-template-columns: 1fr; }
+}
+
 /* ─────────────────────────────────────────────────────
    CARDS
 ───────────────────────────────────────────────────── */
