@@ -375,15 +375,15 @@ function TaskCard({
         })()}
       </div>
 
-      {/* Assigned by — fixed 140px */}
+      {/* Assigned by — fixed 130px */}
       <div style={{
-        flexShrink: 0, width: '140px',
+        flexShrink: 0, width: '130px',
         display: 'flex', alignItems: 'center',
         paddingLeft: '8px', paddingRight: '6px',
         overflow: 'hidden',
       }}>
         <span
-          title={isSelf ? 'Assigned by you' : `Assigned by ${assignerName}`}
+          title={isSelf ? 'Self-assigned' : `Assigned by ${assignerName}`}
           style={{
             display: 'inline-block',
             maxWidth: '100%',
@@ -391,18 +391,18 @@ function TaskCard({
             fontSize: '10.5px', fontWeight: 600,
             padding: '1px 7px', borderRadius: '20px',
             ...(isSelf
-              ? { color: colors.muted,  background: 'rgba(0,0,0,0.05)'           }
-              : { color: '#6B4FA0',     background: 'rgba(155,111,212,0.10)'     }
+              ? { color: colors.muted,  background: 'rgba(0,0,0,0.05)'       }
+              : { color: '#6B4FA0',     background: 'rgba(155,111,212,0.10)' }
             ),
           }}
         >
-          {isSelf ? 'By you' : assignerName}
+          {isSelf ? 'Self' : assignerName}
         </span>
       </div>
 
-      {/* Priority — fixed 52px */}
+      {/* Priority — fixed 56px */}
       <div style={{
-        flexShrink: 0, width: '52px',
+        flexShrink: 0, width: '56px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
@@ -410,27 +410,24 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Due date — fixed 106px */}
+      {/* Status — fixed 90px */}
       <div style={{
-        flexShrink: 0, width: '106px',
+        flexShrink: 0, width: '90px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        {dateStr ? (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '3px',
-            fontSize: '11px', fontWeight: overdue ? 600 : 500,
-            color: overdue ? colors.red : colors.secondary,
-            background: overdue ? `${colors.red}0e` : 'transparent',
-            border: `1px solid ${overdue ? colors.red + '30' : 'transparent'}`,
-            padding: '2px 6px', borderRadius: '4px',
-            whiteSpace: 'nowrap',
-          }}>
-            {overdue && <AlertCircle size={9} />}
-            {dateStr}
-          </span>
-        ) : (
-          <span style={{ fontSize: '11px', color: colors.muted }}>—</span>
-        )}
+        <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
+          {task.status}
+        </span>
+      </div>
+
+      {/* Created Date — fixed 100px */}
+      <div style={{
+        flexShrink: 0, width: '100px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+          {formatDate(task.created_at) ?? '—'}
+        </span>
       </div>
 
       {/* Actions */}
@@ -1101,17 +1098,21 @@ export default function MyTasksPage() {
               )
             })()}
 
-            {/* Search + filter toolbar */}
+            {/* Search + filter toolbar — single row on desktop, wraps on mobile */}
             <div style={{
               background: colors.raised,
               border: `1.5px solid ${colors.border}`,
               borderRadius: '8px',
               padding: '8px 10px',
               marginBottom: '10px',
-              display: 'flex', flexDirection: 'column', gap: '8px',
+              display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center',
             }}>
-              {/* Search row */}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {/* Search */}
+              <div style={{
+                flex: '2 1 160px', display: 'flex', alignItems: 'center', gap: '6px',
+                background: colors.base, border: `1px solid ${colors.border}`,
+                borderRadius: '6px', padding: '6px 10px',
+              }}>
                 <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
                 <input
                   type="text"
@@ -1119,61 +1120,84 @@ export default function MyTasksPage() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   style={{
-                    flex: 1, padding: '4px 6px',
-                    background: 'transparent', border: 'none',
-                    outline: 'none',
-                    fontSize: '12px', color: colors.primary,
+                    flex: 1, background: 'transparent', border: 'none',
+                    outline: 'none', fontSize: '12px', color: colors.primary,
+                    minWidth: 0,
                   }}
                 />
               </div>
-              {/* Filter row */}
-              {(taskType !== 'self' && assignerOptions.length > 0 || true) && (
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {taskType !== 'self' && assignerOptions.length > 0 && (
-                    <select
-                      value={filterAssignedBy}
-                      onChange={e => setFilterAssignedBy(e.target.value)}
-                      style={{
-                        flex: 1, minWidth: '120px',
-                        padding: '6px 10px',
-                        background: colors.base, border: `1px solid ${colors.border}`,
-                        borderRadius: '6px', outline: 'none',
-                        fontSize: '11.5px', color: filterAssignedBy ? colors.primary : colors.muted,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <option value="">All Assigners</option>
-                      {assignerOptions.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  )}
-                  <select
-                    value={filterPriority}
-                    onChange={e => setFilterPriority(e.target.value)}
-                    style={{
-                      flex: 1, minWidth: '100px',
-                      padding: '6px 10px',
-                      background: colors.base, border: `1px solid ${colors.border}`,
-                      borderRadius: '6px', outline: 'none',
-                      fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option value="">All Priority</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                </div>
+              {/* Assignees */}
+              {taskType !== 'self' && assignerOptions.length > 0 && (
+                <select
+                  value={filterAssignedBy}
+                  onChange={e => setFilterAssignedBy(e.target.value)}
+                  style={{
+                    flex: '1 1 120px', minWidth: '110px',
+                    padding: '6px 10px',
+                    background: colors.base, border: `1px solid ${colors.border}`,
+                    borderRadius: '6px', outline: 'none',
+                    fontSize: '11.5px', color: filterAssignedBy ? colors.primary : colors.muted,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="">All Assignees</option>
+                  {assignerOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
               )}
+              {/* Priority */}
+              <select
+                value={filterPriority}
+                onChange={e => setFilterPriority(e.target.value)}
+                style={{
+                  flex: '1 1 100px', minWidth: '95px',
+                  padding: '6px 10px',
+                  background: colors.base, border: `1px solid ${colors.border}`,
+                  borderRadius: '6px', outline: 'none',
+                  fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">All Priority</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
             </div>
+
+            {/* Table header — desktop only */}
+            {!isMobile && (
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                padding: '5px 0 5px 0',
+                marginBottom: '4px',
+                fontSize: '10px', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.07em',
+                color: colors.muted,
+              }}>
+                {/* star spacer */}
+                <div style={{ width: '28px', flexShrink: 0 }} />
+                {/* Task */}
+                <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>Task</div>
+                {/* Assigned By */}
+                <div style={{ flexShrink: 0, width: '130px', paddingLeft: '8px' }}>Assigned By</div>
+                {/* Priority */}
+                <div style={{ flexShrink: 0, width: '56px', textAlign: 'center' }}>Priority</div>
+                {/* Status */}
+                <div style={{ flexShrink: 0, width: '90px', textAlign: 'center' }}>Status</div>
+                {/* Created Date */}
+                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Created Date</div>
+                {/* Action */}
+                <div style={{ flexShrink: 0, width: '84px', textAlign: 'center' }}>Action</div>
+              </div>
+            )}
 
             {/* Task cards */}
             {visibleTasks.length === 0 ? (
               <EmptyState label={TABS.find(t => t.key === activeTab)!.label} />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {visibleTasks.map(task => (
                   <TaskCard
                     key={task.id}

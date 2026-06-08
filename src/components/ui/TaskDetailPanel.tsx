@@ -115,7 +115,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
   const statusColor    = STATUS_COLOR[task.status] ?? colors.muted
   const isSelfAssigned = task.assigned_to === task.created_by
   const assignedByName = isSelfAssigned
-    ? 'Myself'
+    ? 'Self'
     : (userMap?.[task.created_by] ?? '—')
 
   const desktopTransform = open ? 'translateX(0)' : 'translateX(100%)'

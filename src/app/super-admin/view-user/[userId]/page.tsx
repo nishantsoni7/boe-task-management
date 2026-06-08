@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
-import { isOverdue } from '@/lib/ui'
+import { isOverdue, getAssignedByDisplay } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -294,7 +294,7 @@ export default function ViewUserPage() {
               const isLate = (now.getTime() - new Date(task.created_at).getTime()) > msPerDay
               const isDueOverdue = task.due_date && new Date(task.due_date) < now
               const isOverdueRow = isLate || isDueOverdue
-              const assignedByName = mergedUserMap[task.created_by] ?? '—'
+              const assignedByName = getAssignedByDisplay(task, mergedUserMap)
               const isLast = idx === Math.min(unacknowledgedForMe.length, 5) - 1
               return (
                 <div

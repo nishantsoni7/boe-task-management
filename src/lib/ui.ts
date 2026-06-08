@@ -160,6 +160,18 @@ export function getTaskAging(task: {
   return null
 }
 
+// ─── Assigned-by display ─────────────────────────────────────────────────────
+// Returns "Self" when the creator and assignee are the same person;
+// otherwise returns the creator's display name from the user map.
+export function getAssignedByDisplay(
+  task: { created_by: string; assigned_to: string },
+  userMap: Record<string, string>,
+  fallback = '—',
+): string {
+  if (task.created_by === task.assigned_to) return 'Self'
+  return userMap[task.created_by] ?? fallback
+}
+
 // ─── Activity log label ───────────────────────────────────────────────────────
 export function formatLogAction(
   action: string,

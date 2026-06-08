@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
-import { isOverdue } from '@/lib/ui'
+import { isOverdue, getAssignedByDisplay } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -643,7 +643,7 @@ function UnacknowledgedTasksSection({
         const isLate = (now.getTime() - new Date(task.created_at).getTime()) > msPerDay
         const isDueOverdue = task.due_date && new Date(task.due_date) < now
         const isOverdueRow = isLate || isDueOverdue
-        const assignedByName = userMap[task.created_by] ?? '—'
+        const assignedByName = getAssignedByDisplay(task, userMap)
         const dueDateStr = task.due_date
           ? new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
           : null

@@ -483,7 +483,7 @@ export default function TaskDetailPage() {
               </div>
 
               {/* Assigned by / Assigned to (delegated) */}
-              {(isDelegated ? assigneeName : creatorName) && (
+              {(isDelegated ? assigneeName : (isSelfTask ? true : creatorName)) && (
                 <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {isDelegated
                     ? <UserCheck size={15} color="#2563EB" />
@@ -493,7 +493,7 @@ export default function TaskDetailPage() {
                     {isDelegated ? 'Assigned To:' : 'Assigned by:'}
                   </span>
                   <span style={{ fontSize: '13px', color: '#2563EB', fontWeight: 600 }}>
-                    {isDelegated ? assigneeName : creatorName}
+                    {isDelegated ? assigneeName : (isSelfTask ? 'Self' : creatorName)}
                   </span>
                 </div>
               )}

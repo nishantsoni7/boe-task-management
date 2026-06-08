@@ -212,7 +212,7 @@ function CompletedTaskCard({
         overflow: 'hidden',
       }}>
         <span
-          title={isSelf ? 'Assigned by you' : `Assigned by ${assignerName}`}
+          title={isSelf ? 'Self-assigned' : `Assigned by ${assignerName}`}
           style={{
             display: 'inline-block',
             maxWidth: '100%',
@@ -225,7 +225,7 @@ function CompletedTaskCard({
             ),
           }}
         >
-          {isSelf ? 'By you' : assignerName}
+          {isSelf ? 'Self' : assignerName}
         </span>
       </div>
 
