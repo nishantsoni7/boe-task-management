@@ -140,17 +140,20 @@ export default function CreateTaskPage() {
     }
 
     const notePayload = description.trim() || null
+    const isSelf = assigneeId === session.user.id
+    const now = new Date().toISOString()
 
     const taskPayload: Record<string, unknown> = {
-      title:       title.trim(),
-      note:        notePayload,
-      priority,    type,
-      is_urgent:   isUrgent,
-      due_date:    dueDate || null,
-      assigned_to: assigneeId,
-      created_by:  session.user.id,
+      title:          title.trim(),
+      note:           notePayload,
+      priority,       type,
+      is_urgent:      isUrgent,
+      due_date:       dueDate || null,
+      assigned_to:    assigneeId,
+      created_by:     session.user.id,
       team,
-      status:      'pending',
+      status:         isSelf ? 'working' : 'pending',
+      acknowledged_at: isSelf ? now : null,
     }
     if (attachmentUrl !== null) taskPayload.attachment_url = attachmentUrl
 
@@ -167,7 +170,7 @@ export default function CreateTaskPage() {
     }
     await supabase.from('task_activity_log').insert({
       task_id: task.id, actor_id: session.user.id,
-      action: 'created', note: 'Task created and assigned',
+      action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
     })
     await supabase.from('notifications').insert({
       user_id:      assigneeId,

@@ -395,8 +395,19 @@ export default function TaskDetailPage() {
   const statusTint    = STATUS_TINTS[task.status]  ?? colors.float
   const priorityStyle = PRIORITY_COLORS[task.priority] ?? PRIORITY_COLORS.low
 
-  const latestNoteEntry   = log.find(e => e.note) ?? null
-  const currentStatusNote = latestNoteEntry?.note ?? null
+  const STATUS_CARD_DEFAULTS: Record<string, string> = {
+    working: 'Task is in progress',
+    waiting: 'Task is waiting for input',
+    blocked:  'Task is blocked',
+  }
+  // Newest status_changed entry drives the card; fall back to creation entry only
+  // when no status change has happened yet (brand-new task).
+  const latestStatusChange = log.find(e => e.action === 'status_changed') ?? null
+  const createdEntry       = log.find(e => e.note) ?? null
+  const latestNoteEntry    = latestStatusChange ?? createdEntry
+  const currentStatusNote  = latestStatusChange
+    ? (latestStatusChange.note ?? STATUS_CARD_DEFAULTS[task.status] ?? null)
+    : (createdEntry?.note ?? null)
   const noteIsDuplicateOfBlocker =
     task.status === 'blocked' &&
     currentStatusNote !== null &&

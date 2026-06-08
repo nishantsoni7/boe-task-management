@@ -892,14 +892,16 @@ export default function MyTasksPage() {
     if (selectedTask.assigned_to !== userId) return
     if (selectedTask.created_by === userId) return
     const now = new Date().toISOString()
-    const { error } = await supabase.from('tasks').update({ acknowledged_at: now }).eq('id', selectedTask.id)
+    const oldStatus = selectedTask.status
+    const { error } = await supabase.from('tasks').update({ acknowledged_at: now, status: 'working', last_update_at: now }).eq('id', selectedTask.id)
     if (error) {
       alert('Failed to acknowledge task. Please try again.')
       return
     }
-    await supabase.from('task_activity_log').insert({
-      task_id: selectedTask.id, actor_id: userId, action: 'acknowledged', note: null,
-    })
+    await supabase.from('task_activity_log').insert([
+      { task_id: selectedTask.id, actor_id: userId, action: 'acknowledged', note: null },
+      { task_id: selectedTask.id, actor_id: userId, action: 'status_changed', from_status: oldStatus, to_status: 'working', note: null },
+    ])
     if (selectedTask.created_by && selectedTask.created_by !== userId) {
       fetch('/api/notify-status-update', {
         method: 'POST',
@@ -909,7 +911,7 @@ export default function MyTasksPage() {
         if (!res.ok) res.json().then(d => console.error('[my-tasks/acknowledge] notification failed:', d))
       }).catch(err => console.error('[my-tasks/acknowledge] notification fetch error:', err))
     }
-    const patch = { acknowledged_at: now }
+    const patch = { acknowledged_at: now, status: 'working' as const, last_update_at: now }
     setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
     setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
   }
