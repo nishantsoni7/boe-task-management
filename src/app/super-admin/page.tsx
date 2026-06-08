@@ -8,32 +8,42 @@ import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
-import { Trash2 } from 'lucide-react'
-type RelationFilter = 'all' | 'created_by' | 'assigned_to' | 'delegated_by'
+import { ClipboardList, Trash2 } from 'lucide-react'
 
-const STATUS_OPTIONS = ['pending', 'started', 'working', 'waiting', 'blocked', 'completed']
+type PeriodFilter = 'today' | 'this_week' | 'this_month'
 
-function formatDate(d: string | null) {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
+const PERIOD_LABELS: Record<PeriodFilter, string> = {
+  today:      'Today',
+  this_week:  'This Week',
+  this_month: 'This Month',
 }
+
+function formatDateTime(d: string | null) {
+  if (!d) return '—'
+  return new Date(d).toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: '2-digit',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
+
+const COL = '44px minmax(0,1fr) 150px 130px 100px 150px'
 
 export default function SuperAdminPage() {
   const { viewAsUserId, exitViewMode } = useViewAs()
-  const [profile,    setProfile]    = useState<UserProfile | null>(null)
-  const [members,    setMembers]    = useState<UserProfile[]>([])
-  const [tasks,      setTasks]      = useState<Task[]>([])
-  const [userMap,    setUserMap]    = useState<Record<string, string>>({})
-  const [loading,    setLoading]    = useState(true)
-  const [fetching,   setFetching]   = useState(false)
-  const [memberId,   setMemberId]   = useState('')
-  const [relation,   setRelation]   = useState<RelationFilter>('all')
-  const [status,     setStatus]     = useState('')
-  const [selected,   setSelected]   = useState<Set<string>>(new Set())
-  const [deleting,   setDeleting]   = useState(false)
-  const [confirm,    setConfirm]    = useState(false)
-  const [error,      setError]      = useState('')
-  const [success,    setSuccess]    = useState('')
+  const [profile,   setProfile]   = useState<UserProfile | null>(null)
+  const [members,   setMembers]   = useState<UserProfile[]>([])
+  const [tasks,     setTasks]     = useState<Task[]>([])
+  const [userMap,   setUserMap]   = useState<Record<string, string>>({})
+  const [loading,   setLoading]   = useState(true)
+  const [fetching,  setFetching]  = useState(false)
+  const [memberId,  setMemberId]  = useState('')
+  const [period,    setPeriod]    = useState<PeriodFilter>('today')
+  const [selected,  setSelected]  = useState<Set<string>>(new Set())
+  const [deleting,  setDeleting]  = useState(false)
+  const [confirm,   setConfirm]   = useState(false)
+  const [error,     setError]     = useState('')
+  const [success,   setSuccess]   = useState('')
+  const [hasLoaded, setHasLoaded] = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -59,15 +69,6 @@ export default function SuperAdminPage() {
         setUserMap(map)
       }
       setLoading(false)
-
-      // Auto-load all tasks on first visit
-      setFetching(true)
-      const tasksRes = await fetch('/api/admin-tasks', {
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
-      })
-      const tasksData = await tasksRes.json()
-      if (tasksRes.ok) setTasks((tasksData.tasks ?? []) as Task[])
-      setFetching(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -80,14 +81,14 @@ export default function SuperAdminPage() {
     const { data: { session } } = await supabase.auth.getSession()
     const params = new URLSearchParams()
     if (memberId) params.set('memberId', memberId)
-    if (relation !== 'all') params.set('relation', relation)
-    if (status) params.set('status', status)
+    params.set('period', period)
     const res = await fetch(`/api/admin-tasks?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${session?.access_token ?? ''}` },
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error || 'Failed to fetch tasks'); setFetching(false); return }
     setTasks((data.tasks ?? []) as Task[])
+    setHasLoaded(true)
     setFetching(false)
   }
 
@@ -129,13 +130,17 @@ export default function SuperAdminPage() {
     router.push('/login')
   }
 
+  const memberLabel = memberId
+    ? (members.find(m => m.id === memberId)?.full_name ?? 'Selected Member')
+    : 'All Members'
+
   if (loading) return <LoadingScreen />
 
   return (
     <DashboardLayout
       profile={profile}
       title="Super Admin"
-      subtitle="View and permanently delete tasks across all members."
+      subtitle="Member-wise task reporting. View and permanently delete tasks."
       onSignOut={handleLogout}
     >
 
@@ -172,14 +177,13 @@ export default function SuperAdminPage() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="boe-card" style={{ padding: '16px', marginBottom: '20px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end' }}>
-        {/* Member */}
-        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.muted, display: 'block', marginBottom: '4px' }}>
+      {/* Filter card */}
+      <div className="boe-card" style={{ padding: '20px 24px', marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+          <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.muted, display: 'block', marginBottom: '6px' }}>
             Member
           </label>
-          <select value={memberId} onChange={e => setMemberId(e.target.value)} className="boe-input" style={{ fontSize: '12px' }}>
+          <select value={memberId} onChange={e => setMemberId(e.target.value)} className="boe-input" style={{ fontSize: '13px', width: '100%' }}>
             <option value="">All Members</option>
             {members.map(m => (
               <option key={m.id} value={m.id}>{m.full_name}</option>
@@ -187,54 +191,59 @@ export default function SuperAdminPage() {
           </select>
         </div>
 
-        {/* Relation */}
         <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.muted, display: 'block', marginBottom: '4px' }}>
-            Task Relation
+          <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.muted, display: 'block', marginBottom: '6px' }}>
+            Period
           </label>
-          <select value={relation} onChange={e => setRelation(e.target.value as RelationFilter)} className="boe-input" style={{ fontSize: '12px' }}>
-            <option value="all">All (Created / Assigned / Delegated)</option>
-            <option value="created_by">Created by member</option>
-            <option value="assigned_to">Assigned to member</option>
-            <option value="delegated_by">Delegated by member</option>
+          <select value={period} onChange={e => setPeriod(e.target.value as PeriodFilter)} className="boe-input" style={{ fontSize: '13px', width: '100%' }}>
+            <option value="today">Today</option>
+            <option value="this_week">This Week</option>
+            <option value="this_month">This Month</option>
           </select>
         </div>
 
-        {/* Status */}
-        <div style={{ flex: '1 1 140px', minWidth: 0 }}>
-          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.muted, display: 'block', marginBottom: '4px' }}>
-            Status
-          </label>
-          <select value={status} onChange={e => setStatus(e.target.value)} className="boe-input" style={{ fontSize: '12px' }}>
-            <option value="">All Statuses</option>
-            {STATUS_OPTIONS.map(s => (
-              <option key={s} value={s} style={{ textTransform: 'capitalize' }}>{s}</option>
-            ))}
-          </select>
+        <div style={{ marginLeft: 'auto' }}>
+          <button onClick={fetchTasks} disabled={fetching} className="boe-btn boe-btn-primary" style={{ padding: '10px 24px', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {fetching ? 'Loading…' : 'Load Tasks'}
+          </button>
         </div>
-
-        <button onClick={fetchTasks} disabled={fetching} className="boe-btn boe-btn-primary" style={{ padding: '9px 20px', fontSize: '12px', alignSelf: 'flex-end' }}>
-          {fetching ? 'Loading…' : 'Load Tasks'}
-        </button>
       </div>
 
-      {/* Action bar */}
-      {tasks.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-          <div style={{ fontSize: '12px', color: colors.muted }}>
-            {tasks.length} task{tasks.length !== 1 ? 's' : ''} · {selected.size} selected
+      {/* Summary row */}
+      {hasLoaded && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '8px',
+              background: colors.float,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <ClipboardList size={16} color={colors.secondary} />
+            </div>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, lineHeight: 1.3 }}>
+                Total tasks created: {tasks.length}
+              </div>
+              <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '2px' }}>
+                Member: {memberLabel} &bull; Period: {PERIOD_LABELS[period]}
+              </div>
+            </div>
           </div>
+
           <button
             onClick={() => setConfirm(true)}
             disabled={selected.size === 0}
-            className="boe-btn"
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '7px 14px', fontSize: '12px',
-              background: selected.size > 0 ? colors.red : colors.float,
-              color: selected.size > 0 ? '#fff' : colors.muted,
-              border: 'none', borderRadius: '6px',
+              padding: '8px 16px', fontSize: '12px', fontWeight: 500,
+              background: 'transparent',
+              color: selected.size > 0 ? colors.red : colors.muted,
+              border: `1px solid ${selected.size > 0 ? colors.red : colors.border}`,
+              borderRadius: '6px',
               cursor: selected.size > 0 ? 'pointer' : 'not-allowed',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s',
             }}
           >
             <Trash2 size={13} />
@@ -244,25 +253,31 @@ export default function SuperAdminPage() {
       )}
 
       {/* Task table */}
-      {tasks.length === 0 && !fetching ? (
-        <div className="boe-card" style={{ padding: '32px', textAlign: 'center' }}>
+      {!hasLoaded ? (
+        <div className="boe-card" style={{ padding: '40px', textAlign: 'center' }}>
           <p style={{ fontSize: '13px', color: colors.muted, margin: 0 }}>
             Select filters and click <strong>Load Tasks</strong> to view tasks.
           </p>
         </div>
+      ) : tasks.length === 0 && !fetching ? (
+        <div className="boe-card" style={{ padding: '40px', textAlign: 'center' }}>
+          <p style={{ fontSize: '13px', color: colors.muted, margin: 0 }}>
+            No tasks found for the selected filters.
+          </p>
+        </div>
       ) : (
         <div className="boe-card" style={{ padding: 0, overflow: 'hidden' }}>
-          {/* Header */}
+          {/* Table header */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '36px 1fr 140px 100px 80px 100px',
-            gap: '0',
-            padding: '10px 14px',
+            gridTemplateColumns: COL,
+            padding: '10px 20px',
             background: colors.raised,
             borderBottom: `1px solid ${colors.border}`,
-            fontSize: '10px', fontWeight: 600,
-            textTransform: 'uppercase', letterSpacing: '0.05em',
+            fontSize: '10px', fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.07em',
             color: colors.muted,
+            alignItems: 'center',
           }}>
             <div>
               <input
@@ -272,14 +287,14 @@ export default function SuperAdminPage() {
                 style={{ cursor: 'pointer' }}
               />
             </div>
-            <div>Title</div>
+            <div>Title &amp; Description</div>
             <div>Assigned To</div>
             <div>Created By</div>
             <div>Status</div>
-            <div>Due Date</div>
+            <div>Created Date</div>
           </div>
 
-          {/* Rows */}
+          {/* Table rows */}
           {tasks.map(task => {
             const isSelected = selected.has(task.id)
             return (
@@ -288,17 +303,17 @@ export default function SuperAdminPage() {
                 onClick={() => toggleSelect(task.id)}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '36px 1fr 140px 100px 80px 100px',
-                  gap: '0',
-                  padding: '11px 14px',
+                  gridTemplateColumns: COL,
+                  padding: '14px 20px',
                   borderBottom: `1px solid ${colors.border}`,
-                  background: isSelected ? `${colors.red}08` : 'transparent',
+                  background: isSelected ? colors.redTint : 'transparent',
                   cursor: 'pointer',
                   transition: 'background 0.1s',
-                  alignItems: 'center',
+                  alignItems: 'start',
                 }}
               >
-                <div onClick={e => e.stopPropagation()}>
+                {/* Checkbox */}
+                <div style={{ paddingTop: '2px' }} onClick={e => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={isSelected}
@@ -306,33 +321,60 @@ export default function SuperAdminPage() {
                     style={{ cursor: 'pointer' }}
                   />
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 500, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+
+                {/* Title & Description */}
+                <div style={{ minWidth: 0, paddingRight: '24px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, lineHeight: 1.35 }}>
                     {task.title}
                   </div>
                   {task.note && (
-                    <div style={{ fontSize: '11px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '2px' }}>
+                    <div style={{
+                      fontSize: '11.5px', color: colors.muted, marginTop: '3px', lineHeight: 1.4,
+                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}>
                       {task.note}
                     </div>
                   )}
                 </div>
-                <div style={{ fontSize: '11.5px', color: colors.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+
+                {/* Assigned To */}
+                <div style={{ fontSize: '12.5px', color: colors.secondary, paddingRight: '8px' }}>
                   {userMap[task.assigned_to] ?? '—'}
                 </div>
-                <div style={{ fontSize: '11.5px', color: colors.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+
+                {/* Created By */}
+                <div style={{ fontSize: '12.5px', color: colors.secondary, paddingRight: '8px' }}>
                   {userMap[task.created_by] ?? '—'}
                 </div>
+
+                {/* Status */}
                 <div>
-                  <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
+                  <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '10px', textTransform: 'capitalize' }}>
                     {task.status}
                   </span>
                 </div>
-                <div style={{ fontSize: '11.5px', color: colors.secondary }}>
-                  {formatDate(task.due_date)}
+
+                {/* Created Date */}
+                <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.35 }}>
+                  {formatDateTime(task.created_at ?? null)}
                 </div>
               </div>
             )
           })}
+
+          {/* Footer */}
+          <div style={{
+            padding: '12px 20px',
+            borderTop: `1px solid ${colors.border}`,
+            fontSize: '12px', color: colors.muted,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span>Showing 1 to {tasks.length} of {tasks.length} task{tasks.length !== 1 ? 's' : ''}</span>
+            {selected.size > 0 && (
+              <span style={{ color: colors.secondary }}>{selected.size} selected</span>
+            )}
+          </div>
         </div>
       )}
     </DashboardLayout>
