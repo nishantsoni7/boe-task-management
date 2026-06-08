@@ -221,6 +221,10 @@ export type MemberPerfEntry = {
   // Portfolio
   activeTasks: number
   completedThisWeek: number
+  // Analysis extras
+  updatesCount:       number          // status updates made today
+  latestAchievement:  string | null   // today's EOD log summary
+  latestHighlight:    string | null   // today's EOD log highlights
 }
 
 // ─── Payroll period ───────────────────────────────────────────────────────────

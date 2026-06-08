@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -248,6 +248,405 @@ function MemberCard({ m, onViewProfile }: { m: MemberPerfEntry; onViewProfile: (
   )
 }
 
+// ─── Performance Analysis Table ──────────────────────────────────────────────
+type AnalysisSortKey =
+  | 'score' | 'name' | 'team' | 'rating' | 'completed'
+  | 'updates' | 'eod' | 'output' | 'momentum' | 'discipline'
+  | 'risk' | 'ww' | 'achievement' | 'highlight'
+
+const ANALYSIS_COLS: { key: AnalysisSortKey; label: string; sortable: boolean; align?: 'right' | 'center' }[] = [
+  { key: 'name',        label: 'Member',            sortable: true  },
+  { key: 'team',        label: 'Team',              sortable: true  },
+  { key: 'score',       label: 'Score',             sortable: true,  align: 'right' },
+  { key: 'rating',      label: 'Rating',            sortable: true  },
+  { key: 'completed',   label: 'Completed',         sortable: true,  align: 'right' },
+  { key: 'updates',     label: 'Updates',           sortable: true,  align: 'right' },
+  { key: 'eod',         label: 'EOD',               sortable: true,  align: 'center' },
+  { key: 'output',      label: 'Output',            sortable: true,  align: 'right' },
+  { key: 'momentum',    label: 'Momentum',          sortable: true,  align: 'right' },
+  { key: 'discipline',  label: 'Discipline',        sortable: true,  align: 'right' },
+  { key: 'risk',        label: 'Risk Penalty',      sortable: true,  align: 'right' },
+  { key: 'ww',          label: 'W/W Change',        sortable: true,  align: 'right' },
+  { key: 'achievement', label: 'Latest Achievement',sortable: false  },
+  { key: 'highlight',   label: 'Latest Highlight',  sortable: false  },
+]
+
+function PerformanceAnalysisTable({ members }: { members: MemberPerfEntry[] }) {
+  const [sortKey, setSortKey] = useState<AnalysisSortKey>('score')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const handleSort = (key: AnalysisSortKey) => {
+    if (key === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir(key === 'name' || key === 'team' ? 'asc' : 'desc') }
+  }
+
+  const sorted = useMemo(() => {
+    return [...members].sort((a, b) => {
+      let cmp = 0
+      if      (sortKey === 'score')      cmp = a.score - b.score
+      else if (sortKey === 'name')       cmp = a.userName.localeCompare(b.userName)
+      else if (sortKey === 'team')       cmp = a.team.localeCompare(b.team)
+      else if (sortKey === 'rating')     cmp = a.score - b.score
+      else if (sortKey === 'completed')  cmp = a.completedThisWeek - b.completedThisWeek
+      else if (sortKey === 'updates')    cmp = (a.updatesCount ?? 0) - (b.updatesCount ?? 0)
+      else if (sortKey === 'eod')        cmp = (a.hasEodLogToday ? 1 : 0) - (b.hasEodLogToday ? 1 : 0)
+      else if (sortKey === 'output')     cmp = a.breakdown.output - b.breakdown.output
+      else if (sortKey === 'momentum')   cmp = a.breakdown.momentum - b.breakdown.momentum
+      else if (sortKey === 'discipline') cmp = a.breakdown.discipline - b.breakdown.discipline
+      else if (sortKey === 'risk')       cmp = a.breakdown.risk - b.breakdown.risk
+      else if (sortKey === 'ww')         cmp = a.weekOverWeekDelta - b.weekOverWeekDelta
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [members, sortKey, sortDir])
+
+  if (members.length === 0) return null
+
+  const thStyle = (col: typeof ANALYSIS_COLS[number]): React.CSSProperties => ({
+    padding: '8px 10px',
+    textAlign: col.align ?? 'left',
+    fontWeight: 600,
+    color: sortKey === col.key ? '#111318' : '#6B7384',
+    fontSize: 10,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    whiteSpace: 'nowrap' as const,
+    borderBottom: '1px solid #EEF0F4',
+    background: '#F8F9FB',
+    cursor: col.sortable ? 'pointer' : 'default',
+    userSelect: 'none' as const,
+  })
+
+  const tdStyle = (align?: 'right' | 'center'): React.CSSProperties => ({
+    padding: '8px 10px',
+    fontSize: 12,
+    borderBottom: '1px solid #F0F1F3',
+    textAlign: align ?? 'left',
+    verticalAlign: 'top',
+  })
+
+  const sortIcon = (key: AnalysisSortKey) => {
+    if (sortKey !== key) return <span style={{ color: '#D0D5DF', marginLeft: 3 }}>↕</span>
+    return <span style={{ color: '#5585E8', marginLeft: 3 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>
+  }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF0F4' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>Performance Analysis</div>
+        <div style={{ fontSize: 11, color: '#8C94A6', marginTop: 2 }}>
+          Compare score components side-by-side to understand ranking differences
+        </div>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr>
+              {ANALYSIS_COLS.map(col => (
+                <th
+                  key={col.key}
+                  style={thStyle(col)}
+                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                >
+                  {col.label}{col.sortable && sortIcon(col.key)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((m, i) => {
+              const color = ratingColor(m.rating)
+              const wwPos = m.weekOverWeekDelta > 0
+              const wwNeg = m.weekOverWeekDelta < 0
+              return (
+                <tr key={m.userId} style={{ background: i % 2 === 0 ? '#fff' : '#FAFBFC' }}>
+                  {/* Member */}
+                  <td style={{ ...tdStyle(), color: '#111318', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    {m.userName}
+                  </td>
+                  {/* Team */}
+                  <td style={{ ...tdStyle(), color: '#6B7384', whiteSpace: 'nowrap' }}>
+                    {m.team}
+                  </td>
+                  {/* Score */}
+                  <td style={{ ...tdStyle('right') }}>
+                    <span style={{ fontWeight: 700, color, fontSize: 13 }}>{m.score}</span>
+                  </td>
+                  {/* Rating */}
+                  <td style={tdStyle()}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 600,
+                      color, background: color + '15',
+                      padding: '2px 7px', borderRadius: 999, whiteSpace: 'nowrap',
+                    }}>{ratingLabel(m.rating)}</span>
+                  </td>
+                  {/* Completed */}
+                  <td style={{ ...tdStyle('right'), fontWeight: 600, color: m.completedThisWeek > 0 ? '#45A870' : '#8C94A6' }}>
+                    {m.completedThisWeek}
+                  </td>
+                  {/* Updates */}
+                  <td style={{ ...tdStyle('right'), color: '#3D4455' }}>
+                    {(m.updatesCount ?? 0) || <span style={{ color: '#BCC3D0' }}>0</span>}
+                  </td>
+                  {/* EOD */}
+                  <td style={{ ...tdStyle('center') }}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 600,
+                      color: m.hasEodLogToday ? '#45A870' : '#D94F4F',
+                    }}>
+                      {m.hasEodLogToday ? '✓' : '✗'}
+                    </span>
+                  </td>
+                  {/* Output */}
+                  <td style={{ ...tdStyle('right'), color: '#45A870', fontWeight: 600 }}>
+                    {m.breakdown.output}<span style={{ fontSize: 9, color: '#A0A9BE', fontWeight: 400 }}>/50</span>
+                  </td>
+                  {/* Momentum */}
+                  <td style={{ ...tdStyle('right'), color: '#5585E8', fontWeight: 600 }}>
+                    {m.breakdown.momentum}<span style={{ fontSize: 9, color: '#A0A9BE', fontWeight: 400 }}>/20</span>
+                  </td>
+                  {/* Discipline */}
+                  <td style={{ ...tdStyle('right'), color: '#E8A030', fontWeight: 600 }}>
+                    {m.breakdown.discipline}<span style={{ fontSize: 9, color: '#A0A9BE', fontWeight: 400 }}>/20</span>
+                  </td>
+                  {/* Risk Penalty */}
+                  <td style={{ ...tdStyle('right'), color: m.breakdown.risk < 0 ? '#D94F4F' : '#8C94A6', fontWeight: 600 }}>
+                    {m.breakdown.risk}
+                  </td>
+                  {/* W/W Change */}
+                  <td style={{ ...tdStyle('right'), fontWeight: 600, color: wwPos ? '#45A870' : wwNeg ? '#D94F4F' : '#8C94A6' }}>
+                    {m.weekOverWeekDelta > 0 ? '+' : ''}{m.weekOverWeekDelta}
+                  </td>
+                  {/* Latest Achievement */}
+                  <td style={{ ...tdStyle(), color: '#3D4455', maxWidth: 220, lineHeight: 1.4 }}>
+                    {m.latestAchievement
+                      ? <span title={m.latestAchievement}>{m.latestAchievement.length > 80 ? m.latestAchievement.slice(0, 80) + '…' : m.latestAchievement}</span>
+                      : <span style={{ color: '#BCC3D0' }}>—</span>
+                    }
+                  </td>
+                  {/* Latest Highlight */}
+                  <td style={{ ...tdStyle(), color: '#6B7384', maxWidth: 180, lineHeight: 1.4 }}>
+                    {m.latestHighlight
+                      ? <span title={m.latestHighlight}>{m.latestHighlight.length > 60 ? m.latestHighlight.slice(0, 60) + '…' : m.latestHighlight}</span>
+                      : <span style={{ color: '#BCC3D0' }}>—</span>
+                    }
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ─── EOD entry type ───────────────────────────────────────────────────────────
+interface EodEntry {
+  user_id:      string
+  full_name:    string
+  team:         string
+  log_date:     string
+  summary:      string
+  highlights:   string | null
+  self_score:   number | null
+  submitted_at: string
+}
+
+// ─── EOD Updates table ────────────────────────────────────────────────────────
+function EodUpdatesTable({ token }: { token: string }) {
+  const todayStr = new Date().toISOString().slice(0, 10)
+
+  const [mode,       setMode]       = useState<'single' | 'range'>('single')
+  const [singleDate, setSingleDate] = useState(todayStr)
+  const [fromDate,   setFromDate]   = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 6); return d.toISOString().slice(0, 10)
+  })
+  const [toDate,     setToDate]     = useState(todayStr)
+  const [entries,    setEntries]    = useState<EodEntry[]>([])
+  const [loading,    setLoading]    = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
+
+  const rangeError = useMemo(() => {
+    if (mode !== 'range') return null
+    const diff = Math.round((new Date(toDate).getTime() - new Date(fromDate).getTime()) / 86400000)
+    if (diff < 1) return 'End date must be after start date (min 2 days apart).'
+    if (diff > 30) return 'Range cannot exceed 30 days.'
+    return null
+  }, [mode, fromDate, toDate])
+
+  const fetchLogs = useCallback(async () => {
+    if (!token) return
+    if (rangeError) return
+    setLoading(true)
+    setError(null)
+    try {
+      const from = mode === 'single' ? singleDate : fromDate
+      const to   = mode === 'single' ? singleDate : toDate
+      const res = await fetch(`/api/eod-logs/team?from=${from}&to=${to}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        setError(j.error ?? 'Failed to load EOD logs.')
+        return
+      }
+      const j = await res.json()
+      setEntries(j.entries ?? [])
+    } catch {
+      setError('Network error — please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }, [token, mode, singleDate, fromDate, toDate, rangeError])
+
+  // Auto-fetch when valid params change
+  useEffect(() => { fetchLogs() }, [fetchLogs])
+
+  const formatTime = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    } catch { return '—' }
+  }
+
+  const formatDate = (d: string) => {
+    try {
+      return new Date(d + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    } catch { return d }
+  }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid #EEF0F4', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>EOD Updates</div>
+          <div style={{ fontSize: 11, color: '#8C94A6', marginTop: 2 }}>What your team submitted — helps explain performance scores</div>
+        </div>
+        {/* Mode toggle */}
+        <div style={{ display: 'flex', gap: 4, background: '#F4F5F7', borderRadius: 8, padding: 3 }}>
+          {(['single', 'range'] as const).map(m => (
+            <button key={m} onClick={() => setMode(m)} style={{
+              fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+              background: mode === m ? '#fff' : 'transparent',
+              color: mode === m ? '#111318' : '#8C94A6',
+              boxShadow: mode === m ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+            }}>{m === 'single' ? 'Single Date' : 'Date Range'}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Date controls */}
+      <div style={{ padding: '12px 18px', borderBottom: '1px solid #EEF0F4', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {mode === 'single' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7384' }}>Date</label>
+            <input
+              type="date"
+              value={singleDate}
+              max={todayStr}
+              onChange={e => setSingleDate(e.target.value)}
+              style={{ fontSize: 12, padding: '5px 9px', border: '1px solid #EEF0F4', borderRadius: 7, color: '#111318', outline: 'none' }}
+            />
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7384' }}>From</label>
+              <input
+                type="date"
+                value={fromDate}
+                max={toDate}
+                onChange={e => setFromDate(e.target.value)}
+                style={{ fontSize: 12, padding: '5px 9px', border: '1px solid #EEF0F4', borderRadius: 7, color: '#111318', outline: 'none' }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7384' }}>To</label>
+              <input
+                type="date"
+                value={toDate}
+                max={todayStr}
+                min={fromDate}
+                onChange={e => setToDate(e.target.value)}
+                style={{ fontSize: 12, padding: '5px 9px', border: '1px solid #EEF0F4', borderRadius: 7, color: '#111318', outline: 'none' }}
+              />
+            </div>
+            {rangeError && (
+              <span style={{ fontSize: 11, color: '#D94F4F', fontWeight: 500 }}>{rangeError}</span>
+            )}
+            {!rangeError && (
+              <span style={{ fontSize: 11, color: '#8C94A6' }}>
+                {Math.round((new Date(toDate).getTime() - new Date(fromDate).getTime()) / 86400000) + 1} days
+              </span>
+            )}
+          </>
+        )}
+
+        {loading && <span style={{ fontSize: 11, color: '#8C94A6' }}>Loading…</span>}
+        {!loading && !error && <span style={{ fontSize: 11, color: '#8C94A6' }}>{entries.length} submission{entries.length !== 1 ? 's' : ''}</span>}
+        {error && <span style={{ fontSize: 11, color: '#D94F4F' }}>{error}</span>}
+      </div>
+
+      {/* Table */}
+      {entries.length === 0 && !loading ? (
+        <div style={{ padding: '32px', textAlign: 'center', color: '#8C94A6', fontSize: 13 }}>
+          No EOD submissions for this period.
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: '#F8F9FB' }}>
+                {['Date', 'Member', 'Team', 'Biggest Achievement', 'Highlight / Note', 'Self Score', 'Submitted'].map(h => (
+                  <th key={h} style={{
+                    padding: '9px 14px', textAlign: 'left', fontWeight: 600,
+                    color: '#6B7384', fontSize: 10, textTransform: 'uppercase',
+                    letterSpacing: '0.05em', whiteSpace: 'nowrap',
+                    borderBottom: '1px solid #EEF0F4',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e, i) => (
+                <tr key={`${e.user_id}:${e.log_date}`} style={{ background: i % 2 === 0 ? '#fff' : '#FAFBFC' }}>
+                  <td style={{ padding: '10px 14px', color: '#111318', fontWeight: 500, whiteSpace: 'nowrap', borderBottom: '1px solid #F0F1F3' }}>
+                    {formatDate(e.log_date)}
+                  </td>
+                  <td style={{ padding: '10px 14px', color: '#111318', fontWeight: 600, whiteSpace: 'nowrap', borderBottom: '1px solid #F0F1F3' }}>
+                    {e.full_name}
+                  </td>
+                  <td style={{ padding: '10px 14px', color: '#6B7384', whiteSpace: 'nowrap', borderBottom: '1px solid #F0F1F3' }}>
+                    {e.team}
+                  </td>
+                  <td style={{ padding: '10px 14px', color: '#3D4455', lineHeight: 1.5, borderBottom: '1px solid #F0F1F3', maxWidth: 300 }}>
+                    {e.summary}
+                  </td>
+                  <td style={{ padding: '10px 14px', color: '#6B7384', lineHeight: 1.5, borderBottom: '1px solid #F0F1F3', maxWidth: 220 }}>
+                    {e.highlights ?? <span style={{ color: '#BCC3D0' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', borderBottom: '1px solid #F0F1F3' }}>
+                    {e.self_score != null ? (
+                      <span style={{ display: 'flex', gap: 2 }}>
+                        {Array.from({ length: 5 }, (_, idx) => (
+                          <span key={idx} style={{ color: idx < e.self_score! ? '#E8A030' : '#D0D5DF', fontSize: 13 }}>★</span>
+                        ))}
+                      </span>
+                    ) : <span style={{ color: '#BCC3D0' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '10px 14px', color: '#8C94A6', whiteSpace: 'nowrap', borderBottom: '1px solid #F0F1F3' }}>
+                    {formatTime(e.submitted_at)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 type SortKey = 'score' | 'name' | 'risk' | 'trend' | 'weekOverWeek'
 
@@ -255,6 +654,7 @@ export default function TeamPerformancePage() {
   const [profile,    setProfile]    = useState<UserProfile | null>(null)
   const [members,    setMembers]    = useState<MemberPerfEntry[]>([])
   const [loading,    setLoading]    = useState(true)
+  const [token,      setToken]      = useState('')
   const [sortBy,     setSortBy]     = useState<SortKey>('score')
   const [filterTeam, setFilterTeam] = useState('')
   const [progress,   setProgress]   = useState(0)
@@ -280,70 +680,22 @@ export default function TeamPerformancePage() {
 
       setProfile(profileData as UserProfile)
       const token = session.access_token
+      setToken(token)
 
-      const { data: allMembers } = await supabase
-        .from('users')
-        .select('id, full_name, team, position, role')
-        .eq('is_active', true)
-        .eq('is_deleted', false)
-        .order('full_name')
-
-      if (!allMembers) { setLoading(false); return }
-
-      const perfResults = await Promise.all(
-        (allMembers as { id: string; full_name: string; team: string; position: string | null; role: string }[]).map(async (m) => {
-          try {
-            const res = await fetch(`/api/performance-metrics?period=daily&userId=${m.id}`, {
-              headers: { Authorization: `Bearer ${token}` },
-            })
-            if (!res.ok) return null
-            const data = await res.json()
-
-            // Derive risk level from score breakdown + stale blocked
-            const riskScore = Math.abs(data.breakdown?.risk ?? 0) + (data.inputs?.staleBlockedCount ?? 0) * 4
-            const riskLevel: MemberPerfEntry['riskLevel'] =
-              riskScore >= 20 ? 'high' : riskScore >= 8 ? 'medium' : 'low'
-
-            // EOD log streak: count consecutive days with EOD log from the trend
-            const trend = data.trend ?? []
-            let eodLogStreak = 0
-            for (let i = trend.length - 1; i >= 0; i--) {
-              if (trend[i].inputs?.hasEodLog) eodLogStreak++
-              else break
-            }
-
-            // Completed this week: sum from 7-day trend
-            const completedThisWeek = trend.reduce(
-              (s: number, d: { inputs?: { completedHigh?: number; completedMedium?: number; completedLow?: number } }) =>
-                s + (d.inputs?.completedHigh ?? 0) + (d.inputs?.completedMedium ?? 0) + (d.inputs?.completedLow ?? 0),
-              0
-            )
-
-            return {
-              userId:              m.id,
-              userName:            m.full_name,
-              team:                m.team,
-              position:            m.position,
-              score:               data.score,
-              rating:              data.rating as PerformanceRating,
-              breakdown:           data.breakdown,
-              overdueCount:        data.inputs?.overdueCount      ?? 0,
-              staleBlockedCount:   data.inputs?.staleBlockedCount ?? 0,
-              riskLevel,
-              trendClassification: data.trendAnalysis?.classification ?? 'insufficient_data',
-              weekOverWeekDelta:   data.trendAnalysis?.weekOverWeekDelta ?? 0,
-              hasEodLogToday:      data.inputs?.hasEodLog ?? false,
-              eodLogStreak,
-              activeTasks:         data.inputs?.activeTasks ?? 0,
-              completedThisWeek,
-            } satisfies MemberPerfEntry
-          } catch {
-            return null
-          }
+      // Single batch call — replaces N individual /api/performance-metrics calls
+      try {
+        const res = await fetch('/api/performance-metrics/team?period=daily', {
+          headers: { Authorization: `Bearer ${token}` },
         })
-      )
-
-      setMembers(perfResults.filter(Boolean) as MemberPerfEntry[])
+        const data = await res.json()
+        if (res.ok) {
+          setMembers((data.members ?? []) as MemberPerfEntry[])
+        } else {
+          console.error('[team perf] batch API error:', res.status, data?.error)
+        }
+      } catch (err) {
+        console.error('[team perf] fetch failed:', err)
+      }
       setLoading(false)
     }
     init()
@@ -485,6 +837,12 @@ export default function TeamPerformancePage() {
         {sorted.length === 0 && (
           <div style={{ textAlign: 'center', padding: '60px 0', color: '#8C94A6', fontSize: 13 }}>No members found.</div>
         )}
+
+        {/* Performance Analysis table */}
+        {sorted.length > 0 && <PerformanceAnalysisTable members={sorted} />}
+
+        {/* EOD Updates table */}
+        {token && <EodUpdatesTable token={token} />}
       </div>
     </DashboardLayout>
   )
