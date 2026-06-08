@@ -169,15 +169,6 @@ export function DashboardLayout({
             onClick={() => navTo('/dashboard')}
           />
 
-          {/* 1b. Notifications */}
-          <NavLeaf
-            label="Notifications"
-            icon={<Bell size={15} strokeWidth={1.8} />}
-            active={pathname === '/notifications'}
-            onClick={() => navTo('/notifications')}
-            badge={unreadNotifs || undefined}
-          />
-
           {/* 2. New Task — hidden in view mode (read-only) */}
           {!inViewMode && (
             <CollapsibleNav
@@ -299,6 +290,34 @@ export function DashboardLayout({
             </>
           )}
         </div>
+
+        {/* ── Notification alert block ── */}
+        {unreadNotifs > 0 && (
+          <div style={{ padding: '0 10px 14px' }}>
+            <button
+              onClick={() => navTo('/notifications')}
+              className="boe-notif-alert"
+            >
+              <div className="boe-notif-alert-bell">
+                <Bell size={24} strokeWidth={1.8} color="#E8A030" />
+              </div>
+              <div style={{
+                fontSize: '28px', fontWeight: 800, color: '#111318', lineHeight: 1,
+              }}>
+                {unreadNotifs > 99 ? '99+' : unreadNotifs}
+              </div>
+              <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#3D4455' }}>
+                unread {unreadNotifs === 1 ? 'notification' : 'notifications'}
+              </div>
+              <div style={{
+                fontSize: '10px', fontWeight: 600, color: '#E8A030',
+                letterSpacing: '0.05em', textTransform: 'uppercase',
+              }}>
+                Tap to review →
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* ── Bottom profile / account section ── */}
         {profile && (

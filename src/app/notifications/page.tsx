@@ -8,11 +8,12 @@ import { timeAgo } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { Bell, CheckCheck } from 'lucide-react'
+import { Bell, CheckCheck, ExternalLink, Check, X } from 'lucide-react'
 
 export default function NotificationsPage() {
   const [profile,       setProfile]       = useState<UserProfile | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [hidden,        setHidden]        = useState<Set<string>>(new Set())
   const [loading,       setLoading]       = useState(true)
   const [markingAll,    setMarkingAll]    = useState(false)
 
@@ -42,7 +43,8 @@ export default function NotificationsPage() {
     init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const unreadCount = notifications.filter(n => !n.is_read).length
+  const visible = notifications.filter(n => !hidden.has(n.id))
+  const unreadCount = visible.filter(n => !n.is_read).length
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -66,16 +68,31 @@ export default function NotificationsPage() {
     setMarkingAll(false)
   }
 
-  const openNotification = (n: Notification) => {
-    // Mark this one read (fire-and-forget) then navigate to the task.
-    if (!n.is_read) {
+  const markRead = async (id: string) => {
+    const now = new Date().toISOString()
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true, read_at: now } : n))
+    fetch('/api/notifications/mark-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).catch(err => console.error('[notifications] mark read failed:', err))
+  }
+
+  const clearNotif = (id: string) => {
+    // Mark read in DB (fire-and-forget) and hide from local list
+    const notif = notifications.find(n => n.id === id)
+    if (notif && !notif.is_read) {
       fetch('/api/notifications/mark-read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: n.id }),
-      }).catch(err => console.error('[notifications] mark read failed:', err))
-      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x))
+        body: JSON.stringify({ id }),
+      }).catch(err => console.error('[notifications] clear-mark-read failed:', err))
     }
+    setHidden(prev => new Set([...prev, id]))
+  }
+
+  const viewTask = async (n: Notification) => {
+    if (!n.is_read) await markRead(n.id)
     if (n.task_id) router.push(`/tasks/${n.task_id}`)
   }
 
@@ -109,7 +126,7 @@ export default function NotificationsPage() {
         </button>
       }
     >
-      {notifications.length === 0 ? (
+      {visible.length === 0 ? (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           justifyContent: 'center', padding: '64px 24px', gap: '10px',
@@ -130,51 +147,100 @@ export default function NotificationsPage() {
         </div>
       ) : (
         <div className="boe-card" style={{ overflow: 'hidden', padding: 0, maxWidth: '760px' }}>
-          {notifications.map((n, i) => (
-            <button
+          {visible.map((n, i) => (
+            <div
               key={n.id}
-              onClick={() => openNotification(n)}
               style={{
-                width: '100%', display: 'flex', alignItems: 'flex-start', gap: '12px',
+                display: 'flex', alignItems: 'flex-start', gap: '12px',
                 padding: '14px 16px',
                 background: n.is_read ? '#ffffff' : colors.blueTint,
-                border: 'none',
-                borderBottom: i < notifications.length - 1 ? `1px solid ${colors.border}` : 'none',
-                cursor: 'pointer', textAlign: 'left', outline: 'none',
-                transition: 'background 0.12s', fontFamily: font.body,
+                borderBottom: i < visible.length - 1 ? `1px solid ${colors.border}` : 'none',
+                transition: 'background 0.12s',
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = n.is_read ? colors.raised : 'rgba(85,133,232,0.12)')}
-              onMouseLeave={e => (e.currentTarget.style.background = n.is_read ? '#ffffff' : colors.blueTint)}
             >
-              {/* Unread dot rail */}
+              {/* Unread dot */}
               <span style={{
                 marginTop: '5px', flexShrink: 0,
                 width: '8px', height: '8px', borderRadius: '50%',
                 background: n.is_read ? 'transparent' : colors.blue,
                 border: n.is_read ? `1.5px solid ${colors.border}` : 'none',
               }} />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{
-                  display: 'block',
+
+              {/* Content */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
                   fontSize: '13px', fontWeight: n.is_read ? 500 : 700,
                   color: colors.primary, lineHeight: 1.4,
+                  marginBottom: '2px',
                 }}>
                   {n.title}
-                </span>
+                </div>
                 {n.body && (
-                  <span style={{
-                    display: 'block', marginTop: '2px',
+                  <div style={{
                     fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    marginBottom: '2px',
                   }}>
                     {n.body}
-                  </span>
+                  </div>
                 )}
-                <span style={{ display: 'block', marginTop: '4px', fontSize: '10.5px', color: colors.muted }}>
+                <div style={{ fontSize: '10.5px', color: colors.muted, marginBottom: '10px' }}>
                   {timeAgo(n.created_at)}
-                </span>
-              </span>
-            </button>
+                </div>
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {n.task_id && (
+                    <button
+                      onClick={() => viewTask(n)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '5px 11px', borderRadius: '6px',
+                        fontSize: '11.5px', fontWeight: 600,
+                        background: colors.blue, color: '#fff',
+                        border: 'none', cursor: 'pointer',
+                        fontFamily: font.body,
+                      }}
+                    >
+                      <ExternalLink size={11} strokeWidth={2.2} />
+                      View Task
+                    </button>
+                  )}
+                  {!n.is_read && (
+                    <button
+                      onClick={() => markRead(n.id)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '5px 11px', borderRadius: '6px',
+                        fontSize: '11.5px', fontWeight: 600,
+                        background: 'transparent',
+                        color: colors.secondary,
+                        border: `1.5px solid ${colors.border}`,
+                        cursor: 'pointer', fontFamily: font.body,
+                      }}
+                    >
+                      <Check size={11} strokeWidth={2.5} />
+                      Mark Read
+                    </button>
+                  )}
+                  <button
+                    onClick={() => clearNotif(n.id)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '5px',
+                      padding: '5px 11px', borderRadius: '6px',
+                      fontSize: '11.5px', fontWeight: 600,
+                      background: 'transparent',
+                      color: colors.muted,
+                      border: `1.5px solid ${colors.border}`,
+                      cursor: 'pointer', fontFamily: font.body,
+                    }}
+                  >
+                    <X size={11} strokeWidth={2.5} />
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       )}
