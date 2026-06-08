@@ -226,7 +226,67 @@ export default function HomePage() {
             ))}
         </div>
 
+        {/* Account Settings */}
+        <div style={{ marginTop: '32px' }}>
+          <div style={{
+            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
+            color: colors.muted, textTransform: 'uppercase', marginBottom: '12px',
+          }}>
+            Your Account
+          </div>
+          <AccountSettingsCard onNavigate={router.push} />
+        </div>
+
       </main>
+    </div>
+  )
+}
+
+function AccountSettingsCard({ onNavigate }: { onNavigate: (href: string) => void }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div
+      onClick={() => onNavigate('/settings')}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: '#fff',
+        border: `1.5px solid ${hovered ? '#4A5261' : colors.border}`,
+        borderRadius: '12px',
+        padding: '20px 24px',
+        cursor: 'pointer',
+        transition: 'border-color 0.15s, box-shadow 0.15s',
+        boxShadow: hovered ? '0 4px 16px rgba(0,0,0,0.08)' : '0 1px 3px rgba(0,0,0,0.04)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '16px',
+      }}
+    >
+      <div style={{
+        width: 42, height: 42, borderRadius: '10px', flexShrink: 0,
+        background: hovered ? 'rgba(26,32,53,0.1)' : colors.float,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#1A2035',
+        transition: 'background 0.15s',
+      }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+        </svg>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '14.5px', fontWeight: 700, color: colors.primary, letterSpacing: '-0.01em', marginBottom: '2px' }}>
+          Account Settings
+        </div>
+        <div style={{ fontSize: '13px', color: colors.tertiary, lineHeight: 1.5 }}>
+          Change your password and manage your account access.
+        </div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        style={{ color: hovered ? '#4A5261' : colors.muted, transition: 'color 0.15s, transform 0.15s', transform: hovered ? 'translateX(3px)' : 'none', flexShrink: 0 }}>
+        <line x1="5" y1="12" x2="19" y2="12" />
+        <polyline points="12 5 19 12 12 19" />
+      </svg>
     </div>
   )
 }

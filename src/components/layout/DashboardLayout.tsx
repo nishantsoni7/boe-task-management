@@ -411,6 +411,18 @@ export function DashboardLayout({
                   </div>
                 )}
 
+                {/* Account settings link — visible to non-admins only (admins use sidebar nav) */}
+                {!isRealAdmin && (
+                  <button
+                    className="boe-nav-item"
+                    onClick={() => navTo('/settings')}
+                    style={{ color: '#8C94A6', fontSize: '12.5px', gap: '8px' }}
+                  >
+                    <Settings size={14} strokeWidth={1.8} />
+                    Account Settings
+                  </button>
+                )}
+
                 <button
                   onClick={onSignOut}
                   className="boe-nav-item"
