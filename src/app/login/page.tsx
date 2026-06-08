@@ -41,15 +41,16 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: '36px' }}>
           <h1 style={{
             fontFamily: font.display,
-            fontSize: '22px',
+            fontSize: '20px',
             fontWeight: 700,
             color: colors.primary,
             letterSpacing: '-0.01em',
+            lineHeight: 1.25,
           }}>
-            Best of Exports
+            Best of Exports Internal Management System
           </h1>
-          <p style={{ color: colors.tertiary, fontSize: '13px', marginTop: '3px' }}>
-            Task Management
+          <p style={{ color: colors.tertiary, fontSize: '12.5px', marginTop: '6px', lineHeight: 1.5 }}>
+            Tasks, follow-ups, accountability, and daily work tracking for the BOE team.
           </p>
         </div>
 
