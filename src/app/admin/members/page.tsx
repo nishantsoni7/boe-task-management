@@ -59,6 +59,7 @@ export default function MembersPage() {
   const [editTeam,      setEditTeam]        = useState('sales')
   const [editRole,      setEditRole]        = useState<'member' | 'manager' | 'admin'>('member')
   const [editPosition,  setEditPosition]    = useState('')
+  const [editEmail,     setEditEmail]       = useState('')
   const [editSaving,    setEditSaving]      = useState(false)
   const [editError,     setEditError]       = useState('')
   const [editSuccess,   setEditSuccess]     = useState(false)
@@ -253,6 +254,7 @@ export default function MembersPage() {
     setEditTeam(selectedMember.team)
     setEditRole(selectedMember.role)
     setEditPosition(selectedMember.position ?? '')
+    setEditEmail(selectedMember.email ?? '')
     setEditError('')
     setEditSuccess(false)
     setShowEditForm(true)
@@ -264,21 +266,25 @@ export default function MembersPage() {
     setEditSuccess(false)
   }
 
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
   const handleEditSave = async () => {
     if (!selectedMember) return
     if (!editName.trim()) { setEditError('Full name is required'); return }
+    if (!editEmail.trim()) { setEditError('Email is required'); return }
+    if (!EMAIL_RE.test(editEmail.trim())) { setEditError('Please enter a valid email address'); return }
     setEditSaving(true)
     setEditError('')
     const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/update-member', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
-      body: JSON.stringify({ userId: selectedMember.id, full_name: editName.trim(), team: editTeam, role: editRole, position: editPosition || null }),
+      body: JSON.stringify({ userId: selectedMember.id, full_name: editName.trim(), team: editTeam, role: editRole, position: editPosition || null, email: editEmail.trim() }),
     })
     const data = await res.json()
     setEditSaving(false)
     if (!res.ok) { setEditError(data.error || 'Failed to update profile'); return }
-    const updated = { ...selectedMember, full_name: editName.trim(), team: editTeam, role: editRole, position: editPosition || null }
+    const updated = { ...selectedMember, full_name: editName.trim(), team: editTeam, role: editRole, position: editPosition || null, email: editEmail.trim() }
     setSelectedMember(updated)
     setMembers(prev => prev.map(m => m.id === updated.id ? updated : m))
     setEditSuccess(true)
@@ -293,24 +299,28 @@ export default function MembersPage() {
     setResetSaving(true)
     setResetError('')
 
-    const res = await fetch('/api/reset-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: selectedMember.id, newPassword: resetPassword, actorId: profile?.id }),
-    })
-    const data = await res.json()
+    try {
+      const res = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: selectedMember.id, newPassword: resetPassword, actorId: profile?.id }),
+      })
+      const data = await res.json()
 
-    setResetSaving(false)
+      if (!res.ok) {
+        setResetError(data.error || 'Failed to reset password')
+        return
+      }
 
-    if (!res.ok) {
-      setResetError(data.error || 'Failed to reset password')
-      return
+      setResetPassword('')
+      setResetConfirm('')
+      setResetSuccess(true)
+      await loadResetHistory(selectedMember.id)
+    } catch {
+      setResetError('Network error — please check your connection and try again.')
+    } finally {
+      setResetSaving(false)
     }
-
-    setResetPassword('')
-    setResetConfirm('')
-    setResetSuccess(true)
-    await loadResetHistory(selectedMember.id)
   }
 
   const toggleActive = async (member: UserProfile) => {
@@ -930,6 +940,10 @@ export default function MembersPage() {
                       <div>
                         <label className="boe-input-label">Full Name</label>
                         <input type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Full name" className="boe-input" style={{ fontSize: '12px' }} />
+                      </div>
+                      <div>
+                        <label className="boe-input-label">Email</label>
+                        <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="Email address" className="boe-input" style={{ fontSize: '12px' }} />
                       </div>
                       <div>
                         <label className="boe-input-label">Role</label>
