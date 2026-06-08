@@ -22,7 +22,7 @@ type TaskCounts = {
 
 type DashboardLayoutProps = {
   profile: UserProfile | null
-  title: string
+  title: React.ReactNode
   subtitle?: string
   actions?: React.ReactNode
   onSignOut: () => void
