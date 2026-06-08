@@ -104,22 +104,29 @@ export function DashboardLayout({
           <div className="boe-sidebar-brand-icon">
             <Briefcase size={15} color="#E8A030" strokeWidth={2} />
           </div>
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE</div>
             <div className="boe-sidebar-brand-sub">Task Management</div>
           </div>
+          <button
+            onClick={() => navTo('/')}
+            title="BOE Home"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: '7px',
+              background: 'rgba(232,160,48,0.12)',
+              border: '1px solid rgba(232,160,48,0.25)',
+              color: '#E8A030', cursor: 'pointer', flexShrink: 0,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.22)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.12)' }}
+          >
+            <Home size={14} strokeWidth={2} />
+          </button>
         </div>
 
         {/* Main nav */}
         <div className="boe-sidebar-section">
-          {/* 0. BOE Home */}
-          <NavLeaf
-            label="BOE Home"
-            icon={<Home size={15} strokeWidth={1.8} />}
-            active={pathname === '/'}
-            onClick={() => navTo('/')}
-          />
-
           {/* 1. Dashboard */}
           <NavLeaf
             label="Dashboard"
