@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated demo/screenshot artifacts
+screenshots/
+scripts/.demo-task-ids.json
