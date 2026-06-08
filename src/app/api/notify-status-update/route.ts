@@ -10,13 +10,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { taskId, taskTitle, createdBy, title: notifTitle, action, actorName } = await req.json()
+  const { taskId, taskTitle, createdBy, recipientId, title: notifTitle, action, actorName } = await req.json()
   if (!taskId || !taskTitle || !createdBy) {
     return NextResponse.json({ error: 'taskId, taskTitle, and createdBy are required' }, { status: 400 })
   }
 
-  // Skip notification when the assignee is the same person as the creator
-  if (createdBy === user.id) {
+  // recipientId is the explicit target; fall back to createdBy for legacy callers
+  const notifyUserId = recipientId ?? createdBy
+
+  // Skip notification when actor and recipient are the same person
+  if (notifyUserId === user.id) {
     return NextResponse.json({ skipped: true })
   }
 
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest) {
   )
 
   const { error } = await supabase.from('notifications').insert({
-    user_id:      createdBy,
+    user_id:      notifyUserId,
     task_id:      taskId,
     type:         'task_acknowledged',
     title,
@@ -55,6 +58,10 @@ function composeTitle(action?: string, actorName?: string): string {
   switch (action) {
     case 'acknowledged':
       return actor ? `${actor} acknowledged task` : 'Task acknowledged'
+    case 'progress_update':
+      return actor ? `${actor} added an update` : 'Task updated'
+    case 'details_shared':
+      return actor ? `${actor} shared details — ready to unblock` : 'Details shared — ready to unblock'
     case 'completed':
       return actor ? `${actor} completed task` : 'Task completed'
     case 'waiting':

@@ -182,14 +182,17 @@ export default function TaskDetailPage() {
       attachment_url: attachmentUrl ?? null,
     })
     if (logErr) console.error('[applyStatusChange] activity log insert failed:', logErr.message)
-    if (task.created_by && task.created_by !== currentUserId) {
-      fetch('/api/notify-status-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: newStatus, actorName: profile?.full_name }),
-      }).then(res => {
-        if (!res.ok) res.json().then(d => console.error('[applyStatusChange] notification failed:', d))
-      }).catch(err => console.error('[applyStatusChange] notification fetch error:', err))
+    {
+      const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
+      if (recipient && recipient !== currentUserId) {
+        fetch('/api/notify-status-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: newStatus, actorName: profile?.full_name }),
+        }).then(res => {
+          if (!res.ok) res.json().then(d => console.error('[applyStatusChange] notification failed:', d))
+        }).catch(err => console.error('[applyStatusChange] notification fetch error:', err))
+      }
     }
     const localPatch: Partial<Task> = { status: newStatus as TaskStatus, last_update_at: now }
     if (newStatus === 'blocked')   localPatch.blocker_reason = reason
@@ -268,14 +271,17 @@ export default function TaskDetailPage() {
           attachment_url: attachmentUrl ?? null,
         })
         if (waitLogErr) console.error('[saveUpdate/waiting] activity log insert failed:', waitLogErr.message)
-        if (task.created_by && task.created_by !== currentUserId) {
-          fetch('/api/notify-status-update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'waiting', actorName: profile?.full_name }),
-          }).then(res => {
-            if (!res.ok) res.json().then(d => console.error('[saveUpdate/waiting] notification failed:', d))
-          }).catch(err => console.error('[saveUpdate/waiting] notification fetch error:', err))
+        {
+          const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
+          if (recipient && recipient !== currentUserId) {
+            fetch('/api/notify-status-update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'waiting', actorName: profile?.full_name }),
+            }).then(res => {
+              if (!res.ok) res.json().then(d => console.error('[saveUpdate/waiting] notification failed:', d))
+            }).catch(err => console.error('[saveUpdate/waiting] notification fetch error:', err))
+          }
         }
         const localPatch: Partial<Task> = {
           status:            selectedStatus as TaskStatus,
@@ -308,12 +314,66 @@ export default function TaskDetailPage() {
         attachment_url: attachmentUrl ?? null,
       })
       if (noteLogErr) console.error('[saveUpdate/note] activity log insert failed:', noteLogErr.message)
+      {
+        const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
+        if (recipient && recipient !== currentUserId) {
+          fetch('/api/notify-status-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'progress_update', actorName: profile?.full_name }),
+          }).then(res => {
+            if (!res.ok) res.json().then(d => console.error('[saveUpdate/note] notification failed:', d))
+          }).catch(err => console.error('[saveUpdate/note] notification fetch error:', err))
+        }
+      }
       setTask({ ...task, last_update_at: now })
       await loadLog(task.id)
     }
 
     setUpdateNote('')
     setUpdateFile(null)
+    setSaving(false)
+  }
+
+  const saveWaitingResponse = async () => {
+    if (!task) return
+    const hasNote       = !!updateNote.trim()
+    const attachmentUrl = await uploadUpdateAttachment()
+    const hasAttachment = !!attachmentUrl
+    if (!hasNote && !hasAttachment) { setSaving(false); return }
+
+    setSaving(true)
+    const now = new Date().toISOString()
+    const { error: taskErr } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
+    if (taskErr) {
+      console.error('[saveWaitingResponse] tasks update failed:', taskErr.message)
+      window.alert('Failed to send details. Please try again.')
+      setSaving(false)
+      return
+    }
+    const { error: logErr } = await supabase.from('task_activity_log').insert({
+      task_id:        task.id,
+      actor_id:       currentUserId,
+      action:         'details_shared',
+      note:           updateNote.trim() || null,
+      attachment_url: attachmentUrl ?? null,
+    })
+    if (logErr) console.error('[saveWaitingResponse] activity log insert failed:', logErr.message)
+    const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
+    if (recipient && recipient !== currentUserId) {
+      fetch('/api/notify-status-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'details_shared', actorName: profile?.full_name }),
+      }).then(res => {
+        if (!res.ok) res.json().then(d => console.error('[saveWaitingResponse] notification failed:', d))
+      }).catch(err => console.error('[saveWaitingResponse] notification fetch error:', err))
+    }
+    setTask({ ...task, last_update_at: now })
+    await loadLog(task.id)
+    setUpdateNote('')
+    setUpdateFile(null)
+    setUploadError(null)
     setSaving(false)
   }
 
@@ -370,6 +430,9 @@ export default function TaskDetailPage() {
   const assigneeName = isAssignee ? (profile?.full_name ?? 'You') : (task.assignee_name ?? '—')
 
   const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at
+  const isWaitingOnMe   = task.status === 'waiting'
+    && task.waiting_on_type === 'team_member'
+    && task.waiting_on_user_id === currentUserId
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
     : isAssignee                    ? 'Assigned To Me'
@@ -695,8 +758,92 @@ export default function TaskDetailPage() {
               </div>
             )}
 
+            {/* ─ C. Waiting-on-me: Share Details ─ */}
+            {isWaitingOnMe && task.status !== 'completed' && (
+              <div className="boe-card" style={{
+                padding: '16px 20px',
+                display: 'flex', flexDirection: 'column', gap: '12px',
+                background: '#ffffff',
+                borderLeft: `3px solid ${colors.amber}`,
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{
+                    fontSize: '13px', fontWeight: 700, color: colors.amber,
+                  }}>
+                    Share Details &amp; Request Unblock
+                  </span>
+                  <span style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5 }}>
+                    Share the requested information. The assignee will be notified and can move the task back to Working or Completed.
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ position: 'relative' }}>
+                    <textarea
+                      value={updateNote}
+                      onChange={e => setUpdateNote(e.target.value)}
+                      placeholder="Add requested details or context…"
+                      className="boe-input"
+                      style={{
+                        resize: 'none', height: '72px', paddingBottom: '36px',
+                        width: '100%', boxSizing: 'border-box',
+                        border: `1.5px solid ${colors.border}`,
+                        background: '#F0F2F5', borderRadius: '8px',
+                        fontSize: '12.5px', lineHeight: 1.5,
+                      }}
+                    />
+                    <label
+                      title="Attach a file"
+                      style={{
+                        position: 'absolute', bottom: '9px', right: '10px',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: '28px', height: '28px', borderRadius: '50%',
+                        background: updateFile ? colors.blueTint : '#ffffff',
+                        border: `1.5px solid ${updateFile ? colors.blue + '55' : colors.border}`,
+                        fontSize: '13px', cursor: 'pointer', userSelect: 'none',
+                        transition: 'all 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                      }}
+                    >
+                      📎
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
+                        onChange={e => { setUpdateFile(e.target.files?.[0] ?? null); setUploadError(null) }}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '10px', color: updateFile ? colors.blue : colors.muted, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {updateFile
+                        ? `📎 ${updateFile.name} (${(updateFile.size / 1024).toFixed(0)} KB)`
+                        : uploadError ? <span style={{ color: colors.red }}>{uploadError}</span> : ''}
+                    </span>
+                    <button
+                      onClick={async () => { setSaving(true); await saveWaitingResponse() }}
+                      disabled={saving}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '6px 18px', borderRadius: '7px',
+                        border: `1.5px solid ${colors.amber}`,
+                        background: colors.amber, color: '#ffffff',
+                        fontSize: '12px', fontWeight: 600,
+                        cursor: saving ? 'not-allowed' : 'pointer',
+                        fontFamily: font.body,
+                        opacity: saving ? 0.6 : 1, transition: 'all 0.15s',
+                        boxShadow: `0 2px 6px ${colors.amber}38`,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {saving ? 'Sending…' : 'Send Details'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ─ C. Update Status Card ─ */}
-            {isAssignee && task.status !== 'completed' && !isUnacknowledged && (
+            {!isWaitingOnMe && (isAssignee || isCreator) && task.status !== 'completed' && !isUnacknowledged && (
               <div className="boe-card" style={{
                 padding: '16px 20px',
                 display: 'flex', flexDirection: 'column', gap: '12px',
