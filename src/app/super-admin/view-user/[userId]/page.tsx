@@ -195,11 +195,6 @@ export default function ViewUserPage() {
         title={`Dashboard: ${targetProfile?.full_name ?? ''}`}
         subtitle="Admin View Mode — read only"
         onSignOut={handleLogout}
-        taskCounts={{
-          myInProgress: tasks.length,
-          myCompleted: myCompletedCount,
-          assignedByMeInProgress: assignedByMeInProg,
-        }}
       >
         {/* Admin view banner */}
         <div style={{

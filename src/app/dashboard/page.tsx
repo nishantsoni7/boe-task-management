@@ -303,11 +303,6 @@ export default function DashboardPage() {
             : undefined
         }
         onSignOut={handleLogout}
-        taskCounts={{
-          myInProgress: tasks.length,
-          myCompleted: myCompletedCount,
-          assignedByMeInProgress: assignedByMeInProg,
-        }}
       >
         {/* ── Quick Start Guide banner ── */}
         <QuickStartBanner />

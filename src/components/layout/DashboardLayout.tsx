@@ -14,12 +14,6 @@ import { createClient } from '@/lib/supabase/client'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
 
-type TaskCounts = {
-  myInProgress?: number
-  myCompleted?: number
-  assignedByMeInProgress?: number
-}
-
 type DashboardLayoutProps = {
   profile: UserProfile | null
   title: React.ReactNode
@@ -27,7 +21,6 @@ type DashboardLayoutProps = {
   actions?: React.ReactNode
   onSignOut: () => void
   children: React.ReactNode
-  taskCounts?: TaskCounts
 }
 
 export function DashboardLayout({
@@ -37,11 +30,11 @@ export function DashboardLayout({
   actions,
   onSignOut,
   children,
-  taskCounts,
 }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen]   = useState(false)
   const [members,     setMembers]       = useState<UserProfile[]>([])
   const [switcherOpen, setSwitcherOpen] = useState(false)
+  const [navCounts,   setNavCounts]     = useState({ myActive: 0, assignedByMeActive: 0 })
 
   const router   = useRouter()
   const pathname = usePathname()
@@ -70,6 +63,34 @@ export function DashboardLayout({
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRealAdmin])
+
+  // Fetch sidebar task counts for the logged-in user (or viewed user in view mode)
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
+      const user = data.user
+      if (!user) return
+      const uid: string = viewAsUserId ?? user.id
+      Promise.all([
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_to', uid)
+          .neq('status', 'completed'),
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('created_by', uid)
+          .neq('assigned_to', uid)
+          .neq('status', 'completed'),
+      ]).then(([myRes, abmRes]) => {
+        setNavCounts({
+          myActive:             myRes.count  ?? 0,
+          assignedByMeActive:   abmRes.count ?? 0,
+        })
+      })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewAsUserId])
 
   const navTo = (path: string) => {
     router.push(path)
@@ -160,19 +181,18 @@ export function DashboardLayout({
             label="My Tasks"
             icon={<ClipboardList size={15} strokeWidth={1.8} />}
             active={pathname === '/tasks/my' || pathname === '/tasks/my/completed'}
-            count={taskCounts ? (taskCounts.myInProgress ?? 0) + (taskCounts.myCompleted ?? 0) : undefined}
+            count={navCounts.myActive || undefined}
           >
             <NavChild
               label="In Progress"
               active={pathname === '/tasks/my'}
               onClick={() => navTo('/tasks/my')}
-              count={taskCounts?.myInProgress}
+              count={navCounts.myActive || undefined}
             />
             <NavChild
               label="Completed"
               active={pathname === '/tasks/my/completed'}
               onClick={() => navTo('/tasks/my/completed')}
-              count={taskCounts?.myCompleted}
             />
           </CollapsibleNav>
 
@@ -181,13 +201,13 @@ export function DashboardLayout({
             label="Assigned By Me"
             icon={<CheckSquare size={15} strokeWidth={1.8} />}
             active={pathname === '/tasks/assigned-by-me' || pathname === '/tasks/assigned-by-me/completed'}
-            count={taskCounts?.assignedByMeInProgress}
+            count={navCounts.assignedByMeActive || undefined}
           >
             <NavChild
               label="In Progress"
               active={pathname === '/tasks/assigned-by-me'}
               onClick={() => navTo('/tasks/assigned-by-me')}
-              count={taskCounts?.assignedByMeInProgress}
+              count={navCounts.assignedByMeActive || undefined}
             />
             <NavChild
               label="Completed"
