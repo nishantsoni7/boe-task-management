@@ -214,9 +214,16 @@ export default function HomePage() {
           gridTemplateColumns: 'repeat(2, 1fr)',
           gap: '16px',
         }}>
-          {MODULES.map(mod => (
-            <ModuleCard key={mod.title} mod={mod} onNavigate={router.push} />
-          ))}
+          {MODULES
+            .filter(mod => {
+              if (mod.href === '/attendance') {
+                return profile?.role === 'admin'
+              }
+              return true
+            })
+            .map(mod => (
+              <ModuleCard key={mod.title} mod={mod} onNavigate={router.push} />
+            ))}
         </div>
 
       </main>
