@@ -1,6 +1,25 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
+function getPeriodRange(period: string): { from: string; to: string } {
+  const now = new Date()
+  if (period === 'today') {
+    const from = new Date(now); from.setHours(0, 0, 0, 0)
+    const to   = new Date(now); to.setHours(23, 59, 59, 999)
+    return { from: from.toISOString(), to: to.toISOString() }
+  }
+  if (period === 'this_week') {
+    const day  = now.getDay()
+    const from = new Date(now); from.setDate(now.getDate() - day); from.setHours(0, 0, 0, 0)
+    const to   = new Date(now); to.setDate(now.getDate() + (6 - day)); to.setHours(23, 59, 59, 999)
+    return { from: from.toISOString(), to: to.toISOString() }
+  }
+  // this_month
+  const from = new Date(now.getFullYear(), now.getMonth(), 1)
+  const to   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+  return { from: from.toISOString(), to: to.toISOString() }
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization') ?? ''
   const callerToken = authHeader.replace('Bearer ', '').trim()
@@ -26,8 +45,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const memberId = searchParams.get('memberId') ?? ''
-  const relation = searchParams.get('relation') ?? 'all'
-  const status   = searchParams.get('status')   ?? ''
+  const period   = searchParams.get('period') ?? 'today'
 
   const TASK_COLUMNS = [
     'id', 'title', 'note', 'status', 'priority', 'type',
@@ -40,13 +58,11 @@ export async function GET(req: NextRequest) {
   let query = serviceClient.from('tasks').select(TASK_COLUMNS)
 
   if (memberId) {
-    if (relation === 'created_by')   query = query.eq('created_by', memberId)
-    else if (relation === 'assigned_to') query = query.eq('assigned_to', memberId)
-    else if (relation === 'delegated_by') query = query.eq('delegated_by', memberId)
-    else query = query.or(`created_by.eq.${memberId},assigned_to.eq.${memberId},delegated_by.eq.${memberId}`)
+    query = query.eq('created_by', memberId)
   }
 
-  if (status) query = query.eq('status', status)
+  const { from, to } = getPeriodRange(period)
+  query = query.gte('created_at', from).lte('created_at', to)
 
   query = query.order('created_at', { ascending: false })
 
