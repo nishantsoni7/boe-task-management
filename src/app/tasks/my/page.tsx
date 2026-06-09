@@ -338,15 +338,25 @@ function TaskCard({
 
       {/* Title + note */}
       <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
-        <div style={{
-          fontSize: '13px',
-          fontWeight: task.is_urgent ? 600 : 500,
-          color: titleColor,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          textDecoration: completed ? 'line-through' : 'none',
-          letterSpacing: '-0.01em',
-        }}>
-          {task.title}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
+          {isSelf ? (
+            <span style={{
+              fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px',
+              color: '#5B7FA6', background: 'rgba(91,127,166,0.10)',
+              border: '1px solid rgba(91,127,166,0.20)',
+              whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.03em',
+            }}>SELF</span>
+          ) : null}
+          <span style={{
+            fontSize: '13px',
+            fontWeight: task.is_urgent ? 600 : 500,
+            color: titleColor,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            textDecoration: completed ? 'line-through' : 'none',
+            letterSpacing: '-0.01em',
+          }}>
+            {task.title}
+          </span>
         </div>
         {task.note && (
           <div style={{
