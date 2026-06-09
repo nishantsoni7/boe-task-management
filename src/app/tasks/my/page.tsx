@@ -13,7 +13,7 @@ import { useViewAs } from '@/hooks/useViewAs'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert, CheckCircle,
-  LayoutList, UserCheck, Users, Search, Pencil, Trash2,
+  LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus,
 } from 'lucide-react'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -498,6 +498,266 @@ function TaskCard({
   )
 }
 
+// ─── Create Self Task modal ───────────────────────────────────────────────────
+const PRIORITIES_MODAL = ['low', 'medium', 'high'] as const
+
+function CreateSelfTaskModal({
+  profile,
+  onClose,
+  onCreated,
+}: {
+  profile: UserProfile
+  onClose: () => void
+  onCreated: (task: Task) => void
+}) {
+  const [title,         setTitle]         = useState('')
+  const [description,   setDescription]   = useState('')
+  const [priority,      setPriority]      = useState('')
+  const [dueDate,       setDueDate]       = useState('')
+  const [isUrgent,      setIsUrgent]      = useState(false)
+  const [titleDirty,    setTitleDirty]    = useState(false)
+  const [dateDirty,     setDateDirty]     = useState(false)
+  const [priorityDirty, setPriorityDirty] = useState(false)
+  const [saving,        setSaving]        = useState(false)
+  const [saveError,     setSaveError]     = useState<string | null>(null)
+  const supabase = useMemo(() => createClient(), [])
+
+  const canSave = !saving && title.trim().length > 0 && dueDate !== '' && priority !== ''
+
+  const handleSubmit = async () => {
+    setTitleDirty(true)
+    setDateDirty(true)
+    setPriorityDirty(true)
+    if (!title.trim() || !priority || !dueDate) return
+    setSaving(true)
+    setSaveError(null)
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setSaving(false); return }
+
+    const { data: existing } = await supabase
+      .from('tasks').select('id, title')
+      .eq('assigned_to', profile.id)
+      .not('status', 'eq', 'completed')
+
+    const titleWords = title.toLowerCase().split(' ').filter(w => w.length > 3)
+    const duplicate  = existing?.find((t: { title: string }) => {
+      const matches = titleWords.filter(w => t.title.toLowerCase().includes(w))
+      return matches.length >= 3
+    })
+    if (duplicate) {
+      const ok = window.confirm(`A similar task may already exist:\n"${duplicate.title}"\n\nCreate anyway?`)
+      if (!ok) { setSaving(false); return }
+    }
+
+    const now = new Date().toISOString()
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .insert({
+        title:           title.trim(),
+        note:            description.trim() || null,
+        priority,
+        type:            'completion',
+        is_urgent:       isUrgent,
+        due_date:        dueDate || null,
+        assigned_to:     profile.id,
+        created_by:      session.user.id,
+        team:            profile.team,
+        status:          'working',
+        acknowledged_at: now,
+      })
+      .select()
+      .single()
+
+    if (!error && task) {
+      await supabase.from('task_activity_log').insert({
+        task_id: task.id, actor_id: session.user.id,
+        action: 'created', note: 'Task created for self',
+      })
+      onCreated(task as unknown as Task)
+    } else {
+      setSaveError('Failed to create task. Please try again.')
+    }
+    setSaving(false)
+  }
+
+  const PRIORITY_CFG = {
+    low:    { bg: '#16a34a', border: 'rgba(22,163,74,0.4)',   text: '#16a34a' },
+    medium: { bg: '#d97706', border: 'rgba(217,119,6,0.4)',   text: '#d97706' },
+    high:   { bg: '#dc2626', border: 'rgba(220,38,38,0.4)',   text: '#dc2626' },
+  } as const
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: colors.base, border: `1.5px solid ${colors.border}`,
+          borderRadius: '12px', padding: '20px 20px 16px',
+          width: '100%', maxWidth: '460px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+        }}
+      >
+        <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary, marginBottom: '16px' }}>
+          Create Self Task
+        </div>
+
+        {/* Title */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+            Task Name <span style={{ color: colors.red }}>*</span>
+          </label>
+          <input
+            type="text"
+            value={title}
+            onChange={e => { setTitle(e.target.value); setTitleDirty(true) }}
+            placeholder="e.g. Follow up — confirm fabric selection by Friday"
+            className="boe-input"
+            style={{ width: '100%', boxSizing: 'border-box' }}
+            autoFocus
+          />
+          {titleDirty && !title.trim() && (
+            <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Task name is required</p>
+          )}
+        </div>
+
+        {/* Priority + Due Date */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+          <div>
+            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+              Priority <span style={{ color: colors.red }}>*</span>
+            </label>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {PRIORITIES_MODAL.map(p => {
+                const selected = priority === p
+                const cfg = PRIORITY_CFG[p]
+                return (
+                  <button
+                    key={p}
+                    onClick={() => { setPriority(p); setPriorityDirty(true) }}
+                    style={{
+                      flex: 1, textAlign: 'center', textTransform: 'capitalize',
+                      fontSize: '11px', fontWeight: selected ? 700 : 500,
+                      padding: '5px 2px', borderRadius: '6px',
+                      border: `1px solid ${selected ? cfg.bg : cfg.border}`,
+                      background: selected ? cfg.bg : 'transparent',
+                      color: selected ? '#fff' : cfg.text,
+                      cursor: 'pointer', transition: 'all 0.12s',
+                    }}
+                  >
+                    {p}
+                  </button>
+                )
+              })}
+            </div>
+            {priorityDirty && !priority && (
+              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Required</p>
+            )}
+          </div>
+          <div>
+            <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+              Due Date <span style={{ color: colors.red }}>*</span>
+            </label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={e => { setDueDate(e.target.value); setDateDirty(true) }}
+              className="boe-input"
+              style={{ colorScheme: 'light', width: '100%', boxSizing: 'border-box' }}
+            />
+            {dateDirty && !dueDate && (
+              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Required</p>
+            )}
+          </div>
+        </div>
+
+        {/* Description */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+            Note <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
+          </label>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Context or notes for this task…"
+            rows={2}
+            className="boe-input"
+            style={{ resize: 'none', width: '100%', boxSizing: 'border-box' }}
+          />
+        </div>
+
+        {/* Important toggle */}
+        <div
+          onClick={() => setIsUrgent(!isUrgent)}
+          style={{
+            marginBottom: '16px', padding: '8px 12px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderRadius: '8px',
+            background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
+            border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+          }}
+        >
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+            {isUrgent ? 'Marked Important' : 'Mark Important'}
+          </span>
+          <div style={{
+            width: '30px', height: '17px', borderRadius: '9px',
+            background: isUrgent ? '#C49A28' : colors.float,
+            position: 'relative', flexShrink: 0,
+            transition: 'background 0.16s', border: `1px solid ${colors.border}`,
+          }}>
+            <div style={{
+              position: 'absolute', top: '1.5px',
+              left: isUrgent ? '12px' : '1.5px',
+              width: '12px', height: '12px',
+              borderRadius: '50%', background: '#fff',
+              transition: 'left 0.16s',
+            }} />
+          </div>
+        </div>
+
+        {saveError && (
+          <div style={{ fontSize: '12px', color: colors.red, marginBottom: '10px' }}>{saveError}</div>
+        )}
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`,
+              background: 'transparent', cursor: 'pointer',
+              fontSize: '12px', fontWeight: 600, color: colors.secondary,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSave}
+            style={{
+              padding: '7px 18px', borderRadius: '7px', border: 'none',
+              background: canSave ? colors.primary : colors.float,
+              color: canSave ? '#fff' : colors.muted,
+              cursor: canSave ? 'pointer' : 'not-allowed',
+              fontSize: '12px', fontWeight: 600,
+              transition: 'background 0.12s',
+            }}
+          >
+            {saving ? 'Creating…' : 'Create Task'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Edit modal ───────────────────────────────────────────────────────────────
 const PRIORITIES_EDIT = ['low', 'medium', 'high'] as const
 
@@ -725,8 +985,9 @@ export default function MyTasksPage() {
   const [activeTab,    setActiveTab]    = useState<TabKey>('all')
   const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [editingTask,  setEditingTask]  = useState<Task | null>(null)
-  const [isMobile,     setIsMobile]     = useState(false)
+  const [editingTask,      setEditingTask]      = useState<Task | null>(null)
+  const [showCreateModal,  setShowCreateModal]  = useState(false)
+  const [isMobile,         setIsMobile]         = useState(false)
 
   // Search + filter state
   const [search,           setSearch]           = useState('')
@@ -790,6 +1051,11 @@ export default function MyTasksPage() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  const handleTaskCreated = (task: Task) => {
+    setAllTasks(prev => [task, ...prev])
+    setShowCreateModal(false)
   }
 
   const handleEditSaved = (updated: Task) => {
@@ -1015,6 +1281,23 @@ export default function MyTasksPage() {
         profile={profile}
         title="My Tasks"
         onSignOut={handleLogout}
+        actions={!viewAsUserId && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', borderRadius: '8px', border: 'none',
+              background: colors.primary, color: '#fff',
+              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+              transition: 'opacity 0.12s', whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+          >
+            <Plus size={13} strokeWidth={2.5} />
+            Create Self Task
+          </button>
+        )}
       >
 
         {/* ── Two-column workspace ── */}
@@ -1142,7 +1425,9 @@ export default function MyTasksPage() {
                 >
                   <option value="">All Assignees</option>
                   {assignerOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value}>
+                      {opt.value === userId ? 'Self' : opt.label}
+                    </option>
                   ))}
                 </select>
               )}
@@ -1250,6 +1535,14 @@ export default function MyTasksPage() {
           userId={userId}
           onClose={() => setEditingTask(null)}
           onSaved={handleEditSaved}
+        />
+      )}
+
+      {showCreateModal && profile && (
+        <CreateSelfTaskModal
+          profile={profile}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleTaskCreated}
         />
       )}
     </>
