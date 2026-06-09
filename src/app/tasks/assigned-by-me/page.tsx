@@ -13,7 +13,7 @@ import { useViewAs } from '@/hooks/useViewAs'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert,
-  Search, Pencil, Trash2,
+  Search, Pencil, Trash2, Plus,
 } from 'lucide-react'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -225,7 +225,11 @@ function TaskCard({
         background: cardBackground,
         border: cardBorder,
         borderRadius: '8px',
-        boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.09)' : '0 1px 3px rgba(0,0,0,0.04)',
+        boxShadow: hovered
+          ? '0 2px 8px rgba(0,0,0,0.09)'
+          : isImportant
+            ? '0 1px 4px rgba(196,154,40,0.08)'
+            : '0 1px 3px rgba(0,0,0,0.04)',
         transition: 'background 0.12s, box-shadow 0.12s, border-color 0.12s',
         minHeight: '48px',
         cursor: 'pointer',
@@ -275,9 +279,9 @@ function TaskCard({
         })()}
       </div>
 
-      {/* Assigned to — fixed 140px */}
+      {/* Assigned To — fixed 130px */}
       <div style={{
-        flexShrink: 0, width: '140px',
+        flexShrink: 0, width: '130px',
         display: 'flex', alignItems: 'center',
         paddingLeft: '8px', paddingRight: '6px', overflow: 'hidden',
       }}>
@@ -294,30 +298,25 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Priority — fixed 52px */}
-      <div style={{ flexShrink: 0, width: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Priority — fixed 56px */}
+      <div style={{ flexShrink: 0, width: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
           {priority.label}
         </span>
       </div>
 
-      {/* Due date — fixed 106px */}
-      <div style={{ flexShrink: 0, width: '106px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {dateStr ? (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '3px',
-            fontSize: '11px', fontWeight: overdue ? 600 : 500,
-            color: overdue ? colors.red : colors.secondary,
-            background: overdue ? `${colors.red}0e` : 'transparent',
-            border: `1px solid ${overdue ? colors.red + '30' : 'transparent'}`,
-            padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap',
-          }}>
-            {overdue && <AlertCircle size={9} />}
-            {dateStr}
-          </span>
-        ) : (
-          <span style={{ fontSize: '11px', color: colors.muted }}>—</span>
-        )}
+      {/* Status — fixed 90px */}
+      <div style={{ flexShrink: 0, width: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
+          {task.status}
+        </span>
+      </div>
+
+      {/* Created Date — fixed 100px */}
+      <div style={{ flexShrink: 0, width: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+          {formatDate(task.created_at) ?? '—'}
+        </span>
       </div>
 
       {/* Actions */}
@@ -370,6 +369,302 @@ function TaskCard({
         >
           <ExternalLink size={12} />
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Delegate Task modal ──────────────────────────────────────────────────────
+const PRIORITIES_DELEGATE = ['low', 'medium', 'high'] as const
+
+function DelegateTaskModal({
+  profile,
+  allUsers,
+  onClose,
+  onCreated,
+}: {
+  profile: UserProfile
+  allUsers: UserProfile[]
+  onClose: () => void
+  onCreated: (task: Task) => void
+}) {
+  const [title,         setTitle]         = useState('')
+  const [description,   setDescription]   = useState('')
+  const [priority,      setPriority]      = useState('')
+  const [dueDate,       setDueDate]       = useState('')
+  const [assigneeId,    setAssigneeId]    = useState('')
+  const [isUrgent,      setIsUrgent]      = useState(false)
+  const [titleDirty,    setTitleDirty]    = useState(false)
+  const [dateDirty,     setDateDirty]     = useState(false)
+  const [priorityDirty, setPriorityDirty] = useState(false)
+  const [assigneeDirty, setAssigneeDirty] = useState(false)
+  const [saving,        setSaving]        = useState(false)
+  const [saveError,     setSaveError]     = useState<string | null>(null)
+  const supabase = useMemo(() => createClient(), [])
+
+  const canSave = !saving && title.trim().length > 0 && assigneeId !== '' && dueDate !== '' && priority !== ''
+
+  const handleSubmit = async () => {
+    setTitleDirty(true)
+    setDateDirty(true)
+    setPriorityDirty(true)
+    setAssigneeDirty(true)
+    if (!title.trim() || !assigneeId || !priority || !dueDate) return
+    setSaving(true)
+    setSaveError(null)
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setSaving(false); return }
+
+    const { data: existing } = await supabase
+      .from('tasks').select('id, title')
+      .eq('assigned_to', assigneeId)
+      .not('status', 'eq', 'completed')
+
+    const titleWords = title.toLowerCase().split(' ').filter(w => w.length > 3)
+    const duplicate  = existing?.find((t: { title: string }) => {
+      const matches = titleWords.filter(w => t.title.toLowerCase().includes(w))
+      return matches.length >= 3
+    })
+    if (duplicate) {
+      const ok = window.confirm(`A similar task may already exist:\n"${duplicate.title}"\n\nCreate anyway?`)
+      if (!ok) { setSaving(false); return }
+    }
+
+    const isSelf = assigneeId === session.user.id
+    const now = new Date().toISOString()
+
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .insert({
+        title:           title.trim(),
+        note:            description.trim() || null,
+        priority,
+        type:            'completion',
+        is_urgent:       isUrgent,
+        due_date:        dueDate || null,
+        assigned_to:     assigneeId,
+        created_by:      session.user.id,
+        team:            profile.team,
+        status:          isSelf ? 'working' : 'pending',
+        acknowledged_at: isSelf ? now : null,
+      })
+      .select()
+      .single()
+
+    if (error || !task) {
+      setSaveError(error?.message ?? 'Failed to create task. Please try again.')
+      setSaving(false)
+      return
+    }
+
+    await Promise.all([
+      supabase.from('task_activity_log').insert({
+        task_id: task.id, actor_id: session.user.id,
+        action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
+      }),
+      supabase.from('notifications').insert({
+        user_id:      assigneeId,
+        task_id:      task.id,
+        type:         'task_assigned',
+        title:        'New task assigned to you',
+        body:         title.trim(),
+        is_push_sent: true,
+      }),
+    ])
+
+    onCreated(task as unknown as Task)
+  }
+
+  const PRIORITY_CFG = {
+    low:    { bg: '#16a34a', border: 'rgba(22,163,74,0.4)',  text: '#16a34a' },
+    medium: { bg: '#d97706', border: 'rgba(217,119,6,0.4)',  text: '#d97706' },
+    high:   { bg: '#dc2626', border: 'rgba(220,38,38,0.4)', text: '#dc2626' },
+  } as const
+
+  const LABEL_STYLE: React.CSSProperties = {
+    fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
+    letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px',
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: colors.base, border: `1.5px solid ${colors.border}`,
+          borderRadius: '12px', padding: '20px 20px 16px',
+          width: '100%', maxWidth: '480px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+          maxHeight: '90vh', overflowY: 'auto',
+        }}
+      >
+        <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary, marginBottom: '16px' }}>
+          Delegate Task
+        </div>
+
+        {/* Title */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={LABEL_STYLE}>Task Name <span style={{ color: colors.red }}>*</span></label>
+          <input
+            type="text"
+            value={title}
+            onChange={e => { setTitle(e.target.value); setTitleDirty(true) }}
+            placeholder="e.g. Follow up — Leela Hotel — confirm fabric selection by Friday"
+            className="boe-input"
+            style={{ width: '100%', boxSizing: 'border-box' }}
+            autoFocus
+          />
+          {titleDirty && !title.trim() && (
+            <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Task name is required</p>
+          )}
+        </div>
+
+        {/* Assign To */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={LABEL_STYLE}>Assign To <span style={{ color: colors.red }}>*</span></label>
+          <select
+            value={assigneeId}
+            onChange={e => { setAssigneeId(e.target.value); setAssigneeDirty(true) }}
+            className="boe-input"
+            style={{ width: '100%', boxSizing: 'border-box' }}
+          >
+            <option value="">Select team member</option>
+            {allUsers.map(u => (
+              <option key={u.id} value={u.id}>{u.full_name} — {u.team}</option>
+            ))}
+          </select>
+          {assigneeDirty && !assigneeId && (
+            <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Assignee is required</p>
+          )}
+        </div>
+
+        {/* Priority + Due Date */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+          <div>
+            <label style={LABEL_STYLE}>Priority <span style={{ color: colors.red }}>*</span></label>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {PRIORITIES_DELEGATE.map(p => {
+                const selected = priority === p
+                const cfg = PRIORITY_CFG[p]
+                return (
+                  <button
+                    key={p}
+                    onClick={() => { setPriority(p); setPriorityDirty(true) }}
+                    style={{
+                      flex: 1, textAlign: 'center', textTransform: 'capitalize',
+                      fontSize: '11px', fontWeight: selected ? 700 : 500,
+                      padding: '5px 2px', borderRadius: '6px',
+                      border: `1px solid ${selected ? cfg.bg : cfg.border}`,
+                      background: selected ? cfg.bg : 'transparent',
+                      color: selected ? '#fff' : cfg.text,
+                      cursor: 'pointer', transition: 'all 0.12s',
+                    }}
+                  >
+                    {p}
+                  </button>
+                )
+              })}
+            </div>
+            {priorityDirty && !priority && (
+              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Required</p>
+            )}
+          </div>
+          <div>
+            <label style={LABEL_STYLE}>Due Date <span style={{ color: colors.red }}>*</span></label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={e => { setDueDate(e.target.value); setDateDirty(true) }}
+              className="boe-input"
+              style={{ colorScheme: 'light', width: '100%', boxSizing: 'border-box' }}
+            />
+            {dateDirty && !dueDate && (
+              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Required</p>
+            )}
+          </div>
+        </div>
+
+        {/* Description */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={LABEL_STYLE}>Description <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span></label>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Context or instructions for the assignee…"
+            rows={2}
+            className="boe-input"
+            style={{ resize: 'none', width: '100%', boxSizing: 'border-box' }}
+          />
+        </div>
+
+        {/* Important toggle */}
+        <div
+          onClick={() => setIsUrgent(!isUrgent)}
+          style={{
+            marginBottom: '16px', padding: '8px 12px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderRadius: '8px',
+            background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
+            border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+          }}
+        >
+          <span style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+            {isUrgent ? 'Marked Important' : 'Mark Important'}
+          </span>
+          <div style={{
+            width: '30px', height: '17px', borderRadius: '9px',
+            background: isUrgent ? '#C49A28' : colors.float,
+            position: 'relative', flexShrink: 0,
+            transition: 'background 0.16s', border: `1px solid ${colors.border}`,
+          }}>
+            <div style={{
+              position: 'absolute', top: '1.5px',
+              left: isUrgent ? '12px' : '1.5px',
+              width: '12px', height: '12px',
+              borderRadius: '50%', background: '#fff',
+              transition: 'left 0.16s',
+            }} />
+          </div>
+        </div>
+
+        {saveError && (
+          <div style={{ fontSize: '12px', color: colors.red, marginBottom: '10px' }}>{saveError}</div>
+        )}
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '7px 16px', borderRadius: '7px', border: `1px solid ${colors.border}`,
+              background: 'transparent', cursor: 'pointer',
+              fontSize: '12px', fontWeight: 600, color: colors.secondary,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSave}
+            style={{
+              padding: '7px 18px', borderRadius: '7px', border: 'none',
+              background: canSave ? colors.primary : colors.float,
+              color: canSave ? '#fff' : colors.muted,
+              cursor: canSave ? 'pointer' : 'not-allowed',
+              fontSize: '12px', fontWeight: 600,
+              transition: 'background 0.12s',
+            }}
+          >
+            {saving ? 'Creating…' : 'Create & Assign'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -521,15 +816,17 @@ function EmptyState({ label }: { label: string }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function AssignedByMePage() {
-  const [profile,      setProfile]      = useState<UserProfile | null>(null)
-  const [allTasks,     setAllTasks]     = useState<Task[]>([])
-  const [userId,       setUserId]       = useState<string>('')
-  const [userMap,      setUserMap]      = useState<Record<string, string>>({})
-  const [loading,      setLoading]      = useState(true)
-  const [activeTab,    setActiveTab]    = useState<TabKey>('all')
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [editingTask,  setEditingTask]  = useState<Task | null>(null)
-  const [isMobile,     setIsMobile]     = useState(false)
+  const [profile,           setProfile]           = useState<UserProfile | null>(null)
+  const [allTasks,          setAllTasks]          = useState<Task[]>([])
+  const [userId,            setUserId]            = useState<string>('')
+  const [userMap,           setUserMap]           = useState<Record<string, string>>({})
+  const [allUsers,          setAllUsers]          = useState<UserProfile[]>([])
+  const [loading,           setLoading]           = useState(true)
+  const [activeTab,         setActiveTab]         = useState<TabKey>('all')
+  const [selectedTask,      setSelectedTask]      = useState<Task | null>(null)
+  const [editingTask,       setEditingTask]       = useState<Task | null>(null)
+  const [showDelegateModal, setShowDelegateModal] = useState(false)
+  const [isMobile,          setIsMobile]          = useState(false)
 
   const [search,         setSearch]         = useState('')
   const [filterAssignee, setFilterAssignee] = useState('')
@@ -555,7 +852,7 @@ export default function AssignedByMePage() {
       const uid = viewAsUserId ?? loggedInId
       setUserId(uid)
 
-      const [{ data: callerProfile }, { data: tasks }, { data: userData }] = await Promise.all([
+      const [{ data: callerProfile }, { data: tasks }, { data: userData }, { data: activeUsers }] = await Promise.all([
         supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', loggedInId).single(),
         supabase.from('tasks').select(TASK_COLUMNS)
           .eq('created_by', uid)
@@ -564,6 +861,7 @@ export default function AssignedByMePage() {
           .neq('status', 'completed')
           .order('due_date', { ascending: true, nullsFirst: false }),
         supabase.from('users').select('id, full_name'),
+        supabase.from('users').select('id, full_name, team, role, email, phone, is_active, created_at').eq('is_active', true).order('full_name'),
       ])
 
       if (viewAsUserId && callerProfile?.role !== 'admin') {
@@ -579,6 +877,7 @@ export default function AssignedByMePage() {
         for (const u of userData) map[u.id] = u.full_name
         setUserMap(map)
       }
+      if (activeUsers) setAllUsers(activeUsers as UserProfile[])
       setLoading(false)
     }
     init()
@@ -587,6 +886,11 @@ export default function AssignedByMePage() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  const handleTaskDelegated = (task: Task) => {
+    setAllTasks(prev => [task, ...prev])
+    setShowDelegateModal(false)
   }
 
   const handleEditSaved = (updated: Task) => {
@@ -661,7 +965,28 @@ export default function AssignedByMePage() {
 
   return (
     <>
-      <DashboardLayout profile={profile} title="Assigned By Me" onSignOut={handleLogout}>
+      <DashboardLayout
+        profile={profile}
+        title="Assigned By Me"
+        onSignOut={handleLogout}
+        actions={!viewAsUserId && (
+          <button
+            onClick={() => setShowDelegateModal(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', borderRadius: '8px', border: 'none',
+              background: colors.primary, color: '#fff',
+              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+              transition: 'opacity 0.12s', whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+          >
+            <Plus size={13} strokeWidth={2.5} />
+            Delegate Task
+          </button>
+        )}
+      >
 
         <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
 
@@ -672,51 +997,73 @@ export default function AssignedByMePage() {
             <div style={{
               background: colors.raised, border: `1.5px solid ${colors.border}`,
               borderRadius: '8px', padding: '8px 10px', marginBottom: '10px',
-              display: 'flex', flexDirection: 'column', gap: '8px',
+              display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center',
             }}>
-              {/* Search row */}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {/* Search */}
+              <div style={{
+                flex: '2 1 160px', display: 'flex', alignItems: 'center', gap: '6px',
+                background: colors.base, border: `1px solid ${colors.border}`,
+                borderRadius: '6px', padding: '6px 10px',
+              }}>
                 <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
                 <input
                   type="text"
                   placeholder="Find tasks…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  style={{ flex: 1, padding: '4px 6px', background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary }}
+                  style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
                 />
               </div>
-              {/* Filter row */}
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {assigneeOptions.length > 0 && (
-                  <select
-                    value={filterAssignee}
-                    onChange={e => setFilterAssignee(e.target.value)}
-                    style={{ flex: 1, minWidth: '120px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
-                  >
-                    <option value="">All Assignees</option>
-                    {assigneeOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                )}
+              {/* Assignee filter */}
+              {assigneeOptions.length > 0 && (
                 <select
-                  value={filterPriority}
-                  onChange={e => setFilterPriority(e.target.value)}
-                  style={{ flex: 1, minWidth: '100px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
+                  value={filterAssignee}
+                  onChange={e => setFilterAssignee(e.target.value)}
+                  style={{ flex: '1 1 120px', minWidth: '110px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
                 >
-                  <option value="">All Priority</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
+                  <option value="">All Assignees</option>
+                  {assigneeOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
                 </select>
-              </div>
+              )}
+              {/* Priority filter */}
+              <select
+                value={filterPriority}
+                onChange={e => setFilterPriority(e.target.value)}
+                style={{ flex: '1 1 100px', minWidth: '95px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
+              >
+                <option value="">All Priority</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
             </div>
+
+            {/* Table header — desktop only */}
+            {!isMobile && (
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                padding: '5px 0 5px 0', marginBottom: '4px',
+                fontSize: '10px', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.07em',
+                color: colors.muted,
+              }}>
+                <div style={{ width: '28px', flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>Task</div>
+                <div style={{ flexShrink: 0, width: '130px', paddingLeft: '8px' }}>Assigned To</div>
+                <div style={{ flexShrink: 0, width: '56px', textAlign: 'center' }}>Priority</div>
+                <div style={{ flexShrink: 0, width: '90px', textAlign: 'center' }}>Status</div>
+                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Created Date</div>
+                <div style={{ flexShrink: 0, width: '84px', textAlign: 'center' }}>Action</div>
+              </div>
+            )}
 
             {/* Task cards */}
             {visibleTasks.length === 0 ? (
               <EmptyState label={TABS.find(t => t.key === activeTab)!.label} />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {visibleTasks.map(task => (
                   <TaskCard
                     key={task.id}
@@ -759,6 +1106,15 @@ export default function AssignedByMePage() {
           userId={userId}
           onClose={() => setEditingTask(null)}
           onSaved={handleEditSaved}
+        />
+      )}
+
+      {showDelegateModal && profile && (
+        <DelegateTaskModal
+          profile={profile}
+          allUsers={allUsers}
+          onClose={() => setShowDelegateModal(false)}
+          onCreated={handleTaskDelegated}
         />
       )}
     </>
