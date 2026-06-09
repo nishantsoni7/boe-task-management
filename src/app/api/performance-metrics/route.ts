@@ -23,10 +23,10 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import type {
-  ScoreBreakdown, DayInputs, TrendDay,
-  TrendAnalysis, TrendClassification, PerformanceRating,
-} from '@/lib/types'
+import type { DayInputs } from '@/lib/types'
+import {
+  computeBreakdown, scoreRating, analyzeTrend, trendDayFromInputs,
+} from '@/lib/performance'
 
 // ─── Supabase ─────────────────────────────────────────────────────────────────
 
@@ -47,121 +47,6 @@ async function getCallerProfile(token: string) {
     .eq('id', user.id)
     .single()
   return data as { id: string; role: string; full_name: string; team: string; position: string | null } | null
-}
-
-// ─── Score computation ────────────────────────────────────────────────────────
-
-function computeBreakdown(inputs: DayInputs): ScoreBreakdown {
-  // Output: priority-weighted completions
-  const output = Math.min(
-    50,
-    inputs.completedHigh   * 22 +
-    inputs.completedMedium * 15 +
-    inputs.completedLow    * 8
-  )
-
-  // Momentum: progress signals
-  const momentum = Math.min(20,
-    Math.min(16, inputs.statusUpdates * 4) +
-    Math.min(4,  inputs.blockerResolutions * 4)
-  )
-
-  // Discipline: behavioural habits
-  const discipline = Math.min(20,
-    (inputs.hasEodLog    ? 12 : 0) +
-    (inputs.wasActiveToday ? 5 : 0) +
-    Math.min(3, inputs.timelyAcks * 3)
-  )
-
-  // Risk: active penalties (stored negative)
-  const risk = -(
-    Math.min(25, inputs.overdueCount      * 5) +
-    Math.min(16, inputs.staleBlockedCount * 8)
-  )
-
-  const total = Math.max(0, Math.min(100, output + momentum + discipline + risk))
-
-  return { output, momentum, discipline, risk, total }
-}
-
-function scoreRating(score: number): PerformanceRating {
-  if (score >= 75) return 'excellent'
-  if (score >= 58) return 'good'
-  if (score >= 38) return 'average'
-  if (score >= 20) return 'needs_improvement'
-  return 'critical'
-}
-
-// ─── Trend analysis ───────────────────────────────────────────────────────────
-
-function analyzeTrend(trendDays: TrendDay[]): TrendAnalysis {
-  const scores = trendDays.map(d => d.score)
-
-  if (scores.length < 3) {
-    return {
-      classification:    'insufficient_data',
-      direction:         'flat',
-      streak:            0,
-      weekOverWeekDelta: 0,
-      description:       'Not enough data yet',
-    }
-  }
-
-  const n    = scores.length
-  const avg  = scores.reduce((s, v) => s + v, 0) / n
-  const variance = scores.reduce((s, v) => s + (v - avg) ** 2, 0) / n
-  const stddev   = Math.sqrt(variance)
-
-  // Direction via half-period comparison
-  const firstHalf  = scores.slice(0, Math.floor(n / 2))
-  const secondHalf = scores.slice(Math.floor(n / 2))
-  const firstAvg   = firstHalf.reduce((s, v) => s + v, 0)  / firstHalf.length
-  const secondAvg  = secondHalf.reduce((s, v) => s + v, 0) / secondHalf.length
-  const halfDelta  = secondAvg - firstAvg
-
-  // Consecutive-day streak in the current direction
-  const lastDir = scores[n - 1] >= scores[n - 2] ? 'up' : 'down'
-  let streak = 1
-  for (let i = n - 2; i > 0; i--) {
-    const dir = scores[i] >= scores[i - 1] ? 'up' : 'down'
-    if (dir === lastDir) streak++
-    else break
-  }
-
-  // Week-over-week: current 7 days vs prev 7 days (if enough data)
-  let weekOverWeekDelta = Math.round(halfDelta)
-  if (scores.length >= 14) {
-    const prevWeekAvg = scores.slice(-14, -7).reduce((s, v) => s + v, 0) / 7
-    const thisWeekAvg = scores.slice(-7).reduce((s, v) => s + v, 0) / 7
-    weekOverWeekDelta = Math.round(thisWeekAvg - prevWeekAvg)
-  }
-
-  // Classify
-  let classification: TrendClassification
-  if      (stddev > 20)                            classification = 'volatile'
-  else if (halfDelta > 8  && lastDir === 'up')     classification = 'improving'
-  else if (halfDelta < -8 && lastDir === 'down')   classification = 'declining'
-  else if (stddev < 8 && avg >= 50)                classification = 'consistent'
-  else                                             classification = 'stagnant'
-
-  const direction = halfDelta > 3 ? 'up' : halfDelta < -3 ? 'down' : 'flat'
-
-  const descriptions: Record<TrendClassification, string> = {
-    improving:         `Improving — up ${Math.abs(Math.round(halfDelta))} pts over last ${n} days`,
-    declining:         `Declining — down ${Math.abs(Math.round(halfDelta))} pts over last ${n} days`,
-    volatile:          `Volatile — ${Math.round(stddev)} pt swing day-to-day`,
-    consistent:        `Consistent — steady at ~${Math.round(avg)}/100`,
-    stagnant:          `Flat — little change recently`,
-    insufficient_data: 'Not enough data yet',
-  }
-
-  return {
-    classification,
-    direction,
-    streak,
-    weekOverWeekDelta,
-    description: descriptions[classification],
-  }
 }
 
 // ─── Single-day data fetching ─────────────────────────────────────────────────
@@ -301,22 +186,6 @@ async function fetchDayInputs(client: any, userId: string, date: string): Promis
   return { inputs, eodLog: eodLog ?? null }
 }
 
-function trendDayFromDayInputs(date: string, inputs: DayInputs): TrendDay {
-  const breakdown = computeBreakdown(inputs)
-  return {
-    date,
-    score: breakdown.total,
-    breakdown,
-    inputs: {
-      completedHigh:   inputs.completedHigh,
-      completedMedium: inputs.completedMedium,
-      completedLow:    inputs.completedLow,
-      statusUpdates:   inputs.statusUpdates,
-      hasEodLog:       inputs.hasEodLog,
-    },
-  }
-}
-
 // ─── Route ────────────────────────────────────────────────────────────────────
 // GET /api/performance-metrics?period=daily|weekly|monthly&userId=optional&date=YYYY-MM-DD
 
@@ -361,19 +230,28 @@ export async function GET(req: NextRequest) {
     dateList.push(d.toISOString().slice(0, 10))
   }
 
-  // Fetch all days in parallel
+  // Fetch all days in parallel — capture today's result to avoid a second round-trip
+  let capturedToday: { inputs: DayInputs; eodLog: Record<string, unknown> | null } | null = null
+
   const dayResults = await Promise.all(
     dateList.map(async (d) => {
-      const { inputs } = await fetchDayInputs(client, userId, d)
-      return trendDayFromDayInputs(d, inputs)
+      const result = await fetchDayInputs(client, userId, d)
+      if (d === today) capturedToday = result
+      return trendDayFromInputs(d, result.inputs)
     })
   )
+
+  // Fall back to a fresh fetch only when a historical date was explicitly requested
+  const todayData = capturedToday ?? await fetchDayInputs(client, userId, today)
 
   const trendAnalysis = analyzeTrend(dayResults)
 
   // ── Daily response ───────────────────────────────────────────────────────────
   if (period === 'daily') {
-    const { inputs, eodLog } = await fetchDayInputs(client, userId, date)
+    // If a specific historical date was requested, fetch that day; otherwise reuse captured data
+    const { inputs, eodLog } = (date === today)
+      ? todayData
+      : await fetchDayInputs(client, userId, date)
     const breakdown = computeBreakdown(inputs)
 
     return NextResponse.json({
@@ -392,7 +270,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Weekly / Monthly aggregate response ─────────────────────────────────────
-  const { inputs: todayInputs, eodLog } = await fetchDayInputs(client, userId, today)
+  const { inputs: todayInputs, eodLog } = todayData
   const todayBreakdown = computeBreakdown(todayInputs)
 
   // Use the full window for the period summary
