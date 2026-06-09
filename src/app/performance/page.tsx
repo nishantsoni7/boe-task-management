@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -23,32 +23,22 @@ function PerformanceProgressLoader({ progress }: { progress: number }) {
       pointerEvents: 'all',
     }}>
       <div style={{ textAlign: 'center', maxWidth: 420 }}>
-        <div style={{
-          fontSize: 15, fontWeight: 600, color: '#111318',
-          lineHeight: 1.6, marginBottom: 6,
-        }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#111318', lineHeight: 1.6, marginBottom: 6 }}>
           Good things take a little time.
         </div>
         <div style={{ fontSize: 13, color: '#8C94A6', lineHeight: 1.6 }}>
           Please wait while we prepare your performance report.
         </div>
       </div>
-
       <div style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{
-          width: '100%', height: 6, background: '#EEF0F4',
-          borderRadius: 999, overflow: 'hidden',
-        }}>
+        <div style={{ width: '100%', height: 6, background: '#EEF0F4', borderRadius: 999, overflow: 'hidden' }}>
           <div style={{
             width: `${pct}%`, height: '100%',
             background: 'linear-gradient(90deg, #5585E8, #45A870)',
-            borderRadius: 999,
-            transition: 'width 0.25s ease',
+            borderRadius: 999, transition: 'width 0.25s ease',
           }} />
         </div>
-        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#8C94A6' }}>
-          {pct}%
-        </div>
+        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#8C94A6' }}>{pct}%</div>
       </div>
     </div>
   )
@@ -61,19 +51,19 @@ function ScoreRing({ score, rating }: { score: number; rating: string }) {
   const dash = circ * (score / 100)
 
   const ringColor = {
-    excellent:        '#45A870',
-    good:             '#5585E8',
-    average:          '#E8A030',
+    excellent:         '#45A870',
+    good:              '#5585E8',
+    average:           '#E8A030',
     needs_improvement: '#D94F4F',
-    critical:         '#B03030',
+    critical:          '#B03030',
   }[rating] ?? '#8C94A6'
 
   const label = {
-    excellent:        'Excellent',
-    good:             'Good',
-    average:          'Average',
+    excellent:         'Excellent',
+    good:              'Good',
+    average:           'Average',
     needs_improvement: 'Needs Work',
-    critical:         'Critical',
+    critical:          'Critical',
   }[rating] ?? '—'
 
   return (
@@ -88,26 +78,19 @@ function ScoreRing({ score, rating }: { score: number; rating: string }) {
           style={{ transition: 'stroke-dasharray 0.7s ease' }}
         />
         <text
-          x={65} y={60}
-          textAnchor="middle" dominantBaseline="middle"
+          x={65} y={60} textAnchor="middle" dominantBaseline="middle"
           fill="#111318" fontSize={28} fontWeight={700}
           style={{ transform: 'rotate(90deg) translate(0px, -130px)', fontFamily: 'var(--font-syne)' }}
-        >
-          {score}
-        </text>
+        >{score}</text>
         <text
-          x={65} y={82}
-          textAnchor="middle" dominantBaseline="middle"
+          x={65} y={82} textAnchor="middle" dominantBaseline="middle"
           fill="#8C94A6" fontSize={11}
           style={{ transform: 'rotate(90deg) translate(0px, -130px)', fontFamily: 'var(--font-dm-sans)' }}
-        >
-          /100
-        </text>
+        >/100</text>
       </svg>
       <span style={{
         fontSize: 13, fontWeight: 600, color: ringColor,
-        background: ringColor + '18',
-        padding: '3px 12px', borderRadius: 999,
+        background: ringColor + '18', padding: '3px 12px', borderRadius: 999,
       }}>{label}</span>
     </div>
   )
@@ -129,7 +112,6 @@ function MetricCard({ label, value, sub, accent }: { label: string; value: strin
 }
 
 // ─── Score breakdown bar ──────────────────────────────────────────────────────
-// Shows the 4 pillars as horizontal progress bars so you know *why* you scored X
 function BreakdownBar({ label, earned, max, color }: { label: string; earned: number; max: number; color: string }) {
   const pct = Math.max(0, Math.min(100, (earned / max) * 100))
   return (
@@ -139,7 +121,7 @@ function BreakdownBar({ label, earned, max, color }: { label: string; earned: nu
         <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.5s ease' }} />
       </div>
       <div style={{ width: 52, textAlign: 'right', fontSize: 12, fontWeight: 600, color: earned < 0 ? '#D94F4F' : '#111318', flexShrink: 0 }}>
-        {earned < 0 ? earned : `+${earned}`} / {max < 0 ? max : max}
+        {earned < 0 ? earned : `+${earned}`} / {max}
       </div>
     </div>
   )
@@ -157,7 +139,7 @@ function ScoreBreakdownPanel({ breakdown }: { breakdown: ScoreBreakdown }) {
   )
 }
 
-// ─── Trend classification badge ───────────────────────────────────────────────
+// ─── Trend classification ─────────────────────────────────────────────────────
 const TREND_COLORS: Record<TrendClassification, string> = {
   improving:         '#45A870',
   declining:         '#D94F4F',
@@ -240,9 +222,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
               border: 'none', borderRadius: 7,
               padding: '6px 14px', cursor: 'pointer',
             }}
-          >
-            Run Audit
-          </button>
+          >Run Audit</button>
         </div>
         <div style={{ fontSize: 12, color: '#8C94A6' }}>
           Get AI coaching on your day — what worked, what didn&apos;t, and how to improve.
@@ -265,9 +245,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
           background: verdictColor + '18', padding: '3px 10px', borderRadius: 999,
         }}>{audit.progressiveLabel}</span>
       </div>
-
       <p style={{ margin: 0, fontSize: 13, color: '#4A5261', lineHeight: 1.6 }}>{audit.verdict}</p>
-
       <div>
         <div style={{ fontSize: 11, fontWeight: 600, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Insights</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -279,7 +257,6 @@ function AuditPanel({ audit, loading, onGenerate }: {
           ))}
         </div>
       </div>
-
       <div>
         <div style={{ fontSize: 11, fontWeight: 600, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>How to improve</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -295,7 +272,6 @@ function AuditPanel({ audit, loading, onGenerate }: {
           ))}
         </div>
       </div>
-
       <button
         onClick={onGenerate}
         style={{
@@ -304,9 +280,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
           background: 'transparent', border: '1px solid #EEF0F4',
           borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
         }}
-      >
-        Regenerate
-      </button>
+      >Regenerate</button>
     </div>
   )
 }
@@ -316,49 +290,25 @@ function ScoreGuide() {
   const [open, setOpen] = useState(false)
 
   return (
-    <div style={{
-      border: '1px solid #E5E7EB',
-      borderRadius: 10,
-      overflow: 'hidden',
-      background: '#fff',
-    }}>
-      {/* Toggle button */}
+    <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
       <button
         onClick={() => setOpen(o => !o)}
         style={{
-          width: '100%',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '11px 16px',
-          background: 'none', border: 'none', cursor: 'pointer',
-          textAlign: 'left',
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '11px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
         }}
       >
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: '#3D4455' }}>
-          How is this score calculated?
-        </span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: '#3D4455' }}>How is this score calculated?</span>
         <span style={{
           fontSize: 11, color: '#8C94A6',
           transform: open ? 'rotate(180deg)' : 'none',
-          transition: 'transform 0.2s',
-          display: 'inline-block',
+          transition: 'transform 0.2s', display: 'inline-block',
         }}>▾</span>
       </button>
-
-      {/* Body */}
       {open && (
-        <div style={{
-          padding: '0 16px 16px',
-          display: 'flex', flexDirection: 'column', gap: 16,
-          borderTop: '1px solid #F0F1F3',
-        }}>
-
-          {/* Gain */}
+        <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 16, borderTop: '1px solid #F0F1F3' }}>
           <div>
-            <div style={{
-              fontSize: 11, fontWeight: 700, color: '#45A870',
-              textTransform: 'uppercase', letterSpacing: '0.06em',
-              marginBottom: 8, marginTop: 12,
-            }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#45A870', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, marginTop: 12 }}>
               ✓ You gain points when you…
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -371,24 +321,14 @@ function ScoreGuide() {
                 { pts: '+5',        text: 'Stay active — any task action counts' },
               ].map(({ pts, text }) => (
                 <div key={text} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, color: '#45A870',
-                    background: '#45A87015', borderRadius: 5,
-                    padding: '1px 6px', flexShrink: 0, whiteSpace: 'nowrap',
-                  }}>{pts}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#45A870', background: '#45A87015', borderRadius: 5, padding: '1px 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>{pts}</span>
                   <span style={{ fontSize: 12.5, color: '#3D4455', lineHeight: 1.5 }}>{text}</span>
                 </div>
               ))}
             </div>
           </div>
-
-          {/* Lose */}
           <div>
-            <div style={{
-              fontSize: 11, fontWeight: 700, color: '#D94F4F',
-              textTransform: 'uppercase', letterSpacing: '0.06em',
-              marginBottom: 8,
-            }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#D94F4F', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
               ✗ You lose points when you have…
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -397,28 +337,14 @@ function ScoreGuide() {
                 { pts: '−8 each', text: 'A task stuck as Blocked for more than 2 days with no update' },
               ].map(({ pts, text }) => (
                 <div key={text} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, color: '#D94F4F',
-                    background: '#D94F4F12', borderRadius: 5,
-                    padding: '1px 6px', flexShrink: 0, whiteSpace: 'nowrap',
-                  }}>{pts}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#D94F4F', background: '#D94F4F12', borderRadius: 5, padding: '1px 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>{pts}</span>
                   <span style={{ fontSize: 12.5, color: '#3D4455', lineHeight: 1.5 }}>{text}</span>
                 </div>
               ))}
             </div>
           </div>
-
-          {/* Daily habit */}
-          <div style={{
-            background: '#F8F9FB', borderRadius: 8,
-            padding: '10px 14px',
-            border: '1px solid #EEF0F4',
-          }}>
-            <div style={{
-              fontSize: 11, fontWeight: 700, color: '#5585E8',
-              textTransform: 'uppercase', letterSpacing: '0.06em',
-              marginBottom: 6,
-            }}>
+          <div style={{ background: '#F8F9FB', borderRadius: 8, padding: '10px 14px', border: '1px solid #EEF0F4' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#5585E8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
               Daily habit to keep a good score
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -436,7 +362,6 @@ function ScoreGuide() {
               ))}
             </div>
           </div>
-
         </div>
       )}
     </div>
@@ -449,11 +374,10 @@ function EodLogForm({ existing, token, onSaved }: {
   token: string
   onSaved: () => void
 }) {
-  const [summary,    setSummary]    = useState(existing?.summary ?? '')
-  const [highlights, setHighlights] = useState(existing?.highlights ?? '')
-  const [selfScore,  setSelfScore]  = useState<number>(existing?.self_score ?? 0)
-  const [saving,     setSaving]     = useState(false)
-  const [saved,      setSaved]      = useState(!!existing)
+  const [summary,   setSummary]   = useState(existing?.summary ?? '')
+  const [selfScore, setSelfScore] = useState<number>(existing?.self_score ?? 0)
+  const [saving,    setSaving]    = useState(false)
+  const [saved,     setSaved]     = useState(!!existing)
 
   const submit = async () => {
     if (!summary.trim()) return
@@ -462,15 +386,13 @@ function EodLogForm({ existing, token, onSaved }: {
       const res = await fetch('/api/daily-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ summary, highlights: highlights || null, self_score: selfScore || null }),
+        body: JSON.stringify({ summary, self_score: selfScore || null }),
       })
       if (res.ok) { setSaved(true); onSaved() }
     } finally {
       setSaving(false)
     }
   }
-
-  const stars = [1, 2, 3, 4, 5]
 
   return (
     <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -481,16 +403,15 @@ function EodLogForm({ existing, token, onSaved }: {
         </div>
         <div style={{ fontSize: 11, color: '#8C94A6' }}>+12 pts discipline</div>
       </div>
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div>
           <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7384', display: 'block', marginBottom: 4 }}>
-            What was your biggest achievement today? <span style={{ color: '#D94F4F' }}>*</span>
+            Today&apos;s Key Work Done <span style={{ color: '#D94F4F' }}>*</span>
           </label>
           <textarea
             value={summary}
             onChange={e => { setSummary(e.target.value); setSaved(false) }}
-            placeholder="Summarise your key work for the day…"
+            placeholder="Briefly write the important work you completed today..."
             rows={3}
             style={{
               width: '100%', resize: 'vertical',
@@ -502,27 +423,11 @@ function EodLogForm({ existing, token, onSaved }: {
           />
         </div>
         <div>
-          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7384', display: 'block', marginBottom: 4 }}>
-            Any highlight worth sharing?
-          </label>
-          <input
-            value={highlights}
-            onChange={e => { setHighlights(e.target.value); setSaved(false) }}
-            placeholder="Any notable achievement or milestone…"
-            style={{
-              width: '100%', fontSize: 13, color: '#111318',
-              border: '1px solid #EEF0F4', borderRadius: 7,
-              padding: '8px 10px', outline: 'none',
-              fontFamily: 'inherit', boxSizing: 'border-box',
-            }}
-          />
-        </div>
-        <div>
           <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7384', display: 'block', marginBottom: 6 }}>
             How was your day?
           </label>
           <div style={{ display: 'flex', gap: 8 }}>
-            {stars.map(n => (
+            {[1, 2, 3, 4, 5].map(n => (
               <button
                 key={n}
                 onClick={() => { setSelfScore(n); setSaved(false) }}
@@ -537,7 +442,6 @@ function EodLogForm({ existing, token, onSaved }: {
           </div>
         </div>
       </div>
-
       <button
         onClick={submit}
         disabled={saving || !summary.trim()}
@@ -549,28 +453,347 @@ function EodLogForm({ existing, token, onSaved }: {
           padding: '9px 20px', cursor: 'pointer',
           opacity: saving || !summary.trim() ? 0.5 : 1,
         }}
-      >
-        {saving ? 'Saving…' : saved ? 'Update Log' : 'Submit Log'}
-      </button>
+      >{saving ? 'Saving…' : saved ? 'Update Log' : 'Submit Log'}</button>
+    </div>
+  )
+}
+
+// ─── Monthly EOD View ─────────────────────────────────────────────────────────
+const ROLLOUT_DATE = '2026-06-08'
+
+type EodLogRow = { log_date: string; summary: string; self_score: number | null }
+
+type MonthRange =
+  | { from: string; to: string; label: string; noData: false }
+  | { noData: true; label: string }
+
+function getMonthRange(which: 'current' | 'last'): MonthRange {
+  const now = new Date()
+  if (which === 'current') {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+    // Effective start is the later of month-start and rollout date
+    const from = monthStart >= ROLLOUT_DATE ? monthStart : ROLLOUT_DATE
+    const to   = now.toISOString().slice(0, 10)
+    return { from, to, label: now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }), noData: false }
+  } else {
+    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const last  = new Date(now.getFullYear(), now.getMonth(), 0)
+    const lastStr = last.toISOString().slice(0, 10)
+    const label   = first.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    // If the entire last month ended before rollout, there's no trackable data
+    if (lastStr < ROLLOUT_DATE) return { noData: true, label }
+    const from = first.toISOString().slice(0, 10) >= ROLLOUT_DATE
+      ? first.toISOString().slice(0, 10)
+      : ROLLOUT_DATE
+    return { from, to: lastStr, label, noData: false }
+  }
+}
+
+type DayStatus = 'submitted' | 'pending' | 'missed'
+type DayEntry  = { date: string; log: EodLogRow | null; status: DayStatus }
+
+function buildDayList(from: string, to: string, logs: EodLogRow[]): DayEntry[] {
+  const logMap  = new Map(logs.map(r => [r.log_date, r]))
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const list: DayEntry[] = []
+  const start = new Date(from + 'T12:00:00')
+  const end   = new Date(to   + 'T12:00:00')
+  for (let d = new Date(end); d >= start; d.setDate(d.getDate() - 1)) {
+    const dateStr = d.toISOString().slice(0, 10)
+    const log     = logMap.get(dateStr) ?? null
+    const status: DayStatus =
+      log              ? 'submitted' :
+      dateStr < todayStr ? 'missed'   :
+                           'pending'
+    list.push({ date: dateStr, log, status })
+  }
+  return list
+}
+
+function ImprovementSuggestions({ submittedCount, missedCount, avgRating, riskPts, momentumScore }: {
+  submittedCount: number
+  missedCount: number
+  avgRating: number | null
+  riskPts: number
+  momentumScore: number
+}) {
+  const tips: { color: string; text: string }[] = []
+
+  if (missedCount > 0)
+    tips.push({ color: '#D94F4F', text: `You missed ${missedCount} EOD log${missedCount > 1 ? 's' : ''} this month. Submit your log before closing your laptop — it takes under 2 minutes and earns +12 pts each day.` })
+  if (avgRating !== null && avgRating < 4)
+    tips.push({ color: '#E8A030', text: 'Your daily ratings are below 4 stars. Write clearer descriptions of completed work and focus on finishing higher-priority tasks to push your daily output up.' })
+  if (riskPts < -10)
+    tips.push({ color: '#D94F4F', text: 'Your risk score is costing points. Update blocked or waiting tasks earlier — even a short note removes the stale penalty.' })
+  if (momentumScore < 10)
+    tips.push({ color: '#5585E8', text: 'Your momentum score is low. Post a quick status update on active tasks each day — it signals progress and earns discipline points.' })
+
+  if (tips.length === 0)
+    return (
+      <div style={{ background: '#45A87010', border: '1px solid #45A87030', borderRadius: 10, padding: '14px 18px' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#45A870', marginBottom: 4 }}>Great consistency this month!</div>
+        <div style={{ fontSize: 12.5, color: '#4A5261', lineHeight: 1.6 }}>
+          You&apos;re submitting logs regularly and keeping your scores strong. Keep this up — consistency is what separates top performers over time.
+        </div>
+      </div>
+    )
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>How to Improve Your Ranking</div>
+      {tips.map((tip, i) => (
+        <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div style={{
+            width: 6, height: 6, borderRadius: '50%', background: tip.color,
+            marginTop: 5, flexShrink: 0,
+          }} />
+          <div style={{ fontSize: 12.5, color: '#3D4455', lineHeight: 1.6 }}>{tip.text}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MonthlyView({ token, which, perfData }: {
+  token: string
+  which: 'current' | 'last'
+  perfData: PerformanceData | null
+}) {
+  const [logs,     setLogs]     = useState<EodLogRow[]>([])
+  const [fetching, setFetching] = useState(true)
+  const range = useMemo(() => getMonthRange(which), [which])
+
+  useEffect(() => {
+    if (!token || range.noData) { setFetching(false); return }
+    setFetching(true)
+    fetch(`/api/daily-log?from=${range.from}&to=${range.to}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => setLogs(d.logs ?? []))
+      .finally(() => setFetching(false))
+  }, [token, range])
+
+  const days = useMemo(
+    () => range.noData ? [] : buildDayList(range.from, range.to, logs),
+    [range, logs],
+  )
+
+  const submittedDays = days.filter(d => d.status === 'submitted')
+  const missedDays    = days.filter(d => d.status === 'missed')
+  const pendingDays   = days.filter(d => d.status === 'pending')
+  const eodScore      = submittedDays.length * 12 - missedDays.length * 12
+  const ratedLogs     = submittedDays.filter(d => d.log!.self_score)
+  const avgRating     = ratedLogs.length
+    ? ratedLogs.reduce((s, d) => s + d.log!.self_score!, 0) / ratedLogs.length
+    : null
+  const avgRatingStr  = avgRating !== null ? avgRating.toFixed(1) : '—'
+
+  const breakdown     = perfData?.breakdown
+  const riskPts       = breakdown?.risk ?? 0
+  const momentumScore = breakdown?.momentum ?? 0
+
+  const chipStyle = (accent: string) => ({
+    display: 'flex' as const, flexDirection: 'column' as const, alignItems: 'center' as const,
+    gap: 2, padding: '10px 12px', borderRadius: 8,
+    background: accent + '10', border: `1px solid ${accent}25`,
+    flex: '1 1 0', minWidth: 0,
+  })
+
+  if (fetching) return (
+    <div style={{ textAlign: 'center', padding: '60px 0', fontSize: 13, color: '#8C94A6' }}>Loading…</div>
+  )
+
+  // No trackable dates for this month
+  if (range.noData || days.length === 0) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#6B7384' }}>{range.label}</div>
+      <div style={{
+        background: '#F8F9FB', border: '1px solid #EEF0F4', borderRadius: 10,
+        padding: '28px 20px', textAlign: 'center',
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#8C94A6', marginBottom: 6 }}>No data available</div>
+        <div style={{ fontSize: 12.5, color: '#8C94A6', lineHeight: 1.6 }}>
+          EOD tracking started from 8 Jun 2026. No data is available for this month.
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Month label */}
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#6B7384' }}>{range.label}</div>
+
+      {/* Summary chips row 1 */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={chipStyle('#5585E8')}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: eodScore >= 0 ? '#45A870' : '#D94F4F' }}>
+            {eodScore >= 0 ? `+${eodScore}` : eodScore}
+          </span>
+          <span style={{ fontSize: 10, color: '#8C94A6', whiteSpace: 'nowrap' }}>Monthly Score</span>
+        </div>
+        <div style={chipStyle('#45A870')}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#45A870' }}>{submittedDays.length}</span>
+          <span style={{ fontSize: 10, color: '#8C94A6', whiteSpace: 'nowrap' }}>Submitted Days</span>
+        </div>
+        <div style={chipStyle('#D94F4F')}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#D94F4F' }}>{missedDays.length}</span>
+          <span style={{ fontSize: 10, color: '#8C94A6', whiteSpace: 'nowrap' }}>Missed Days</span>
+        </div>
+        {pendingDays.length > 0 && (
+          <div style={chipStyle('#E8A030')}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: '#E8A030' }}>{pendingDays.length}</span>
+            <span style={{ fontSize: 10, color: '#8C94A6', whiteSpace: 'nowrap' }}>Pending</span>
+          </div>
+        )}
+        <div style={chipStyle('#E8A030')}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#E8A030' }}>{avgRatingStr}</span>
+          <span style={{ fontSize: 10, color: '#8C94A6', whiteSpace: 'nowrap' }}>Avg Rating</span>
+        </div>
+      </div>
+
+      {/* Score breakdown chips — only when we have perf data (current month) */}
+      {breakdown && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={chipStyle('#45A870')}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#45A870' }}>{breakdown.output}</span>
+            <span style={{ fontSize: 10, color: '#8C94A6', whiteSpace: 'nowrap' }}>Output Score</span>
+          </div>
+          <div style={chipStyle('#5585E8')}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#5585E8' }}>{breakdown.momentum}</span>
+            <span style={{ fontSize: 10, color: '#8C94A6', whiteSpace: 'nowrap' }}>Momentum</span>
+          </div>
+          <div style={chipStyle('#E8A030')}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#E8A030' }}>{breakdown.discipline}</span>
+            <span style={{ fontSize: 10, color: '#8C94A6', whiteSpace: 'nowrap' }}>Discipline</span>
+          </div>
+          <div style={chipStyle(breakdown.risk < 0 ? '#D94F4F' : '#8C94A6')}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: breakdown.risk < 0 ? '#D94F4F' : '#45A870' }}>
+              {breakdown.risk === 0 ? '✓ Clean' : breakdown.risk}
+            </span>
+            <span style={{ fontSize: 10, color: '#8C94A6', whiteSpace: 'nowrap' }}>Risk Points</span>
+          </div>
+        </div>
+      )}
+
+      {/* EOD log table */}
+      <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: '#F8F9FB', borderBottom: '1px solid #EEF0F4' }}>
+                {['Date', 'Key Work Done', 'Rating', 'Status', 'Points', 'Reason'].map(h => (
+                  <th key={h} style={{
+                    padding: '8px 12px', textAlign: 'left',
+                    fontSize: 10, fontWeight: 600, color: '#8C94A6',
+                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                    whiteSpace: 'nowrap',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {days.map(({ date, log, status }) => {
+                const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('en-IN', {
+                  day: 'numeric', month: 'short',
+                })
+                const statusColor =
+                  status === 'submitted' ? '#45A870' :
+                  status === 'pending'   ? '#E8A030' :
+                                          '#D94F4F'
+                const statusBg =
+                  status === 'submitted' ? '#45A87015' :
+                  status === 'pending'   ? '#E8A03015' :
+                                          '#D94F4F12'
+                const statusLabel =
+                  status === 'submitted' ? 'Submitted' :
+                  status === 'pending'   ? 'Pending'   :
+                                          'Missed'
+                const pointsLabel =
+                  status === 'submitted' ? '+12' :
+                  status === 'pending'   ? '—'   :
+                                          '−12'
+                const reasonText =
+                  status === 'submitted' ? 'Logged work and earned discipline points' :
+                  status === 'pending'   ? 'Day still in progress'                   :
+                                          'EOD log was not submitted before day close'
+                return (
+                  <tr key={date} style={{ borderBottom: '1px solid #F4F5F7' }}>
+                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#6B7384', fontSize: 12 }}>{dateLabel}</td>
+                    <td style={{
+                      padding: '8px 12px', color: status === 'submitted' ? '#3D4455' : '#C0C4CE',
+                      maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }} title={log?.summary ?? undefined}>{log?.summary ?? '—'}</td>
+                    <td style={{ padding: '8px 12px', color: '#E8A030', whiteSpace: 'nowrap', letterSpacing: 1 }}>
+                      {log?.self_score ? '★'.repeat(log.self_score) : <span style={{ color: '#C0C4CE' }}>—</span>}
+                    </td>
+                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 600,
+                        color: statusColor, background: statusBg,
+                        padding: '2px 8px', borderRadius: 5,
+                      }}>{statusLabel}</span>
+                    </td>
+                    <td style={{
+                      padding: '8px 12px', fontWeight: 600, whiteSpace: 'nowrap',
+                      color: status === 'submitted' ? '#45A870' : status === 'missed' ? '#D94F4F' : '#8C94A6',
+                    }}>{pointsLabel}</td>
+                    <td style={{
+                      padding: '8px 12px', fontSize: 11,
+                      color: status === 'submitted' ? '#45A870' : status === 'pending' ? '#E8A030' : '#8C94A6',
+                      whiteSpace: 'nowrap',
+                    }}>{reasonText}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Rule-based improvement suggestions */}
+      <ImprovementSuggestions
+        submittedCount={submittedDays.length}
+        missedCount={missedDays.length}
+        avgRating={avgRating}
+        riskPts={riskPts}
+        momentumScore={momentumScore}
+      />
     </div>
   )
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-type Period = 'daily' | 'weekly' | 'monthly'
+type Tab       = 'today' | 'current_month' | 'last_month'
+type ApiPeriod = 'daily' | 'weekly' | 'monthly'
+
+const TAB_LABELS: Record<Tab, string> = {
+  today:         'Today',
+  current_month: 'Current Month',
+  last_month:    'Last Month',
+}
+
+function tabToApiPeriod(tab: Tab): ApiPeriod {
+  if (tab === 'current_month') return 'monthly'
+  return 'daily'
+}
 
 export default function PerformancePage() {
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [token,        setToken]        = useState('')
-  const [period,       setPeriod]       = useState<Period>('daily')
+  const [tab,          setTab]          = useState<Tab>('today')
   const [perfData,     setPerfData]     = useState<PerformanceData | null>(null)
   const [loading,      setLoading]      = useState(true)
   const [perfLoading,  setPerfLoading]  = useState(false)
   const [audit,        setAudit]        = useState<PerformanceAudit | null>(null)
+  const perfCacheRef = useRef<Record<string, PerformanceData>>({})
   const [auditLoading, setAuditLoading] = useState(false)
   const [progress,     setProgress]     = useState(0)
   const [showLoader,   setShowLoader]   = useState(true)
   const [isMobile,     setIsMobile]     = useState(false)
+  const [eodRefreshKey, setEodRefreshKey] = useState(0)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -596,19 +819,28 @@ export default function PerformancePage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, router, viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [supabase, router, viewAsUserId])
 
-  const fetchPerf = useCallback(async (p: Period, t: string) => {
+  const fetchPerf = useCallback(async (apiPeriod: ApiPeriod, t: string, bustCache = false) => {
     if (!t) return
+    const cacheKey = `${viewAsUserId ?? 'self'}:${apiPeriod}`
+    if (!bustCache && perfCacheRef.current[cacheKey]) {
+      setPerfData(perfCacheRef.current[cacheKey])
+      return
+    }
     setPerfLoading(true)
     setAudit(null)
     try {
-      const params = new URLSearchParams({ period: p })
+      const params = new URLSearchParams({ period: apiPeriod })
       if (viewAsUserId) params.set('userId', viewAsUserId)
       const res = await fetch(`/api/performance-metrics?${params.toString()}`, {
         headers: { Authorization: `Bearer ${t}` },
       })
-      if (res.ok) setPerfData(await res.json())
+      if (res.ok) {
+        const data = await res.json()
+        perfCacheRef.current[cacheKey] = data
+        setPerfData(data)
+      }
     } finally {
       setPerfLoading(false)
     }
@@ -616,10 +848,15 @@ export default function PerformancePage() {
   }, [viewAsUserId])
 
   useEffect(() => {
-    if (token) fetchPerf(period, token)
-  }, [period, token, fetchPerf])
+    if (!token) return
+    if (tab === 'last_month') {
+      // Last month tab doesn't call the perf metrics API
+      setPerfData(null)
+      return
+    }
+    fetchPerf(tabToApiPeriod(tab), token)
+  }, [tab, token, fetchPerf])
 
-  // Track viewport width for responsive two-column layout
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
     check()
@@ -627,7 +864,6 @@ export default function PerformancePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // Audit now sends the full structured payload (breakdown + inputs + trend + trendAnalysis)
   const runAudit = async () => {
     if (!perfData || !token) return
     setAuditLoading(true)
@@ -636,7 +872,7 @@ export default function PerformancePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          period,
+          period:        'daily',
           inputs:        perfData.inputs,
           breakdown:     perfData.breakdown,
           trend:         perfData.trend,
@@ -652,11 +888,12 @@ export default function PerformancePage() {
     }
   }
 
-  const handleEodSaved = () => { if (token) fetchPerf(period, token) }
+  const handleEodSaved = () => {
+    delete perfCacheRef.current[`${viewAsUserId ?? 'self'}:daily`]
+    if (token) fetchPerf('daily', token, true)
+    setEodRefreshKey(k => k + 1)
+  }
 
-  // Drive the estimated progress bar.
-  // While data is still loading: tick up gradually toward 90.
-  // Once both auth and the first perf fetch are done: snap to 100, then hide.
   const dataReady = !loading && !perfLoading
   useEffect(() => {
     if (!showLoader) return
@@ -676,17 +913,15 @@ export default function PerformancePage() {
 
   if (showLoader) return <PerformanceProgressLoader progress={progress} />
 
-  const today  = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const viewedProfile    = viewAsProfile ?? profile
+  const todayLabel      = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const viewedProfile   = viewAsProfile ?? profile
   const isAdminOrManager = viewedProfile?.role === 'admin' || viewedProfile?.role === 'manager'
-
-  const periodLabel: Record<Period, string> = { daily: 'Today', weekly: 'This Week', monthly: 'This Month' }
 
   return (
     <DashboardLayout
       profile={profile}
       title="Performance"
-      subtitle={today}
+      subtitle={todayLabel}
       onSignOut={async () => { await supabase.auth.signOut(); router.push('/login') }}
       actions={isAdminOrManager ? (
         <a href="/performance/team" style={{
@@ -698,167 +933,115 @@ export default function PerformancePage() {
     >
       <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        {/* Period tabs — full width */}
+        {/* Tab bar */}
         <div style={{ display: 'flex', gap: 4, background: '#F4F5F7', borderRadius: 10, padding: 4, alignSelf: 'flex-start' }}>
-          {(['daily', 'weekly', 'monthly'] as Period[]).map(p => (
-            <button key={p} onClick={() => setPeriod(p)} style={{
+          {(['today', 'current_month', 'last_month'] as Tab[]).map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{
               fontSize: 12.5, fontWeight: 600,
               padding: '6px 16px', borderRadius: 7,
               border: 'none', cursor: 'pointer',
-              background: period === p ? '#fff' : 'transparent',
-              color: period === p ? '#111318' : '#8C94A6',
-              boxShadow: period === p ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              background: tab === t ? '#fff' : 'transparent',
+              color: tab === t ? '#111318' : '#8C94A6',
+              boxShadow: tab === t ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
               transition: 'all 0.15s ease',
-            }}>
-              {periodLabel[p]}
-            </button>
+              whiteSpace: 'nowrap',
+            }}>{TAB_LABELS[t]}</button>
           ))}
         </div>
 
-        {perfLoading ? (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: '#8C94A6', fontSize: 13 }}>Loading…</div>
-        ) : perfData ? (
+        {/* ── TODAY TAB ── */}
+        {tab === 'today' && (
+          perfLoading ? (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: '#8C94A6', fontSize: 13 }}>Loading…</div>
+          ) : perfData ? (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr',
+              gap: 20,
+              alignItems: 'start',
+            }}>
 
-          /*
-           * Two-column layout with explicit row alignment.
-           * Desktop: 3fr 2fr grid, auto rows.
-           * Each "row" is one left cell + one right cell placed in sequence,
-           * so both cells in the same row always share the same top edge.
-           *
-           * Row 1: [score ring + cards + aggregate + alert] | [ScoreGuide + ScoreBreakdown]
-           * Row 2: [EOD Log (or empty)]                    | [Trend chart (or empty)]
-           * Row 3: [AI Audit]                              | [empty]
-           */
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr',
-            gap: 20,
-            alignItems: 'start',
-          }}>
-
-            {/* ── ROW 1 LEFT: score ring + metric cards + conditional extras ── */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-              {/* Score ring + 4 pillar metric cards — stretch so both cells share the row height */}
-              <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 16, alignItems: 'stretch' }}>
-                <div style={{
-                  background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10,
-                  padding: '20px 10px',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
-                }}>
-                  <ScoreRing score={perfData.score} rating={perfData.rating} />
-                  {/* Trend badge below score ring */}
-                  {perfData.trendAnalysis.classification !== 'insufficient_data' && (
-                    <div style={{
-                      fontSize: 10, fontWeight: 600,
-                      color: TREND_COLORS[perfData.trendAnalysis.classification],
-                      background: TREND_COLORS[perfData.trendAnalysis.classification] + '15',
-                      padding: '2px 8px', borderRadius: 999,
-                      textAlign: 'center', lineHeight: 1.6,
-                    }}>
-                      {TREND_ICONS[perfData.trendAnalysis.classification]} {
-                        perfData.trendAnalysis.weekOverWeekDelta !== 0
-                          ? `${perfData.trendAnalysis.weekOverWeekDelta > 0 ? '+' : ''}${perfData.trendAnalysis.weekOverWeekDelta} w/w`
-                          : perfData.trendAnalysis.classification
-                      }
-                    </div>
-                  )}
-                </div>
-
-                {/* 4 metric cards: one per pillar */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignContent: 'start' }}>
-                  <MetricCard
-                    label="Output"
-                    value={`${perfData.breakdown.output}/50`}
-                    sub={
-                      period === 'daily'
-                        ? `${perfData.inputs.completedHigh + perfData.inputs.completedMedium + perfData.inputs.completedLow} task${perfData.inputs.completedHigh + perfData.inputs.completedMedium + perfData.inputs.completedLow !== 1 ? 's' : ''} completed`
-                        : `${perfData.aggregate?.totalCompleted ?? 0} tasks this ${period === 'weekly' ? 'week' : 'month'}`
-                    }
-                    accent={perfData.breakdown.output >= 30 ? '#45A870' : perfData.breakdown.output >= 15 ? undefined : '#8C94A6'}
-                  />
-                  <MetricCard
-                    label="Momentum"
-                    value={`${perfData.breakdown.momentum}/20`}
-                    sub={`${perfData.inputs.statusUpdates} update${perfData.inputs.statusUpdates !== 1 ? 's' : ''}${perfData.inputs.blockerResolutions > 0 ? ` · ${perfData.inputs.blockerResolutions} unblocked` : ''}`}
-                    accent={perfData.breakdown.momentum >= 12 ? '#5585E8' : undefined}
-                  />
-                  <MetricCard
-                    label="Discipline"
-                    value={`${perfData.breakdown.discipline}/20`}
-                    sub={perfData.inputs.hasEodLog ? '✓ EOD log submitted' : 'EOD log missing'}
-                    accent={perfData.inputs.hasEodLog ? '#45A870' : '#D94F4F'}
-                  />
-                  <MetricCard
-                    label="Risk"
-                    value={perfData.breakdown.risk === 0 ? '✓ Clean' : `${perfData.breakdown.risk}`}
-                    sub={`${perfData.inputs.overdueCount} overdue · ${perfData.inputs.staleBlockedCount} stale blocks`}
-                    accent={perfData.breakdown.risk < -10 ? '#D94F4F' : perfData.breakdown.risk === 0 ? '#45A870' : undefined}
-                  />
-                </div>
-              </div>
-
-              {/* Weekly/Monthly aggregate summary */}
-              {(period === 'weekly' || period === 'monthly') && perfData.aggregate && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                  <MetricCard
-                    label={period === 'weekly' ? 'Week Total' : 'Month Total'}
-                    value={perfData.aggregate.totalCompleted}
-                    sub={`${perfData.aggregate.totalCompletedHigh} high · ${perfData.aggregate.totalCompletedMedium} med · ${perfData.aggregate.totalCompletedLow} low`}
-                  />
-                  <MetricCard
-                    label="EOD Log Rate"
-                    value={`${perfData.aggregate.eodLogRate}%`}
-                    sub={`${period === 'weekly' ? '7' : '30'}-day discipline`}
-                    accent={perfData.aggregate.eodLogRate >= 80 ? '#45A870' : perfData.aggregate.eodLogRate >= 50 ? '#E8A030' : '#D94F4F'}
-                  />
-                  <MetricCard
-                    label="Week / Week"
-                    value={perfData.trendAnalysis.weekOverWeekDelta >= 0 ? `+${perfData.trendAnalysis.weekOverWeekDelta}` : `${perfData.trendAnalysis.weekOverWeekDelta}`}
-                    sub="pts vs prior period"
-                    accent={perfData.trendAnalysis.weekOverWeekDelta > 0 ? '#45A870' : perfData.trendAnalysis.weekOverWeekDelta < 0 ? '#D94F4F' : undefined}
-                  />
-                </div>
-              )}
-
-              {/* Stale-blocked alert */}
-              {perfData.inputs.staleBlockedCount > 0 && (
-                <div style={{
-                  background: '#D94F4F10', border: '1px solid #D94F4F30',
-                  borderRadius: 10, padding: '12px 16px',
-                  display: 'flex', alignItems: 'center', gap: 10,
-                }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#D94F4F', flexShrink: 0 }} />
-                  <div style={{ fontSize: 12.5, color: '#3D4455' }}>
-                    <strong>{perfData.inputs.staleBlockedCount} task{perfData.inputs.staleBlockedCount > 1 ? 's have' : ' has'} been blocked for &gt;2 days</strong> — costing {perfData.inputs.staleBlockedCount * 8} pts. Escalate or add an update.
+              {/* ROW 1 LEFT */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 16, alignItems: 'stretch' }}>
+                  <div style={{
+                    background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10,
+                    padding: '20px 10px',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  }}>
+                    <ScoreRing score={perfData.score} rating={perfData.rating} />
+                    {perfData.trendAnalysis.classification !== 'insufficient_data' && (
+                      <div style={{
+                        fontSize: 10, fontWeight: 600,
+                        color: TREND_COLORS[perfData.trendAnalysis.classification],
+                        background: TREND_COLORS[perfData.trendAnalysis.classification] + '15',
+                        padding: '2px 8px', borderRadius: 999,
+                        textAlign: 'center', lineHeight: 1.6,
+                      }}>
+                        {TREND_ICONS[perfData.trendAnalysis.classification]} {
+                          perfData.trendAnalysis.weekOverWeekDelta !== 0
+                            ? `${perfData.trendAnalysis.weekOverWeekDelta > 0 ? '+' : ''}${perfData.trendAnalysis.weekOverWeekDelta} w/w`
+                            : perfData.trendAnalysis.classification
+                        }
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignContent: 'start' }}>
+                    <MetricCard
+                      label="Output"
+                      value={`${perfData.breakdown.output}/50`}
+                      sub={`${perfData.inputs.completedHigh + perfData.inputs.completedMedium + perfData.inputs.completedLow} task${perfData.inputs.completedHigh + perfData.inputs.completedMedium + perfData.inputs.completedLow !== 1 ? 's' : ''} completed`}
+                      accent={perfData.breakdown.output >= 30 ? '#45A870' : perfData.breakdown.output >= 15 ? undefined : '#8C94A6'}
+                    />
+                    <MetricCard
+                      label="Momentum"
+                      value={`${perfData.breakdown.momentum}/20`}
+                      sub={`${perfData.inputs.statusUpdates} update${perfData.inputs.statusUpdates !== 1 ? 's' : ''}${perfData.inputs.blockerResolutions > 0 ? ` · ${perfData.inputs.blockerResolutions} unblocked` : ''}`}
+                      accent={perfData.breakdown.momentum >= 12 ? '#5585E8' : undefined}
+                    />
+                    <MetricCard
+                      label="Discipline"
+                      value={`${perfData.breakdown.discipline}/20`}
+                      sub={perfData.inputs.hasEodLog ? '✓ EOD log submitted' : 'EOD log missing'}
+                      accent={perfData.inputs.hasEodLog ? '#45A870' : '#D94F4F'}
+                    />
+                    <MetricCard
+                      label="Risk"
+                      value={perfData.breakdown.risk === 0 ? '✓ Clean' : `${perfData.breakdown.risk}`}
+                      sub={`${perfData.inputs.overdueCount} overdue · ${perfData.inputs.staleBlockedCount} stale blocks`}
+                      accent={perfData.breakdown.risk < -10 ? '#D94F4F' : perfData.breakdown.risk === 0 ? '#45A870' : undefined}
+                    />
                   </div>
                 </div>
-              )}
 
-            </div>
-            {/* ── end ROW 1 LEFT ── */}
+                {perfData.inputs.staleBlockedCount > 0 && (
+                  <div style={{
+                    background: '#D94F4F10', border: '1px solid #D94F4F30',
+                    borderRadius: 10, padding: '12px 16px',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#D94F4F', flexShrink: 0 }} />
+                    <div style={{ fontSize: 12.5, color: '#3D4455' }}>
+                      <strong>{perfData.inputs.staleBlockedCount} task{perfData.inputs.staleBlockedCount > 1 ? 's have' : ' has'} been blocked for &gt;2 days</strong> — costing {perfData.inputs.staleBlockedCount * 8} pts. Escalate or add an update.
+                    </div>
+                  </div>
+                )}
+              </div>
 
-            {/* ── ROW 1 RIGHT: reference panels ── */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <ScoreGuide />
-              <ScoreBreakdownPanel breakdown={perfData.breakdown} />
-            </div>
-            {/* ── end ROW 1 RIGHT ── */}
+              {/* ROW 1 RIGHT */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <ScoreGuide />
+                <ScoreBreakdownPanel breakdown={perfData.breakdown} />
+              </div>
 
-            {/* ── ROW 2 LEFT: EOD Log (daily only, else empty cell to keep grid rows in sync) ── */}
-            {period === 'daily'
-              ? <EodLogForm existing={perfData.eodLog} token={token} onSaved={handleEodSaved} />
-              : <div />
-            }
+              {/* ROW 2 LEFT: EOD form */}
+              <EodLogForm existing={perfData.eodLog} token={token} onSaved={handleEodSaved} />
 
-            {/* ── ROW 2 RIGHT: Trend chart ── */}
-            {perfData.trend && perfData.trend.length > 0
-              ? (
+              {/* ROW 2 RIGHT: Trend chart */}
+              {perfData.trend && perfData.trend.length > 0 ? (
                 <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '18px 20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {period === 'daily' ? '7-Day Trend' : period === 'weekly' ? '14-Day Trend' : '30-Day Trend'}
-                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em' }}>7-Day Trend</div>
                     <div style={{ fontSize: 11, fontWeight: 600, color: TREND_COLORS[perfData.trendAnalysis.classification] }}>
                       {TREND_ICONS[perfData.trendAnalysis.classification]} {perfData.trendAnalysis.description}
                     </div>
@@ -870,22 +1053,32 @@ export default function PerformancePage() {
                     <span>Streak: {perfData.trendAnalysis.streak}d {perfData.trendAnalysis.direction}</span>
                   </div>
                 </div>
-              )
-              : <div />
-            }
-            {/* ── end ROW 2 ── */}
+              ) : <div />}
 
-            {/* ── ROW 3 LEFT: AI Audit ── */}
-            <AuditPanel audit={audit} loading={auditLoading} onGenerate={runAudit} />
+              {/* ROW 3 LEFT: AI Audit */}
+              <AuditPanel audit={audit} loading={auditLoading} onGenerate={runAudit} />
 
-            {/* ── ROW 3 RIGHT: empty — balances the grid row ── */}
-            <div />
+              {/* ROW 3 RIGHT: empty */}
+              <div />
 
-          </div>
-          /* ── end two-column layout ── */
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: '#8C94A6', fontSize: 13 }}>No data available.</div>
+          )
+        )}
 
-        ) : (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: '#8C94A6', fontSize: 13 }}>No data available.</div>
+        {/* ── CURRENT MONTH TAB ── */}
+        {tab === 'current_month' && token && (
+          perfLoading ? (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: '#8C94A6', fontSize: 13 }}>Loading…</div>
+          ) : (
+            <MonthlyView token={token} which="current" perfData={perfData} />
+          )
+        )}
+
+        {/* ── LAST MONTH TAB ── */}
+        {tab === 'last_month' && token && (
+          <MonthlyView token={token} which="last" perfData={null} />
         )}
 
       </div>

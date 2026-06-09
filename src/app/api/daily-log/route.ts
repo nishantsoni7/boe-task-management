@@ -17,6 +17,7 @@ async function getCallerProfile(token: string) {
 }
 
 // GET /api/daily-log?date=YYYY-MM-DD&userId=optional
+// GET /api/daily-log?from=YYYY-MM-DD&to=YYYY-MM-DD  → returns { logs: [...] }
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization') ?? ''
   const token = authHeader.replace('Bearer ', '').trim()
@@ -26,7 +27,6 @@ export async function GET(req: NextRequest) {
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const date   = searchParams.get('date') ?? new Date().toISOString().slice(0, 10)
   const userId = searchParams.get('userId') ?? caller.id
 
   // Only admin/manager can query other users
@@ -35,6 +35,23 @@ export async function GET(req: NextRequest) {
   }
 
   const sb = serviceClient()
+  const from = searchParams.get('from')
+  const to   = searchParams.get('to')
+
+  // Range query — return array of logs
+  if (from && to) {
+    const { data, error } = await sb
+      .from('daily_work_logs')
+      .select('log_date, summary, self_score')
+      .eq('user_id', userId)
+      .gte('log_date', from)
+      .lte('log_date', to)
+      .order('log_date', { ascending: false })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ logs: data ?? [] })
+  }
+
+  const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10)
   const { data, error } = await sb
     .from('daily_work_logs')
     .select('*')
