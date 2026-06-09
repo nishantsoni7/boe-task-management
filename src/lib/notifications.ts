@@ -17,4 +17,6 @@ export const NOTIFICATION_ACTIVITY_OR = [
   'title.ilike.%moved task to blocked%', // actor + "Task moved to Blocked"
   'title.ilike.%completed task%',        // "Nishant completed task"
   'title.ilike.%task completed%',        // fallback "Task completed"
+  'title.ilike.%added a comment%',       // "Prerna added a comment"
+  'title.ilike.%new comment on task%',   // fallback "New comment on task"
 ].join(',')
