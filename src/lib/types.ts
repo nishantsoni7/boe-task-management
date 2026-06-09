@@ -225,6 +225,12 @@ export type MemberPerfEntry = {
   updatesCount:       number          // status updates made today
   latestAchievement:  string | null   // today's EOD log summary
   latestHighlight:    string | null   // today's EOD log highlights
+  // Monthly health summary (computed from trend window)
+  monthlyAvgScore: number
+  submittedDays:   number
+  missedDays:      number
+  pendingDays:     number
+  lowScoreDays:    number
 }
 
 // ─── Payroll period ───────────────────────────────────────────────────────────

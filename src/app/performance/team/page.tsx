@@ -92,20 +92,63 @@ const TREND_ICONS: Record<TrendClassification, string> = {
   insufficient_data: '?',
 }
 
-// ─── Score pill ───────────────────────────────────────────────────────────────
-function ScorePill({ score, rating }: { score: number; rating: string }) {
+// ─── Score pill (clickable — shows breakdown) ─────────────────────────────────
+function ScorePill({ score, rating, breakdown, weekOverWeekDelta }: {
+  score: number; rating: string; breakdown: ScoreBreakdown; weekOverWeekDelta: number
+}) {
+  const [open, setOpen] = React.useState(false)
   const color = ratingColor(rating)
+
+  const rows: { label: string; value: string | number; max?: number; color: string }[] = [
+    { label: 'Output',      value: breakdown.output,     max: 50,  color: '#45A870' },
+    { label: 'Ownership',   value: breakdown.momentum,   max: 20,  color: '#5585E8' },
+    { label: 'Discipline',  value: breakdown.discipline, max: 20,  color: '#E8A030' },
+    { label: 'Risk Penalty',value: breakdown.risk,                 color: breakdown.risk < 0 ? '#D94F4F' : '#8C94A6' },
+    { label: 'Improvement', value: weekOverWeekDelta > 0 ? `+${weekOverWeekDelta} w/w` : weekOverWeekDelta === 0 ? '—' : `${weekOverWeekDelta} w/w`,
+      color: weekOverWeekDelta > 0 ? '#45A870' : weekOverWeekDelta < 0 ? '#D94F4F' : '#8C94A6' },
+  ]
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{
-        width: 40, height: 40, borderRadius: '50%',
-        background: color + '18', border: `2px solid ${color}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 13, fontWeight: 700, color,
-      }}>{score}</div>
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color, whiteSpace: 'nowrap' }}>{ratingLabel(rating)}</div>
+    <div style={{ position: 'relative' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+        title="Click to see score breakdown"
+      >
+        <div style={{
+          width: 40, height: 40, borderRadius: '50%',
+          background: color + '18', border: `2px solid ${color}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 13, fontWeight: 700, color,
+        }}>{score}</div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color, whiteSpace: 'nowrap' }}>{ratingLabel(rating)}</div>
+          <div style={{ fontSize: 9, color: '#A0A9BE', whiteSpace: 'nowrap' }}>{open ? '▲ hide' : '▼ breakdown'}</div>
+        </div>
       </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute', right: 0, top: 50, zIndex: 100,
+          background: '#fff', border: '1px solid #EEF0F4',
+          borderRadius: 10, padding: '12px 14px', minWidth: 200,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#111318', marginBottom: 8 }}>Score Composition</div>
+          {rows.map(r => (
+            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+              <span style={{ fontSize: 11, color: '#6B7384' }}>{r.label}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: r.color }}>
+                {r.value}{r.max != null ? <span style={{ fontSize: 9, color: '#A0A9BE', fontWeight: 400 }}>/{r.max}</span> : ''}
+              </span>
+            </div>
+          ))}
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #EEF0F4', display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#111318' }}>Total Score</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color }}>{score}<span style={{ fontSize: 9, color: '#A0A9BE', fontWeight: 400 }}>/100</span></span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -152,42 +195,98 @@ function RiskBadge({ level }: { level: 'high' | 'medium' | 'low' }) {
   )
 }
 
+// ─── Needs Attention badge ─────────────────────────────────────────────────────
+function NeedsAttentionBadge() {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700,
+      color: '#D94F4F', background: '#D94F4F12',
+      border: '1px solid #D94F4F30',
+      padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+    }}>⚠ Needs Attention</span>
+  )
+}
+
+// ─── Health summary row ────────────────────────────────────────────────────────
+function HealthSummaryRow({ m }: { m: MemberPerfEntry }) {
+  const trendLabel = m.trendClassification === 'improving'
+    ? '↑ Improving' : m.trendClassification === 'declining'
+    ? '↓ Declining' : '→ Stable'
+  const trendColor = m.trendClassification === 'improving'
+    ? '#45A870' : m.trendClassification === 'declining'
+    ? '#D94F4F' : '#8C94A6'
+
+  const cells: { label: string; value: string | number; accent?: string }[] = [
+    { label: 'Monthly Avg',  value: m.monthlyAvgScore,
+      accent: m.monthlyAvgScore >= 70 ? '#45A870' : m.monthlyAvgScore >= 50 ? '#E8A030' : '#D94F4F' },
+    { label: 'Submitted',    value: `${m.submittedDays}d` },
+    { label: 'Missed',       value: `${m.missedDays}d`,   accent: m.missedDays  > 0 ? '#D94F4F' : undefined },
+    { label: 'Low Score',    value: `${m.lowScoreDays}d`, accent: m.lowScoreDays >= 3 ? '#D94F4F' : m.lowScoreDays > 0 ? '#E8A030' : undefined },
+    { label: 'Trend',        value: trendLabel,            accent: trendColor },
+  ]
+
+  return (
+    <div style={{
+      background: '#F8F9FB', borderRadius: 7, padding: '6px 8px',
+      display: 'flex', gap: 0,
+    }}>
+      {cells.map((c, i) => (
+        <div key={c.label} style={{
+          flex: '1 1 0', textAlign: 'center',
+          borderRight: i < cells.length - 1 ? '1px solid #E8EAF0' : 'none',
+          padding: '3px 4px',
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: c.accent ?? '#111318', lineHeight: 1.2 }}>{c.value}</div>
+          <div style={{ fontSize: 9, color: '#A0A9BE', marginTop: 2, whiteSpace: 'nowrap' }}>{c.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Member card ──────────────────────────────────────────────────────────────
 function MemberCard({ m, onViewProfile }: { m: MemberPerfEntry; onViewProfile: (id: string) => void }) {
   const color = ratingColor(m.rating)
   const trendColor = TREND_COLORS[m.trendClassification]
+  const needsAttention = m.monthlyAvgScore < 70 || m.missedDays > 0 || m.lowScoreDays >= 3
 
   return (
     <div style={{
       background: '#fff', border: '1px solid #EEF0F4',
-      borderRadius: 10, padding: '16px 18px',
-      display: 'flex', flexDirection: 'column', gap: 12,
+      borderRadius: 10, padding: '14px 16px',
+      display: 'flex', flexDirection: 'column', gap: 10,
       borderLeft: `3px solid ${color}`,
     }}>
       {/* Header: name + score */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#111318' }}>{m.userName}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#111318' }}>{m.userName}</div>
+            {needsAttention && <NeedsAttentionBadge />}
+          </div>
           <div style={{ fontSize: 11, color: '#8C94A6', marginTop: 2 }}>
             {m.team}{m.position ? ` · ${m.position}` : ''}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <BreakdownMini breakdown={m.breakdown} />
-          <ScorePill score={m.score} rating={m.rating} />
+          <ScorePill score={m.score} rating={m.rating} breakdown={m.breakdown} weekOverWeekDelta={m.weekOverWeekDelta} />
         </div>
       </div>
 
+      {/* Performance Health Summary */}
+      <HealthSummaryRow m={m} />
+
       {/* Key metrics grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
         {[
-          { label: 'Completed', value: m.completedThisWeek, sub: 'this week',    accent: m.completedThisWeek > 0 ? '#45A870' : undefined },
-          { label: 'Active',    value: m.activeTasks,       sub: 'tasks'                                                                   },
-          { label: 'Overdue',   value: m.overdueCount,      sub: 'tasks',        accent: m.overdueCount > 0 ? '#D94F4F' : undefined        },
-          { label: 'Stale Blk', value: m.staleBlockedCount, sub: '>2 days',      accent: m.staleBlockedCount > 0 ? '#D94F4F' : undefined   },
+          { label: 'Completed', value: m.completedThisWeek, sub: '30 days',  accent: m.completedThisWeek > 0 ? '#45A870' : undefined },
+          { label: 'Active',    value: m.activeTasks,       sub: 'tasks'                                                              },
+          { label: 'Overdue',   value: m.overdueCount,      sub: 'tasks',    accent: m.overdueCount > 0 ? '#D94F4F' : undefined       },
+          { label: 'Stale Blk', value: m.staleBlockedCount, sub: '>2 days',  accent: m.staleBlockedCount > 0 ? '#D94F4F' : undefined  },
         ].map(({ label, value, sub, accent }) => (
           <div key={label} style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: accent ?? '#111318' }}>{value}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: accent ?? '#111318', lineHeight: 1.2 }}>{value}</div>
             <div style={{ fontSize: 10, color: '#8C94A6', marginTop: 1 }}>{label}</div>
             <div style={{ fontSize: 9, color: '#A0A9BE' }}>{sub}</div>
           </div>
@@ -684,7 +783,7 @@ export default function TeamPerformancePage() {
 
       // Single batch call — replaces N individual /api/performance-metrics calls
       try {
-        const res = await fetch('/api/performance-metrics/team?period=daily', {
+        const res = await fetch('/api/performance-metrics/team?period=monthly', {
           headers: { Authorization: `Bearer ${token}` },
         })
         const data = await res.json()

@@ -300,6 +300,13 @@ export async function GET(req: NextRequest) {
       0
     )
 
+    // Monthly health stats (derived from trendDays, no extra DB queries)
+    const submittedDays   = trendDays.filter(d => d.inputs.hasEodLog).length
+    const pendingDays     = userEodDates.has(today) ? 0 : 1
+    const missedDays      = trendDays.length - submittedDays - pendingDays
+    const lowScoreDays    = trendDays.filter(d => d.score < 60).length
+    const monthlyAvgScore = Math.round(trendDays.reduce((s, d) => s + d.score, 0) / trendDays.length)
+
     members.push({
       userId:   uid,
       userName: user.full_name,
@@ -320,6 +327,11 @@ export async function GET(req: NextRequest) {
       updatesCount,
       latestAchievement:  eodTodayByUser.get(uid)?.summary    ?? null,
       latestHighlight:    eodTodayByUser.get(uid)?.highlights ?? null,
+      monthlyAvgScore,
+      submittedDays,
+      missedDays,
+      pendingDays,
+      lowScoreDays,
     })
   }
 
