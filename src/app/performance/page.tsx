@@ -458,6 +458,268 @@ function EodLogForm({ existing, token, onSaved }: {
   )
 }
 
+// ─── Day Score Modal ──────────────────────────────────────────────────────────
+type SelectedDay = {
+  date:     string
+  trendDay: import('@/lib/types').TrendDay | undefined
+  status:   DayStatus
+}
+
+function DayScoreModal({ day, onClose }: { day: SelectedDay; onClose: () => void }) {
+  const { date, trendDay, status } = day
+
+  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'short',
+  })
+
+  const hasFullData = !!trendDay
+
+  // ── Scoring thresholds (0-100 scale) ──────────────────────────────────────
+  const totalScore = hasFullData
+    ? trendDay!.breakdown.total
+    : status === 'submitted' ? 12 : status === 'missed' ? -12 : 0
+
+  const performanceLabel =
+    totalScore >= 80 ? 'Excellent Performance' :
+    totalScore >= 60 ? 'Good Performance'      :
+    totalScore >= 40 ? 'Average Performance'   :
+                       'Needs Improvement'
+
+  const scoreColor =
+    totalScore >= 60 ? '#45A870' :
+    totalScore >= 40 ? '#E8A030' :
+                       '#D94F4F'
+
+  const scoreDisplayLabel = hasFullData
+    ? `${totalScore}/100`
+    : (status === 'submitted' ? '+12 pts' : status === 'missed' ? '−12 pts' : '—')
+
+  // ── Build coaching content from real data only ─────────────────────────────
+  const positives: string[] = []
+  const negatives: string[] = []
+  const improvements: string[] = []
+
+  if (hasFullData) {
+    const { breakdown, inputs } = trendDay!
+    const totalCompleted = inputs.completedHigh + inputs.completedMedium + inputs.completedLow
+
+    // What went well
+    if (inputs.hasEodLog)
+      positives.push(`EOD log submitted on time (+12 discipline points)`)
+    if (inputs.completedHigh > 0)
+      positives.push(`Completed ${inputs.completedHigh} high-priority task${inputs.completedHigh > 1 ? 's' : ''} (+${inputs.completedHigh * 22} output points)`)
+    if (inputs.completedMedium > 0)
+      positives.push(`Completed ${inputs.completedMedium} medium-priority task${inputs.completedMedium > 1 ? 's' : ''} (+${inputs.completedMedium * 15} output points)`)
+    if (inputs.completedLow > 0)
+      positives.push(`Completed ${inputs.completedLow} low-priority task${inputs.completedLow > 1 ? 's' : ''} (+${inputs.completedLow * 8} output points)`)
+    if (inputs.statusUpdates > 0)
+      positives.push(`Updated tasks ${inputs.statusUpdates} time${inputs.statusUpdates > 1 ? 's' : ''} during the day (+${Math.min(inputs.statusUpdates * 4, 16)} momentum points)`)
+    if (breakdown.risk === 0)
+      positives.push('No overdue or blocked tasks — clean risk score')
+
+    // What reduced the score
+    if (!inputs.hasEodLog)
+      negatives.push('EOD log was not submitted — missed +12 discipline points')
+    if (totalCompleted === 0)
+      negatives.push('No tasks completed — task output was lower than expected')
+    else if (inputs.completedHigh === 0)
+      negatives.push('No high-priority task completed — output could be higher')
+    if (inputs.statusUpdates === 0)
+      negatives.push('No task status updates — momentum points were not earned')
+    if (breakdown.risk < 0)
+      negatives.push(`Risk points reduced your total score (overdue or stale blocked tasks)`)
+
+    // How to improve tomorrow
+    if (!inputs.hasEodLog)
+      improvements.push('Submit your EOD log before you close your laptop — it only takes 2 minutes')
+    if (totalCompleted === 0)
+      improvements.push('Complete at least one task tomorrow to earn output points')
+    if (inputs.completedHigh === 0 && totalCompleted > 0)
+      improvements.push('Try to complete at least one high-priority task for a stronger output score')
+    if (inputs.statusUpdates === 0)
+      improvements.push('Post a quick status update on active tasks during the day')
+    if (breakdown.risk < 0)
+      improvements.push('Clear overdue tasks or add an update on blocked tasks to remove risk penalties')
+    if (improvements.length === 0 && totalScore < 80)
+      improvements.push('Keep your current habits and aim to complete one more task each day')
+
+    // One-line context sentence (used below the score card)
+  } else {
+    // EOD-only fallback (last month — no trend data available)
+    if (status === 'submitted') {
+      positives.push('EOD log submitted — discipline points recorded')
+      improvements.push('Full score data is only available for the current month')
+    } else if (status === 'missed') {
+      negatives.push('EOD log was not submitted for this day')
+      improvements.push('Submit your EOD log every day before you finish work')
+    } else {
+      positives.push('Day is still in progress — EOD log not yet required')
+    }
+  }
+
+  // Band-based coaching sentence
+  const coachingMessage = hasFullData
+    ? (totalScore >= 80
+        ? 'You had a strong day with good task completion, consistency, and updates. Keep this momentum going.'
+        : totalScore >= 60
+        ? 'You had a productive day and maintained good work habits. A little more output could push you higher.'
+        : totalScore >= 40
+        ? 'You earned points through consistency and updates, but task output could be stronger.'
+        : 'Several scoring opportunities were missed. Focus on completing tasks and submitting updates consistently.')
+    : null
+
+  // Target gap line
+  const targetGapMessage = (() => {
+    if (!hasFullData) return null
+    if (totalScore >= 80) return 'Excellent performance achieved.'
+    const nextThreshold = totalScore >= 60 ? 80 : totalScore >= 40 ? 60 : 40
+    const nextLabel     = totalScore >= 60 ? 'Excellent Performance' : totalScore >= 40 ? 'Good Performance' : 'Average Performance'
+    return `${nextThreshold - totalScore} more points needed to reach ${nextLabel}.`
+  })()
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(2px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#fff', borderRadius: 14, padding: '24px',
+          width: '100%', maxWidth: 420,
+          maxHeight: '90vh', overflowY: 'auto',
+          display: 'flex', flexDirection: 'column', gap: 20,
+          boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#111318' }}>
+            Score Breakdown — {dateLabel}
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: '#F4F5F7', border: 'none', borderRadius: 7,
+              width: 28, height: 28, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14, color: '#6B7384',
+            }}
+          >✕</button>
+        </div>
+
+        {/* Score card */}
+        <div style={{
+          background: scoreColor + '10', border: `1px solid ${scoreColor}28`,
+          borderRadius: 12, padding: '18px 20px',
+          display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <div style={{ fontSize: 36, fontWeight: 800, color: scoreColor, lineHeight: 1 }}>
+              {scoreDisplayLabel}
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: scoreColor }}>
+              {performanceLabel}
+            </div>
+          </div>
+          {targetGapMessage && (
+            <div style={{ fontSize: 12, color: '#6B7384', lineHeight: 1.5, marginTop: 2 }}>
+              {targetGapMessage}
+            </div>
+          )}
+          {coachingMessage && (
+            <div style={{ fontSize: 12.5, color: '#4A5261', lineHeight: 1.6, marginTop: 4, paddingTop: 10, borderTop: '1px solid ' + scoreColor + '20' }}>
+              {coachingMessage}
+            </div>
+          )}
+        </div>
+
+        {/* What went well */}
+        {positives.length > 0 && (
+          <div>
+            <div style={{
+              fontSize: 11, fontWeight: 700, color: '#45A870',
+              textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10,
+            }}>
+              What went well
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {positives.map((text, i) => (
+                <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, color: '#45A870',
+                    background: '#45A87018', borderRadius: 4,
+                    padding: '1px 5px', flexShrink: 0, marginTop: 1,
+                  }}>✓</span>
+                  <span style={{ fontSize: 13, color: '#3D4455', lineHeight: 1.5 }}>{text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* What reduced your score */}
+        {negatives.length > 0 && (
+          <div>
+            <div style={{
+              fontSize: 11, fontWeight: 700, color: '#D94F4F',
+              textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10,
+            }}>
+              What reduced your score
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {negatives.map((text, i) => (
+                <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, color: '#D94F4F',
+                    background: '#D94F4F12', borderRadius: 4,
+                    padding: '1px 5px', flexShrink: 0, marginTop: 1,
+                  }}>✗</span>
+                  <span style={{ fontSize: 13, color: '#3D4455', lineHeight: 1.5 }}>{text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* To Reach The Next Level */}
+        {improvements.length > 0 && (
+          <div style={{
+            background: '#F0F4FF', border: '1px solid #D0DAFF',
+            borderRadius: 10, padding: '14px 16px',
+          }}>
+            <div style={{
+              fontSize: 11, fontWeight: 700, color: '#5585E8',
+              textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10,
+            }}>
+              To Reach The Next Level
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {improvements.slice(0, 3).map((text, i) => (
+                <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+                  <span style={{ color: '#5585E8', fontSize: 13, flexShrink: 0, marginTop: 1 }}>›</span>
+                  <span style={{ fontSize: 13, color: '#3D4455', lineHeight: 1.5 }}>{text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {positives.length === 0 && negatives.length === 0 && (
+          <div style={{ textAlign: 'center', color: '#8C94A6', fontSize: 12.5, padding: '8px 0' }}>
+            No detailed breakdown available for this day.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Monthly EOD View ─────────────────────────────────────────────────────────
 const ROLLOUT_DATE = '2026-06-08'
 
@@ -559,9 +821,16 @@ function MonthlyView({ token, which, perfData }: {
   which: 'current' | 'last'
   perfData: PerformanceData | null
 }) {
-  const [logs,     setLogs]     = useState<EodLogRow[]>([])
-  const [fetching, setFetching] = useState(true)
+  const [logs,        setLogs]        = useState<EodLogRow[]>([])
+  const [fetching,    setFetching]    = useState(true)
+  const [selectedDay, setSelectedDay] = useState<SelectedDay | null>(null)
   const range = useMemo(() => getMonthRange(which), [which])
+
+  const trendMap = useMemo(() => {
+    const map = new Map<string, TrendDay>()
+    if (perfData?.trend) for (const d of perfData.trend) map.set(d.date, d)
+    return map
+  }, [perfData])
 
   useEffect(() => {
     if (!token || range.noData) { setFetching(false); return }
@@ -684,7 +953,7 @@ function MonthlyView({ token, which, perfData }: {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: '#F8F9FB', borderBottom: '1px solid #EEF0F4' }}>
-                {['Date', 'Key Work Done', 'Rating', 'Status', 'Points', 'Reason'].map(h => (
+                {['Date', 'Key Work Done', 'Rating', 'Status', 'Total Score', 'Reason'].map(h => (
                   <th key={h} style={{
                     padding: '8px 12px', textAlign: 'left',
                     fontSize: 10, fontWeight: 600, color: '#8C94A6',
@@ -711,14 +980,21 @@ function MonthlyView({ token, which, perfData }: {
                   status === 'submitted' ? 'Submitted' :
                   status === 'pending'   ? 'Pending'   :
                                           'Missed'
-                const pointsLabel =
-                  status === 'submitted' ? '+12' :
-                  status === 'pending'   ? '—'   :
-                                          '−12'
                 const reasonText =
                   status === 'submitted' ? 'Logged work and earned discipline points' :
                   status === 'pending'   ? 'Day still in progress'                   :
                                           'EOD log was not submitted before day close'
+                const trendDay   = trendMap.get(date)
+                const totalScore = trendDay
+                  ? trendDay.breakdown.total
+                  : status === 'submitted' ? 12 : status === 'missed' ? -12 : null
+                const scoreDisplayLabel = trendDay
+                  ? `${totalScore}`
+                  : totalScore === null ? '—' : totalScore > 0 ? `+${totalScore}` : `${totalScore}`
+                const scoreColor2 = trendDay
+                  ? (totalScore! >= 58 ? '#45A870' : totalScore! >= 38 ? '#E8A030' : '#D94F4F')
+                  : (status === 'submitted' ? '#45A870' : status === 'missed' ? '#D94F4F' : '#8C94A6')
+
                 return (
                   <tr key={date} style={{ borderBottom: '1px solid #F4F5F7' }}>
                     <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#6B7384', fontSize: 12 }}>{dateLabel}</td>
@@ -736,10 +1012,20 @@ function MonthlyView({ token, which, perfData }: {
                         padding: '2px 8px', borderRadius: 5,
                       }}>{statusLabel}</span>
                     </td>
-                    <td style={{
-                      padding: '8px 12px', fontWeight: 600, whiteSpace: 'nowrap',
-                      color: status === 'submitted' ? '#45A870' : status === 'missed' ? '#D94F4F' : '#8C94A6',
-                    }}>{pointsLabel}</td>
+                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                      <button
+                        onClick={() => setSelectedDay({ date, trendDay, status })}
+                        title="Click to see score breakdown"
+                        style={{
+                          fontSize: 12, fontWeight: 700,
+                          color: scoreColor2, background: scoreColor2 + '15',
+                          border: `1px solid ${scoreColor2}35`,
+                          padding: '3px 10px', borderRadius: 6,
+                          cursor: 'pointer', whiteSpace: 'nowrap',
+                          fontFamily: 'inherit',
+                        }}
+                      >{scoreDisplayLabel}</button>
+                    </td>
                     <td style={{
                       padding: '8px 12px', fontSize: 11,
                       color: status === 'submitted' ? '#45A870' : status === 'pending' ? '#E8A030' : '#8C94A6',
@@ -761,6 +1047,10 @@ function MonthlyView({ token, which, perfData }: {
         riskPts={riskPts}
         momentumScore={momentumScore}
       />
+
+      {selectedDay && (
+        <DayScoreModal day={selectedDay} onClose={() => setSelectedDay(null)} />
+      )}
     </div>
   )
 }
