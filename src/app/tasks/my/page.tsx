@@ -1038,7 +1038,7 @@ export default function MyTasksPage() {
       fetch('/api/notify-status-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: selectedTask.id, taskTitle: selectedTask.title, createdBy: selectedTask.created_by, title: 'Task acknowledged' }),
+        body: JSON.stringify({ taskId: selectedTask.id, taskTitle: selectedTask.title, createdBy: selectedTask.created_by, action: 'acknowledged', actorName: profile?.full_name }),
       }).then(res => {
         if (!res.ok) res.json().then(d => console.error('[my-tasks/acknowledge] notification failed:', d))
       }).catch(err => console.error('[my-tasks/acknowledge] notification fetch error:', err))

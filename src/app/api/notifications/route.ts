@@ -51,3 +51,28 @@ export async function GET(req: NextRequest) {
   const unreadCount = notifications.filter(n => !n.is_read).length
   return NextResponse.json({ notifications, unreadCount })
 }
+
+// Deletes ALL notifications for the authenticated user.
+// Scoped strictly to user_id = caller — no other user's rows are touched.
+export async function DELETE(_req: NextRequest) {
+  const authClient = await createClient()
+  const { data: { user } } = await authClient.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('user_id', user.id)
+
+  if (error) {
+    console.error('[notifications/delete-all] failed:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ success: true })
+}
