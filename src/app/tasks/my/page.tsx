@@ -198,7 +198,10 @@ function TaskCard({
       onMouseLeave={() => setHovered(false)}
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'center',
+        display: 'grid',
+        gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(82px, 0.45fr)',
+        columnGap: '14px',
+        alignItems: 'center',
         background: cardBackground,
         border: cardBorder,
         borderRadius: '8px',
@@ -215,7 +218,6 @@ function TaskCard({
     >
       {/* Star indicator */}
       <div style={{
-        width: '28px', flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {task.is_urgent
@@ -224,58 +226,22 @@ function TaskCard({
         }
       </div>
 
-      {/* Title + note — flex:1 so it takes all leftover space */}
-      <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
-          {isSelf && (
-            <span style={{
-              fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px',
-              color: '#5B7FA6', background: 'rgba(91,127,166,0.10)',
-              border: '1px solid rgba(91,127,166,0.20)',
-              whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.03em',
-            }}>SELF</span>
-          )}
-          <span style={{
-            fontSize: '13px',
-            fontWeight: task.is_urgent ? 600 : 500,
-            color: titleColor,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            textDecoration: completed ? 'line-through' : 'none',
-            letterSpacing: '-0.01em',
-          }}>
-            {task.title}
-          </span>
-        </div>
-        {task.note && (
-          <div style={{
-            fontSize: '11px', color: colors.muted,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            marginTop: '2px',
-          }}>
-            {task.note}
-          </div>
-        )}
-        {(() => {
-          const aging = getTaskAging(task)
-          if (!aging) return null
-          const color = aging.severity === 'danger' ? '#D94F4F' : '#E8A030'
-          return (
-            <span style={{
-              display: 'inline-block', marginTop: '3px',
-              fontSize: '10px', fontWeight: 700,
-              color, background: `${color}12`,
-              border: `1px solid ${color}30`,
-              padding: '1px 6px', borderRadius: '4px',
-            }}>
-              {aging.label}
-            </span>
-          )
-        })()}
+      {/* Title */}
+      <div style={{ minWidth: 0, padding: '0 8px 0 0', display: 'flex', alignItems: 'center' }}>
+        <span style={{
+          fontSize: '13px',
+          fontWeight: task.is_urgent ? 600 : 500,
+          color: titleColor,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          textDecoration: completed ? 'line-through' : 'none',
+          letterSpacing: '-0.01em',
+        }}>
+          {task.title}
+        </span>
       </div>
 
-      {/* Assigned by — fixed 130px */}
+      {/* Assigned by */}
       <div style={{
-        flexShrink: 0, width: '130px',
         display: 'flex', alignItems: 'center',
         paddingLeft: '8px', paddingRight: '6px',
         overflow: 'hidden',
@@ -298,9 +264,8 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Due Date — fixed 100px */}
+      {/* Due Date */}
       <div style={{
-        flexShrink: 0, width: '100px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {task.due_date ? (() => {
@@ -316,9 +281,8 @@ function TaskCard({
         )}
       </div>
 
-      {/* Priority — fixed 56px */}
+      {/* Priority */}
       <div style={{
-        flexShrink: 0, width: '56px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
@@ -326,9 +290,8 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Status — fixed 90px */}
+      {/* Status */}
       <div style={{
-        flexShrink: 0, width: '90px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '10px', padding: '3px 9px', textTransform: 'capitalize', fontWeight: 600 }}>
@@ -336,9 +299,8 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Actions — fixed 84px */}
+      {/* Actions */}
       <div style={{
-        flexShrink: 0, width: '84px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         gap: '2px',
       }}>
@@ -1360,7 +1322,9 @@ export default function MyTasksPage() {
                   sub: 'Past due tasks',
                   count: activeTasks.filter(t => { const d = normalizeDueDate(t.due_date); return !!d && d < TODAY_STR }).length,
                   activeColor: '#D94F4F',
-                  activeBg: 'rgba(217,79,79,0.07)',
+                  idleBg: 'rgba(217,79,79,0.03)',
+                  idleBorder: 'rgba(217,79,79,0.14)',
+                  activeBg: 'rgba(217,79,79,0.08)',
                   activeBorder: 'rgba(217,79,79,0.35)',
                 },
                 {
@@ -1369,7 +1333,9 @@ export default function MyTasksPage() {
                   sub: 'Due today',
                   count: activeTasks.filter(t => normalizeDueDate(t.due_date) === TODAY_STR).length,
                   activeColor: '#E8A030',
-                  activeBg: 'rgba(232,160,48,0.07)',
+                  idleBg: 'rgba(232,160,48,0.03)',
+                  idleBorder: 'rgba(232,160,48,0.18)',
+                  activeBg: 'rgba(232,160,48,0.08)',
                   activeBorder: 'rgba(232,160,48,0.40)',
                 },
                 {
@@ -1378,14 +1344,16 @@ export default function MyTasksPage() {
                   sub: 'Due tomorrow',
                   count: activeTasks.filter(t => normalizeDueDate(t.due_date) === TOMORROW_STR).length,
                   activeColor: '#5B7FA6',
-                  activeBg: 'rgba(91,127,166,0.07)',
+                  idleBg: 'rgba(91,127,166,0.03)',
+                  idleBorder: 'rgba(91,127,166,0.14)',
+                  activeBg: 'rgba(91,127,166,0.08)',
                   activeBorder: 'rgba(91,127,166,0.35)',
                 },
               ]
               return (
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+                  display: 'flex',
+                  flexDirection: isMobile ? 'column' : 'row',
                   gap: '10px',
                   padding: '14px 24px 0',
                 }}>
@@ -1396,29 +1364,32 @@ export default function MyTasksPage() {
                         key={card.key}
                         onClick={() => setFocusFilter(isActive ? null : card.key)}
                         style={{
-                          display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                          gap: '2px', padding: '10px 14px',
+                          display: 'flex', flexDirection: 'row', alignItems: 'center',
+                          gap: '10px', padding: '7px 14px',
+                          width: isMobile ? '100%' : '220px', flexShrink: 0,
                           borderRadius: '10px', cursor: 'pointer', outline: 'none',
-                          border: `1.5px solid ${isActive ? card.activeBorder : colors.border}`,
-                          background: isActive ? card.activeBg : colors.raised,
+                          border: `1.5px solid ${isActive ? card.activeBorder : card.idleBorder}`,
+                          background: isActive ? card.activeBg : card.idleBg,
                           transition: 'all 0.14s', textAlign: 'left',
                         }}
                       >
                         <span style={{
-                          fontSize: '18px', fontWeight: 700, lineHeight: 1,
+                          fontSize: '20px', fontWeight: 700, lineHeight: 1, flexShrink: 0,
                           color: card.count > 0 || isActive ? card.activeColor : colors.muted,
                         }}>
                           {card.count}
                         </span>
-                        <span style={{
-                          fontSize: '11.5px', fontWeight: 600,
-                          color: isActive ? card.activeColor : colors.primary,
-                        }}>
-                          {card.label}
-                        </span>
-                        <span style={{ fontSize: '10px', color: colors.muted }}>
-                          {card.sub}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
+                          <span style={{
+                            fontSize: '11.5px', fontWeight: 600, whiteSpace: 'nowrap',
+                            color: isActive ? card.activeColor : colors.primary,
+                          }}>
+                            {card.label}
+                          </span>
+                          <span style={{ fontSize: '10px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                            {card.sub}
+                          </span>
+                        </div>
                       </button>
                     )
                   })}
@@ -1495,7 +1466,10 @@ export default function MyTasksPage() {
             {/* Table header — desktop only */}
             {!isMobile && (
               <div style={{
-                display: 'flex', alignItems: 'center',
+                display: 'grid',
+                gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(82px, 0.45fr)',
+        columnGap: '14px',
+                alignItems: 'center',
                 margin: '8px 24px 0',
                 padding: '8px 0',
                 borderRadius: '10px',
@@ -1505,13 +1479,13 @@ export default function MyTasksPage() {
                 textTransform: 'uppercase', letterSpacing: '0.07em',
                 color: colors.muted,
               }}>
-                <div style={{ width: '28px', flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>Task</div>
-                <div style={{ flexShrink: 0, width: '130px', paddingLeft: '8px' }}>Assigned By</div>
-                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Due Date</div>
-                <div style={{ flexShrink: 0, width: '56px', textAlign: 'center' }}>Priority</div>
-                <div style={{ flexShrink: 0, width: '90px', textAlign: 'center' }}>Status</div>
-                <div style={{ flexShrink: 0, width: '84px', textAlign: 'center' }}>Action</div>
+                <div />
+                <div style={{ paddingRight: '8px' }}>Task</div>
+                <div style={{ paddingLeft: '8px' }}>Assigned By</div>
+                <div style={{ textAlign: 'center' }}>Due Date</div>
+                <div style={{ textAlign: 'center' }}>Priority</div>
+                <div style={{ textAlign: 'center' }}>Status</div>
+                <div style={{ textAlign: 'center' }}>Action</div>
               </div>
             )}
 
