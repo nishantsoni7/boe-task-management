@@ -1085,7 +1085,6 @@ function MonthlyView({ token, which, perfData, viewAsUserId }: {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 type Tab       = 'today' | 'current_month' | 'last_month'
-type ApiPeriod = 'daily' | 'weekly' | 'monthly'
 
 const TAB_LABELS: Record<Tab, string> = {
   today:         'Today',
@@ -1093,19 +1092,15 @@ const TAB_LABELS: Record<Tab, string> = {
   last_month:    'Last Month',
 }
 
-function tabToApiPeriod(tab: Tab): ApiPeriod {
-  if (tab === 'current_month') return 'monthly'
-  return 'daily'
-}
-
 export default function PerformancePage() {
-  const [profile,      setProfile]      = useState<UserProfile | null>(null)
-  const [token,        setToken]        = useState('')
-  const [tab,          setTab]          = useState<Tab>('today')
-  const [perfData,     setPerfData]     = useState<PerformanceData | null>(null)
-  const [loading,      setLoading]      = useState(true)
-  const [perfLoading,  setPerfLoading]  = useState(false)
-  const [audit,        setAudit]        = useState<PerformanceAudit | null>(null)
+  const [profile,          setProfile]          = useState<UserProfile | null>(null)
+  const [token,            setToken]            = useState('')
+  const [tab,              setTab]              = useState<Tab>('today')
+  const [perfTodayData,    setPerfTodayData]    = useState<PerformanceData | null>(null)
+  const [perfTodayLoading, setPerfTodayLoading] = useState(false)
+  const [trendLoading,     setTrendLoading]     = useState(false)
+  const [loading,          setLoading]          = useState(true)
+  const [audit,            setAudit]            = useState<PerformanceAudit | null>(null)
   const perfCacheRef = useRef<Record<string, PerformanceData>>({})
   const [auditLoading, setAuditLoading] = useState(false)
   const [progress,     setProgress]     = useState(0)
@@ -1138,17 +1133,18 @@ export default function PerformancePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, router, viewAsUserId])
 
-  const fetchPerf = useCallback(async (apiPeriod: ApiPeriod, t: string, bustCache = false) => {
+  // ── Fetch today's score only (fast path, 8 queries) ─────────────────────────
+  const fetchToday = useCallback(async (t: string, bustCache = false) => {
     if (!t) return
-    const cacheKey = `${viewAsUserId ?? 'self'}:${apiPeriod}`
+    const cacheKey = `${viewAsUserId ?? 'self'}:today`
     if (!bustCache && perfCacheRef.current[cacheKey]) {
-      setPerfData(perfCacheRef.current[cacheKey])
+      setPerfTodayData(perfCacheRef.current[cacheKey])
       return
     }
-    setPerfLoading(true)
+    setPerfTodayLoading(true)
     setAudit(null)
     try {
-      const params = new URLSearchParams({ period: apiPeriod })
+      const params = new URLSearchParams({ period: 'today' })
       if (viewAsUserId) params.set('userId', viewAsUserId)
       const res = await fetch(`/api/performance-metrics?${params.toString()}`, {
         headers: { Authorization: `Bearer ${t}` },
@@ -1156,23 +1152,41 @@ export default function PerformancePage() {
       if (res.ok) {
         const data = await res.json()
         perfCacheRef.current[cacheKey] = data
-        setPerfData(data)
+        setPerfTodayData(data)
       }
     } finally {
-      setPerfLoading(false)
+      setPerfTodayLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewAsUserId])
 
+  // ── Fetch 7-day trend silently after today's data renders ────────────────────
+  const fetchTrend = useCallback(async (t: string) => {
+    if (!t) return
+    setTrendLoading(true)
+    try {
+      const params = new URLSearchParams({ period: 'daily' })
+      if (viewAsUserId) params.set('userId', viewAsUserId)
+      const res = await fetch(`/api/performance-metrics?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${t}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        perfCacheRef.current[`${viewAsUserId ?? 'self'}:daily`] = data
+        // Merge trend into today data; preserve today's already-displayed fields
+        setPerfTodayData(prev => prev ? { ...prev, trend: data.trend, trendAnalysis: data.trendAnalysis } : prev)
+      }
+    } finally {
+      setTrendLoading(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewAsUserId])
+
+  // On token ready: load today first, then silently fetch trend
   useEffect(() => {
     if (!token) return
-    if (tab === 'last_month') {
-      // Last month tab doesn't call the perf metrics API
-      setPerfData(null)
-      return
-    }
-    fetchPerf(tabToApiPeriod(tab), token)
-  }, [tab, token, fetchPerf])
+    fetchToday(token).then(() => fetchTrend(token))
+  }, [token, fetchToday, fetchTrend])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1182,7 +1196,7 @@ export default function PerformancePage() {
   }, [])
 
   const runAudit = async () => {
-    if (!perfData || !token) return
+    if (!perfTodayData || !token) return
     setAuditLoading(true)
     try {
       const res = await fetch('/api/performance-audit', {
@@ -1190,13 +1204,13 @@ export default function PerformancePage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           period:        'daily',
-          inputs:        perfData.inputs,
-          breakdown:     perfData.breakdown,
-          trend:         perfData.trend,
-          trendAnalysis: perfData.trendAnalysis,
-          userName:      perfData.userName,
-          score:         perfData.score,
-          rating:        perfData.rating,
+          inputs:        perfTodayData.inputs,
+          breakdown:     perfTodayData.breakdown,
+          trend:         perfTodayData.trend,
+          trendAnalysis: perfTodayData.trendAnalysis,
+          userName:      perfTodayData.userName,
+          score:         perfTodayData.score,
+          rating:        perfTodayData.rating,
         }),
       })
       if (res.ok) setAudit((await res.json()).audit)
@@ -1206,23 +1220,22 @@ export default function PerformancePage() {
   }
 
   const handleEodSaved = (log: { summary: string; self_score: number | null }) => {
-    // Optimistically update local perfData so the Discipline card reflects the save
-    // immediately without blanking the page via perfLoading.
-    setPerfData(prev => {
+    // Optimistically update so the Discipline card reflects the save immediately
+    setPerfTodayData(prev => {
       if (!prev) return prev
       const alreadyHad = prev.inputs.hasEodLog
       const newDiscipline = alreadyHad ? prev.breakdown.discipline : Math.min(prev.breakdown.discipline + 12, 20)
       return {
         ...prev,
-        eodLog: { ...( prev.eodLog ?? { id: '', user_id: '', log_date: '', blockers: null, created_at: '', updated_at: '' }), summary: log.summary, highlights: null, self_score: log.self_score },
+        eodLog: { ...(prev.eodLog ?? { id: '', user_id: '', log_date: '', blockers: null, created_at: '', updated_at: '' }), summary: log.summary, highlights: null, self_score: log.self_score },
         inputs: { ...prev.inputs, hasEodLog: true },
         breakdown: { ...prev.breakdown, discipline: newDiscipline },
       }
     })
-    // Silent background refetch to get the accurate server-computed score
-    delete perfCacheRef.current[`${viewAsUserId ?? 'self'}:daily`]
+    // Silent refetch of today's score for accuracy (period=today, 8 queries)
+    delete perfCacheRef.current[`${viewAsUserId ?? 'self'}:today`]
     if (token) {
-      const params = new URLSearchParams({ period: 'daily' })
+      const params = new URLSearchParams({ period: 'today' })
       if (viewAsUserId) params.set('userId', viewAsUserId)
       fetch(`/api/performance-metrics?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -1230,15 +1243,20 @@ export default function PerformancePage() {
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (data) {
-            perfCacheRef.current[`${viewAsUserId ?? 'self'}:daily`] = data
-            setPerfData(data)
+            perfCacheRef.current[`${viewAsUserId ?? 'self'}:today`] = data
+            // Preserve trend data already loaded into state
+            setPerfTodayData(prev => prev ? {
+              ...data,
+              trend:         prev.trend?.length        ? prev.trend        : data.trend,
+              trendAnalysis: prev.trendAnalysis?.classification !== 'insufficient_data' ? prev.trendAnalysis : data.trendAnalysis,
+            } : data)
           }
         })
-        .catch(() => { /* silent — optimistic update already applied */ })
+        .catch(() => { /* optimistic update already applied */ })
     }
   }
 
-  const dataReady = !loading && !perfLoading
+  const dataReady = !loading && !perfTodayLoading
   useEffect(() => {
     if (!showLoader) return
     if (dataReady) {
@@ -1295,9 +1313,9 @@ export default function PerformancePage() {
 
         {/* ── TODAY TAB ── */}
         {tab === 'today' && (
-          perfLoading ? (
+          perfTodayLoading ? (
             <div style={{ textAlign: 'center', padding: '60px 0', color: '#8C94A6', fontSize: 13 }}>Loading…</div>
-          ) : perfData ? (
+          ) : perfTodayData ? (
             <div style={{
               display: 'grid',
               gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr',
@@ -1313,19 +1331,19 @@ export default function PerformancePage() {
                     padding: '20px 10px',
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
                   }}>
-                    <ScoreRing score={perfData.score} rating={perfData.rating} />
-                    {perfData.trendAnalysis.classification !== 'insufficient_data' && (
+                    <ScoreRing score={perfTodayData.score} rating={perfTodayData.rating} />
+                    {perfTodayData.trendAnalysis.classification !== 'insufficient_data' && (
                       <div style={{
                         fontSize: 10, fontWeight: 600,
-                        color: TREND_COLORS[perfData.trendAnalysis.classification],
-                        background: TREND_COLORS[perfData.trendAnalysis.classification] + '15',
+                        color: TREND_COLORS[perfTodayData.trendAnalysis.classification],
+                        background: TREND_COLORS[perfTodayData.trendAnalysis.classification] + '15',
                         padding: '2px 8px', borderRadius: 999,
                         textAlign: 'center', lineHeight: 1.6,
                       }}>
-                        {TREND_ICONS[perfData.trendAnalysis.classification]} {
-                          perfData.trendAnalysis.weekOverWeekDelta !== 0
-                            ? `${perfData.trendAnalysis.weekOverWeekDelta > 0 ? '+' : ''}${perfData.trendAnalysis.weekOverWeekDelta} w/w`
-                            : perfData.trendAnalysis.classification
+                        {TREND_ICONS[perfTodayData.trendAnalysis.classification]} {
+                          perfTodayData.trendAnalysis.weekOverWeekDelta !== 0
+                            ? `${perfTodayData.trendAnalysis.weekOverWeekDelta > 0 ? '+' : ''}${perfTodayData.trendAnalysis.weekOverWeekDelta} w/w`
+                            : perfTodayData.trendAnalysis.classification
                         }
                       </div>
                     )}
@@ -1333,32 +1351,32 @@ export default function PerformancePage() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignContent: 'start' }}>
                     <MetricCard
                       label="Output"
-                      value={`${perfData.breakdown.output}/50`}
-                      sub={`${perfData.inputs.completedHigh + perfData.inputs.completedMedium + perfData.inputs.completedLow} task${perfData.inputs.completedHigh + perfData.inputs.completedMedium + perfData.inputs.completedLow !== 1 ? 's' : ''} completed`}
-                      accent={perfData.breakdown.output >= 30 ? '#45A870' : perfData.breakdown.output >= 15 ? undefined : '#8C94A6'}
+                      value={`${perfTodayData.breakdown.output}/50`}
+                      sub={`${perfTodayData.inputs.completedHigh + perfTodayData.inputs.completedMedium + perfTodayData.inputs.completedLow} task${perfTodayData.inputs.completedHigh + perfTodayData.inputs.completedMedium + perfTodayData.inputs.completedLow !== 1 ? 's' : ''} completed`}
+                      accent={perfTodayData.breakdown.output >= 30 ? '#45A870' : perfTodayData.breakdown.output >= 15 ? undefined : '#8C94A6'}
                     />
                     <MetricCard
                       label="Momentum"
-                      value={`${perfData.breakdown.momentum}/20`}
-                      sub={`${perfData.inputs.statusUpdates} update${perfData.inputs.statusUpdates !== 1 ? 's' : ''}${perfData.inputs.blockerResolutions > 0 ? ` · ${perfData.inputs.blockerResolutions} unblocked` : ''}`}
-                      accent={perfData.breakdown.momentum >= 12 ? '#5585E8' : undefined}
+                      value={`${perfTodayData.breakdown.momentum}/20`}
+                      sub={`${perfTodayData.inputs.statusUpdates} update${perfTodayData.inputs.statusUpdates !== 1 ? 's' : ''}${perfTodayData.inputs.blockerResolutions > 0 ? ` · ${perfTodayData.inputs.blockerResolutions} unblocked` : ''}`}
+                      accent={perfTodayData.breakdown.momentum >= 12 ? '#5585E8' : undefined}
                     />
                     <MetricCard
                       label="Discipline"
-                      value={`${perfData.breakdown.discipline}/20`}
-                      sub={perfData.inputs.hasEodLog ? '✓ EOD log submitted' : 'EOD log missing'}
-                      accent={perfData.inputs.hasEodLog ? '#45A870' : '#D94F4F'}
+                      value={`${perfTodayData.breakdown.discipline}/20`}
+                      sub={perfTodayData.inputs.hasEodLog ? '✓ EOD log submitted' : 'EOD log missing'}
+                      accent={perfTodayData.inputs.hasEodLog ? '#45A870' : '#D94F4F'}
                     />
                     <MetricCard
                       label="Risk"
-                      value={perfData.breakdown.risk === 0 ? '✓ Clean' : `${perfData.breakdown.risk}`}
-                      sub={`${perfData.inputs.overdueCount} overdue · ${perfData.inputs.staleBlockedCount} stale blocks`}
-                      accent={perfData.breakdown.risk < -10 ? '#D94F4F' : perfData.breakdown.risk === 0 ? '#45A870' : undefined}
+                      value={perfTodayData.breakdown.risk === 0 ? '✓ Clean' : `${perfTodayData.breakdown.risk}`}
+                      sub={`${perfTodayData.inputs.overdueCount} overdue · ${perfTodayData.inputs.staleBlockedCount} stale blocks`}
+                      accent={perfTodayData.breakdown.risk < -10 ? '#D94F4F' : perfTodayData.breakdown.risk === 0 ? '#45A870' : undefined}
                     />
                   </div>
                 </div>
 
-                {perfData.inputs.staleBlockedCount > 0 && (
+                {perfTodayData.inputs.staleBlockedCount > 0 && (
                   <div style={{
                     background: '#D94F4F10', border: '1px solid #D94F4F30',
                     borderRadius: 10, padding: '12px 16px',
@@ -1366,7 +1384,7 @@ export default function PerformancePage() {
                   }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#D94F4F', flexShrink: 0 }} />
                     <div style={{ fontSize: 12.5, color: '#3D4455' }}>
-                      <strong>{perfData.inputs.staleBlockedCount} task{perfData.inputs.staleBlockedCount > 1 ? 's have' : ' has'} been blocked for &gt;2 days</strong> — costing {perfData.inputs.staleBlockedCount * 8} pts. Escalate or add an update.
+                      <strong>{perfTodayData.inputs.staleBlockedCount} task{perfTodayData.inputs.staleBlockedCount > 1 ? 's have' : ' has'} been blocked for &gt;2 days</strong> — costing {perfTodayData.inputs.staleBlockedCount * 8} pts. Escalate or add an update.
                     </div>
                   </div>
                 )}
@@ -1375,26 +1393,35 @@ export default function PerformancePage() {
               {/* ROW 1 RIGHT */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <ScoreGuide />
-                <ScoreBreakdownPanel breakdown={perfData.breakdown} />
+                <ScoreBreakdownPanel breakdown={perfTodayData.breakdown} />
               </div>
 
               {/* ROW 2 LEFT: EOD form */}
-              <EodLogForm existing={perfData.eodLog} token={token} onSaved={handleEodSaved} />
+              <EodLogForm existing={perfTodayData.eodLog} token={token} onSaved={handleEodSaved} />
 
-              {/* ROW 2 RIGHT: Trend chart */}
-              {perfData.trend && perfData.trend.length > 0 ? (
+              {/* ROW 2 RIGHT: Trend chart — deferred, arrives after initial render */}
+              {trendLoading ? (
+                <div style={{
+                  background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '18px 20px',
+                  display: 'flex', flexDirection: 'column', gap: 10,
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em' }}>7-Day Trend</div>
+                  <div style={{ height: 80, background: '#F4F5F7', borderRadius: 6, animation: 'pulse 1.4s infinite' }} />
+                  <div style={{ fontSize: 11, color: '#C0C4CE' }}>Loading trend…</div>
+                </div>
+              ) : perfTodayData.trend && perfTodayData.trend.length > 0 ? (
                 <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '18px 20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em' }}>7-Day Trend</div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: TREND_COLORS[perfData.trendAnalysis.classification] }}>
-                      {TREND_ICONS[perfData.trendAnalysis.classification]} {perfData.trendAnalysis.description}
+                    <div style={{ fontSize: 11, fontWeight: 600, color: TREND_COLORS[perfTodayData.trendAnalysis.classification] }}>
+                      {TREND_ICONS[perfTodayData.trendAnalysis.classification]} {perfTodayData.trendAnalysis.description}
                     </div>
                   </div>
-                  <TrendBars trend={perfData.trend} />
+                  <TrendBars trend={perfTodayData.trend} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 11, color: '#8C94A6' }}>
-                    <span>Avg: {Math.round(perfData.trend.reduce((s, d) => s + d.score, 0) / perfData.trend.length)}/100</span>
-                    <span>Best: {Math.max(...perfData.trend.map(d => d.score))}/100</span>
-                    <span>Streak: {perfData.trendAnalysis.streak}d {perfData.trendAnalysis.direction}</span>
+                    <span>Avg: {Math.round(perfTodayData.trend.reduce((s, d) => s + d.score, 0) / perfTodayData.trend.length)}/100</span>
+                    <span>Best: {Math.max(...perfTodayData.trend.map(d => d.score))}/100</span>
+                    <span>Streak: {perfTodayData.trendAnalysis.streak}d {perfTodayData.trendAnalysis.direction}</span>
                   </div>
                 </div>
               ) : <div />}
@@ -1413,11 +1440,7 @@ export default function PerformancePage() {
 
         {/* ── CURRENT MONTH TAB ── */}
         {tab === 'current_month' && token && (
-          perfLoading ? (
-            <div style={{ textAlign: 'center', padding: '60px 0', color: '#8C94A6', fontSize: 13 }}>Loading…</div>
-          ) : (
-            <MonthlyView token={token} which="current" perfData={perfData} viewAsUserId={viewAsUserId} />
-          )
+          <MonthlyView token={token} which="current" perfData={perfTodayData} viewAsUserId={viewAsUserId} />
         )}
 
         {/* ── LAST MONTH TAB ── */}

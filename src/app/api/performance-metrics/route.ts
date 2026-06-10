@@ -49,40 +49,27 @@ async function getCallerProfile(token: string) {
   return data as { id: string; role: string; full_name: string; team: string; position: string | null } | null
 }
 
-// ─── Single-day data fetching ─────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchDayInputs(client: any, userId: string, date: string): Promise<{ inputs: DayInputs; eodLog: null | Record<string, unknown> }> {
-  const dayStart = `${date}T00:00:00.000Z`
-  const dayEnd   = `${date}T23:59:59.999Z`
+// ─── Current-state snapshot (not date-specific) ───────────────────────────────
+// These four metrics reflect the user's task portfolio right now. They are
+// identical regardless of which historical date is being scored, so they are
+// fetched once per request and injected into every fetchDayInputs call.
+type CurrentTaskSnapshot = {
+  overdueCount:      number
+  staleBlockedCount: number
+  blockedCount:      number
+  activeTasks:       number
+}
 
-  // 2-day threshold for stale-blocked detection
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchCurrentTaskSnapshot(client: any, userId: string): Promise<CurrentTaskSnapshot> {
   const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
 
   const [
-    { data: completedTasks },
-    { data: activityToday },
     { count: overdueCount },
     { count: staleBlockedCount },
     { count: blockedCount },
     { count: activeTasks },
-    { data: eodLog },
-    { data: acksToday },
   ] = await Promise.all([
-    // Completed tasks today — need priority for weighting
-    client.from('tasks')
-      .select('id, priority')
-      .eq('assigned_to', userId)
-      .eq('status', 'completed')
-      .gte('completed_at', dayStart)
-      .lte('completed_at', dayEnd),
-
-    // All activity log entries today (status changes, acks)
-    client.from('task_activity_log')
-      .select('action, from_status, task_id, created_at')
-      .eq('actor_id', userId)
-      .gte('created_at', dayStart)
-      .lte('created_at', dayEnd),
-
     // Overdue: not completed and past due date
     client.from('tasks')
       .select('id', { count: 'exact', head: true })
@@ -112,6 +99,42 @@ async function fetchDayInputs(client: any, userId: string, date: string): Promis
       .eq('assigned_to', userId)
       .neq('status', 'completed')
       .eq('is_deleted', false),
+  ])
+
+  return {
+    overdueCount:      overdueCount      ?? 0,
+    staleBlockedCount: staleBlockedCount ?? 0,
+    blockedCount:      blockedCount      ?? 0,
+    activeTasks:       activeTasks       ?? 0,
+  }
+}
+
+// ─── Single-day data fetching ─────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchDayInputs(client: any, userId: string, date: string, snapshot: CurrentTaskSnapshot): Promise<{ inputs: DayInputs; eodLog: null | Record<string, unknown> }> {
+  const dayStart = `${date}T00:00:00.000Z`
+  const dayEnd   = `${date}T23:59:59.999Z`
+
+  const [
+    { data: completedTasks },
+    { data: activityToday },
+    { data: eodLog },
+    { data: acksToday },
+  ] = await Promise.all([
+    // Completed tasks today — need priority for weighting
+    client.from('tasks')
+      .select('id, priority')
+      .eq('assigned_to', userId)
+      .eq('status', 'completed')
+      .gte('completed_at', dayStart)
+      .lte('completed_at', dayEnd),
+
+    // All activity log entries today (status changes, acks)
+    client.from('task_activity_log')
+      .select('action, from_status, task_id, created_at')
+      .eq('actor_id', userId)
+      .gte('created_at', dayStart)
+      .lte('created_at', dayEnd),
 
     // EOD log for this date
     client.from('daily_work_logs')
@@ -177,10 +200,10 @@ async function fetchDayInputs(client: any, userId: string, date: string): Promis
     hasEodLog:          eodLog !== null,
     wasActiveToday,
     timelyAcks,
-    overdueCount:       overdueCount ?? 0,
-    staleBlockedCount:  staleBlockedCount ?? 0,
-    activeTasks:        activeTasks ?? 0,
-    blockedCount:       blockedCount ?? 0,
+    overdueCount:       snapshot.overdueCount,
+    staleBlockedCount:  snapshot.staleBlockedCount,
+    activeTasks:        snapshot.activeTasks,
+    blockedCount:       snapshot.blockedCount,
   }
 
   return { inputs, eodLog: eodLog ?? null }
@@ -198,7 +221,7 @@ export async function GET(req: NextRequest) {
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const period = (searchParams.get('period') ?? 'daily') as 'daily' | 'weekly' | 'monthly'
+  const period = (searchParams.get('period') ?? 'daily') as 'daily' | 'weekly' | 'monthly' | 'today'
   const userId = searchParams.get('userId') ?? caller.id
   const today  = new Date().toISOString().slice(0, 10)
   const date   = searchParams.get('date') ?? today
@@ -216,6 +239,32 @@ export async function GET(req: NextRequest) {
     userName = data?.full_name ?? userId
   }
 
+  // ── Today-only fast path (no trend window) ──────────────────────────────────
+  if (period === 'today') {
+    const snapshot = await fetchCurrentTaskSnapshot(client, userId)
+    const { inputs, eodLog } = await fetchDayInputs(client, userId, today, snapshot)
+    const breakdown = computeBreakdown(inputs)
+    return NextResponse.json({
+      period:   'daily',
+      date:     today,
+      userId,
+      userName,
+      score:    breakdown.total,
+      rating:   scoreRating(breakdown.total),
+      breakdown,
+      inputs,
+      trend:    [],
+      trendAnalysis: {
+        classification:    'insufficient_data',
+        direction:         'flat',
+        streak:            0,
+        weekOverWeekDelta: 0,
+        description:       'Loading trend…',
+      },
+      eodLog,
+    })
+  }
+
   // ── How many days back to fetch ─────────────────────────────────────────────
   // Daily view: always include 7 days of trend context.
   // Weekly view: 14 days (current + previous week for w-o-w delta).
@@ -230,19 +279,22 @@ export async function GET(req: NextRequest) {
     dateList.push(d.toISOString().slice(0, 10))
   }
 
+  // Fetch current-state snapshot once — shared across all historical day calculations
+  const snapshot = await fetchCurrentTaskSnapshot(client, userId)
+
   // Fetch all days in parallel — capture today's result to avoid a second round-trip
   let capturedToday: { inputs: DayInputs; eodLog: Record<string, unknown> | null } | null = null
 
   const dayResults = await Promise.all(
     dateList.map(async (d) => {
-      const result = await fetchDayInputs(client, userId, d)
+      const result = await fetchDayInputs(client, userId, d, snapshot)
       if (d === today) capturedToday = result
       return trendDayFromInputs(d, result.inputs)
     })
   )
 
   // Fall back to a fresh fetch only when a historical date was explicitly requested
-  const todayData = capturedToday ?? await fetchDayInputs(client, userId, today)
+  const todayData = capturedToday ?? await fetchDayInputs(client, userId, today, snapshot)
 
   const trendAnalysis = analyzeTrend(dayResults)
 
@@ -251,7 +303,7 @@ export async function GET(req: NextRequest) {
     // If a specific historical date was requested, fetch that day; otherwise reuse captured data
     const { inputs, eodLog } = (date === today)
       ? todayData
-      : await fetchDayInputs(client, userId, date)
+      : await fetchDayInputs(client, userId, date, snapshot)
     const breakdown = computeBreakdown(inputs)
 
     return NextResponse.json({
