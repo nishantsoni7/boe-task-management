@@ -209,6 +209,119 @@ async function fetchDayInputs(client: any, userId: string, date: string, snapsho
   return { inputs, eodLog: eodLog ?? null }
 }
 
+// ─── Batched range fetch for 7-day trend (period=daily) ──────────────────────
+// Replaces 7 × fetchDayInputs (28 queries) with 4 range queries + 1 optional
+// task-creation lookup, then groups results by date in memory.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchRangeInputs(
+  client: any,
+  userId: string,
+  dateList: string[],
+  snapshot: CurrentTaskSnapshot,
+): Promise<{ inputs: DayInputs; eodLog: Record<string, unknown> | null }[]> {
+  const rangeStart = `${dateList[0]}T00:00:00.000Z`
+  const rangeEnd   = `${dateList[dateList.length - 1]}T23:59:59.999Z`
+
+  const [
+    { data: completedTasks },
+    { data: activityLog },
+    { data: eodLogs },
+    { data: acksAll },
+  ] = await Promise.all([
+    client.from('tasks')
+      .select('id, priority, completed_at')
+      .eq('assigned_to', userId)
+      .eq('status', 'completed')
+      .gte('completed_at', rangeStart)
+      .lte('completed_at', rangeEnd),
+
+    client.from('task_activity_log')
+      .select('action, from_status, task_id, created_at')
+      .eq('actor_id', userId)
+      .gte('created_at', rangeStart)
+      .lte('created_at', rangeEnd),
+
+    client.from('daily_work_logs')
+      .select('id, summary, highlights, blockers, self_score, created_at, updated_at, log_date, user_id')
+      .eq('user_id', userId)
+      .gte('log_date', dateList[0])
+      .lte('log_date', dateList[dateList.length - 1]),
+
+    client.from('task_activity_log')
+      .select('task_id, created_at')
+      .eq('actor_id', userId)
+      .eq('action', 'acknowledged')
+      .gte('created_at', rangeStart)
+      .lte('created_at', rangeEnd),
+  ])
+
+  // Batch-fetch task creation times for timely-ack calculation (one query instead of up to 7)
+  const allAckedIds = [...new Set(
+    (acksAll ?? [] as { task_id: string }[]).map((a: { task_id: string }) => a.task_id)
+  )]
+  let taskCreationMap = new Map<string, string>()
+  if (allAckedIds.length > 0) {
+    const { data: taskTimes } = await client
+      .from('tasks')
+      .select('id, created_at')
+      .in('id', allAckedIds)
+    if (taskTimes) {
+      taskCreationMap = new Map(
+        (taskTimes as { id: string; created_at: string }[]).map(t => [t.id, t.created_at])
+      )
+    }
+  }
+
+  return dateList.map(date => {
+    const dayStart = `${date}T00:00:00.000Z`
+    const dayEnd   = `${date}T23:59:59.999Z`
+    const inDay    = (ts: string) => ts >= dayStart && ts <= dayEnd
+
+    const tasks = (completedTasks ?? [] as { priority: string; completed_at: string }[])
+      .filter((t: { completed_at: string }) => inDay(t.completed_at)) as { priority: string }[]
+    const completedHigh   = tasks.filter(t => t.priority === 'high').length
+    const completedMedium = tasks.filter(t => t.priority === 'medium').length
+    const completedLow    = tasks.filter(t => t.priority === 'low').length
+
+    const activity = (activityLog ?? [] as { action: string; from_status: string | null; task_id: string; created_at: string }[])
+      .filter((a: { created_at: string }) => inDay(a.created_at)) as { action: string; from_status: string | null; task_id: string; created_at: string }[]
+    const statusUpdates      = activity.filter(a => a.action === 'status_changed').length
+    const blockerResolutions = activity.filter(a => a.action === 'status_changed' && a.from_status === 'blocked').length
+
+    const eodLog = ((eodLogs ?? []) as { log_date: string }[]).find(l => l.log_date === date) ?? null
+
+    const wasActiveToday = activity.length > 0 || eodLog !== null
+
+    const acksDay = (acksAll ?? [] as { task_id: string; created_at: string }[])
+      .filter((a: { created_at: string }) => inDay(a.created_at)) as { task_id: string; created_at: string }[]
+    let timelyAcks = 0
+    for (const ack of acksDay) {
+      const taskCreated = taskCreationMap.get(ack.task_id)
+      if (!taskCreated) continue
+      if (new Date(ack.created_at).getTime() - new Date(taskCreated).getTime() <= 4 * 60 * 60 * 1000) {
+        timelyAcks++
+      }
+    }
+
+    const inputs: DayInputs = {
+      completedHigh,
+      completedMedium,
+      completedLow,
+      statusUpdates,
+      blockerResolutions,
+      hasEodLog:         eodLog !== null,
+      wasActiveToday,
+      timelyAcks,
+      overdueCount:      snapshot.overdueCount,
+      staleBlockedCount: snapshot.staleBlockedCount,
+      activeTasks:       snapshot.activeTasks,
+      blockedCount:      snapshot.blockedCount,
+    }
+
+    return { inputs, eodLog: eodLog as Record<string, unknown> | null }
+  })
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 // GET /api/performance-metrics?period=daily|weekly|monthly&userId=optional&date=YYYY-MM-DD
 
@@ -282,16 +395,26 @@ export async function GET(req: NextRequest) {
   // Fetch current-state snapshot once — shared across all historical day calculations
   const snapshot = await fetchCurrentTaskSnapshot(client, userId)
 
-  // Fetch all days in parallel — capture today's result to avoid a second round-trip
   let capturedToday: { inputs: DayInputs; eodLog: Record<string, unknown> | null } | null = null
+  let dayResults: ReturnType<typeof trendDayFromInputs>[]
 
-  const dayResults = await Promise.all(
-    dateList.map(async (d) => {
-      const result = await fetchDayInputs(client, userId, d, snapshot)
-      if (d === today) capturedToday = result
-      return trendDayFromInputs(d, result.inputs)
-    })
-  )
+  if (period === 'daily') {
+    // Optimised path: 4 range queries + 1 optional task-creation lookup (≤5 total)
+    // instead of 7 × 4 = 28 per-day queries.
+    const rangeResults = await fetchRangeInputs(client, userId, dateList, snapshot)
+    dayResults = rangeResults.map((r, i) => trendDayFromInputs(dateList[i], r.inputs))
+    const todayIdx = dateList.indexOf(today)
+    if (todayIdx !== -1) capturedToday = rangeResults[todayIdx]
+  } else {
+    // Weekly / monthly: keep existing per-day parallel fetch (14 or 30 days)
+    dayResults = await Promise.all(
+      dateList.map(async (d) => {
+        const result = await fetchDayInputs(client, userId, d, snapshot)
+        if (d === today) capturedToday = result
+        return trendDayFromInputs(d, result.inputs)
+      })
+    )
+  }
 
   // Fall back to a fresh fetch only when a historical date was explicitly requested
   const todayData = capturedToday ?? await fetchDayInputs(client, userId, today, snapshot)
