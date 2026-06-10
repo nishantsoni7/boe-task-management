@@ -27,6 +27,15 @@ const dmMono = DM_Mono({
 export const metadata: Metadata = {
   title: 'BOE Task Management',
   description: 'Best of Exports — Internal Operating System',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'BOE Tasks',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
 }
 
 export default function RootLayout({
