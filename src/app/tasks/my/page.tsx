@@ -410,6 +410,24 @@ function TaskCard({
         </span>
       </div>
 
+      {/* Due Date — fixed 100px */}
+      <div style={{
+        flexShrink: 0, width: '100px',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {task.due_date ? (() => {
+          const isToday = task.due_date === TODAY_STR
+          const dueDateColor = isOverdue(task) ? colors.red : isToday ? '#E8A030' : colors.secondary
+          return (
+            <span style={{ fontSize: '11px', color: dueDateColor, whiteSpace: 'nowrap', fontWeight: isOverdue(task) || isToday ? 600 : 400 }}>
+              {formatDate(task.due_date)}
+            </span>
+          )
+        })() : (
+          <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>No Due Date</span>
+        )}
+      </div>
+
       {/* Priority — fixed 56px */}
       <div style={{
         flexShrink: 0, width: '56px',
@@ -427,16 +445,6 @@ function TaskCard({
       }}>
         <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
           {task.status}
-        </span>
-      </div>
-
-      {/* Created Date — fixed 100px */}
-      <div style={{
-        flexShrink: 0, width: '100px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-          {formatDate(task.created_at) ?? '—'}
         </span>
       </div>
 
@@ -1477,12 +1485,12 @@ export default function MyTasksPage() {
                 <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>Task</div>
                 {/* Assigned By */}
                 <div style={{ flexShrink: 0, width: '130px', paddingLeft: '8px' }}>Assigned By</div>
+                {/* Due Date */}
+                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Due Date</div>
                 {/* Priority */}
                 <div style={{ flexShrink: 0, width: '56px', textAlign: 'center' }}>Priority</div>
                 {/* Status */}
                 <div style={{ flexShrink: 0, width: '90px', textAlign: 'center' }}>Status</div>
-                {/* Created Date */}
-                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Created Date</div>
                 {/* Action */}
                 <div style={{ flexShrink: 0, width: '84px', textAlign: 'center' }}>Action</div>
               </div>
