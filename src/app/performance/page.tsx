@@ -369,37 +369,57 @@ function ScoreGuide() {
 }
 
 // ─── EOD Log form ─────────────────────────────────────────────────────────────
+type EodSaveState = 'idle' | 'saving' | 'saved' | 'error'
+
 function EodLogForm({ existing, token, onSaved }: {
   existing: { summary: string; highlights: string | null; self_score: number | null } | null
   token: string
-  onSaved: () => void
+  onSaved: (log: { summary: string; self_score: number | null }) => void
 }) {
   const [summary,   setSummary]   = useState(existing?.summary ?? '')
   const [selfScore, setSelfScore] = useState<number>(existing?.self_score ?? 0)
-  const [saving,    setSaving]    = useState(false)
-  const [saved,     setSaved]     = useState(!!existing)
+  const [saveState, setSaveState] = useState<EodSaveState>(existing ? 'saved' : 'idle')
+  const [errorMsg,  setErrorMsg]  = useState('')
 
   const submit = async () => {
     if (!summary.trim()) return
-    setSaving(true)
+    setSaveState('saving')
+    setErrorMsg('')
     try {
       const res = await fetch('/api/daily-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ summary, self_score: selfScore || null }),
       })
-      if (res.ok) { setSaved(true); onSaved() }
-    } finally {
-      setSaving(false)
+      if (res.ok) {
+        setSaveState('saved')
+        onSaved({ summary, self_score: selfScore || null })
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setErrorMsg(body.error ?? 'Failed to save. Please try again.')
+        setSaveState('error')
+      }
+    } catch {
+      setErrorMsg('Network error. Please check your connection and try again.')
+      setSaveState('error')
     }
   }
+
+  const isSaving  = saveState === 'saving'
+  const isSaved   = saveState === 'saved'
+  const isError   = saveState === 'error'
+  const btnLabel  = isSaving ? 'Saving…' : 'Update Log'
 
   return (
     <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#111318', display: 'flex', alignItems: 'center', gap: 8 }}>
           End-of-Day Log
-          {saved && <span style={{ fontSize: 11, color: '#45A870', marginLeft: 8 }}>✓ Saved</span>}
+          {isSaved && (
+            <span style={{ fontSize: 11, fontWeight: 500, color: '#45A870', background: '#45A87015', padding: '2px 8px', borderRadius: 5 }}>
+              ✓ Saved just now
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 11, color: '#8C94A6' }}>+12 pts discipline</div>
       </div>
@@ -410,13 +430,13 @@ function EodLogForm({ existing, token, onSaved }: {
           </label>
           <textarea
             value={summary}
-            onChange={e => { setSummary(e.target.value); setSaved(false) }}
+            onChange={e => { setSummary(e.target.value); if (saveState !== 'saving') setSaveState('idle'); setErrorMsg('') }}
             placeholder="Briefly write the important work you completed today..."
             rows={3}
             style={{
               width: '100%', resize: 'vertical',
               fontSize: 13, color: '#111318', lineHeight: 1.5,
-              border: '1px solid #EEF0F4', borderRadius: 7,
+              border: isError ? '1px solid #D94F4F' : '1px solid #EEF0F4', borderRadius: 7,
               padding: '8px 10px', outline: 'none',
               fontFamily: 'inherit', boxSizing: 'border-box',
             }}
@@ -430,7 +450,7 @@ function EodLogForm({ existing, token, onSaved }: {
             {[1, 2, 3, 4, 5].map(n => (
               <button
                 key={n}
-                onClick={() => { setSelfScore(n); setSaved(false) }}
+                onClick={() => { setSelfScore(n); if (saveState !== 'saving') setSaveState('idle') }}
                 style={{
                   width: 32, height: 32, borderRadius: 8,
                   border: selfScore >= n ? '2px solid #E8A030' : '1px solid #EEF0F4',
@@ -442,18 +462,23 @@ function EodLogForm({ existing, token, onSaved }: {
           </div>
         </div>
       </div>
+      {isError && (
+        <div style={{ fontSize: 12, color: '#D94F4F', background: '#D94F4F0D', border: '1px solid #D94F4F30', borderRadius: 6, padding: '8px 12px' }}>
+          {errorMsg}
+        </div>
+      )}
       <button
         onClick={submit}
-        disabled={saving || !summary.trim()}
+        disabled={isSaving || !summary.trim()}
         style={{
           alignSelf: 'flex-start',
           fontSize: 13, fontWeight: 600,
           background: '#111318', color: '#fff',
           border: 'none', borderRadius: 8,
-          padding: '9px 20px', cursor: 'pointer',
-          opacity: saving || !summary.trim() ? 0.5 : 1,
+          padding: '9px 20px', cursor: isSaving || !summary.trim() ? 'not-allowed' : 'pointer',
+          opacity: isSaving || !summary.trim() ? 0.5 : 1,
         }}
-      >{saving ? 'Saving…' : saved ? 'Update Log' : 'Submit Log'}</button>
+      >{btnLabel}</button>
     </div>
   )
 }
@@ -816,10 +841,11 @@ function ImprovementSuggestions({ submittedCount, missedCount, avgRating, riskPt
   )
 }
 
-function MonthlyView({ token, which, perfData }: {
+function MonthlyView({ token, which, perfData, viewAsUserId }: {
   token: string
   which: 'current' | 'last'
   perfData: PerformanceData | null
+  viewAsUserId?: string | null
 }) {
   const [logs,        setLogs]        = useState<EodLogRow[]>([])
   const [fetching,    setFetching]    = useState(true)
@@ -835,13 +861,15 @@ function MonthlyView({ token, which, perfData }: {
   useEffect(() => {
     if (!token || range.noData) { setFetching(false); return }
     setFetching(true)
-    fetch(`/api/daily-log?from=${range.from}&to=${range.to}`, {
+    const qs = new URLSearchParams({ from: range.from, to: range.to })
+    if (viewAsUserId) qs.set('userId', viewAsUserId)
+    fetch(`/api/daily-log?${qs.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
       .then(d => setLogs(d.logs ?? []))
       .finally(() => setFetching(false))
-  }, [token, range])
+  }, [token, range, viewAsUserId])
 
   const days = useMemo(
     () => range.noData ? [] : buildDayList(range.from, range.to, logs),
@@ -1083,7 +1111,6 @@ export default function PerformancePage() {
   const [progress,     setProgress]     = useState(0)
   const [showLoader,   setShowLoader]   = useState(true)
   const [isMobile,     setIsMobile]     = useState(false)
-  const [eodRefreshKey, setEodRefreshKey] = useState(0)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -1178,10 +1205,37 @@ export default function PerformancePage() {
     }
   }
 
-  const handleEodSaved = () => {
+  const handleEodSaved = (log: { summary: string; self_score: number | null }) => {
+    // Optimistically update local perfData so the Discipline card reflects the save
+    // immediately without blanking the page via perfLoading.
+    setPerfData(prev => {
+      if (!prev) return prev
+      const alreadyHad = prev.inputs.hasEodLog
+      const newDiscipline = alreadyHad ? prev.breakdown.discipline : Math.min(prev.breakdown.discipline + 12, 20)
+      return {
+        ...prev,
+        eodLog: { ...( prev.eodLog ?? { id: '', user_id: '', log_date: '', blockers: null, created_at: '', updated_at: '' }), summary: log.summary, highlights: null, self_score: log.self_score },
+        inputs: { ...prev.inputs, hasEodLog: true },
+        breakdown: { ...prev.breakdown, discipline: newDiscipline },
+      }
+    })
+    // Silent background refetch to get the accurate server-computed score
     delete perfCacheRef.current[`${viewAsUserId ?? 'self'}:daily`]
-    if (token) fetchPerf('daily', token, true)
-    setEodRefreshKey(k => k + 1)
+    if (token) {
+      const params = new URLSearchParams({ period: 'daily' })
+      if (viewAsUserId) params.set('userId', viewAsUserId)
+      fetch(`/api/performance-metrics?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) {
+            perfCacheRef.current[`${viewAsUserId ?? 'self'}:daily`] = data
+            setPerfData(data)
+          }
+        })
+        .catch(() => { /* silent — optimistic update already applied */ })
+    }
   }
 
   const dataReady = !loading && !perfLoading
@@ -1362,13 +1416,13 @@ export default function PerformancePage() {
           perfLoading ? (
             <div style={{ textAlign: 'center', padding: '60px 0', color: '#8C94A6', fontSize: 13 }}>Loading…</div>
           ) : (
-            <MonthlyView token={token} which="current" perfData={perfData} />
+            <MonthlyView token={token} which="current" perfData={perfData} viewAsUserId={viewAsUserId} />
           )
         )}
 
         {/* ── LAST MONTH TAB ── */}
         {tab === 'last_month' && token && (
-          <MonthlyView token={token} which="last" perfData={null} />
+          <MonthlyView token={token} which="last" perfData={null} viewAsUserId={viewAsUserId} />
         )}
 
       </div>
