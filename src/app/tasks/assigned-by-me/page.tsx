@@ -312,10 +312,10 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Created Date — fixed 100px */}
+      {/* Due Date — fixed 100px */}
       <div style={{ flexShrink: 0, width: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-          {formatDate(task.created_at) ?? '—'}
+          {formatDate(task.due_date) ?? 'No due date'}
         </span>
       </div>
 
@@ -1054,7 +1054,7 @@ export default function AssignedByMePage() {
                 <div style={{ flexShrink: 0, width: '130px', paddingLeft: '8px' }}>Assigned To</div>
                 <div style={{ flexShrink: 0, width: '56px', textAlign: 'center' }}>Priority</div>
                 <div style={{ flexShrink: 0, width: '90px', textAlign: 'center' }}>Status</div>
-                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Created Date</div>
+                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Due Date</div>
                 <div style={{ flexShrink: 0, width: '84px', textAlign: 'center' }}>Action</div>
               </div>
             )}
