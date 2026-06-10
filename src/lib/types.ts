@@ -198,6 +198,35 @@ export type PerformanceAudit = {
   suggestions:      string[] // 2–3 actionable next steps
 }
 
+// ─── Stuck task (waiting or stale-blocked) ────────────────────────────────────
+export type StuckTask = {
+  id:                 string
+  title:              string
+  status:             string
+  priority:           string
+  due_date:           string | null
+  last_update_at:     string | null
+  waiting_on_type:    'team_member' | 'external' | null
+  waiting_on_text:    string | null
+  waiting_on_name:    string | null   // resolved full name when waiting_on_type = 'team_member'
+  blocker_reason:     string | null
+  note:               string | null
+}
+
+export type TaskDetailActivity = {
+  action:      string
+  note:        string | null
+  from_status: string | null
+  to_status:   string | null
+  created_at:  string
+  actor_name:  string | null
+}
+
+export type TaskDetailData = {
+  created_by_name: string | null
+  activity:        TaskDetailActivity[]
+}
+
 // ─── Manager leaderboard entry ────────────────────────────────────────────────
 export type MemberPerfEntry = {
   userId:   string
@@ -231,6 +260,12 @@ export type MemberPerfEntry = {
   missedDays:      number
   pendingDays:     number
   lowScoreDays:    number
+  // Extended fields for owner management view
+  selfScoreToday:  number | null   // member's self-rated score from today's EOD (1–5)
+  eodSubmittedAt:  string | null   // ISO timestamp of today's EOD submission
+  waitingCount:    number          // tasks currently in 'waiting' status
+  timelyAcksToday: number          // tasks acknowledged within 4h of creation, today
+  stuckTasks:      StuckTask[]     // exact tasks behind waitingCount + staleBlockedCount
 }
 
 // ─── Payroll period ───────────────────────────────────────────────────────────

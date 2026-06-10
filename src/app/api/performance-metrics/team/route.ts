@@ -25,7 +25,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import type { DayInputs, MemberPerfEntry, PerformanceRating } from '@/lib/types'
+import type { DayInputs, MemberPerfEntry, PerformanceRating, StuckTask } from '@/lib/types'
 import { scoreRating, analyzeTrend, trendDayFromInputs } from '@/lib/performance'
 
 function sb() {
@@ -52,6 +52,12 @@ type UserRow = {
 type ActiveTaskRow = {
   id: string; assigned_to: string; priority: string; status: string
   due_date: string | null; last_update_at: string | null; created_at: string
+  title: string
+  waiting_on_type: 'team_member' | 'external' | null
+  waiting_on_text: string | null
+  waiting_on_user_id: string | null
+  blocker_reason: string | null
+  note: string | null
 }
 type CompletedTaskRow = {
   id: string; assigned_to: string; priority: string; created_at: string
@@ -61,7 +67,7 @@ type ActivityRow = {
   from_status: string | null; to_status: string | null
   task_id: string; created_at: string
 }
-type EodRow = { user_id: string; log_date: string; summary: string | null; highlights: string | null }
+type EodRow = { user_id: string; log_date: string; summary: string | null; highlights: string | null; self_score: number | null; created_at: string }
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -83,13 +89,19 @@ export async function GET(req: NextRequest) {
   const windowDays = period === 'monthly' ? 30 : period === 'weekly' ? 14 : 7
   const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
 
-  const dateList: string[] = []
+  // BOE app rollout date — no task/EOD data exists before this so pre-rollout
+  // days must be excluded from all metrics (missed EOD, averages, trend, etc.)
+  const ROLLOUT_DATE = '2026-06-08'
+
+  const rawDateList: string[] = []
   for (let i = windowDays - 1; i >= 0; i--) {
     const d = new Date(today)
     d.setDate(d.getDate() - i)
-    dateList.push(d.toISOString().slice(0, 10))
+    rawDateList.push(d.toISOString().slice(0, 10))
   }
-  const windowStart = dateList[0]
+  // Drop any dates before rollout so phantom "missed" days are never scored
+  const dateList  = rawDateList.filter(d => d >= ROLLOUT_DATE)
+  const windowStart = dateList.length > 0 ? dateList[0] : rawDateList[0]
 
   const client = sb()
 
@@ -119,7 +131,7 @@ export async function GET(req: NextRequest) {
     // Non-completed tasks — gives current-state metrics
     // No is_deleted filter: column does not exist on tasks table
     client.from('tasks')
-      .select('id, assigned_to, priority, status, due_date, last_update_at, created_at')
+      .select('id, assigned_to, priority, status, due_date, last_update_at, created_at, title, waiting_on_type, waiting_on_text, waiting_on_user_id, blocker_reason, note')
       .in('assigned_to', userIds)
       .neq('status', 'completed')
       .limit(50000),
@@ -139,9 +151,9 @@ export async function GET(req: NextRequest) {
       .gte('created_at', `${windowStart}T00:00:00.000Z`)
       .limit(100000),
 
-    // EOD work-logs in window (include summary/highlights for analysis table)
+    // EOD work-logs in window (include summary/highlights/self_score for management view)
     client.from('daily_work_logs')
-      .select('user_id, log_date, summary, highlights')
+      .select('user_id, log_date, summary, highlights, self_score, created_at')
       .in('user_id', userIds)
       .gte('log_date', windowStart)
       .limit(10000),
@@ -154,7 +166,8 @@ export async function GET(req: NextRequest) {
 
   // ── Index all data by user for O(1) lookup ────────────────────────────────
 
-  const userIdSet = new Set(userIds)
+  const userIdSet   = new Set(userIds)
+  const userNameMap = new Map<string, string>(userRows.map(u => [u.id, u.full_name]))
 
   // Task priority + assignee map (covers both active and completed tasks)
   const taskInfoMap = new Map<string, { assigned_to: string; priority: string }>()
@@ -200,13 +213,13 @@ export async function GET(req: NextRequest) {
 
   // EOD log dates per user + today's entry for analysis table
   const eodByUser    = new Map<string, Set<string>>()
-  const eodTodayByUser = new Map<string, { summary: string | null; highlights: string | null }>()
+  const eodTodayByUser = new Map<string, { summary: string | null; highlights: string | null; self_score: number | null; created_at: string }>()
   for (const e of (eodLogs ?? []) as EodRow[]) {
     const s = eodByUser.get(e.user_id) ?? new Set<string>()
     s.add(e.log_date)
     eodByUser.set(e.user_id, s)
     if (e.log_date === today) {
-      eodTodayByUser.set(e.user_id, { summary: e.summary ?? null, highlights: e.highlights ?? null })
+      eodTodayByUser.set(e.user_id, { summary: e.summary ?? null, highlights: e.highlights ?? null, self_score: e.self_score, created_at: e.created_at })
     }
   }
 
@@ -220,10 +233,29 @@ export async function GET(req: NextRequest) {
     // Current-state metrics (same for every trend day)
     const userActive = activeByUser.get(uid) ?? []
     const overdueCount      = userActive.filter(t => t.due_date && t.due_date < today).length
-    const staleBlockedCount = userActive.filter(
+    const staleBlockedTasks = userActive.filter(
       t => t.status === 'blocked' && t.last_update_at && t.last_update_at < twoDaysAgo
-    ).length
+    )
+    const staleBlockedCount = staleBlockedTasks.length
     const blockedCount  = userActive.filter(t => t.status === 'blocked').length
+    const waitingTasks  = userActive.filter(t => t.status === 'waiting')
+    const waitingCount  = waitingTasks.length
+
+    const stuckTasks: StuckTask[] = [...waitingTasks, ...staleBlockedTasks].map(t => ({
+      id:              t.id,
+      title:           t.title,
+      status:          t.status,
+      priority:        t.priority,
+      due_date:        t.due_date,
+      last_update_at:  t.last_update_at,
+      waiting_on_type: t.waiting_on_type,
+      waiting_on_text: t.waiting_on_text,
+      waiting_on_name: t.waiting_on_user_id
+        ? (userNameMap.get(t.waiting_on_user_id) ?? null)
+        : null,
+      blocker_reason:  t.blocker_reason,
+      note:            t.note,
+    }))
     const activeTaskCnt = userActive.length
 
     const userActivity   = activityByUser.get(uid)   ?? []
@@ -282,6 +314,17 @@ export async function GET(req: NextRequest) {
       a => a.action === 'status_changed' && a.created_at >= todayStart && a.created_at <= todayEnd
     ).length
 
+    // timelyAcksToday: tasks acknowledged within 4h of creation, today only
+    let timelyAcksToday = 0
+    for (const a of userActivity) {
+      if (a.created_at < todayStart || a.created_at > todayEnd) continue
+      if (a.action !== 'acknowledged') continue
+      const taskCreated = taskCreatedAt.get(a.task_id)
+      if (!taskCreated) continue
+      const delta = new Date(a.created_at).getTime() - new Date(taskCreated).getTime()
+      if (delta <= 4 * 60 * 60 * 1000) timelyAcksToday++
+    }
+
     const todayTrend  = trendDays[trendDays.length - 1]
     const trendResult = analyzeTrend(trendDays)
 
@@ -332,6 +375,11 @@ export async function GET(req: NextRequest) {
       missedDays,
       pendingDays,
       lowScoreDays,
+      selfScoreToday:  eodTodayByUser.get(uid)?.self_score  ?? null,
+      eodSubmittedAt:  eodTodayByUser.get(uid)?.created_at  ?? null,
+      waitingCount,
+      timelyAcksToday,
+      stuckTasks,
     })
   }
 
