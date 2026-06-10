@@ -8,14 +8,58 @@ import { timeAgo } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { Bell, CheckCheck, ExternalLink, Check, X } from 'lucide-react'
+import { Bell, CheckCheck, ExternalLink, Clock, Trash2, Check } from 'lucide-react'
+
+type FilterTab = 'all' | 'unread'
+
+// ─── Notification parsing ──────────────────────────────────────────────────────
+
+type ParsedNotif = {
+  actor: string | null
+  label: string
+  badgeColor: string
+  badgeBg: string
+}
+
+const ACTIVITY_PATTERNS: Array<{
+  re: RegExp
+  label: string
+  badgeColor: string
+  badgeBg: string
+}> = [
+  { re: /added a comment/i,       label: 'Added comment',    badgeColor: colors.blue,  badgeBg: colors.blueTint  },
+  { re: /new comment on task/i,   label: 'New comment',      badgeColor: colors.blue,  badgeBg: colors.blueTint  },
+  { re: /acknowledged task/i,     label: 'Acknowledged',     badgeColor: colors.green, badgeBg: colors.greenTint },
+  { re: /task acknowledged/i,     label: 'Acknowledged',     badgeColor: colors.green, badgeBg: colors.greenTint },
+  { re: /completed task/i,        label: 'Completed',        badgeColor: colors.green, badgeBg: colors.greenTint },
+  { re: /task completed/i,        label: 'Completed',        badgeColor: colors.green, badgeBg: colors.greenTint },
+  { re: /moved task to blocked/i, label: 'Moved to Blocked', badgeColor: colors.red,   badgeBg: colors.redTint   },
+  { re: /moved task to waiting/i, label: 'Moved to Waiting', badgeColor: colors.amber, badgeBg: colors.amberTint },
+  { re: /moved task to \w+/i,     label: 'Status changed',   badgeColor: colors.blue,  badgeBg: colors.blueTint  },
+]
+
+function parseNotif(title: string): ParsedNotif {
+  for (const p of ACTIVITY_PATTERNS) {
+    const m = p.re.exec(title)
+    if (!m) continue
+    const before = title.slice(0, m.index).trim()
+    const actor = before.length > 0 && !/^(task|new|a)$/i.test(before) ? before : null
+    return { actor, label: p.label, badgeColor: p.badgeColor, badgeBg: p.badgeBg }
+  }
+  return { actor: null, label: 'Activity', badgeColor: colors.muted, badgeBg: colors.float }
+}
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function NotificationsPage() {
-  const [profile,       setProfile]       = useState<UserProfile | null>(null)
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [hidden,        setHidden]        = useState<Set<string>>(new Set())
-  const [loading,       setLoading]       = useState(true)
-  const [markingAll,    setMarkingAll]    = useState(false)
+  const [profile,        setProfile]       = useState<UserProfile | null>(null)
+  const [notifications,  setNotifications] = useState<Notification[]>([])
+  const [filter,         setFilter]        = useState<FilterTab>('all')
+  const [selected,       setSelected]      = useState<Set<string>>(new Set())
+  const [loading,        setLoading]       = useState(true)
+  const [markingAll,     setMarkingAll]    = useState(false)
+  const [deletingAll,    setDeletingAll]   = useState(false)
+  const [deletingBulk,   setDeletingBulk]  = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -43,8 +87,10 @@ export default function NotificationsPage() {
     init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visible = notifications.filter(n => !hidden.has(n.id))
-  const unreadCount = visible.filter(n => !n.is_read).length
+  const unreadCount = notifications.filter(n => !n.is_read).length
+  const visible = filter === 'unread'
+    ? notifications.filter(n => !n.is_read)
+    : notifications
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -68,7 +114,7 @@ export default function NotificationsPage() {
     setMarkingAll(false)
   }
 
-  const markRead = async (id: string) => {
+  const markRead = (id: string) => {
     const now = new Date().toISOString()
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true, read_at: now } : n))
     fetch('/api/notifications/mark-read', {
@@ -78,25 +124,76 @@ export default function NotificationsPage() {
     }).catch(err => console.error('[notifications] mark read failed:', err))
   }
 
-  const clearNotif = (id: string) => {
-    // Mark read in DB (fire-and-forget) and hide from local list
-    const notif = notifications.find(n => n.id === id)
-    if (notif && !notif.is_read) {
-      fetch('/api/notifications/mark-read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      }).catch(err => console.error('[notifications] clear-mark-read failed:', err))
-    }
-    setHidden(prev => new Set([...prev, id]))
+  const deleteSingle = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id))
+    setSelected(prev => { const s = new Set(prev); s.delete(id); return s })
+    fetch(`/api/notifications/${id}`, { method: 'DELETE' })
+      .catch(err => console.error('[notifications] delete failed:', err))
   }
 
-  const viewTask = async (n: Notification) => {
-    if (!n.is_read) await markRead(n.id)
+  const deleteSelected = async () => {
+    if (deletingBulk || selected.size === 0) return
+    setDeletingBulk(true)
+    const ids = [...selected]
+    const res = await fetch('/api/notifications/delete-selected', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    })
+    if (res.ok) {
+      setNotifications(prev => prev.filter(n => !selected.has(n.id)))
+      setSelected(new Set())
+    } else {
+      console.error('[notifications] delete selected failed:', await res.json().catch(() => null))
+    }
+    setDeletingBulk(false)
+  }
+
+  const deleteAll = async () => {
+    if (deletingAll || notifications.length === 0) return
+    setDeletingAll(true)
+    const res = await fetch('/api/notifications', { method: 'DELETE' })
+    if (res.ok) {
+      setNotifications([])
+      setSelected(new Set())
+    } else {
+      console.error('[notifications] delete all failed:', await res.json().catch(() => null))
+    }
+    setDeletingAll(false)
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const s = new Set(prev)
+      s.has(id) ? s.delete(id) : s.add(id)
+      return s
+    })
+  }
+
+  const viewTask = (n: Notification) => {
+    if (!n.is_read) markRead(n.id)
     if (n.task_id) router.push(`/tasks/${n.task_id}`)
   }
 
+  const handleRowClick = (n: Notification) => {
+    if (!n.is_read) markRead(n.id)
+  }
+
   if (loading) return <LoadingScreen />
+
+  // ── Toolbar button base style helpers ─────────────────────────────────────
+  const toolBtn = (active: boolean, danger = false) => ({
+    display: 'inline-flex' as const, alignItems: 'center' as const, gap: '6px',
+    padding: '7px 14px', borderRadius: '7px',
+    fontSize: '12px', fontWeight: 600,
+    fontFamily: font.body,
+    transition: 'all 0.15s',
+    border: `1.5px solid ${active ? (danger ? colors.red : colors.blue) : colors.border}`,
+    background: active && !danger ? colors.blue : 'transparent',
+    color: active ? (danger ? colors.red : '#ffffff') : colors.muted,
+    cursor: active ? 'pointer' : 'not-allowed',
+    opacity: 1,
+  })
 
   return (
     <DashboardLayout
@@ -105,27 +202,67 @@ export default function NotificationsPage() {
       subtitle={unreadCount > 0 ? `${unreadCount} unread` : 'You are all caught up'}
       onSignOut={handleLogout}
       actions={
-        <button
-          onClick={markAllRead}
-          disabled={unreadCount === 0 || markingAll}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            padding: '7px 14px', borderRadius: '7px',
-            border: `1.5px solid ${unreadCount === 0 ? colors.border : colors.blue}`,
-            background: unreadCount === 0 ? 'transparent' : colors.blue,
-            color: unreadCount === 0 ? colors.muted : '#ffffff',
-            fontSize: '12px', fontWeight: 600,
-            cursor: unreadCount === 0 || markingAll ? 'not-allowed' : 'pointer',
-            fontFamily: font.body,
-            opacity: markingAll ? 0.6 : 1,
-            transition: 'all 0.15s',
-          }}
-        >
-          <CheckCheck size={14} strokeWidth={2.2} />
-          {markingAll ? 'Marking…' : 'Mark all as read'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {/* Delete selected — only shown when something is selected */}
+          {selected.size > 0 && (
+            <button
+              onClick={deleteSelected}
+              disabled={deletingBulk}
+              style={{
+                ...toolBtn(true, true),
+                opacity: deletingBulk ? 0.6 : 1,
+              }}
+            >
+              <Trash2 size={13} strokeWidth={2.2} />
+              {deletingBulk ? 'Deleting…' : `Delete selected (${selected.size})`}
+            </button>
+          )}
+
+          <button
+            onClick={markAllRead}
+            disabled={unreadCount === 0 || markingAll}
+            style={{ ...toolBtn(unreadCount > 0 && !markingAll), opacity: markingAll ? 0.6 : 1 }}
+          >
+            <CheckCheck size={14} strokeWidth={2.2} />
+            {markingAll ? 'Marking…' : 'Mark all read'}
+          </button>
+
+          <button
+            onClick={deleteAll}
+            disabled={deletingAll || notifications.length === 0}
+            style={{
+              ...toolBtn(notifications.length > 0 && !deletingAll, true),
+              opacity: deletingAll ? 0.6 : 1,
+            }}
+          >
+            <Trash2 size={13} strokeWidth={2.2} />
+            {deletingAll ? 'Deleting…' : 'Delete all'}
+          </button>
+        </div>
       }
     >
+      {/* Filter pills */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
+        {(['all', 'unread'] as FilterTab[]).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setFilter(tab)}
+            style={{
+              padding: '5px 14px', borderRadius: '20px',
+              fontSize: '12px', fontWeight: 600,
+              border: `1.5px solid ${filter === tab ? colors.blue : colors.border}`,
+              background: filter === tab ? colors.blue : 'transparent',
+              color: filter === tab ? '#fff' : colors.secondary,
+              cursor: 'pointer', fontFamily: font.body,
+              transition: 'all 0.12s',
+            }}
+          >
+            {tab === 'all' ? 'All' : `Unread${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+          </button>
+        ))}
+      </div>
+
+      {/* Empty state */}
       {visible.length === 0 ? (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -139,109 +276,163 @@ export default function NotificationsPage() {
             <Bell size={18} color={colors.muted} />
           </span>
           <span style={{ fontSize: '14px', fontWeight: 600, color: colors.secondary }}>
-            No notifications yet
+            {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
           </span>
           <span style={{ fontSize: '12px', color: colors.muted }}>
-            Task activity will show up here.
+            {filter === 'unread' ? 'Switch to All to see your history.' : 'Task activity will show up here.'}
           </span>
         </div>
       ) : (
-        <div className="boe-card" style={{ overflow: 'hidden', padding: 0, maxWidth: '760px' }}>
-          {visible.map((n, i) => (
-            <div
-              key={n.id}
-              style={{
-                display: 'flex', alignItems: 'flex-start', gap: '12px',
-                padding: '14px 16px',
-                background: n.is_read ? '#ffffff' : colors.blueTint,
-                borderBottom: i < visible.length - 1 ? `1px solid ${colors.border}` : 'none',
-                transition: 'background 0.12s',
-              }}
-            >
-              {/* Unread dot */}
-              <span style={{
-                marginTop: '5px', flexShrink: 0,
-                width: '8px', height: '8px', borderRadius: '50%',
-                background: n.is_read ? 'transparent' : colors.blue,
-                border: n.is_read ? `1.5px solid ${colors.border}` : 'none',
-              }} />
+        <div className="boe-card" style={{ overflow: 'hidden', padding: 0, maxWidth: '900px' }}>
+          {visible.map((n, i) => {
+            const { actor, label, badgeColor, badgeBg } = parseNotif(n.title)
+            const taskTitle = n.body ?? null
+            const isSelected = selected.has(n.id)
 
-              {/* Content */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: '13px', fontWeight: n.is_read ? 500 : 700,
-                  color: colors.primary, lineHeight: 1.4,
-                  marginBottom: '2px',
-                }}>
-                  {n.title}
-                </div>
-                {n.body && (
-                  <div style={{
-                    fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    marginBottom: '2px',
+            return (
+              <div
+                key={n.id}
+                onClick={() => handleRowClick(n)}
+                style={{
+                  display: 'flex', alignItems: 'center',
+                  borderLeft: isSelected
+                    ? `3px solid ${colors.blue}`
+                    : n.is_read ? '3px solid transparent' : `3px solid ${colors.blue}`,
+                  background: isSelected
+                    ? 'rgba(85,133,232,0.10)'
+                    : n.is_read ? '#ffffff' : colors.blueTint,
+                  borderBottom: i < visible.length - 1 ? `1px solid ${colors.border}` : 'none',
+                  transition: 'background 0.12s',
+                  cursor: n.is_read ? 'default' : 'pointer',
+                }}
+              >
+                {/* ── Checkbox ── */}
+                <div
+                  onClick={e => { e.stopPropagation(); toggleSelect(n.id) }}
+                  title={isSelected ? 'Deselect' : 'Select'}
+                  style={{
+                    flexShrink: 0,
+                    width: '40px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    alignSelf: 'stretch',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{
+                    width: '16px', height: '16px', borderRadius: '4px',
+                    border: `1.5px solid ${isSelected ? colors.blue : colors.borderSoft}`,
+                    background: isSelected ? colors.blue : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                    transition: 'all 0.12s',
                   }}>
-                    {n.body}
-                  </div>
-                )}
-                <div style={{ fontSize: '10.5px', color: colors.muted, marginBottom: '10px' }}>
-                  {timeAgo(n.created_at)}
+                    {isSelected && <Check size={10} color="#fff" strokeWidth={3} />}
+                  </span>
                 </div>
 
-                {/* Action buttons */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  {n.task_id && (
+                {/* ── Content ── */}
+                <div style={{
+                  flex: 1, minWidth: 0,
+                  padding: '13px 8px 13px 0',
+                  display: 'flex', flexDirection: 'column', gap: '4px',
+                }}>
+                  {/* Actor + badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: '13px',
+                      fontWeight: actor ? 700 : 600,
+                      color: actor ? colors.primary : colors.secondary,
+                      lineHeight: 1,
+                    }}>
+                      {actor ?? 'System'}
+                    </span>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      padding: '2px 7px', borderRadius: '20px',
+                      fontSize: '10.5px', fontWeight: 600, lineHeight: 1,
+                      color: badgeColor, background: badgeBg,
+                      letterSpacing: '0.01em',
+                    }}>
+                      {label}
+                    </span>
+                  </div>
+
+                  {/* Task title */}
+                  {taskTitle && (
+                    <div style={{
+                      fontSize: '12px',
+                      color: n.is_read ? colors.tertiary : colors.secondary,
+                      fontWeight: 500, lineHeight: 1.35,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {taskTitle}
+                    </div>
+                  )}
+                  {!taskTitle && !actor && (
+                    <div style={{
+                      fontSize: '12px', color: colors.tertiary, lineHeight: 1.35,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {n.title}
+                    </div>
+                  )}
+
+                  {/* Time */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    fontSize: '11px', color: colors.muted, marginTop: '1px',
+                  }}>
+                    <Clock size={10} strokeWidth={1.8} />
+                    {timeAgo(n.created_at)}
+                  </div>
+                </div>
+
+                {/* ── Right: View Task + trash — fixed width so all rows align ── */}
+                <div style={{
+                  width: '148px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                  gap: '6px',
+                  padding: '0 16px 0 8px', flexShrink: 0,
+                }}>
+                  {n.task_id ? (
                     <button
-                      onClick={() => viewTask(n)}
+                      onClick={e => { e.stopPropagation(); viewTask(n) }}
+                      title="View Task"
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        padding: '5px 11px', borderRadius: '6px',
+                        padding: '5px 12px', borderRadius: '6px',
                         fontSize: '11.5px', fontWeight: 600,
                         background: colors.blue, color: '#fff',
                         border: 'none', cursor: 'pointer',
-                        fontFamily: font.body,
+                        fontFamily: font.body, whiteSpace: 'nowrap',
                       }}
                     >
                       <ExternalLink size={11} strokeWidth={2.2} />
                       View Task
                     </button>
+                  ) : (
+                    <span style={{ display: 'inline-block', width: '82px' }} />
                   )}
-                  {!n.is_read && (
-                    <button
-                      onClick={() => markRead(n.id)}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        padding: '5px 11px', borderRadius: '6px',
-                        fontSize: '11.5px', fontWeight: 600,
-                        background: 'transparent',
-                        color: colors.secondary,
-                        border: `1.5px solid ${colors.border}`,
-                        cursor: 'pointer', fontFamily: font.body,
-                      }}
-                    >
-                      <Check size={11} strokeWidth={2.5} />
-                      Mark Read
-                    </button>
-                  )}
+
+                  {/* Per-row trash */}
                   <button
-                    onClick={() => clearNotif(n.id)}
+                    onClick={e => { e.stopPropagation(); deleteSingle(n.id) }}
+                    title="Delete notification"
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '5px',
-                      padding: '5px 11px', borderRadius: '6px',
-                      fontSize: '11.5px', fontWeight: 600,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: '28px', height: '28px', borderRadius: '6px',
                       background: 'transparent',
                       color: colors.muted,
                       border: `1.5px solid ${colors.border}`,
-                      cursor: 'pointer', fontFamily: font.body,
+                      cursor: 'pointer', flexShrink: 0,
                     }}
                   >
-                    <X size={11} strokeWidth={2.5} />
-                    Clear
+                    <Trash2 size={12} strokeWidth={2} />
                   </button>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </DashboardLayout>
