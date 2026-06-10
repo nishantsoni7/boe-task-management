@@ -57,7 +57,7 @@ function buildPrompt(params: {
   // Trend summary: last 7 scores
   const recentScores  = trend.slice(-7).map(d => d.score).join(', ')
   const weeklyCompleted = trend.reduce((s, d) => s + d.inputs.completedHigh + d.inputs.completedMedium + d.inputs.completedLow, 0)
-  const eodLogRate    = Math.round(trend.filter(d => d.inputs.hasEodLog).length / trend.length * 100)
+  const eodLogRate    = trend.length > 0 ? Math.round(trend.filter(d => d.inputs.hasEodLog).length / trend.length * 100) : 0
 
   // Behavioural ratio: updates per completed task (signals "busy but not finishing")
   const weeklyUpdates = trend.reduce((s, d) => s + d.inputs.statusUpdates, 0)

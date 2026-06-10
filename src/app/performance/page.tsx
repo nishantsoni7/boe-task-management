@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useViewAs } from '@/hooks/useViewAs'
 import type {
   UserProfile, PerformanceData, PerformanceAudit, TrendDay,
-  ScoreBreakdown, TrendClassification,
+  TrendClassification,
 } from '@/lib/types'
 
 // ─── Progress loader ──────────────────────────────────────────────────────────
@@ -111,34 +111,6 @@ function MetricCard({ label, value, sub, accent }: { label: string; value: strin
   )
 }
 
-// ─── Score breakdown bar ──────────────────────────────────────────────────────
-function BreakdownBar({ label, earned, max, color }: { label: string; earned: number; max: number; color: string }) {
-  const pct = Math.max(0, Math.min(100, (earned / max) * 100))
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <div style={{ width: 80, fontSize: 12, color: '#6B7384', fontWeight: 500, flexShrink: 0 }}>{label}</div>
-      <div style={{ flex: 1, height: 6, background: '#EEF0F4', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.5s ease' }} />
-      </div>
-      <div style={{ width: 52, textAlign: 'right', fontSize: 12, fontWeight: 600, color: earned < 0 ? '#D94F4F' : '#111318', flexShrink: 0 }}>
-        {earned < 0 ? earned : `+${earned}`} / {max}
-      </div>
-    </div>
-  )
-}
-
-function ScoreBreakdownPanel({ breakdown }: { breakdown: ScoreBreakdown }) {
-  return (
-    <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ fontSize: 11, fontWeight: 600, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Score Breakdown</div>
-      <BreakdownBar label="Output"     earned={breakdown.output}     max={50}  color="#45A870" />
-      <BreakdownBar label="Momentum"   earned={breakdown.momentum}   max={20}  color="#5585E8" />
-      <BreakdownBar label="Discipline" earned={breakdown.discipline} max={20}  color="#E8A030" />
-      <BreakdownBar label="Risk"       earned={breakdown.risk}       max={-40} color="#D94F4F" />
-    </div>
-  )
-}
-
 // ─── Trend classification ─────────────────────────────────────────────────────
 const TREND_COLORS: Record<TrendClassification, string> = {
   improving:         '#45A870',
@@ -158,39 +130,6 @@ const TREND_ICONS: Record<TrendClassification, string> = {
   insufficient_data: '?',
 }
 
-// ─── Trend bars ───────────────────────────────────────────────────────────────
-function TrendBars({ trend }: { trend: TrendDay[] }) {
-  const max = Math.max(...trend.map(d => d.score), 1)
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 80 }}>
-      {trend.map((d) => {
-        const heightPct = (d.score / max) * 100
-        const color = d.score >= 75 ? '#45A870' : d.score >= 58 ? '#5585E8' : d.score >= 38 ? '#E8A030' : '#D94F4F'
-        const isToday = d.date === new Date().toISOString().slice(0, 10)
-        return (
-          <div
-            key={d.date}
-            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
-            title={`${d.date}: ${d.score}/100 (Output ${d.breakdown.output}, Momentum ${d.breakdown.momentum}, Discipline ${d.breakdown.discipline}, Risk ${d.breakdown.risk})`}
-          >
-            <div style={{
-              width: '100%', height: `${heightPct}%`, minHeight: 4,
-              background: color, borderRadius: '3px 3px 0 0',
-              opacity: isToday ? 1 : 0.6,
-              outline: isToday ? `2px solid ${color}` : 'none',
-              outlineOffset: 1,
-              transition: 'height 0.4s ease',
-            }} />
-            <div style={{ fontSize: 9, color: '#8C94A6', whiteSpace: 'nowrap' }}>
-              {new Date(d.date + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2)}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 // ─── AI Audit panel ───────────────────────────────────────────────────────────
 function AuditPanel({ audit, loading, onGenerate }: {
   audit: PerformanceAudit | null
@@ -202,7 +141,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
       <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '20px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#E8A030', animation: 'pulse 1.2s infinite' }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>AI Audit</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>Today&apos;s Reflection</span>
         </div>
         <div style={{ color: '#8C94A6', fontSize: 13 }}>Analysing your performance data…</div>
       </div>
@@ -213,7 +152,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
     return (
       <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '20px 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>AI Audit</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>Today&apos;s Reflection</span>
           <button
             onClick={onGenerate}
             style={{
@@ -222,10 +161,10 @@ function AuditPanel({ audit, loading, onGenerate }: {
               border: 'none', borderRadius: 7,
               padding: '6px 14px', cursor: 'pointer',
             }}
-          >Run Audit</button>
+          >Generate</button>
         </div>
         <div style={{ fontSize: 12, color: '#8C94A6' }}>
-          Get AI coaching on your day — what worked, what didn&apos;t, and how to improve.
+          Get coaching on what worked, what was missed, and what to improve tomorrow.
         </div>
       </div>
     )
@@ -238,7 +177,7 @@ function AuditPanel({ audit, loading, onGenerate }: {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: verdictColor }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>AI Audit</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>Today&apos;s Reflection</span>
         </div>
         <span style={{
           fontSize: 11, fontWeight: 600, color: verdictColor,
@@ -285,28 +224,171 @@ function AuditPanel({ audit, loading, onGenerate }: {
   )
 }
 
+// ─── Today's Coach panel ─────────────────────────────────────────────────────
+function TodayCoach({ data }: { data: PerformanceData }) {
+  const { breakdown, inputs, score } = data
+  const totalCompleted = inputs.completedHigh + inputs.completedMedium + inputs.completedLow
+
+  const strong: string[] = []
+  const improve: { text: string; pts: number }[] = []
+
+  if (totalCompleted > 0)
+    strong.push(`Completed ${totalCompleted} task${totalCompleted !== 1 ? 's' : ''} today`)
+  if (inputs.statusUpdates >= 3)
+    strong.push(`Posted ${inputs.statusUpdates} updates — good communication`)
+  if (inputs.hasEodLog)
+    strong.push('EOD log submitted')
+  if (breakdown.risk === 0 && inputs.activeTasks > 0)
+    strong.push('No overdue or blocked tasks')
+
+  const outputGap = 50 - breakdown.output
+  if (outputGap > 0) {
+    const medNeeded = Math.ceil(outputGap / 15)
+    improve.push({
+      text: `Complete ${medNeeded} more task${medNeeded !== 1 ? 's' : ''} for full output score`,
+      pts: Math.min(outputGap, medNeeded * 15),
+    })
+  }
+
+  const momentumGap = 20 - breakdown.momentum
+  if (momentumGap > 0) {
+    const updatesNeeded = Math.ceil(momentumGap / 4)
+    improve.push({
+      text: `Add ${updatesNeeded} more update${updatesNeeded !== 1 ? 's' : ''} on active tasks`,
+      pts: Math.min(momentumGap, updatesNeeded * 4),
+    })
+  }
+
+  if (!inputs.hasEodLog)
+    improve.push({ text: 'Submit your EOD log before you finish work', pts: 12 })
+
+  if (inputs.overdueCount > 0)
+    improve.push({
+      text: `Close ${inputs.overdueCount} overdue task${inputs.overdueCount !== 1 ? 's' : ''} to remove risk penalty`,
+      pts: inputs.overdueCount * 5,
+    })
+
+  const potentialGain = improve.reduce((s, i) => s + i.pts, 0)
+  const potentialScore = Math.min(100, score + potentialGain)
+
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10,
+      padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12,
+    }}>
+      {/* Header row with score */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Today&apos;s Coach
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#111318' }}>{score}/100</div>
+      </div>
+
+      {strong.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: '#45A870', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Strong</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {strong.map((s, i) => (
+              <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, color: '#45A870',
+                  background: '#45A87018', borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+                }}>✓</span>
+                <span style={{ fontSize: 12, color: '#3D4455', lineHeight: 1.5 }}>{s}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {improve.length > 0 ? (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: '#5585E8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Next Steps</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {/* First item prominently styled */}
+            <div style={{
+              display: 'flex', gap: 8, alignItems: 'flex-start',
+              background: '#5585E808', border: '1px solid #5585E820',
+              borderRadius: 7, padding: '7px 10px',
+            }}>
+              <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>⚡</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 12.5, color: '#111318', fontWeight: 500, lineHeight: 1.5 }}>{improve[0].text}</span>
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: '#5585E8',
+                background: '#5585E818', borderRadius: 4, padding: '2px 6px', flexShrink: 0, marginTop: 2,
+              }}>+{improve[0].pts}</span>
+            </div>
+            {/* Remaining items smaller */}
+            {improve.slice(1).map((item, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', paddingLeft: 2 }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, color: '#5585E8',
+                  background: '#5585E818', borderRadius: 4, padding: '1px 5px', flexShrink: 0, marginTop: 2,
+                }}>+{item.pts}</span>
+                <span style={{ fontSize: 12, color: '#6B7384', lineHeight: 1.5 }}>{item.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: '#45A870', lineHeight: 1.6 }}>
+          You&apos;ve done everything right today. Nothing left to improve — great work.
+        </div>
+      )}
+
+      {/* Potential score */}
+      <div style={{
+        borderTop: '1px solid #EEF0F4', paddingTop: 10,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <span style={{ fontSize: 11, color: '#8C94A6' }}>Potential score today</span>
+        <span style={{
+          fontSize: 15, fontWeight: 700,
+          color: potentialScore > score ? '#5585E8' : '#45A870',
+        }}>{potentialScore}/100</span>
+      </div>
+
+      {/* Score guide link */}
+      <div style={{ borderTop: '1px solid #F0F1F3', paddingTop: 8 }}>
+        <ScoreGuide compact />
+      </div>
+    </div>
+  )
+}
+
 // ─── Score guide (collapsible) ────────────────────────────────────────────────
-function ScoreGuide() {
+function ScoreGuide({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false)
 
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+    <div style={compact ? {} : { border: '1px solid #E5E7EB', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
       <button
         onClick={() => setOpen(o => !o)}
         style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '11px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+          width: '100%', display: 'flex', alignItems: 'center',
+          justifyContent: compact ? 'flex-start' : 'space-between',
+          padding: compact ? '0' : '11px 16px',
+          background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
         }}
       >
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: '#3D4455' }}>How is this score calculated?</span>
-        <span style={{
-          fontSize: 11, color: '#8C94A6',
-          transform: open ? 'rotate(180deg)' : 'none',
-          transition: 'transform 0.2s', display: 'inline-block',
-        }}>▾</span>
+        {compact
+          ? <span style={{ fontSize: 11, color: '#8C94A6', textDecoration: 'underline', textUnderlineOffset: 2 }}>
+              How scoring works {open ? '↑' : '→'}
+            </span>
+          : <>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#3D4455' }}>How is this score calculated?</span>
+              <span style={{
+                fontSize: 11, color: '#8C94A6',
+                transform: open ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.2s', display: 'inline-block',
+              }}>▾</span>
+            </>
+        }
       </button>
       {open && (
-        <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 16, borderTop: '1px solid #F0F1F3' }}>
+        <div style={{ padding: compact ? '10px 0 0' : '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 16, borderTop: compact ? 'none' : '1px solid #F0F1F3' }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#45A870', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, marginTop: 12 }}>
               ✓ You gain points when you…
@@ -432,7 +514,7 @@ function EodLogForm({ existing, token, onSaved }: {
             value={summary}
             onChange={e => { setSummary(e.target.value); if (saveState !== 'saving') setSaveState('idle'); setErrorMsg('') }}
             placeholder="Briefly write the important work you completed today..."
-            rows={3}
+            rows={5}
             style={{
               width: '100%', resize: 'vertical',
               fontSize: 13, color: '#111318', lineHeight: 1.5,
@@ -1206,14 +1288,21 @@ export default function PerformancePage() {
           period:        'daily',
           inputs:        perfTodayData.inputs,
           breakdown:     perfTodayData.breakdown,
-          trend:         perfTodayData.trend,
+          trend:         perfTodayData.trend ?? [],
           trendAnalysis: perfTodayData.trendAnalysis,
           userName:      perfTodayData.userName,
           score:         perfTodayData.score,
           rating:        perfTodayData.rating,
         }),
       })
-      if (res.ok) setAudit((await res.json()).audit)
+      const json = await res.json().catch(() => null)
+      if (res.ok && json?.audit) {
+        setAudit(json.audit)
+      } else {
+        console.error('Reflection error:', json)
+      }
+    } catch (err) {
+      console.error('Reflection network error:', err)
     } finally {
       setAuditLoading(false)
     }
@@ -1293,7 +1382,7 @@ export default function PerformancePage() {
         }}>Team View →</a>
       ) : undefined}
     >
-      <div style={{ maxWidth: 1040, margin: '0 auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ maxWidth: 1040, margin: '0 auto', padding: '8px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: 4, background: '#F4F5F7', borderRadius: 10, padding: 4, alignSelf: 'flex-start' }}>
@@ -1323,56 +1412,98 @@ export default function PerformancePage() {
               alignItems: 'start',
             }}>
 
-              {/* ROW 1 LEFT */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 16, alignItems: 'stretch' }}>
-                  <div style={{
-                    background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10,
-                    padding: '20px 10px',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
-                  }}>
-                    <ScoreRing score={perfTodayData.score} rating={perfTodayData.rating} />
-                    {perfTodayData.trendAnalysis.classification !== 'insufficient_data' && (
-                      <div style={{
-                        fontSize: 10, fontWeight: 600,
-                        color: TREND_COLORS[perfTodayData.trendAnalysis.classification],
-                        background: TREND_COLORS[perfTodayData.trendAnalysis.classification] + '15',
-                        padding: '2px 8px', borderRadius: 999,
-                        textAlign: 'center', lineHeight: 1.6,
-                      }}>
-                        {TREND_ICONS[perfTodayData.trendAnalysis.classification]} {
-                          perfTodayData.trendAnalysis.weekOverWeekDelta !== 0
-                            ? `${perfTodayData.trendAnalysis.weekOverWeekDelta > 0 ? '+' : ''}${perfTodayData.trendAnalysis.weekOverWeekDelta} w/w`
-                            : perfTodayData.trendAnalysis.classification
-                        }
+              {/* LEFT COLUMN: score card + EOD form */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{
+                  background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10,
+                  padding: '20px 20px',
+                  display: 'flex', gap: 20, alignItems: 'flex-start',
+                }}>
+                  {/* Ring + accountability info */}
+                  {(() => {
+                    const eodSubmittedTime = perfTodayData.eodLog?.updated_at
+                      ? new Date(perfTodayData.eodLog.updated_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                      : null
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                        <ScoreRing score={perfTodayData.score} rating={perfTodayData.rating} />
+                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 10, color: '#A0A8B8' }}>EOD Submitted</span>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: perfTodayData.inputs.hasEodLog ? '#45A870' : '#D94F4F' }}>
+                              {eodSubmittedTime ?? 'Not yet'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignContent: 'start' }}>
-                    <MetricCard
-                      label="Output"
-                      value={`${perfTodayData.breakdown.output}/50`}
-                      sub={`${perfTodayData.inputs.completedHigh + perfTodayData.inputs.completedMedium + perfTodayData.inputs.completedLow} task${perfTodayData.inputs.completedHigh + perfTodayData.inputs.completedMedium + perfTodayData.inputs.completedLow !== 1 ? 's' : ''} completed`}
-                      accent={perfTodayData.breakdown.output >= 30 ? '#45A870' : perfTodayData.breakdown.output >= 15 ? undefined : '#8C94A6'}
-                    />
-                    <MetricCard
-                      label="Momentum"
-                      value={`${perfTodayData.breakdown.momentum}/20`}
-                      sub={`${perfTodayData.inputs.statusUpdates} update${perfTodayData.inputs.statusUpdates !== 1 ? 's' : ''}${perfTodayData.inputs.blockerResolutions > 0 ? ` · ${perfTodayData.inputs.blockerResolutions} unblocked` : ''}`}
-                      accent={perfTodayData.breakdown.momentum >= 12 ? '#5585E8' : undefined}
-                    />
-                    <MetricCard
-                      label="Discipline"
-                      value={`${perfTodayData.breakdown.discipline}/20`}
-                      sub={perfTodayData.inputs.hasEodLog ? '✓ EOD log submitted' : 'EOD log missing'}
-                      accent={perfTodayData.inputs.hasEodLog ? '#45A870' : '#D94F4F'}
-                    />
-                    <MetricCard
-                      label="Risk"
-                      value={perfTodayData.breakdown.risk === 0 ? '✓ Clean' : `${perfTodayData.breakdown.risk}`}
-                      sub={`${perfTodayData.inputs.overdueCount} overdue · ${perfTodayData.inputs.staleBlockedCount} stale blocks`}
-                      accent={perfTodayData.breakdown.risk < -10 ? '#D94F4F' : perfTodayData.breakdown.risk === 0 ? '#45A870' : undefined}
-                    />
+                    )
+                  })()}
+
+                  {/* Breakdown */}
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      Score Components
+                    </div>
+                    {(() => {
+                      const totalCompleted = perfTodayData.inputs.completedHigh + perfTodayData.inputs.completedMedium + perfTodayData.inputs.completedLow
+                      const outputGap = 50 - perfTodayData.breakdown.output
+                      const momentumGap = 20 - perfTodayData.breakdown.momentum
+                      const eodTime = perfTodayData.eodLog?.updated_at
+                        ? new Date(perfTodayData.eodLog.updated_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                        : null
+
+                      const rows: { label: string; value: string; sub: string; color: string }[] = [
+                        {
+                          label: 'Output',
+                          value: `${perfTodayData.breakdown.output}/50`,
+                          sub: outputGap > 0
+                            ? `${totalCompleted} task${totalCompleted !== 1 ? 's' : ''} · ${outputGap} pts to max`
+                            : `${totalCompleted} task${totalCompleted !== 1 ? 's' : ''} · full score`,
+                          color: perfTodayData.breakdown.output >= 30 ? '#45A870' : '#8C94A6',
+                        },
+                        {
+                          label: 'Momentum',
+                          value: `${perfTodayData.breakdown.momentum}/20`,
+                          sub: momentumGap > 0
+                            ? `${perfTodayData.inputs.statusUpdates} update${perfTodayData.inputs.statusUpdates !== 1 ? 's' : ''} · ${momentumGap} pts to max`
+                            : `${perfTodayData.inputs.statusUpdates} updates · full score`,
+                          color: '#5585E8',
+                        },
+                        {
+                          label: 'Discipline',
+                          value: `${perfTodayData.breakdown.discipline}/20`,
+                          sub: perfTodayData.inputs.hasEodLog
+                            ? (eodTime ? `Submitted at ${eodTime}` : '✓ EOD submitted')
+                            : 'Not submitted · +12 pts available',
+                          color: perfTodayData.inputs.hasEodLog ? '#45A870' : '#D94F4F',
+                        },
+                        {
+                          label: 'Risk',
+                          value: perfTodayData.breakdown.risk === 0 ? '✓ Clean' : `${perfTodayData.breakdown.risk}`,
+                          sub: perfTodayData.breakdown.risk === 0
+                            ? 'No overdue tasks'
+                            : `${perfTodayData.inputs.overdueCount} overdue · ${perfTodayData.inputs.staleBlockedCount} stale`,
+                          color: perfTodayData.breakdown.risk < 0 ? '#D94F4F' : '#45A870',
+                        },
+                      ]
+
+                      return (
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '68px 64px 1fr',
+                          rowGap: 8,
+                          alignItems: 'center',
+                        }}>
+                          {rows.map(({ label, value, sub, color }) => (
+                            <React.Fragment key={label}>
+                              <div style={{ fontSize: 11, color: '#8C94A6' }}>{label}</div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color }}>{value}</div>
+                              <div style={{ fontSize: 11, color: '#A0A8B8', lineHeight: 1.3 }}>{sub}</div>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
 
@@ -1388,49 +1519,14 @@ export default function PerformancePage() {
                     </div>
                   </div>
                 )}
+                <EodLogForm existing={perfTodayData.eodLog} token={token} onSaved={handleEodSaved} />
               </div>
 
-              {/* ROW 1 RIGHT */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <ScoreGuide />
-                <ScoreBreakdownPanel breakdown={perfTodayData.breakdown} />
+              {/* RIGHT COLUMN: coach + reflection */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <TodayCoach data={perfTodayData} />
+                <AuditPanel audit={audit} loading={auditLoading} onGenerate={runAudit} />
               </div>
-
-              {/* ROW 2 LEFT: EOD form */}
-              <EodLogForm existing={perfTodayData.eodLog} token={token} onSaved={handleEodSaved} />
-
-              {/* ROW 2 RIGHT: Trend chart — deferred, arrives after initial render */}
-              {trendLoading ? (
-                <div style={{
-                  background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '18px 20px',
-                  display: 'flex', flexDirection: 'column', gap: 10,
-                }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em' }}>7-Day Trend</div>
-                  <div style={{ height: 80, background: '#F4F5F7', borderRadius: 6, animation: 'pulse 1.4s infinite' }} />
-                  <div style={{ fontSize: 11, color: '#C0C4CE' }}>Loading trend…</div>
-                </div>
-              ) : perfTodayData.trend && perfTodayData.trend.length > 0 ? (
-                <div style={{ background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10, padding: '18px 20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em' }}>7-Day Trend</div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: TREND_COLORS[perfTodayData.trendAnalysis.classification] }}>
-                      {TREND_ICONS[perfTodayData.trendAnalysis.classification]} {perfTodayData.trendAnalysis.description}
-                    </div>
-                  </div>
-                  <TrendBars trend={perfTodayData.trend} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 11, color: '#8C94A6' }}>
-                    <span>Avg: {Math.round(perfTodayData.trend.reduce((s, d) => s + d.score, 0) / perfTodayData.trend.length)}/100</span>
-                    <span>Best: {Math.max(...perfTodayData.trend.map(d => d.score))}/100</span>
-                    <span>Streak: {perfTodayData.trendAnalysis.streak}d {perfTodayData.trendAnalysis.direction}</span>
-                  </div>
-                </div>
-              ) : <div />}
-
-              {/* ROW 3 LEFT: AI Audit */}
-              <AuditPanel audit={audit} loading={auditLoading} onGenerate={runAudit} />
-
-              {/* ROW 3 RIGHT: empty */}
-              <div />
 
             </div>
           ) : (
