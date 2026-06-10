@@ -279,6 +279,11 @@ export function DashboardLayout({
                   active={pathname.startsWith('/settings/positions')}
                   onClick={() => navTo('/settings/positions')}
                 />
+                <NavChild
+                  label="My Account"
+                  active={pathname === '/settings'}
+                  onClick={() => navTo('/settings')}
+                />
               </CollapsibleNav>
 
               <NavLeaf

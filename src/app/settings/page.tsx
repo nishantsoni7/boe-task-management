@@ -68,8 +68,8 @@ export default function SettingsPage() {
       setPwError('New password is required.')
       return
     }
-    if (newPassword.length < 6) {
-      setPwError('Password must be at least 6 characters.')
+    if (newPassword.length < 8) {
+      setPwError('Password must be at least 8 characters.')
       return
     }
     if (newPassword !== confirmPassword) {
@@ -152,11 +152,11 @@ export default function SettingsPage() {
               background: '#E8A030', flexShrink: 0,
             }} />
             <span style={{ fontSize: 15, fontWeight: 600, color: colors.primary }}>
-              Change Password
+              Change My Password
             </span>
           </div>
           <p style={{ margin: '0 0 20px', fontSize: 13, color: colors.tertiary, lineHeight: 1.5 }}>
-            Use a private password that only you know.
+            Update the password for your own account.
           </p>
 
           <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
