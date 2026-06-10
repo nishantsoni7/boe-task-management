@@ -12,7 +12,6 @@ import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
-  List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert, CheckCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus,
 } from 'lucide-react'
 
@@ -25,12 +24,35 @@ const TASK_COLUMNS = [
   'assigned_to', 'created_by', 'delegated_by', 'team',
 ].join(', ')
 
-const TODAY_STR = new Date().toISOString().slice(0, 10)
+function localDateStr(offsetDays = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  const yyyy = d.getFullYear()
+  const mm   = String(d.getMonth() + 1).padStart(2, '0')
+  const dd   = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+// Normalize any due_date format (plain YYYY-MM-DD or full ISO timestamp) to local YYYY-MM-DD
+function normalizeDueDate(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  // Already a plain date — return as-is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  // Full ISO timestamp — convert to local calendar date
+  const d = new Date(raw)
+  if (isNaN(d.getTime())) return null
+  const yyyy = d.getFullYear()
+  const mm   = String(d.getMonth() + 1).padStart(2, '0')
+  const dd   = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+const TODAY_STR    = localDateStr(0)
+const TOMORROW_STR = localDateStr(1)
 const NOW_MS    = Date.now()
 const H48       = 48 * 60 * 60 * 1000
 
 function isOverdue(task: Task) {
-  return !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed'
+  const d = normalizeDueDate(task.due_date)
+  return !!d && d < TODAY_STR && task.status !== 'completed'
 }
 function needsUpdate(task: Task) {
   if (task.status === 'completed') return false
@@ -51,17 +73,6 @@ function formatDate(d: string | null): string | null {
 type TabKey = 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
 type TaskType = 'all' | 'self' | 'delegated'
 
-const TABS: { key: TabKey; label: string; color: string; Icon: React.ElementType }[] = [
-  { key: 'all',            label: 'All',             color: colors.secondary, Icon: List         },
-  { key: 'important',      label: 'Important',       color: '#C49A28',        Icon: Star         },
-  { key: 'unacknowledged', label: 'Unacknowledged',  color: '#9B6FD4',        Icon: Bell         },
-  { key: 'in_progress',    label: 'In Progress',     color: colors.blue,      Icon: PlayCircle   },
-  { key: 'overdue',        label: 'Overdue',         color: colors.red,       Icon: Clock        },
-  { key: 'needs_update',   label: 'Pending Update',  color: colors.amber,     Icon: RefreshCcw   },
-  { key: 'non_completion', label: 'Non Completion',  color: '#E05C2A',        Icon: ShieldAlert  },
-  { key: 'completed',      label: 'Completed',       color: '#4CAF7D',        Icon: CheckCircle  },
-]
-
 // ─── Priority config ──────────────────────────────────────────────────────────
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high:   { label: 'High', color: '#B06035'    },
@@ -69,135 +80,12 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   low:    { label: 'Low',  color: colors.muted },
 }
 
-// ─── Focus message ────────────────────────────────────────────────────────────
-function buildFocusMessage(overdue: number, needsUpd: number, nonCompletion: number) {
-  if (nonCompletion > 0)
-    return { text: `${nonCompletion} task${nonCompletion > 1 ? 's' : ''} in the risk zone`, color: '#E05C2A' }
-  if (overdue > 0)
-    return { text: `${overdue} overdue task${overdue > 1 ? 's' : ''} need attention`, color: colors.red }
-  if (needsUpd > 0)
-    return { text: `${needsUpd} task${needsUpd > 1 ? 's' : ''} need${needsUpd === 1 ? 's' : ''} an update`, color: colors.amber }
-  return { text: 'All tasks are on track', color: '#4CAF7D' }
-}
-
-// ─── Right panel ─────────────────────────────────────────────────────────────
-function RightPanel({
-  counts, activeTab, onTabChange,
-}: {
-  counts: Record<TabKey, number>
-  activeTab: TabKey
-  onTabChange: (k: TabKey) => void
-}) {
-  const focus = buildFocusMessage(counts.overdue, counts.needs_update, counts.non_completion)
-
-  return (
-    <div style={{ flex: 3, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-
-      {/* Today Focus */}
-      <div style={{
-        background: colors.base, border: `1.5px solid ${colors.border}`,
-        borderRadius: '10px', padding: '14px 16px',
-      }}>
-        <div style={{
-          fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
-          textTransform: 'uppercase', color: colors.muted, marginBottom: '6px',
-        }}>
-          Today&rsquo;s Focus
-        </div>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: focus.color, lineHeight: 1.45 }}>
-          {focus.text}
-        </div>
-      </div>
-
-      {/* All views — replaces tab bar */}
-      <div style={{
-        background: colors.base, border: `1.5px solid ${colors.border}`,
-        borderRadius: '10px', overflow: 'hidden',
-      }}>
-        <div style={{
-          fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
-          textTransform: 'uppercase', color: colors.muted,
-          padding: '10px 16px 6px',
-        }}>
-          Views
-        </div>
-        {TABS.filter(t => t.key !== 'completed').map((item, i, arr) => {
-          const isActive = activeTab === item.key
-          const { Icon } = item
-          return (
-            <button
-              key={item.key}
-              onClick={() => onTabChange(item.key)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', padding: '8px 14px',
-                background: isActive ? `${item.color}0d` : 'transparent',
-                border: 'none',
-                borderBottom: i < arr.length - 1 ? `1px solid ${colors.border}` : 'none',
-                borderLeft: `3px solid ${isActive ? item.color : 'transparent'}`,
-                cursor: 'pointer', outline: 'none', transition: 'all 0.1s', textAlign: 'left',
-              }}
-            >
-              <span style={{
-                display: 'flex', alignItems: 'center', gap: '7px',
-                fontSize: '12px', fontWeight: isActive ? 600 : 500,
-                color: isActive ? item.color : counts[item.key] > 0 ? colors.secondary : colors.muted,
-              }}>
-                <Icon size={12} style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }} />
-                {item.label}
-              </span>
-              <span style={{
-                fontSize: '12px', fontWeight: 700,
-                color: counts[item.key] > 0 ? item.color : colors.muted,
-                background: isActive ? `${item.color}18` : 'rgba(0,0,0,0.04)',
-                padding: '1px 7px', borderRadius: '10px', minWidth: '22px', textAlign: 'center',
-              }}>
-                {counts[item.key]}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Guidance */}
-      <div style={{
-        background: colors.raised, border: `1.5px solid ${colors.border}`,
-        borderRadius: '10px', padding: '12px 16px',
-        fontSize: '11.5px', color: colors.muted, lineHeight: 1.6,
-      }}>
-        Clear overdue and unacknowledged tasks first. Keep updates timely to avoid the non-completion zone.
-      </div>
-
-    </div>
-  )
-}
-
-// ─── Mobile chip tab ──────────────────────────────────────────────────────────
-function ChipTab({
-  tab, count, isActive, onClick,
-}: { tab: typeof TABS[number]; count: number; isActive: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '5px',
-        padding: '8px 13px',
-        background: isActive ? tab.color : colors.base,
-        border: `1.5px solid ${isActive ? tab.color : colors.border}`,
-        borderRadius: '20px', cursor: 'pointer', whiteSpace: 'nowrap',
-        flexShrink: 0, outline: 'none', transition: 'all 0.15s',
-        minHeight: '36px',
-      }}
-    >
-      <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#fff' : colors.secondary }}>
-        {tab.label}
-      </span>
-      <span style={{ fontSize: '11px', fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.85)' : colors.muted }}>
-        {count}
-      </span>
-    </button>
-  )
-}
+// ─── Left sidebar tab ─────────────────────────────────────────────────────────
+const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent: string }[] = [
+  { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#5B7FA6' },
+  { key: 'self',      label: 'Self Tasks', Icon: UserCheck,  accent: '#2E9E6B' },
+  { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#9B6FD4' },
+]
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
@@ -336,17 +224,17 @@ function TaskCard({
         }
       </div>
 
-      {/* Title + note */}
+      {/* Title + note — flex:1 so it takes all leftover space */}
       <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
-          {isSelf ? (
+          {isSelf && (
             <span style={{
               fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px',
               color: '#5B7FA6', background: 'rgba(91,127,166,0.10)',
               border: '1px solid rgba(91,127,166,0.20)',
               whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.03em',
             }}>SELF</span>
-          ) : null}
+          )}
           <span style={{
             fontSize: '13px',
             fontWeight: task.is_urgent ? 600 : 500,
@@ -443,12 +331,12 @@ function TaskCard({
         flexShrink: 0, width: '90px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
+        <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '10px', padding: '3px 9px', textTransform: 'capitalize', fontWeight: 600 }}>
           {task.status}
         </span>
       </div>
 
-      {/* Actions */}
+      {/* Actions — fixed 84px */}
       <div style={{
         flexShrink: 0, width: '84px',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1012,6 +900,7 @@ export default function MyTasksPage() {
   const [filterStatus,     setFilterStatus]     = useState('')
   const [filterPriority,   setFilterPriority]   = useState('')
   const [filterAssignedBy, setFilterAssignedBy] = useState('')
+  const [focusFilter,      setFocusFilter]      = useState<'overdue' | 'today' | 'tomorrow' | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -1268,6 +1157,18 @@ export default function MyTasksPage() {
     completed:      buckets.completed.length,
   }
 
+  // DEBUG — remove after confirming counts are correct
+  useEffect(() => {
+    console.group('[MyTasks] Focus card debug')
+    console.log('TODAY_STR:', TODAY_STR, '  TOMORROW_STR:', TOMORROW_STR)
+    baseTasks.filter(t => t.status !== 'completed').forEach(t => {
+      const norm = normalizeDueDate(t.due_date)
+      const bucket = norm === TODAY_STR ? 'TODAY' : norm === TOMORROW_STR ? 'TOMORROW' : norm && norm < TODAY_STR ? 'OVERDUE' : 'other'
+      console.log(`[${bucket}] "${t.title}" | raw due_date: ${t.due_date} | normalized: ${norm} | status: ${t.status}`)
+    })
+    console.groupEnd()
+  }, [baseTasks])
+
   const visibleTasks = useMemo(() => {
     let tasks = buckets[activeTab]
     if (filterAssignedBy) tasks = tasks.filter(t => t.created_by === filterAssignedBy)
@@ -1277,8 +1178,11 @@ export default function MyTasksPage() {
     }
     if (filterStatus)   tasks = tasks.filter(t => t.status === filterStatus)
     if (filterPriority) tasks = tasks.filter(t => t.priority === filterPriority)
+    if (focusFilter === 'overdue')   tasks = tasks.filter(t => { const d = normalizeDueDate(t.due_date); return t.status !== 'completed' && !!d && d < TODAY_STR })
+    if (focusFilter === 'today')     tasks = tasks.filter(t => t.status !== 'completed' && normalizeDueDate(t.due_date) === TODAY_STR)
+    if (focusFilter === 'tomorrow')  tasks = tasks.filter(t => t.status !== 'completed' && normalizeDueDate(t.due_date) === TOMORROW_STR)
     return tasks
-  }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy])
+  }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy, focusFilter])
 
   function handleTabChange(key: TabKey) {
     setActiveTab(key)
@@ -1286,10 +1190,11 @@ export default function MyTasksPage() {
     setSearch('')
     setFilterStatus('')
     setFilterPriority('')
+    setFocusFilter(null)
     // Note: intentionally NOT resetting filterAssignedBy here — tab changes stay within same task type
   }
 
-  const activeTabColor = TABS.find(t => t.key === activeTab)?.color ?? colors.secondary
+  const activeTabColor = colors.secondary
 
   if (loading) return <LoadingScreen />
 
@@ -1318,79 +1223,201 @@ export default function MyTasksPage() {
         )}
       >
 
-        {/* ── Two-column workspace ── */}
-        <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+        {/* ── Unified workspace card ── */}
+        <div style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          borderRadius: '20px',
+          border: `1px solid ${colors.border}`,
+          background: '#fff',
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        }}>
 
-          {/* ── Left: task list ── */}
-          <div style={{ flex: 7, minWidth: 0 }}>
+          {/* ── Sidebar / pill tabs ── */}
+          {(() => {
+            const typeCounts: Record<TaskType, number> = {
+              all:       allTasks.filter(t => t.status !== 'completed').length,
+              self:      allTasks.filter(t => t.created_by === userId && t.status !== 'completed').length,
+              delegated: allTasks.filter(t => t.created_by !== userId && t.status !== 'completed').length,
+            }
+            const handleTypeChange = (key: TaskType) => {
+              setTaskType(key)
+              setActiveTab('all')
+              setSelectedTask(null)
+              setSearch('')
+              setFilterStatus('')
+              setFilterPriority('')
+              setFilterAssignedBy('')
+              setFocusFilter(null)
+            }
 
-            {/* Mobile: horizontal chip tab scroll */}
-            {isMobile && (
-              <div style={{
-                display: 'flex', gap: '8px', overflowX: 'auto',
-                paddingBottom: '4px', marginBottom: '10px',
-                scrollbarWidth: 'none',
-              }}>
-                {TABS.filter(t => t.key !== 'completed').map(tab => (
-                  <ChipTab
-                    key={tab.key}
-                    tab={tab}
-                    count={counts[tab.key]}
-                    isActive={activeTab === tab.key}
-                    onClick={() => handleTabChange(tab.key)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Task-type filter cards */}
-            {(() => {
-              const TYPE_CARDS: { key: TaskType; label: string; Icon: React.ElementType; accent: string }[] = [
-                { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#5B7FA6' },
-                { key: 'self',      label: 'Self Tasks', Icon: UserCheck,  accent: '#2E9E6B' },
-                { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#9B6FD4' },
-              ]
-              const typeCounts: Record<TaskType, number> = {
-                all:       allTasks.filter(t => t.status !== 'completed').length,
-                self:      allTasks.filter(t => t.created_by === userId && t.status !== 'completed').length,
-                delegated: allTasks.filter(t => t.created_by !== userId && t.status !== 'completed').length,
-              }
+            if (isMobile) {
               return (
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-                  {TYPE_CARDS.map(item => {
+                <div style={{
+                  display: 'flex', gap: '8px', overflowX: 'auto',
+                  padding: '12px 14px',
+                  borderBottom: `1px solid ${colors.border}`,
+                  scrollbarWidth: 'none',
+                }}>
+                  {TYPE_TABS.map(item => {
                     const isActive = taskType === item.key
                     const { Icon } = item
                     return (
                       <button
                         key={item.key}
-                        onClick={() => { setTaskType(item.key); setActiveTab('all'); setSelectedTask(null); setSearch(''); setFilterStatus(''); setFilterPriority(''); setFilterAssignedBy('') }}
+                        onClick={() => handleTypeChange(item.key)}
                         style={{
-                          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                          padding: '9px 12px',
-                          background: isActive ? colors.base : colors.raised,
-                          border: `1.5px solid ${isActive ? item.accent + '70' : colors.border}`,
-                          borderTop: isActive ? `2.5px solid ${item.accent}` : `1.5px solid ${colors.border}`,
-                          borderRadius: '8px',
-                          boxShadow: isActive ? `0 2px 6px ${item.accent}18` : 'none',
-                          cursor: 'pointer', outline: 'none', transition: 'all 0.12s', textAlign: 'left',
+                          display: 'flex', alignItems: 'center', gap: '6px',
+                          padding: '7px 13px', flexShrink: 0,
+                          background: isActive ? item.accent : 'transparent',
+                          border: `1.5px solid ${isActive ? item.accent : colors.border}`,
+                          borderRadius: '20px', cursor: 'pointer', outline: 'none',
+                          transition: 'all 0.12s', whiteSpace: 'nowrap',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px' }}>
-                          <Icon size={13} color={isActive ? item.accent : colors.muted} />
-                          <span style={{
-                            fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
-                            textTransform: 'uppercase',
-                            color: isActive ? item.accent : colors.muted,
-                          }}>
-                            {item.label}
-                          </span>
-                        </div>
-                        <span style={{
-                          fontSize: '18px', fontWeight: 700,
-                          color: isActive ? colors.primary : colors.muted,
-                          lineHeight: 1,
-                        }}>
+                        <Icon size={12} color={isActive ? '#fff' : colors.muted} />
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#fff' : colors.secondary }}>
+                          {item.label}
+                        </span>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.8)' : colors.muted }}>
                           {typeCounts[item.key]}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            }
+
+            return (
+              <div style={{
+                width: '220px', flexShrink: 0,
+                position: 'relative',
+                background: 'rgba(248,250,252,0.6)',
+              }}>
+                {/* soft right divider — sits at z:0 so active tab (z:1) paints over it */}
+                <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#eef2f7', zIndex: 0 }} />
+                <div style={{
+                  fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
+                  textTransform: 'uppercase', color: colors.muted,
+                  padding: '14px 14px 8px',
+                }}>
+                  Task Type
+                </div>
+                {TYPE_TABS.map((item, i) => {
+                  const isActive = taskType === item.key
+                  const { Icon } = item
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => handleTypeChange(item.key)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center',
+                        justifyContent: 'space-between', padding: '9px 14px',
+                        background: isActive ? '#fff' : 'transparent',
+                        border: 'none',
+                        borderBottom: i < TYPE_TABS.length - 1 ? '1px solid #eef2f7' : 'none',
+                        borderLeft: `3px solid ${isActive ? item.accent : 'transparent'}`,
+                        cursor: 'pointer', outline: 'none', transition: 'all 0.12s', textAlign: 'left',
+                        ...(isActive ? { position: 'relative', zIndex: 1 } : {}),
+                      }}
+                    >
+                      <span style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        fontSize: '12.5px', fontWeight: isActive ? 600 : 500,
+                        color: isActive ? item.accent : colors.secondary,
+                      }}>
+                        <Icon size={13} style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }} />
+                        {item.label}
+                      </span>
+                      <span style={{
+                        fontSize: '12px', fontWeight: 700,
+                        color: typeCounts[item.key] > 0 ? item.accent : colors.muted,
+                        background: isActive ? `${item.accent}18` : 'rgba(0,0,0,0.04)',
+                        padding: '1px 8px', borderRadius: '10px',
+                        minWidth: '24px', textAlign: 'center',
+                      }}>
+                        {typeCounts[item.key]}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })()}
+
+          {/* ── Right: task list area ── */}
+          <div style={{ flex: 1, minWidth: 0, background: '#fff' }}>
+
+            {/* Focus date cards */}
+            {(() => {
+              const activeTasks = baseTasks.filter(t => t.status !== 'completed')
+              const focusCards = [
+                {
+                  key: 'overdue' as const,
+                  label: 'Overdue',
+                  sub: 'Past due tasks',
+                  count: activeTasks.filter(t => { const d = normalizeDueDate(t.due_date); return !!d && d < TODAY_STR }).length,
+                  activeColor: '#D94F4F',
+                  activeBg: 'rgba(217,79,79,0.07)',
+                  activeBorder: 'rgba(217,79,79,0.35)',
+                },
+                {
+                  key: 'today' as const,
+                  label: 'Today Focus',
+                  sub: 'Due today',
+                  count: activeTasks.filter(t => normalizeDueDate(t.due_date) === TODAY_STR).length,
+                  activeColor: '#E8A030',
+                  activeBg: 'rgba(232,160,48,0.07)',
+                  activeBorder: 'rgba(232,160,48,0.40)',
+                },
+                {
+                  key: 'tomorrow' as const,
+                  label: 'Tomorrow',
+                  sub: 'Due tomorrow',
+                  count: activeTasks.filter(t => normalizeDueDate(t.due_date) === TOMORROW_STR).length,
+                  activeColor: '#5B7FA6',
+                  activeBg: 'rgba(91,127,166,0.07)',
+                  activeBorder: 'rgba(91,127,166,0.35)',
+                },
+              ]
+              return (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+                  gap: '10px',
+                  padding: '14px 24px 0',
+                }}>
+                  {focusCards.map(card => {
+                    const isActive = focusFilter === card.key
+                    return (
+                      <button
+                        key={card.key}
+                        onClick={() => setFocusFilter(isActive ? null : card.key)}
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                          gap: '2px', padding: '10px 14px',
+                          borderRadius: '10px', cursor: 'pointer', outline: 'none',
+                          border: `1.5px solid ${isActive ? card.activeBorder : colors.border}`,
+                          background: isActive ? card.activeBg : colors.raised,
+                          transition: 'all 0.14s', textAlign: 'left',
+                        }}
+                      >
+                        <span style={{
+                          fontSize: '18px', fontWeight: 700, lineHeight: 1,
+                          color: card.count > 0 || isActive ? card.activeColor : colors.muted,
+                        }}>
+                          {card.count}
+                        </span>
+                        <span style={{
+                          fontSize: '11.5px', fontWeight: 600,
+                          color: isActive ? card.activeColor : colors.primary,
+                        }}>
+                          {card.label}
+                        </span>
+                        <span style={{ fontSize: '10px', color: colors.muted }}>
+                          {card.sub}
                         </span>
                       </button>
                     )
@@ -1399,19 +1426,15 @@ export default function MyTasksPage() {
               )
             })()}
 
-            {/* Search + filter toolbar — single row on desktop, wraps on mobile */}
+            {/* Search + filter toolbar */}
             <div style={{
-              background: colors.raised,
-              border: `1.5px solid ${colors.border}`,
-              borderRadius: '8px',
-              padding: '8px 10px',
-              marginBottom: '10px',
+              padding: '14px 24px 12px',
               display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center',
             }}>
               {/* Search */}
               <div style={{
                 flex: '2 1 160px', display: 'flex', alignItems: 'center', gap: '6px',
-                background: colors.base, border: `1px solid ${colors.border}`,
+                background: colors.raised, border: `1px solid ${colors.border}`,
                 borderRadius: '6px', padding: '6px 10px',
               }}>
                 <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
@@ -1435,7 +1458,7 @@ export default function MyTasksPage() {
                   style={{
                     flex: '1 1 120px', minWidth: '110px',
                     padding: '6px 10px',
-                    background: colors.base, border: `1px solid ${colors.border}`,
+                    background: colors.raised, border: `1px solid ${colors.border}`,
                     borderRadius: '6px', outline: 'none',
                     fontSize: '11.5px', color: filterAssignedBy ? colors.primary : colors.muted,
                     cursor: 'pointer',
@@ -1456,7 +1479,7 @@ export default function MyTasksPage() {
                 style={{
                   flex: '1 1 100px', minWidth: '95px',
                   padding: '6px 10px',
-                  background: colors.base, border: `1px solid ${colors.border}`,
+                  background: colors.raised, border: `1px solid ${colors.border}`,
                   borderRadius: '6px', outline: 'none',
                   fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted,
                   cursor: 'pointer',
@@ -1473,34 +1496,30 @@ export default function MyTasksPage() {
             {!isMobile && (
               <div style={{
                 display: 'flex', alignItems: 'center',
-                padding: '5px 0 5px 0',
-                marginBottom: '4px',
+                margin: '8px 24px 0',
+                padding: '8px 0',
+                borderRadius: '10px',
+                background: 'rgba(248,250,252,0.85)',
+                border: `1px solid ${colors.border}`,
                 fontSize: '10px', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.07em',
                 color: colors.muted,
               }}>
-                {/* star spacer */}
                 <div style={{ width: '28px', flexShrink: 0 }} />
-                {/* Task */}
                 <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>Task</div>
-                {/* Assigned By */}
                 <div style={{ flexShrink: 0, width: '130px', paddingLeft: '8px' }}>Assigned By</div>
-                {/* Due Date */}
                 <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Due Date</div>
-                {/* Priority */}
                 <div style={{ flexShrink: 0, width: '56px', textAlign: 'center' }}>Priority</div>
-                {/* Status */}
                 <div style={{ flexShrink: 0, width: '90px', textAlign: 'center' }}>Status</div>
-                {/* Action */}
                 <div style={{ flexShrink: 0, width: '84px', textAlign: 'center' }}>Action</div>
               </div>
             )}
 
             {/* Task cards */}
             {visibleTasks.length === 0 ? (
-              <EmptyState label={TABS.find(t => t.key === activeTab)!.label} />
+              <EmptyState label={activeTab} />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ padding: '10px 24px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {visibleTasks.map(task => (
                   <TaskCard
                     key={task.id}
@@ -1515,23 +1534,12 @@ export default function MyTasksPage() {
                     isMobile={isMobile}
                   />
                 ))}
-                <div style={{
-                  padding: '4px 4px', fontSize: '11px', color: colors.muted,
-                }}>
+                <div style={{ padding: '4px 4px', fontSize: '11px', color: colors.muted }}>
                   {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
                 </div>
               </div>
             )}
           </div>
-
-          {/* ── Right: summary panel (desktop only) ── */}
-          {!isMobile && (
-            <RightPanel
-              counts={counts}
-              activeTab={activeTab}
-              onTabChange={handleTabChange}
-            />
-          )}
 
         </div>
       </DashboardLayout>
