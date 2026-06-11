@@ -90,6 +90,19 @@ export default function TaskDetailPage() {
   const params   = useParams()
   const supabase = useMemo(() => createClient(), [])
 
+  // Lock page scroll — only the activity panel scrolls
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const prev = { html: html.style.overflow, body: body.style.overflow }
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    return () => {
+      html.style.overflow = prev.html
+      body.style.overflow = prev.body
+    }
+  }, [])
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
@@ -565,7 +578,7 @@ export default function TaskDetailPage() {
       <div className="boe-task-2col">
 
         {/* ══ LEFT COLUMN ══════════════════════════════════════════════════ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
+        <div className="boe-task-left-col" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
 
             {/* ─ A. Task Summary Card ─ */}
             <div className="boe-card" style={{
@@ -918,7 +931,7 @@ export default function TaskDetailPage() {
                       placeholder="Add a comment or share details…"
                       className="boe-input"
                       style={{
-                        resize: 'none', height: '72px', paddingBottom: '36px',
+                        resize: 'none', height: '98px', paddingBottom: '36px',
                         width: '100%', boxSizing: 'border-box',
                         border: `1.5px solid ${colors.border}`,
                         background: '#F0F2F5', borderRadius: '8px',
@@ -1008,7 +1021,7 @@ export default function TaskDetailPage() {
         </div>
 
         {/* ══ RIGHT COLUMN ════════════════════════════════════════════════ */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
+        <div className="boe-task-right-col" style={{ minWidth: 0 }}>
 
           {/* ─ A. Complete Task Card ─ */}
           {(task.status === 'completed' || (isAssignee && !isUnacknowledged)) && (
@@ -1104,8 +1117,8 @@ export default function TaskDetailPage() {
           )}
 
           {/* Activity */}
-          <div className="boe-card" style={{ overflow: 'hidden', padding: '0' }}>
-            <div style={{ padding: '10px 14px 9px', borderBottom: `1px solid ${colors.border}` }}>
+          <div className="boe-card boe-activity-card" style={{ padding: '0' }}>
+            <div style={{ padding: '10px 14px 9px', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
               <span style={{
                 fontSize: '11px', fontWeight: 700,
                 letterSpacing: '0.06em', textTransform: 'uppercase',
@@ -1121,7 +1134,7 @@ export default function TaskDetailPage() {
                 </p>
               </div>
             ) : (
-              <div style={{ padding: '4px 0' }}>
+              <div className="boe-activity-list" style={{ padding: '4px 0' }}>
                 {(() => {
                   // Newest entry overall (log is sorted descending)
                   const newestEntry = log[0]

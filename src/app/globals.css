@@ -141,6 +141,35 @@ body {
   .boe-task-2col { grid-template-columns: 1fr; }
 }
 
+/* ── Task detail columns — viewport-locked layout (desktop only) ── */
+@media (min-width: 1024px) {
+  .boe-task-left-col {
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+  }
+  .boe-task-right-col {
+    position: sticky;
+    top: 64px;
+    max-height: calc(100vh - 64px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    gap: 16px;
+  }
+  .boe-activity-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .boe-activity-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+  }
+}
+
 /* ─────────────────────────────────────────────────────
    CARDS
 ───────────────────────────────────────────────────── */
