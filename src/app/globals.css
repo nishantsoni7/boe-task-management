@@ -132,10 +132,9 @@ body {
 
 .boe-task-2col {
   display: grid;
-  grid-template-columns: minmax(0, 700px) 420px;
+  grid-template-columns: 1fr 1fr;
   gap: 24px;
   align-items: start;
-  justify-content: start;
   margin: 0;
 }
 @media (max-width: 1023px) {

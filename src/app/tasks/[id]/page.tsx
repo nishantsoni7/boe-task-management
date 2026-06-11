@@ -69,6 +69,11 @@ export default function TaskDetailPage() {
   const [commentSaving,      setCommentSaving]      = useState(false)
   const [commentUploadError, setCommentUploadError] = useState<string | null>(null)
 
+  const [editingActivityId,  setEditingActivityId]  = useState<string | null>(null)
+  const [editActivityNote,   setEditActivityNote]   = useState('')
+  const [savingActivityEdit, setSavingActivityEdit] = useState(false)
+  const [deletingActivityId, setDeletingActivityId] = useState<string | null>(null)
+
   const [taskLevelAttachments, setTaskLevelAttachments] = useState<TaskAttachment[]>([])
   const [previewAttachment,    setPreviewAttachment]    = useState<{ url: string; fileName?: string } | null>(null)
 
@@ -415,6 +420,52 @@ export default function TaskDetailPage() {
     await loadLog(task.id)
     setEditingPriority(false)
     setSavingPriority(false)
+  }
+
+  const saveActivityEdit = async () => {
+    if (!task || !editingActivityId) return
+    setSavingActivityEdit(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`/api/activity-log/${editingActivityId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify({ note: editActivityNote.trim() || null }),
+    })
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: 'Unknown error' }))
+      alert(`Failed to save edit: ${error}`)
+      setSavingActivityEdit(false)
+      return
+    }
+    // Update local state directly so the note reflects immediately
+    setLog(prev => prev.map(e =>
+      e.id === editingActivityId ? { ...e, note: editActivityNote.trim() || null } : e
+    ))
+    setEditingActivityId(null)
+    setSavingActivityEdit(false)
+  }
+
+  const deleteActivity = async (entryId: string) => {
+    if (!task) return
+    if (!window.confirm('Delete this update? This cannot be undone.')) return
+    setDeletingActivityId(entryId)
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`/api/activity-log/${entryId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+    })
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: 'Unknown error' }))
+      alert(`Failed to delete update: ${error}`)
+      setDeletingActivityId(null)
+      return
+    }
+    // Remove entry from local state immediately
+    setLog(prev => prev.filter(e => e.id !== entryId))
+    setDeletingActivityId(null)
   }
 
   const handleLogout = async () => {
@@ -1071,113 +1122,200 @@ export default function TaskDetailPage() {
               </div>
             ) : (
               <div style={{ padding: '4px 0' }}>
-                {log.map((entry, i) => {
-                  const dotColor =
-                    entry.action === 'acknowledged'     ? colors.green
-                    : entry.action === 'status_changed' && entry.to_status
-                      ? (STATUS_COLORS[entry.to_status] ?? colors.muted)
-                    : colors.muted
-                  return (
-                    <div
-                      key={entry.id}
-                      style={{
-                        display: 'flex', gap: '0', alignItems: 'stretch',
-                        padding: '0',
-                      }}
-                    >
-                      {/* Timeline rail */}
-                      <div style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        width: '32px', flexShrink: 0, paddingTop: '12px',
-                      }}>
-                        <div style={{
-                          width: '8px', height: '8px', borderRadius: '50%',
-                          background: dotColor, border: `2px solid #ffffff`,
-                          boxShadow: `0 0 0 1.5px ${dotColor}`,
-                          flexShrink: 0, zIndex: 1,
-                        }} />
-                        {i < log.length - 1 && (
-                          <div style={{
-                            width: '1.5px', flex: 1, minHeight: '12px',
-                            background: colors.border, marginTop: '3px',
-                          }} />
-                        )}
-                      </div>
+                {(() => {
+                  // Newest entry overall (log is sorted descending)
+                  const newestEntry = log[0]
+                  const canEditDelete = (entry: LogEntry) =>
+                    entry.action === 'note_added' &&
+                    entry.id === newestEntry?.id &&
+                    entry.actor_id === currentUserId
 
-                      {/* Content */}
-                      <div style={{ flex: 1, minWidth: 0, padding: '10px 14px 10px 0' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px', alignItems: 'baseline', flexWrap: 'wrap' }}>
-                          <p style={{ color: colors.secondary, fontSize: '12px', lineHeight: 1.35, fontWeight: 600, margin: 0 }}>
-                            {formatLogAction(entry.action, entry.from_status, entry.to_status)}
-                          </p>
-                          {entry.actor_name && (
-                            <span style={{ color: colors.muted, fontSize: '10.5px', flexShrink: 0 }}>
-                              {entry.actor_name}
-                            </span>
+                  return log.map((entry, i) => {
+                    const dotColor =
+                      entry.action === 'acknowledged'     ? colors.green
+                      : entry.action === 'status_changed' && entry.to_status
+                        ? (STATUS_COLORS[entry.to_status] ?? colors.muted)
+                      : colors.muted
+                    const isEditing  = editingActivityId === entry.id
+                    const isDeleting = deletingActivityId === entry.id
+                    const showActions = canEditDelete(entry)
+
+                    return (
+                      <div
+                        key={entry.id}
+                        style={{
+                          display: 'flex', gap: '0', alignItems: 'stretch',
+                          padding: '0',
+                        }}
+                      >
+                        {/* Timeline rail */}
+                        <div style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'center',
+                          width: '32px', flexShrink: 0, paddingTop: '12px',
+                        }}>
+                          <div style={{
+                            width: '8px', height: '8px', borderRadius: '50%',
+                            background: dotColor, border: `2px solid #ffffff`,
+                            boxShadow: `0 0 0 1.5px ${dotColor}`,
+                            flexShrink: 0, zIndex: 1,
+                          }} />
+                          {i < log.length - 1 && (
+                            <div style={{
+                              width: '1.5px', flex: 1, minHeight: '12px',
+                              background: colors.border, marginTop: '3px',
+                            }} />
                           )}
                         </div>
-                        {entry.note && (
-                          <p style={{ color: colors.secondary, fontSize: '12px', marginTop: '3px', lineHeight: 1.5, margin: '3px 0 0' }}>
-                            {entry.note}
+
+                        {/* Content */}
+                        <div style={{ flex: 1, minWidth: 0, padding: '10px 14px 10px 0' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                            <p style={{ color: colors.secondary, fontSize: '12px', lineHeight: 1.35, fontWeight: 600, margin: 0 }}>
+                              {formatLogAction(entry.action, entry.from_status, entry.to_status)}
+                            </p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                              {entry.actor_name && (
+                                <span style={{ color: colors.muted, fontSize: '10.5px' }}>
+                                  {entry.actor_name}
+                                </span>
+                              )}
+                              {showActions && !isEditing && (
+                                <>
+                                  <button
+                                    onClick={() => { setEditActivityNote(entry.note ?? ''); setEditingActivityId(entry.id) }}
+                                    style={{
+                                      fontSize: '10.5px', fontWeight: 600, color: colors.blue,
+                                      background: 'none', border: 'none', cursor: 'pointer',
+                                      padding: '0', fontFamily: font.body, textDecoration: 'underline',
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => deleteActivity(entry.id)}
+                                    disabled={isDeleting}
+                                    style={{
+                                      fontSize: '10.5px', fontWeight: 600, color: colors.red,
+                                      background: 'none', border: 'none', cursor: isDeleting ? 'not-allowed' : 'pointer',
+                                      padding: '0', fontFamily: font.body, textDecoration: 'underline',
+                                      opacity: isDeleting ? 0.5 : 1,
+                                    }}
+                                  >
+                                    {isDeleting ? '…' : 'Delete'}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {isEditing ? (
+                            <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <textarea
+                                value={editActivityNote}
+                                onChange={e => setEditActivityNote(e.target.value)}
+                                className="boe-input"
+                                style={{
+                                  resize: 'none', height: '64px',
+                                  width: '100%', boxSizing: 'border-box',
+                                  fontSize: '12px', lineHeight: 1.5,
+                                }}
+                              />
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                  onClick={saveActivityEdit}
+                                  disabled={savingActivityEdit}
+                                  style={{
+                                    padding: '4px 12px', borderRadius: '6px',
+                                    border: `1.5px solid ${colors.blue}`,
+                                    background: colors.blue, color: '#ffffff',
+                                    fontSize: '11px', fontWeight: 600,
+                                    cursor: savingActivityEdit ? 'not-allowed' : 'pointer',
+                                    fontFamily: font.body, opacity: savingActivityEdit ? 0.6 : 1,
+                                  }}
+                                >
+                                  {savingActivityEdit ? 'Saving…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => setEditingActivityId(null)}
+                                  disabled={savingActivityEdit}
+                                  style={{
+                                    padding: '4px 10px', borderRadius: '6px',
+                                    border: `1.5px solid ${colors.border}`,
+                                    background: 'transparent', color: colors.tertiary,
+                                    fontSize: '11px', fontWeight: 500,
+                                    cursor: 'pointer', fontFamily: font.body,
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            entry.note && (
+                              <p style={{ color: colors.secondary, fontSize: '12px', marginTop: '3px', lineHeight: 1.5, margin: '3px 0 0' }}>
+                                {entry.note}
+                              </p>
+                            )
+                          )}
+
+                          {/* Legacy single attachment_url */}
+                          {entry.attachment_url && !(entry.attachments ?? []).some((a: TaskAttachment) => a.url === entry.attachment_url) && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => setPreviewAttachment({ url: entry.attachment_url! })}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                  fontSize: '10.5px', fontWeight: 500,
+                                  color: colors.blue,
+                                  background: 'none', border: 'none', cursor: 'pointer',
+                                  padding: 0,
+                                }}
+                              >
+                                📎 View Attachment
+                              </button>
+                              <span style={{
+                                fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.04em',
+                                textTransform: 'uppercase', color: colors.muted,
+                                background: colors.float, border: `1px solid ${colors.border}`,
+                                padding: '1px 6px', borderRadius: '20px',
+                              }}>
+                                {getFileTypeLabel(entry.attachment_url)}
+                              </span>
+                            </div>
+                          )}
+                          {/* New multi-file task_attachments */}
+                          {(entry.attachments ?? []).map((att: TaskAttachment) => (
+                            <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => setPreviewAttachment({ url: att.url, fileName: att.file_name ?? undefined })}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                  fontSize: '10.5px', fontWeight: 500,
+                                  color: colors.blue,
+                                  background: 'none', border: 'none', cursor: 'pointer',
+                                  padding: 0,
+                                }}
+                              >
+                                📎 {att.file_name ?? 'Attachment'}
+                              </button>
+                              <span style={{
+                                fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.04em',
+                                textTransform: 'uppercase', color: colors.muted,
+                                background: colors.float, border: `1px solid ${colors.border}`,
+                                padding: '1px 6px', borderRadius: '20px',
+                              }}>
+                                {att.file_type ?? getFileTypeLabel(att.url)}
+                              </span>
+                            </div>
+                          ))}
+                          <p style={{ color: colors.muted, fontSize: '10px', marginTop: '3px', fontFamily: font.mono }}>
+                            {formatDateTime(entry.created_at)}
                           </p>
-                        )}
-                        {/* Legacy single attachment_url */}
-                        {entry.attachment_url && !(entry.attachments ?? []).some((a: TaskAttachment) => a.url === entry.attachment_url) && (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
-                            <button
-                              onClick={() => setPreviewAttachment({ url: entry.attachment_url! })}
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                fontSize: '10.5px', fontWeight: 500,
-                                color: colors.blue,
-                                background: 'none', border: 'none', cursor: 'pointer',
-                                padding: 0,
-                              }}
-                            >
-                              📎 View Attachment
-                            </button>
-                            <span style={{
-                              fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.04em',
-                              textTransform: 'uppercase', color: colors.muted,
-                              background: colors.float, border: `1px solid ${colors.border}`,
-                              padding: '1px 6px', borderRadius: '20px',
-                            }}>
-                              {getFileTypeLabel(entry.attachment_url)}
-                            </span>
-                          </div>
-                        )}
-                        {/* New multi-file task_attachments */}
-                        {(entry.attachments ?? []).map((att: TaskAttachment) => (
-                          <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
-                            <button
-                              onClick={() => setPreviewAttachment({ url: att.url, fileName: att.file_name ?? undefined })}
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                fontSize: '10.5px', fontWeight: 500,
-                                color: colors.blue,
-                                background: 'none', border: 'none', cursor: 'pointer',
-                                padding: 0,
-                              }}
-                            >
-                              📎 {att.file_name ?? 'Attachment'}
-                            </button>
-                            <span style={{
-                              fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.04em',
-                              textTransform: 'uppercase', color: colors.muted,
-                              background: colors.float, border: `1px solid ${colors.border}`,
-                              padding: '1px 6px', borderRadius: '20px',
-                            }}>
-                              {att.file_type ?? getFileTypeLabel(att.url)}
-                            </span>
-                          </div>
-                        ))}
-                        <p style={{ color: colors.muted, fontSize: '10px', marginTop: '3px', fontFamily: font.mono }}>
-                          {formatDateTime(entry.created_at)}
-                        </p>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })
+                })()}
               </div>
             )}
           </div>
