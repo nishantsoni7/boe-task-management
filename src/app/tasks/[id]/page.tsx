@@ -11,6 +11,8 @@ import {
 import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
+import { getFileTypeLabel, compressImageFile } from '@/lib/attachment-utils'
 import { CircleCheckBig, UserCheck, UserRound } from 'lucide-react'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -66,6 +68,8 @@ export default function TaskDetailPage() {
   const [commentFile,        setCommentFile]        = useState<File | null>(null)
   const [commentSaving,      setCommentSaving]      = useState(false)
   const [commentUploadError, setCommentUploadError] = useState<string | null>(null)
+
+  const [previewUrl,       setPreviewUrl]       = useState<string | null>(null)
 
   const [editingDueDate,   setEditingDueDate]   = useState(false)
   const [editingPriority,  setEditingPriority]  = useState(false)
@@ -277,11 +281,12 @@ export default function TaskDetailPage() {
 
   const uploadCommentAttachment = async (): Promise<string | null> => {
     if (!commentFile || !task) return null
-    const ext  = commentFile.name.split('.').pop() ?? 'bin'
+    const file = await compressImageFile(commentFile)
+    const ext  = file.name.split('.').pop() ?? 'bin'
     const path = `updates/${task.id}/${Date.now()}.${ext}`
     const { error } = await supabase.storage
       .from('task-attachments')
-      .upload(path, commentFile, { upsert: false })
+      .upload(path, file, { upsert: false })
     if (error) {
       setCommentUploadError('Attachment upload failed. Comment was saved without it.')
       return null
@@ -629,22 +634,28 @@ export default function TaskDetailPage() {
 
               {/* Task attachment */}
               {task.attachment_url && (
-                <div style={{ marginTop: '10px' }}>
-                  <a
-                    href={task.attachment_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setPreviewUrl(task.attachment_url!)}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: '5px',
                       fontSize: '11.5px', fontWeight: 500,
-                      color: colors.blue, textDecoration: 'none',
+                      color: colors.blue, cursor: 'pointer',
                       padding: '4px 10px', borderRadius: '6px',
                       border: `1px solid ${colors.blue}28`,
                       background: colors.blueTint,
                     }}
                   >
                     📎 View Attachment
-                  </a>
+                  </button>
+                  <span style={{
+                    fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
+                    textTransform: 'uppercase', color: colors.muted,
+                    background: colors.float, border: `1px solid ${colors.border}`,
+                    padding: '1px 7px', borderRadius: '20px',
+                  }}>
+                    {getFileTypeLabel(task.attachment_url)}
+                  </span>
                 </div>
               )}
             </div>
@@ -1003,19 +1014,28 @@ export default function TaskDetailPage() {
                           </p>
                         )}
                         {entry.attachment_url && (
-                          <a
-                            href={entry.attachment_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: '4px',
-                              fontSize: '10.5px', fontWeight: 500,
-                              color: colors.blue, marginTop: '3px',
-                              textDecoration: 'none',
-                            }}
-                          >
-                            📎 View Attachment
-                          </a>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => setPreviewUrl(entry.attachment_url!)}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                fontSize: '10.5px', fontWeight: 500,
+                                color: colors.blue,
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                padding: 0,
+                              }}
+                            >
+                              📎 View Attachment
+                            </button>
+                            <span style={{
+                              fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.04em',
+                              textTransform: 'uppercase', color: colors.muted,
+                              background: colors.float, border: `1px solid ${colors.border}`,
+                              padding: '1px 6px', borderRadius: '20px',
+                            }}>
+                              {getFileTypeLabel(entry.attachment_url)}
+                            </span>
+                          </div>
                         )}
                         <p style={{ color: colors.muted, fontSize: '10px', marginTop: '3px', fontFamily: font.mono }}>
                           {formatDateTime(entry.created_at)}
@@ -1256,6 +1276,9 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      {previewUrl && (
+        <AttachmentPreviewModal url={previewUrl} onClose={() => setPreviewUrl(null)} />
+      )}
     </DashboardLayout>
   )
 }
