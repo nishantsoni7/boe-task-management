@@ -24,6 +24,24 @@ export function getFileTypeLabel(urlOrName: string): string {
   return 'File'
 }
 
+const SIZE_LIMIT = 10 * 1024 * 1024 // 10 MB
+
+// Compress all eligible files then validate total size ≤ 10 MB.
+// Returns compressed files on success, or an error string to display.
+export async function prepareFiles(
+  files: File[],
+): Promise<{ ready: File[]; error: string | null }> {
+  const ready = await Promise.all(files.map(f => compressImageFile(f)))
+  const total = ready.reduce((sum, f) => sum + f.size, 0)
+  if (total > SIZE_LIMIT) {
+    return {
+      ready: [],
+      error: 'Total attachment size must be under 10 MB. Please remove or reduce files.',
+    }
+  }
+  return { ready, error: null }
+}
+
 // Compress a JPEG/WEBP image client-side via canvas.
 // Returns the original file unchanged when:
 //   - the file type is not compressible (PNG, GIF, PDF, etc.)

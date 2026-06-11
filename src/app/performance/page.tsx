@@ -1171,7 +1171,12 @@ export default function PerformancePage() {
       title="Performance"
       subtitle={todayLabel}
       onSignOut={async () => { await supabase.auth.signOut(); router.push('/login') }}
-      actions={isAdminOrManager ? (
+      actions={viewAsUserId ? (
+        <a href="/performance/team" style={{
+          fontSize: 12, fontWeight: 600, color: '#8C94A6', textDecoration: 'none',
+          border: '1px solid #EEF0F4', padding: '6px 14px', borderRadius: 7,
+        }}>← Back to Team Performance</a>
+      ) : isAdminOrManager ? (
         <a href="/performance/team" style={{
           fontSize: 12, fontWeight: 600, color: '#5585E8', textDecoration: 'none',
           border: '1px solid #5585E815', background: '#5585E808',

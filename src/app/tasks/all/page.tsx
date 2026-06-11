@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useMemo, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
@@ -40,13 +40,20 @@ function col(label: string, width?: number, align: 'left' | 'right' | 'center' =
   )
 }
 
-export default function ViewAllTasksPage() {
+function ViewAllTasksContent() {
   const [profile,  setProfile]  = useState<UserProfile | null>(null)
   const [tasks,    setTasks]    = useState<Task[]>([])
   const [userMap,  setUserMap]  = useState<Record<string, string>>({})
   const [loading,  setLoading]  = useState(true)
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router      = useRouter()
+  const searchParams = useSearchParams()
+  const supabase    = useMemo(() => createClient(), [])
+
+  const filterAssignedTo = searchParams.get('assignedTo') ?? null
+  const filterStatuses   = useMemo(() => {
+    const s = searchParams.get('status')
+    return s ? s.split(',').map(v => v.trim()).filter(Boolean) : null
+  }, [searchParams])
 
   useEffect(() => {
     const init = async () => {
@@ -89,15 +96,50 @@ export default function ViewAllTasksPage() {
     router.push('/login')
   }
 
+  const filteredTasks = useMemo(() => {
+    let result = tasks
+    if (filterAssignedTo) result = result.filter(t => t.assigned_to === filterAssignedTo)
+    if (filterStatuses)   result = result.filter(t => filterStatuses.includes(t.status))
+    return result
+  }, [tasks, filterAssignedTo, filterStatuses])
+
+  const filterContext = useMemo(() => {
+    if (!filterAssignedTo && !filterStatuses) return null
+    const name = filterAssignedTo ? (userMap[filterAssignedTo] ?? 'Member') : null
+    const statusLabel = filterStatuses ? filterStatuses.join(', ') : null
+    const parts = [name ? `Assigned to: ${name}` : null, statusLabel ? `Status: ${statusLabel}` : null].filter(Boolean)
+    return parts.join(' · ')
+  }, [filterAssignedTo, filterStatuses, userMap])
+
   if (loading) return <LoadingScreen />
 
   return (
     <DashboardLayout
       profile={profile}
       title="View All Tasks"
-      subtitle={`${tasks.length} total task${tasks.length !== 1 ? 's' : ''}`}
+      subtitle={filterContext ?? `${tasks.length} total task${tasks.length !== 1 ? 's' : ''}`}
       onSignOut={handleLogout}
+      actions={filterAssignedTo || filterStatuses ? (
+        <a href="/performance/team" style={{
+          fontSize: 12, fontWeight: 600, color: '#8C94A6', textDecoration: 'none',
+          border: '1px solid #EEF0F4', padding: '6px 14px', borderRadius: 7,
+        }}>← Team Performance</a>
+      ) : undefined}
     >
+      {filterContext && (
+        <div style={{
+          background: '#5585E808', border: '1px solid #5585E820', borderRadius: 8,
+          padding: '9px 14px', marginBottom: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}>
+          <span style={{ fontSize: 12, color: '#5585E8', fontWeight: 500 }}>
+            Filtered — {filterContext}
+          </span>
+          <a href="/tasks/all" style={{ fontSize: 11, color: '#8C94A6', textDecoration: 'none', fontWeight: 500 }}>
+            Clear filter ✕
+          </a>
+        </div>
+      )}
       <div style={{
         background: colors.base,
         border: `1.5px solid ${colors.border}`,
@@ -118,12 +160,12 @@ export default function ViewAllTasksPage() {
           {col('Due Date', 88, 'right')}
         </div>
 
-        {tasks.length === 0 ? (
+        {filteredTasks.length === 0 ? (
           <div style={{ padding: '52px 24px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
             No tasks found.
           </div>
         ) : (
-          tasks.map(task => {
+          filteredTasks.map(task => {
             const overdue = !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed'
             const pill    = PRIORITY_PILL[task.priority] ?? PRIORITY_PILL.low
             return (
@@ -193,9 +235,17 @@ export default function ViewAllTasksPage() {
           padding: '9px 20px', fontSize: '11px', color: colors.muted,
           borderTop: `1px solid ${colors.border}`, background: colors.raised,
         }}>
-          {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+          {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${tasks.length})` : ''}
         </div>
       </div>
     </DashboardLayout>
+  )
+}
+
+export default function ViewAllTasksPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <ViewAllTasksContent />
+    </Suspense>
   )
 }

@@ -370,6 +370,18 @@ export type Notification = {
   read_at: string | null
 }
 
+// ─── Task attachments (multi-file) ────────────────────────────────────────────
+export type TaskAttachment = {
+  id: string
+  task_id: string | null
+  activity_log_id: string | null
+  url: string
+  file_name: string | null
+  file_type: string | null
+  created_by: string | null
+  created_at: string
+}
+
 // ─── Activity log ─────────────────────────────────────────────────────────────
 export type LogEntry = {
   id: string
@@ -381,4 +393,5 @@ export type LogEntry = {
   actor_id: string
   actor_name?: string
   attachment_url?: string | null
+  attachments?: TaskAttachment[]
 }

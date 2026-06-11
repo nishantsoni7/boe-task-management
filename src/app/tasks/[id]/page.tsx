@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, LogEntry, TaskStatus, UserProfile } from '@/lib/types'
+import type { Task, LogEntry, TaskStatus, UserProfile, TaskAttachment } from '@/lib/types'
 import {
   isOverdue, formatFullDate, formatDateTime,
   formatLogAction, timeAgo, getTaskAging,
@@ -12,7 +12,7 @@ import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
-import { getFileTypeLabel, compressImageFile } from '@/lib/attachment-utils'
+import { getFileTypeLabel, prepareFiles } from '@/lib/attachment-utils'
 import { CircleCheckBig, UserCheck, UserRound } from 'lucide-react'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -65,11 +65,12 @@ export default function TaskDetailPage() {
   const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
 
   const [commentNote,        setCommentNote]        = useState('')
-  const [commentFile,        setCommentFile]        = useState<File | null>(null)
+  const [commentFiles,       setCommentFiles]       = useState<File[]>([])
   const [commentSaving,      setCommentSaving]      = useState(false)
   const [commentUploadError, setCommentUploadError] = useState<string | null>(null)
 
-  const [previewUrl,       setPreviewUrl]       = useState<string | null>(null)
+  const [taskLevelAttachments, setTaskLevelAttachments] = useState<TaskAttachment[]>([])
+  const [previewAttachment,    setPreviewAttachment]    = useState<{ url: string; fileName?: string } | null>(null)
 
   const [editingDueDate,   setEditingDueDate]   = useState(false)
   const [editingPriority,  setEditingPriority]  = useState(false)
@@ -111,6 +112,13 @@ export default function TaskDetailPage() {
       }
       if (profileData) setProfile(profileData as UserProfile)
       await loadLog(params.id as string)
+      const { data: tAttData } = await supabase
+        .from('task_attachments')
+        .select('*')
+        .eq('task_id', params.id)
+        .is('activity_log_id', null)
+        .order('created_at', { ascending: true })
+      if (tAttData) setTaskLevelAttachments(tAttData as TaskAttachment[])
       setLoading(false)
     }
     init()
@@ -123,13 +131,31 @@ export default function TaskDetailPage() {
                users:actor_id ( full_name )`)
       .eq('task_id', taskId)
       .order('created_at', { ascending: false })
-    if (data) {
-      setLog((data as any[]).map(e => ({
-        ...e,
-        actor_name:     e.users?.full_name ?? null,
-        attachment_url: e.attachment_url ?? null,
-      })))
+    if (!data) return
+
+    const logIds = (data as any[]).map(e => e.id)
+    let attachmentsByLogId: Record<string, TaskAttachment[]> = {}
+    if (logIds.length > 0) {
+      const { data: attData } = await supabase
+        .from('task_attachments')
+        .select('*')
+        .in('activity_log_id', logIds)
+        .order('created_at', { ascending: true })
+      if (attData) {
+        for (const att of attData as TaskAttachment[]) {
+          const key = att.activity_log_id!
+          if (!attachmentsByLogId[key]) attachmentsByLogId[key] = []
+          attachmentsByLogId[key].push(att)
+        }
+      }
     }
+
+    setLog((data as any[]).map(e => ({
+      ...e,
+      actor_name:     e.users?.full_name ?? null,
+      attachment_url: e.attachment_url ?? null,
+      attachments:    attachmentsByLogId[e.id] ?? [],
+    })))
   }
 
   const acknowledge = async () => {
@@ -279,41 +305,63 @@ export default function TaskDetailPage() {
     setSaving(false)
   }
 
-  const uploadCommentAttachment = async (): Promise<string | null> => {
-    if (!commentFile || !task) return null
-    const file = await compressImageFile(commentFile)
-    const ext  = file.name.split('.').pop() ?? 'bin'
-    const path = `updates/${task.id}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage
-      .from('task-attachments')
-      .upload(path, file, { upsert: false })
-    if (error) {
-      setCommentUploadError('Attachment upload failed. Comment was saved without it.')
-      return null
-    }
-    const { data } = supabase.storage.from('task-attachments').getPublicUrl(path)
-    return data.publicUrl
-  }
-
   const saveComment = async () => {
     if (!task) return
     const hasNote = !!commentNote.trim()
-    const attachmentUrl = await uploadCommentAttachment()
-    const hasAttachment = !!attachmentUrl
-    if (!hasNote && !hasAttachment) { setCommentSaving(false); return }
+    if (!hasNote && commentFiles.length === 0) { setCommentSaving(false); return }
+
+    // Compress images + validate total size before any upload
+    let readyFiles: File[] = []
+    if (commentFiles.length > 0) {
+      const { ready, error: sizeError } = await prepareFiles(commentFiles)
+      if (sizeError) { setCommentUploadError(sizeError); setCommentSaving(false); return }
+      readyFiles = ready
+    }
 
     setCommentSaving(true)
     const now = new Date().toISOString()
     const { error: taskErr } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
     if (taskErr) console.error('[saveComment] tasks timestamp update failed:', taskErr.message)
-    const { error: logErr } = await supabase.from('task_activity_log').insert({
-      task_id:        task.id,
-      actor_id:       currentUserId,
-      action:         'note_added',
-      note:           commentNote.trim() || null,
-      attachment_url: attachmentUrl ?? null,
-    })
+
+    const { data: logData, error: logErr } = await supabase
+      .from('task_activity_log')
+      .insert({
+        task_id:        task.id,
+        actor_id:       currentUserId,
+        action:         'note_added',
+        note:           commentNote.trim() || null,
+        attachment_url: null, // multi-file goes into task_attachments
+      })
+      .select('id')
+      .single()
     if (logErr) console.error('[saveComment] activity log insert failed:', logErr.message)
+
+    // Upload each file and insert task_attachments rows
+    const uploadErrors: string[] = []
+    if (logData?.id && readyFiles.length > 0) {
+      for (const file of readyFiles) {
+        const ext  = file.name.split('.').pop() ?? 'bin'
+        const path = `updates/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+        const { error: storageErr } = await supabase.storage
+          .from('task-attachments')
+          .upload(path, file, { upsert: false })
+        if (storageErr) {
+          uploadErrors.push(`${file.name}: upload failed`)
+          continue
+        }
+        const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
+        const { error: attErr } = await supabase.from('task_attachments').insert({
+          activity_log_id: logData.id,
+          task_id:         task.id,
+          url:             urlData.publicUrl,
+          file_name:       file.name,
+          file_type:       getFileTypeLabel(file.name),
+          created_by:      currentUserId,
+        })
+        if (attErr) uploadErrors.push(`${file.name}: metadata save failed`)
+      }
+    }
+
     const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
     if (recipient && recipient !== currentUserId) {
       fetch('/api/notify-status-update', {
@@ -324,11 +372,12 @@ export default function TaskDetailPage() {
         if (!res.ok) res.json().then(d => console.error('[saveComment] notification failed:', d))
       }).catch(err => console.error('[saveComment] notification fetch error:', err))
     }
+
     setTask({ ...task, last_update_at: now })
     await loadLog(task.id)
     setCommentNote('')
-    setCommentFile(null)
-    setCommentUploadError(null)
+    setCommentFiles([])
+    setCommentUploadError(uploadErrors.length > 0 ? uploadErrors.join(' · ') : null)
     setCommentSaving(false)
   }
 
@@ -632,30 +681,61 @@ export default function TaskDetailPage() {
                 </p>
               )}
 
-              {/* Task attachment */}
-              {task.attachment_url && (
-                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => setPreviewUrl(task.attachment_url!)}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '5px',
-                      fontSize: '11.5px', fontWeight: 500,
-                      color: colors.blue, cursor: 'pointer',
-                      padding: '4px 10px', borderRadius: '6px',
-                      border: `1px solid ${colors.blue}28`,
-                      background: colors.blueTint,
-                    }}
-                  >
-                    📎 View Attachment
-                  </button>
-                  <span style={{
-                    fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
-                    textTransform: 'uppercase', color: colors.muted,
-                    background: colors.float, border: `1px solid ${colors.border}`,
-                    padding: '1px 7px', borderRadius: '20px',
-                  }}>
-                    {getFileTypeLabel(task.attachment_url)}
-                  </span>
+              {/* Task attachments — legacy single + new multi-file */}
+              {(task.attachment_url || taskLevelAttachments.length > 0) && (
+                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {/* Legacy single attachment_url */}
+                  {task.attachment_url && !taskLevelAttachments.some(a => a.url === task.attachment_url) && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => setPreviewAttachment({ url: task.attachment_url! })}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '5px',
+                          fontSize: '11.5px', fontWeight: 500,
+                          color: colors.blue, cursor: 'pointer',
+                          padding: '4px 10px', borderRadius: '6px',
+                          border: `1px solid ${colors.blue}28`,
+                          background: colors.blueTint,
+                        }}
+                      >
+                        📎 View Attachment
+                      </button>
+                      <span style={{
+                        fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
+                        textTransform: 'uppercase', color: colors.muted,
+                        background: colors.float, border: `1px solid ${colors.border}`,
+                        padding: '1px 7px', borderRadius: '20px',
+                      }}>
+                        {getFileTypeLabel(task.attachment_url)}
+                      </span>
+                    </div>
+                  )}
+                  {/* New multi-file task_attachments */}
+                  {taskLevelAttachments.map(att => (
+                    <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => setPreviewAttachment({ url: att.url, fileName: att.file_name ?? undefined })}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '5px',
+                          fontSize: '11.5px', fontWeight: 500,
+                          color: colors.blue, cursor: 'pointer',
+                          padding: '4px 10px', borderRadius: '6px',
+                          border: `1px solid ${colors.blue}28`,
+                          background: colors.blueTint,
+                        }}
+                      >
+                        📎 {att.file_name ?? 'Attachment'}
+                      </button>
+                      <span style={{
+                        fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
+                        textTransform: 'uppercase', color: colors.muted,
+                        background: colors.float, border: `1px solid ${colors.border}`,
+                        padding: '1px 7px', borderRadius: '20px',
+                      }}>
+                        {att.file_type ?? getFileTypeLabel(att.url)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -795,13 +875,13 @@ export default function TaskDetailPage() {
                       }}
                     />
                     <label
-                      title="Attach a file"
+                      title="Add attachments"
                       style={{
                         position: 'absolute', bottom: '9px', right: '10px',
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         width: '28px', height: '28px', borderRadius: '50%',
-                        background: commentFile ? colors.blueTint : '#ffffff',
-                        border: `1.5px solid ${commentFile ? colors.blue + '55' : colors.border}`,
+                        background: commentFiles.length > 0 ? colors.blueTint : '#ffffff',
+                        border: `1.5px solid ${commentFiles.length > 0 ? colors.blue + '55' : colors.border}`,
                         fontSize: '13px', cursor: 'pointer', userSelect: 'none',
                         transition: 'all 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                       }}
@@ -809,18 +889,46 @@ export default function TaskDetailPage() {
                       📎
                       <input
                         type="file"
+                        multiple
                         accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
-                        onChange={e => { setCommentFile(e.target.files?.[0] ?? null); setCommentUploadError(null) }}
+                        onChange={e => {
+                          const picked = Array.from(e.target.files ?? [])
+                          setCommentFiles(prev => [...prev, ...picked])
+                          setCommentUploadError(null)
+                          e.target.value = ''
+                        }}
                         style={{ display: 'none' }}
                       />
                     </label>
                   </div>
+                  {/* Selected files list */}
+                  {commentFiles.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {commentFiles.map((f, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '10.5px', color: colors.blue, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            📎 {f.name} <span style={{ color: colors.muted }}>({(f.size / 1024).toFixed(0)} KB)</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setCommentFiles(prev => prev.filter((_, j) => j !== i))}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: colors.muted, fontSize: '12px', padding: '0 2px', flexShrink: 0,
+                            }}
+                            aria-label={`Remove ${f.name}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {commentUploadError && (
+                    <p style={{ fontSize: '10.5px', color: colors.red, margin: 0 }}>{commentUploadError}</p>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '10px', color: commentFile ? colors.blue : colors.muted, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {commentFile
-                        ? `📎 ${commentFile.name} (${(commentFile.size / 1024).toFixed(0)} KB)`
-                        : commentUploadError ? <span style={{ color: colors.red }}>{commentUploadError}</span> : ''}
-                    </span>
+                    <span style={{ flex: 1 }} />
                     <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{commentNote.length}/1000</span>
                     <button
                       onClick={async () => { setCommentSaving(true); await saveComment() }}
@@ -1013,10 +1121,11 @@ export default function TaskDetailPage() {
                             {entry.note}
                           </p>
                         )}
-                        {entry.attachment_url && (
+                        {/* Legacy single attachment_url */}
+                        {entry.attachment_url && !(entry.attachments ?? []).some((a: TaskAttachment) => a.url === entry.attachment_url) && (
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
                             <button
-                              onClick={() => setPreviewUrl(entry.attachment_url!)}
+                              onClick={() => setPreviewAttachment({ url: entry.attachment_url! })}
                               style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '4px',
                                 fontSize: '10.5px', fontWeight: 500,
@@ -1037,6 +1146,31 @@ export default function TaskDetailPage() {
                             </span>
                           </div>
                         )}
+                        {/* New multi-file task_attachments */}
+                        {(entry.attachments ?? []).map((att: TaskAttachment) => (
+                          <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => setPreviewAttachment({ url: att.url, fileName: att.file_name ?? undefined })}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                fontSize: '10.5px', fontWeight: 500,
+                                color: colors.blue,
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                padding: 0,
+                              }}
+                            >
+                              📎 {att.file_name ?? 'Attachment'}
+                            </button>
+                            <span style={{
+                              fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.04em',
+                              textTransform: 'uppercase', color: colors.muted,
+                              background: colors.float, border: `1px solid ${colors.border}`,
+                              padding: '1px 6px', borderRadius: '20px',
+                            }}>
+                              {att.file_type ?? getFileTypeLabel(att.url)}
+                            </span>
+                          </div>
+                        ))}
                         <p style={{ color: colors.muted, fontSize: '10px', marginTop: '3px', fontFamily: font.mono }}>
                           {formatDateTime(entry.created_at)}
                         </p>
@@ -1276,8 +1410,12 @@ export default function TaskDetailPage() {
         </div>
       )}
 
-      {previewUrl && (
-        <AttachmentPreviewModal url={previewUrl} onClose={() => setPreviewUrl(null)} />
+      {previewAttachment && (
+        <AttachmentPreviewModal
+          url={previewAttachment.url}
+          fileName={previewAttachment.fileName}
+          onClose={() => setPreviewAttachment(null)}
+        />
       )}
     </DashboardLayout>
   )
