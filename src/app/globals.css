@@ -144,8 +144,7 @@ body {
 /* ── Task detail columns — viewport-locked layout (desktop only) ── */
 @media (min-width: 1024px) {
   .boe-task-left-col {
-    max-height: calc(100vh - 64px);
-    overflow-y: auto;
+    /* no height cap — left col flows naturally; page scroll handles overflow */
   }
   .boe-task-right-col {
     position: sticky;
