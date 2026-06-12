@@ -33,6 +33,7 @@ type SampleRequest = {
   rejected_at: string | null
   rejection_reason: string | null
   dispatched_at: string | null
+  dispatched_by: string | null
   courier_name: string | null
   tracking_number: string | null
   dispatch_note: string | null
@@ -51,6 +52,7 @@ type SampleRequest = {
   approved_by_name?: string
   rejected_by_name?: string
   received_by_name?: string
+  dispatched_by_name?: string
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
@@ -109,14 +111,16 @@ function daysOverdue(r: SampleRequest) {
 function mapRows(rows: any[]): SampleRequest[] {
   return rows.map(r => ({
     ...r,
-    requested_by_name: r.requested_by_user?.full_name ?? null,
-    approved_by_name:  r.approved_by_user?.full_name  ?? null,
-    rejected_by_name:  r.rejected_by_user?.full_name  ?? null,
-    received_by_name:  r.received_by_user?.full_name  ?? null,
-    requested_by_user: undefined,
-    approved_by_user:  undefined,
-    rejected_by_user:  undefined,
-    received_by_user:  undefined,
+    requested_by_name:  r.requested_by_user?.full_name  ?? null,
+    approved_by_name:   r.approved_by_user?.full_name   ?? null,
+    rejected_by_name:   r.rejected_by_user?.full_name   ?? null,
+    received_by_name:   r.received_by_user?.full_name   ?? null,
+    dispatched_by_name: r.dispatched_by_user?.full_name ?? null,
+    requested_by_user:  undefined,
+    approved_by_user:   undefined,
+    rejected_by_user:   undefined,
+    received_by_user:   undefined,
+    dispatched_by_user: undefined,
   }))
 }
 
@@ -149,7 +153,8 @@ export default function SamplesPage() {
             requested_by_user:users!requested_by(full_name),
             approved_by_user:users!approved_by(full_name),
             rejected_by_user:users!rejected_by(full_name),
-            received_by_user:users!received_by(full_name)
+            received_by_user:users!received_by(full_name),
+            dispatched_by_user:users!dispatched_by(full_name)
           `)
           .order('created_at', { ascending: false }),
       ])
@@ -406,17 +411,19 @@ function RequestCard({
   supabase: ReturnType<typeof createClient>
   onRefresh: () => void
 }) {
-  const [followupOpen, setFollowupOpen] = useState(false)
-  const [verifyOpen,   setVerifyOpen]   = useState(false)
-  const [rejectOpen,   setRejectOpen]   = useState(false)
-  const [reapplyOpen,  setReapplyOpen]  = useState(false)
-  const [slipOpen,     setSlipOpen]     = useState(false)
-  const [followupNote, setFollowupNote] = useState(r.last_followup_note ?? '')
-  const [followupDate, setFollowupDate] = useState(r.last_followup_date ?? new Date().toISOString().slice(0, 10))
-  const [receivedNote, setReceivedNote] = useState('')
-  const [rejectReason, setRejectReason] = useState('')
-  const [reapplyNote,  setReapplyNote]  = useState('')
-  const [busy, setBusy]                 = useState<string | null>(null)
+  const [followupOpen,  setFollowupOpen]  = useState(false)
+  const [verifyOpen,    setVerifyOpen]    = useState(false)
+  const [rejectOpen,    setRejectOpen]    = useState(false)
+  const [reapplyOpen,   setReapplyOpen]   = useState(false)
+  const [slipOpen,      setSlipOpen]      = useState(false)
+  const [dispatchOpen,  setDispatchOpen]  = useState(false)
+  const [dispatchForm,  setDispatchForm]  = useState({ courier_name: '', tracking_number: '', dispatch_note: '' })
+  const [followupNote,  setFollowupNote]  = useState(r.last_followup_note ?? '')
+  const [followupDate,  setFollowupDate]  = useState(r.last_followup_date ?? new Date().toISOString().slice(0, 10))
+  const [receivedNote,  setReceivedNote]  = useState('')
+  const [rejectReason,  setRejectReason]  = useState('')
+  const [reapplyNote,   setReapplyNote]   = useState('')
+  const [busy, setBusy]                   = useState<string | null>(null)
 
   const overdue     = isOverdue(r)
   const meta        = STATUS_META[r.status]
@@ -447,6 +454,23 @@ function RequestCard({
   const handleDispatched = () => act('dispatch', {
     status: 'dispatched', dispatched_at: new Date().toISOString(),
   })
+
+  const handleDispatchWithDetails = async () => {
+    if (!dispatchForm.courier_name.trim()) return
+    setBusy('dispatch_details')
+    await supabase.from('sample_dispatches').update({
+      status:          'dispatched',
+      dispatched_at:   new Date().toISOString(),
+      dispatched_by:   currentUserId,
+      courier_name:    dispatchForm.courier_name.trim(),
+      tracking_number: dispatchForm.tracking_number.trim() || null,
+      dispatch_note:   dispatchForm.dispatch_note.trim() || null,
+    }).eq('id', r.id)
+    setBusy(null)
+    setDispatchOpen(false)
+    setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' })
+    onRefresh()
+  }
 
   const handleVerifyReceived = async () => {
     setBusy('verify')
@@ -566,6 +590,25 @@ function RequestCard({
           {r.notes && <span>Note: {r.notes}</span>}
         </div>
 
+        {/* Dispatch audit details */}
+        {(r.status === 'dispatched' || r.status === 'returned' || r.status === 'lost') && (r.courier_name || r.dispatched_by_name) && (
+          <div style={{ marginTop: '10px', padding: '10px 12px', background: '#1A20350A', borderRadius: '8px', border: '1px solid #1A203520' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#1A2035', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Truck size={12} strokeWidth={2.2} />
+              Dispatch Details
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '12.5px', color: colors.secondary }}>
+              {r.dispatched_by_name && (
+                <div>Dispatched by <strong>{r.dispatched_by_name}</strong>{r.dispatched_at && <span style={{ color: colors.muted }}> on {formatDate(r.dispatched_at)}</span>}</div>
+              )}
+              {r.courier_name && (
+                <div>Courier: <strong>{r.courier_name}</strong>{r.tracking_number && <span style={{ color: colors.muted }}> · {r.tracking_number}</span>}</div>
+              )}
+              {r.dispatch_note && <div style={{ color: colors.muted }}>Note: {r.dispatch_note}</div>}
+            </div>
+          </div>
+        )}
+
         {/* Rejection details */}
         {r.status === 'rejected' && (r.rejected_by_name || r.rejection_reason) && (
           <div style={{ marginTop: '10px', padding: '10px 12px', background: colors.redTint, borderRadius: '8px', border: `1px solid ${colors.red}28` }}>
@@ -593,7 +636,10 @@ function RequestCard({
             )}
             {r.status === 'approved' && (
               <>
-                <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Mark Dispatched" busy={busy === 'dispatch'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={handleDispatched} />
+                {isAdmin
+                  ? <ActionBtn icon={<Truck size={13} strokeWidth={2} />} label={dispatchOpen ? 'Cancel' : 'Enter Dispatch Details'} busy={busy === 'dispatch_details'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={() => { setDispatchOpen(v => !v); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) }} />
+                  : <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Mark Dispatched" busy={busy === 'dispatch'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={handleDispatched} />
+                }
                 <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
               </>
             )}
@@ -615,6 +661,54 @@ function RequestCard({
             {r.status === 'rejected' && isRequester && (
               <ActionBtn icon={<RotateCcw size={13} strokeWidth={2} />} label={reapplyOpen ? 'Cancel' : 'Reapply'} busy={busy === 'reapply'} bg={colors.blueTint} color={colors.blue} border={colors.blue + '33'} onClick={() => { setReapplyOpen(v => !v); setReapplyNote('') }} />
             )}
+          </div>
+        )}
+
+        {/* Dispatch details panel */}
+        {dispatchOpen && isAdmin && r.status === 'approved' && (
+          <div style={{ marginTop: '12px', padding: '12px', background: '#1A20350A', borderRadius: '8px', border: '1px solid #1A203530' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#1A2035', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Truck size={13} strokeWidth={2} /> Enter Dispatch Details
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <input
+                type="text"
+                placeholder="Courier / Carrier Name *"
+                value={dispatchForm.courier_name}
+                onChange={e => setDispatchForm(f => ({ ...f, courier_name: e.target.value }))}
+                style={{ padding: '8px 10px', borderRadius: '6px', fontSize: '13px', border: `1.5px solid ${dispatchForm.courier_name.trim() ? '#1A203344' : '#1A203366'}`, background: '#fff', color: colors.primary, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' as const }}
+              />
+              <input
+                type="text"
+                placeholder="Tracking Number (optional)"
+                value={dispatchForm.tracking_number}
+                onChange={e => setDispatchForm(f => ({ ...f, tracking_number: e.target.value }))}
+                style={{ padding: '8px 10px', borderRadius: '6px', fontSize: '13px', border: `1px solid ${colors.border}`, background: '#fff', color: colors.primary, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' as const }}
+              />
+              <textarea
+                placeholder="Dispatch note (optional)"
+                value={dispatchForm.dispatch_note}
+                onChange={e => setDispatchForm(f => ({ ...f, dispatch_note: e.target.value }))}
+                rows={2}
+                style={{ padding: '8px 10px', borderRadius: '6px', fontSize: '13px', border: `1px solid ${colors.border}`, background: '#fff', color: colors.primary, outline: 'none', resize: 'vertical', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' as const }}
+              />
+              {!dispatchForm.courier_name.trim() && (
+                <div style={{ fontSize: '12px', color: colors.muted }}>Courier name is required to confirm dispatch.</div>
+              )}
+              <div style={{ display: 'flex', gap: '8px', marginTop: '2px' }}>
+                <button
+                  onClick={handleDispatchWithDetails}
+                  disabled={busy === 'dispatch_details' || !dispatchForm.courier_name.trim()}
+                  style={{ background: dispatchForm.courier_name.trim() ? '#1A2035' : colors.muted, color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: dispatchForm.courier_name.trim() && busy !== 'dispatch_details' ? 'pointer' : 'not-allowed', opacity: busy === 'dispatch_details' || !dispatchForm.courier_name.trim() ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  <Truck size={13} strokeWidth={2.5} />{busy === 'dispatch_details' ? 'Saving…' : 'Confirm Dispatch'}
+                </button>
+                <button
+                  onClick={() => { setDispatchOpen(false); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) }}
+                  style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}
+                >Cancel</button>
+              </div>
+            </div>
           </div>
         )}
 

@@ -22,12 +22,14 @@ type SampleRequest = {
   status: SampleStatus
   approved_at: string | null
   dispatched_at: string | null
+  dispatched_by: string | null
   courier_name: string | null
   tracking_number: string | null
   dispatch_note: string | null
   notes: string | null
   requested_by_name?: string
   approved_by_name?: string
+  dispatched_by_name?: string
 }
 
 const CATALOG_LABELS: Record<string, string> = {
@@ -65,6 +67,7 @@ export default function DispatchPage() {
   const [loading, setLoading]         = useState(true)
   const [request, setRequest]         = useState<SampleRequest | null>(null)
   const [notFound, setNotFound]       = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [form, setForm]               = useState({ courier_name: '', tracking_number: '', dispatch_note: '' })
   const [saving, setSaving]           = useState(false)
   const [done, setDone]               = useState(false)
@@ -74,14 +77,16 @@ export default function DispatchPage() {
     const load = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
+      setCurrentUserId(session.user.id)
 
       const { data } = await supabase
         .from('sample_dispatches')
         .select(`
           id, catalog_type, catalog_name, client_name, client_phone, client_address,
-          status, approved_at, dispatched_at, courier_name, tracking_number, dispatch_note, notes,
+          status, approved_at, dispatched_at, dispatched_by, courier_name, tracking_number, dispatch_note, notes,
           requested_by_user:users!requested_by(full_name),
-          approved_by_user:users!approved_by(full_name)
+          approved_by_user:users!approved_by(full_name),
+          dispatched_by_user:users!dispatched_by(full_name)
         `)
         .eq('id', id)
         .single()
@@ -92,8 +97,9 @@ export default function DispatchPage() {
       const row = data as any
       setRequest({
         ...row,
-        requested_by_name: row.requested_by_user?.full_name ?? null,
-        approved_by_name:  row.approved_by_user?.full_name  ?? null,
+        requested_by_name:  row.requested_by_user?.full_name  ?? null,
+        approved_by_name:   row.approved_by_user?.full_name   ?? null,
+        dispatched_by_name: row.dispatched_by_user?.full_name ?? null,
       })
       setLoading(false)
     }
@@ -107,6 +113,7 @@ export default function DispatchPage() {
     const { error: dbErr } = await supabase.from('sample_dispatches').update({
       status:          'dispatched',
       dispatched_at:   new Date().toISOString(),
+      dispatched_by:   currentUserId,
       courier_name:    form.courier_name.trim(),
       tracking_number: form.tracking_number.trim() || null,
       dispatch_note:   form.dispatch_note.trim() || null,
@@ -220,6 +227,7 @@ export default function DispatchPage() {
             </div>
             <div style={{ fontSize: '13px', color: colors.muted, display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div>Dispatched on <strong style={{ color: colors.secondary }}>{formatDate(r.dispatched_at)}</strong></div>
+              {r.dispatched_by_name && <div>Dispatched by <strong style={{ color: colors.secondary }}>{r.dispatched_by_name}</strong></div>}
               {r.courier_name && <div>Courier: <strong style={{ color: colors.secondary }}>{r.courier_name}</strong></div>}
               {r.tracking_number && <div>Tracking: <strong style={{ color: colors.secondary }}>{r.tracking_number}</strong></div>}
               {r.dispatch_note && <div>Note: {r.dispatch_note}</div>}
