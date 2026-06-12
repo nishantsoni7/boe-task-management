@@ -33,6 +33,9 @@ type SampleRequest = {
   rejected_at: string | null
   rejection_reason: string | null
   dispatched_at: string | null
+  courier_name: string | null
+  tracking_number: string | null
+  dispatch_note: string | null
   expected_return_date: string | null
   returned_date: string | null
   received_by: string | null
@@ -742,17 +745,7 @@ function ApprovalSlipModal({ request: r, onClose }: { request: SampleRequest; on
     hour: '2-digit', minute: '2-digit',
   })
 
-  const qrPayload = JSON.stringify({
-    id: r.id,
-    catalog: r.catalog_name,
-    type: r.catalog_type,
-    client: r.client_name,
-    requester: r.requested_by_name ?? r.requested_by,
-    status: r.status,
-    approved_by: r.approved_by_name ?? null,
-    approved_at: r.approved_at ?? null,
-    dispatched_at: r.dispatched_at ?? null,
-  })
+  const qrPayload = `${typeof window !== 'undefined' ? window.location.origin : ''}/samples/dispatch/${r.id}`
 
   const handlePrint = () => {
     const printContent = document.getElementById('boe-approval-slip')
