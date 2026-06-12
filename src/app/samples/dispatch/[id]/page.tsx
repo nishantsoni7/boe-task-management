@@ -10,7 +10,7 @@ import {
   AlertTriangle, ArrowLeft, Send,
 } from 'lucide-react'
 
-type SampleStatus = 'pending_approval' | 'approved' | 'rejected' | 'dispatched' | 'returned' | 'lost'
+type SampleStatus = 'pending_approval' | 'approved' | 'qr_submitted' | 'rejected' | 'dispatched' | 'returned' | 'lost'
 
 type SampleRequest = {
   id: string
@@ -159,7 +159,7 @@ export default function DispatchPage() {
     </div>
   )
 
-  const canDispatch = r.status === 'approved'
+  const canDispatch = r.status === 'approved' || r.status === 'qr_submitted'
   const alreadyDispatched = r.status === 'dispatched'
 
   return (

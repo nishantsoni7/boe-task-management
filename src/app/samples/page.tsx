@@ -42,6 +42,9 @@ type SampleRequest = {
   received_by: string | null
   received_at: string | null
   received_note: string | null
+  lost_by: string | null
+  lost_at: string | null
+  lost_note: string | null
   status: SampleStatus
   notes: string | null
   last_followup_note: string | null
@@ -53,6 +56,7 @@ type SampleRequest = {
   rejected_by_name?: string
   received_by_name?: string
   dispatched_by_name?: string
+  lost_by_name?: string
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
@@ -118,11 +122,13 @@ function mapRows(rows: any[]): SampleRequest[] {
     rejected_by_name:   r.rejected_by_user?.full_name   ?? null,
     received_by_name:   r.received_by_user?.full_name   ?? null,
     dispatched_by_name: r.dispatched_by_user?.full_name ?? null,
+    lost_by_name:       r.lost_by_user?.full_name       ?? null,
     requested_by_user:  undefined,
     approved_by_user:   undefined,
     rejected_by_user:   undefined,
     received_by_user:   undefined,
     dispatched_by_user: undefined,
+    lost_by_user:       undefined,
   }))
 }
 
@@ -156,7 +162,8 @@ export default function SamplesPage() {
             approved_by_user:users!approved_by(full_name),
             rejected_by_user:users!rejected_by(full_name),
             received_by_user:users!received_by(full_name),
-            dispatched_by_user:users!dispatched_by(full_name)
+            dispatched_by_user:users!dispatched_by(full_name),
+            lost_by_user:users!lost_by(full_name)
           `)
           .order('created_at', { ascending: false }),
       ])
@@ -179,7 +186,8 @@ export default function SamplesPage() {
         approved_by_user:users!approved_by(full_name),
         rejected_by_user:users!rejected_by(full_name),
         received_by_user:users!received_by(full_name),
-        dispatched_by_user:users!dispatched_by(full_name)
+        dispatched_by_user:users!dispatched_by(full_name),
+        lost_by_user:users!lost_by(full_name)
       `)
       .order('created_at', { ascending: false })
     if (rowsErr) console.error('[samples] refresh fetch failed:', rowsErr)
@@ -422,6 +430,7 @@ function RequestCard({
   const [verifyOpen,    setVerifyOpen]    = useState(false)
   const [rejectOpen,    setRejectOpen]    = useState(false)
   const [reapplyOpen,   setReapplyOpen]   = useState(false)
+  const [lostOpen,      setLostOpen]      = useState(false)
   const [slipOpen,      setSlipOpen]      = useState(false)
   const [dispatchOpen,  setDispatchOpen]  = useState(false)
   const [editOpen,      setEditOpen]      = useState(false)
@@ -432,6 +441,7 @@ function RequestCard({
   const [receivedNote,  setReceivedNote]  = useState('')
   const [rejectReason,  setRejectReason]  = useState('')
   const [reapplyNote,   setReapplyNote]   = useState('')
+  const [lostNote,      setLostNote]      = useState('')
   const [busy, setBusy]                   = useState<string | null>(null)
 
   const overdue     = isOverdue(r)
@@ -500,7 +510,19 @@ function RequestCard({
     setBusy(null); setVerifyOpen(false); onRefresh()
   }
 
-  const handleLost = () => act('lost', { status: 'lost' })
+  const handleConfirmLost = async () => {
+    setBusy('lost')
+    await supabase.from('sample_dispatches').update({
+      status:    'lost',
+      lost_by:   currentUserId,
+      lost_at:   new Date().toISOString(),
+      lost_note: lostNote.trim() || null,
+    }).eq('id', r.id)
+    setBusy(null)
+    setLostOpen(false)
+    setLostNote('')
+    onRefresh()
+  }
 
   const handleReapply = async () => {
     setBusy('reapply')
@@ -627,6 +649,22 @@ function RequestCard({
           </div>
         )}
 
+        {/* Lost details */}
+        {r.status === 'lost' && (r.lost_by_name || r.lost_note) && (
+          <div style={{ marginTop: '10px', padding: '10px 12px', background: colors.redTint, borderRadius: '8px', border: `1px solid ${colors.red}28` }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.red, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <X size={12} strokeWidth={2.2} /> Lost Details
+            </div>
+            {r.lost_by_name && (
+              <div style={{ fontSize: '12.5px', color: colors.secondary }}>
+                Marked lost by <strong>{r.lost_by_name}</strong>
+                {r.lost_at && <span style={{ color: colors.muted }}> on {formatDate(r.lost_at)}</span>}
+              </div>
+            )}
+            {r.lost_note && <div style={{ fontSize: '12.5px', color: colors.primary, marginTop: '4px' }}>Reason: {r.lost_note}</div>}
+          </div>
+        )}
+
         {/* Rejection details */}
         {r.status === 'rejected' && (r.rejected_by_name || r.rejection_reason) && (
           <div style={{ marginTop: '10px', padding: '10px 12px', background: colors.redTint, borderRadius: '8px', border: `1px solid ${colors.red}28` }}>
@@ -691,7 +729,7 @@ function RequestCard({
                   <ActionBtn icon={<ShieldCheck size={13} strokeWidth={2.2} />} label={verifyOpen ? 'Cancel' : 'Mark Received & Close'} busy={false} bg={colors.greenTint} color={colors.green} border={colors.green + '33'} onClick={() => setVerifyOpen(v => !v)} />
                 )}
                 <ActionBtn icon={<Clock size={13} strokeWidth={1.8} />} label={followupOpen ? 'Close Follow-up' : 'Add Follow-up'} busy={false} bg={colors.float} color={colors.secondary} border={colors.border} onClick={() => setFollowupOpen(v => !v)} />
-                <ActionBtn icon={<X size={13} strokeWidth={2} />} label="Mark Lost" busy={busy === 'lost'} bg='none' color={colors.muted} border={colors.border} onClick={handleLost} />
+                <ActionBtn icon={<X size={13} strokeWidth={2} />} label={lostOpen ? 'Cancel' : 'Mark Lost'} busy={false} bg='none' color={lostOpen ? colors.red : colors.muted} border={lostOpen ? colors.red + '55' : colors.border} onClick={() => { setLostOpen(v => !v); setLostNote('') }} />
               </>
             )}
             {r.status === 'rejected' && isRequester && (
@@ -805,6 +843,38 @@ function RequestCard({
               </button>
               <button onClick={() => setVerifyOpen(false)}
                 style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Mark Lost confirmation panel */}
+        {lostOpen && r.status === 'dispatched' && (
+          <div style={{ marginTop: '12px', padding: '12px', background: colors.redTint, borderRadius: '8px', border: `1px solid ${colors.red}33` }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.red, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <X size={13} strokeWidth={2} /> Mark Sample as Lost
+            </div>
+            <div style={{ fontSize: '13px', color: colors.secondary, marginBottom: '10px' }}>
+              Are you sure you want to mark this sample as lost? This cannot be undone.
+            </div>
+            <textarea
+              value={lostNote}
+              onChange={e => setLostNote(e.target.value)}
+              placeholder="Reason for loss (optional)…"
+              rows={2}
+              style={{ padding: '8px 10px', borderRadius: '6px', fontSize: '13px', border: `1px solid ${colors.red}44`, background: '#fff', color: colors.primary, outline: 'none', resize: 'vertical', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' as const }}
+            />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <button
+                onClick={handleConfirmLost}
+                disabled={busy === 'lost'}
+                style={{ background: colors.red, color: '#fff', border: 'none', borderRadius: '7px', padding: '7px 16px', fontSize: '12.5px', fontWeight: 700, cursor: busy === 'lost' ? 'not-allowed' : 'pointer', opacity: busy === 'lost' ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <X size={13} strokeWidth={2.5} />{busy === 'lost' ? 'Saving…' : 'Confirm Lost'}
+              </button>
+              <button
+                onClick={() => { setLostOpen(false); setLostNote('') }}
+                style={{ background: 'none', color: colors.muted, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '7px 12px', fontSize: '12.5px', cursor: 'pointer' }}
+              >Cancel</button>
             </div>
           </div>
         )}
