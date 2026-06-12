@@ -11,7 +11,7 @@ import {
   Plus, Package, AlertTriangle, CheckCircle2,
   Clock, Phone, MapPin,
   ThumbsUp, ThumbsDown, Send, X, ShieldCheck, Info, RotateCcw,
-  LayoutList, Bell, CheckCheck, Truck, Archive, LogOut, Home, Printer, Pencil, Trash2,
+  LayoutList, CheckCheck, Truck, Archive, LogOut, Home, Printer, Pencil, Trash2,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -61,7 +61,7 @@ type SampleRequest = {
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
 
-type TabKey = 'all' | 'pending_approval' | 'approved' | 'qr_submitted' | 'dispatched' | 'rejected' | 'closed' | 'notifications'
+type TabKey = 'all' | 'pending_approval' | 'approved' | 'qr_submitted' | 'dispatched' | 'rejected' | 'closed'
 
 const TABS: { key: TabKey; label: string; accent: string; Icon: React.ElementType }[] = [
   { key: 'all',              label: 'All Requests',     accent: '#5B7FA6', Icon: LayoutList  },
@@ -71,7 +71,6 @@ const TABS: { key: TabKey; label: string; accent: string; Icon: React.ElementTyp
   { key: 'dispatched',       label: 'Dispatched / Out', accent: '#1A2035', Icon: Truck       },
   { key: 'rejected',         label: 'Rejected',         accent: '#D94F4F', Icon: ThumbsDown  },
   { key: 'closed',           label: 'Closed',           accent: '#6B7A99', Icon: Archive     },
-  { key: 'notifications',    label: 'Notifications',    accent: '#A0A9BE', Icon: Bell        },
 ]
 
 // ─── Static data ──────────────────────────────────────────────────────────────
@@ -203,7 +202,6 @@ export default function SamplesPage() {
       .sort((a, b) => (isOverdue(b) ? 1 : 0) - (isOverdue(a) ? 1 : 0)),
     rejected:         requests.filter(r => r.status === 'rejected'),
     closed:           requests.filter(r => r.status === 'returned' || r.status === 'lost'),
-    notifications:    [],
   }), [requests])
 
   if (loading) return <LoadingScreen />
@@ -218,7 +216,6 @@ export default function SamplesPage() {
     dispatched:       buckets.dispatched.length,
     rejected:         buckets.rejected.length,
     closed:           buckets.closed.length,
-    notifications:    0,
   }
 
   const activeTabMeta = TABS.find(t => t.key === activeTab)!
@@ -273,7 +270,7 @@ export default function SamplesPage() {
                   <Icon size={15} strokeWidth={1.8} />
                 </span>
                 {tab.label}
-                {tab.key !== 'notifications' && count > 0 && (
+                {count > 0 && (
                   <span style={{
                     marginLeft: 'auto',
                     fontSize: '10px', fontWeight: 600, color: '#8C94A6',
@@ -350,51 +347,36 @@ export default function SamplesPage() {
         {/* Page body */}
         <div className="boe-page-body">
           <div style={{ maxWidth: '720px', width: '100%' }}>
-          {activeTab === 'notifications' ? (
-            <div style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', padding: '80px 32px', gap: '8px', color: colors.muted,
-            }}>
-              <Bell size={32} strokeWidth={1.4} color={colors.float} />
-              <div style={{ fontSize: '14px', fontWeight: 600, color: colors.secondary, marginTop: '8px' }}>
-                Sample notifications will appear here.
-              </div>
-              <div style={{ fontSize: '13px' }}>Notification logic coming soon.</div>
+            {/* Section heading */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>
+                {activeTabMeta.label}
+              </span>
+              <span style={{
+                fontSize: '11px', fontWeight: 600,
+                color: counts[activeTab] > 0 ? activeTabMeta.accent : colors.muted,
+                background: 'rgba(0,0,0,0.05)', padding: '2px 8px', borderRadius: '999px',
+              }}>
+                {counts[activeTab]}
+              </span>
             </div>
-          ) : (
-            <>
-              {/* Section heading */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>
-                  {activeTabMeta.label}
-                </span>
-                <span style={{
-                  fontSize: '11px', fontWeight: 600,
-                  color: counts[activeTab] > 0 ? activeTabMeta.accent : colors.muted,
-                  background: 'rgba(0,0,0,0.05)', padding: '2px 8px', borderRadius: '999px',
-                }}>
-                  {counts[activeTab]}
-                </span>
-              </div>
 
-              {visibleRequests.length === 0 ? (
-                <EmptyState />
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {visibleRequests.map(r => (
-                    <RequestCard
-                      key={r.id}
-                      request={r}
-                      isAdmin={isAdmin}
-                      currentUserId={profile?.id ?? ''}
-                      supabase={supabase}
-                      onRefresh={refresh}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
+            {visibleRequests.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {visibleRequests.map(r => (
+                  <RequestCard
+                    key={r.id}
+                    request={r}
+                    isAdmin={isAdmin}
+                    currentUserId={profile?.id ?? ''}
+                    supabase={supabase}
+                    onRefresh={refresh}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -449,6 +431,16 @@ function RequestCard({
   const isClosed    = r.status === 'returned' || r.status === 'lost'
   const isRequester = r.requested_by === currentUserId
 
+  const sampleLabel = `${r.catalog_type} – ${r.catalog_name}`
+
+  const notifySample = (event: string) => {
+    fetch('/api/samples/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event, requestedBy: r.requested_by, sampleLabel }),
+    }).catch(() => {})
+  }
+
   const act = async (action: string, patch: Record<string, unknown>) => {
     setBusy(action)
     const { error } = await supabase.from('sample_dispatches').update(patch).eq('id', r.id)
@@ -461,32 +453,41 @@ function RequestCard({
       return
     }
     onRefresh()
+    return true
   }
 
-  const handleApprove = () => act('approve', {
-    status: 'approved', approved_by: currentUserId, approved_at: new Date().toISOString(),
-  })
+  const handleApprove = async () => {
+    if (await act('approve', { status: 'approved', approved_by: currentUserId, approved_at: new Date().toISOString() }))
+      notifySample('sample_request_approved')
+  }
 
   const handleReject = async () => {
     if (!rejectReason.trim()) return
     setBusy('reject')
-    await supabase.from('sample_dispatches').update({
+    const { error } = await supabase.from('sample_dispatches').update({
       status: 'rejected', rejected_by: currentUserId,
       rejected_at: new Date().toISOString(), rejection_reason: rejectReason.trim(),
     }).eq('id', r.id)
-    setBusy(null); setRejectOpen(false); setRejectReason(''); onRefresh()
+    setBusy(null)
+    if (!error) {
+      notifySample('sample_request_rejected')
+      setRejectOpen(false); setRejectReason(''); onRefresh()
+    }
   }
 
-  const handleQRSubmit = () => act('qr_submit', { status: 'qr_submitted' })
+  const handleQRSubmit = async () => {
+    if (await act('qr_submit', { status: 'qr_submitted' })) notifySample('sample_qr_submitted')
+  }
 
-  const handleDispatched = () => act('dispatch', {
-    status: 'dispatched', dispatched_at: new Date().toISOString(),
-  })
+  const handleDispatched = async () => {
+    if (await act('dispatch', { status: 'dispatched', dispatched_at: new Date().toISOString() }))
+      notifySample('sample_dispatched')
+  }
 
   const handleDispatchWithDetails = async () => {
     if (!dispatchForm.courier_name.trim()) return
     setBusy('dispatch_details')
-    await supabase.from('sample_dispatches').update({
+    const { error } = await supabase.from('sample_dispatches').update({
       status:          'dispatched',
       dispatched_at:   new Date().toISOString(),
       dispatched_by:   currentUserId,
@@ -495,53 +496,63 @@ function RequestCard({
       dispatch_note:   dispatchForm.dispatch_note.trim() || null,
     }).eq('id', r.id)
     setBusy(null)
-    setDispatchOpen(false)
-    setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' })
-    onRefresh()
+    if (!error) {
+      notifySample('sample_dispatched')
+      setDispatchOpen(false)
+      setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' })
+      onRefresh()
+    }
   }
 
   const handleVerifyReceived = async () => {
     setBusy('verify')
-    await supabase.from('sample_dispatches').update({
+    const { error } = await supabase.from('sample_dispatches').update({
       status: 'returned', returned_date: new Date().toISOString().slice(0, 10),
       received_by: currentUserId, received_at: new Date().toISOString(),
       received_note: receivedNote.trim() || null,
     }).eq('id', r.id)
-    setBusy(null); setVerifyOpen(false); onRefresh()
+    setBusy(null)
+    if (!error) { notifySample('sample_returned'); setVerifyOpen(false); onRefresh() }
   }
 
   const handleConfirmLost = async () => {
     setBusy('lost')
-    await supabase.from('sample_dispatches').update({
+    const { error } = await supabase.from('sample_dispatches').update({
       status:    'lost',
       lost_by:   currentUserId,
       lost_at:   new Date().toISOString(),
       lost_note: lostNote.trim() || null,
     }).eq('id', r.id)
     setBusy(null)
-    setLostOpen(false)
-    setLostNote('')
-    onRefresh()
+    if (!error) {
+      notifySample('sample_lost')
+      setLostOpen(false); setLostNote(''); onRefresh()
+    }
   }
 
   const handleReapply = async () => {
     setBusy('reapply')
     const newNotes = [r.notes ?? '', reapplyNote.trim() ? `[Reapply] ${reapplyNote.trim()}` : '']
       .filter(Boolean).join('\n')
-    await supabase.from('sample_dispatches').update({
+    const { error } = await supabase.from('sample_dispatches').update({
       status: 'pending_approval', rejected_by: null, rejected_at: null,
       rejection_reason: null, notes: newNotes || null,
     }).eq('id', r.id)
-    setBusy(null); setReapplyOpen(false); setReapplyNote(''); onRefresh()
+    setBusy(null)
+    if (!error) {
+      notifySample('sample_request_reapplied')
+      setReapplyOpen(false); setReapplyNote(''); onRefresh()
+    }
   }
 
   const handleSaveFollowup = async () => {
     if (!followupNote.trim()) return
     setBusy('followup')
-    await supabase.from('sample_dispatches').update({
+    const { error } = await supabase.from('sample_dispatches').update({
       last_followup_note: followupNote.trim(), last_followup_date: followupDate,
     }).eq('id', r.id)
-    setBusy(null); setFollowupOpen(false); onRefresh()
+    setBusy(null)
+    if (!error) { notifySample('sample_followup'); setFollowupOpen(false); onRefresh() }
   }
 
   const borderColor = overdue ? colors.red + '50'
@@ -918,6 +929,8 @@ function RequestCard({
         {deleteOpen && (
           <DeleteConfirmModal
             requestId={r.id}
+            requestedBy={r.requested_by}
+            sampleLabel={sampleLabel}
             supabase={supabase}
             onClose={() => setDeleteOpen(false)}
             onDeleted={onRefresh}
@@ -1139,6 +1152,12 @@ function NewRequestModal({ currentUserId, supabase, onClose, onSaved }: {
     })
     setSaving(false)
     if (dbErr) { setError(dbErr.message); return }
+    const sampleLabel = `${form.catalog_type} – ${form.catalog_name.trim()}`
+    fetch('/api/samples/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'sample_request_created', requestedBy: currentUserId, sampleLabel }),
+    }).catch(() => {})
     onSaved()
   }
 
@@ -1247,6 +1266,12 @@ function EditRequestModal({ request, supabase, onClose, onSaved }: {
     }).eq('id', request.id)
     setSaving(false)
     if (dbErr) { setError(dbErr.message); return }
+    const sampleLabel = `${form.catalog_type} – ${form.catalog_name.trim()}`
+    fetch('/api/samples/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'sample_request_edited', requestedBy: request.requested_by, sampleLabel }),
+    }).catch(() => {})
     onSaved()
   }
 
@@ -1325,8 +1350,9 @@ function EditRequestModal({ request, supabase, onClose, onSaved }: {
 
 // ─── Delete Confirm Modal ─────────────────────────────────────────────────────
 
-function DeleteConfirmModal({ requestId, supabase, onClose, onDeleted }: {
-  requestId: string; supabase: ReturnType<typeof createClient>
+function DeleteConfirmModal({ requestId, requestedBy, sampleLabel, supabase, onClose, onDeleted }: {
+  requestId: string; requestedBy: string; sampleLabel: string
+  supabase: ReturnType<typeof createClient>
   onClose: () => void; onDeleted: () => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -1337,6 +1363,11 @@ function DeleteConfirmModal({ requestId, supabase, onClose, onDeleted }: {
     const { error: dbErr } = await supabase.from('sample_dispatches').delete().eq('id', requestId)
     setBusy(false)
     if (dbErr) { setError(dbErr.message); return }
+    fetch('/api/samples/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'sample_request_deleted', requestedBy, sampleLabel }),
+    }).catch(() => {})
     onDeleted()
   }
 
