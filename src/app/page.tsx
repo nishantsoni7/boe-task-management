@@ -49,6 +49,21 @@ const MODULES: Module[] = [
     ),
   },
   {
+    title: 'Assets & Access',
+    description: 'Track company devices, manage assigned hardware, and maintain login access records.',
+    href: '/assets-access',
+    available: true,
+    accent: '#5585E8',
+    icon: (
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <path d="M8 21h8M12 17v4" />
+        <path d="M7 8h.01M11 8h4" />
+        <path d="M7 12h.01M11 12h4" />
+      </svg>
+    ),
+  },
+  {
     title: 'Finance',
     description: 'Budgeting, expenses, and financial reporting.',
     href: '#',

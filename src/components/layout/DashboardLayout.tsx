@@ -256,7 +256,7 @@ export function DashboardLayout({
             />
           )}
 
-          {/* 7 & 8. Settings + Super Admin — admin only, hidden in view mode */}
+          {/* 6. Settings + Super Admin — admin only, hidden in view mode */}
           {isAdmin && !inViewMode && (
             <>
               <CollapsibleNav
