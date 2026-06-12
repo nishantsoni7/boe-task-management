@@ -140,7 +140,7 @@ export default function SamplesPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const [{ data: profileData }, { data: rows }] = await Promise.all([
+      const [{ data: profileData }, { data: rows, error: rowsErr }] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
@@ -159,6 +159,7 @@ export default function SamplesPage() {
           .order('created_at', { ascending: false }),
       ])
 
+      if (rowsErr) console.error('[samples] init fetch failed:', rowsErr)
       setProfile(profileData as UserProfile)
       if (rows) setRequests(mapRows(rows))
       setLoading(false)
@@ -168,16 +169,18 @@ export default function SamplesPage() {
   }, [])
 
   const refresh = async () => {
-    const { data: rows } = await supabase
+    const { data: rows, error: rowsErr } = await supabase
       .from('sample_dispatches')
       .select(`
         *,
         requested_by_user:users!requested_by(full_name),
         approved_by_user:users!approved_by(full_name),
         rejected_by_user:users!rejected_by(full_name),
-        received_by_user:users!received_by(full_name)
+        received_by_user:users!received_by(full_name),
+        dispatched_by_user:users!dispatched_by(full_name)
       `)
       .order('created_at', { ascending: false })
+    if (rowsErr) console.error('[samples] refresh fetch failed:', rowsErr)
     if (rows) setRequests(mapRows(rows))
   }
 
