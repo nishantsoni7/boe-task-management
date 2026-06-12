@@ -43,7 +43,7 @@ function InfoPanel() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {[
           'Tasks you delegated that have been marked completed.',
-          'You can restore a task if it was completed by mistake.',
+          'You can reopen a task if it was closed by mistake or has issues.',
         ].map((text, i) => (
           <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
             <span style={{ marginTop: '3px', flexShrink: 0, width: '5px', height: '5px', borderRadius: '50%', background: 'rgba(76,175,125,0.5)', display: 'inline-block' }} />
@@ -189,7 +189,7 @@ function CompletedTaskCard({
           onClick={e => { e.stopPropagation(); onRestore() }}
           onMouseEnter={() => setHoveredRestore(true)}
           onMouseLeave={() => setHoveredRestore(false)}
-          title="Restore to In Progress"
+          title="Reopen Task"
           style={{
             display: 'flex', alignItems: 'center', gap: '5px',
             padding: '4px 10px', borderRadius: '6px', height: '28px',
@@ -201,7 +201,7 @@ function CompletedTaskCard({
           }}
         >
           <RotateCcw size={11} />
-          Restore
+          Reopen Task
         </button>
         <button
           onClick={e => { e.stopPropagation(); onClick() }}

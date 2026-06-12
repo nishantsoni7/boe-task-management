@@ -51,8 +51,8 @@ function InfoPanel() {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {[
-          'You can restore a completed task if it was marked completed by mistake.',
-          'Restored tasks will move back to Pending.',
+          'You can reopen a completed task if it was closed by mistake or has issues.',
+          'Reopened tasks will move back to their previous status.',
         ].map((text, i) => (
           <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
             <span style={{
@@ -134,7 +134,7 @@ function CompletedTaskCard({
               onMouseEnter={() => setHoveredRestore(true)} onMouseLeave={() => setHoveredRestore(false)}
               style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: hoveredRestore ? 'rgba(91,166,127,0.15)' : 'rgba(91,166,127,0.07)', border: `1px solid ${hoveredRestore ? 'rgba(91,166,127,0.45)' : 'rgba(91,166,127,0.25)'}`, cursor: 'pointer', outline: 'none', color: hoveredRestore ? '#3a9e6d' : '#4CAF7D', fontSize: '11px', fontWeight: 600 }}>
               <RotateCcw size={11} />
-              Restore
+              Reopen Task
             </button>
             <button onClick={e => { e.stopPropagation(); onClick() }}
               onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
@@ -267,7 +267,7 @@ function CompletedTaskCard({
           onClick={e => { e.stopPropagation(); onRestore() }}
           onMouseEnter={() => setHoveredRestore(true)}
           onMouseLeave={() => setHoveredRestore(false)}
-          title="Restore to In Progress"
+          title="Reopen Task"
           style={{
             display: 'flex', alignItems: 'center', gap: '5px',
             padding: '4px 10px', borderRadius: '6px', height: '28px',

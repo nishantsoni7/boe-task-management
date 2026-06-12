@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { taskId } = await req.json()
+  const { taskId, actorName } = await req.json()
   if (!taskId) {
     return NextResponse.json({ error: 'taskId is required' }, { status: 400 })
   }
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   const { data: task, error: fetchErr } = await supabase
     .from('tasks')
-    .select('id, status, assigned_to, created_by')
+    .select('id, title, status, assigned_to, created_by')
     .eq('id', taskId)
     .single()
 
@@ -67,8 +67,25 @@ export async function POST(req: NextRequest) {
     action:      'status_changed',
     from_status: 'completed',
     to_status:   restoreStatus,
-    note:        'Restored from completed',
+    note:        'Reopened task',
   })
 
-  return NextResponse.json({ success: true })
+  // Notify the other party
+  const recipient = user.id === task.created_by ? task.assigned_to : task.created_by
+  if (recipient && recipient !== user.id) {
+    const actor = typeof actorName === 'string' && actorName.trim()
+      ? actorName.trim()
+      : null
+    const title = actor ? `${actor} reopened a task` : 'Task reopened'
+    await supabase.from('notifications').insert({
+      user_id:      recipient,
+      task_id:      taskId,
+      type:         'task_acknowledged',
+      title,
+      body:         task.title,
+      is_push_sent: true,
+    })
+  }
+
+  return NextResponse.json({ success: true, restoredStatus: restoreStatus })
 }
