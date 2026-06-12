@@ -77,14 +77,21 @@ export default function TaskDetailPage() {
   const [taskLevelAttachments, setTaskLevelAttachments] = useState<TaskAttachment[]>([])
   const [previewAttachment,    setPreviewAttachment]    = useState<{ url: string; fileName?: string } | null>(null)
 
-  const [editingDueDate,   setEditingDueDate]   = useState(false)
-  const [editingPriority,  setEditingPriority]  = useState(false)
-  const [editDueDate,      setEditDueDate]      = useState('')
-  const [editPriority,     setEditPriority]     = useState<'high' | 'medium' | 'low'>('medium')
-  const [savingDueDate,    setSavingDueDate]    = useState(false)
-  const [savingPriority,   setSavingPriority]   = useState(false)
-  const [dueDateMsg,       setDueDateMsg]       = useState<{ ok: boolean; text: string } | null>(null)
-  const [priorityMsg,      setPriorityMsg]      = useState<{ ok: boolean; text: string } | null>(null)
+  const [editingDueDate,      setEditingDueDate]      = useState(false)
+  const [editingPriority,     setEditingPriority]     = useState(false)
+  const [editDueDate,         setEditDueDate]         = useState('')
+  const [editPriority,        setEditPriority]        = useState<'high' | 'medium' | 'low'>('medium')
+  const [savingDueDate,       setSavingDueDate]       = useState(false)
+  const [savingPriority,      setSavingPriority]      = useState(false)
+  const [dueDateMsg,          setDueDateMsg]          = useState<{ ok: boolean; text: string } | null>(null)
+  const [priorityMsg,         setPriorityMsg]         = useState<{ ok: boolean; text: string } | null>(null)
+
+  const [editingTitle,        setEditingTitle]        = useState(false)
+  const [editTitle,           setEditTitle]           = useState('')
+  const [savingTitle,         setSavingTitle]         = useState(false)
+  const [editingDescription,  setEditingDescription]  = useState(false)
+  const [editDescription,     setEditDescription]     = useState('')
+  const [savingDescription,   setSavingDescription]   = useState(false)
 
   const router   = useRouter()
   const params   = useParams()
@@ -435,6 +442,40 @@ export default function TaskDetailPage() {
     setSavingPriority(false)
   }
 
+  const saveTitle = async () => {
+    if (!task) return
+    const trimmed = editTitle.trim()
+    if (!trimmed || trimmed === task.title) { setEditingTitle(false); return }
+    setSavingTitle(true)
+    const { error } = await supabase.from('tasks').update({ title: trimmed }).eq('id', task.id)
+    if (error) { alert('Failed to save title.'); setSavingTitle(false); return }
+    await supabase.from('task_activity_log').insert({
+      task_id: task.id, actor_id: currentUserId,
+      action: 'note_added', note: `Title updated to: ${trimmed}`,
+    })
+    setTask({ ...task, title: trimmed })
+    await loadLog(task.id)
+    setEditingTitle(false)
+    setSavingTitle(false)
+  }
+
+  const saveDescription = async () => {
+    if (!task) return
+    const trimmed = editDescription.trim()
+    if (trimmed === (task.note ?? '')) { setEditingDescription(false); return }
+    setSavingDescription(true)
+    const { error } = await supabase.from('tasks').update({ note: trimmed || null }).eq('id', task.id)
+    if (error) { alert('Failed to save description.'); setSavingDescription(false); return }
+    await supabase.from('task_activity_log').insert({
+      task_id: task.id, actor_id: currentUserId,
+      action: 'note_added', note: 'Description updated.',
+    })
+    setTask({ ...task, note: trimmed || null })
+    await loadLog(task.id)
+    setEditingDescription(false)
+    setSavingDescription(false)
+  }
+
   const saveActivityEdit = async () => {
     if (!task || !editingActivityId) return
     setSavingActivityEdit(true)
@@ -587,17 +628,56 @@ export default function TaskDetailPage() {
               borderLeft: `3px solid ${relationColor}`,
             }}>
               {/* Task title */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
-                {task.is_urgent && (
-                  <span style={{ fontSize: '15px', lineHeight: '1.35', flexShrink: 0, marginTop: '1px' }} title="Starred">⭐</span>
+              <div style={{ marginBottom: '6px' }}>
+                {editingTitle ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={e => setEditTitle(e.target.value)}
+                      className="boe-input"
+                      style={{ fontSize: '15px', fontWeight: 700, width: '100%', boxSizing: 'border-box' }}
+                      autoFocus
+                    />
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        onClick={saveTitle}
+                        disabled={savingTitle}
+                        style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingTitle ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingTitle ? 0.6 : 1 }}
+                      >
+                        {savingTitle ? '…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setEditingTitle(false)}
+                        disabled={savingTitle}
+                        style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    {task.is_urgent && (
+                      <span style={{ fontSize: '15px', lineHeight: '1.35', flexShrink: 0, marginTop: '1px' }} title="Starred">⭐</span>
+                    )}
+                    <h2 style={{
+                      fontSize: '18px', fontWeight: 800,
+                      color: colors.primary, lineHeight: 1.3,
+                      letterSpacing: '-0.02em', margin: 0, flex: 1,
+                    }}>
+                      {task.title}
+                    </h2>
+                    {isCreator && task.status !== 'completed' && (
+                      <button
+                        onClick={() => { setEditTitle(task.title); setEditingTitle(true); setEditingDescription(false) }}
+                        style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0, marginTop: '3px' }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
                 )}
-                <h2 style={{
-                  fontSize: '18px', fontWeight: 800,
-                  color: colors.primary, lineHeight: 1.3,
-                  letterSpacing: '-0.02em', margin: 0,
-                }}>
-                  {task.title}
-                </h2>
               </div>
 
               {/* Assigned by / Assigned to (delegated) */}
@@ -732,17 +812,52 @@ export default function TaskDetailPage() {
               </div>
 
               {/* Description */}
-              {task.note ? (
-                <p style={{
-                  fontSize: '13px', color: colors.secondary, lineHeight: 1.7,
-                  margin: '12px 0 0', whiteSpace: 'pre-wrap',
-                }}>
-                  {task.note}
-                </p>
+              {editingDescription ? (
+                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <textarea
+                    value={editDescription}
+                    onChange={e => setEditDescription(e.target.value)}
+                    className="boe-input"
+                    style={{ resize: 'vertical', minHeight: '90px', width: '100%', boxSizing: 'border-box', fontSize: '13px', lineHeight: 1.6 }}
+                    autoFocus
+                  />
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      onClick={saveDescription}
+                      disabled={savingDescription}
+                      style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingDescription ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingDescription ? 0.6 : 1 }}
+                    >
+                      {savingDescription ? '…' : 'Save'}
+                    </button>
+                    <button
+                      onClick={() => setEditingDescription(false)}
+                      disabled={savingDescription}
+                      style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: '12px 0 0' }}>
-                  No description.
-                </p>
+                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                  {task.note ? (
+                    <p style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap', flex: 1 }}>
+                      {task.note}
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0, flex: 1 }}>
+                      No description.
+                    </p>
+                  )}
+                  {isCreator && task.status !== 'completed' && (
+                    <button
+                      onClick={() => { setEditDescription(task.note ?? ''); setEditingDescription(true); setEditingTitle(false) }}
+                      style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0 }}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Task attachments — legacy single + new multi-file */}
