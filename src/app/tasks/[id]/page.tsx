@@ -60,6 +60,7 @@ export default function TaskDetailPage() {
   const [waitingOnError,   setWaitingOnError]  = useState(false)
   const [saving,           setSaving]          = useState(false)
   const [markingComplete,  setMarkingComplete] = useState(false)
+  const [reopening,        setReopening]       = useState(false)
   const [modalOpen,        setModalOpen]       = useState(false)
   const [modalStatus,      setModalStatus]     = useState<string>('')
   const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
@@ -97,18 +98,6 @@ export default function TaskDetailPage() {
   const params   = useParams()
   const supabase = useMemo(() => createClient(), [])
 
-  // Lock page scroll — only the activity panel scrolls
-  useEffect(() => {
-    const html = document.documentElement
-    const body = document.body
-    const prev = { html: html.style.overflow, body: body.style.overflow }
-    html.style.overflow = 'hidden'
-    body.style.overflow = 'hidden'
-    return () => {
-      html.style.overflow = prev.html
-      body.style.overflow = prev.body
-    }
-  }, [])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -269,7 +258,7 @@ export default function TaskDetailPage() {
     setTask({ ...task, ...localPatch })
     setSelectedStatus(newStatus)
     await loadLog(task.id)
-    if (newStatus === 'completed') setTimeout(() => router.push('/dashboard'), 800)
+    if (newStatus === 'completed') setTimeout(() => router.push('/tasks/my'), 800)
   }
 
   const saveStatus = async () => {
@@ -328,6 +317,32 @@ export default function TaskDetailPage() {
     }
 
     setSaving(false)
+  }
+
+  const handleReopen = async () => {
+    if (!task) return
+    const confirmed = window.confirm(
+      'Reopen this task? It will be restored to its previous status and the assignee will be notified.'
+    )
+    if (!confirmed) return
+    setReopening(true)
+    const res = await fetch('/api/restore-task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: task.id, actorName: profile?.full_name }),
+    })
+    if (!res.ok) {
+      console.error('[handleReopen] failed:', await res.text())
+      window.alert('Failed to reopen task. Please try again.')
+      setReopening(false)
+      return
+    }
+    const { restoredStatus } = await res.json()
+    const restored = (restoredStatus ?? 'working') as TaskStatus
+    setTask({ ...task, status: restored })
+    setSelectedStatus(restored)
+    await loadLog(task.id)
+    setReopening(false)
   }
 
   const saveComment = async () => {
@@ -1146,13 +1161,34 @@ export default function TaskDetailPage() {
               borderColor: `${colors.green}30`,
             }}>
               {task.status === 'completed' ? (
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                  padding: '11px 14px', borderRadius: '8px',
-                  background: '#ffffff', border: `1px solid ${colors.green}28`,
-                }}>
-                  <CircleCheckBig size={16} color={colors.green} strokeWidth={2.2} />
-                  <span style={{ fontSize: '13.5px', fontWeight: 700, color: colors.green }}>Task Completed</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                    padding: '11px 14px', borderRadius: '8px',
+                    background: '#ffffff', border: `1px solid ${colors.green}28`,
+                  }}>
+                    <CircleCheckBig size={16} color={colors.green} strokeWidth={2.2} />
+                    <span style={{ fontSize: '13.5px', fontWeight: 700, color: colors.green }}>Task Completed</span>
+                  </div>
+                  {(isCreator || isAssignee) && (
+                    <button
+                      onClick={handleReopen}
+                      disabled={reopening}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                        padding: '9px 14px', borderRadius: '8px',
+                        border: `1.5px solid ${colors.amber}60`,
+                        background: colors.amberTint, color: colors.amber,
+                        fontSize: '13px', fontWeight: 600,
+                        cursor: reopening ? 'not-allowed' : 'pointer',
+                        fontFamily: font.body,
+                        opacity: reopening ? 0.6 : 1,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {reopening ? 'Reopening…' : 'Reopen Task'}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <button
