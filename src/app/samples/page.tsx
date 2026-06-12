@@ -11,8 +11,9 @@ import {
   Plus, Package, AlertTriangle, CheckCircle2,
   Clock, Phone, MapPin,
   ThumbsUp, ThumbsDown, Send, X, ShieldCheck, Info, RotateCcw,
-  LayoutList, Bell, CheckCheck, Truck, Archive, LogOut, Home,
+  LayoutList, Bell, CheckCheck, Truck, Archive, LogOut, Home, Printer,
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -406,6 +407,7 @@ function RequestCard({
   const [verifyOpen,   setVerifyOpen]   = useState(false)
   const [rejectOpen,   setRejectOpen]   = useState(false)
   const [reapplyOpen,  setReapplyOpen]  = useState(false)
+  const [slipOpen,     setSlipOpen]     = useState(false)
   const [followupNote, setFollowupNote] = useState(r.last_followup_note ?? '')
   const [followupDate, setFollowupDate] = useState(r.last_followup_date ?? new Date().toISOString().slice(0, 10))
   const [receivedNote, setReceivedNote] = useState('')
@@ -587,10 +589,14 @@ function RequestCard({
               </>
             )}
             {r.status === 'approved' && (
-              <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Mark Dispatched" busy={busy === 'dispatch'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={handleDispatched} />
+              <>
+                <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Mark Dispatched" busy={busy === 'dispatch'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={handleDispatched} />
+                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
+              </>
             )}
             {r.status === 'dispatched' && (
               <>
+                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
                 {isRequester ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: colors.muted, background: colors.float, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '6px 12px' }}>
                     <Info size={13} strokeWidth={1.8} />
@@ -670,6 +676,11 @@ function RequestCard({
           </div>
         )}
 
+        {/* Approval slip modal */}
+        {slipOpen && (
+          <ApprovalSlipModal request={r} onClose={() => setSlipOpen(false)} />
+        )}
+
         {/* Follow-up panel */}
         {followupOpen && r.status === 'dispatched' && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.raised, borderRadius: '8px', border: `1px solid ${colors.border}` }}>
@@ -719,6 +730,150 @@ function EmptyState() {
       <Package size={32} color={colors.float} strokeWidth={1.5} style={{ margin: '0 auto 12px' }} />
       <div style={{ fontSize: '14px', fontWeight: 600, color: colors.secondary, marginBottom: '4px' }}>No requests here</div>
       <div style={{ fontSize: '13px' }}>Use the sidebar to browse, or create a new request.</div>
+    </div>
+  )
+}
+
+// ─── Approval Slip Modal ──────────────────────────────────────────────────────
+
+function ApprovalSlipModal({ request: r, onClose }: { request: SampleRequest; onClose: () => void }) {
+  const printedAt = new Date().toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+
+  const qrPayload = JSON.stringify({
+    id: r.id,
+    catalog: r.catalog_name,
+    type: r.catalog_type,
+    client: r.client_name,
+    requester: r.requested_by_name ?? r.requested_by,
+    status: r.status,
+    approved_by: r.approved_by_name ?? null,
+    approved_at: r.approved_at ?? null,
+    dispatched_at: r.dispatched_at ?? null,
+  })
+
+  const handlePrint = () => {
+    const printContent = document.getElementById('boe-approval-slip')
+    if (!printContent) return
+    const win = window.open('', '_blank', 'width=700,height=900')
+    if (!win) return
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Approval Slip — ${r.catalog_name}</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; color: #111; padding: 32px; }
+          .slip { max-width: 560px; margin: 0 auto; border: 2px solid #1A2035; border-radius: 12px; overflow: hidden; }
+          .slip-header { background: #1A2035; color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; }
+          .slip-header h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
+          .slip-header .sub { font-size: 11px; opacity: 0.65; margin-top: 3px; }
+          .slip-body { padding: 20px; }
+          .slip-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #eee; font-size: 13px; }
+          .slip-row:last-child { border-bottom: none; }
+          .slip-label { color: #666; font-weight: 500; }
+          .slip-value { color: #111; font-weight: 600; text-align: right; max-width: 60%; }
+          .slip-qr { display: flex; flex-direction: column; align-items: center; padding: 20px; border-top: 1.5px dashed #ddd; gap: 8px; }
+          .slip-qr p { font-size: 11px; color: #999; }
+          .status-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+          .status-approved { background: #E6F7F0; color: #2E9E6B; }
+          .status-dispatched { background: #1A20351A; color: #1A2035; }
+          .printed { font-size: 11px; color: #aaa; text-align: center; margin-top: 12px; }
+          @media print { body { padding: 12px; } }
+        </style>
+      </head>
+      <body>
+        ${printContent.innerHTML}
+        <div class="printed">Printed on ${printedAt}</div>
+        <script>window.onload = function() { window.print(); }<\/script>
+      </body>
+      </html>
+    `)
+    win.document.close()
+  }
+
+  const statusLabel = r.status === 'approved' ? 'Approved' : 'Dispatched'
+  const statusClass = r.status === 'approved' ? 'status-approved' : 'status-dispatched'
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: 540, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+        {/* Modal header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${colors.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Printer size={16} strokeWidth={2} color='#3B5BDB' />
+            <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>Approval Slip Preview</span>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, display: 'flex', alignItems: 'center' }}>
+            <X size={18} strokeWidth={2} />
+          </button>
+        </div>
+
+        {/* Slip content (this is what gets printed) */}
+        <div id="boe-approval-slip" style={{ padding: '20px' }}>
+          <div className="slip" style={{ border: '2px solid #1A2035', borderRadius: '10px', overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+            {/* Slip header */}
+            <div className="slip-header" style={{ background: '#1A2035', color: '#fff', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 700, letterSpacing: '0.02em' }}>BOE Sample Approval Slip</div>
+                <div style={{ fontSize: '11px', opacity: 0.65, marginTop: '3px' }}>Request ID: {r.id.slice(0, 16).toUpperCase()}</div>
+              </div>
+              <span className={statusClass} style={{
+                padding: '3px 10px', borderRadius: '999px', fontSize: '11px', fontWeight: 700,
+                background: r.status === 'approved' ? '#E6F7F0' : '#ffffff22',
+                color: r.status === 'approved' ? '#2E9E6B' : '#E8A030',
+              }}>{statusLabel}</span>
+            </div>
+
+            {/* Slip body */}
+            <div style={{ padding: '16px 18px' }}>
+              {[
+                ['Catalog Name', r.catalog_name],
+                ['Catalog Type', catalogLabel(r.catalog_type)],
+                ['Client', r.client_name],
+                r.client_phone    ? ['Phone', r.client_phone]    : null,
+                r.client_address  ? ['Address', r.client_address] : null,
+                ['Requested By', r.requested_by_name ?? '—'],
+                r.approved_by_name ? ['Approved By', r.approved_by_name] : null,
+                r.approved_at ? ['Approved On', formatDate(r.approved_at)] : null,
+                r.dispatched_at ? ['Dispatched On', formatDate(r.dispatched_at)] : null,
+                r.expected_return_date ? ['Expected Return', formatDate(r.expected_return_date)] : null,
+                r.notes ? ['Notes', r.notes] : null,
+              ].filter(Boolean).map(([label, value]) => (
+                <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '7px 0', borderBottom: `1px solid ${colors.border}`, fontSize: '13px', gap: '12px' }}>
+                  <span style={{ color: colors.muted, fontWeight: 500, flexShrink: 0 }}>{label}</span>
+                  <span style={{ color: colors.primary, fontWeight: 600, textAlign: 'right', wordBreak: 'break-word' }}>{value as string}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* QR section */}
+            <div style={{ borderTop: '1.5px dashed #ddd', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '18px', gap: '10px' }}>
+              <QRCodeSVG value={qrPayload} size={130} level="M" />
+              <div style={{ fontSize: '11px', color: colors.muted, textAlign: 'center' }}>
+                Scan to verify request · Printed {printedAt}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Print button */}
+        <div style={{ padding: '14px 20px', borderTop: `1px solid ${colors.border}`, display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ background: colors.float, color: colors.secondary, border: `1.5px solid ${colors.border}`, borderRadius: '8px', padding: '8px 18px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+            Close
+          </button>
+          <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#3B5BDB', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 20px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
+            <Printer size={14} strokeWidth={2} />
+            Print Slip
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
