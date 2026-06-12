@@ -845,7 +845,7 @@ function ApprovalSlipModal({ request: r, onClose }: { request: SampleRequest; on
                 r.dispatched_at ? ['Dispatched On', formatDate(r.dispatched_at)] : null,
                 r.expected_return_date ? ['Expected Return', formatDate(r.expected_return_date)] : null,
                 r.notes ? ['Notes', r.notes] : null,
-              ].filter(Boolean).map(([label, value]) => (
+              ].filter(Boolean).map(row => row as string[]).map(([label, value]) => (
                 <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '7px 0', borderBottom: `1px solid ${colors.border}`, fontSize: '13px', gap: '12px' }}>
                   <span style={{ color: colors.muted, fontWeight: 500, flexShrink: 0 }}>{label}</span>
                   <span style={{ color: colors.primary, fontWeight: 600, textAlign: 'right', wordBreak: 'break-word' }}>{value as string}</span>

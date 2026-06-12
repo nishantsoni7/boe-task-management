@@ -685,7 +685,7 @@ type CategoryAssetRow = {
   asset_name: string
   status: string
   updated_at: string
-  users: { full_name: string } | null
+  users: { full_name: string }[] | null
 }
 
 function CategoryDetail({
@@ -746,7 +746,7 @@ function CategoryDetail({
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
                   <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary }}>{row.asset_name}</td>
-                  <td style={{ padding: '12px 16px', color: colors.secondary }}>{row.users?.full_name ?? '—'}</td>
+                  <td style={{ padding: '12px 16px', color: colors.secondary }}>{row.users?.[0]?.full_name ?? '—'}</td>
                   <td style={{ padding: '12px 16px' }}><StatusPill status={assetStatusPill(row.status)} /></td>
                   <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(row.updated_at)}</td>
                 </tr>
