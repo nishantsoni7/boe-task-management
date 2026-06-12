@@ -17,7 +17,7 @@ import { QRCodeSVG } from 'qrcode.react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SampleStatus = 'pending_approval' | 'approved' | 'rejected' | 'dispatched' | 'returned' | 'lost'
+type SampleStatus = 'pending_approval' | 'approved' | 'qr_submitted' | 'rejected' | 'dispatched' | 'returned' | 'lost'
 
 type SampleRequest = {
   id: string
@@ -57,12 +57,13 @@ type SampleRequest = {
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
 
-type TabKey = 'all' | 'pending_approval' | 'approved' | 'dispatched' | 'rejected' | 'closed' | 'notifications'
+type TabKey = 'all' | 'pending_approval' | 'approved' | 'qr_submitted' | 'dispatched' | 'rejected' | 'closed' | 'notifications'
 
 const TABS: { key: TabKey; label: string; accent: string; Icon: React.ElementType }[] = [
   { key: 'all',              label: 'All Requests',     accent: '#5B7FA6', Icon: LayoutList  },
   { key: 'pending_approval', label: 'Pending Approval', accent: '#B45309', Icon: Clock       },
   { key: 'approved',         label: 'Approved',         accent: '#2E9E6B', Icon: CheckCheck  },
+  { key: 'qr_submitted',     label: 'QR Submitted',     accent: '#7C3AED', Icon: Send        },
   { key: 'dispatched',       label: 'Dispatched / Out', accent: '#1A2035', Icon: Truck       },
   { key: 'rejected',         label: 'Rejected',         accent: '#D94F4F', Icon: ThumbsDown  },
   { key: 'closed',           label: 'Closed',           accent: '#6B7A99', Icon: Archive     },
@@ -82,6 +83,7 @@ const CATALOG_TYPES = [
 const STATUS_META: Record<SampleStatus, { label: string; bg: string; color: string }> = {
   pending_approval: { label: 'Pending Approval', bg: '#FEF3C714', color: '#B45309' },
   approved:         { label: 'Approved',         bg: colors.blueTint,  color: colors.blue  },
+  qr_submitted:     { label: 'QR Submitted',     bg: '#EDE9FE',        color: '#7C3AED'    },
   rejected:         { label: 'Rejected',         bg: colors.redTint,   color: colors.red   },
   dispatched:       { label: 'Dispatched',       bg: '#1A203514',      color: '#1A2035'    },
   returned:         { label: 'Returned',         bg: colors.greenTint, color: colors.green },
@@ -188,6 +190,7 @@ export default function SamplesPage() {
     all:              requests,
     pending_approval: requests.filter(r => r.status === 'pending_approval'),
     approved:         requests.filter(r => r.status === 'approved'),
+    qr_submitted:     requests.filter(r => r.status === 'qr_submitted'),
     dispatched:       [...requests.filter(r => r.status === 'dispatched')]
       .sort((a, b) => (isOverdue(b) ? 1 : 0) - (isOverdue(a) ? 1 : 0)),
     rejected:         requests.filter(r => r.status === 'rejected'),
@@ -203,6 +206,7 @@ export default function SamplesPage() {
     all:              buckets.all.length,
     pending_approval: buckets.pending_approval.length,
     approved:         buckets.approved.length,
+    qr_submitted:     buckets.qr_submitted.length,
     dispatched:       buckets.dispatched.length,
     rejected:         buckets.rejected.length,
     closed:           buckets.closed.length,
@@ -437,8 +441,15 @@ function RequestCard({
 
   const act = async (action: string, patch: Record<string, unknown>) => {
     setBusy(action)
-    await supabase.from('sample_dispatches').update(patch).eq('id', r.id)
+    const { error } = await supabase.from('sample_dispatches').update(patch).eq('id', r.id)
     setBusy(null)
+    if (error) {
+      console.error(`[samples] ${action} failed`, {
+        message: error.message, code: error.code, details: error.details, hint: error.hint,
+        action, patch, requestId: r.id, currentStatus: r.status,
+      })
+      return
+    }
     onRefresh()
   }
 
@@ -455,6 +466,8 @@ function RequestCard({
     }).eq('id', r.id)
     setBusy(null); setRejectOpen(false); setRejectReason(''); onRefresh()
   }
+
+  const handleQRSubmit = () => act('qr_submit', { status: 'qr_submitted' })
 
   const handleDispatched = () => act('dispatch', {
     status: 'dispatched', dispatched_at: new Date().toISOString(),
@@ -644,23 +657,38 @@ function RequestCard({
             )}
             {r.status === 'approved' && (
               <>
-                {isAdmin
-                  ? <ActionBtn icon={<Truck size={13} strokeWidth={2} />} label={dispatchOpen ? 'Cancel' : 'Enter Dispatch Details'} busy={busy === 'dispatch_details'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={() => { setDispatchOpen(v => !v); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) }} />
-                  : <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Mark Dispatched" busy={busy === 'dispatch'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={handleDispatched} />
-                }
+                {/* Non-admins are always the requester on rows they can see (RLS: requested_by = auth.uid()).
+                    Using !isAdmin instead of isRequester guards against profile-load failures
+                    that would silently set currentUserId to '' and hide this button. */}
+                {!isAdmin && (
+                  <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Submit QR" busy={busy === 'qr_submit'} bg='#EDE9FE' color='#7C3AED' border='#7C3AED33' onClick={handleQRSubmit} />
+                )}
+                <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
+              </>
+            )}
+            {r.status === 'qr_submitted' && (
+              <>
+                {isAdmin ? (
+                  <ActionBtn icon={<Truck size={13} strokeWidth={2} />} label={dispatchOpen ? 'Cancel' : 'Add Tracking Details'} busy={busy === 'dispatch_details'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={() => { setDispatchOpen(v => !v); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) }} />
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#7C3AED', background: '#EDE9FE', border: '1px solid #7C3AED33', borderRadius: '7px', padding: '6px 12px' }}>
+                    <CheckCircle2 size={13} strokeWidth={1.8} />
+                    QR submitted — waiting for dispatch team to add tracking details.
+                  </div>
+                )}
                 <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
               </>
             )}
             {r.status === 'dispatched' && (
               <>
                 <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
-                {isRequester ? (
+                {isRequester && !isAdmin ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: colors.muted, background: colors.float, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '6px 12px' }}>
                     <Info size={13} strokeWidth={1.8} />
                     Ask Admin / HR / Dispatch to verify receipt and close this request.
                   </div>
                 ) : (
-                  <ActionBtn icon={<ShieldCheck size={13} strokeWidth={2.2} />} label={verifyOpen ? 'Cancel Verify' : 'Verify Received & Close'} busy={false} bg={colors.greenTint} color={colors.green} border={colors.green + '33'} onClick={() => setVerifyOpen(v => !v)} />
+                  <ActionBtn icon={<ShieldCheck size={13} strokeWidth={2.2} />} label={verifyOpen ? 'Cancel' : 'Mark Received & Close'} busy={false} bg={colors.greenTint} color={colors.green} border={colors.green + '33'} onClick={() => setVerifyOpen(v => !v)} />
                 )}
                 <ActionBtn icon={<Clock size={13} strokeWidth={1.8} />} label={followupOpen ? 'Close Follow-up' : 'Add Follow-up'} busy={false} bg={colors.float} color={colors.secondary} border={colors.border} onClick={() => setFollowupOpen(v => !v)} />
                 <ActionBtn icon={<X size={13} strokeWidth={2} />} label="Mark Lost" busy={busy === 'lost'} bg='none' color={colors.muted} border={colors.border} onClick={handleLost} />
@@ -673,7 +701,7 @@ function RequestCard({
         )}
 
         {/* Dispatch details panel */}
-        {dispatchOpen && isAdmin && r.status === 'approved' && (
+        {dispatchOpen && isAdmin && r.status === 'qr_submitted' && (
           <div style={{ marginTop: '12px', padding: '12px', background: '#1A20350A', borderRadius: '8px', border: '1px solid #1A203530' }}>
             <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#1A2035', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <Truck size={13} strokeWidth={2} /> Enter Dispatch Details
