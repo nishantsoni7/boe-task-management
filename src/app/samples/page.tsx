@@ -11,7 +11,7 @@ import {
   Plus, Package, AlertTriangle, CheckCircle2,
   Clock, Phone, MapPin,
   ThumbsUp, ThumbsDown, Send, X, ShieldCheck, Info, RotateCcw,
-  LayoutList, Bell, CheckCheck, Truck, Archive, LogOut, Home, Printer, Pencil,
+  LayoutList, Bell, CheckCheck, Truck, Archive, LogOut, Home, Printer, Pencil, Trash2,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -418,6 +418,7 @@ function RequestCard({
   const [slipOpen,      setSlipOpen]      = useState(false)
   const [dispatchOpen,  setDispatchOpen]  = useState(false)
   const [editOpen,      setEditOpen]      = useState(false)
+  const [deleteOpen,    setDeleteOpen]    = useState(false)
   const [dispatchForm,  setDispatchForm]  = useState({ courier_name: '', tracking_number: '', dispatch_note: '' })
   const [followupNote,  setFollowupNote]  = useState(r.last_followup_note ?? '')
   const [followupDate,  setFollowupDate]  = useState(r.last_followup_date ?? new Date().toISOString().slice(0, 10))
@@ -777,6 +778,26 @@ function RequestCard({
           </div>
         )}
 
+        {/* Delete button — admin: any status; requester: pending only */}
+        {(isAdmin || (isRequester && r.status === 'pending_approval')) && (
+          <div style={{ display: 'flex', marginTop: '10px' }}>
+            <button
+              onClick={() => setDeleteOpen(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '5px',
+                background: 'none', color: colors.muted,
+                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                padding: '5px 11px', fontSize: '12px', fontWeight: 500, cursor: 'pointer',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = colors.red; e.currentTarget.style.borderColor = colors.red + '55' }}
+              onMouseLeave={e => { e.currentTarget.style.color = colors.muted; e.currentTarget.style.borderColor = colors.border }}
+            >
+              <Trash2 size={12} strokeWidth={2} />
+              Delete
+            </button>
+          </div>
+        )}
+
         {/* Approval slip modal */}
         {slipOpen && (
           <ApprovalSlipModal request={r} onClose={() => setSlipOpen(false)} />
@@ -789,6 +810,16 @@ function RequestCard({
             supabase={supabase}
             onClose={() => setEditOpen(false)}
             onSaved={() => { setEditOpen(false); onRefresh() }}
+          />
+        )}
+
+        {/* Delete confirmation modal */}
+        {deleteOpen && (
+          <DeleteConfirmModal
+            requestId={r.id}
+            supabase={supabase}
+            onClose={() => setDeleteOpen(false)}
+            onDeleted={onRefresh}
           />
         )}
 
@@ -1185,6 +1216,57 @@ function EditRequestModal({ request, supabase, onClose, onSaved }: {
               Cancel
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Delete Confirm Modal ─────────────────────────────────────────────────────
+
+function DeleteConfirmModal({ requestId, supabase, onClose, onDeleted }: {
+  requestId: string; supabase: ReturnType<typeof createClient>
+  onClose: () => void; onDeleted: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleDelete = async () => {
+    setBusy(true)
+    const { error: dbErr } = await supabase.from('sample_dispatches').delete().eq('id', requestId)
+    setBusy(false)
+    if (dbErr) { setError(dbErr.message); return }
+    onDeleted()
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: 400, padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+          <div style={{ width: 36, height: 36, borderRadius: '9px', background: colors.redTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Trash2 size={16} strokeWidth={2.2} color={colors.red} />
+          </div>
+          <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>Delete Sample Request</span>
+        </div>
+        <p style={{ fontSize: '13.5px', color: colors.secondary, marginBottom: '20px', lineHeight: 1.55 }}>
+          This action cannot be undone.
+        </p>
+        {error && (
+          <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px', marginBottom: '14px' }}>{error}</div>
+        )}
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={busy}
+            style={{ background: colors.float, color: colors.secondary, border: '1.5px solid ' + colors.border, borderRadius: '8px', padding: '9px 18px', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={handleDelete} disabled={busy}
+            style={{ background: colors.red, color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 18px', fontSize: '13.5px', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Trash2 size={13} strokeWidth={2.5} />
+            {busy ? 'Deleting…' : 'Delete Permanently'}
+          </button>
         </div>
       </div>
     </div>
