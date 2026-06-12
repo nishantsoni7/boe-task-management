@@ -11,7 +11,7 @@ import {
   Plus, Package, AlertTriangle, CheckCircle2,
   Clock, Phone, MapPin,
   ThumbsUp, ThumbsDown, Send, X, ShieldCheck, Info, RotateCcw,
-  LayoutList, Bell, CheckCheck, Truck, Archive, LogOut, Home, Printer,
+  LayoutList, Bell, CheckCheck, Truck, Archive, LogOut, Home, Printer, Pencil,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -417,6 +417,7 @@ function RequestCard({
   const [reapplyOpen,   setReapplyOpen]   = useState(false)
   const [slipOpen,      setSlipOpen]      = useState(false)
   const [dispatchOpen,  setDispatchOpen]  = useState(false)
+  const [editOpen,      setEditOpen]      = useState(false)
   const [dispatchForm,  setDispatchForm]  = useState({ courier_name: '', tracking_number: '', dispatch_note: '' })
   const [followupNote,  setFollowupNote]  = useState(r.last_followup_note ?? '')
   const [followupDate,  setFollowupDate]  = useState(r.last_followup_date ?? new Date().toISOString().slice(0, 10))
@@ -628,6 +629,9 @@ function RequestCard({
         {/* Actions */}
         {!isClosed && (
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+            {r.status === 'pending_approval' && isRequester && (
+              <ActionBtn icon={<Pencil size={13} strokeWidth={2.2} />} label="Edit" busy={false} bg={colors.float} color={colors.secondary} border={colors.border} onClick={() => setEditOpen(true)} />
+            )}
             {isAdmin && r.status === 'pending_approval' && (
               <>
                 <ActionBtn icon={<ThumbsUp size={13} strokeWidth={2.2} />} label="Approve" busy={busy === 'approve'} bg={colors.greenTint} color={colors.green} border={colors.green + '33'} onClick={handleApprove} />
@@ -776,6 +780,16 @@ function RequestCard({
         {/* Approval slip modal */}
         {slipOpen && (
           <ApprovalSlipModal request={r} onClose={() => setSlipOpen(false)} />
+        )}
+
+        {/* Edit request modal */}
+        {editOpen && (
+          <EditRequestModal
+            request={r}
+            supabase={supabase}
+            onClose={() => setEditOpen(false)}
+            onSaved={() => { setEditOpen(false); onRefresh() }}
+          />
         )}
 
         {/* Follow-up panel */}
@@ -1054,6 +1068,117 @@ function NewRequestModal({ currentUserId, supabase, onClose, onSaved }: {
             <button onClick={handleSubmit} disabled={saving}
               style={{ flex: 1, background: '#1A2035', color: '#fff', border: 'none', borderRadius: '9px', padding: '11px', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: font.display }}>
               {saving ? 'Submitting…' : 'Submit Request'}
+            </button>
+            <button onClick={onClose}
+              style={{ background: colors.float, color: colors.secondary, border: `1.5px solid ${colors.border}`, borderRadius: '9px', padding: '11px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Edit Request Modal ───────────────────────────────────────────────────────
+
+function EditRequestModal({ request, supabase, onClose, onSaved }: {
+  request: SampleRequest; supabase: ReturnType<typeof createClient>
+  onClose: () => void; onSaved: () => void
+}) {
+  const [form, setForm] = useState({
+    catalog_type:        request.catalog_type,
+    catalog_name:        request.catalog_name,
+    client_name:         request.client_name,
+    client_phone:        request.client_phone        ?? '',
+    client_address:      request.client_address      ?? '',
+    expected_return_date: request.expected_return_date ?? '',
+    notes:               request.notes               ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSave = async () => {
+    if (!form.catalog_name.trim()) { setError('Catalog name is required.'); return }
+    if (!form.client_name.trim())  { setError('Client name is required.'); return }
+    setError(null); setSaving(true)
+    const { error: dbErr } = await supabase.from('sample_dispatches').update({
+      catalog_type:         form.catalog_type,
+      catalog_name:         form.catalog_name.trim(),
+      client_name:          form.client_name.trim(),
+      client_phone:         form.client_phone.trim()   || null,
+      client_address:       form.client_address.trim() || null,
+      expected_return_date: form.expected_return_date  || null,
+      notes:                form.notes.trim()          || null,
+    }).eq('id', request.id)
+    setSaving(false)
+    if (dbErr) { setError(dbErr.message); return }
+    onSaved()
+  }
+
+  const inp: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box', padding: '8px 11px', borderRadius: '7px',
+    fontSize: '13.5px', border: `1.5px solid ${colors.border}`, background: '#fff',
+    color: colors.primary, outline: 'none', fontFamily: 'inherit',
+  }
+  const lbl: React.CSSProperties = {
+    fontSize: '11.5px', fontWeight: 700, color: colors.secondary,
+    textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '5px',
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: '#fff', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: '24px 24px 40px' }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: colors.border, margin: '0 auto 20px' }} />
+        <div style={{ fontSize: '17px', fontWeight: 700, color: colors.primary, fontFamily: font.display, marginBottom: '20px', letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Pencil size={16} strokeWidth={2.2} />
+          Edit Sample Request
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Catalog Type</label>
+              <select value={form.catalog_type} onChange={e => set('catalog_type', e.target.value)} style={inp}>
+                {CATALOG_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Catalog Name / Details <span style={{ color: colors.red }}>*</span></label>
+              <input type="text" placeholder="e.g. Summer 2026 Fabrics" value={form.catalog_name} onChange={e => set('catalog_name', e.target.value)} style={inp} />
+            </div>
+          </div>
+          <div style={{ borderTop: `1px solid ${colors.border}` }} />
+          <div>
+            <label style={lbl}>Client Name <span style={{ color: colors.red }}>*</span></label>
+            <input type="text" placeholder="Full name" value={form.client_name} onChange={e => set('client_name', e.target.value)} style={inp} />
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Phone</label>
+              <input type="tel" placeholder="+91 ..." value={form.client_phone} onChange={e => set('client_phone', e.target.value)} style={inp} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={lbl}>Address / City</label>
+              <input type="text" placeholder="City or full address" value={form.client_address} onChange={e => set('client_address', e.target.value)} style={inp} />
+            </div>
+          </div>
+          <div style={{ borderTop: `1px solid ${colors.border}` }} />
+          <div>
+            <label style={lbl}>Expected Return Date <span style={{ color: colors.muted }}>(optional)</span></label>
+            <input type="date" value={form.expected_return_date} onChange={e => set('expected_return_date', e.target.value)} style={{ ...inp, width: 'auto' }} />
+          </div>
+          <div>
+            <label style={lbl}>Notes / Reason</label>
+            <textarea placeholder="Why this catalog is needed, any special instructions…" value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} />
+          </div>
+          {error && <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px' }}>{error}</div>}
+          <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+            <button onClick={handleSave} disabled={saving}
+              style={{ flex: 1, background: '#1A2035', color: '#fff', border: 'none', borderRadius: '9px', padding: '11px', fontSize: '14px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: font.display }}>
+              {saving ? 'Saving…' : 'Save Changes'}
             </button>
             <button onClick={onClose}
               style={{ background: colors.float, color: colors.secondary, border: `1.5px solid ${colors.border}`, borderRadius: '9px', padding: '11px 20px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
