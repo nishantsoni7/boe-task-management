@@ -8,6 +8,7 @@ export type TaskStatus =
   | 'waiting'
   | 'blocked'
   | 'completed'
+  | 'cancelled'
 
 export type TaskPriority = 'high' | 'medium' | 'low'
 
@@ -37,6 +38,9 @@ export type Task = {
   waiting_on_text: string | null
   team: string
   attachment_url: string | null
+  cancelled_by: string | null
+  cancelled_at: string | null
+  cancellation_reason: string | null
   // Manager view enrichment (joined from assignee relation)
   is_stale?: boolean
   stale_day_count?: number

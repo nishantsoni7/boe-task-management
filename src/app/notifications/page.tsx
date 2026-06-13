@@ -37,18 +37,6 @@ const ACTIVITY_PATTERNS: Array<{
   { re: /moved task to blocked/i, label: 'Moved to Blocked', badgeColor: colors.red,   badgeBg: colors.redTint   },
   { re: /moved task to waiting/i, label: 'Moved to Waiting', badgeColor: colors.amber, badgeBg: colors.amberTint },
   { re: /moved task to \w+/i,     label: 'Status changed',   badgeColor: colors.blue,  badgeBg: colors.blueTint  },
-  // ── Sample Tracking ────────────────────────────────────────────────────────
-  { re: /approved your sample/i,          label: 'Sample Approved',  badgeColor: colors.green, badgeBg: colors.greenTint },
-  { re: /rejected your sample/i,          label: 'Sample Rejected',  badgeColor: colors.red,   badgeBg: colors.redTint   },
-  { re: /created a sample request/i,      label: 'New Sample',       badgeColor: '#7C3AED',    badgeBg: '#EDE9FE'        },
-  { re: /reapplied for a sample/i,        label: 'Reapplied',        badgeColor: colors.amber, badgeBg: colors.amberTint },
-  { re: /edited a sample request/i,       label: 'Sample Edited',    badgeColor: colors.blue,  badgeBg: colors.blueTint  },
-  { re: /deleted a sample request/i,      label: 'Sample Deleted',   badgeColor: colors.red,   badgeBg: colors.redTint   },
-  { re: /submitted QR for sample/i,       label: 'QR Submitted',     badgeColor: '#7C3AED',    badgeBg: '#EDE9FE'        },
-  { re: /dispatched your sample/i,        label: 'Dispatched',       badgeColor: '#1A2035',    badgeBg: '#1A203514'      },
-  { re: /logged a follow-up for sample/i, label: 'Follow-up',        badgeColor: colors.blue,  badgeBg: colors.blueTint  },
-  { re: /received your sample/i,          label: 'Returned',         badgeColor: colors.green, badgeBg: colors.greenTint },
-  { re: /marked.*sample as lost/i,        label: 'Sample Lost',      badgeColor: colors.red,   badgeBg: colors.redTint   },
 ]
 
 function parseNotif(title: string): ParsedNotif {
@@ -183,13 +171,9 @@ export default function NotificationsPage() {
     })
   }
 
-  const isSampleNotif = (title: string) =>
-    /sample request|QR for sample|your sample|follow-up for sample|a sample as lost/i.test(title)
-
   const viewTask = (n: Notification) => {
     if (!n.is_read) markRead(n.id)
-    if (isSampleNotif(n.title)) router.push('/samples')
-    else if (n.task_id) router.push(`/tasks/${n.task_id}`)
+    if (n.task_id) router.push(`/tasks/${n.task_id}`)
   }
 
   const handleRowClick = (n: Notification) => {
@@ -411,22 +395,22 @@ export default function NotificationsPage() {
                   gap: '6px',
                   padding: '0 16px 0 8px', flexShrink: 0,
                 }}>
-                  {(n.task_id || isSampleNotif(n.title)) ? (
+                  {n.task_id ? (
                     <button
                       onClick={e => { e.stopPropagation(); viewTask(n) }}
-                      title={isSampleNotif(n.title) ? 'View Sample' : 'View Task'}
+                      title="View Task"
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: '5px',
                         padding: '5px 12px', borderRadius: '6px',
                         fontSize: '11.5px', fontWeight: 600,
-                        background: isSampleNotif(n.title) ? '#1A2035' : colors.blue,
+                        background: colors.blue,
                         color: '#fff',
                         border: 'none', cursor: 'pointer',
                         fontFamily: font.body, whiteSpace: 'nowrap',
                       }}
                     >
                       <ExternalLink size={11} strokeWidth={2.2} />
-                      {isSampleNotif(n.title) ? 'View Sample' : 'View Task'}
+                      View Task
                     </button>
                   ) : (
                     <span style={{ display: 'inline-block', width: '82px' }} />

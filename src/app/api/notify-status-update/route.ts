@@ -62,6 +62,8 @@ function composeTitle(action?: string, actorName?: string): string {
       return actor ? `${actor} added a comment` : 'New comment on task'
     case 'completed':
       return actor ? `${actor} completed task` : 'Task completed'
+    case 'cancelled':
+      return actor ? `${actor} cancelled task` : 'Task cancelled'
     case 'waiting':
     case 'blocked':
     case 'working':

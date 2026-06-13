@@ -12,6 +12,7 @@ import {
   Clock, Phone, MapPin,
   ThumbsUp, ThumbsDown, Send, X, ShieldCheck, Info, RotateCcw,
   LayoutList, CheckCheck, Truck, Archive, LogOut, Home, Printer, Pencil, Trash2,
+  Bell,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 
@@ -133,14 +134,33 @@ function mapRows(rows: any[]): SampleRequest[] {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+type SampleNotif = {
+  id: string
+  title: string
+  body: string | null
+  is_read: boolean
+  created_at: string
+}
+
 export default function SamplesPage() {
-  const [profile, setProfile]     = useState<UserProfile | null>(null)
-  const [requests, setRequests]   = useState<SampleRequest[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [activeTab, setActiveTab] = useState<TabKey>('all')
-  const [showModal, setShowModal] = useState(false)
+  const [profile, setProfile]         = useState<UserProfile | null>(null)
+  const [requests, setRequests]       = useState<SampleRequest[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [activeTab, setActiveTab]     = useState<TabKey>('all')
+  const [showModal, setShowModal]     = useState(false)
+  const [notifOpen, setNotifOpen]     = useState(false)
+  const [notifs, setNotifs]           = useState<SampleNotif[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  const fetchNotifs = async () => {
+    const res = await fetch('/api/samples/notifications')
+    if (!res.ok) return
+    const { notifications: list, unreadCount: count } = await res.json()
+    setNotifs(list ?? [])
+    setUnreadCount(count ?? 0)
+  }
 
   useEffect(() => {
     const init = async () => {
@@ -173,6 +193,7 @@ export default function SamplesPage() {
       setLoading(false)
     }
     init()
+    fetchNotifs()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -236,6 +257,36 @@ export default function SamplesPage() {
             <div className="boe-sidebar-brand-name">BOE</div>
             <div className="boe-sidebar-brand-sub">Sample Tracking</div>
           </div>
+          {/* Notifications bell */}
+          <button
+            onClick={() => { setNotifOpen(o => !o); if (!notifOpen) fetchNotifs() }}
+            title="Notifications"
+            style={{
+              position: 'relative',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: '7px',
+              background: notifOpen ? 'rgba(232,160,48,0.22)' : 'rgba(232,160,48,0.12)',
+              border: '1px solid rgba(232,160,48,0.25)',
+              color: '#E8A030', cursor: 'pointer', flexShrink: 0,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.22)' }}
+            onMouseLeave={e => { if (!notifOpen) e.currentTarget.style.background = 'rgba(232,160,48,0.12)' }}
+          >
+            <Bell size={14} strokeWidth={2} />
+            {unreadCount > 0 && (
+              <span style={{
+                position: 'absolute', top: -4, right: -4,
+                minWidth: 14, height: 14, borderRadius: '999px',
+                background: '#E8A030', color: '#fff',
+                fontSize: '9px', fontWeight: 700, lineHeight: '14px',
+                textAlign: 'center', padding: '0 3px',
+                fontFamily: font.body,
+              }}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
           <button
             onClick={() => router.push('/')}
             title="Home"
@@ -316,6 +367,102 @@ export default function SamplesPage() {
           </div>
         )}
       </aside>
+
+      {/* ── Sample Notifications panel ── */}
+      {notifOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 220, bottom: 0, width: 340,
+          background: '#fff', borderRight: `1px solid ${colors.border}`,
+          boxShadow: '4px 0 20px rgba(0,0,0,0.08)',
+          zIndex: 50, display: 'flex', flexDirection: 'column',
+          fontFamily: font.body,
+        }}>
+          {/* Header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '16px 16px 12px', borderBottom: `1px solid ${colors.border}`,
+            flexShrink: 0,
+          }}>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Notifications</div>
+              {unreadCount > 0 && (
+                <div style={{ fontSize: '11px', color: colors.muted, marginTop: 2 }}>{unreadCount} unread</div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {unreadCount > 0 && (
+                <button
+                  onClick={async () => {
+                    await fetch('/api/samples/notifications', { method: 'PATCH' })
+                    setNotifs(prev => prev.map(n => ({ ...n, is_read: true })))
+                    setUnreadCount(0)
+                  }}
+                  style={{
+                    fontSize: '11px', fontWeight: 600, color: colors.blue,
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '4px 8px', borderRadius: 6,
+                    fontFamily: font.body,
+                  }}
+                >
+                  Mark all read
+                </button>
+              )}
+              <button
+                onClick={() => setNotifOpen(false)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 26, height: 26, borderRadius: 6,
+                  background: colors.float, border: 'none', cursor: 'pointer', color: colors.muted,
+                }}
+              >
+                <X size={13} strokeWidth={2} />
+              </button>
+            </div>
+          </div>
+
+          {/* List */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+            {notifs.length === 0 ? (
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', height: '100%', gap: 8,
+                color: colors.muted, fontSize: '13px',
+              }}>
+                <Bell size={28} strokeWidth={1.4} />
+                No notifications yet
+              </div>
+            ) : notifs.map(n => (
+              <div
+                key={n.id}
+                onClick={async () => {
+                  if (!n.is_read) {
+                    await fetch(`/api/samples/notifications/${n.id}`, { method: 'PATCH' })
+                    setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x))
+                    setUnreadCount(c => Math.max(0, c - 1))
+                  }
+                }}
+                style={{
+                  padding: '10px 16px',
+                  borderLeft: n.is_read ? '3px solid transparent' : '3px solid #E8A030',
+                  background: n.is_read ? 'transparent' : 'rgba(232,160,48,0.04)',
+                  cursor: 'default',
+                  borderBottom: `1px solid ${colors.border}`,
+                }}
+              >
+                <div style={{ fontSize: '12.5px', fontWeight: n.is_read ? 400 : 600, color: colors.primary, lineHeight: 1.4 }}>
+                  {n.title}
+                </div>
+                {n.body && (
+                  <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: 2 }}>{n.body}</div>
+                )}
+                <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: 4 }}>
+                  {new Date(n.created_at).toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Main content ── */}
       <div className="boe-main-content">

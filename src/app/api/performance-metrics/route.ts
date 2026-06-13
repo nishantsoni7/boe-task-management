@@ -70,11 +70,12 @@ async function fetchCurrentTaskSnapshot(client: any, userId: string): Promise<Cu
     { count: blockedCount },
     { count: activeTasks },
   ] = await Promise.all([
-    // Overdue: not completed and past due date
+    // Overdue: not completed/cancelled and past due date
     client.from('tasks')
       .select('id', { count: 'exact', head: true })
       .eq('assigned_to', userId)
       .neq('status', 'completed')
+      .neq('status', 'cancelled')
       .eq('is_deleted', false)
       .lt('due_date', new Date().toISOString().slice(0, 10)),
 
@@ -93,11 +94,12 @@ async function fetchCurrentTaskSnapshot(client: any, userId: string): Promise<Cu
       .eq('status', 'blocked')
       .eq('is_deleted', false),
 
-    // Active portfolio size
+    // Active portfolio size (excludes completed and cancelled)
     client.from('tasks')
       .select('id', { count: 'exact', head: true })
       .eq('assigned_to', userId)
       .neq('status', 'completed')
+      .neq('status', 'cancelled')
       .eq('is_deleted', false),
   ])
 

@@ -26,6 +26,7 @@ const STATUS_COLORS: Record<string, string> = {
   waiting:   colors.amber,
   blocked:   colors.red,
   completed: colors.green,
+  cancelled: '#78716C',
 }
 
 const STATUS_TINTS: Record<string, string> = {
@@ -35,7 +36,17 @@ const STATUS_TINTS: Record<string, string> = {
   waiting:   colors.amberTint,
   blocked:   colors.redTint,
   completed: colors.greenTint,
+  cancelled: '#F5F5F4',
 }
+
+const CANCEL_REASONS = [
+  'No longer required',
+  'Duplicate task',
+  'Created by mistake',
+  'Requirement changed',
+  'Completed outside system',
+  'Other',
+]
 
 const PRIORITY_COLORS: Record<string, { fg: string; bg: string }> = {
   high:   { fg: colors.red,   bg: colors.redTint   },
@@ -61,6 +72,10 @@ export default function TaskDetailPage() {
   const [saving,           setSaving]          = useState(false)
   const [markingComplete,  setMarkingComplete] = useState(false)
   const [reopening,        setReopening]       = useState(false)
+  const [cancelModalOpen,  setCancelModalOpen] = useState(false)
+  const [cancelReason,     setCancelReason]    = useState('')
+  const [cancelOtherText,  setCancelOtherText] = useState('')
+  const [cancelling,       setCancelling]      = useState(false)
   const [modalOpen,        setModalOpen]       = useState(false)
   const [modalStatus,      setModalStatus]     = useState<string>('')
   const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
@@ -345,6 +360,38 @@ export default function TaskDetailPage() {
     setReopening(false)
   }
 
+  const handleCancelTask = async () => {
+    if (!task) return
+    const finalReason = cancelReason === 'Other' ? cancelOtherText.trim() : cancelReason
+    if (!finalReason) return
+    setCancelling(true)
+    const res = await fetch('/api/cancel-task', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: task.id, reason: finalReason, actorName: profile?.full_name }),
+    })
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: 'Unknown error' }))
+      window.alert(`Failed to cancel task: ${error}`)
+      setCancelling(false)
+      return
+    }
+    const now = new Date().toISOString()
+    setTask({
+      ...task,
+      status:              'cancelled' as TaskStatus,
+      cancellation_reason: finalReason,
+      cancelled_at:        now,
+      cancelled_by:        currentUserId,
+    })
+    setSelectedStatus('cancelled')
+    setCancelModalOpen(false)
+    setCancelReason('')
+    setCancelOtherText('')
+    await loadLog(task.id)
+    setCancelling(false)
+  }
+
   const saveComment = async () => {
     if (!task) return
     const hasNote = !!commentNote.trim()
@@ -555,6 +602,8 @@ export default function TaskDetailPage() {
     ? (profile?.full_name ?? 'You')
     : (teamMembers.find(m => m.id === task.assigned_to)?.full_name ?? task.assignee_name ?? 'Unknown')
 
+  const isAdmin          = profile?.role === 'admin'
+  const showCancelButton = (isCreator || isAdmin) && task.status !== 'completed' && task.status !== 'cancelled'
   const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
@@ -683,7 +732,7 @@ export default function TaskDetailPage() {
                     }}>
                       {task.title}
                     </h2>
-                    {isCreator && task.status !== 'completed' && (
+                    {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
                       <button
                         onClick={() => { setEditTitle(task.title); setEditingTitle(true); setEditingDescription(false) }}
                         style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0, marginTop: '3px' }}
@@ -724,7 +773,7 @@ export default function TaskDetailPage() {
                     <span style={{ fontSize: '11.5px', color: riskOverdue ? colors.red : colors.secondary, fontWeight: 500 }}>
                       {task.due_date ? <>Due: <strong>{formatFullDate(task.due_date)}</strong>{riskOverdue && ' · Overdue'}</> : 'No due date'}
                     </span>
-                    {isCreator && task.status !== 'completed' && !editingDueDate && (
+                    {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingDueDate && (
                       <button
                         onClick={() => { setEditDueDate(task.due_date ? task.due_date.slice(0, 10) : ''); setDueDateMsg(null); setEditingDueDate(true); setEditingPriority(false) }}
                         style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
@@ -772,7 +821,7 @@ export default function TaskDetailPage() {
                     <span style={{ fontSize: '11.5px', color: priorityStyle.fg, fontWeight: 600 }}>
                       Priority: {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
                     </span>
-                    {isCreator && task.status !== 'completed' && !editingPriority && (
+                    {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingPriority && (
                       <button
                         onClick={() => { setEditPriority(task.priority); setPriorityMsg(null); setEditingPriority(true); setEditingDueDate(false) }}
                         style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
@@ -864,7 +913,7 @@ export default function TaskDetailPage() {
                       No description.
                     </p>
                   )}
-                  {isCreator && task.status !== 'completed' && (
+                  {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
                     <button
                       onClick={() => { setEditDescription(task.note ?? ''); setEditingDescription(true); setEditingTitle(false) }}
                       style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0 }}
@@ -960,7 +1009,7 @@ export default function TaskDetailPage() {
                   {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
                 </span>
 
-                {isAssignee && task.status !== 'completed' && !isUnacknowledged && (
+                {isAssignee && task.status !== 'completed' && task.status !== 'cancelled' && !isUnacknowledged && (
                   <button
                     onClick={() => {
                       setModalStatus('')
@@ -1040,7 +1089,7 @@ export default function TaskDetailPage() {
             )}
 
             {/* ─ C. Conversation ─ */}
-            {(isCreator || isAssignee) && task.status !== 'completed' && (
+            {(isCreator || isAssignee) && task.status !== 'completed' && task.status !== 'cancelled' && (
               <div className="boe-card" style={{
                 padding: '16px 20px',
                 display: 'flex', flexDirection: 'column', gap: '10px',
@@ -1153,8 +1202,74 @@ export default function TaskDetailPage() {
         {/* ══ RIGHT COLUMN ════════════════════════════════════════════════ */}
         <div className="boe-task-right-col" style={{ minWidth: 0 }}>
 
+          {/* ─ A. Cancelled Task Card ─ */}
+          {task.status === 'cancelled' && (
+            <div className="boe-card" style={{
+              padding: '14px',
+              background: '#F5F5F4',
+              borderColor: '#78716C30',
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                  padding: '11px 14px', borderRadius: '8px',
+                  background: '#ffffff', border: '1px solid #78716C28',
+                }}>
+                  <span style={{ fontSize: '15px' }}>🚫</span>
+                  <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#78716C' }}>Task Cancelled</span>
+                </div>
+                {task.cancellation_reason && (
+                  <p style={{ fontSize: '11.5px', color: '#78716C', margin: 0, padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #78716C20' }}>
+                    <strong>Reason:</strong> {task.cancellation_reason}
+                  </p>
+                )}
+                {(isCreator || isAdmin) && (
+                  <button
+                    onClick={async () => {
+                      const confirmed = window.confirm(
+                        'Restore this task? It will be returned to its previous status and the assignee will be notified.'
+                      )
+                      if (!confirmed) return
+                      setReopening(true)
+                      const res = await fetch('/api/restore-task', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ taskId: task.id, actorName: profile?.full_name }),
+                      })
+                      if (!res.ok) {
+                        window.alert('Failed to restore task. Please try again.')
+                        setReopening(false)
+                        return
+                      }
+                      const { restoredStatus } = await res.json()
+                      const restored = (restoredStatus ?? 'working') as TaskStatus
+                      setTask({ ...task, status: restored, cancelled_by: null, cancelled_at: null, cancellation_reason: null })
+                      setSelectedStatus(restored)
+                      await loadLog(task.id)
+                      setReopening(false)
+                    }}
+                    disabled={reopening}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      padding: '9px 14px', borderRadius: '8px',
+                      border: `1.5px solid ${colors.amber}60`,
+                      background: colors.amberTint, color: colors.amber,
+                      fontSize: '13px', fontWeight: 600,
+                      cursor: reopening ? 'not-allowed' : 'pointer',
+                      fontFamily: font.body,
+                      opacity: reopening ? 0.6 : 1,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {reopening ? 'Restoring…' : 'Restore Task'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ─ A. Complete Task Card ─ */}
-          {(task.status === 'completed' || (isAssignee && !isUnacknowledged)) && (
+          {task.status !== 'cancelled' && (task.status === 'completed' || (isAssignee && !isUnacknowledged)) && (
             <div className="boe-card" style={{
               padding: '14px',
               background: colors.greenTint,
@@ -1219,6 +1334,28 @@ export default function TaskDetailPage() {
                   {markingComplete ? 'Marking Complete…' : 'Mark Task Completed'}
                 </button>
               )}
+            </div>
+          )}
+
+          {/* ─ Cancel Task button ─ */}
+          {showCancelButton && (
+            <div className="boe-card" style={{ padding: '10px 14px' }}>
+              <button
+                onClick={() => { setCancelReason(''); setCancelOtherText(''); setCancelModalOpen(true) }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  padding: '8px 14px', borderRadius: '7px',
+                  border: '1.5px solid #78716C50',
+                  background: '#F5F5F4', color: '#78716C',
+                  fontSize: '12px', fontWeight: 600,
+                  cursor: 'pointer', fontFamily: font.body,
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#E7E5E4' }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#F5F5F4' }}
+              >
+                🚫 Cancel Task
+              </button>
             </div>
           )}
 
@@ -1718,6 +1855,116 @@ export default function TaskDetailPage() {
           fileName={previewAttachment.fileName}
           onClose={() => setPreviewAttachment(null)}
         />
+      )}
+
+      {/* ── Cancel Task Modal ───────────────────────────────────────────── */}
+      {cancelModalOpen && (
+        <div
+          onClick={() => setCancelModalOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#ffffff', borderRadius: '12px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+              width: '100%', maxWidth: '420px',
+              padding: '24px',
+              display: 'flex', flexDirection: 'column', gap: '16px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Cancel Task</span>
+              <button
+                onClick={() => setCancelModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: colors.muted, lineHeight: 1, padding: '2px 6px', borderRadius: '6px', fontFamily: font.body }}
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={{ fontSize: '12.5px', color: colors.secondary, margin: 0, lineHeight: 1.6 }}>
+              Cancelling this task is permanent until restored. The assignee will be notified. Select a reason below.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: colors.secondary }}>
+                Reason <span style={{ color: colors.red }}>*</span>
+              </p>
+              {CANCEL_REASONS.map(r => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => { setCancelReason(r); if (r !== 'Other') setCancelOtherText('') }}
+                  style={{
+                    padding: '9px 12px', borderRadius: '7px', textAlign: 'left',
+                    border: `1.5px solid ${cancelReason === r ? '#78716C' : colors.border}`,
+                    background: cancelReason === r ? '#F5F5F4' : colors.float,
+                    color: cancelReason === r ? '#44403C' : colors.secondary,
+                    fontSize: '13px', fontWeight: cancelReason === r ? 600 : 400,
+                    cursor: 'pointer', transition: 'all 0.12s', fontFamily: font.body,
+                  }}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+
+            {cancelReason === 'Other' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', margin: 0, color: colors.secondary }}>
+                  Specify reason <span style={{ color: colors.red }}>*</span>
+                </p>
+                <input
+                  type="text"
+                  value={cancelOtherText}
+                  onChange={e => setCancelOtherText(e.target.value)}
+                  placeholder="Enter reason…"
+                  className="boe-input"
+                  style={{ width: '100%', boxSizing: 'border-box' }}
+                  autoFocus
+                />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                onClick={() => setCancelModalOpen(false)}
+                disabled={cancelling}
+                style={{
+                  padding: '7px 16px', borderRadius: '7px',
+                  border: `1.5px solid ${colors.border}`,
+                  background: 'transparent', color: colors.tertiary,
+                  fontSize: '12px', fontWeight: 500,
+                  cursor: 'pointer', fontFamily: font.body,
+                }}
+              >
+                Back
+              </button>
+              <button
+                onClick={handleCancelTask}
+                disabled={cancelling || !cancelReason || (cancelReason === 'Other' && !cancelOtherText.trim())}
+                style={{
+                  padding: '7px 18px', borderRadius: '7px',
+                  border: '1.5px solid #78716C',
+                  background: '#78716C', color: '#ffffff',
+                  fontSize: '12px', fontWeight: 600,
+                  cursor: (cancelling || !cancelReason || (cancelReason === 'Other' && !cancelOtherText.trim())) ? 'not-allowed' : 'pointer',
+                  fontFamily: font.body,
+                  opacity: (cancelling || !cancelReason || (cancelReason === 'Other' && !cancelOtherText.trim())) ? 0.5 : 1,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {cancelling ? 'Cancelling…' : 'Confirm Cancellation'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </DashboardLayout>
   )

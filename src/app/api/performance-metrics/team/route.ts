@@ -128,12 +128,13 @@ export async function GET(req: NextRequest) {
     { data: activityLogs,   error: e4 },
     { data: eodLogs,        error: e5 },
   ] = await Promise.all([
-    // Non-completed tasks — gives current-state metrics
+    // Active tasks (excludes completed and cancelled) — gives current-state metrics
     // No is_deleted filter: column does not exist on tasks table
     client.from('tasks')
       .select('id, assigned_to, priority, status, due_date, last_update_at, created_at, title, waiting_on_type, waiting_on_text, waiting_on_user_id, blocker_reason, note')
       .in('assigned_to', userIds)
       .neq('status', 'completed')
+      .neq('status', 'cancelled')
       .limit(50000),
 
     // Completed tasks — priority + assignee lookup only; NO completed_at column

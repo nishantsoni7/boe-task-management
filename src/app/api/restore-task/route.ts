@@ -29,32 +29,52 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Task not found' }, { status: 404 })
   }
 
-  if (task.status !== 'completed') {
-    return NextResponse.json({ error: 'Only completed tasks can be restored' }, { status: 400 })
+  const isRestorable = task.status === 'completed' || task.status === 'cancelled'
+  if (!isRestorable) {
+    return NextResponse.json({ error: 'Only completed or cancelled tasks can be restored' }, { status: 400 })
   }
 
   const isAssignee = task.assigned_to === user.id
   const isCreator  = task.created_by  === user.id
-  if (!isAssignee && !isCreator) {
+
+  // Fetch caller role — admins can restore any task
+  const { data: callerProfile } = await supabase
+    .from('users').select('role').eq('id', user.id).single()
+  const isAdmin = callerProfile?.role === 'admin'
+
+  if (!isAssignee && !isCreator && !isAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { data: completionLog } = await supabase
+  const terminalStatus = task.status // 'completed' or 'cancelled'
+
+  const { data: terminalLog } = await supabase
     .from('task_activity_log')
     .select('from_status')
     .eq('task_id', taskId)
-    .eq('to_status', 'completed')
+    .eq('to_status', terminalStatus)
     .order('created_at', { ascending: false })
     .limit(1)
     .single()
 
-  const restoreStatus = completionLog?.from_status ?? 'working'
+  const restoreStatus = terminalLog?.from_status ?? 'working'
 
   const now = new Date().toISOString()
 
+  const taskUpdates: Record<string, unknown> = {
+    status:        restoreStatus,
+    last_update_at: now,
+  }
+  if (terminalStatus === 'completed') taskUpdates.completed_at = null
+  if (terminalStatus === 'cancelled') {
+    taskUpdates.cancelled_by        = null
+    taskUpdates.cancelled_at        = null
+    taskUpdates.cancellation_reason = null
+  }
+
   const { error: updateErr } = await supabase
     .from('tasks')
-    .update({ status: restoreStatus, completed_at: null, last_update_at: now })
+    .update(taskUpdates)
     .eq('id', taskId)
 
   if (updateErr) {
@@ -65,9 +85,9 @@ export async function POST(req: NextRequest) {
     task_id:     taskId,
     actor_id:    user.id,
     action:      'status_changed',
-    from_status: 'completed',
+    from_status: terminalStatus,
     to_status:   restoreStatus,
-    note:        'Reopened task',
+    note:        terminalStatus === 'cancelled' ? 'Cancellation reversed' : 'Reopened task',
   })
 
   // Notify the other party
@@ -76,7 +96,8 @@ export async function POST(req: NextRequest) {
     const actor = typeof actorName === 'string' && actorName.trim()
       ? actorName.trim()
       : null
-    const title = actor ? `${actor} reopened a task` : 'Task reopened'
+    const verb  = terminalStatus === 'cancelled' ? 'reversed cancellation of' : 'reopened'
+    const title = actor ? `${actor} ${verb} a task` : terminalStatus === 'cancelled' ? 'Task cancellation reversed' : 'Task reopened'
     await supabase.from('notifications').insert({
       user_id:      recipient,
       task_id:      taskId,

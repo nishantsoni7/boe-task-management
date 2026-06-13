@@ -15,17 +15,11 @@ export type SampleNotifyEvent =
   | 'sample_returned'
   | 'sample_lost'
 
-// Always 'task_acknowledged' — the notifications table enforces this single
-// value via a CHECK constraint. Sample notifications are distinguished by their
-// title text, not by the type column.
-const NOTIF_TYPE = 'task_acknowledged'
-
 type NotifRow = {
   user_id: string
-  type: string
+  event: string
   title: string
   body: string
-  is_push_sent: boolean
 }
 
 export async function POST(req: NextRequest) {
@@ -66,13 +60,13 @@ export async function POST(req: NextRequest) {
     const admins = await getAdmins()
     for (const id of admins) {
       if (id === user.id) continue
-      rows.push({ user_id: id, type: NOTIF_TYPE, title, body: sampleLabel, is_push_sent: true })
+      rows.push({ user_id: id, event, title, body: sampleLabel })
     }
   }
 
   const toRequester = (title: string) => {
     if (requestedBy === user.id) return
-    rows.push({ user_id: requestedBy, type: NOTIF_TYPE, title, body: sampleLabel, is_push_sent: true })
+    rows.push({ user_id: requestedBy, event, title, body: sampleLabel })
   }
 
   switch (event) {
@@ -114,7 +108,7 @@ export async function POST(req: NextRequest) {
 
   if (rows.length === 0) return NextResponse.json({ skipped: true })
 
-  const { error } = await supabase.from('notifications').insert(rows)
+  const { error } = await supabase.from('sample_notifications').insert(rows)
   if (error) {
     console.error('[samples/notify] insert failed:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
