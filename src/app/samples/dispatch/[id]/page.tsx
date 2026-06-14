@@ -75,33 +75,38 @@ export default function DispatchPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-      setCurrentUserId(session.user.id)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) { setLoading(false); router.push('/login'); return }
+        setCurrentUserId(session.user.id)
 
-      const { data } = await supabase
-        .from('sample_dispatches')
-        .select(`
-          id, catalog_type, catalog_name, client_name, client_phone, client_address,
-          status, approved_at, dispatched_at, dispatched_by, courier_name, tracking_number, dispatch_note, notes,
-          requested_by_user:users!requested_by(full_name),
-          approved_by_user:users!approved_by(full_name),
-          dispatched_by_user:users!dispatched_by(full_name)
-        `)
-        .eq('id', id)
-        .single()
+        const { data } = await supabase
+          .from('sample_dispatches')
+          .select(`
+            id, catalog_type, catalog_name, client_name, client_phone, client_address,
+            status, approved_at, dispatched_at, dispatched_by, courier_name, tracking_number, dispatch_note, notes,
+            requested_by_user:users!requested_by(full_name),
+            approved_by_user:users!approved_by(full_name),
+            dispatched_by_user:users!dispatched_by(full_name)
+          `)
+          .eq('id', id)
+          .single()
 
-      if (!data) { setNotFound(true); setLoading(false); return }
+        if (!data) { setNotFound(true); setLoading(false); return }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const row = data as any
-      setRequest({
-        ...row,
-        requested_by_name:  row.requested_by_user?.full_name  ?? null,
-        approved_by_name:   row.approved_by_user?.full_name   ?? null,
-        dispatched_by_name: row.dispatched_by_user?.full_name ?? null,
-      })
-      setLoading(false)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row = data as any
+        setRequest({
+          ...row,
+          requested_by_name:  row.requested_by_user?.full_name  ?? null,
+          approved_by_name:   row.approved_by_user?.full_name   ?? null,
+          dispatched_by_name: row.dispatched_by_user?.full_name ?? null,
+        })
+        setLoading(false)
+      } catch {
+        setNotFound(true)
+        setLoading(false)
+      }
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -270,6 +270,51 @@ Active development.
 
 ---
 
+# PHASE 10
+
+# Task Cancellation Workflow
+
+Objective:
+
+Allow task creators and admins to formally cancel tasks that are no longer valid, with a mandatory reason, without treating them as completed.
+
+Business Need:
+
+Tasks were sometimes becoming stranded — no longer relevant but with no clean way to remove them from active views. Marking them complete was inaccurate since the work was not done. A separate terminal status with audit trail was required.
+
+Work Completed:
+
+* Database migration adding `cancelled` status, `cancelled_by`, `cancelled_at`, `cancellation_reason` columns
+* New `/api/cancel-task` endpoint with creator/admin-only enforcement
+* Updated `/api/restore-task` to support restoring from cancelled back to prior active status
+* Cancel Task button and reason selection modal on task detail page
+* Post-cancellation redirect to dedicated Cancelled Tasks list
+* Cancelled task card showing reason, cancelled date, and Restore option
+* `/tasks/cancelled` page — My Cancelled Tasks
+* `/tasks/assigned-by-me/cancelled` page — tasks assigned by current user that were cancelled
+* Sidebar navigation updated with Cancelled entries under both My Tasks and Assigned By Me groups
+* Cancelled tasks excluded from all active task list fetches
+* Cancelled tasks excluded from performance metrics (individual and team)
+* Cancelled tasks excluded from overdue and needs-update calculations
+* Cancellation and restore events logged in activity history
+* Assignee notification sent on cancellation and restoration
+
+Permission Rules Established:
+
+* Task creator can cancel their own task
+* Admin can cancel any task
+* Assignee cannot cancel unless they are also the creator or admin
+* Same rules enforced at both UI and API layers
+
+Design Decisions:
+
+* Cancelled is not Completed — they are semantically distinct terminal states
+* Cancellation reason is mandatory, not optional
+* Cancelled tasks remain visible for audit and restore; they are never hidden permanently
+* Restore from cancelled returns the task to its status at the time of cancellation
+
+---
+
 # USER EXPERIENCE EVOLUTION
 
 Throughout development several recurring design decisions were adopted.

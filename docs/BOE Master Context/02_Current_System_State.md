@@ -2,7 +2,7 @@
 
 # Current System State
 
-Last Updated: June 2026
+Last Updated: June 2026 (updated after Task Cancellation implementation)
 
 ---
 
@@ -115,12 +115,64 @@ Implemented:
 * Priority editing
 * Completion workflow
 * Restore workflow
+* Cancellation workflow
 
 Important Rules:
 
 * Acknowledge → Working
 * Working button removed
 * Waiting and Blocked are primary exception states
+* Cancelled is a terminal status distinct from Completed
+* Cancelled tasks do not count toward completion metrics or performance scoring
+
+---
+
+## Task Cancellation Workflow
+
+Implemented:
+
+* Cancel Task action on task detail page
+* Mandatory cancellation reason selection (6 preset options)
+* Cancellation confirmation modal
+* Post-cancel redirect to Cancelled Tasks list
+* Cancelled task card showing reason and cancellation details
+* Restore from Cancelled back to pre-cancel status
+* Cancellation activity log entry
+* Assignee notification on cancellation
+
+Permission Rules:
+
+* Task creator can cancel
+* Admin can cancel
+* Assignee cannot cancel (unless they are also the creator or admin)
+* Server-side enforcement in `/api/cancel-task`
+
+Cancellation Reasons:
+
+* No longer required
+* Duplicate task
+* Created by mistake
+* Requirement changed
+* Completed outside system
+* Other (requires text entry)
+
+Status Behaviour:
+
+* `cancelled` is a terminal status separate from `completed`
+* Cancelled tasks are excluded from all active task lists
+* Cancelled tasks are excluded from overdue and needs-update counts
+* Cancelled tasks are excluded from performance and team performance metrics
+* Cancelled tasks remain visible in dedicated Cancelled Tasks pages for audit and restore
+
+---
+
+## Cancelled Tasks Pages
+
+Implemented:
+
+* `/tasks/cancelled` — My Cancelled Tasks (assigned to or created by current user)
+* `/tasks/assigned-by-me/cancelled` — Tasks cancelled that were assigned by current user to others
+* Both pages accessible from sidebar navigation under their respective groups
 
 ---
 
@@ -150,6 +202,7 @@ Implemented:
 * Edit history
 * Delete history
 * Task restoration tracking
+* Cancellation tracking (reason stored in activity log)
 
 Purpose:
 
@@ -165,6 +218,8 @@ Implemented:
 
 * Task acknowledged
 * Task completed
+* Task cancelled
+* Cancellation reversed (restore from cancelled)
 * Waiting updates
 * Blocked updates
 * Comments

@@ -2,7 +2,7 @@
 
 # Current Roadmap
 
-Last Updated: June 2026
+Last Updated: June 2026 (updated after Task Cancellation implementation)
 
 ---
 
@@ -197,9 +197,12 @@ These are improvements to existing modules rather than new modules.
 
 ## Task Management
 
+Completed Improvements:
+
+* Task cancellation workflow (June 2026) — creator/admin can cancel tasks with mandatory reason, dedicated cancelled task list pages, restore support, full audit trail
+
 Potential Improvements:
 
-* Additional workflow refinements
 * Mobile usability review
 * Faster task updates
 * Additional audit controls
