@@ -238,13 +238,15 @@ export async function POST(req: NextRequest) {
   let priorExistingCount = 0
   if (reportMonth > 0 && reportYear > 0) {
     const mm = String(reportMonth).padStart(2, '0')
-    const monthStart = `${reportYear}-${mm}-01`
-    const monthEnd   = `${reportYear}-${mm}-31`
+    const monthStart  = `${reportYear}-${mm}-01`
+    const nextMonth   = reportMonth === 12 ? 1 : reportMonth + 1
+    const nextYear    = reportMonth === 12 ? reportYear + 1 : reportYear
+    const nextMonthStart = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
     const { count } = await svc
       .from('attendance_records')
       .select('id', { count: 'exact', head: true })
       .gte('attendance_date', monthStart)
-      .lte('attendance_date', monthEnd)
+      .lt('attendance_date', nextMonthStart)
     priorExistingCount = count ?? 0
   }
 
