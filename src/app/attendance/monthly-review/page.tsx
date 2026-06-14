@@ -211,10 +211,10 @@ export default function MonthlyReviewPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: `1px solid ${colors.border}`, background: colors.raised }}>
-                      {['Employee', 'Present', 'Half Day', 'Absent', 'Late', 'Missing Punch', 'Days Recorded'].map(col => (
+                      {['Employee', 'Present', 'Half Day', 'Absent', 'Late', 'Missing Punch', 'Days Recorded', ''].map(col => (
                         <th key={col} style={{
                           padding: '10px 16px',
-                          textAlign: col === 'Employee' ? 'left' : 'center',
+                          textAlign: col === 'Employee' || col === '' ? 'left' : 'center',
                           fontSize: 11, fontWeight: 600, color: colors.tertiary,
                           textTransform: 'uppercase', letterSpacing: '0.05em',
                           whiteSpace: 'nowrap',
@@ -245,6 +245,19 @@ export default function MonthlyReviewPage() {
                         {statCell(s.missing_punch, true)}
                         <td style={{ padding: '11px 16px', color: colors.tertiary, textAlign: 'center' }}>
                           {s.total_records}
+                        </td>
+                        <td style={{ padding: '11px 16px' }}>
+                          <Link
+                            href={`/attendance/monthly-review/${s.employee_id}?year=${year}&month=${month}`}
+                            style={{
+                              fontSize: 12, fontWeight: 600, color: '#3B82F6',
+                              textDecoration: 'none', whiteSpace: 'nowrap',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                            onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+                          >
+                            View →
+                          </Link>
                         </td>
                       </tr>
                     ))}
