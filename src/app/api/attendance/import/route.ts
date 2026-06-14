@@ -234,6 +234,20 @@ export async function POST(req: NextRequest) {
   const reportMonth = blocks[0]?.month ?? 0
   const reportYear  = blocks[0]?.year  ?? 0
 
+  // Check how many attendance records already exist for this month before import
+  let priorExistingCount = 0
+  if (reportMonth > 0 && reportYear > 0) {
+    const mm = String(reportMonth).padStart(2, '0')
+    const monthStart = `${reportYear}-${mm}-01`
+    const monthEnd   = `${reportYear}-${mm}-31`
+    const { count } = await svc
+      .from('attendance_records')
+      .select('id', { count: 'exact', head: true })
+      .gte('attendance_date', monthStart)
+      .lte('attendance_date', monthEnd)
+    priorExistingCount = count ?? 0
+  }
+
   let totalRows  = 0
   let skipped    = 0
   const unmappedCodes: string[] = []
@@ -363,15 +377,16 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     summary: {
-      month:             reportMonth,
-      year:              reportYear,
-      total:             totalRows,
-      imported:          totalImported,
-      updated:           totalUpdated,
+      month:               reportMonth,
+      year:                reportYear,
+      total:               totalRows,
+      imported:            totalImported,
+      updated:             totalUpdated,
       skipped,
-      unmappedCodes:     dedupedUnmapped,   // kept for compat
-      unmappedCount:     dedupedUnmapped.length,
-      errors,                               // kept for compat
+      prior_existing_count: priorExistingCount,
+      unmappedCodes:       dedupedUnmapped,   // kept for compat
+      unmappedCount:       dedupedUnmapped.length,
+      errors,                                 // kept for compat
       importedEmployees,
       skippedEmployees,
     },

@@ -32,6 +32,7 @@ type ImportSummary = {
   imported: number
   updated:  number
   skipped:  number
+  prior_existing_count: number
   // kept for compat
   unmappedCodes: string[]
   unmappedCount: number
@@ -245,6 +246,22 @@ export default function AttendanceUploadPage() {
         {/* ── Import report ── */}
         {summary && (
           <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+            {/* ── Re-upload warning ── */}
+            {summary.prior_existing_count > 0 && (
+              <div style={{
+                padding: '12px 16px', borderRadius: 8,
+                background: 'rgba(245,158,11,0.08)', border: '1.5px solid rgba(245,158,11,0.5)',
+                fontSize: 13, color: '#92400E', display: 'flex', alignItems: 'center', gap: 10,
+              }}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
+                <span>
+                  Attendance for <strong>{MONTH_NAMES[summary.month - 1]} {summary.year}</strong> already existed
+                  ({summary.prior_existing_count} record{summary.prior_existing_count !== 1 ? 's' : ''} before this upload).
+                  This upload updated existing records.
+                </span>
+              </div>
+            )}
 
             {/* ── Header + stat row ── */}
             <div style={{
