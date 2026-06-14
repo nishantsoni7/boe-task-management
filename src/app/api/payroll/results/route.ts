@@ -29,6 +29,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Fetch period metadata for the Lock button and lock display
+  const { data: period } = await svc
+    .from('payroll_periods')
+    .select('payroll_month, payroll_year, status, locked_at')
+    .eq('id', periodId)
+    .single()
+
   const { data: results, error: resultsErr } = await svc
     .from('payroll_results')
     .select(`
@@ -40,6 +47,7 @@ export async function GET(req: NextRequest) {
       pending_adjustment_total,
       net_salary,
       status,
+      employee_reviewed_at,
       users!payroll_results_employee_id_fkey (
         full_name,
         employee_code
@@ -61,10 +69,21 @@ export async function GET(req: NextRequest) {
       gross_salary: r.gross_salary,
       total_deductions: r.total_deductions,
       pending_adjustment_total: r.pending_adjustment_total,
-      net_salary: r.net_salary,
-      status: r.status,
+      net_salary:           r.net_salary,
+      status:               r.status,
+      employee_reviewed_at: r.employee_reviewed_at ?? null,
     }
   })
 
-  return NextResponse.json({ results: rows })
+  return NextResponse.json({
+    period: period
+      ? {
+          payroll_month: period.payroll_month,
+          payroll_year:  period.payroll_year,
+          status:        period.status,
+          locked_at:     period.locked_at ?? null,
+        }
+      : null,
+    results: rows,
+  })
 }

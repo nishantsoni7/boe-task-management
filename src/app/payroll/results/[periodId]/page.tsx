@@ -10,6 +10,13 @@ import { LoadingScreen } from '@/components/ui/atoms'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type PeriodMeta = {
+  payroll_month: number
+  payroll_year: number
+  status: 'draft' | 'generated' | 'locked'
+  locked_at: string | null
+}
+
 type ResultRow = {
   id: string
   employee_id: string
@@ -21,27 +28,48 @@ type ResultRow = {
   pending_adjustment_total: number | null
   net_salary: number | null
   status: 'draft' | 'locked'
+  employee_reviewed_at: string | null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
 
 function fmt(n: number | null): string {
   if (n == null) return '—'
   return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function StatusBadge({ status }: { status: ResultRow['status'] }) {
-  const map = {
-    draft:  { bg: 'rgba(140,148,166,0.12)', color: '#6B7280', label: 'Draft' },
-    locked: { bg: 'rgba(232,160,48,0.15)',  color: '#B45309', label: 'Locked' },
+function fmtDateTime(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  }) + ' ' + new Date(iso).toLocaleTimeString('en-IN', {
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
+}
+
+function ReviewBadge({ reviewedAt }: { reviewedAt: string | null }) {
+  if (reviewedAt) {
+    return (
+      <span style={{
+        display: 'inline-block', padding: '2px 10px', borderRadius: 20,
+        fontSize: 11.5, fontWeight: 600,
+        background: 'rgba(16,185,129,0.12)', color: '#059669',
+      }}>
+        Reviewed
+      </span>
+    )
   }
-  const s = map[status]
   return (
     <span style={{
       display: 'inline-block', padding: '2px 10px', borderRadius: 20,
-      fontSize: 11.5, fontWeight: 600, background: s.bg, color: s.color,
+      fontSize: 11.5, fontWeight: 600,
+      background: 'rgba(140,148,166,0.12)', color: '#6B7280',
     }}>
-      {s.label}
+      Pending
     </span>
   )
 }
@@ -52,18 +80,34 @@ export default function PayrollResultsPage() {
   const params   = useParams()
   const periodId = params.periodId as string
 
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [results, setResults] = useState<ResultRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState<string | null>(null)
+  const [profile,     setProfile]     = useState<UserProfile | null>(null)
+  const [period,      setPeriod]      = useState<PeriodMeta | null>(null)
+  const [results,     setResults]     = useState<ResultRow[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState<string | null>(null)
+  const [token,       setToken]       = useState('')
+  const [locking,     setLocking]     = useState(false)
+  const [lockError,   setLockError]   = useState<string | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  const loadData = async (accessToken: string) => {
+    const res  = await fetch(`/api/payroll/results?period_id=${periodId}`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    })
+    const json = await res.json()
+    if (!res.ok) { setError(json.error ?? 'Failed to load results'); return }
+    setPeriod(json.period ?? null)
+    setResults(json.results ?? [])
+  }
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
+
+      setToken(session.access_token)
 
       const { data: prof } = await supabase
         .from('users')
@@ -71,25 +115,38 @@ export default function PayrollResultsPage() {
         .eq('id', session.user.id)
         .single()
 
-      if (!prof || prof.role !== 'admin') {
-        router.push('/dashboard')
-        return
-      }
-
+      if (!prof || prof.role !== 'admin') { router.push('/dashboard'); return }
       setProfile(prof)
 
-      const res = await fetch(`/api/payroll/results?period_id=${periodId}`, {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      })
-      const json = await res.json()
-      if (!res.ok) { setError(json.error ?? 'Failed to load results') }
-      else { setResults(json.results ?? []) }
-
+      await loadData(session.access_token)
       setLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodId])
+
+  const handleLock = async () => {
+    if (locking) return
+    const label = period
+      ? `${MONTHS[period.payroll_month - 1]} ${period.payroll_year}`
+      : 'this period'
+    if (!confirm(`Lock payroll for ${label}? This cannot be undone.\n\nEmployees who have not yet reviewed will no longer be able to do so.`)) return
+
+    setLocking(true)
+    setLockError(null)
+    try {
+      const res  = await fetch('/api/payroll/lock', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ payroll_period_id: periodId }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setLockError(json.error ?? 'Lock failed') }
+      else { await loadData(token) }
+    } finally {
+      setLocking(false)
+    }
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -98,11 +155,17 @@ export default function PayrollResultsPage() {
 
   if (loading) return <LoadingScreen />
 
+  const isLocked    = period?.status === 'locked'
+  const canLock     = period?.status === 'generated'
+  const periodLabel = period
+    ? `${MONTHS[period.payroll_month - 1]} ${period.payroll_year}`
+    : ''
+
   return (
     <AttendanceLayout
       profile={profile}
       title="Payroll Results"
-      subtitle="Results for this payroll period"
+      subtitle={periodLabel ? `Results — ${periodLabel}` : 'Results for this payroll period'}
       onSignOut={handleSignOut}
     >
       {/* Back link */}
@@ -118,6 +181,60 @@ export default function PayrollResultsPage() {
           ← Back to Payroll Periods
         </button>
       </div>
+
+      {/* Locked banner */}
+      {isLocked && (
+        <div style={{
+          marginBottom: 16, padding: '12px 18px', borderRadius: 10,
+          background: 'rgba(232,160,48,0.10)', color: '#92400E',
+          border: '1px solid rgba(232,160,48,0.35)',
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: 13,
+        }}>
+          <span style={{ fontSize: 16 }}>🔒</span>
+          <span>
+            <strong>Payroll locked</strong>
+            {period?.locked_at ? ` · ${fmtDateTime(period.locked_at)}` : ''}
+            {' — Regeneration and employee review are disabled.'}
+          </span>
+        </div>
+      )}
+
+      {/* Lock action bar — shown only when period is generated */}
+      {canLock && (
+        <div style={{
+          marginBottom: 16, padding: '12px 18px', borderRadius: 10,
+          background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(0,0,0,0.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+        }}>
+          <div style={{ fontSize: 13, color: '#6B7280' }}>
+            Lock this payroll period to finalise it. Generation and employee review will be disabled.
+          </div>
+          <button
+            onClick={handleLock}
+            disabled={locking}
+            style={{
+              padding: '7px 18px', borderRadius: 7, fontSize: 13, fontWeight: 700,
+              cursor: locking ? 'not-allowed' : 'pointer',
+              border: '1px solid rgba(232,160,48,0.5)',
+              background: locking ? 'rgba(0,0,0,0.04)' : 'rgba(232,160,48,0.12)',
+              color: locking ? '#8C94A6' : '#92400E',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {locking ? 'Locking…' : '🔒 Lock Payroll'}
+          </button>
+        </div>
+      )}
+
+      {lockError && (
+        <div style={{
+          marginBottom: 14, padding: '10px 16px', borderRadius: 8,
+          background: 'rgba(239,68,68,0.08)', color: '#DC2626',
+          border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
+        }}>
+          {lockError}
+        </div>
+      )}
 
       {error && (
         <div style={{
@@ -143,10 +260,10 @@ export default function PayrollResultsPage() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
-                  {['Employee', 'Working Days', 'Gross Salary', 'Deductions', 'Adjustments', 'Net Salary', 'Status', ''].map(h => (
+                  {['Employee', 'Working Days', 'Gross Salary', 'Deductions', 'Adjustments', 'Net Salary', 'Employee Review', ''].map(h => (
                     <th key={h} style={{
                       padding: '11px 16px', textAlign: 'left',
                       fontSize: 11.5, fontWeight: 700,
@@ -162,9 +279,7 @@ export default function PayrollResultsPage() {
                 {results.map((r, i) => (
                   <tr
                     key={r.id}
-                    style={{
-                      borderBottom: i < results.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-                    }}
+                    style={{ borderBottom: i < results.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}
                   >
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ fontSize: 13.5, fontWeight: 500, color: '#111318' }}>
@@ -192,7 +307,7 @@ export default function PayrollResultsPage() {
                       {fmt(r.net_salary)}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
-                      <StatusBadge status={r.status} />
+                      <ReviewBadge reviewedAt={r.employee_reviewed_at} />
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <Link

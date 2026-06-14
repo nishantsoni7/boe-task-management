@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   const { error: updateErr } = await svc
     .from('payroll_periods')
-    .update({ status: 'locked' })
+    .update({ status: 'locked', locked_at: new Date().toISOString(), locked_by: caller.id })
     .eq('id', payroll_period_id)
 
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })

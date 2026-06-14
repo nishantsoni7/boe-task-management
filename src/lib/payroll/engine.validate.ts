@@ -563,6 +563,91 @@ scenario('S17  Office-timing override — 10:05 in / 18:31 out → full_present 
   chk('net_salary = gross',                                     r.net_salary, SALARY)
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// S18  Late arrival — check-in after 10:15 IST, deduction charged
+//
+// Check-in: 10:30 IST = 05:00 UTC → 15 min late → 0.25 h deduction
+// Check-out: 18:30 IST = 13:00 UTC (on time)
+// NOT onOfficeTiming (inMin 630 > 615)
+// effectiveHours = 8 raw − 1 lunch = 7h  → present_with_shortfall
+// Leave: 5 present days ≤ 10 → leave = 0 → deduction charged
+// Deduct: 0.25 × PHR
+// ─────────────────────────────────────────────────────────────────────────────
+scenario('S18  Late arrival — 10:30 check-in, 0.25 h deduction charged', () => {
+  const e    = emp({ joining_date: '2026-06-25' })
+  const days = juneWorkDays().filter(d => d >= '2026-06-25')
+  const records: EngineAttendanceRecord[] = days.map((d, i) => {
+    if (d === '2026-06-30') {
+      // 10:30 IST = 05:00 UTC in, 18:30 IST = 13:00 UTC out
+      return { id: `r${i}`, attendance_date: d, check_in_at: `${d}T05:00:00Z`, check_out_at: `${d}T13:00:00Z` }
+    }
+    return recFull(d, i)
+  })
+  const r = resultOf(generatePayrollForEmployee(e, PERIOD, records, [], []))
+
+  const lateHours = 0.25                // (10:30 − 10:15) = 15 min = 0.25 h
+  const deduction = lateHours * PHR
+
+  chk('paid_leave_available',    r.paid_leave_available,    0)
+  chk('late_deduction_hours',    r.late_deduction_hours,    lateHours)
+  chk('total_deductions',        r.total_deductions,        deduction)
+  chk('net_salary',              r.net_salary,              SALARY - deduction)
+  const line = r.deduction_lines.find(l => l.deduction_type === 'late_arrival')
+  chk('line.deduction_type',     line?.deduction_type,      'late_arrival')
+  chk('line.hours_deducted',     line?.hours_deducted,      lateHours)
+  chk('line.amount_deducted',    line?.amount_deducted,     deduction)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S19  Early departure — check-out before 18:30 IST, deduction charged
+//
+// Check-in: 10:00 IST = 04:30 UTC (on time, ≤ 10:15)
+// Check-out: 18:00 IST = 12:30 UTC → 30 min early → 0.5 h deduction
+// NOT onOfficeTiming (outMin 1080 < 1110)
+// effectiveHours = 8 raw − 1 lunch = 7h  → present_with_shortfall
+// Leave: 5 present days ≤ 10 → leave = 0 → deduction charged
+// Deduct: 0.5 × PHR
+// ─────────────────────────────────────────────────────────────────────────────
+scenario('S19  Early departure — 18:00 check-out, 0.5 h deduction charged', () => {
+  const e    = emp({ joining_date: '2026-06-25' })
+  const days = juneWorkDays().filter(d => d >= '2026-06-25')
+  const records: EngineAttendanceRecord[] = days.map((d, i) => {
+    if (d === '2026-06-30') {
+      // 10:00 IST = 04:30 UTC in, 18:00 IST = 12:30 UTC out
+      return { id: `r${i}`, attendance_date: d, check_in_at: `${d}T04:30:00Z`, check_out_at: `${d}T12:30:00Z` }
+    }
+    return recFull(d, i)
+  })
+  const r = resultOf(generatePayrollForEmployee(e, PERIOD, records, [], []))
+
+  const earlyHours = 0.5                // (18:30 − 18:00) = 30 min = 0.5 h
+  const deduction  = earlyHours * PHR
+
+  chk('paid_leave_available',    r.paid_leave_available,    0)
+  chk('late_deduction_hours',    r.late_deduction_hours,    earlyHours)
+  chk('total_deductions',        r.total_deductions,        deduction)
+  chk('net_salary',              r.net_salary,              SALARY - deduction)
+  const line = r.deduction_lines.find(l => l.deduction_type === 'early_checkout')
+  chk('line.deduction_type',     line?.deduction_type,      'early_checkout')
+  chk('line.hours_deducted',     line?.hours_deducted,      earlyHours)
+  chk('line.amount_deducted',    line?.amount_deducted,     deduction)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S20  Locked period — engine returns period_locked skip, no calculation
+//
+// Rule: generatePayrollForEmployee must return { skipped: true, reason: 'period_locked' }
+//       when the period status is 'locked', regardless of attendance data.
+// ─────────────────────────────────────────────────────────────────────────────
+scenario('S20  Locked period — engine skips with period_locked', () => {
+  const lockedPeriod: EnginePeriod = { ...PERIOD, status: 'locked' }
+  const days    = juneWorkDays()
+  const outcome = generatePayrollForEmployee(emp(), lockedPeriod, days.map(recFull), [], [])
+
+  chk('skipped = true',            (outcome as { skipped: boolean }).skipped,  true)
+  chk('reason = period_locked',    (outcome as { reason: string }).reason,      'period_locked')
+})
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log('\n══════════════════════════════════════════════════════════════')

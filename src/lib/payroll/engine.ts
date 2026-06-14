@@ -242,7 +242,37 @@ function classifySingleDay(
     return { ...absent }
   }
 
-  return { date, classification, effective_hours_worked: effectiveHours, deduction_lines: [] }
+  // Late arrival / early departure deductions — only for near-full-day presence.
+  // Skipped when the office-timing override applies, and skipped for half-day / short-present
+  // classifications (those carry their own deduction via the half-day mechanism).
+  const deduction_lines: PendingDeductionLine[] = []
+  const isNearFullDay = classification === 'full_present' || classification === 'present_with_shortfall'
+  if (!onOfficeTiming && isNearFullDay) {
+    const LATE_THRESHOLD  = 10 * 60 + 15  // 10:15 IST in minutes
+    const EARLY_THRESHOLD = 18 * 60 + 30  // 18:30 IST in minutes
+
+    if (inMin > LATE_THRESHOLD) {
+      const lateHours = (inMin - LATE_THRESHOLD) / 60
+      deduction_lines.push({
+        line_date: date,
+        deduction_type: 'late_arrival',
+        hours_deducted: lateHours,
+        amount_deducted: lateHours * rates.per_hour_rate,
+      })
+    }
+
+    if (outMin < EARLY_THRESHOLD) {
+      const earlyHours = (EARLY_THRESHOLD - outMin) / 60
+      deduction_lines.push({
+        line_date: date,
+        deduction_type: 'early_checkout',
+        hours_deducted: earlyHours,
+        amount_deducted: earlyHours * rates.per_hour_rate,
+      })
+    }
+  }
+
+  return { date, classification, effective_hours_worked: effectiveHours, deduction_lines }
 }
 
 // ─── Step 5: Monthly aggregation ─────────────────────────────────────────────
@@ -278,6 +308,7 @@ function aggregateMonthlyTotals(
     for (const line of day.deduction_lines) {
       switch (line.deduction_type) {
         case 'late_arrival':
+        case 'early_checkout':
           late_deduction_hours += line.hours_deducted
           break
         case 'short_hours':
@@ -421,6 +452,7 @@ type AssembleParams = {
 
 const HOURLY_DEDUCTION_TYPES = new Set<string>([
   'late_arrival',
+  'early_checkout',
   'missing_punch_in',
   'missing_punch_out',
   'short_hours',
