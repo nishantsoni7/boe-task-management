@@ -8,6 +8,7 @@ import { AssetsLayout, type AssetsView } from '@/components/layout/AssetsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { useViewAs } from '@/hooks/useViewAs'
 
 // ─── DB Types ─────────────────────────────────────────────────────────────────
 
@@ -294,11 +295,13 @@ function EmployeeDetailPanel({
   onClose,
   supabase,
   onEditAsset,
+  inViewMode,
 }: {
   emp: Employee
   onClose: () => void
   supabase: SupabaseClient
   onEditAsset: (asset: EmployeeAsset) => void
+  inViewMode?: boolean
 }) {
   const [assets,        setAssets]        = useState<EmployeeAsset[]>([])
   const [accessDetails, setAccessDetails] = useState<EmployeeAccessDetail[]>([])
@@ -444,13 +447,15 @@ function EmployeeDetailPanel({
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                             <StatusPill status={assetStatusPill(a.status)} />
-                            <button
-                              className="boe-btn boe-btn-ghost"
-                              style={{ padding: '3px 8px', fontSize: '11px' }}
-                              onClick={() => onEditAsset(a)}
-                            >
-                              Edit
-                            </button>
+                            {!inViewMode && (
+                              <button
+                                className="boe-btn boe-btn-ghost"
+                                style={{ padding: '3px 8px', fontSize: '11px' }}
+                                onClick={() => onEditAsset(a)}
+                              >
+                                Edit
+                              </button>
+                            )}
                           </div>
                         </div>
                         {a.created_at && (
@@ -1754,6 +1759,8 @@ export default function AssetsAccessPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile } = useViewAs()
+  const inViewMode = !!viewAsUserId
 
   useEffect(() => {
     const init = async () => {
@@ -1812,7 +1819,9 @@ export default function AssetsAccessPage() {
         setEmpSummaries(summaries)
       }
 
-      setView(prof.role === 'admin' ? 'employee-overview' : 'my-details')
+      // In view mode, show the viewed employee's personal perspective
+      const effectiveRole = inViewMode ? (viewAsProfile?.role ?? 'member') : prof.role
+      setView(effectiveRole === 'admin' && !inViewMode ? 'employee-overview' : 'my-details')
       setLoading(false)
     }
     init()
@@ -1856,28 +1865,31 @@ export default function AssetsAccessPage() {
   if (loading || !view || !profile) return <LoadingScreen />
 
   const meta = VIEW_META[view]
+  const effectiveUserId = viewAsUserId ?? profile.id
 
   const renderView = () => {
     switch (view) {
       case 'employee-overview':
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '8px 18px', fontSize: '13px' }}
-                onClick={() => setShowAddLogin(true)}
-              >
-                + Add Login
-              </button>
-              <button
-                className="boe-btn boe-btn-primary"
-                style={{ padding: '8px 18px', fontSize: '13px' }}
-                onClick={() => setShowAddAsset(true)}
-              >
-                + Add Asset
-              </button>
-            </div>
+            {!inViewMode && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  className="boe-btn boe-btn-ghost"
+                  style={{ padding: '8px 18px', fontSize: '13px' }}
+                  onClick={() => setShowAddLogin(true)}
+                >
+                  + Add Login
+                </button>
+                <button
+                  className="boe-btn boe-btn-primary"
+                  style={{ padding: '8px 18px', fontSize: '13px' }}
+                  onClick={() => setShowAddAsset(true)}
+                >
+                  + Add Asset
+                </button>
+              </div>
+            )}
             <EmployeeOverview
               employees={employees}
               summaries={empSummaries}
@@ -1894,11 +1906,11 @@ export default function AssetsAccessPage() {
       case 'my-details':
         return <MyDetails />
       case 'my-assets':
-        return <MyAssets userId={profile.id} supabase={supabase} />
+        return <MyAssets userId={effectiveUserId} supabase={supabase} />
       case 'login-details':
-        return <LoginDetails userId={profile.id} supabase={supabase} />
+        return <LoginDetails userId={effectiveUserId} supabase={supabase} />
       case 'maintenance-history':
-        return <UserMaintenanceHistory userId={profile.id} supabase={supabase} />
+        return <UserMaintenanceHistory userId={effectiveUserId} supabase={supabase} />
     }
   }
 
@@ -1919,10 +1931,11 @@ export default function AssetsAccessPage() {
           onClose={() => setSelectedEmployee(null)}
           supabase={supabase}
           onEditAsset={setEditingAsset}
+          inViewMode={inViewMode}
         />
       )}
 
-      {showAddAsset && (
+      {showAddAsset && !inViewMode && (
         <AddAssetModal
           employees={employees}
           supabase={supabase}
@@ -1939,7 +1952,7 @@ export default function AssetsAccessPage() {
         />
       )}
 
-      {editingAsset && (
+      {editingAsset && !inViewMode && (
         <EditAssetModal
           asset={editingAsset}
           supabase={supabase}
@@ -1956,7 +1969,7 @@ export default function AssetsAccessPage() {
         />
       )}
 
-      {showAddLogin && (
+      {showAddLogin && !inViewMode && (
         <AddLoginModal
           employees={employees}
           supabase={supabase}

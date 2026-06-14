@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import {
   User, Monitor, Key, Wrench,
   Users, Package, ShieldCheck, Activity,
-  Home, LogOut, Briefcase,
+  Home, LogOut, Briefcase, Eye, X,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
+import { useViewAs } from '@/hooks/useViewAs'
 
 export type AssetsView =
   // All users
@@ -57,6 +58,8 @@ export function AssetsLayout({
 }: AssetsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
+  const { viewAsProfile, exitViewMode } = useViewAs()
+  const inViewMode = !!viewAsProfile
 
   const isAdmin = profile?.role === 'admin'
 
@@ -211,6 +214,52 @@ export function AssetsLayout({
 
         {/* Page body */}
         <div className="boe-page-body">
+          {inViewMode && viewAsProfile && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexWrap: 'wrap', gap: '8px',
+              padding: '12px 20px',
+              background: '#FFFBEB',
+              border: '1.5px solid #FCD34D',
+              borderRadius: '10px',
+              marginBottom: '20px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Eye size={16} color="#D97706" strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#78350F', letterSpacing: '-0.01em' }}>
+                    ADMIN VIEW MODE — Viewing as <strong>{viewAsProfile.full_name}</strong>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#92400E', marginTop: '1px' }}>
+                    You are observing this user&apos;s workspace. All actions are disabled.
+                  </div>
+                </div>
+                <span style={{
+                  fontSize: '10px', fontWeight: 700,
+                  color: '#B45309', background: '#FEF3C7',
+                  borderRadius: '4px', padding: '2px 8px',
+                  border: '1px solid #FDE68A',
+                  whiteSpace: 'nowrap',
+                }}>
+                  READ ONLY
+                </span>
+              </div>
+              <button
+                onClick={() => { exitViewMode(); router.push('/dashboard') }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  fontSize: '12px', fontWeight: 600,
+                  color: '#92400E', background: '#FEF3C7',
+                  border: '1px solid #FDE68A', borderRadius: '6px',
+                  padding: '6px 14px', cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <X size={12} strokeWidth={2.5} />
+                Exit View Mode
+              </button>
+            </div>
+          )}
           {children}
         </div>
 

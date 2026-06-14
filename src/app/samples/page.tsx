@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { SamplesLayout, TABS, type TabKey } from '@/components/layout/SamplesLayout'
 import { QRCodeSVG } from 'qrcode.react'
+import { useViewAs } from '@/hooks/useViewAs'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -122,6 +123,7 @@ function mapRows(rows: any[]): SampleRequest[] {
 
 export default function SamplesPage() {
   const [profile, setProfile]         = useState<UserProfile | null>(null)
+  const [myPermissions, setMyPermissions] = useState<Set<string>>(new Set())
   const [requests, setRequests]       = useState<SampleRequest[]>([])
   const [loading, setLoading]         = useState(true)
   const [activeTab, setActiveTab]     = useState<TabKey>('all')
@@ -130,13 +132,15 @@ export default function SamplesPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { refreshKey } = useRefresh()
+  const { viewAsUserId } = useViewAs()
+  const inViewMode = !!viewAsUserId
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const [{ data: profileData }, { data: rows, error: rowsErr }, countRes] = await Promise.all([
+      const [{ data: profileData }, { data: rows, error: rowsErr }, { data: permsData }, countRes] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
@@ -154,11 +158,17 @@ export default function SamplesPage() {
             lost_by_user:users!lost_by(full_name)
           `)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('employee_permissions')
+          .select('permission_key')
+          .eq('user_id', session.user.id)
+          .is('revoked_at', null),
         fetch('/api/samples/notifications?count=1'),
       ])
 
       if (rowsErr) console.error('[samples] init fetch failed:', rowsErr)
       setProfile(profileData as UserProfile)
+      if (permsData) setMyPermissions(new Set(permsData.map((p: { permission_key: string }) => p.permission_key)))
       if (rows) setRequests(mapRows(rows))
       if (countRes.ok) {
         const { unreadCount: count } = await countRes.json()
@@ -200,7 +210,10 @@ export default function SamplesPage() {
 
   if (loading) return <LoadingScreen />
 
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin    = profile?.role === 'admin'
+  const canDispatch = isAdmin || myPermissions.has('samples_dispatch')
+  const canReceive  = isAdmin || myPermissions.has('samples_receive')
+  const canLost     = isAdmin || myPermissions.has('samples_lost')
 
   const counts: Record<TabKey, number> = {
     all:              buckets.all.length,
@@ -226,21 +239,23 @@ export default function SamplesPage() {
         onTabSelect={setActiveTab}
         onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
         actions={
-          <button
-            onClick={() => setShowModal(true)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '7px 14px', borderRadius: '8px', border: 'none',
-              background: '#1A2035', color: '#fff',
-              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-              transition: 'opacity 0.12s', whiteSpace: 'nowrap',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-          >
-            <Plus size={13} strokeWidth={2.5} />
-            New Request
-          </button>
+          !inViewMode && (
+            <button
+              onClick={() => setShowModal(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                padding: '7px 14px', borderRadius: '8px', border: 'none',
+                background: '#1A2035', color: '#fff',
+                fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                transition: 'opacity 0.12s', whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            >
+              <Plus size={13} strokeWidth={2.5} />
+              New Request
+            </button>
+          )
         }
       >
         <div style={{ maxWidth: '900px', width: '100%' }}>
@@ -267,9 +282,13 @@ export default function SamplesPage() {
                   key={r.id}
                   request={r}
                   isAdmin={isAdmin}
+                  canDispatch={canDispatch}
+                  canReceive={canReceive}
+                  canLost={canLost}
                   currentUserId={profile?.id ?? ''}
                   supabase={supabase}
                   onRefresh={refresh}
+                  inViewMode={inViewMode}
                 />
               ))}
             </div>
@@ -277,7 +296,7 @@ export default function SamplesPage() {
         </div>
       </SamplesLayout>
 
-      {showModal && profile && (
+      {showModal && profile && !inViewMode && (
         <NewRequestModal
           currentUserId={profile.id}
           supabase={supabase}
@@ -294,15 +313,23 @@ export default function SamplesPage() {
 function RequestCard({
   request: r,
   isAdmin,
+  canDispatch,
+  canReceive,
+  canLost,
   currentUserId,
   supabase,
   onRefresh,
+  inViewMode,
 }: {
   request: SampleRequest
   isAdmin: boolean
+  canDispatch: boolean
+  canReceive: boolean
+  canLost: boolean
   currentUserId: string
   supabase: ReturnType<typeof createClient>
   onRefresh: () => void
+  inViewMode?: boolean
 }) {
   const [followupOpen,  setFollowupOpen]  = useState(false)
   const [verifyOpen,    setVerifyOpen]    = useState(false)
@@ -621,7 +648,7 @@ function RequestCard({
         )}
 
         {/* Actions */}
-        {!isClosed && (
+        {!isClosed && !inViewMode && (
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
             {r.status === 'pending_approval' && isRequester && (
               <ActionBtn icon={<Pencil size={13} strokeWidth={2.2} />} label="Edit" busy={false} bg={colors.float} color={colors.secondary} border={colors.border} onClick={() => setEditOpen(true)} />
@@ -645,7 +672,7 @@ function RequestCard({
             )}
             {r.status === 'qr_submitted' && (
               <>
-                {isAdmin ? (
+                {canDispatch ? (
                   <ActionBtn icon={<Truck size={13} strokeWidth={2} />} label={dispatchOpen ? 'Cancel' : 'Add Tracking Details'} busy={busy === 'dispatch_details'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={() => { setDispatchOpen(v => !v); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) }} />
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#7C3AED', background: '#EDE9FE', border: '1px solid #7C3AED33', borderRadius: '7px', padding: '6px 12px' }}>
@@ -659,7 +686,7 @@ function RequestCard({
             {r.status === 'dispatched' && (
               <>
                 <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
-                {isRequester && !isAdmin ? (
+                {isRequester && !canReceive ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: colors.muted, background: colors.float, border: `1px solid ${colors.border}`, borderRadius: '7px', padding: '6px 12px' }}>
                     <Info size={13} strokeWidth={1.8} />
                     Ask Admin / HR / Dispatch to verify receipt and close this request.
@@ -668,7 +695,9 @@ function RequestCard({
                   <ActionBtn icon={<ShieldCheck size={13} strokeWidth={2.2} />} label={verifyOpen ? 'Cancel' : 'Mark Received & Close'} busy={false} bg={colors.greenTint} color={colors.green} border={colors.green + '33'} onClick={() => setVerifyOpen(v => !v)} />
                 )}
                 <ActionBtn icon={<Clock size={13} strokeWidth={1.8} />} label={followupOpen ? 'Close Follow-up' : 'Add Follow-up'} busy={false} bg={colors.float} color={colors.secondary} border={colors.border} onClick={() => setFollowupOpen(v => !v)} />
-                <ActionBtn icon={<X size={13} strokeWidth={2} />} label={lostOpen ? 'Cancel' : 'Mark Lost'} busy={false} bg='none' color={lostOpen ? colors.red : colors.muted} border={lostOpen ? colors.red + '55' : colors.border} onClick={() => { setLostOpen(v => !v); setLostNote('') }} />
+                {(isAdmin || canLost) && (
+                  <ActionBtn icon={<X size={13} strokeWidth={2} />} label={lostOpen ? 'Cancel' : 'Mark Lost'} busy={false} bg='none' color={lostOpen ? colors.red : colors.muted} border={lostOpen ? colors.red + '55' : colors.border} onClick={() => { setLostOpen(v => !v); setLostNote('') }} />
+                )}
               </>
             )}
             {r.status === 'rejected' && isRequester && (
@@ -678,7 +707,7 @@ function RequestCard({
         )}
 
         {/* Dispatch details panel */}
-        {dispatchOpen && isAdmin && r.status === 'qr_submitted' && (
+        {dispatchOpen && canDispatch && r.status === 'qr_submitted' && (
           <div style={{ marginTop: '12px', padding: '12px', background: '#1A20350A', borderRadius: '8px', border: '1px solid #1A203530' }}>
             <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#1A2035', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <Truck size={13} strokeWidth={2} /> Enter Dispatch Details
@@ -767,7 +796,7 @@ function RequestCard({
         )}
 
         {/* Verify received panel */}
-        {verifyOpen && r.status === 'dispatched' && (isAdmin || !isRequester) && (
+        {verifyOpen && r.status === 'dispatched' && (isAdmin || (canReceive && !isRequester)) && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.greenTint, borderRadius: '8px', border: `1px solid ${colors.green}33` }}>
             <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.green, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <ShieldCheck size={13} strokeWidth={2} /> Verify Received & Close
@@ -787,7 +816,7 @@ function RequestCard({
         )}
 
         {/* Mark Lost confirmation panel */}
-        {lostOpen && r.status === 'dispatched' && (
+        {lostOpen && r.status === 'dispatched' && (isAdmin || canLost) && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.redTint, borderRadius: '8px', border: `1px solid ${colors.red}33` }}>
             <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.red, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <X size={13} strokeWidth={2} /> Mark Sample as Lost
@@ -819,7 +848,7 @@ function RequestCard({
         )}
 
         {/* Delete button — admin: any status; requester: pending only */}
-        {(isAdmin || (isRequester && r.status === 'pending_approval')) && (
+        {!inViewMode && (isAdmin || (isRequester && r.status === 'pending_approval')) && (
           <div style={{ display: 'flex', marginTop: '10px' }}>
             <button
               onClick={() => setDeleteOpen(true)}
