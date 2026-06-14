@@ -9,6 +9,18 @@ function monthRange(year: number, month: number): { from: string; to: string } {
   return { from, to }
 }
 
+// attendance_date is YYYY-MM-DD; parse as local midnight to get the correct day-of-week
+function isSunday(dateStr: string): boolean {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d).getDay() === 0
+}
+
+function hoursWorked(checkIn: string | null, checkOut: string | null): number {
+  if (!checkIn || !checkOut) return 0
+  const diff = new Date(checkOut).getTime() - new Date(checkIn).getTime()
+  return diff > 0 ? Math.round((diff / 36e5) * 100) / 100 : 0
+}
+
 export async function GET(req: NextRequest) {
   const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -55,6 +67,33 @@ export async function GET(req: NextRequest) {
 
   if (recErr) return NextResponse.json({ error: recErr.message }, { status: 500 })
 
+  // Fetch public holidays for the month
+  const { data: holidays, error: holErr } = await svc
+    .from('attendance_holidays')
+    .select('holiday_date')
+    .gte('holiday_date', from)
+    .lte('holiday_date', to)
+
+  if (holErr) return NextResponse.json({ error: holErr.message }, { status: 500 })
+
+  const holidayDates = new Set((holidays ?? []).map(h => h.holiday_date))
+
+  // Working dates = all dates that appear in any record for this month,
+  // excluding Sundays and public holidays.
+  const workingDates = new Set<string>()
+  for (const rec of records ?? []) {
+    if (!isSunday(rec.attendance_date) && !holidayDates.has(rec.attendance_date)) {
+      workingDates.add(rec.attendance_date)
+    }
+  }
+
+  // Index each employee's records by date for O(1) lookup
+  const byEmployeeByDate = new Map<string, Map<string, typeof records[number]>>()
+  for (const rec of records ?? []) {
+    if (!byEmployeeByDate.has(rec.user_id)) byEmployeeByDate.set(rec.user_id, new Map())
+    byEmployeeByDate.get(rec.user_id)!.set(rec.attendance_date, rec)
+  }
+
   // Build per-employee summary
   type EmployeeSummary = {
     employee_id:   string
@@ -66,50 +105,49 @@ export async function GET(req: NextRequest) {
     late:          number
     missing_punch: number
     total_records: number
-  }
-
-  // Group records by user_id
-  const byEmployee = new Map<string, typeof records[number][]>()
-  for (const rec of records ?? []) {
-    const arr = byEmployee.get(rec.user_id) ?? []
-    arr.push(rec)
-    byEmployee.set(rec.user_id, arr)
+    hours_worked:  number
   }
 
   const summaries: EmployeeSummary[] = (employees ?? []).map(emp => {
-    const recs = byEmployee.get(emp.id) ?? []
+    const recByDate = byEmployeeByDate.get(emp.id) ?? new Map()
 
-    let present       = 0
-    let half_day      = 0
-    let late          = 0
-    let missing_punch = 0
+    let present = 0, half_day = 0, late = 0, missing_punch = 0, absent = 0, hours = 0
 
-    for (const r of recs) {
+    for (const date of workingDates) {
+      const r = recByDate.get(date)
+
+      // No record for this working day = absent
+      if (!r) {
+        absent++
+        continue
+      }
+
+      hours += hoursWorked(r.check_in_at, r.check_out_at)
+      const hasPunchIn  = !!r.check_in_at
+      const hasPunchOut = !!r.check_out_at
+
+      // One punch only = missing punch: counts as present AND flagged separately
+      if (hasPunchIn !== hasPunchOut || r.status === 'missing_punch') {
+        missing_punch++
+        present++
+        continue
+      }
+
       const status = r.status ?? ''
-
       if (status === 'half_day') {
         half_day++
       } else if (status === 'late') {
         late++
         present++ // late but present
       } else if (status === 'present' || status === 'checked_in') {
-        // missing_punch: has check_in but no check_out (or vice versa)
-        const hasPunchIn  = !!r.check_in_at
-        const hasPunchOut = !!r.check_out_at
-        if (hasPunchIn && !hasPunchOut) {
-          missing_punch++
-        } else {
-          present++
-        }
-      } else if (status === 'missing_punch') {
-        missing_punch++
+        present++
       } else if (status === 'absent') {
-        // counted in absent below
+        absent++
+      } else if (hasPunchIn && hasPunchOut) {
+        // both punches, unknown status → treat as present
+        present++
       }
     }
-
-    // Absent = days with an explicit absent record
-    const absent = recs.filter(r => r.status === 'absent').length
 
     return {
       employee_id:   emp.id,
@@ -120,7 +158,8 @@ export async function GET(req: NextRequest) {
       absent,
       late,
       missing_punch,
-      total_records: recs.length,
+      total_records: workingDates.size, // denominator = total working days this month
+      hours_worked:  Math.round(hours * 100) / 100,
     }
   })
 
