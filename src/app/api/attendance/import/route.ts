@@ -23,20 +23,66 @@ type EmployeeBlock = {
   days: DayRecord[]
 }
 
-function parseMonthYear(sheet: XLSX.WorkSheet): { year: number; month: number } | null {
-  // Scan first few rows for a cell containing a month name pattern like "May-2026"
-  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const MONTH_ABBR = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+const MONTH_FULL = ['january','february','march','april','may','june','july','august','september','october','november','december']
+
+function monthYearFromText(v: string): { year: number; month: number } | null {
+  // "Jun-2026" / "June-2026" / "Jun 2026" / "June 2026"
+  const mName = v.match(/\b([A-Za-z]{3,9})[\s\-](\d{4})\b/)
+  if (mName) {
+    const name = mName[1].toLowerCase()
+    const year = parseInt(mName[2], 10)
+    if (year >= 2000 && year <= 2100) {
+      const byAbbr = MONTH_ABBR.indexOf(name.slice(0, 3))
+      if (byAbbr !== -1) return { year, month: byAbbr + 1 }
+      const byFull = MONTH_FULL.indexOf(name)
+      if (byFull !== -1) return { year, month: byFull + 1 }
+    }
+  }
+  // "2026-Jun" / "2026 June"
+  const mRev = v.match(/\b(\d{4})[\s\-]([A-Za-z]{3,9})\b/)
+  if (mRev) {
+    const year = parseInt(mRev[1], 10)
+    const name = mRev[2].toLowerCase()
+    if (year >= 2000 && year <= 2100) {
+      const byAbbr = MONTH_ABBR.indexOf(name.slice(0, 3))
+      if (byAbbr !== -1) return { year, month: byAbbr + 1 }
+      const byFull = MONTH_FULL.indexOf(name)
+      if (byFull !== -1) return { year, month: byFull + 1 }
+    }
+  }
+  // "06/2026" / "06-2026" (month/year numeric)
+  const mSlash = v.match(/\b(0?[1-9]|1[0-2])[\/\-](\d{4})\b/)
+  if (mSlash) {
+    const month = parseInt(mSlash[1], 10)
+    const year  = parseInt(mSlash[2], 10)
+    if (year >= 2000 && year <= 2100) return { year, month }
+  }
+  // "2026-06" / "2026/06" (ISO-style)
+  const mIso = v.match(/\b(\d{4})[\/\-](0[1-9]|1[0-2])\b/)
+  if (mIso) {
+    const year  = parseInt(mIso[1], 10)
+    const month = parseInt(mIso[2], 10)
+    if (year >= 2000 && year <= 2100) return { year, month }
+  }
+  return null
+}
+
+function parseMonthYear(sheet: XLSX.WorkSheet, sheetName: string): { year: number; month: number } | null {
+  // Check sheet name first
+  const fromSheet = monthYearFromText(sheetName)
+  if (fromSheet) return fromSheet
+
+  // Scan first 20 rows across all columns
   const range = XLSX.utils.decode_range(sheet['!ref'] ?? 'A1')
-  for (let r = range.s.r; r <= Math.min(range.e.r, 10); r++) {
+  for (let r = range.s.r; r <= Math.min(range.e.r, 20); r++) {
     for (let c = range.s.c; c <= range.e.c; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })]
       if (!cell) continue
-      const v = String(cell.v ?? '')
-      const m = v.match(/(\w{3})-(\d{4})/)
-      if (m) {
-        const monthIdx = monthNames.findIndex(n => n.toLowerCase() === m[1].toLowerCase())
-        if (monthIdx !== -1) return { year: parseInt(m[2]), month: monthIdx + 1 }
-      }
+      const v = String(cell.v ?? '').trim()
+      if (!v) continue
+      const result = monthYearFromText(v)
+      if (result) return result
     }
   }
   return null
@@ -51,8 +97,12 @@ function cellStr(sheet: XLSX.WorkSheet, r: number, c: number): string {
 function parseXLS(buffer: Buffer): EmployeeBlock[] {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false })
   const ws = wb.Sheets[wb.SheetNames[0]]
-  const monthYear = parseMonthYear(ws)
-  if (!monthYear) throw new Error('Could not detect report month/year from file')
+  const monthYear = parseMonthYear(ws, wb.SheetNames[0])
+  if (!monthYear) throw new Error(
+    'Could not detect report month/year from file. ' +
+    'Expected a cell in the first 20 rows (or sheet name) containing a value like ' +
+    '"Jun-2026", "June 2026", "06/2026", or "2026-06".'
+  )
 
   const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
   const blocks: EmployeeBlock[] = []
