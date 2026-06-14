@@ -11,17 +11,42 @@ import Link from 'next/link'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type ImportedEmployee = {
+  name:          string
+  employee_code: string | null
+  inserted:      number
+  updated:       number
+}
+
+type SkippedEmployee = {
+  excel_code:   string
+  excel_name:   string
+  days_skipped: number
+  reason:       string
+}
+
 type ImportSummary = {
-  total: number
+  month:    number
+  year:     number
+  total:    number
   imported: number
-  updated: number
-  skipped: number
+  updated:  number
+  skipped:  number
+  // kept for compat
   unmappedCodes: string[]
   unmappedCount: number
-  errors: string[]
+  errors:        string[]
+  // new
+  importedEmployees: ImportedEmployee[]
+  skippedEmployees:  SkippedEmployee[]
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const MONTH_NAMES = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -217,106 +242,173 @@ export default function AttendanceUploadPage() {
           </div>
         )}
 
-        {/* ── Import summary ── */}
+        {/* ── Import report ── */}
         {summary && (
-          <div style={{
-            marginTop: 16,
-            background: colors.base, border: `1px solid ${colors.border}`,
-            borderRadius: 10, overflow: 'hidden',
-          }}>
-            {/* Summary counts */}
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${colors.border}` }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: colors.primary, marginBottom: 12 }}>
-                Import Complete
+          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+            {/* ── Header + stat row ── */}
+            <div style={{
+              background: colors.base, border: `1px solid ${colors.border}`,
+              borderRadius: 10, overflow: 'hidden',
+            }}>
+              <div style={{ padding: '14px 20px', borderBottom: `1px solid ${colors.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: colors.primary }}>
+                  Import Complete
+                  {summary.month > 0 && (
+                    <span style={{ fontWeight: 400, color: colors.secondary, marginLeft: 8 }}>
+                      — {MONTH_NAMES[summary.month - 1]} {summary.year}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+              <div style={{ padding: '16px 20px', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                 {[
-                  { label: 'Total rows',   value: summary.total,    color: colors.primary },
-                  { label: 'Imported',     value: summary.imported,  color: '#3B82F6'      },
-                  { label: 'Updated',      value: summary.updated,   color: '#10B981'      },
-                  { label: 'Skipped',      value: summary.skipped,   color: '#F59E0B'      },
+                  { label: 'Records Inserted', value: summary.imported, color: '#3B82F6' },
+                  { label: 'Records Updated',  value: summary.updated,  color: '#10B981' },
+                  { label: 'Records Skipped',  value: summary.skipped,  color: summary.skipped > 0 ? '#F59E0B' : colors.tertiary },
+                  { label: 'Employees in File', value: summary.importedEmployees.length + summary.skippedEmployees.length, color: colors.primary },
                 ].map(s => (
-                  <div key={s.label} style={{ textAlign: 'center', minWidth: 64 }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums' }}>{s.value}</div>
-                    <div style={{ fontSize: 11, color: colors.tertiary, marginTop: 3 }}>{s.label}</div>
+                  <div key={s.label} style={{ minWidth: 80 }}>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: s.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{s.value}</div>
+                    <div style={{ fontSize: 11, color: colors.tertiary, marginTop: 5 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Unmapped codes — prominent warning */}
-            {summary.unmappedCodes?.length > 0 && (
+            {/* ── Imported employees table ── */}
+            {summary.importedEmployees.length > 0 && (
               <div style={{
-                margin: '0 16px 16px',
-                borderRadius: 10,
-                border: '1.5px solid #F59E0B',
-                background: 'rgba(245,158,11,0.07)',
-                overflow: 'hidden',
+                background: colors.base, border: `1px solid ${colors.border}`,
+                borderRadius: 10, overflow: 'hidden',
               }}>
-                {/* Warning header */}
-                <div style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10,
-                  padding: '14px 16px 10px',
-                  borderBottom: '1px solid rgba(245,158,11,0.2)',
-                }}>
-                  <span style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>⚠️</span>
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: '#92400E', marginBottom: 3 }}>
-                      {summary.unmappedCodes.length} fingerprint code{summary.unmappedCodes.length !== 1 ? 's' : ''} not mapped — attendance skipped
-                    </div>
-                    <div style={{ fontSize: 12.5, color: '#78350F', lineHeight: 1.55 }}>
-                      All attendance days for these employees were <strong>not imported</strong>. To fix this, open
-                      Employee Master, find each employee, and set their <strong>Fingerprint Code</strong> to match
-                      the code below. Then re-upload this file.
-                    </div>
-                  </div>
+                <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border}` }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Imported ({summary.importedEmployees.length} employee{summary.importedEmployees.length !== 1 ? 's' : ''})
+                  </span>
                 </div>
-
-                {/* Code chips */}
-                <div style={{ padding: '10px 16px 12px', display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-                  {summary.unmappedCodes.map(code => (
-                    <span key={code} style={{
-                      display: 'inline-block',
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      background: 'rgba(245,158,11,0.15)',
-                      border: '1px solid rgba(245,158,11,0.4)',
-                      fontFamily: 'monospace',
-                      fontSize: 12.5,
-                      fontWeight: 700,
-                      color: '#92400E',
-                      letterSpacing: '0.03em',
-                    }}>
-                      {code}
-                    </span>
-                  ))}
-                </div>
-
-                {/* CTA */}
-                <div style={{ padding: '0 16px 14px' }}>
-                  <Link
-                    href="/attendance/employees"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '7px 16px',
-                      borderRadius: 7,
-                      fontSize: 12.5, fontWeight: 600,
-                      background: '#F59E0B', color: '#fff',
-                      textDecoration: 'none',
-                      border: 'none',
-                    }}
-                  >
-                    Go to Employee Master →
-                  </Link>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: colors.raised }}>
+                        {['Employee', 'HR Code', 'Inserted', 'Updated'].map(h => (
+                          <th key={h} style={{
+                            padding: '8px 14px', textAlign: h === 'Inserted' || h === 'Updated' ? 'center' : 'left',
+                            fontSize: 11, fontWeight: 600, color: colors.tertiary,
+                            textTransform: 'uppercase', letterSpacing: '0.05em',
+                            borderBottom: `1px solid ${colors.border}`,
+                          }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.importedEmployees.map((emp, i) => (
+                        <tr key={i} style={{ borderBottom: i < summary.importedEmployees.length - 1 ? `1px solid ${colors.border}` : 'none' }}>
+                          <td style={{ padding: '9px 14px', color: colors.primary, fontWeight: 500 }}>{emp.name}</td>
+                          <td style={{ padding: '9px 14px', color: colors.tertiary, fontFamily: 'monospace', fontSize: 12 }}>
+                            {emp.employee_code ?? '—'}
+                          </td>
+                          <td style={{ padding: '9px 14px', textAlign: 'center', color: emp.inserted > 0 ? '#3B82F6' : colors.tertiary, fontWeight: emp.inserted > 0 ? 600 : 400 }}>
+                            {emp.inserted}
+                          </td>
+                          <td style={{ padding: '9px 14px', textAlign: 'center', color: emp.updated > 0 ? '#10B981' : colors.tertiary, fontWeight: emp.updated > 0 ? 600 : 400 }}>
+                            {emp.updated}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
 
-            {/* Error details */}
+            {/* ── Skipped employees ── */}
+            {summary.skippedEmployees.length > 0 && (
+              <div style={{
+                border: '1.5px solid #F59E0B',
+                background: 'rgba(245,158,11,0.05)',
+                borderRadius: 10, overflow: 'hidden',
+              }}>
+                {/* Header */}
+                <div style={{
+                  padding: '12px 16px', borderBottom: '1px solid rgba(245,158,11,0.25)',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}>
+                  <span style={{ fontSize: 15, lineHeight: 1 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>
+                      {summary.skippedEmployees.length} employee{summary.skippedEmployees.length !== 1 ? 's' : ''} skipped
+                    </div>
+                    <div style={{ fontSize: 12, color: '#78350F', marginTop: 2 }}>
+                      Records were not imported. Fix the issues below and re-upload.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Skipped table */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: 'rgba(245,158,11,0.08)' }}>
+                        {['Employee (Excel)', 'Code', 'Days Skipped', 'Reason'].map(h => (
+                          <th key={h} style={{
+                            padding: '8px 14px', textAlign: h === 'Days Skipped' ? 'center' : 'left',
+                            fontSize: 11, fontWeight: 600, color: '#92400E',
+                            textTransform: 'uppercase', letterSpacing: '0.05em',
+                            borderBottom: '1px solid rgba(245,158,11,0.2)',
+                          }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.skippedEmployees.map((s, i) => (
+                        <tr key={i} style={{ borderBottom: i < summary.skippedEmployees.length - 1 ? '1px solid rgba(245,158,11,0.15)' : 'none' }}>
+                          <td style={{ padding: '9px 14px', color: '#78350F', fontWeight: 500 }}>
+                            {s.excel_name || '—'}
+                          </td>
+                          <td style={{ padding: '9px 14px', color: '#92400E', fontFamily: 'monospace', fontSize: 12 }}>
+                            {s.excel_code}
+                          </td>
+                          <td style={{ padding: '9px 14px', textAlign: 'center', color: '#92400E', fontWeight: 600 }}>
+                            {s.days_skipped}
+                          </td>
+                          <td style={{ padding: '9px 14px', color: '#78350F', fontSize: 12 }}>
+                            {s.reason}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* CTA if any unmapped codes */}
+                {summary.unmappedCount > 0 && (
+                  <div style={{ padding: '10px 16px 14px' }}>
+                    <Link
+                      href="/attendance/employees"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '7px 16px', borderRadius: 7,
+                        fontSize: 12.5, fontWeight: 600,
+                        background: '#F59E0B', color: '#fff',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      Set Fingerprint Codes in Employee Master →
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Row-level punch errors (only if present and not already in skipped table) ── */}
             {summary.errors.length > 0 && (
-              <div style={{ padding: '14px 20px' }}>
+              <div style={{
+                background: colors.base, border: `1px solid ${colors.border}`,
+                borderRadius: 10, padding: '14px 16px',
+              }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                  Skipped rows ({summary.errors.length})
+                  Row-level errors ({summary.errors.length})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {summary.errors.map((e, i) => (
@@ -324,6 +416,7 @@ export default function AttendanceUploadPage() {
                       fontSize: 12, color: '#DC2626',
                       padding: '5px 10px', borderRadius: 5,
                       background: 'rgba(239,68,68,0.06)',
+                      fontFamily: 'monospace',
                     }}>
                       {e}
                     </div>
@@ -331,6 +424,7 @@ export default function AttendanceUploadPage() {
                 </div>
               </div>
             )}
+
           </div>
         )}
 

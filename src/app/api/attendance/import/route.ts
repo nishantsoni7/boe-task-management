@@ -212,29 +212,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No employee blocks found in the file' }, { status: 400 })
   }
 
-  // Fetch all fingerprint_employee_code → user_id mappings
+  // Fetch all fingerprint_employee_code → user mappings (include name for the report)
   const { data: empRows, error: empErr } = await svc
     .from('users')
-    .select('id, fingerprint_employee_code')
+    .select('id, full_name, employee_code, fingerprint_employee_code')
     .not('fingerprint_employee_code', 'is', null)
   if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 })
 
-  const fingerprintToId = new Map<string, string>()
+  type FpEntry = { id: string; name: string; employee_code: string | null }
+  const fpToEntry = new Map<string, FpEntry>()  // fingerprint_code → entry
+  const idToEntry = new Map<string, FpEntry>()  // user_id → entry
   for (const e of empRows ?? []) {
     if (e.fingerprint_employee_code) {
-      fingerprintToId.set(e.fingerprint_employee_code.trim(), e.id)
+      const entry: FpEntry = { id: e.id, name: e.full_name, employee_code: e.employee_code }
+      fpToEntry.set(e.fingerprint_employee_code.trim(), entry)
+      idToEntry.set(e.id, entry)
     }
   }
 
-  const summary = {
-    total: 0,
-    imported: 0,
-    updated: 0,
-    skipped: 0,
-    unmappedCodes: [] as string[],
-    unmappedCount: 0,
-    errors: [] as string[],
-  }
+  // Detect month/year from the first block (all blocks share the same month)
+  const reportMonth = blocks[0]?.month ?? 0
+  const reportYear  = blocks[0]?.year  ?? 0
+
+  let totalRows  = 0
+  let skipped    = 0
+  const unmappedCodes: string[] = []
+  const errors:        string[] = []
+
+  type SkippedEmployee = { excel_code: string; excel_name: string; days_skipped: number; reason: string }
+  const skippedEmployees: SkippedEmployee[] = []
 
   // Build all valid upsert rows and track which user+date pairs are involved
   type UpsertRow = {
@@ -249,42 +255,59 @@ export async function POST(req: NextRequest) {
   const involvedKeys = new Set<string>() // "userId|dateStr"
 
   for (const block of blocks) {
-    const userId = fingerprintToId.get(block.empcode)
-    if (!userId) {
-      summary.unmappedCodes.push(block.empcode)
-      summary.skipped += block.days.length
-      summary.total   += block.days.length
+    const entry = fpToEntry.get(block.empcode)
+    if (!entry) {
+      unmappedCodes.push(block.empcode)
+      skipped    += block.days.length
+      totalRows  += block.days.length
+      skippedEmployees.push({
+        excel_code:   block.empcode,
+        excel_name:   block.name,
+        days_skipped: block.days.length,
+        reason:       'Fingerprint code not mapped in Employee Master',
+      })
       continue
     }
 
+    let badDays = 0
     for (const day of block.days) {
-      summary.total++
+      totalRows++
       const dateStr    = toDateStr(block.year, block.month, day.day)
       const checkInAt  = toTimestamp(day.in,  block.year, block.month, day.day)
       const checkOutAt = toTimestamp(day.out, block.year, block.month, day.day)
 
       if (!checkInAt) {
-        summary.skipped++
-        summary.errors.push(`${block.empcode} ${dateStr}: invalid IN time "${day.in}"`)
+        skipped++
+        badDays++
+        errors.push(`${block.empcode} ${dateStr}: invalid IN time "${day.in}"`)
         continue
       }
 
-      involvedKeys.add(`${userId}|${dateStr}`)
+      involvedKeys.add(`${entry.id}|${dateStr}`)
       upsertRows.push({
-        user_id:         userId,
+        user_id:         entry.id,
         attendance_date: dateStr,
         check_in_at:     checkInAt,
         check_out_at:    checkOutAt,
         status:          checkOutAt ? 'present' : 'checked_in',
       })
     }
+
+    if (badDays > 0) {
+      skippedEmployees.push({
+        excel_code:   block.empcode,
+        excel_name:   block.name,
+        days_skipped: badDays,
+        reason:       `${badDays} day${badDays !== 1 ? 's' : ''} had invalid punch-in time`,
+      })
+    }
   }
 
-  // Single query to find which records already exist (to distinguish imported vs updated)
+  // Single query to find which records already exist (to distinguish inserted vs updated)
   const existingKeys = new Set<string>()
   if (involvedKeys.size > 0) {
-    const userIds  = [...new Set(upsertRows.map(r => r.user_id))]
-    const dates    = [...new Set(upsertRows.map(r => r.attendance_date))]
+    const userIds = [...new Set(upsertRows.map(r => r.user_id))]
+    const dates   = [...new Set(upsertRows.map(r => r.attendance_date))]
     const { data: existing } = await svc
       .from('attendance_records')
       .select('user_id, attendance_date')
@@ -294,6 +317,10 @@ export async function POST(req: NextRequest) {
       existingKeys.add(`${row.user_id}|${row.attendance_date}`)
     }
   }
+
+  // Per-employee inserted/updated tracking
+  const empInserted = new Map<string, number>()
+  const empUpdated  = new Map<string, number>()
 
   // Single batch upsert for all valid rows
   if (upsertRows.length > 0) {
@@ -307,13 +334,46 @@ export async function POST(req: NextRequest) {
 
     for (const row of upsertRows) {
       const key = `${row.user_id}|${row.attendance_date}`
-      if (existingKeys.has(key)) { summary.updated++ } else { summary.imported++ }
+      if (existingKeys.has(key)) {
+        empUpdated.set(row.user_id, (empUpdated.get(row.user_id) ?? 0) + 1)
+      } else {
+        empInserted.set(row.user_id, (empInserted.get(row.user_id) ?? 0) + 1)
+      }
     }
   }
 
-  // Deduplicate unmapped codes
-  summary.unmappedCodes = [...new Set(summary.unmappedCodes)]
-  summary.unmappedCount = summary.unmappedCodes.length
+  const totalImported = [...empInserted.values()].reduce((a, b) => a + b, 0)
+  const totalUpdated  = [...empUpdated.values()].reduce((a, b) => a + b, 0)
 
-  return NextResponse.json({ summary })
+  // Build per-employee imported report (employees with at least one record inserted or updated)
+  const allImportedIds = new Set([...empInserted.keys(), ...empUpdated.keys()])
+  const importedEmployees = [...allImportedIds]
+    .map(userId => {
+      const e = idToEntry.get(userId)
+      return {
+        name:          e?.name          ?? userId,
+        employee_code: e?.employee_code ?? null,
+        inserted:      empInserted.get(userId) ?? 0,
+        updated:       empUpdated.get(userId)  ?? 0,
+      }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  const dedupedUnmapped = [...new Set(unmappedCodes)]
+
+  return NextResponse.json({
+    summary: {
+      month:             reportMonth,
+      year:              reportYear,
+      total:             totalRows,
+      imported:          totalImported,
+      updated:           totalUpdated,
+      skipped,
+      unmappedCodes:     dedupedUnmapped,   // kept for compat
+      unmappedCount:     dedupedUnmapped.length,
+      errors,                               // kept for compat
+      importedEmployees,
+      skippedEmployees,
+    },
+  })
 }
