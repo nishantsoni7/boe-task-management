@@ -16,6 +16,15 @@ type DeductionLine = {
   deduction_type:  string
   hours_deducted:  number
   amount_deducted: number
+  check_in_at:     string | null
+  check_out_at:    string | null
+}
+
+type AdjustmentRow = {
+  id:              string
+  adjustment_type: 'addition' | 'deduction'
+  amount:          number
+  description:     string
 }
 
 type Summary = {
@@ -32,6 +41,7 @@ type Summary = {
   short_hours_deduction:     number
   missing_punch_hours:       number
   total_deductions:          number
+  adjustment_total:          number
   net_salary:                number
 }
 
@@ -47,6 +57,7 @@ type DetailData = {
   skipped:         false
   summary:         Summary
   deduction_lines: DeductionLine[]
+  adjustments:     AdjustmentRow[]
 } | {
   employee:    EmployeeInfo
   skipped:     true
@@ -73,9 +84,24 @@ function fmtHours(h: number): string {
   return `${hrs}h ${min}m`
 }
 
+function fmtISTTime(ts: string | null): string {
+  if (!ts) return 'Missing'
+  const istMs = new Date(ts).getTime() + 330 * 60 * 1000
+  const d = new Date(istMs)
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
+}
+
+function fmtAttendance(checkIn: string | null, checkOut: string | null): string {
+  return `IN ${fmtISTTime(checkIn)} • OUT ${fmtISTTime(checkOut)}`
+}
+
 function fmtDate(s: string): string {
   const [y, m, d] = s.split('-').map(Number)
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+function fmtDateTime(s: string): string {
+  return new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
 const DEDUCTION_LABELS: Record<string, string> = {
@@ -125,6 +151,196 @@ const SKIP_LABELS: Record<string, string> = {
   no_salary_configured:  'No monthly salary configured',
 }
 
+// ─── Adjustment panel ─────────────────────────────────────────────────────────
+
+function AdjustmentsPanel({
+  adjustments,
+  onAdd,
+  onDelete,
+  saving,
+}: {
+  adjustments: AdjustmentRow[]
+  onAdd: (type: 'addition' | 'deduction', amount: number, note: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+  saving: boolean
+}) {
+  const [adjType,   setAdjType]   = useState<'addition' | 'deduction'>('addition')
+  const [adjAmount, setAdjAmount] = useState('')
+  const [adjNote,   setAdjNote]   = useState('')
+  const [formErr,   setFormErr]   = useState('')
+  const [deleting,  setDeleting]  = useState<string | null>(null)
+
+  const handleSubmit = async () => {
+    setFormErr('')
+    const amt = parseFloat(adjAmount)
+    if (!adjAmount || isNaN(amt) || amt <= 0) {
+      setFormErr('Enter a valid positive amount.')
+      return
+    }
+    if (!adjNote.trim()) {
+      setFormErr('Note is required.')
+      return
+    }
+    await onAdd(adjType, amt, adjNote.trim())
+    setAdjAmount('')
+    setAdjNote('')
+  }
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id)
+    await onDelete(id)
+    setDeleting(null)
+  }
+
+  const inputStyle: React.CSSProperties = {
+    fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 7,
+    background: colors.base, color: colors.primary, outline: 'none',
+    padding: '8px 12px', boxSizing: 'border-box',
+  }
+
+  const netAdj = adjustments.reduce((s, a) => s + (a.adjustment_type === 'addition' ? a.amount : -a.amount), 0)
+
+  return (
+    <div style={{
+      background: colors.base, border: `1px solid ${colors.border}`,
+      borderRadius: 10, overflow: 'hidden', marginBottom: 16,
+    }}>
+      <SectionHeader title="Manual Adjustments" />
+
+      {/* Add form */}
+      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${colors.border}` }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: colors.tertiary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Add Adjustment
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: colors.tertiary, marginBottom: 4 }}>Type</label>
+            <select
+              value={adjType}
+              onChange={e => setAdjType(e.target.value as 'addition' | 'deduction')}
+              style={{ ...inputStyle, width: 140 }}
+            >
+              <option value="addition">Addition</option>
+              <option value="deduction">Deduction</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: colors.tertiary, marginBottom: 4 }}>Amount (₹)</label>
+            <input
+              type="number"
+              min="1"
+              step="0.01"
+              placeholder="0.00"
+              value={adjAmount}
+              onChange={e => setAdjAmount(e.target.value)}
+              style={{ ...inputStyle, width: 130 }}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label style={{ display: 'block', fontSize: 11, color: colors.tertiary, marginBottom: 4 }}>Note (required)</label>
+            <input
+              type="text"
+              placeholder="Reason for adjustment…"
+              value={adjNote}
+              onChange={e => setAdjNote(e.target.value)}
+              style={{ ...inputStyle, width: '100%' }}
+            />
+          </div>
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            style={{
+              padding: '8px 20px', fontSize: 13, fontWeight: 600, borderRadius: 7,
+              border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
+              background: adjType === 'addition' ? '#059669' : '#DC2626',
+              color: '#fff', opacity: saving ? 0.6 : 1, flexShrink: 0,
+            }}
+          >
+            {saving ? 'Saving…' : adjType === 'addition' ? '+ Add' : '− Deduct'}
+          </button>
+        </div>
+        {formErr && (
+          <div style={{ marginTop: 8, fontSize: 12, color: '#DC2626' }}>{formErr}</div>
+        )}
+      </div>
+
+      {/* History */}
+      {adjustments.length === 0 ? (
+        <div style={{ padding: '24px 20px', textAlign: 'center', fontSize: 13, color: colors.muted }}>
+          No adjustments for this employee this month.
+        </div>
+      ) : (
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${colors.border}`, background: colors.raised }}>
+                  {['Type', 'Amount', 'Note', ''].map(h => (
+                    <th key={h} style={{
+                      padding: '8px 16px', textAlign: 'left',
+                      fontSize: 11, fontWeight: 600, color: colors.tertiary,
+                      textTransform: 'uppercase', letterSpacing: '0.05em',
+                    }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {adjustments.map((a, i) => (
+                  <tr key={a.id} style={{ borderBottom: i < adjustments.length - 1 ? `1px solid ${colors.border}` : 'none' }}>
+                    <td style={{ padding: '9px 16px' }}>
+                      <span style={{
+                        display: 'inline-block', padding: '2px 9px', borderRadius: 20, fontSize: 11.5, fontWeight: 600,
+                        background: a.adjustment_type === 'addition' ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.08)',
+                        color: a.adjustment_type === 'addition' ? '#059669' : '#DC2626',
+                      }}>
+                        {a.adjustment_type === 'addition' ? 'Addition' : 'Deduction'}
+                      </span>
+                    </td>
+                    <td style={{
+                      padding: '9px 16px', fontVariantNumeric: 'tabular-nums', fontWeight: 600,
+                      color: a.adjustment_type === 'addition' ? '#059669' : '#DC2626',
+                    }}>
+                      {a.adjustment_type === 'addition' ? '+' : '−'}{fmt(a.amount)}
+                    </td>
+                    <td style={{ padding: '9px 16px', color: colors.secondary }}>{a.description}</td>
+                    <td style={{ padding: '9px 16px' }}>
+                      <button
+                        onClick={() => handleDelete(a.id)}
+                        disabled={deleting === a.id}
+                        style={{
+                          fontSize: 12, color: '#DC2626', background: 'none', border: 'none',
+                          cursor: deleting === a.id ? 'not-allowed' : 'pointer', opacity: deleting === a.id ? 0.5 : 1,
+                          padding: '3px 8px', borderRadius: 5,
+                        }}
+                      >
+                        {deleting === a.id ? '…' : 'Delete'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{
+            padding: '12px 20px', borderTop: `1px solid ${colors.border}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: colors.secondary }}>Net Adjustment</span>
+            <span style={{
+              fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+              color: netAdj >= 0 ? '#059669' : '#DC2626',
+            }}>
+              {netAdj >= 0 ? '+' : '−'}{fmt(Math.abs(netAdj))}
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PayrollMonthlyReviewDetailPage() {
@@ -133,6 +349,8 @@ export default function PayrollMonthlyReviewDetailPage() {
   const [fetching, setFetching] = useState(false)
   const [data,     setData]     = useState<DetailData | null>(null)
   const [error,    setError]    = useState('')
+  const [token,    setToken]    = useState('')
+  const [saving,   setSaving]   = useState(false)
 
   const params       = useParams()
   const searchParams = useSearchParams()
@@ -142,6 +360,18 @@ export default function PayrollMonthlyReviewDetailPage() {
   const userId = params.userId as string
   const year   = parseInt(searchParams.get('year')  ?? '0', 10)
   const month  = parseInt(searchParams.get('month') ?? '0', 10)
+
+  const loadDetail = async (tok: string) => {
+    setFetching(true)
+    const res  = await fetch(
+      `/api/payroll/monthly-review/detail?year=${year}&month=${month}&employee_id=${userId}`,
+      { headers: { Authorization: `Bearer ${tok}` } },
+    )
+    const json = await res.json()
+    if (res.ok) setData(json as DetailData)
+    else setError(json.error ?? 'Failed to load detail')
+    setFetching(false)
+  }
 
   useEffect(() => {
     const init = async () => {
@@ -156,22 +386,9 @@ export default function PayrollMonthlyReviewDetailPage() {
 
       if (!prof || prof.role !== 'admin') { router.push('/dashboard'); return }
       setProfile(prof as UserProfile)
+      setToken(session.access_token)
 
-      if (userId && year && month) {
-        setFetching(true)
-        const res  = await fetch(
-          `/api/payroll/monthly-review/detail?year=${year}&month=${month}&employee_id=${userId}`,
-          { headers: { Authorization: `Bearer ${session.access_token}` } },
-        )
-        const json = await res.json()
-        if (res.ok) {
-          setData(json as DetailData)
-        } else {
-          setError(json.error ?? 'Failed to load detail')
-        }
-        setFetching(false)
-      }
-
+      if (userId && year && month) await loadDetail(session.access_token)
       setLoading(false)
     }
     init()
@@ -181,6 +398,33 @@ export default function PayrollMonthlyReviewDetailPage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
+  }
+
+  const handleAddAdjustment = async (adjType: 'addition' | 'deduction', amount: number, note: string) => {
+    setSaving(true)
+    const res = await fetch('/api/payroll/adjustments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ employee_id: userId, year, month, adjustment_type: adjType, amount, note }),
+    })
+    if (res.ok) await loadDetail(token)
+    else {
+      const json = await res.json()
+      setError(json.error ?? 'Failed to save adjustment')
+    }
+    setSaving(false)
+  }
+
+  const handleDeleteAdjustment = async (id: string) => {
+    const res = await fetch(`/api/payroll/adjustments/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) await loadDetail(token)
+    else {
+      const json = await res.json()
+      setError(json.error ?? 'Failed to delete adjustment')
+    }
   }
 
   if (loading) return <LoadingScreen />
@@ -317,8 +561,24 @@ export default function PayrollMonthlyReviewDetailPage() {
                 <div style={card}>
                   <SectionHeader title="Salary Breakdown" />
                   <Row label="Gross Salary (CTC)"  value={fmt(data.summary.gross_salary)} highlight />
-                  <Row label="Total Deductions"    value={data.summary.total_deductions > 0 ? `−${fmt(data.summary.total_deductions)}` : '—'} valueColor={data.summary.total_deductions > 0 ? '#DC2626' : colors.tertiary} />
-                  <Row label="Adjustments"         value="—" />
+                  <Row
+                    label="Total Deductions"
+                    value={data.summary.total_deductions > 0 ? `−${fmt(data.summary.total_deductions)}` : '—'}
+                    valueColor={data.summary.total_deductions > 0 ? '#DC2626' : colors.tertiary}
+                  />
+                  <Row
+                    label="Adjustments"
+                    value={
+                      data.summary.adjustment_total !== 0
+                        ? `${data.summary.adjustment_total >= 0 ? '+' : '−'}${fmt(Math.abs(data.summary.adjustment_total))}`
+                        : '—'
+                    }
+                    valueColor={
+                      data.summary.adjustment_total > 0 ? '#059669'
+                      : data.summary.adjustment_total < 0 ? '#DC2626'
+                      : colors.tertiary
+                    }
+                  />
                 </div>
 
                 {/* Deduction lines */}
@@ -326,7 +586,6 @@ export default function PayrollMonthlyReviewDetailPage() {
                   <div style={card}>
                     <SectionHeader title="Deduction Lines" />
 
-                    {/* Summary chips by type */}
                     <div style={{ padding: '12px 20px 0', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {Object.entries(
                         data.deduction_lines.reduce<Record<string, { count: number; total: number }>>((acc, l) => {
@@ -355,7 +614,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
                           <tr style={{ borderBottom: `1px solid ${colors.border}`, background: colors.raised }}>
-                            {['Date', 'Type', 'Hours', 'Amount'].map(h => (
+                            {['Date', 'Attendance', 'Type', 'Hours', 'Amount'].map(h => (
                               <th key={h} style={{
                                 padding: '8px 16px', textAlign: 'left',
                                 fontSize: 11, fontWeight: 600, color: colors.tertiary,
@@ -371,6 +630,11 @@ export default function PayrollMonthlyReviewDetailPage() {
                             <tr key={i} style={{ borderBottom: i < data.deduction_lines.length - 1 ? `1px solid ${colors.border}` : 'none' }}>
                               <td style={{ padding: '9px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
                                 {fmtDate(l.line_date)}
+                              </td>
+                              <td style={{ padding: '9px 16px', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontSize: 12, color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>
+                                  {fmtAttendance(l.check_in_at, l.check_out_at)}
+                                </span>
                               </td>
                               <td style={{ padding: '9px 16px', color: colors.secondary }}>
                                 {DEDUCTION_LABELS[l.deduction_type] ?? l.deduction_type}
@@ -402,6 +666,14 @@ export default function PayrollMonthlyReviewDetailPage() {
                   </div>
                 )}
 
+                {/* Adjustments panel */}
+                <AdjustmentsPanel
+                  adjustments={data.adjustments}
+                  onAdd={handleAddAdjustment}
+                  onDelete={handleDeleteAdjustment}
+                  saving={saving}
+                />
+
                 {/* Net salary */}
                 <div style={{
                   background: 'linear-gradient(135deg, #1A2035 0%, #2D3A55 100%)',
@@ -416,7 +688,10 @@ export default function PayrollMonthlyReviewDetailPage() {
                         Estimated Net Salary
                       </div>
                       <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
-                        Gross − Deductions · Adjustments excluded
+                        Gross − Deductions
+                        {data.summary.adjustment_total !== 0 && (
+                          <> {data.summary.adjustment_total > 0 ? '+' : '−'} Adjustments</>
+                        )}
                       </div>
                     </div>
                     <div style={{ fontSize: 28, fontWeight: 800, color: '#E8A030', fontVariantNumeric: 'tabular-nums' }}>
@@ -426,8 +701,7 @@ export default function PayrollMonthlyReviewDetailPage() {
                 </div>
 
                 <div style={{ fontSize: 12, color: colors.tertiary, lineHeight: 1.7 }}>
-                  <strong style={{ color: colors.secondary }}>Preview only</strong> — pending salary adjustments are not included.
-                  Run Generate on the Payroll Period to produce the final result.
+                  <strong style={{ color: colors.secondary }}>Preview only</strong> — adjustments are included in net salary above but payroll has not been locked yet.
                 </div>
               </>
             )}

@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
 import { fetchAttendanceForPeriod, fetchHolidaysForPeriod } from '@/lib/payroll/store'
 import { isSkip } from '@/lib/payroll/types'
-import type { EngineEmployee } from '@/lib/payroll/types'
+import type { EngineEmployee, EnginePendingAdjustment } from '@/lib/payroll/types'
 
 type EmployeeRow = EngineEmployee & {
   full_name: string
@@ -67,18 +67,34 @@ export async function GET(req: NextRequest) {
     status: 'draft' as const,
   }
 
-  let attendance: Awaited<ReturnType<typeof fetchAttendanceForPeriod>>
-  let holidays:   Awaited<ReturnType<typeof fetchHolidaysForPeriod>>
+  let attendance:   Awaited<ReturnType<typeof fetchAttendanceForPeriod>>
+  let holidays:     Awaited<ReturnType<typeof fetchHolidaysForPeriod>>
+  let adjustments:  EnginePendingAdjustment[] = []
   try {
-    ;[attendance, holidays] = await Promise.all([
+    const [att, hols, adjResult] = await Promise.all([
       fetchAttendanceForPeriod(svc, employee.id, month, year),
       fetchHolidaysForPeriod(svc, month, year),
+      svc
+        .from('payroll_pending_adjustments')
+        .select('id, adjustment_type, amount, description')
+        .eq('employee_id',   employee.id)
+        .eq('payroll_year',  year)
+        .eq('payroll_month', month)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false }),
     ])
+    attendance  = att
+    holidays    = hols
+    adjustments = (adjResult.data ?? []).map(a => ({
+      id:          a.id,
+      amount:      a.adjustment_type === 'deduction' ? -a.amount : a.amount,
+      description: a.description,
+    }))
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
 
-  const outcome = generatePayrollForEmployee(employee, previewPeriod, attendance, holidays, [])
+  const outcome = generatePayrollForEmployee(employee, previewPeriod, attendance, holidays, adjustments)
 
   if (isSkip(outcome)) {
     return NextResponse.json({
@@ -115,8 +131,22 @@ export async function GET(req: NextRequest) {
       short_hours_deduction:     outcome.short_hours_deduction,
       missing_punch_hours:       outcome.missing_punch_hours,
       total_deductions:          outcome.total_deductions,
+      adjustment_total:          outcome.pending_adjustment_total,
       net_salary:                outcome.net_salary,
     },
-    deduction_lines: outcome.deduction_lines,
+    deduction_lines: (() => {
+      const attByDate = new Map(attendance.map(a => [a.attendance_date, a]))
+      return outcome.deduction_lines.map(line => ({
+        ...line,
+        check_in_at:  attByDate.get(line.line_date)?.check_in_at  ?? null,
+        check_out_at: attByDate.get(line.line_date)?.check_out_at ?? null,
+      }))
+    })(),
+    adjustments: adjustments.map(a => ({
+      id:              a.id,
+      adjustment_type: a.amount >= 0 ? 'addition' : 'deduction',
+      amount:          Math.abs(a.amount),
+      description:     a.description,
+    })),
   })
 }
