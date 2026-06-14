@@ -193,7 +193,7 @@ export function DashboardLayout({
           <CollapsibleNav
             label="My Tasks"
             icon={<ClipboardList size={15} strokeWidth={1.8} />}
-            active={pathname === '/tasks/my' || pathname === '/tasks/my/completed'}
+            active={pathname === '/tasks/my' || pathname === '/tasks/my/completed' || pathname === '/tasks/cancelled'}
             count={navCounts.myActive || undefined}
           >
             <NavChild
@@ -207,13 +207,18 @@ export function DashboardLayout({
               active={pathname === '/tasks/my/completed'}
               onClick={() => navTo('/tasks/my/completed')}
             />
+            <NavChild
+              label="Cancelled"
+              active={pathname === '/tasks/cancelled'}
+              onClick={() => navTo('/tasks/cancelled')}
+            />
           </CollapsibleNav>
 
           {/* 4. Assigned By Me */}
           <CollapsibleNav
             label="Assigned By Me"
             icon={<CheckSquare size={15} strokeWidth={1.8} />}
-            active={pathname === '/tasks/assigned-by-me' || pathname === '/tasks/assigned-by-me/completed'}
+            active={pathname === '/tasks/assigned-by-me' || pathname === '/tasks/assigned-by-me/completed' || pathname === '/tasks/assigned-by-me/cancelled'}
             count={navCounts.assignedByMeActive || undefined}
           >
             <NavChild
@@ -226,6 +231,11 @@ export function DashboardLayout({
               label="Completed"
               active={pathname === '/tasks/assigned-by-me/completed'}
               onClick={() => navTo('/tasks/assigned-by-me/completed')}
+            />
+            <NavChild
+              label="Cancelled"
+              active={pathname === '/tasks/assigned-by-me/cancelled'}
+              onClick={() => navTo('/tasks/assigned-by-me/cancelled')}
             />
           </CollapsibleNav>
 

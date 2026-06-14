@@ -390,6 +390,7 @@ export default function TaskDetailPage() {
     setCancelOtherText('')
     await loadLog(task.id)
     setCancelling(false)
+    setTimeout(() => router.push('/tasks/cancelled'), 600)
   }
 
   const saveComment = async () => {

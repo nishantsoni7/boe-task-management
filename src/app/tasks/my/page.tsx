@@ -52,14 +52,14 @@ const H48       = 48 * 60 * 60 * 1000
 
 function isOverdue(task: Task) {
   const d = normalizeDueDate(task.due_date)
-  return !!d && d < TODAY_STR && task.status !== 'completed'
+  return !!d && d < TODAY_STR && task.status !== 'completed' && task.status !== 'cancelled'
 }
 function needsUpdate(task: Task) {
-  if (task.status === 'completed') return false
+  if (task.status === 'completed' || task.status === 'cancelled') return false
   return NOW_MS - new Date(task.last_update_at ?? task.created_at).getTime() > H48
 }
 function isUnacknowledged(task: Task) {
-  return !task.acknowledged_at && task.status !== 'completed' && task.created_by !== task.assigned_to
+  return !task.acknowledged_at && task.status !== 'completed' && task.status !== 'cancelled' && task.created_by !== task.assigned_to
 }
 function isNonCompletion(task: Task) {
   return isOverdue(task) && needsUpdate(task)
@@ -886,7 +886,7 @@ export default function MyTasksPage() {
 
       const [{ data: callerProfile }, { data: tasks }] = await Promise.all([
         supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', loggedInId).single(),
-        supabase.from('tasks').select(TASK_COLUMNS).eq('assigned_to', uid).order('due_date', { ascending: true, nullsFirst: false }),
+        supabase.from('tasks').select(TASK_COLUMNS).eq('assigned_to', uid).neq('status', 'cancelled').order('due_date', { ascending: true, nullsFirst: false }),
       ])
 
       if (viewAsUserId && callerProfile?.role !== 'admin') {
@@ -1093,9 +1093,9 @@ export default function MyTasksPage() {
     const sortImportantFirst = (arr: Task[]) =>
       [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
 
-    // "All" shows active tasks only — completed tasks are only visible in the Completed tab
-    const all            = sortImportantFirst(baseTasks.filter(t => t.status !== 'completed'))
-    const important      = sortImportantFirst(baseTasks.filter(t => t.is_urgent && t.status !== 'completed'))
+    // "All" shows active tasks only — completed/cancelled tasks are only visible in their respective tabs
+    const all            = sortImportantFirst(baseTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled'))
+    const important      = sortImportantFirst(baseTasks.filter(t => t.is_urgent && t.status !== 'completed' && t.status !== 'cancelled'))
     const unacknowledged = sortImportantFirst(baseTasks.filter(isUnacknowledged))
     const in_progress    = sortImportantFirst(baseTasks.filter(t =>
       !isOverdue(t) && t.status !== 'completed' && ['started', 'working', 'pending'].includes(t.status)
@@ -1123,7 +1123,7 @@ export default function MyTasksPage() {
   useEffect(() => {
     console.group('[MyTasks] Focus card debug')
     console.log('TODAY_STR:', TODAY_STR, '  TOMORROW_STR:', TOMORROW_STR)
-    baseTasks.filter(t => t.status !== 'completed').forEach(t => {
+    baseTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').forEach(t => {
       const norm = normalizeDueDate(t.due_date)
       const bucket = norm === TODAY_STR ? 'TODAY' : norm === TOMORROW_STR ? 'TOMORROW' : norm && norm < TODAY_STR ? 'OVERDUE' : 'other'
       console.log(`[${bucket}] "${t.title}" | raw due_date: ${t.due_date} | normalized: ${norm} | status: ${t.status}`)
@@ -1140,9 +1140,9 @@ export default function MyTasksPage() {
     }
     if (filterStatus)   tasks = tasks.filter(t => t.status === filterStatus)
     if (filterPriority) tasks = tasks.filter(t => t.priority === filterPriority)
-    if (focusFilter === 'overdue')   tasks = tasks.filter(t => { const d = normalizeDueDate(t.due_date); return t.status !== 'completed' && !!d && d < TODAY_STR })
-    if (focusFilter === 'today')     tasks = tasks.filter(t => t.status !== 'completed' && normalizeDueDate(t.due_date) === TODAY_STR)
-    if (focusFilter === 'tomorrow')  tasks = tasks.filter(t => t.status !== 'completed' && normalizeDueDate(t.due_date) === TOMORROW_STR)
+    if (focusFilter === 'overdue')   tasks = tasks.filter(t => { const d = normalizeDueDate(t.due_date); return t.status !== 'completed' && t.status !== 'cancelled' && !!d && d < TODAY_STR })
+    if (focusFilter === 'today')     tasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && normalizeDueDate(t.due_date) === TODAY_STR)
+    if (focusFilter === 'tomorrow')  tasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && normalizeDueDate(t.due_date) === TOMORROW_STR)
     return tasks
   }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy, focusFilter])
 
@@ -1199,9 +1199,9 @@ export default function MyTasksPage() {
           {/* ── Sidebar / pill tabs ── */}
           {(() => {
             const typeCounts: Record<TaskType, number> = {
-              all:       allTasks.filter(t => t.status !== 'completed').length,
-              self:      allTasks.filter(t => t.created_by === userId && t.status !== 'completed').length,
-              delegated: allTasks.filter(t => t.created_by !== userId && t.status !== 'completed').length,
+              all:       allTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length,
+              self:      allTasks.filter(t => t.created_by === userId && t.status !== 'completed' && t.status !== 'cancelled').length,
+              delegated: allTasks.filter(t => t.created_by !== userId && t.status !== 'completed' && t.status !== 'cancelled').length,
             }
             const handleTypeChange = (key: TaskType) => {
               setTaskType(key)
@@ -1314,7 +1314,7 @@ export default function MyTasksPage() {
 
             {/* Focus date cards */}
             {(() => {
-              const activeTasks = baseTasks.filter(t => t.status !== 'completed')
+              const activeTasks = baseTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')
               const focusCards = [
                 {
                   key: 'overdue' as const,

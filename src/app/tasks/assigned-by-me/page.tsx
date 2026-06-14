@@ -30,14 +30,14 @@ const NOW_MS    = Date.now()
 const H48       = 48 * 60 * 60 * 1000
 
 function isOverdue(task: Task) {
-  return !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed'
+  return !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed' && task.status !== 'cancelled'
 }
 function needsUpdate(task: Task) {
-  if (task.status === 'completed') return false
+  if (task.status === 'completed' || task.status === 'cancelled') return false
   return NOW_MS - new Date(task.last_update_at ?? task.created_at).getTime() > H48
 }
 function isUnacknowledged(task: Task) {
-  return !task.acknowledged_at && task.status !== 'completed' && task.created_by !== task.assigned_to
+  return !task.acknowledged_at && task.status !== 'completed' && task.status !== 'cancelled' && task.created_by !== task.assigned_to
 }
 function isNonCompletion(task: Task) {
   return isOverdue(task) && needsUpdate(task)
@@ -859,6 +859,7 @@ export default function AssignedByMePage() {
           .not('assigned_to', 'is', null)
           .neq('assigned_to', uid)
           .neq('status', 'completed')
+          .neq('status', 'cancelled')
           .order('due_date', { ascending: true, nullsFirst: false }),
         supabase.from('users').select('id, full_name'),
         supabase.from('users').select('id, full_name, team, role, email, phone, is_active, created_at').eq('is_active', true).order('full_name'),

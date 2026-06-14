@@ -6,14 +6,13 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors, font } from '@/lib/tokens'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { initials } from '@/lib/ui'
 import {
   Plus, Package, AlertTriangle, CheckCircle2,
   Clock, Phone, MapPin,
   ThumbsUp, ThumbsDown, Send, X, ShieldCheck, Info, RotateCcw,
-  LayoutList, CheckCheck, Truck, Archive, LogOut, Home, Printer, Pencil, Trash2,
-  Bell,
+  Truck, Printer, Pencil, Trash2,
 } from 'lucide-react'
+import { SamplesLayout, TABS, type TabKey } from '@/components/layout/SamplesLayout'
 import { QRCodeSVG } from 'qrcode.react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -59,20 +58,6 @@ type SampleRequest = {
   dispatched_by_name?: string
   lost_by_name?: string
 }
-
-// ─── Tab config ───────────────────────────────────────────────────────────────
-
-type TabKey = 'all' | 'pending_approval' | 'approved' | 'qr_submitted' | 'dispatched' | 'rejected' | 'closed'
-
-const TABS: { key: TabKey; label: string; accent: string; Icon: React.ElementType }[] = [
-  { key: 'all',              label: 'All Requests',     accent: '#5B7FA6', Icon: LayoutList  },
-  { key: 'pending_approval', label: 'Pending Approval', accent: '#B45309', Icon: Clock       },
-  { key: 'approved',         label: 'Approved',         accent: '#2E9E6B', Icon: CheckCheck  },
-  { key: 'qr_submitted',     label: 'QR Submitted',     accent: '#7C3AED', Icon: Send        },
-  { key: 'dispatched',       label: 'Dispatched / Out', accent: '#1A2035', Icon: Truck       },
-  { key: 'rejected',         label: 'Rejected',         accent: '#D94F4F', Icon: ThumbsDown  },
-  { key: 'closed',           label: 'Closed',           accent: '#6B7A99', Icon: Archive     },
-]
 
 // ─── Static data ──────────────────────────────────────────────────────────────
 
@@ -134,40 +119,22 @@ function mapRows(rows: any[]): SampleRequest[] {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-type SampleNotif = {
-  id: string
-  title: string
-  body: string | null
-  is_read: boolean
-  created_at: string
-}
-
 export default function SamplesPage() {
   const [profile, setProfile]         = useState<UserProfile | null>(null)
   const [requests, setRequests]       = useState<SampleRequest[]>([])
   const [loading, setLoading]         = useState(true)
   const [activeTab, setActiveTab]     = useState<TabKey>('all')
   const [showModal, setShowModal]     = useState(false)
-  const [notifOpen, setNotifOpen]     = useState(false)
-  const [notifs, setNotifs]           = useState<SampleNotif[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
-
-  const fetchNotifs = async () => {
-    const res = await fetch('/api/samples/notifications')
-    if (!res.ok) return
-    const { notifications: list, unreadCount: count } = await res.json()
-    setNotifs(list ?? [])
-    setUnreadCount(count ?? 0)
-  }
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const [{ data: profileData }, { data: rows, error: rowsErr }] = await Promise.all([
+      const [{ data: profileData }, { data: rows, error: rowsErr }, countRes] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
@@ -185,15 +152,19 @@ export default function SamplesPage() {
             lost_by_user:users!lost_by(full_name)
           `)
           .order('created_at', { ascending: false }),
+        fetch('/api/samples/notifications?count=1'),
       ])
 
       if (rowsErr) console.error('[samples] init fetch failed:', rowsErr)
       setProfile(profileData as UserProfile)
       if (rows) setRequests(mapRows(rows))
+      if (countRes.ok) {
+        const { unreadCount: count } = await countRes.json()
+        setUnreadCount(count ?? 0)
+      }
       setLoading(false)
     }
     init()
-    fetchNotifs()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -243,290 +214,66 @@ export default function SamplesPage() {
   const visibleRequests = buckets[activeTab]
 
   return (
-    <div className="boe-app-shell">
-
-      {/* ── Sidebar ── */}
-      <aside className="boe-sidebar">
-
-        {/* Brand */}
-        <div className="boe-sidebar-brand">
-          <div className="boe-sidebar-brand-icon">
-            <Package size={15} color="#E8A030" strokeWidth={2} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="boe-sidebar-brand-name">BOE</div>
-            <div className="boe-sidebar-brand-sub">Sample Tracking</div>
-          </div>
-          {/* Notifications bell */}
+    <>
+      <SamplesLayout
+        profile={profile}
+        activeSection={activeTab}
+        counts={counts}
+        unreadCount={unreadCount}
+        title="Sample Tracking"
+        onTabSelect={setActiveTab}
+        onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
+        actions={
           <button
-            onClick={() => { setNotifOpen(o => !o); if (!notifOpen) fetchNotifs() }}
-            title="Notifications"
+            onClick={() => setShowModal(true)}
             style={{
-              position: 'relative',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: '7px',
-              background: notifOpen ? 'rgba(232,160,48,0.22)' : 'rgba(232,160,48,0.12)',
-              border: '1px solid rgba(232,160,48,0.25)',
-              color: '#E8A030', cursor: 'pointer', flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', borderRadius: '8px', border: 'none',
+              background: '#1A2035', color: '#fff',
+              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+              transition: 'opacity 0.12s', whiteSpace: 'nowrap',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.22)' }}
-            onMouseLeave={e => { if (!notifOpen) e.currentTarget.style.background = 'rgba(232,160,48,0.12)' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
           >
-            <Bell size={14} strokeWidth={2} />
-            {unreadCount > 0 && (
-              <span style={{
-                position: 'absolute', top: -4, right: -4,
-                minWidth: 14, height: 14, borderRadius: '999px',
-                background: '#E8A030', color: '#fff',
-                fontSize: '9px', fontWeight: 700, lineHeight: '14px',
-                textAlign: 'center', padding: '0 3px',
-                fontFamily: font.body,
-              }}>
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
+            <Plus size={13} strokeWidth={2.5} />
+            New Request
           </button>
+        }
+      >
+        <div style={{ maxWidth: '900px', width: '100%' }}>
+          {/* Section heading */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>
+              {activeTabMeta.label}
+            </span>
+            <span style={{
+              fontSize: '11px', fontWeight: 600,
+              color: counts[activeTab] > 0 ? activeTabMeta.accent : colors.muted,
+              background: 'rgba(0,0,0,0.05)', padding: '2px 8px', borderRadius: '999px',
+            }}>
+              {counts[activeTab]}
+            </span>
+          </div>
 
-          <button
-            onClick={() => router.push('/')}
-            title="Home"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(232,160,48,0.12)',
-              border: '1px solid rgba(232,160,48,0.25)',
-              color: '#E8A030', cursor: 'pointer', flexShrink: 0,
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.22)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.12)' }}
-          >
-            <Home size={14} strokeWidth={2} />
-          </button>
-        </div>
-
-        {/* Nav items */}
-        <div className="boe-sidebar-section">
-          {TABS.map((tab, i) => {
-            const isActive = activeTab === tab.key
-            const { Icon } = tab
-            const count = counts[tab.key]
-            return (
-              <button
-                key={tab.key}
-                className={`boe-nav-item${isActive ? ' active' : ''}`}
-                onClick={() => setActiveTab(tab.key)}
-                style={{ fontWeight: isActive ? 600 : 400, marginBottom: i < TABS.length - 1 ? '2px' : 0 }}
-              >
-                <span style={{ color: isActive ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
-                  <Icon size={15} strokeWidth={1.8} />
-                </span>
-                {tab.label}
-                {count > 0 && (
-                  <span style={{
-                    marginLeft: 'auto',
-                    fontSize: '10px', fontWeight: 600, color: '#8C94A6',
-                    background: 'rgba(0,0,0,0.07)', borderRadius: '999px',
-                    padding: '1px 6px', lineHeight: '15px',
-                  }}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Profile + sign out */}
-        {profile && (
-          <div style={{ marginTop: 'auto', borderTop: '1px solid rgba(0,0,0,0.07)', padding: '10px 10px 6px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px 6px' }}>
-              <div style={{
-                width: 30, height: 30, borderRadius: '8px', background: '#1A2035',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '11px', fontWeight: 700, color: '#E8A030', flexShrink: 0,
-              }}>
-                {initials(profile.full_name)}
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#111318', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {profile.full_name}
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#8C94A6', textTransform: 'capitalize' }}>
-                  {profile.role} · {profile.team}
-                </div>
-              </div>
+          {visibleRequests.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {visibleRequests.map(r => (
+                <RequestCard
+                  key={r.id}
+                  request={r}
+                  isAdmin={isAdmin}
+                  currentUserId={profile?.id ?? ''}
+                  supabase={supabase}
+                  onRefresh={refresh}
+                />
+              ))}
             </div>
-            <button
-              className="boe-nav-item"
-              onClick={async () => { await supabase.auth.signOut(); router.replace('/login') }}
-              style={{ color: '#8C94A6', fontSize: '12.5px', gap: '8px' }}
-            >
-              <LogOut size={14} strokeWidth={1.8} />
-              Sign out
-            </button>
-          </div>
-        )}
-      </aside>
-
-      {/* ── Sample Notifications panel ── */}
-      {notifOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 220, bottom: 0, width: 340,
-          background: '#fff', borderRight: `1px solid ${colors.border}`,
-          boxShadow: '4px 0 20px rgba(0,0,0,0.08)',
-          zIndex: 50, display: 'flex', flexDirection: 'column',
-          fontFamily: font.body,
-        }}>
-          {/* Header */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '16px 16px 12px', borderBottom: `1px solid ${colors.border}`,
-            flexShrink: 0,
-          }}>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Notifications</div>
-              {unreadCount > 0 && (
-                <div style={{ fontSize: '11px', color: colors.muted, marginTop: 2 }}>{unreadCount} unread</div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {unreadCount > 0 && (
-                <button
-                  onClick={async () => {
-                    await fetch('/api/samples/notifications', { method: 'PATCH' })
-                    setNotifs(prev => prev.map(n => ({ ...n, is_read: true })))
-                    setUnreadCount(0)
-                  }}
-                  style={{
-                    fontSize: '11px', fontWeight: 600, color: colors.blue,
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '4px 8px', borderRadius: 6,
-                    fontFamily: font.body,
-                  }}
-                >
-                  Mark all read
-                </button>
-              )}
-              <button
-                onClick={() => setNotifOpen(false)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: 26, height: 26, borderRadius: 6,
-                  background: colors.float, border: 'none', cursor: 'pointer', color: colors.muted,
-                }}
-              >
-                <X size={13} strokeWidth={2} />
-              </button>
-            </div>
-          </div>
-
-          {/* List */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-            {notifs.length === 0 ? (
-              <div style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', height: '100%', gap: 8,
-                color: colors.muted, fontSize: '13px',
-              }}>
-                <Bell size={28} strokeWidth={1.4} />
-                No notifications yet
-              </div>
-            ) : notifs.map(n => (
-              <div
-                key={n.id}
-                onClick={async () => {
-                  if (!n.is_read) {
-                    await fetch(`/api/samples/notifications/${n.id}`, { method: 'PATCH' })
-                    setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x))
-                    setUnreadCount(c => Math.max(0, c - 1))
-                  }
-                }}
-                style={{
-                  padding: '10px 16px',
-                  borderLeft: n.is_read ? '3px solid transparent' : '3px solid #E8A030',
-                  background: n.is_read ? 'transparent' : 'rgba(232,160,48,0.04)',
-                  cursor: 'default',
-                  borderBottom: `1px solid ${colors.border}`,
-                }}
-              >
-                <div style={{ fontSize: '12.5px', fontWeight: n.is_read ? 400 : 600, color: colors.primary, lineHeight: 1.4 }}>
-                  {n.title}
-                </div>
-                {n.body && (
-                  <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: 2 }}>{n.body}</div>
-                )}
-                <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: 4 }}>
-                  {new Date(n.created_at).toLocaleString()}
-                </div>
-              </div>
-            ))}
-          </div>
+          )}
         </div>
-      )}
-
-      {/* ── Main content ── */}
-      <div className="boe-main-content">
-
-        {/* Page header */}
-        <div className="boe-page-header">
-          <div className="boe-page-title-group">
-            <div className="boe-page-title">Sample Tracking</div>
-          </div>
-          <div className="boe-header-actions">
-            <button
-              onClick={() => setShowModal(true)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '7px 14px', borderRadius: '8px', border: 'none',
-                background: '#1A2035', color: '#fff',
-                fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                transition: 'opacity 0.12s', whiteSpace: 'nowrap',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-            >
-              <Plus size={13} strokeWidth={2.5} />
-              New Request
-            </button>
-          </div>
-        </div>
-
-        {/* Page body */}
-        <div className="boe-page-body">
-          <div style={{ maxWidth: '720px', width: '100%' }}>
-            {/* Section heading */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>
-                {activeTabMeta.label}
-              </span>
-              <span style={{
-                fontSize: '11px', fontWeight: 600,
-                color: counts[activeTab] > 0 ? activeTabMeta.accent : colors.muted,
-                background: 'rgba(0,0,0,0.05)', padding: '2px 8px', borderRadius: '999px',
-              }}>
-                {counts[activeTab]}
-              </span>
-            </div>
-
-            {visibleRequests.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {visibleRequests.map(r => (
-                  <RequestCard
-                    key={r.id}
-                    request={r}
-                    isAdmin={isAdmin}
-                    currentUserId={profile?.id ?? ''}
-                    supabase={supabase}
-                    onRefresh={refresh}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      </SamplesLayout>
 
       {showModal && profile && (
         <NewRequestModal
@@ -536,7 +283,7 @@ export default function SamplesPage() {
           onSaved={() => { setShowModal(false); refresh() }}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -578,7 +325,7 @@ function RequestCard({
   const isClosed    = r.status === 'returned' || r.status === 'lost'
   const isRequester = r.requested_by === currentUserId
 
-  const sampleLabel = `${r.catalog_type} – ${r.catalog_name}`
+  const sampleLabel = `${catalogLabel(r.catalog_type)} – ${r.catalog_name}`
 
   const notifySample = (event: string) => {
     fetch('/api/samples/notify', {
@@ -728,64 +475,96 @@ function RequestCard({
 
       <div style={{ padding: '14px 16px' }}>
 
-        {/* Top row */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-          <div style={{ display: 'flex', gap: '11px', flex: 1, minWidth: 0 }}>
-            <div style={{ width: 38, height: 38, borderRadius: '9px', flexShrink: 0, background: `${meta.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: meta.color }}>
-              <Package size={17} strokeWidth={1.8} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '14.5px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>{r.catalog_name}</span>
-                <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: meta.bg, color: meta.color }}>{meta.label}</span>
+        {/* Card info: left (identity + client/accountability grid) | right (dates) */}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+
+          {/* Left column */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Identity */}
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+              <div style={{ width: 36, height: 36, borderRadius: '9px', flexShrink: 0, background: `${meta.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: meta.color }}>
+                <Package size={16} strokeWidth={1.8} />
               </div>
-              <div style={{ fontSize: '12.5px', color: colors.muted, marginTop: '2px' }}>{catalogLabel(r.catalog_type)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>{r.catalog_name}</span>
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: meta.bg, color: meta.color }}>{meta.label}</span>
+                </div>
+                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '1px' }}>{catalogLabel(r.catalog_type)}</div>
+              </div>
+            </div>
+
+            {/* Client + Accountability 2-column grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px', marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
+              <div>
+                <div style={{ fontSize: '10.5px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Client</div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{r.client_name}</div>
+                {r.client_phone && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: colors.tertiary, marginTop: '3px' }}>
+                    <Phone size={11} strokeWidth={1.8} />{r.client_phone}
+                  </div>
+                )}
+                {r.client_address && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: colors.tertiary, marginTop: '2px' }}>
+                    <MapPin size={11} strokeWidth={1.8} />{r.client_address}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: '10.5px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Accountability</div>
+                <div style={{ fontSize: '12px', color: colors.secondary }}>Req: <strong>{r.requested_by_name ?? 'Staff'}</strong></div>
+                {r.approved_by_name && <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>Approved: <strong>{r.approved_by_name}</strong></div>}
+                {r.received_by_name && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: colors.green, marginTop: '2px', flexWrap: 'wrap' }}>
+                    <ShieldCheck size={11} strokeWidth={2} />
+                    Verified: <strong>{r.received_by_name}</strong>
+                    {r.received_at && <span style={{ color: colors.muted }}>on {formatDate(r.received_at)}</span>}
+                    {r.received_note && <span style={{ color: colors.muted }}>— {r.received_note}</span>}
+                  </div>
+                )}
+                {r.last_followup_date && (
+                  <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+                    Follow-up: <strong style={{ color: colors.secondary }}>{formatDate(r.last_followup_date)}</strong>
+                    {r.last_followup_note && ` — ${r.last_followup_note}`}
+                  </div>
+                )}
+                {r.notes && <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>Note: {r.notes}</div>}
+              </div>
             </div>
           </div>
-          <div style={{ textAlign: 'right', flexShrink: 0, fontSize: '12px' }}>
-            <div style={{ color: colors.tertiary }}>Requested <strong style={{ color: colors.secondary }}>{formatDate(r.created_at)}</strong></div>
-            {r.dispatched_at && <div style={{ color: colors.tertiary, marginTop: '2px' }}>Dispatched <strong style={{ color: colors.secondary }}>{formatDate(r.dispatched_at)}</strong></div>}
-            {r.status === 'dispatched' && r.expected_return_date && (
-              <div style={{ color: overdue ? colors.red : colors.muted, marginTop: '2px', fontWeight: overdue ? 600 : 400 }}>
-                Expected back {formatDate(r.expected_return_date)}
+
+          {/* Right column: dates */}
+          <div style={{ flexShrink: 0, fontSize: '12px', textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '5px', minWidth: '130px', paddingTop: '2px' }}>
+            <div>
+              <div style={{ color: colors.muted, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Requested</div>
+              <strong style={{ color: colors.secondary }}>{formatDate(r.created_at)}</strong>
+            </div>
+            {r.dispatched_at && (
+              <div style={{ marginTop: '4px' }}>
+                <div style={{ color: colors.muted, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Dispatched</div>
+                <strong style={{ color: colors.secondary }}>{formatDate(r.dispatched_at)}</strong>
               </div>
             )}
-            {r.status === 'returned' && r.returned_date && <div style={{ color: colors.green, marginTop: '2px', fontWeight: 600 }}>Returned {formatDate(r.returned_date)}</div>}
-            {r.status === 'rejected' && r.rejected_at && <div style={{ color: colors.red, marginTop: '2px' }}>Rejected {formatDate(r.rejected_at)}</div>}
+            {r.status === 'dispatched' && r.expected_return_date && (
+              <div style={{ marginTop: '4px' }}>
+                <div style={{ color: overdue ? colors.red : colors.muted, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Return by</div>
+                <strong style={{ color: overdue ? colors.red : colors.secondary }}>{formatDate(r.expected_return_date)}</strong>
+              </div>
+            )}
+            {r.status === 'returned' && r.returned_date && (
+              <div style={{ marginTop: '4px' }}>
+                <div style={{ color: colors.green, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Returned</div>
+                <strong style={{ color: colors.green }}>{formatDate(r.returned_date)}</strong>
+              </div>
+            )}
+            {r.status === 'rejected' && r.rejected_at && (
+              <div style={{ marginTop: '4px' }}>
+                <div style={{ color: colors.red, fontSize: '10.5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rejected</div>
+                <strong style={{ color: colors.red }}>{formatDate(r.rejected_at)}</strong>
+              </div>
+            )}
           </div>
-        </div>
 
-        {/* Client row */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
-          <span style={{ fontSize: '13px', color: colors.primary, fontWeight: 600 }}>{r.client_name}</span>
-          {r.client_phone && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12.5px', color: colors.tertiary }}>
-              <Phone size={12} strokeWidth={1.8} />{r.client_phone}
-            </span>
-          )}
-          {r.client_address && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12.5px', color: colors.tertiary }}>
-              <MapPin size={12} strokeWidth={1.8} />{r.client_address}
-            </span>
-          )}
-        </div>
-
-        {/* Meta row */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '8px', fontSize: '12px', color: colors.muted }}>
-          <span>Requested by <strong style={{ color: colors.secondary }}>{r.requested_by_name ?? 'Staff'}</strong></span>
-          {r.approved_by_name && <span>Approved by <strong style={{ color: colors.secondary }}>{r.approved_by_name}</strong></span>}
-          {r.received_by_name && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: colors.green }}>
-              <ShieldCheck size={12} strokeWidth={2} />
-              Verified by <strong style={{ color: colors.green }}>{r.received_by_name}</strong>
-              {r.received_at && <span style={{ color: colors.muted }}> on {formatDate(r.received_at)}</span>}
-              {r.received_note && <span style={{ color: colors.muted }}> — {r.received_note}</span>}
-            </span>
-          )}
-          {r.last_followup_date && (
-            <span>Last follow-up <strong style={{ color: colors.secondary }}>{formatDate(r.last_followup_date)}</strong>{r.last_followup_note && ` — ${r.last_followup_note}`}</span>
-          )}
-          {r.notes && <span>Note: {r.notes}</span>}
         </div>
 
         {/* Dispatch audit details */}
@@ -986,7 +765,7 @@ function RequestCard({
         )}
 
         {/* Verify received panel */}
-        {verifyOpen && r.status === 'dispatched' && !isRequester && (
+        {verifyOpen && r.status === 'dispatched' && (isAdmin || !isRequester) && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.greenTint, borderRadius: '8px', border: `1px solid ${colors.green}33` }}>
             <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.green, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <ShieldCheck size={13} strokeWidth={2} /> Verify Received & Close
@@ -1188,7 +967,7 @@ function ApprovalSlipModal({ request: r, onClose }: { request: SampleRequest; on
     win.document.close()
   }
 
-  const statusLabel = r.status === 'approved' ? 'Approved' : 'Dispatched'
+  const statusLabel = r.status === 'approved' ? 'Approved' : r.status === 'qr_submitted' ? 'QR Submitted' : 'Dispatched'
   const statusClass = r.status === 'approved' ? 'status-approved' : 'status-dispatched'
 
   return (
@@ -1531,7 +1310,7 @@ function DeleteConfirmModal({ requestId, requestedBy, sampleLabel, supabase, onC
           <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, fontFamily: font.display }}>Delete Sample Request</span>
         </div>
         <p style={{ fontSize: '13.5px', color: colors.secondary, marginBottom: '20px', lineHeight: 1.55 }}>
-          This action cannot be undone.
+          Delete <strong style={{ color: colors.primary }}>{sampleLabel}</strong>? This action cannot be undone.
         </p>
         {error && (
           <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px', marginBottom: '14px' }}>{error}</div>
