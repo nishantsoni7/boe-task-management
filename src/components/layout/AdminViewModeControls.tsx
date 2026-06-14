@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   Users, ChevronDown, LogOut, Settings,
   Eye, X,
@@ -17,7 +16,6 @@ import { createClient } from '@/lib/supabase/client'
 
 export function ViewModeBanner() {
   const { viewAsProfile, exitViewMode } = useViewAs()
-  const router = useRouter()
 
   if (!viewAsProfile) return null
 
@@ -52,7 +50,7 @@ export function ViewModeBanner() {
         </span>
       </div>
       <button
-        onClick={() => { exitViewMode(); router.push('/dashboard') }}
+        onClick={exitViewMode}
         style={{
           display: 'flex', alignItems: 'center', gap: '5px',
           fontSize: '12px', fontWeight: 600,
@@ -89,7 +87,6 @@ export function ViewModeSidebarSection({
   const [members,      setMembers]      = useState<UserProfile[]>([])
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
-  const router   = useRouter()
 
   const isRealAdmin = profile?.role === 'admin'
   const inViewMode  = !!viewAsUserId
@@ -111,12 +108,10 @@ export function ViewModeSidebarSection({
   const handleEnterViewMode = (member: UserProfile) => {
     enterViewMode(member.id, member)
     setSwitcherOpen(false)
-    router.push('/dashboard')
   }
 
   const handleExitViewMode = () => {
     exitViewMode()
-    router.push('/dashboard')
   }
 
   if (!profile) return null
