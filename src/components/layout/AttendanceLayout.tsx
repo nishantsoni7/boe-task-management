@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, Upload, Home, Briefcase, ClipboardList, Banknote, RefreshCw,
+  LayoutDashboard, Users, Upload, Home, Briefcase, ClipboardList, Banknote, RefreshCw, CalendarX,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { useRefresh } from '@/contexts/RefreshContext'
@@ -119,6 +119,20 @@ export function AttendanceLayout({
               </button>
             )
           })}
+
+          {/* Holiday Management — admin only */}
+          {profile?.role === 'admin' && (
+            <button
+              className={`boe-nav-item${pathname.startsWith('/attendance/holidays') ? ' active' : ''}`}
+              onClick={() => navTo('/attendance/holidays')}
+              style={{ fontWeight: pathname.startsWith('/attendance/holidays') ? 600 : 400, marginBottom: '2px' }}
+            >
+              <span style={{ color: pathname.startsWith('/attendance/holidays') ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+                <CalendarX size={15} strokeWidth={1.8} />
+              </span>
+              Holiday Management
+            </button>
+          )}
 
           {/* Payroll — admin only */}
           {profile?.role === 'admin' && (
