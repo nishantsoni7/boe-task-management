@@ -360,14 +360,17 @@ function EditModal({
         border: `1px solid ${colors.border}`,
         borderRadius: 12,
         width: '100%', maxWidth: 460,
+        maxHeight: 'calc(100vh - 32px)',
         boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
         overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
       }}>
         {/* Header */}
         <div style={{
           padding: '16px 20px',
           borderBottom: `1px solid ${colors.border}`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
         }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: colors.primary }}>{emp.full_name}</div>
@@ -386,7 +389,7 @@ function EditModal({
         </div>
 
         {/* Form */}
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1 }}>
 
           <div>
             <label style={labelStyle}>Employee Code</label>
@@ -479,6 +482,7 @@ function EditModal({
           padding: '12px 20px',
           borderTop: `1px solid ${colors.border}`,
           display: 'flex', justifyContent: 'flex-end', gap: 10,
+          flexShrink: 0,
         }}>
           <button
             onClick={onClose}
