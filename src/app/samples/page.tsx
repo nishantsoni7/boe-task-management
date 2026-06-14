@@ -132,8 +132,9 @@ export default function SamplesPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { refreshKey } = useRefresh()
-  const { viewAsUserId } = useViewAs()
+  const { viewAsUserId, viewAsProfile } = useViewAs()
   const inViewMode = !!viewAsUserId
+  const [viewAsPermissions, setViewAsPermissions] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const init = async () => {
@@ -180,6 +181,26 @@ export default function SamplesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!viewAsUserId) { setViewAsPermissions(new Set()); return }
+    // ep_select_own RLS only allows users to read their own permission rows.
+    // When the admin is viewing as another user, auth.uid() is the admin's ID,
+    // so a direct client query returns [] for the viewed user.
+    // We call a server-side route that uses the service role key to bypass RLS.
+    supabase.auth.getSession().then(({ data }: { data: { session: { access_token: string } | null } }) => {
+      const session = data.session
+      if (!session) return
+      fetch(`/api/admin/user-permissions?userId=${viewAsUserId}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+        .then((r: Response) => r.json())
+        .then(({ permissions }: { permissions: string[] }) => {
+          setViewAsPermissions(new Set(permissions ?? []))
+        })
+        .catch(() => setViewAsPermissions(new Set()))
+    })
+  }, [viewAsUserId, supabase])
+
   const refresh = async () => {
     const { data: rows, error: rowsErr } = await supabase
       .from('sample_dispatches')
@@ -197,23 +218,40 @@ export default function SamplesPage() {
     if (rows) setRequests(mapRows(rows))
   }
 
+  // Effective identity — must be above buckets useMemo so filtering can use them
+  const isAdmin             = profile?.role === 'admin'
+  const effectiveIsAdmin    = inViewMode ? viewAsProfile?.role === 'admin' : isAdmin
+  const effectivePerms      = inViewMode ? viewAsPermissions : myPermissions
+  const effectiveUserId     = inViewMode ? (viewAsUserId ?? '') : (profile?.id ?? '')
+  const canDispatch = effectiveIsAdmin || effectivePerms.has('samples_dispatch')
+  const canReceive  = effectiveIsAdmin || effectivePerms.has('samples_receive')
+  const canLost     = effectiveIsAdmin || effectivePerms.has('samples_lost')
+  const effectiveHasAnySamplePermission =
+    effectivePerms.has('samples_dispatch') ||
+    effectivePerms.has('samples_receive')  ||
+    effectivePerms.has('samples_lost')     ||
+    effectivePerms.has('samples_close')
+
+  // Filter rows to what the effective user is allowed to see
+  const filteredRequests = useMemo(() => {
+    if (effectiveIsAdmin) return requests
+    return requests.filter(r =>
+      r.requested_by === effectiveUserId || effectiveHasAnySamplePermission
+    )
+  }, [requests, effectiveIsAdmin, effectiveUserId, effectiveHasAnySamplePermission])
+
   const buckets = useMemo<Record<TabKey, SampleRequest[]>>(() => ({
-    all:              requests,
-    pending_approval: requests.filter(r => r.status === 'pending_approval'),
-    approved:         requests.filter(r => r.status === 'approved'),
-    qr_submitted:     requests.filter(r => r.status === 'qr_submitted'),
-    dispatched:       [...requests.filter(r => r.status === 'dispatched')]
+    all:              filteredRequests,
+    pending_approval: filteredRequests.filter(r => r.status === 'pending_approval'),
+    approved:         filteredRequests.filter(r => r.status === 'approved'),
+    qr_submitted:     filteredRequests.filter(r => r.status === 'qr_submitted'),
+    dispatched:       [...filteredRequests.filter(r => r.status === 'dispatched')]
       .sort((a, b) => (isOverdue(b) ? 1 : 0) - (isOverdue(a) ? 1 : 0)),
-    rejected:         requests.filter(r => r.status === 'rejected'),
-    closed:           requests.filter(r => r.status === 'returned' || r.status === 'lost'),
-  }), [requests])
+    rejected:         filteredRequests.filter(r => r.status === 'rejected'),
+    closed:           filteredRequests.filter(r => r.status === 'returned' || r.status === 'lost'),
+  }), [filteredRequests])
 
   if (loading) return <LoadingScreen />
-
-  const isAdmin    = profile?.role === 'admin'
-  const canDispatch = isAdmin || myPermissions.has('samples_dispatch')
-  const canReceive  = isAdmin || myPermissions.has('samples_receive')
-  const canLost     = isAdmin || myPermissions.has('samples_lost')
 
   const counts: Record<TabKey, number> = {
     all:              buckets.all.length,
@@ -239,23 +277,28 @@ export default function SamplesPage() {
         onTabSelect={setActiveTab}
         onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
         actions={
-          !inViewMode && (
-            <button
-              onClick={() => setShowModal(true)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '7px 14px', borderRadius: '8px', border: 'none',
-                background: '#1A2035', color: '#fff',
-                fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                transition: 'opacity 0.12s', whiteSpace: 'nowrap',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-            >
-              <Plus size={13} strokeWidth={2.5} />
-              New Request
-            </button>
-          )
+          <button
+            onClick={() => {
+              if (inViewMode) {
+                alert('View Mode only. This shows what the selected user can see, but actions are disabled.')
+                return
+              }
+              setShowModal(true)
+            }}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', borderRadius: '8px', border: 'none',
+              background: '#1A2035', color: '#fff',
+              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+              transition: 'opacity 0.12s', whiteSpace: 'nowrap',
+              opacity: inViewMode ? 0.6 : 1,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = inViewMode ? '0.6' : '0.88')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = inViewMode ? '0.6' : '1')}
+          >
+            <Plus size={13} strokeWidth={2.5} />
+            New Request
+          </button>
         }
       >
         <div style={{ maxWidth: '900px', width: '100%' }}>
@@ -281,11 +324,11 @@ export default function SamplesPage() {
                 <RequestCard
                   key={r.id}
                   request={r}
-                  isAdmin={isAdmin}
+                  isAdmin={effectiveIsAdmin}
                   canDispatch={canDispatch}
                   canReceive={canReceive}
                   canLost={canLost}
-                  currentUserId={profile?.id ?? ''}
+                  currentUserId={effectiveUserId}
                   supabase={supabase}
                   onRefresh={refresh}
                   inViewMode={inViewMode}
@@ -353,6 +396,11 @@ function RequestCard({
   const meta        = STATUS_META[r.status]
   const isClosed    = r.status === 'returned' || r.status === 'lost'
   const isRequester = r.requested_by === currentUserId
+
+  // In view mode, intercept all write actions
+  const guard = (fn: () => void) => inViewMode
+    ? () => alert('View Mode only. This shows what the selected user can see, but actions are disabled.')
+    : fn
 
   const sampleLabel = `${catalogLabel(r.catalog_type)} – ${r.catalog_name}`
 
@@ -648,24 +696,21 @@ function RequestCard({
         )}
 
         {/* Actions */}
-        {!isClosed && !inViewMode && (
+        {!isClosed && (
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
             {r.status === 'pending_approval' && isRequester && (
-              <ActionBtn icon={<Pencil size={13} strokeWidth={2.2} />} label="Edit" busy={false} bg={colors.float} color={colors.secondary} border={colors.border} onClick={() => setEditOpen(true)} />
+              <ActionBtn icon={<Pencil size={13} strokeWidth={2.2} />} label="Edit" busy={false} bg={colors.float} color={colors.secondary} border={colors.border} onClick={guard(() => setEditOpen(true))} />
             )}
             {isAdmin && r.status === 'pending_approval' && (
               <>
-                <ActionBtn icon={<ThumbsUp size={13} strokeWidth={2.2} />} label="Approve" busy={busy === 'approve'} bg={colors.greenTint} color={colors.green} border={colors.green + '33'} onClick={handleApprove} />
-                <ActionBtn icon={<ThumbsDown size={13} strokeWidth={2.2} />} label={rejectOpen ? 'Cancel' : 'Reject'} busy={busy === 'reject'} bg={colors.redTint} color={colors.red} border={colors.red + '33'} onClick={() => { setRejectOpen(v => !v); setRejectReason('') }} />
+                <ActionBtn icon={<ThumbsUp size={13} strokeWidth={2.2} />} label="Approve" busy={busy === 'approve'} bg={colors.greenTint} color={colors.green} border={colors.green + '33'} onClick={guard(handleApprove)} />
+                <ActionBtn icon={<ThumbsDown size={13} strokeWidth={2.2} />} label={rejectOpen ? 'Cancel' : 'Reject'} busy={busy === 'reject'} bg={colors.redTint} color={colors.red} border={colors.red + '33'} onClick={guard(() => { setRejectOpen(v => !v); setRejectReason('') })} />
               </>
             )}
             {r.status === 'approved' && (
               <>
-                {/* Non-admins are always the requester on rows they can see (RLS: requested_by = auth.uid()).
-                    Using !isAdmin instead of isRequester guards against profile-load failures
-                    that would silently set currentUserId to '' and hide this button. */}
-                {!isAdmin && (
-                  <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Submit QR" busy={busy === 'qr_submit'} bg='#EDE9FE' color='#7C3AED' border='#7C3AED33' onClick={handleQRSubmit} />
+                {isRequester && (
+                  <ActionBtn icon={<Send size={13} strokeWidth={2} />} label="Submit QR" busy={busy === 'qr_submit'} bg='#EDE9FE' color='#7C3AED' border='#7C3AED33' onClick={guard(handleQRSubmit)} />
                 )}
                 <ActionBtn icon={<Printer size={13} strokeWidth={2} />} label="Print Approval Slip" busy={false} bg='#F0F4FF' color='#3B5BDB' border='#3B5BDB33' onClick={() => setSlipOpen(true)} />
               </>
@@ -673,7 +718,7 @@ function RequestCard({
             {r.status === 'qr_submitted' && (
               <>
                 {canDispatch ? (
-                  <ActionBtn icon={<Truck size={13} strokeWidth={2} />} label={dispatchOpen ? 'Cancel' : 'Add Tracking Details'} busy={busy === 'dispatch_details'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={() => { setDispatchOpen(v => !v); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) }} />
+                  <ActionBtn icon={<Truck size={13} strokeWidth={2} />} label={dispatchOpen ? 'Cancel' : 'Add Tracking Details'} busy={busy === 'dispatch_details'} bg='#1A203514' color='#1A2035' border='#1A203530' onClick={guard(() => { setDispatchOpen(v => !v); setDispatchForm({ courier_name: '', tracking_number: '', dispatch_note: '' }) })} />
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#7C3AED', background: '#EDE9FE', border: '1px solid #7C3AED33', borderRadius: '7px', padding: '6px 12px' }}>
                     <CheckCircle2 size={13} strokeWidth={1.8} />
@@ -691,17 +736,19 @@ function RequestCard({
                     <Info size={13} strokeWidth={1.8} />
                     Ask Admin / HR / Dispatch to verify receipt and close this request.
                   </div>
-                ) : (
-                  <ActionBtn icon={<ShieldCheck size={13} strokeWidth={2.2} />} label={verifyOpen ? 'Cancel' : 'Mark Received & Close'} busy={false} bg={colors.greenTint} color={colors.green} border={colors.green + '33'} onClick={() => setVerifyOpen(v => !v)} />
+                ) : canReceive ? (
+                  <ActionBtn icon={<ShieldCheck size={13} strokeWidth={2.2} />} label={verifyOpen ? 'Cancel' : 'Mark Received & Close'} busy={false} bg={colors.greenTint} color={colors.green} border={colors.green + '33'} onClick={guard(() => setVerifyOpen(v => !v))} />
+                ) : null}
+                {(isRequester || canDispatch || canReceive || canLost) && (
+                  <ActionBtn icon={<Clock size={13} strokeWidth={1.8} />} label={followupOpen ? 'Close Follow-up' : 'Add Follow-up'} busy={false} bg={colors.float} color={colors.secondary} border={colors.border} onClick={guard(() => setFollowupOpen(v => !v))} />
                 )}
-                <ActionBtn icon={<Clock size={13} strokeWidth={1.8} />} label={followupOpen ? 'Close Follow-up' : 'Add Follow-up'} busy={false} bg={colors.float} color={colors.secondary} border={colors.border} onClick={() => setFollowupOpen(v => !v)} />
                 {(isAdmin || canLost) && (
-                  <ActionBtn icon={<X size={13} strokeWidth={2} />} label={lostOpen ? 'Cancel' : 'Mark Lost'} busy={false} bg='none' color={lostOpen ? colors.red : colors.muted} border={lostOpen ? colors.red + '55' : colors.border} onClick={() => { setLostOpen(v => !v); setLostNote('') }} />
+                  <ActionBtn icon={<X size={13} strokeWidth={2} />} label={lostOpen ? 'Cancel' : 'Mark Lost'} busy={false} bg='none' color={lostOpen ? colors.red : colors.muted} border={lostOpen ? colors.red + '55' : colors.border} onClick={guard(() => { setLostOpen(v => !v); setLostNote('') })} />
                 )}
               </>
             )}
             {r.status === 'rejected' && isRequester && (
-              <ActionBtn icon={<RotateCcw size={13} strokeWidth={2} />} label={reapplyOpen ? 'Cancel' : 'Reapply'} busy={busy === 'reapply'} bg={colors.blueTint} color={colors.blue} border={colors.blue + '33'} onClick={() => { setReapplyOpen(v => !v); setReapplyNote('') }} />
+              <ActionBtn icon={<RotateCcw size={13} strokeWidth={2} />} label={reapplyOpen ? 'Cancel' : 'Reapply'} busy={busy === 'reapply'} bg={colors.blueTint} color={colors.blue} border={colors.blue + '33'} onClick={guard(() => { setReapplyOpen(v => !v); setReapplyNote('') })} />
             )}
           </div>
         )}
@@ -848,10 +895,10 @@ function RequestCard({
         )}
 
         {/* Delete button — admin: any status; requester: pending only */}
-        {!inViewMode && (isAdmin || (isRequester && r.status === 'pending_approval')) && (
+        {(isAdmin || (isRequester && r.status === 'pending_approval')) && (
           <div style={{ display: 'flex', marginTop: '10px' }}>
             <button
-              onClick={() => setDeleteOpen(true)}
+              onClick={guard(() => setDeleteOpen(true))}
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
                 background: 'none', color: colors.muted,
