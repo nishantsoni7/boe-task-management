@@ -67,6 +67,7 @@ export default function DispatchPage() {
   const [loading, setLoading]         = useState(true)
   const [request, setRequest]         = useState<SampleRequest | null>(null)
   const [notFound, setNotFound]       = useState(false)
+  const [unauthorized, setUnauthorized] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [form, setForm]               = useState({ courier_name: '', tracking_number: '', dispatch_note: '' })
   const [saving, setSaving]           = useState(false)
@@ -79,6 +80,14 @@ export default function DispatchPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { setLoading(false); router.push(`/login?redirect=${encodeURIComponent(`/samples/dispatch/${id}`)}`); return }
         setCurrentUserId(session.user.id)
+
+        const [{ data: profileRow }, { data: permsData }] = await Promise.all([
+          supabase.from('users').select('role').eq('id', session.user.id).single(),
+          supabase.from('employee_permissions').select('permission_key').eq('user_id', session.user.id).is('revoked_at', null),
+        ])
+        const isAdmin    = profileRow?.role === 'admin'
+        const canDispatch = isAdmin || (permsData ?? []).some((p: { permission_key: string }) => p.permission_key === 'samples_dispatch')
+        if (!canDispatch) { setUnauthorized(true); setLoading(false); return }
 
         const { data } = await supabase
           .from('sample_dispatches')
@@ -129,6 +138,19 @@ export default function DispatchPage() {
   }
 
   if (loading) return <LoadingScreen />
+
+  if (unauthorized) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.raised, padding: '24px' }}>
+      <div style={{ textAlign: 'center', color: colors.muted }}>
+        <AlertTriangle size={36} strokeWidth={1.5} style={{ margin: '0 auto 12px', color: colors.red }} />
+        <div style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, marginBottom: '6px' }}>Not authorized</div>
+        <div style={{ fontSize: '13px' }}>You do not have permission to dispatch samples.</div>
+        <button onClick={() => router.push('/samples')} style={{ marginTop: '20px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#1A2035', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+          Go to Sample Tracking
+        </button>
+      </div>
+    </div>
+  )
 
   if (notFound) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.raised, padding: '24px' }}>
