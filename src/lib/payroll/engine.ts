@@ -224,9 +224,13 @@ function classifySingleDay(
   const lunchDeducted = inMin < 14 * 60 && outMin > 13 * 60
   const effectiveHours = rawHours - (lunchDeducted ? 1 : 0)
 
-  // Classify by effective hours
+  // Office-timing override: punch-in ≤ 10:15 IST and punch-out ≥ 18:30 IST → full day,
+  // even if effective hours fall slightly below 7.5 after lunch deduction.
+  const onOfficeTiming = inMin <= 10 * 60 + 15 && outMin >= 18 * 60 + 30
+
+  // Classify by effective hours (office-timing takes priority)
   let classification: DayResult['classification']
-  if (effectiveHours >= 7.5) {
+  if (onOfficeTiming || effectiveHours >= 7.5) {
     classification = 'full_present'
   } else if (effectiveHours >= 5) {
     classification = 'present_with_shortfall'

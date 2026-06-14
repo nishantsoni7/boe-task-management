@@ -19,8 +19,8 @@ import type {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SALARY = 30_000
-const PDR    = SALARY / 30        // per_day_rate  = 1 000.000
-const PHR    = PDR / 8.5          // per_hour_rate ≈   117.647
+const PDR    = SALARY / 26        // per_day_rate  ≈ 1 153.846
+const PHR    = PDR / 8.5          // per_hour_rate ≈   135.747
 
 // ─── Shared period ────────────────────────────────────────────────────────────
 
@@ -381,15 +381,17 @@ scenario('S11  Sundays excluded — working_days_in_month = 26 (not 30)', () => 
 // ─────────────────────────────────────────────────────────────────────────────
 // S12  Net salary floor at zero — large negative adjustment clamps to 0
 //
-// Employee: salary = 3 000, PDR = 100
+// Employee: salary = 3 000, PDR = 3000/26 ≈ 115.385
 // Inputs:   Jun 1 present; all other 25 working days absent (no records)
 //           days_present = 1  →  ≤ 10  →  leave = 0  (no absorption)
-// Deduct:   25 × PDR = 2 500
-// Gross:    3 000 − 2 500 = 500
-// Adj:      −5 000  →  net = max(0, 500 − 5 000) = 0
+// Deduct:   25 × PDR ≈ 2 884.615
+// Gross:    3 000 − 2 884.615 ≈ 115.385
+// Adj:      −5 000  →  net = max(0, 115.385 − 5 000) = 0
 // ─────────────────────────────────────────────────────────────────────────────
 scenario('S12  Net salary floor at zero — large negative adjustment clamps to 0', () => {
-  const e    = emp({ monthly_salary: 3_000 })
+  const S12_SALARY = 3_000
+  const s12Pdr     = S12_SALARY / 26
+  const e    = emp({ monthly_salary: S12_SALARY })
   const adjustments: EnginePendingAdjustment[] = [
     { id: 'adj1', amount: -5_000, description: 'Large recovery deduction' },
   ]
@@ -399,8 +401,8 @@ scenario('S12  Net salary floor at zero — large negative adjustment clamps to 
 
   chk('days_absent',                r.days_absent,               25)
   chk('paid_leave_used',            r.paid_leave_used,            0)  // 1 present ≤ 10 → no leave
-  chk('total_deductions',           r.total_deductions,        2_500)  // 25 × 100
-  chk('gross_salary',               r.gross_salary,            3_000)
+  chk('total_deductions',           r.total_deductions,        25 * s12Pdr)
+  chk('gross_salary',               r.gross_salary,            S12_SALARY)
   chk('pending_adjustment_total',   r.pending_adjustment_total, -5_000)
   chk('net_salary = 0 (floored)',   r.net_salary,                  0)
 })
@@ -518,7 +520,7 @@ scenario('S15  Mixed — absent absorbed, half-day + missing punch charged, adju
 scenario('S16  Fully absent — 0 present days → net salary floored to ₹0', () => {
   const DHRUV_SALARY = 55_000
   const e   = emp({ monthly_salary: DHRUV_SALARY })
-  const pdr = DHRUV_SALARY / 30
+  const pdr = DHRUV_SALARY / 26
   // No attendance records at all
   const r = resultOf(generatePayrollForEmployee(e, PERIOD, [], [], []))
 
@@ -531,6 +533,34 @@ scenario('S16  Fully absent — 0 present days → net salary floored to ₹0', 
   chk('gross_salary',         r.gross_salary,          DHRUV_SALARY)
   chk('total_deductions',     r.total_deductions,      expectedDeduction)
   chk('net_salary = 0',       r.net_salary,            0)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S17  Office-timing override — punch-in ≤ 10:15, punch-out ≥ 18:30 IST
+//
+// Effective hours = 7.43h (below 7.5 threshold after lunch), but both timing
+// conditions are met → must classify as full_present, not present_with_shortfall.
+// With 26 such days: days_present=26, days_absent=0, zero deductions, net=SALARY.
+//
+// Record: 10:05 IST in = 04:35 UTC, 18:31 IST out = 13:01 UTC
+//   raw = 8h 26m = 8.433h  →  minus 1h lunch  →  effective = 7.433h (< 7.5)
+// ─────────────────────────────────────────────────────────────────────────────
+scenario('S17  Office-timing override — 10:05 in / 18:31 out → full_present (7.43h eff)', () => {
+  const workDays = juneWorkDays()
+  const records: EngineAttendanceRecord[] = workDays.map((d, i) => ({
+    id: `r${i}`,
+    attendance_date: d,
+    check_in_at:  `${d}T04:35:00Z`,  // 10:05 IST — within 10:15 grace
+    check_out_at: `${d}T13:01:00Z`,  // 18:31 IST — past 18:30 threshold
+  }))
+
+  const r = resultOf(generatePayrollForEmployee(emp(), PERIOD, records, [], []))
+
+  chk('days_present = 26 (all full_present via office-timing)', r.days_present, 26)
+  chk('days_absent = 0',                                        r.days_absent,  0)
+  chk('half_day_count = 0',                                     r.half_day_count, 0)
+  chk('total_deductions = 0',                                   r.total_deductions, 0)
+  chk('net_salary = gross',                                     r.net_salary, SALARY)
 })
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
