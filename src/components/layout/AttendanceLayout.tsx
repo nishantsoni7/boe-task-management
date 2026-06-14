@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, Upload, Home, Briefcase, ClipboardList, Banknote, RefreshCw, CalendarX,
+  LayoutDashboard, Users, Upload, Home, Briefcase, ClipboardList, Banknote, RefreshCw, CalendarX, FileBarChart,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { useRefresh } from '@/contexts/RefreshContext'
@@ -137,14 +137,28 @@ export function AttendanceLayout({
           {/* Payroll — admin only */}
           {profile?.role === 'admin' && (
             <button
-              className={`boe-nav-item${pathname.startsWith('/payroll') ? ' active' : ''}`}
+              className={`boe-nav-item${pathname.startsWith('/payroll') && !pathname.startsWith('/payroll/monthly-review') ? ' active' : ''}`}
               onClick={() => navTo('/payroll')}
-              style={{ fontWeight: pathname.startsWith('/payroll') ? 600 : 400, marginBottom: '2px' }}
+              style={{ fontWeight: pathname.startsWith('/payroll') && !pathname.startsWith('/payroll/monthly-review') ? 600 : 400, marginBottom: '2px' }}
             >
-              <span style={{ color: pathname.startsWith('/payroll') ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+              <span style={{ color: pathname.startsWith('/payroll') && !pathname.startsWith('/payroll/monthly-review') ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
                 <Banknote size={15} strokeWidth={1.8} />
               </span>
               Payroll
+            </button>
+          )}
+
+          {/* Payroll Monthly Review — admin only */}
+          {profile?.role === 'admin' && (
+            <button
+              className={`boe-nav-item${pathname.startsWith('/payroll/monthly-review') ? ' active' : ''}`}
+              onClick={() => navTo('/payroll/monthly-review')}
+              style={{ fontWeight: pathname.startsWith('/payroll/monthly-review') ? 600 : 400, marginBottom: '2px' }}
+            >
+              <span style={{ color: pathname.startsWith('/payroll/monthly-review') ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+                <FileBarChart size={15} strokeWidth={1.8} />
+              </span>
+              Payroll Review
             </button>
           )}
         </div>
