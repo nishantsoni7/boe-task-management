@@ -20,6 +20,12 @@ const ACTIVE_CARDS = [
     href: '/attendance/upload',
   },
   {
+    title: 'Monthly Attendance Review',
+    description: 'Per-employee attendance summary: present, half-day, absent, late, and missing punch counts.',
+    dotColor: '#F59E0B',
+    href: '/attendance/monthly-review',
+  },
+  {
     title: 'View Imported Records',
     description: 'Browse and verify attendance records imported from Excel.',
     dotColor: colors.blue,
