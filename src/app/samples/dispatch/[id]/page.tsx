@@ -77,7 +77,7 @@ export default function DispatchPage() {
     const load = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (!session) { setLoading(false); router.push('/login'); return }
+        if (!session) { setLoading(false); router.push(`/login?redirect=${encodeURIComponent(`/samples/dispatch/${id}`)}`); return }
         setCurrentUserId(session.user.id)
 
         const { data } = await supabase
