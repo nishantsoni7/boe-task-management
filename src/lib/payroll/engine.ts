@@ -108,7 +108,7 @@ function runGuards(employee: EngineEmployee, period: EnginePeriod): EngineSkip |
 // ─── Step 2: Monetary rates ───────────────────────────────────────────────────
 
 function computeRates(monthlySalary: number): PayrollRates {
-  const per_day_rate = monthlySalary / 30
+  const per_day_rate = monthlySalary / 26
   const per_hour_rate = per_day_rate / 8.5
   return { per_day_rate, per_hour_rate }
 }
@@ -226,11 +226,11 @@ function classifySingleDay(
 
   // Classify by effective hours
   let classification: DayResult['classification']
-  if (effectiveHours >= 8.5) {
+  if (effectiveHours >= 7.5) {
     classification = 'full_present'
-  } else if (effectiveHours > 4) {
+  } else if (effectiveHours >= 5) {
     classification = 'present_with_shortfall'
-  } else if (effectiveHours === 4) {
+  } else if (effectiveHours >= 3.75) {
     classification = 'half_day'
   } else if (effectiveHours >= 2) {
     classification = 'short_present'
