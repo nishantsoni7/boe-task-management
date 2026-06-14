@@ -8,6 +8,7 @@ import { colors } from '@/lib/tokens'
 import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
+import { useRefresh } from '@/contexts/RefreshContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ export default function AttendanceRecordsPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { refreshKey } = useRefresh()
 
   useEffect(() => {
     const init = async () => {
@@ -110,7 +112,7 @@ export default function AttendanceRecordsPage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshKey])
 
   const fetchPage = async (targetPage: number) => {
     setFetching(true)

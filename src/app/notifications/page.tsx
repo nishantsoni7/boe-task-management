@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useRefresh } from '@/contexts/RefreshContext'
 import type { Notification, UserProfile } from '@/lib/types'
 import { timeAgo } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
@@ -64,6 +65,7 @@ export default function NotificationsPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { refreshKey } = useRefresh()
 
   useEffect(() => {
     const init = async () => {
@@ -86,7 +88,7 @@ export default function NotificationsPage() {
       setLoading(false)
     }
     init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const unreadCount = notifications.filter(n => !n.is_read).length
   const visible = filter === 'unread'

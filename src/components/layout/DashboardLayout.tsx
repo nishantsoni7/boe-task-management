@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   Settings, ChevronRight, LogOut, Briefcase, ShieldCheck, TrendingUp,
-  Eye, X, ChevronDown, Users, Home, Bell,
+  Eye, X, ChevronDown, Users, Home, Bell, RefreshCw,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 import { useViewAs } from '@/hooks/useViewAs'
 import { createClient } from '@/lib/supabase/client'
+import { useRefresh } from '@/contexts/RefreshContext'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
 
@@ -31,15 +32,34 @@ export function DashboardLayout({
   onSignOut,
   children,
 }: DashboardLayoutProps) {
-  const [sidebarOpen, setSidebarOpen]   = useState(false)
-  const [members,     setMembers]       = useState<UserProfile[]>([])
+  const [sidebarOpen,  setSidebarOpen]  = useState(false)
+  const [members,      setMembers]      = useState<UserProfile[]>([])
   const [switcherOpen, setSwitcherOpen] = useState(false)
-  const [navCounts,   setNavCounts]     = useState({ myActive: 0, assignedByMeActive: 0 })
+  const [navCounts,    setNavCounts]    = useState({ myActive: 0, assignedByMeActive: 0 })
   const [unreadNotifs, setUnreadNotifs] = useState(0)
+  const [refreshing,   setRefreshing]   = useState(false)
 
   const router   = useRouter()
   const pathname = usePathname()
   const supabase = useMemo(() => createClient(), [])
+
+  const { triggerRefresh } = useRefresh()
+
+  const handleRefresh = useCallback(() => {
+    if (refreshing) return
+    setRefreshing(true)
+    triggerRefresh()
+    router.refresh()
+    setTimeout(() => setRefreshing(false), 1000)
+  }, [refreshing, triggerRefresh, router])
+
+  // Auto-refresh when the tab/app becomes visible again
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') handleRefresh() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const { viewAsUserId, viewAsProfile, enterViewMode, exitViewMode } = useViewAs()
 
@@ -530,9 +550,31 @@ export function DashboardLayout({
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
-          {actions && (
-            <div className="boe-header-actions">{actions}</div>
-          )}
+          <div className="boe-header-actions">
+            {actions}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Refresh"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 32, height: 32, borderRadius: '8px',
+                background: refreshing ? 'rgba(232,160,48,0.15)' : 'rgba(0,0,0,0.05)',
+                border: '1px solid rgba(0,0,0,0.10)',
+                color: refreshing ? '#E8A030' : '#6B7384',
+                cursor: refreshing ? 'default' : 'pointer',
+                flexShrink: 0, transition: 'background 0.15s, color 0.15s',
+              }}
+              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(232,160,48,0.12)'; e.currentTarget.style.color = '#E8A030' } }}
+              onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#6B7384' } }}
+            >
+              <RefreshCw
+                size={14}
+                strokeWidth={2}
+                style={refreshing ? { animation: 'boe-spin 0.7s linear infinite' } : undefined}
+              />
+            </button>
+          </div>
         </div>
 
         {/* Page body */}

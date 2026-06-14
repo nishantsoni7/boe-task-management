@@ -10,6 +10,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
+import { useRefresh } from '@/contexts/RefreshContext'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus,
@@ -867,6 +868,7 @@ export default function MyTasksPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
+  const { refreshKey } = useRefresh()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -915,7 +917,7 @@ export default function MyTasksPage() {
       setLoading(false)
     }
     init()
-  }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewAsUserId, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

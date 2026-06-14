@@ -1,12 +1,14 @@
 'use client'
 
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Package, Bell, Home, LogOut,
+  Package, Bell, Home, LogOut, RefreshCw,
   LayoutList, CheckCheck, Truck, Archive, Clock, Send, ThumbsDown,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
+import { useRefresh } from '@/contexts/RefreshContext'
 
 // ─── Tab types (single source of truth) ──────────────────────────────────────
 
@@ -56,6 +58,23 @@ export function SamplesLayout({
   children,
 }: SamplesLayoutProps) {
   const router = useRouter()
+  const [refreshing, setRefreshing] = useState(false)
+  const { triggerRefresh } = useRefresh()
+
+  const handleRefresh = useCallback(() => {
+    if (refreshing) return
+    setRefreshing(true)
+    triggerRefresh()
+    router.refresh()
+    setTimeout(() => setRefreshing(false), 1000)
+  }, [refreshing, triggerRefresh, router])
+
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') handleRefresh() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="boe-app-shell">
@@ -196,9 +215,31 @@ export function SamplesLayout({
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
-          {actions && (
-            <div className="boe-header-actions">{actions}</div>
-          )}
+          <div className="boe-header-actions">
+            {actions}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Refresh"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 32, height: 32, borderRadius: '8px',
+                background: refreshing ? 'rgba(232,160,48,0.15)' : 'rgba(0,0,0,0.05)',
+                border: '1px solid rgba(0,0,0,0.10)',
+                color: refreshing ? '#E8A030' : '#6B7384',
+                cursor: refreshing ? 'default' : 'pointer',
+                flexShrink: 0, transition: 'background 0.15s, color 0.15s',
+              }}
+              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(232,160,48,0.12)'; e.currentTarget.style.color = '#E8A030' } }}
+              onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#6B7384' } }}
+            >
+              <RefreshCw
+                size={14}
+                strokeWidth={2}
+                style={refreshing ? { animation: 'boe-spin 0.7s linear infinite' } : undefined}
+              />
+            </button>
+          </div>
         </div>
 
         {/* Page body */}

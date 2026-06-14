@@ -8,6 +8,7 @@ import { colors, font } from '@/lib/tokens'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { Bell, CheckCheck, ArrowUpRight } from 'lucide-react'
 import { SamplesLayout, type TabKey } from '@/components/layout/SamplesLayout'
+import { useRefresh } from '@/contexts/RefreshContext'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ export default function SampleNotificationsPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { refreshKey } = useRefresh()
 
   useEffect(() => {
     const init = async () => {
@@ -81,7 +83,7 @@ export default function SampleNotificationsPage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshKey])
 
   const handleMarkAllRead = async () => {
     setMarkingAll(true)

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { useRefresh } from '@/contexts/RefreshContext'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 
@@ -66,6 +67,7 @@ export default function AttendancePage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { refreshKey } = useRefresh()
 
   const fetchDashboard = useCallback(async (tok: string) => {
     const res  = await fetch('/api/attendance/dashboard', {
@@ -94,7 +96,7 @@ export default function AttendancePage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshKey])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

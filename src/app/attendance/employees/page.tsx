@@ -8,6 +8,7 @@ import { colors } from '@/lib/tokens'
 import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
+import { useRefresh } from '@/contexts/RefreshContext'
 
 type EmployeeRow = Pick<
   UserProfile,
@@ -516,6 +517,7 @@ export default function EmployeeMasterPage() {
   const [showAdd, setShowAdd]     = useState(false)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { refreshKey } = useRefresh()
 
   useEffect(() => {
     const init = async () => {
@@ -546,7 +548,7 @@ export default function EmployeeMasterPage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshKey])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

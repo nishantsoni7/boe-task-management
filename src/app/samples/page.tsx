@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useRefresh } from '@/contexts/RefreshContext'
 import type { UserProfile } from '@/lib/types'
 import { colors, font } from '@/lib/tokens'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -128,6 +129,7 @@ export default function SamplesPage() {
   const [unreadCount, setUnreadCount] = useState(0)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { refreshKey } = useRefresh()
 
   useEffect(() => {
     const init = async () => {
@@ -166,7 +168,7 @@ export default function SamplesPage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = async () => {
     const { data: rows, error: rowsErr } = await supabase

@@ -10,6 +10,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
+import { useRefresh } from '@/contexts/RefreshContext'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
+  const { refreshKey } = useRefresh()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -185,8 +187,7 @@ export default function DashboardPage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // Re-run when view mode changes so the correct user's data is fetched
-  }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewAsUserId, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
