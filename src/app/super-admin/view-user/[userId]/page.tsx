@@ -79,6 +79,7 @@ export default function ViewUserPage() {
           .select(TASK_COLUMNS)
           .eq('assigned_to', userId)
           .not('status', 'eq', 'completed')
+          .neq('status', 'cancelled')
           .order('created_at', { ascending: false }),
       ])
 
@@ -122,7 +123,8 @@ export default function ViewUserPage() {
           .select(TASK_COLUMNS)
           .eq('created_by', userId)
           .neq('assigned_to', userId)
-          .not('status', 'eq', 'completed'),
+          .not('status', 'eq', 'completed')
+          .neq('status', 'cancelled'),
         supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
@@ -167,8 +169,8 @@ export default function ViewUserPage() {
   const msPerDay  = 24 * 60 * 60 * 1000
 
   const unacknowledgedForMe = tasks.filter(t => !t.acknowledged_at && t.created_by !== userId)
-  const allOverdueTasks     = tasks.filter(t => isOverdue(t.due_date) && t.acknowledged_at)
-  const totalOverdue        = tasks.filter(t => isOverdue(t.due_date)).length
+  const allOverdueTasks     = tasks.filter(t => isOverdue(t.due_date, t.status) && t.acknowledged_at)
+  const totalOverdue        = tasks.filter(t => isOverdue(t.due_date, t.status)).length
   const waitingTasks        = tasks.filter(t => t.status === 'waiting')
 
   const todayStart    = new Date(now); todayStart.setHours(0, 0, 0, 0)
@@ -235,7 +237,7 @@ export default function ViewUserPage() {
           marginBottom: '24px',
         }}>
           <ViewSummaryCard
-            onClick={() => setPreviewList({ title: 'Overdue Tasks', items: tasks.filter(t => isOverdue(t.due_date)) })}
+            onClick={() => setPreviewList({ title: 'Overdue Tasks', items: tasks.filter(t => isOverdue(t.due_date, t.status)) })}
             icon={<AlertIcon />} iconBg="rgba(220,53,53,0.10)"
             count={totalOverdue} countColor="#C0392B"
             label="Total Overdue Tasks" sublabel="Tasks past their due date"

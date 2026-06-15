@@ -81,6 +81,7 @@ export default function DashboardPage() {
           .select(TASK_COLUMNS)
           .eq('assigned_to', uid)
           .not('status', 'eq', 'completed')
+          .neq('status', 'cancelled')
           .order('created_at', { ascending: false }),
         supabase
           .from('tasks')
@@ -234,7 +235,7 @@ export default function DashboardPage() {
   // Tasks assigned to me by someone else that I haven't acknowledged yet
   const unacknowledgedForMe = tasks.filter(t => !t.acknowledged_at && t.created_by !== currentUserId)
   const mergedUserMap   = { ...assignerNames, ...userMap }
-  const allOverdueTasks = tasks.filter(t => isOverdue(t.due_date) && t.acknowledged_at)
+  const allOverdueTasks = tasks.filter(t => isOverdue(t.due_date, t.status) && t.acknowledged_at)
   const actionRequired  = [...allOverdueTasks, ...unacknowledgedForMe]
 
   const adminEscalations = useMemo(() => {
@@ -273,7 +274,7 @@ export default function DashboardPage() {
 
   const isAdmin = (viewAsProfile ?? profile)?.role === 'admin'
 
-  const totalOverdue = tasks.filter(t => isOverdue(t.due_date)).length
+  const totalOverdue = tasks.filter(t => isOverdue(t.due_date, t.status)).length
   const waitingTasks = tasks.filter(t => t.status === 'waiting')
   const waitingCount = waitingTasks.length
 
@@ -317,7 +318,7 @@ export default function DashboardPage() {
           marginBottom: '24px',
         }}>
           <SummaryCard
-            onClick={() => setPreviewList({ title: 'Overdue Tasks', items: tasks.filter(t => isOverdue(t.due_date)) })}
+            onClick={() => setPreviewList({ title: 'Overdue Tasks', items: tasks.filter(t => isOverdue(t.due_date, t.status)) })}
             icon={<AlertIcon />}
             iconBg="rgba(220,53,53,0.10)"
             count={totalOverdue}

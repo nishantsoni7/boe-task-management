@@ -51,6 +51,7 @@ export default function ManagerPage() {
           assignee:assigned_to ( full_name, team )
         `)
         .neq('status', 'completed')
+        .neq('status', 'cancelled')
         .order('created_at', { ascending: false })
         .then((r: any) => {
           console.log('[manager] tasks fetch', Math.round(performance.now() - tasksStart), 'ms')
@@ -133,10 +134,10 @@ export default function ManagerPage() {
     isOldEnoughToFlag(t.created_at) && !isUpdatedToday(t.last_update_at)
   )
 
-  const overdueTasks = tasks.filter(t => isOverdue(t.due_date))
+  const overdueTasks = tasks.filter(t => isOverdue(t.due_date, t.status))
 
   const silentTasks = tasks.filter(t => {
-    if (isOverdue(t.due_date)) return false
+    if (isOverdue(t.due_date, t.status)) return false
     const level = escalationLevel(t.last_update_at, t.status, t.due_date, t.created_at)
     return level === 'danger' || level === 'caution'
   })
@@ -148,9 +149,9 @@ export default function ManagerPage() {
   const filteredTasks = tasks.filter(t => {
     if (selectedMember !== 'all' && t.assigned_to !== selectedMember) return false
     if (filter === 'no_update') return isOldEnoughToFlag(t.created_at) && !isUpdatedToday(t.last_update_at)
-    if (filter === 'overdue')   return isOverdue(t.due_date)
+    if (filter === 'overdue')   return isOverdue(t.due_date, t.status)
     if (filter === 'escalated') {
-      if (isOverdue(t.due_date)) return false
+      if (isOverdue(t.due_date, t.status)) return false
       const level = escalationLevel(t.last_update_at, t.status, t.due_date, t.created_at)
       return level === 'danger' || level === 'caution'
     }
