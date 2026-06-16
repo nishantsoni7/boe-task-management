@@ -1,8 +1,16 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { colors, font } from '@/lib/tokens'
 import { getExt, getFileTypeLabel, IMAGE_EXTS } from '@/lib/attachment-utils'
+
+const SHEET_EXTS = ['xlsx', 'xls', 'csv']
+const MAX_PREVIEW_ROWS = 100
+
+type SheetState =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; sheetNames: string[]; rowsBySheet: Record<string, string[][]> }
 
 const FILE_TYPE_COLORS: Record<string, { fg: string; bg: string }> = {
   PDF:     { fg: '#D94F4F', bg: 'rgba(217,79,79,0.08)'   },
@@ -21,18 +29,57 @@ interface Props {
 }
 
 export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
-  const ext     = getExt(url)
-  const label   = getFileTypeLabel(url)
-  const isImage = (IMAGE_EXTS as readonly string[]).includes(ext)
-  const isPdf   = ext === 'pdf'
-  const chip    = FILE_TYPE_COLORS[label] ?? FILE_TYPE_COLORS.File
-  const name    = fileName ?? decodeURIComponent(url.split('/').pop() ?? 'Attachment')
+  const ext      = getExt(url)
+  const label    = getFileTypeLabel(url)
+  const isImage  = (IMAGE_EXTS as readonly string[]).includes(ext)
+  const isPdf    = ext === 'pdf'
+  const isSheet  = SHEET_EXTS.includes(ext)
+  const chip     = FILE_TYPE_COLORS[label] ?? FILE_TYPE_COLORS.File
+  const name     = fileName ?? decodeURIComponent(url.split('/').pop() ?? 'Attachment')
+
+  const [sheetState, setSheetState] = useState<SheetState>({ status: 'loading' })
+  const [activeSheet, setActiveSheet] = useState<string | null>(null)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
+
+  useEffect(() => {
+    if (!isSheet) return
+    let cancelled = false
+    setSheetState({ status: 'loading' })
+
+    ;(async () => {
+      try {
+        const XLSX = await import('xlsx')
+        const res = await fetch(url)
+        if (!res.ok) throw new Error('Failed to fetch file')
+        const buffer = await res.arrayBuffer()
+        const workbook = XLSX.read(buffer, { type: 'array' })
+        const sheetNames = workbook.SheetNames
+        if (sheetNames.length === 0) throw new Error('No sheets found')
+
+        const rowsBySheet: Record<string, string[][]> = {}
+        for (const sheetName of sheetNames) {
+          const sheet = workbook.Sheets[sheetName]
+          const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false })
+          rowsBySheet[sheetName] = rows.slice(0, MAX_PREVIEW_ROWS).map(
+            row => row.map(cell => cell ?? '')
+          )
+        }
+
+        if (cancelled) return
+        setSheetState({ status: 'ready', sheetNames, rowsBySheet })
+        setActiveSheet(sheetNames[0])
+      } catch {
+        if (!cancelled) setSheetState({ status: 'error' })
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [isSheet, url])
 
   return (
     <div
@@ -51,7 +98,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
           borderRadius: '12px',
           boxShadow: '0 8px 40px rgba(0,0,0,0.3)',
           width: '100%',
-          maxWidth: '860px',
+          maxWidth: isSheet ? '1100px' : '860px',
           maxHeight: '90dvh',
           display: 'flex',
           flexDirection: 'column',
@@ -87,6 +134,26 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
           }}>
             {name}
           </span>
+
+          {/* Sheet selector */}
+          {isSheet && sheetState.status === 'ready' && sheetState.sheetNames.length > 1 && (
+            <select
+              value={activeSheet ?? ''}
+              onChange={e => setActiveSheet(e.target.value)}
+              style={{
+                fontSize: '11px', fontWeight: 500,
+                color: colors.primary,
+                padding: '4px 8px', borderRadius: '6px',
+                border: `1px solid ${colors.border}`,
+                background: colors.float,
+                flexShrink: 0,
+              }}
+            >
+              {sheetState.sheetNames.map(sn => (
+                <option key={sn} value={sn}>{sn}</option>
+              ))}
+            </select>
+          )}
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
@@ -134,10 +201,71 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
         {/* Preview area */}
         <div style={{
           flex: 1, overflow: 'auto',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          display: 'flex', alignItems: isSheet ? 'stretch' : 'center', justifyContent: isSheet ? 'flex-start' : 'center',
           padding: isImage ? '16px' : 0,
           minHeight: 0,
         }}>
+          {isSheet && sheetState.status === 'loading' && (
+            <div style={{ margin: 'auto', textAlign: 'center', padding: '40px 24px' }}>
+              <p style={{ fontSize: '13px', color: colors.muted }}>Loading preview…</p>
+            </div>
+          )}
+          {isSheet && sheetState.status === 'error' && (
+            <div style={{ margin: 'auto', textAlign: 'center', padding: '40px 24px' }}>
+              <div style={{ fontSize: '44px', marginBottom: '14px' }}>📊</div>
+              <p style={{ fontSize: '14px', fontWeight: 600, color: colors.primary, marginBottom: '6px' }}>
+                Couldn&apos;t preview this file
+              </p>
+              <p style={{ fontSize: '12px', color: colors.muted, marginBottom: '20px' }}>
+                The file may be corrupted or in an unsupported format.
+              </p>
+              <a
+                href={url}
+                download
+                style={{
+                  display: 'inline-block',
+                  fontSize: '13px', fontWeight: 500,
+                  color: colors.blue, textDecoration: 'none',
+                  padding: '8px 18px', borderRadius: '8px',
+                  border: `1px solid ${colors.blue}40`,
+                  background: colors.blueTint,
+                }}
+              >
+                ⬇ Download {label}
+              </a>
+            </div>
+          )}
+          {isSheet && sheetState.status === 'ready' && activeSheet && (
+            <div style={{ width: '100%', overflow: 'auto', padding: '12px' }}>
+              <table style={{ borderCollapse: 'collapse', fontSize: '12px', fontFamily: font.body, width: '100%' }}>
+                <tbody>
+                  {sheetState.rowsBySheet[activeSheet].map((row, i) => (
+                    <tr key={i} style={{ background: i === 0 ? colors.float : 'transparent' }}>
+                      {row.map((cell, j) => (
+                        <td
+                          key={j}
+                          style={{
+                            border: `1px solid ${colors.border}`,
+                            padding: '4px 8px',
+                            whiteSpace: 'nowrap',
+                            fontWeight: i === 0 ? 600 : 400,
+                            color: colors.primary,
+                          }}
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {sheetState.rowsBySheet[activeSheet].length >= MAX_PREVIEW_ROWS && (
+                <p style={{ fontSize: '11px', color: colors.muted, marginTop: '10px' }}>
+                  Showing first {MAX_PREVIEW_ROWS} rows. Download the file to see more.
+                </p>
+              )}
+            </div>
+          )}
           {isImage && (
             <img
               src={url}
@@ -152,7 +280,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
               style={{ width: '100%', height: '70dvh', border: 'none', display: 'block' }}
             />
           )}
-          {!isImage && !isPdf && (
+          {!isImage && !isPdf && !isSheet && (
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: '44px', marginBottom: '14px' }}>
                 {label === 'Excel'   ? '📊'
