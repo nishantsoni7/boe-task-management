@@ -14,104 +14,56 @@ import { useViewAs } from '@/hooks/useViewAs'
 
 type Employee = { id: string; full_name: string; role: string; team: string }
 
-type EmployeeAsset = {
+type Asset = {
   id: string
-  user_id: string
   asset_type: string
   asset_name: string
-  brand: string | null
-  model: string | null
-  serial_number: string | null
-  specifications: string | null
-  status: string
-  assigned_location: string | null
-  purchase_date: string | null
-  last_service_date: string | null
-  last_os_update_date: string | null
-  last_formatted_date: string | null
-  notes: string | null
+  serial_no: string | null
+  status: string // available | assigned | returned | lost
   created_at: string
   updated_at: string
 }
 
-// password_value is intentionally excluded from all selects
-type EmployeeAccessDetail = {
-  id: string
-  user_id: string
-  access_type: string
-  login_label: string
-  login_id: string
-  recovery_info: string | null
-  two_factor_enabled: boolean
-  notes: string | null
-  created_at: string
-  updated_at: string
-}
-
-type MaintenanceEvent = {
+type EmployeeAsset = {
   id: string
   asset_id: string
-  user_id: string
-  event_type: string
-  event_date: string
-  notes: string | null
-  created_at: string
+  employee_id: string
+  assigned_by: string
+  assigned_at: string
+  accepted_at: string | null
+  returned_at: string | null
+  lost_at: string | null
+  status: string // pending_acceptance | accepted | returned | lost
+  assets?: Asset | Asset[] | null
 }
 
-type ActivityEntry = {
+type AccessRecord = {
   id: string
-  user_id: string
-  actor_id: string
-  action: string
-  entity_type: string
-  entity_id: string | null
-  details: string | null
-  created_at: string
+  employee_id: string
+  access_type: string
+  username: string
+  secret_value: string | null
+  status: string // active | disabled
+  assigned_at: string
+  updated_at: string
+  updated_by: string | null
 }
 
-type EmployeeSummary = {
-  assetCount: number
-  accessCount: number
-  assetTypes: string[]   // DB values e.g. 'laptop_desktop'
-  assetNames: string[]   // actual asset_name values, in insertion order
-  lastUpdated: string | null
-}
-
-// ─── Display Mappings ─────────────────────────────────────────────────────────
-
-const ASSET_TYPE_LABEL: Record<string, string> = {
-  laptop_desktop: 'Laptop / Desktop',
-  monitor:        'Extra Screen / Monitor',
-  mouse_keyboard: 'Mouse & Keyboard',
-  storage:        'Pen Drive / Ext. Storage',
-  phone:          'Mobile Phone',
-  other:          'Other Custom Asset',
-}
-
-const LABEL_TO_ASSET_TYPE: Record<string, string> = Object.fromEntries(
-  Object.entries(ASSET_TYPE_LABEL).map(([k, v]) => [v, k])
-)
-
-const STATUS_LABEL: Record<string, string> = {
-  in_use:      'In Use',
-  spare:       'Spare',
-  repair:      'Under Repair',
-  not_working: 'Not Working',
-  returned:    'Returned',
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleDateString('en-GB', {
-      day: '2-digit', month: 'short', year: 'numeric',
-    })
+    return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
   } catch {
     return '—'
   }
 }
 
-// ─── Shared UI helpers ────────────────────────────────────────────────────────
+function singleAsset(a: EmployeeAsset['assets']): Asset | null {
+  if (!a) return null
+  return Array.isArray(a) ? (a[0] ?? null) : a
+}
 
 function TableHead({ cols }: { cols: string[] }) {
   return (
@@ -130,878 +82,153 @@ function TableHead({ cols }: { cols: string[] }) {
   )
 }
 
-type PillStatus = 'added' | 'partial' | 'none' | 'inuse' | 'spare' | 'repair' | 'notworking' | 'returned'
-
-function StatusPill({ status }: { status: PillStatus }) {
-  const map: Record<PillStatus, { label: string; cls: string }> = {
-    added:      { label: 'Added',              cls: 'boe-badge-completed' },
-    partial:    { label: 'Partially Added',    cls: 'boe-badge-pending'   },
-    none:       { label: 'No Inventory Added', cls: 'boe-badge-urgent'    },
-    inuse:      { label: 'In Use',             cls: 'boe-badge-pending'   },
-    spare:      { label: 'Spare',              cls: 'boe-badge-completed' },
-    repair:     { label: 'Under Repair',       cls: 'boe-badge-urgent'    },
-    notworking: { label: 'Not Working',        cls: 'boe-badge-urgent'    },
-    returned:   { label: 'Returned',           cls: 'boe-badge-pending'   },
-  }
-  const { label, cls } = map[status] ?? map.none
-  return <span className={`boe-badge ${cls}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>{label}</span>
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="boe-card" style={{ padding: '32px', textAlign: 'center' }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>{message}</div>
+    </div>
+  )
 }
 
-function assetStatusPill(dbStatus: string): PillStatus {
-  const map: Record<string, PillStatus> = {
-    in_use: 'inuse', spare: 'spare', repair: 'repair',
-    not_working: 'notworking', returned: 'returned',
-  }
-  return map[dbStatus] ?? 'inuse'
-}
-
-function SectionLabel({ text }: { text: string }) {
+function ErrorBanner({ message }: { message: string }) {
   return (
     <div style={{
-      fontSize: '10px', fontWeight: 700, color: colors.muted,
-      textTransform: 'uppercase', letterSpacing: '0.06em',
-      marginBottom: '10px', marginTop: '4px',
-    }}>{text}</div>
-  )
-}
-
-function EmptyRow({ message = 'No data added yet.' }: { message?: string }) {
-  return (
-    <tr>
-      <td colSpan={99} style={{ padding: '20px 16px', color: colors.muted, fontSize: '12px', textAlign: 'center' }}>
-        {message}
-      </td>
-    </tr>
-  )
-}
-
-function PlaceholderShell({ message }: { message: string }) {
-  return (
-    <div className="boe-card" style={{
-      padding: '48px 24px', textAlign: 'center',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+      padding: '10px 12px', borderRadius: '8px', marginBottom: '14px',
+      background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
     }}>
-      <div style={{ fontSize: '13px', fontWeight: 600, color: colors.secondary }}>{message}</div>
-      <div style={{ fontSize: '12px', color: colors.muted }}>This section will be available soon.</div>
+      {message}
     </div>
   )
 }
 
-function PanelLoading() {
-  return (
-    <div style={{ padding: '32px 16px', textAlign: 'center', color: colors.muted, fontSize: '12px' }}>
-      Loading…
-    </div>
-  )
+const ASSET_STATUS_BADGE: Record<string, string> = {
+  pending_acceptance: 'boe-badge-pending',
+  accepted: 'boe-badge-completed',
+  returned: 'boe-badge-pending',
+  lost: 'boe-badge-urgent',
 }
 
-// ─── Admin: Employee Overview ─────────────────────────────────────────────────
-
-function EmployeeOverview({
-  employees,
-  summaries,
-  onSelect,
-}: {
-  employees: Employee[]
-  summaries: Record<string, EmployeeSummary>
-  onSelect: (emp: Employee) => void
-}) {
-  return (
-    <div className="boe-card" style={{ overflow: 'hidden' }}>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-          <TableHead cols={['Employee', 'Assets Assigned', 'Login Details Status', 'Last Updated', 'Action']} />
-          <tbody>
-            {employees.length === 0 && <EmptyRow message="No employees found." />}
-            {employees.map(emp => {
-              const s = summaries[emp.id]
-              const loginStatus: PillStatus = s && s.accessCount > 0 ? 'added' : 'none'
-              const lastUpdated = s?.lastUpdated ? fmtDate(s.lastUpdated) : '—'
-
-              const assetCell = () => {
-                const names = s?.assetNames ?? []
-                const types = s?.assetTypes ?? []
-                const count = s?.assetCount ?? 0
-                if (count === 0) {
-                  return <span style={{ fontSize: '12px', color: colors.muted }}>No assets added</span>
-                }
-                if (count === 1) {
-                  return (
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>{names[0] ?? '—'}</div>
-                      <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '1px' }}>
-                        {ASSET_TYPE_LABEL[types[0]] ?? types[0] ?? '—'}
-                      </div>
-                    </div>
-                  )
-                }
-                return (
-                  <div>
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>{count} Assets</div>
-                    <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '1px' }}>
-                      {types.map(t => ASSET_TYPE_LABEL[t] ?? t).join(', ')}
-                    </div>
-                  </div>
-                )
-              }
-
-              return (
-                <tr key={emp.id}
-                  style={{ borderBottom: `1px solid ${colors.border}` }}
-                  onMouseEnter={e => (e.currentTarget.style.background = colors.raised)}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 600, color: colors.primary }}>{emp.full_name}</div>
-                    <div style={{ fontSize: '11px', color: colors.muted, textTransform: 'capitalize', marginTop: '1px' }}>
-                      {emp.role} · {emp.team}
-                    </div>
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    {assetCell()}
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    {loginStatus === 'added'
-                      ? <StatusPill status="added" />
-                      : <span style={{ fontSize: '12px', color: colors.muted }}>Not Added</span>
-                    }
-                  </td>
-                  <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>
-                    {lastUpdated}
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <button
-                      className="boe-btn boe-btn-ghost"
-                      style={{ padding: '4px 10px', fontSize: '11px' }}
-                      onClick={() => onSelect(emp)}
-                    >
-                      View
-                    </button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
+const CATALOG_STATUS_BADGE: Record<string, string> = {
+  available: 'boe-badge-completed',
+  assigned: 'boe-badge-pending',
+  returned: 'boe-badge-pending',
+  lost: 'boe-badge-urgent',
 }
 
-// ─── Admin: Employee Detail Panel ─────────────────────────────────────────────
-
-function EmployeeDetailPanel({
-  emp,
-  onClose,
-  supabase,
-  onEditAsset,
-  inViewMode,
-}: {
-  emp: Employee
-  onClose: () => void
-  supabase: SupabaseClient
-  onEditAsset: (asset: EmployeeAsset) => void
-  inViewMode?: boolean
-}) {
-  const [assets,        setAssets]        = useState<EmployeeAsset[]>([])
-  const [accessDetails, setAccessDetails] = useState<EmployeeAccessDetail[]>([])
-  const [maintenance,   setMaintenance]   = useState<MaintenanceEvent[]>([])
-  const [activity,      setActivity]      = useState<ActivityEntry[]>([])
-  const [loading,       setLoading]       = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      setLoading(true)
-
-      const [
-        { data: a },
-        { data: ac },
-        { data: act },
-      ] = await Promise.all([
-        supabase
-          .from('employee_assets')
-          .select('id, user_id, asset_type, asset_name, brand, model, serial_number, specifications, status, assigned_location, purchase_date, last_service_date, last_os_update_date, last_formatted_date, notes, created_at, updated_at')
-          .eq('user_id', emp.id)
-          .order('created_at'),
-        supabase
-          .from('employee_access_details')
-          .select('id, user_id, access_type, login_label, login_id, recovery_info, two_factor_enabled, notes, created_at, updated_at')
-          .eq('user_id', emp.id)
-          .order('access_type'),
-        supabase
-          .from('asset_activity_log')
-          .select('id, user_id, actor_id, action, entity_type, entity_id, details, created_at')
-          .eq('user_id', emp.id)
-          .order('created_at', { ascending: false })
-          .limit(20),
-      ])
-
-      if (cancelled) return
-
-      const fetchedAssets = (a ?? []) as EmployeeAsset[]
-      setAssets(fetchedAssets)
-      setAccessDetails((ac ?? []) as EmployeeAccessDetail[])
-      setActivity((act ?? []) as ActivityEntry[])
-
-      if (fetchedAssets.length > 0) {
-        const ids = fetchedAssets.map(x => x.id)
-        const { data: maint } = await supabase
-          .from('asset_maintenance_history')
-          .select('id, asset_id, user_id, event_type, event_date, notes, created_at')
-          .in('asset_id', ids)
-          .order('event_date', { ascending: false })
-        if (!cancelled) setMaintenance((maint ?? []) as MaintenanceEvent[])
-      }
-
-      if (!cancelled) setLoading(false)
-    }
-    load()
-    return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emp.id])
-
-  const assetById = useMemo(() => {
-    const m: Record<string, EmployeeAsset> = {}
-    assets.forEach(a => { m[a.id] = a })
-    return m
-  }, [assets])
-
-  return (
-    <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.25)', zIndex: 49 }}
-      />
-
-      <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: '400px',
-        background: colors.base, borderLeft: `1px solid ${colors.border}`,
-        zIndex: 50, display: 'flex', flexDirection: 'column', overflowY: 'auto',
-      }}>
-
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
-          position: 'sticky', top: 0, background: colors.base, zIndex: 1,
-        }}>
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>{emp.full_name}</div>
-            <div style={{ fontSize: '11px', color: colors.muted, textTransform: 'capitalize', marginTop: '1px' }}>
-              {emp.role} · {emp.team}
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="boe-btn boe-btn-ghost"
-            style={{ padding: '4px 10px', fontSize: '13px', lineHeight: 1 }}
-          >✕</button>
-        </div>
-
-        {loading ? <PanelLoading /> : (
-          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-
-            {/* Employee Information */}
-            <section>
-              <SectionLabel text="Employee Information" />
-              <div className="boe-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {[
-                  { label: 'Full Name', value: emp.full_name },
-                  { label: 'Role',      value: emp.role,  cap: true },
-                  { label: 'Team',      value: emp.team,  cap: true },
-                ].map(({ label, value, cap }) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                    <span style={{ fontSize: '11px', color: colors.muted, minWidth: 90 }}>{label}</span>
-                    <span style={{ fontSize: '12px', color: colors.secondary, fontWeight: 500, textAlign: 'right', textTransform: cap ? 'capitalize' : 'none' }}>{value}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* Assets Assigned */}
-            <section>
-              <SectionLabel text="Assets Assigned" />
-              {assets.length === 0
-                ? (
-                  <div className="boe-card" style={{ padding: '20px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '12px', color: colors.muted }}>No inventory added for this employee.</div>
-                  </div>
-                )
-                : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {assets.map(a => (
-                      <div key={a.id} className="boe-card" style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>{a.asset_name}</div>
-                            <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                              {ASSET_TYPE_LABEL[a.asset_type] ?? a.asset_type}
-                            </div>
-                            {a.specifications && (
-                              <div style={{ fontSize: '11px', color: colors.tertiary, marginTop: '3px' }}>{a.specifications}</div>
-                            )}
-                            {a.serial_number && (
-                              <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>Serial: {a.serial_number}</div>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                            <StatusPill status={assetStatusPill(a.status)} />
-                            {!inViewMode && (
-                              <button
-                                className="boe-btn boe-btn-ghost"
-                                style={{ padding: '3px 8px', fontSize: '11px' }}
-                                onClick={() => onEditAsset(a)}
-                              >
-                                Edit
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        {a.created_at && (
-                          <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '8px' }}>
-                            Added: {fmtDate(a.created_at)}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )
-              }
-            </section>
-
-            {/* Login Details */}
-            <section>
-              <SectionLabel text="Login Details" />
-              {accessDetails.length === 0
-                ? (
-                  <div className="boe-card" style={{ padding: '20px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '12px', color: colors.muted }}>No login details added.</div>
-                  </div>
-                )
-                : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {accessDetails.map(ac => (
-                      <div key={ac.id} className="boe-card" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>{ac.login_label}</div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                          <span style={{ fontSize: '11px', color: colors.muted }}>Login ID</span>
-                          <span style={{ fontSize: '11px', color: colors.secondary, fontFamily: 'monospace' }}>{ac.login_id}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                          <span style={{ fontSize: '11px', color: colors.muted }}>Password</span>
-                          <span style={{ fontSize: '12px', color: colors.muted, letterSpacing: '0.12em' }}>••••••••</span>
-                        </div>
-                        {ac.two_factor_enabled && (
-                          <div style={{ fontSize: '10.5px', color: colors.blue, marginTop: '2px' }}>2FA enabled</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )
-              }
-            </section>
-
-            {/* Maintenance History */}
-            <section>
-              <SectionLabel text="Maintenance History" />
-              {maintenance.length === 0
-                ? (
-                  <div className="boe-card" style={{ padding: '20px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '12px', color: colors.muted }}>No maintenance records.</div>
-                  </div>
-                )
-                : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {maintenance.map(m => (
-                      <div key={m.id} className="boe-card" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                          <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
-                            {assetById[m.asset_id]?.asset_name ?? 'Unknown Asset'}
-                          </div>
-                          <span style={{ fontSize: '10px', color: colors.muted, textTransform: 'capitalize' }}>
-                            {m.event_type.replace('_', ' ')}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                          <span style={{ fontSize: '11px', color: colors.muted }}>Date</span>
-                          <span style={{ fontSize: '11px', color: colors.secondary }}>{fmtDate(m.event_date)}</span>
-                        </div>
-                        {m.notes && (
-                          <div style={{ fontSize: '11px', color: colors.tertiary, marginTop: '4px', fontStyle: 'italic' }}>
-                            {m.notes}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )
-              }
-            </section>
-
-            {/* Recent Activity */}
-            <section>
-              <SectionLabel text="Recent Activity" />
-              {activity.length === 0
-                ? (
-                  <div className="boe-card" style={{ padding: '20px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '12px', color: colors.muted }}>No recent activity.</div>
-                  </div>
-                )
-                : (
-                  <div className="boe-card" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {activity.map((a, i) => (
-                      <div key={a.id} style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-                        gap: '12px', paddingBottom: i < activity.length - 1 ? '8px' : 0,
-                        borderBottom: i < activity.length - 1 ? `1px solid ${colors.border}` : 'none',
-                      }}>
-                        <div>
-                          <div style={{ fontSize: '12px', color: colors.primary, fontWeight: 500, textTransform: 'capitalize' }}>
-                            {a.action.replace(/_/g, ' ')}
-                          </div>
-                          <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px', textTransform: 'capitalize' }}>
-                            {a.entity_type.replace(/_/g, ' ')}
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap' }}>
-                          {fmtDate(a.created_at)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              }
-            </section>
-
-          </div>
-        )}
-      </div>
-    </>
-  )
+const ACCESS_STATUS_BADGE: Record<string, string> = {
+  active: 'boe-badge-completed',
+  disabled: 'boe-badge-urgent',
 }
 
-// ─── Admin: Asset Inventory ───────────────────────────────────────────────────
-
-const INVENTORY_CATEGORIES = [
-  { label: 'Laptop / Desktop',          dbType: 'laptop_desktop'  },
-  { label: 'Extra Screen / Monitor',    dbType: 'monitor'         },
-  { label: 'Mouse & Keyboard',          dbType: 'mouse_keyboard'  },
-  { label: 'Pen Drive / Ext. Storage',  dbType: 'storage'         },
-  { label: 'Mobile Phone',              dbType: 'phone'           },
-  { label: 'Other Custom Asset',        dbType: 'other'           },
-]
-
-type CategoryStats = { total: number; inUse: number; spare: number; repair: number }
-
-function AssetInventory({ supabase }: { supabase: SupabaseClient }) {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-  const [stats,  setStats]  = useState<Record<string, CategoryStats>>({})
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from('employee_assets')
-        .select('asset_type, status')
-
-      const agg: Record<string, CategoryStats> = {}
-      INVENTORY_CATEGORIES.forEach(c => {
-        agg[c.dbType] = { total: 0, inUse: 0, spare: 0, repair: 0 }
-      })
-
-      ;(data ?? []).forEach((row: { asset_type: string; status: string }) => {
-        const key = row.asset_type
-        if (!agg[key]) agg[key] = { total: 0, inUse: 0, spare: 0, repair: 0 }
-        agg[key].total++
-        if (row.status === 'in_use')  agg[key].inUse++
-        if (row.status === 'spare')   agg[key].spare++
-        if (row.status === 'repair')  agg[key].repair++
-      })
-
-      setStats(agg)
-      setLoading(false)
-    }
-    load()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  if (selectedCategory !== null) {
-    return (
-      <CategoryDetail
-        category={selectedCategory}
-        supabase={supabase}
-        onBack={() => setSelectedCategory(null)}
-      />
-    )
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {INVENTORY_CATEGORIES.map(cat => {
-        const s = stats[cat.dbType] ?? { total: 0, inUse: 0, spare: 0, repair: 0 }
-        return (
-          <div key={cat.dbType} className="boe-card" style={{ padding: '16px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, marginBottom: '10px' }}>{cat.label}</div>
-                {loading
-                  ? <div style={{ fontSize: '11px', color: colors.muted }}>Loading…</div>
-                  : (
-                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                      {[
-                        { label: 'Total',         value: s.total  },
-                        { label: 'In Use',        value: s.inUse  },
-                        { label: 'Spare',         value: s.spare  },
-                        { label: 'Under Repair',  value: s.repair },
-                      ].map(({ label, value }) => (
-                        <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <span style={{ fontSize: '18px', fontWeight: 700, color: value > 0 ? colors.primary : colors.muted, lineHeight: 1 }}>
-                            {value}
-                          </span>
-                          <span style={{ fontSize: '10px', color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            {label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                }
-              </div>
-              <button
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '6px 14px', fontSize: '12px', flexShrink: 0 }}
-                onClick={() => setSelectedCategory(cat.dbType)}
-              >
-                View Category
-              </button>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
+function Badge({ status, map }: { status: string; map: Record<string, string> }) {
+  const cls = map[status] ?? 'boe-badge-pending'
+  const label = status.replace(/_/g, ' ')
+  return <span className={`boe-badge ${cls}`} style={{ fontSize: '10px', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{label}</span>
 }
 
-// ─── Admin: Category Detail ───────────────────────────────────────────────────
+const ASSET_TYPE_OPTIONS = ['laptop_desktop', 'monitor', 'mouse_keyboard', 'storage', 'phone', 'other']
+const ACCESS_TYPE_OPTIONS = ['gmail', 'clickup', 'system_login', 'other']
 
-type CategoryAssetRow = {
-  id: string
-  asset_name: string
-  status: string
-  updated_at: string
-  users: { full_name: string }[] | null
-}
-
-function CategoryDetail({
-  category,
-  onBack,
-  supabase,
-}: {
-  category: string
-  onBack: () => void
-  supabase: SupabaseClient
-}) {
-  const [rows,    setRows]    = useState<CategoryAssetRow[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const displayLabel = ASSET_TYPE_LABEL[category] ?? category
-
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from('employee_assets')
-        .select('id, asset_name, status, updated_at, users!employee_assets_user_id_fkey(full_name)')
-        .eq('asset_type', category)
-        .order('updated_at', { ascending: false })
-
-      setRows((data ?? []) as CategoryAssetRow[])
-      setLoading(false)
-    }
-    load()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category])
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <button
-          className="boe-btn boe-btn-ghost"
-          style={{ padding: '5px 12px', fontSize: '12px' }}
-          onClick={onBack}
-        >
-          ← Back
-        </button>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{displayLabel}</div>
-      </div>
-
-      <div className="boe-card" style={{ overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-            <TableHead cols={['Asset Name', 'Assigned To', 'Status', 'Last Updated']} />
-            <tbody>
-              {loading && (
-                <tr><td colSpan={4} style={{ padding: '20px 16px', textAlign: 'center', color: colors.muted, fontSize: '12px' }}>Loading…</td></tr>
-              )}
-              {!loading && rows.length === 0 && <EmptyRow message="No assets in this category yet." />}
-              {!loading && rows.map(row => (
-                <tr key={row.id}
-                  style={{ borderBottom: `1px solid ${colors.border}` }}
-                  onMouseEnter={e => (e.currentTarget.style.background = colors.raised)}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary }}>{row.asset_name}</td>
-                  <td style={{ padding: '12px 16px', color: colors.secondary }}>{row.users?.[0]?.full_name ?? '—'}</td>
-                  <td style={{ padding: '12px 16px' }}><StatusPill status={assetStatusPill(row.status)} /></td>
-                  <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(row.updated_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── User: My Details ─────────────────────────────────────────────────────────
-
-const MY_DETAIL_CARDS = [
-  { key: 'personal',  label: 'Personal Info',     desc: 'Your name, team, role, and position on record.' },
-  { key: 'contact',   label: 'Contact Details',   desc: 'Official email address and phone number.' },
-  { key: 'emergency', label: 'Emergency Contact', desc: 'Contact person in case of emergency.' },
-]
-
-function MyDetails() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '680px' }}>
-      {MY_DETAIL_CARDS.map(card => (
-        <div key={card.key} className="boe-card" style={{
-          padding: '16px 20px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
-        }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, marginBottom: '3px' }}>{card.label}</div>
-            <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '6px' }}>{card.desc}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: colors.muted }} />
-              <span style={{ fontSize: '11px', color: colors.muted }}>Not added yet</span>
-            </div>
-          </div>
-          <button className="boe-btn boe-btn-ghost" style={{ padding: '6px 14px', fontSize: '12px', flexShrink: 0 }}>
-            Add Details
-          </button>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ─── User: My Assets ─────────────────────────────────────────────────────────
-
-const DEVICE_CATEGORIES = [
-  { dbType: 'laptop_desktop',  label: 'Laptop / Desktop',             desc: 'Work laptop or desktop — brand, model, serial number, RAM/storage.' },
-  { dbType: 'monitor',         label: 'Extra Screen / Monitor',       desc: 'Additional display assigned to you.' },
-  { dbType: 'mouse_keyboard',  label: 'Mouse & Keyboard',             desc: 'Peripherals assigned to you.' },
-  { dbType: 'storage',         label: 'Pen Drive / External Storage', desc: 'USB drives or external storage — capacity and serial.' },
-  { dbType: 'phone',           label: 'Mobile Phone',                 desc: 'Company-issued phone — brand, model, serial.' },
-  { dbType: 'other',           label: 'Other Custom Asset',           desc: 'Any other hardware or accessory assigned to you.' },
-]
+// ─── Employee: My Assets ─────────────────────────────────────────────────────
 
 function MyAssets({ userId, supabase }: { userId: string; supabase: SupabaseClient }) {
-  const [assets,  setAssets]  = useState<EmployeeAsset[]>([])
+  const [rows, setRows] = useState<EmployeeAsset[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [acceptingId, setAcceptingId] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    const { data, error: dbError } = await supabase
+      .from('employee_assets')
+      .select('id, asset_id, employee_id, assigned_by, assigned_at, accepted_at, returned_at, lost_at, status, assets(id, asset_type, asset_name, serial_no, status, created_at, updated_at)')
+      .eq('employee_id', userId)
+      .order('assigned_at', { ascending: false })
+    if (dbError) setError(dbError.message)
+    setRows((data ?? []) as EmployeeAsset[])
+    setLoading(false)
+  }
 
   useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from('employee_assets')
-        .select('id, user_id, asset_type, asset_name, brand, model, serial_number, specifications, status, assigned_location, purchase_date, last_service_date, last_os_update_date, last_formatted_date, notes, created_at, updated_at')
-        .eq('user_id', userId)
-        .order('asset_type')
-      setAssets((data ?? []) as EmployeeAsset[])
-      setLoading(false)
-    }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
-  const assetsByType = useMemo(() => {
-    const m: Record<string, EmployeeAsset[]> = {}
-    assets.forEach(a => {
-      if (!m[a.asset_type]) m[a.asset_type] = []
-      m[a.asset_type].push(a)
-    })
-    return m
-  }, [assets])
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '680px' }}>
-      <div style={{
-        padding: '12px 16px', borderRadius: '8px',
-        background: colors.blueTint, border: `1px solid ${colors.blue}30`,
-        fontSize: '12px', color: colors.blue, marginBottom: '4px',
-      }}>
-        Register all company devices assigned to you. Each entry tracks device type, brand, model, serial number, and servicing history.
-      </div>
-
-      {loading && <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>}
-
-      {!loading && DEVICE_CATEGORIES.map(cat => {
-        const catAssets = assetsByType[cat.dbType] ?? []
-        return (
-          <div key={cat.dbType} className="boe-card" style={{ padding: '16px 20px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, marginBottom: '3px' }}>{cat.label}</div>
-            <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '8px' }}>{cat.desc}</div>
-            {catAssets.length === 0
-              ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: colors.muted }} />
-                  <span style={{ fontSize: '11px', color: colors.muted }}>No device added</span>
-                </div>
-              )
-              : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {catAssets.map(a => (
-                    <div key={a.id} style={{
-                      background: colors.raised, borderRadius: '6px', padding: '10px 12px',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px',
-                    }}>
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>{a.asset_name}</div>
-                        {a.specifications && <div style={{ fontSize: '11px', color: colors.tertiary, marginTop: '2px' }}>{a.specifications}</div>}
-                        {a.serial_number  && <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>Serial: {a.serial_number}</div>}
-                      </div>
-                      <StatusPill status={assetStatusPill(a.status)} />
-                    </div>
-                  ))}
-                </div>
-              )
-            }
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ─── User: Login Details ─────────────────────────────────────────────────────
-
-function LoginDetails({ userId, supabase }: { userId: string; supabase: SupabaseClient }) {
-  const [details,  setDetails]  = useState<EmployeeAccessDetail[]>([])
-  const [loading,  setLoading]  = useState(true)
-
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from('employee_access_details')
-        .select('id, user_id, access_type, login_label, login_id, recovery_info, two_factor_enabled, notes, created_at, updated_at')
-        .eq('user_id', userId)
-        .order('access_type')
-      setDetails((data ?? []) as EmployeeAccessDetail[])
-      setLoading(false)
-    }
+  const handleAccept = async (row: EmployeeAsset) => {
+    setAcceptingId(row.id)
+    const { error: dbError } = await supabase
+      .from('employee_assets')
+      .update({ accepted_at: new Date().toISOString(), status: 'accepted' })
+      .eq('id', row.id)
+    setAcceptingId(null)
+    if (dbError) { setError(dbError.message); return }
     load()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId])
+  }
 
-  const ACCESS_TYPE_GROUPS = [
-    { key: 'gmail',        label: 'Gmail',         desc: 'Official Google Workspace email account.' },
-    { key: 'clickup',      label: 'ClickUp',       desc: 'Project and task management platform.' },
-    { key: 'system_login', label: 'System Login',  desc: 'Computer / OS login credentials.' },
-    { key: 'other',        label: 'Other Systems', desc: 'Any other official platform login.' },
-  ]
-
-  const byType = useMemo(() => {
-    const m: Record<string, EmployeeAccessDetail[]> = {}
-    details.forEach(d => {
-      if (!m[d.access_type]) m[d.access_type] = []
-      m[d.access_type].push(d)
-    })
-    return m
-  }, [details])
+  if (loading) return <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '680px' }}>
-      {loading && <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>}
-      {!loading && ACCESS_TYPE_GROUPS.map(group => {
-        const groupItems = byType[group.key] ?? []
-        return (
-          <div key={group.key} className="boe-card" style={{ padding: '16px 20px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, marginBottom: '3px' }}>{group.label}</div>
-            <div style={{ fontSize: '12px', color: colors.muted, marginBottom: '8px' }}>{group.desc}</div>
-            {groupItems.length === 0
-              ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: colors.muted }} />
-                  <span style={{ fontSize: '11px', color: colors.muted }}>Not added yet</span>
-                </div>
-              )
-              : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {groupItems.map(d => (
-                    <div key={d.id} style={{
-                      background: colors.raised, borderRadius: '6px', padding: '10px 12px',
-                      display: 'flex', flexDirection: 'column', gap: '5px',
-                    }}>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>{d.login_label}</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <span style={{ fontSize: '11px', color: colors.muted }}>Login ID</span>
-                        <span style={{ fontSize: '11px', color: colors.secondary, fontFamily: 'monospace' }}>{d.login_id}</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                        <span style={{ fontSize: '11px', color: colors.muted }}>Password</span>
-                        <span style={{ fontSize: '12px', color: colors.muted, letterSpacing: '0.12em' }}>••••••••</span>
-                      </div>
-                      {d.two_factor_enabled && (
-                        <div style={{ fontSize: '10.5px', color: colors.blue }}>2FA enabled</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )
-            }
+    <div>
+      {error && <ErrorBanner message={error} />}
+      {rows.length === 0
+        ? <EmptyState message="No assets assigned to you yet." />
+        : (
+          <div className="boe-card" style={{ overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <TableHead cols={['Asset Name', 'Type', 'Serial No.', 'Assigned Date', 'Status', '']} />
+                <tbody>
+                  {rows.map(row => {
+                    const asset = singleAsset(row.assets)
+                    return (
+                      <tr key={row.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary }}>{asset?.asset_name ?? '—'}</td>
+                        <td style={{ padding: '12px 16px', color: colors.secondary, textTransform: 'capitalize' }}>{(asset?.asset_type ?? '—').replace(/_/g, ' ')}</td>
+                        <td style={{ padding: '12px 16px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px' }}>{asset?.serial_no ?? '—'}</td>
+                        <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(row.assigned_at)}</td>
+                        <td style={{ padding: '12px 16px' }}><Badge status={row.status} map={ASSET_STATUS_BADGE} /></td>
+                        <td style={{ padding: '12px 16px' }}>
+                          {row.status === 'pending_acceptance' && (
+                            <button
+                              className="boe-btn boe-btn-primary"
+                              style={{ padding: '5px 12px', fontSize: '11px' }}
+                              disabled={acceptingId === row.id}
+                              onClick={() => handleAccept(row)}
+                            >
+                              {acceptingId === row.id ? 'Accepting…' : 'Accept Asset'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )
-      })}
-    </div>
-  )
-}
-
-// ─── User: Maintenance History ────────────────────────────────────────────────
-
-function UserMaintenanceHistory({ userId, supabase }: { userId: string; supabase: SupabaseClient }) {
-  const [records,  setRecords]  = useState<(MaintenanceEvent & { asset_name: string })[]>([])
-  const [loading,  setLoading]  = useState(true)
-
-  useEffect(() => {
-    const load = async () => {
-      const { data: assets } = await supabase
-        .from('employee_assets')
-        .select('id, asset_name')
-        .eq('user_id', userId)
-
-      if (!assets || assets.length === 0) {
-        setLoading(false)
-        return
       }
+    </div>
+  )
+}
 
-      const ids = (assets as { id: string; asset_name: string }[]).map(a => a.id)
-      const nameById: Record<string, string> = {}
-      ;(assets as { id: string; asset_name: string }[]).forEach(a => { nameById[a.id] = a.asset_name })
+// ─── Employee: My Access ──────────────────────────────────────────────────────
 
-      const { data: maint } = await supabase
-        .from('asset_maintenance_history')
-        .select('id, asset_id, user_id, event_type, event_date, notes, created_at')
-        .in('asset_id', ids)
-        .order('event_date', { ascending: false })
+function MyAccess({ userId, supabase }: { userId: string; supabase: SupabaseClient }) {
+  const [rows, setRows] = useState<AccessRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-      setRecords(
-        ((maint ?? []) as MaintenanceEvent[]).map(m => ({
-          ...m,
-          asset_name: nameById[m.asset_id] ?? 'Unknown Asset',
-        }))
-      )
+  useEffect(() => {
+    const load = async () => {
+      const { data, error: dbError } = await supabase
+        .from('access_records')
+        .select('id, employee_id, access_type, username, secret_value, status, assigned_at, updated_at, updated_by')
+        .eq('employee_id', userId)
+        .order('assigned_at', { ascending: false })
+      if (dbError) setError(dbError.message)
+      setRows((data ?? []) as AccessRecord[])
       setLoading(false)
     }
     load()
@@ -1010,754 +237,596 @@ function UserMaintenanceHistory({ userId, supabase }: { userId: string; supabase
 
   if (loading) return <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
 
-  if (records.length === 0) {
-    return (
-      <div className="boe-card" style={{ padding: '32px', textAlign: 'center' }}>
-        <div style={{ fontSize: '12px', color: colors.muted }}>No maintenance records yet.</div>
-      </div>
-    )
-  }
-
   return (
-    <div className="boe-card" style={{ overflow: 'hidden', maxWidth: '680px' }}>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-          <TableHead cols={['Device', 'Event', 'Date', 'Notes']} />
-          <tbody>
-            {records.map(r => (
-              <tr key={r.id}
-                style={{ borderBottom: `1px solid ${colors.border}` }}
-                onMouseEnter={e => (e.currentTarget.style.background = colors.raised)}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary }}>{r.asset_name}</td>
-                <td style={{ padding: '12px 16px', color: colors.secondary, textTransform: 'capitalize' }}>
-                  {r.event_type.replace(/_/g, ' ')}
-                </td>
-                <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(r.event_date)}</td>
-                <td style={{ padding: '12px 16px', color: colors.tertiary, fontSize: '12px' }}>{r.notes ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <div>
+      {error && <ErrorBanner message={error} />}
+      {rows.length === 0
+        ? <EmptyState message="No access records assigned to you yet." />
+        : (
+          <div className="boe-card" style={{ overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <TableHead cols={['Access Type', 'Username', 'Assigned Date', 'Status']} />
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                      <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary, textTransform: 'capitalize' }}>{r.access_type.replace(/_/g, ' ')}</td>
+                      <td style={{ padding: '12px 16px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px' }}>{r.username}</td>
+                      <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(r.assigned_at)}</td>
+                      <td style={{ padding: '12px 16px' }}><Badge status={r.status} map={ACCESS_STATUS_BADGE} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      }
     </div>
   )
 }
 
-// ─── Add Asset Modal ──────────────────────────────────────────────────────────
+// ─── Admin: Asset Inventory ───────────────────────────────────────────────────
 
-const ASSET_TYPE_OPTIONS = Object.entries(ASSET_TYPE_LABEL).map(([value, label]) => ({ value, label }))
-const STATUS_OPTIONS     = Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))
+function AssetInventory({ employees, supabase }: { employees: Employee[]; supabase: SupabaseClient }) {
+  const [assets, setAssets] = useState<Asset[]>([])
+  const [activeAssignments, setActiveAssignments] = useState<Record<string, EmployeeAsset>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [assigningAsset, setAssigningAsset] = useState<Asset | null>(null)
+  const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
-type AddAssetForm = {
-  user_id:       string
-  asset_type:    string
-  asset_name:    string
-  serial_number: string
-  status:        string
-  purchase_date: string
-  notes:         string
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    const [{ data: a, error: aErr }, { data: ea, error: eaErr }] = await Promise.all([
+      supabase.from('assets').select('id, asset_type, asset_name, serial_no, status, created_at, updated_at').order('created_at', { ascending: false }),
+      supabase.from('employee_assets').select('id, asset_id, employee_id, assigned_by, assigned_at, accepted_at, returned_at, lost_at, status').in('status', ['pending_acceptance', 'accepted']),
+    ])
+    if (aErr) setError(aErr.message)
+    else if (eaErr) setError(eaErr.message)
+    setAssets((a ?? []) as Asset[])
+    const map: Record<string, EmployeeAsset> = {}
+    ;((ea ?? []) as EmployeeAsset[]).forEach(row => { map[row.asset_id] = row })
+    setActiveAssignments(map)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const employeeName = (id: string) => employees.find(e => e.id === id)?.full_name ?? '—'
+
+  const handleMarkReturned = async (asset: Asset) => {
+    const assignment = activeAssignments[asset.id]
+    if (!assignment) return
+    setBusyId(asset.id)
+    setError(null)
+    const now = new Date().toISOString()
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([
+      supabase.from('employee_assets').update({ returned_at: now, status: 'returned' }).eq('id', assignment.id),
+      supabase.from('assets').update({ status: 'returned' }).eq('id', asset.id),
+    ])
+    setBusyId(null)
+    if (e1 || e2) { setError((e1 ?? e2)!.message); return }
+    load()
+  }
+
+  const handleMarkLost = async (asset: Asset) => {
+    const assignment = activeAssignments[asset.id]
+    setBusyId(asset.id)
+    setError(null)
+    const now = new Date().toISOString()
+    const ops = [supabase.from('assets').update({ status: 'lost' }).eq('id', asset.id)]
+    if (assignment) ops.push(supabase.from('employee_assets').update({ lost_at: now, status: 'lost' }).eq('id', assignment.id))
+    const results = await Promise.all(ops)
+    setBusyId(null)
+    const failed = results.find(r => r.error)
+    if (failed?.error) { setError(failed.error.message); return }
+    load()
+  }
+
+  const handleDelete = async (asset: Asset) => {
+    if (activeAssignments[asset.id]) {
+      setError('This asset is assigned. Mark it returned or lost before deleting.')
+      return
+    }
+    if (!window.confirm(`Delete "${asset.asset_name}"? This cannot be undone.`)) return
+    setBusyId(asset.id)
+    setError(null)
+    const { error: dbError } = await supabase.from('assets').delete().eq('id', asset.id)
+    setBusyId(null)
+    if (dbError) { setError(dbError.message); return }
+    load()
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {error && <ErrorBanner message={error} />}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }} onClick={() => setShowCreate(true)}>
+          + Create Asset
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
+      ) : assets.length === 0 ? (
+        <EmptyState message="No assets in inventory yet." />
+      ) : (
+        <div className="boe-card" style={{ overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <TableHead cols={['Asset Name', 'Type', 'Serial No.', 'Status', 'Assigned To', 'Actions']} />
+              <tbody>
+                {assets.map(asset => {
+                  const assignment = activeAssignments[asset.id]
+                  return (
+                    <tr key={asset.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                      <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary }}>{asset.asset_name}</td>
+                      <td style={{ padding: '12px 16px', color: colors.secondary, textTransform: 'capitalize' }}>{asset.asset_type.replace(/_/g, ' ')}</td>
+                      <td style={{ padding: '12px 16px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px' }}>{asset.serial_no ?? '—'}</td>
+                      <td style={{ padding: '12px 16px' }}><Badge status={asset.status} map={CATALOG_STATUS_BADGE} /></td>
+                      <td style={{ padding: '12px 16px', color: colors.secondary }}>{assignment ? employeeName(assignment.employee_id) : '—'}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {asset.status === 'available' && (
+                            <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>
+                              Assign
+                            </button>
+                          )}
+                          {asset.status === 'assigned' && (
+                            <button
+                              className="boe-btn boe-btn-ghost"
+                              style={{ padding: '4px 10px', fontSize: '11px' }}
+                              disabled={busyId === asset.id}
+                              onClick={() => handleMarkReturned(asset)}
+                            >
+                              Mark Returned
+                            </button>
+                          )}
+                          {asset.status !== 'lost' && (
+                            <button
+                              className="boe-btn boe-btn-ghost"
+                              style={{ padding: '4px 10px', fontSize: '11px' }}
+                              disabled={busyId === asset.id}
+                              onClick={() => handleMarkLost(asset)}
+                            >
+                              Mark Lost
+                            </button>
+                          )}
+                          <button
+                            className="boe-btn boe-btn-ghost"
+                            style={{ padding: '4px 10px', fontSize: '11px' }}
+                            disabled={busyId === asset.id}
+                            onClick={() => setEditingAsset(asset)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="boe-btn boe-btn-ghost"
+                            style={{ padding: '4px 10px', fontSize: '11px', color: '#C13030' }}
+                            disabled={busyId === asset.id}
+                            onClick={() => handleDelete(asset)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {showCreate && (
+        <CreateAssetModal supabase={supabase} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); load() }} />
+      )}
+      {assigningAsset && (
+        <AssignAssetModal
+          asset={assigningAsset}
+          employees={employees}
+          supabase={supabase}
+          onClose={() => setAssigningAsset(null)}
+          onSaved={() => { setAssigningAsset(null); load() }}
+        />
+      )}
+      {editingAsset && (
+        <EditAssetModal
+          asset={editingAsset}
+          supabase={supabase}
+          onClose={() => setEditingAsset(null)}
+          onSaved={() => { setEditingAsset(null); load() }}
+        />
+      )}
+    </div>
+  )
 }
 
-const EMPTY_FORM: AddAssetForm = {
-  user_id:       '',
-  asset_type:    'laptop_desktop',
-  asset_name:    '',
-  serial_number: '',
-  status:        'in_use',
-  purchase_date: '',
-  notes:         '',
-}
+function CreateAssetModal({ supabase, onClose, onSaved }: { supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
+  const [assetType, setAssetType] = useState(ASSET_TYPE_OPTIONS[0])
+  const [assetName, setAssetName] = useState('')
+  const [serialNo, setSerialNo] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-// ─── Edit Asset Modal ─────────────────────────────────────────────────────────
+  const handleSave = async () => {
+    if (!assetName.trim()) { setError('Asset Name is required.'); return }
+    setSaving(true)
+    setError(null)
+    const { error: dbError } = await supabase.from('assets').insert({
+      asset_type: assetType,
+      asset_name: assetName.trim(),
+      serial_no: serialNo.trim() || null,
+    })
+    setSaving(false)
+    if (dbError) { setError(dbError.message); return }
+    onSaved()
+  }
 
-type EditAssetForm = {
-  asset_type:    string
-  asset_name:    string
-  brand:         string
-  model:         string
-  serial_number: string
-  status:        string
-  purchase_date: string
-  notes:         string
+  return (
+    <Modal title="Create Asset" onClose={onClose}>
+      <Field label="Asset Type">
+        <select className="boe-input" value={assetType} onChange={e => setAssetType(e.target.value)} style={{ width: '100%' }}>
+          {ASSET_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+        </select>
+      </Field>
+      <Field label="Asset Name">
+        <input className="boe-input" value={assetName} onChange={e => setAssetName(e.target.value)} placeholder="e.g. Dell XPS 15" style={{ width: '100%' }} />
+      </Field>
+      <Field label="Serial No.">
+        <input className="boe-input" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="Optional" style={{ width: '100%' }} />
+      </Field>
+      {error && <ErrorBanner message={error} />}
+      <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Create Asset" />
+    </Modal>
+  )
 }
 
 function EditAssetModal({
-  asset,
-  supabase,
-  onClose,
-  onSaved,
-}: {
-  asset:    EmployeeAsset
-  supabase: SupabaseClient
-  onClose:  () => void
-  onSaved:  () => void
-}) {
-  const [form,   setForm]   = useState<EditAssetForm>({
-    asset_type:    asset.asset_type,
-    asset_name:    asset.asset_name,
-    brand:         asset.brand         ?? '',
-    model:         asset.model         ?? '',
-    serial_number: asset.serial_number ?? '',
-    status:        asset.status,
-    purchase_date: asset.purchase_date ?? '',
-    notes:         asset.notes         ?? '',
-  })
+  asset, supabase, onClose, onSaved,
+}: { asset: Asset; supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
+  const [assetType, setAssetType] = useState(asset.asset_type)
+  const [assetName, setAssetName] = useState(asset.asset_name)
+  const [serialNo, setSerialNo] = useState(asset.serial_no ?? '')
   const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState<string | null>(null)
-
-  const set = (k: keyof EditAssetForm, v: string) =>
-    setForm(prev => ({ ...prev, [k]: v }))
+  const [error, setError] = useState<string | null>(null)
 
   const handleSave = async () => {
-    if (!form.asset_name.trim()) {
-      setError('Asset Name is required.')
-      return
-    }
+    if (!assetName.trim()) { setError('Asset Name is required.'); return }
     setSaving(true)
     setError(null)
-
-    const { data: updated, error: dbError } = await supabase
-      .from('employee_assets')
+    const { error: dbError } = await supabase
+      .from('assets')
       .update({
-        asset_type:    form.asset_type,
-        asset_name:    form.asset_name.trim(),
-        brand:         form.brand.trim()         || null,
-        model:         form.model.trim()         || null,
-        serial_number: form.serial_number.trim() || null,
-        status:        form.status,
-        purchase_date: form.purchase_date        || null,
-        notes:         form.notes.trim()         || null,
+        asset_type: assetType,
+        asset_name: assetName.trim(),
+        serial_no: serialNo.trim() || null,
       })
       .eq('id', asset.id)
-      .select('id')
-
-    if (dbError) {
-      setError(dbError.message)
-      setSaving(false)
-      return
-    }
-
-    if (!updated || updated.length === 0) {
-      setError('Update was blocked — admin update permission may be missing. Run the SQL migration in Supabase and retry.')
-      setSaving(false)
-      return
-    }
-
+    setSaving(false)
+    if (dbError) { setError(dbError.message); return }
     onSaved()
   }
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', boxSizing: 'border-box',
-    padding: '8px 10px', borderRadius: '6px',
-    border: `1px solid ${colors.border}`,
-    background: colors.raised, color: colors.primary,
-    fontSize: '13px', outline: 'none',
-  }
-  const labelStyle: React.CSSProperties = {
-    fontSize: '11px', fontWeight: 600, color: colors.muted,
-    textTransform: 'uppercase', letterSpacing: '0.05em',
-    marginBottom: '4px', display: 'block',
-  }
-  const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column' }
-
   return (
-    <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 69 }}
-      />
-      <div style={{
-        position: 'fixed', top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '480px', maxWidth: 'calc(100vw - 32px)',
-        maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
-        background: colors.base, borderRadius: '12px',
-        border: `1px solid ${colors.border}`,
-        zIndex: 70, padding: '24px',
-        display: 'flex', flexDirection: 'column', gap: '18px',
-      }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Edit Asset</div>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '13px' }}>✕</button>
-        </div>
-
-        {/* Form */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          {/* Asset Name — shown first: it's the primary identifier */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Asset Name</label>
-            <input
-              type="text"
-              placeholder="e.g. Dell XPS 15 9500, MX Master 3, iPhone 14 Pro"
-              value={form.asset_name}
-              onChange={e => set('asset_name', e.target.value)}
-              style={inputStyle}
-            />
-            <span style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
-              The specific device name — not the category. E.g. &quot;HP EliteBook 840&quot;, not &quot;Laptop&quot;.
-            </span>
-          </div>
-
-          {/* Asset Type */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Asset Type <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(category)</span></label>
-            <select value={form.asset_type} onChange={e => set('asset_type', e.target.value)} style={inputStyle}>
-              {ASSET_TYPE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Brand */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Brand</label>
-            <input
-              type="text"
-              placeholder="e.g. Dell, Apple, Logitech"
-              value={form.brand}
-              onChange={e => set('brand', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Model */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Model</label>
-            <input
-              type="text"
-              placeholder="e.g. XPS 15, MacBook Pro M3"
-              value={form.model}
-              onChange={e => set('model', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Asset Tag / Serial Number */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Asset Tag / Serial Number</label>
-            <input
-              type="text"
-              placeholder="Serial number or asset tag"
-              value={form.serial_number}
-              onChange={e => set('serial_number', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Status */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Status</label>
-            <select value={form.status} onChange={e => set('status', e.target.value)} style={inputStyle}>
-              {STATUS_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Assigned Date */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Assigned Date</label>
-            <input
-              type="date"
-              value={form.purchase_date}
-              onChange={e => set('purchase_date', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Notes */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Notes / Remarks</label>
-            <textarea
-              placeholder="Optional notes or remarks"
-              value={form.notes}
-              onChange={e => set('notes', e.target.value)}
-              rows={3}
-              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
-            />
-          </div>
-        </div>
-
-        {error && (
-          <div style={{ fontSize: '12px', color: '#e05353', padding: '8px 12px', background: '#e0535314', borderRadius: '6px' }}>
-            {error}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="boe-btn boe-btn-primary"
-            style={{ padding: '8px 18px', fontSize: '13px' }}
-          >
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
-        </div>
-      </div>
-    </>
+    <Modal title="Edit Asset" onClose={onClose}>
+      <Field label="Asset Type">
+        <select className="boe-input" value={assetType} onChange={e => setAssetType(e.target.value)} style={{ width: '100%' }}>
+          {ASSET_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+        </select>
+      </Field>
+      <Field label="Asset Name">
+        <input className="boe-input" value={assetName} onChange={e => setAssetName(e.target.value)} style={{ width: '100%' }} />
+      </Field>
+      <Field label="Serial No.">
+        <input className="boe-input" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="Optional" style={{ width: '100%' }} />
+      </Field>
+      {error && <ErrorBanner message={error} />}
+      <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Save Changes" />
+    </Modal>
   )
 }
 
-function AddAssetModal({
-  employees,
-  supabase,
-  onClose,
-  onSaved,
-}: {
-  employees: Employee[]
-  supabase:  SupabaseClient
-  onClose:   () => void
-  onSaved:   () => void
-}) {
-  const [form,    setForm]    = useState<AddAssetForm>({ ...EMPTY_FORM, user_id: employees[0]?.id ?? '' })
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
-
-  const set = (k: keyof AddAssetForm, v: string) =>
-    setForm(prev => ({ ...prev, [k]: v }))
-
-  const handleSave = async () => {
-    if (!form.user_id || !form.asset_name.trim()) {
-      setError('Employee and Asset Name are required.')
-      return
-    }
-    setSaving(true)
-    setError(null)
-
-    const { error: dbError } = await supabase.from('employee_assets').insert({
-      user_id:       form.user_id,
-      asset_type:    form.asset_type,
-      asset_name:    form.asset_name.trim(),
-      serial_number: form.serial_number.trim() || null,
-      status:        form.status,
-      purchase_date: form.purchase_date || null,
-      notes:         form.notes.trim() || null,
-    })
-
-    if (dbError) {
-      setError(dbError.message)
-      setSaving(false)
-      return
-    }
-
-    onSaved()
-  }
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', boxSizing: 'border-box',
-    padding: '8px 10px', borderRadius: '6px',
-    border: `1px solid ${colors.border}`,
-    background: colors.raised, color: colors.primary,
-    fontSize: '13px', outline: 'none',
-  }
-  const labelStyle: React.CSSProperties = {
-    fontSize: '11px', fontWeight: 600, color: colors.muted,
-    textTransform: 'uppercase', letterSpacing: '0.05em',
-    marginBottom: '4px', display: 'block',
-  }
-  const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column' }
-
-  return (
-    <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 59 }}
-      />
-      <div style={{
-        position: 'fixed', top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '480px', maxWidth: 'calc(100vw - 32px)',
-        maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
-        background: colors.base, borderRadius: '12px',
-        border: `1px solid ${colors.border}`,
-        zIndex: 60, padding: '24px',
-        display: 'flex', flexDirection: 'column', gap: '18px',
-      }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Add Asset</div>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '13px' }}>✕</button>
-        </div>
-
-        {/* Form */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          {/* Employee */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Employee</label>
-            <select value={form.user_id} onChange={e => set('user_id', e.target.value)} style={inputStyle}>
-              {employees.map(emp => (
-                <option key={emp.id} value={emp.id}>{emp.full_name} — {emp.role}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Asset Type */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Asset Type</label>
-            <select value={form.asset_type} onChange={e => set('asset_type', e.target.value)} style={inputStyle}>
-              {ASSET_TYPE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Asset Name */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Asset Name</label>
-            <input
-              type="text"
-              placeholder="e.g. Dell XPS 15, Logitech MX Keys"
-              value={form.asset_name}
-              onChange={e => set('asset_name', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Asset Tag / ID */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Asset Tag / ID</label>
-            <input
-              type="text"
-              placeholder="Serial number or asset tag"
-              value={form.serial_number}
-              onChange={e => set('serial_number', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Status */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Status</label>
-            <select value={form.status} onChange={e => set('status', e.target.value)} style={inputStyle}>
-              {STATUS_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Assigned Date */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Assigned Date</label>
-            <input
-              type="date"
-              value={form.purchase_date}
-              onChange={e => set('purchase_date', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Notes */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Notes / Remarks</label>
-            <textarea
-              placeholder="Optional notes or remarks"
-              value={form.notes}
-              onChange={e => set('notes', e.target.value)}
-              rows={3}
-              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
-            />
-          </div>
-        </div>
-
-        {error && (
-          <div style={{ fontSize: '12px', color: '#e05353', padding: '8px 12px', background: '#e0535314', borderRadius: '6px' }}>
-            {error}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="boe-btn boe-btn-primary"
-            style={{ padding: '8px 18px', fontSize: '13px' }}
-          >
-            {saving ? 'Saving…' : 'Save Asset'}
-          </button>
-        </div>
-      </div>
-    </>
-  )
-}
-
-// ─── Add Login Modal ──────────────────────────────────────────────────────────
-
-const ACCESS_TYPE_OPTIONS = [
-  { value: 'gmail',        label: 'Gmail' },
-  { value: 'clickup',      label: 'ClickUp' },
-  { value: 'system_login', label: 'System Login' },
-  { value: 'other',        label: 'Other' },
-]
-
-type AddLoginForm = {
-  user_id:            string
-  access_type:        string
-  login_label:        string
-  login_id:           string
-  password_value:     string
-  two_factor_enabled: boolean
-  recovery_info:      string
-  notes:              string
-}
-
-const EMPTY_LOGIN_FORM: AddLoginForm = {
-  user_id:            '',
-  access_type:        'gmail',
-  login_label:        '',
-  login_id:           '',
-  password_value:     '',
-  two_factor_enabled: false,
-  recovery_info:      '',
-  notes:              '',
-}
-
-function AddLoginModal({
-  employees,
-  supabase,
-  onClose,
-  onSaved,
-}: {
-  employees: Employee[]
-  supabase:  SupabaseClient
-  onClose:   () => void
-  onSaved:   () => void
-}) {
-  const [form,   setForm]   = useState<AddLoginForm>({ ...EMPTY_LOGIN_FORM, user_id: employees[0]?.id ?? '' })
+function AssignAssetModal({
+  asset, employees, supabase, onClose, onSaved,
+}: { asset: Asset; employees: Employee[]; supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
+  const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? '')
   const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState<string | null>(null)
-
-  const set = <K extends keyof AddLoginForm>(k: K, v: AddLoginForm[K]) =>
-    setForm(prev => ({ ...prev, [k]: v }))
+  const [error, setError] = useState<string | null>(null)
 
   const handleSave = async () => {
-    if (!form.user_id || !form.login_label.trim() || !form.login_id.trim()) {
-      setError('Employee, Login Label, and Login ID are required.')
-      return
-    }
+    if (!employeeId) { setError('Select an employee.'); return }
     setSaving(true)
     setError(null)
-
-    const { error: dbError } = await supabase.from('employee_access_details').insert({
-      user_id:            form.user_id,
-      access_type:        form.access_type,
-      login_label:        form.login_label.trim(),
-      login_id:           form.login_id.trim(),
-      password_value:     form.password_value || null,
-      two_factor_enabled: form.two_factor_enabled,
-      recovery_info:      form.recovery_info.trim() || null,
-      notes:              form.notes.trim() || null,
-    })
-
-    if (dbError) {
-      setError(dbError.message)
-      setSaving(false)
-      return
-    }
-
+    const { data: { user } } = await supabase.auth.getUser()
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([
+      supabase.from('employee_assets').insert({
+        asset_id: asset.id,
+        employee_id: employeeId,
+        assigned_by: user?.id,
+        status: 'pending_acceptance',
+      }),
+      supabase.from('assets').update({ status: 'assigned' }).eq('id', asset.id),
+    ])
+    setSaving(false)
+    if (e1 || e2) { setError((e1 ?? e2)!.message); return }
     onSaved()
   }
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', boxSizing: 'border-box',
-    padding: '8px 10px', borderRadius: '6px',
-    border: `1px solid ${colors.border}`,
-    background: colors.raised, color: colors.primary,
-    fontSize: '13px', outline: 'none',
+  return (
+    <Modal title={`Assign "${asset.asset_name}"`} onClose={onClose}>
+      <Field label="Employee">
+        <select className="boe-input" value={employeeId} onChange={e => setEmployeeId(e.target.value)} style={{ width: '100%' }}>
+          {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name} — {emp.role}</option>)}
+        </select>
+      </Field>
+      {error && <ErrorBanner message={error} />}
+      <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Assign Asset" />
+    </Modal>
+  )
+}
+
+// ─── Admin: Access Register ───────────────────────────────────────────────────
+
+function AccessRegister({ employees, supabase }: { employees: Employee[]; supabase: SupabaseClient }) {
+  const [rows, setRows] = useState<AccessRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [editingRow, setEditingRow] = useState<AccessRecord | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    const { data, error: dbError } = await supabase
+      .from('access_records')
+      .select('id, employee_id, access_type, username, secret_value, status, assigned_at, updated_at, updated_by')
+      .order('assigned_at', { ascending: false })
+    if (dbError) setError(dbError.message)
+    setRows((data ?? []) as AccessRecord[])
+    setLoading(false)
   }
-  const labelStyle: React.CSSProperties = {
-    fontSize: '11px', fontWeight: 600, color: colors.muted,
-    textTransform: 'uppercase', letterSpacing: '0.05em',
-    marginBottom: '4px', display: 'block',
+
+  useEffect(() => {
+    load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const employeeName = (id: string) => employees.find(e => e.id === id)?.full_name ?? '—'
+
+  const handleToggleStatus = async (row: AccessRecord) => {
+    setBusyId(row.id)
+    setError(null)
+    const { data: { user } } = await supabase.auth.getUser()
+    const newStatus = row.status === 'active' ? 'disabled' : 'active'
+    const { error: dbError } = await supabase
+      .from('access_records')
+      .update({ status: newStatus, updated_by: user?.id })
+      .eq('id', row.id)
+    setBusyId(null)
+    if (dbError) { setError(dbError.message); return }
+    load()
   }
-  const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column' }
 
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {error && <ErrorBanner message={error} />}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }} onClick={() => setShowCreate(true)}>
+          + Add Access Record
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
+      ) : rows.length === 0 ? (
+        <EmptyState message="No access records yet." />
+      ) : (
+        <div className="boe-card" style={{ overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <TableHead cols={['Employee', 'Access Type', 'Username', 'Status', 'Assigned Date', 'Actions']} />
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary }}>{employeeName(r.employee_id)}</td>
+                    <td style={{ padding: '12px 16px', color: colors.secondary, textTransform: 'capitalize' }}>{r.access_type.replace(/_/g, ' ')}</td>
+                    <td style={{ padding: '12px 16px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px' }}>{r.username}</td>
+                    <td style={{ padding: '12px 16px' }}><Badge status={r.status} map={ACCESS_STATUS_BADGE} /></td>
+                    <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(r.assigned_at)}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setEditingRow(r)}>
+                          Update Credentials
+                        </button>
+                        <button
+                          className="boe-btn boe-btn-ghost"
+                          style={{ padding: '4px 10px', fontSize: '11px' }}
+                          disabled={busyId === r.id}
+                          onClick={() => handleToggleStatus(r)}
+                        >
+                          {r.status === 'active' ? 'Disable Access' : 'Re-enable Access'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {showCreate && (
+        <CreateAccessModal employees={employees} supabase={supabase} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); load() }} />
+      )}
+      {editingRow && (
+        <EditAccessModal row={editingRow} supabase={supabase} onClose={() => setEditingRow(null)} onSaved={() => { setEditingRow(null); load() }} />
+      )}
+    </div>
+  )
+}
+
+function CreateAccessModal({
+  employees, supabase, onClose, onSaved,
+}: { employees: Employee[]; supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
+  const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? '')
+  const [accessType, setAccessType] = useState(ACCESS_TYPE_OPTIONS[0])
+  const [username, setUsername] = useState('')
+  const [secret, setSecret] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    if (!employeeId || !username.trim()) { setError('Employee and Username are required.'); return }
+    setSaving(true)
+    setError(null)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { error: dbError } = await supabase.from('access_records').insert({
+      employee_id: employeeId,
+      access_type: accessType,
+      username: username.trim(),
+      secret_value: secret || null,
+      updated_by: user?.id,
+    })
+    setSaving(false)
+    if (dbError) { setError(dbError.message); return }
+    onSaved()
+  }
+
+  return (
+    <Modal title="Add Access Record" onClose={onClose}>
+      <Field label="Employee">
+        <select className="boe-input" value={employeeId} onChange={e => setEmployeeId(e.target.value)} style={{ width: '100%' }}>
+          {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name} — {emp.role}</option>)}
+        </select>
+      </Field>
+      <Field label="Access Type">
+        <select className="boe-input" value={accessType} onChange={e => setAccessType(e.target.value)} style={{ width: '100%' }}>
+          {ACCESS_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+        </select>
+      </Field>
+      <Field label="Username / Login ID">
+        <input className="boe-input" value={username} onChange={e => setUsername(e.target.value)} style={{ width: '100%' }} />
+      </Field>
+      <Field label="Password / Secret">
+        <input type="password" className="boe-input" value={secret} onChange={e => setSecret(e.target.value)} autoComplete="new-password" style={{ width: '100%' }} />
+      </Field>
+      {error && <ErrorBanner message={error} />}
+      <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Add Record" />
+    </Modal>
+  )
+}
+
+function EditAccessModal({
+  row, supabase, onClose, onSaved,
+}: { row: AccessRecord; supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
+  const [username, setUsername] = useState(row.username)
+  const [secret, setSecret] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    if (!username.trim()) { setError('Username is required.'); return }
+    setSaving(true)
+    setError(null)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { error: dbError } = await supabase
+      .from('access_records')
+      .update({
+        username: username.trim(),
+        ...(secret ? { secret_value: secret } : {}),
+        updated_by: user?.id,
+      })
+      .eq('id', row.id)
+    setSaving(false)
+    if (dbError) { setError(dbError.message); return }
+    onSaved()
+  }
+
+  return (
+    <Modal title="Update Credentials" onClose={onClose}>
+      <Field label="Username / Login ID">
+        <input className="boe-input" value={username} onChange={e => setUsername(e.target.value)} style={{ width: '100%' }} />
+      </Field>
+      <Field label="New Password / Secret">
+        <input type="password" className="boe-input" value={secret} onChange={e => setSecret(e.target.value)} placeholder="Leave blank to keep unchanged" autoComplete="new-password" style={{ width: '100%' }} />
+      </Field>
+      {error && <ErrorBanner message={error} />}
+      <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Save Changes" />
+    </Modal>
+  )
+}
+
+// ─── Shared modal shell ────────────────────────────────────────────────────────
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
     <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 59 }}
-      />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 59 }} />
       <div style={{
-        position: 'fixed', top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '480px', maxWidth: 'calc(100vw - 32px)',
-        maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
-        background: colors.base, borderRadius: '12px',
-        border: `1px solid ${colors.border}`,
-        zIndex: 60, padding: '24px',
-        display: 'flex', flexDirection: 'column', gap: '18px',
+        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        width: '440px', maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
+        background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
+        zIndex: 60, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px',
       }}>
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Add Login Detail</div>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>{title}</div>
           <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '13px' }}>✕</button>
         </div>
-
-        {/* Form */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          {/* Employee */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Employee</label>
-            <select value={form.user_id} onChange={e => set('user_id', e.target.value)} style={inputStyle}>
-              {employees.map(emp => (
-                <option key={emp.id} value={emp.id}>{emp.full_name} — {emp.role}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Access Type */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Access Type</label>
-            <select value={form.access_type} onChange={e => set('access_type', e.target.value)} style={inputStyle}>
-              {ACCESS_TYPE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Login Label */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Login Label</label>
-            <input
-              type="text"
-              placeholder="e.g. Work Gmail, Windows Login"
-              value={form.login_label}
-              onChange={e => set('login_label', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Login ID */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Login ID</label>
-            <input
-              type="text"
-              placeholder="Email address or username"
-              value={form.login_id}
-              onChange={e => set('login_id', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Password — input type="password" so browser never renders it as plain text */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Password</label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={form.password_value}
-              onChange={e => set('password_value', e.target.value)}
-              autoComplete="new-password"
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Two Factor Enabled */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <input
-              type="checkbox"
-              id="tfa-check"
-              checked={form.two_factor_enabled}
-              onChange={e => set('two_factor_enabled', e.target.checked)}
-              style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: colors.blue }}
-            />
-            <label htmlFor="tfa-check" style={{ fontSize: '13px', color: colors.secondary, cursor: 'pointer' }}>
-              Two-factor authentication enabled
-            </label>
-          </div>
-
-          {/* Recovery Info */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Recovery Info</label>
-            <input
-              type="text"
-              placeholder="Recovery email, phone, or backup code hint"
-              value={form.recovery_info}
-              onChange={e => set('recovery_info', e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Notes */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Notes / Remarks</label>
-            <textarea
-              placeholder="Optional notes"
-              value={form.notes}
-              onChange={e => set('notes', e.target.value)}
-              rows={3}
-              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
-            />
-          </div>
-        </div>
-
-        {error && (
-          <div style={{ fontSize: '12px', color: '#e05353', padding: '8px 12px', background: '#e0535314', borderRadius: '6px' }}>
-            {error}
-          </div>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="boe-btn boe-btn-primary"
-            style={{ padding: '8px 18px', fontSize: '13px' }}
-          >
-            {saving ? 'Saving…' : 'Save Login'}
-          </button>
-        </div>
+        {children}
       </div>
     </>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <label style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function ModalActions({ onClose, onSave, saving, saveLabel }: { onClose: () => void; onSave: () => void; saving: boolean; saveLabel: string }) {
+  return (
+    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+      <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
+      <button onClick={onSave} disabled={saving} className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
+        {saving ? 'Saving…' : saveLabel}
+      </button>
+    </div>
   )
 }
 
 // ─── View meta ────────────────────────────────────────────────────────────────
 
 const VIEW_META: Record<AssetsView, { title: string; subtitle: string }> = {
-  'my-details':          { title: 'My Details',          subtitle: 'Your personal info and contact details on record.' },
-  'my-assets':           { title: 'My Assets',           subtitle: 'Company devices assigned to you.' },
-  'login-details':       { title: 'Login Details',       subtitle: 'Your official system login credentials.' },
-  'maintenance-history': { title: 'Maintenance History', subtitle: 'Servicing, OS updates, and formatting records for your devices.' },
-  'employee-overview':   { title: 'Employee Overview',   subtitle: 'All employees — click View to see their full inventory and access details.' },
-  'asset-inventory':     { title: 'Asset Inventory',     subtitle: 'All company assets grouped by category.' },
-  'access-register':     { title: 'Access Register',     subtitle: 'All employee system logins and access records.' },
-  'activity-log':        { title: 'Activity Log',        subtitle: 'All changes and updates across the Assets & Access module.' },
+  'my-assets':       { title: 'My Assets',       subtitle: 'Company devices assigned to you.' },
+  'my-access':       { title: 'My Access',       subtitle: 'Login and access records assigned to you.' },
+  'asset-inventory': { title: 'Asset Inventory', subtitle: 'All company assets and their assignment status.' },
+  'access-register': { title: 'Access Register', subtitle: 'All employee login and access records.' },
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AssetsAccessPage() {
-  const [profile,          setProfile]          = useState<UserProfile | null>(null)
-  const [employees,        setEmployees]        = useState<Employee[]>([])
-  const [empSummaries,     setEmpSummaries]     = useState<Record<string, EmployeeSummary>>({})
-  const [loading,          setLoading]          = useState(true)
-  const [view,             setView]             = useState<AssetsView | null>(null)
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
-  const [showAddAsset,     setShowAddAsset]     = useState(false)
-  const [showAddLogin,     setShowAddLogin]     = useState(false)
-  const [editingAsset,     setEditingAsset]     = useState<EmployeeAsset | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [loading, setLoading] = useState(true)
+  const [view, setView] = useState<AssetsView | null>(null)
 
-  const router   = useRouter()
+  const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
   const inViewMode = !!viewAsUserId
@@ -1783,84 +852,22 @@ export default function AssetsAccessPage() {
       if (!p) { router.push('/login'); return }
       const prof = p as UserProfile
       setProfile(prof)
+      setEmployees((empData ?? []) as Employee[])
 
-      const fetchedEmployees = (empData ?? []) as Employee[]
-      setEmployees(fetchedEmployees)
-
-      // Batch-load summary data for Employee Overview (admin only)
-      if (prof.role === 'admin' && fetchedEmployees.length > 0) {
-        const [{ data: allAssets }, { data: allAccess }] = await Promise.all([
-          supabase
-            .from('employee_assets')
-            .select('user_id, asset_type, asset_name, status, updated_at'),
-          supabase
-            .from('employee_access_details')
-            .select('user_id, access_type, updated_at'),
-        ])
-
-        const summaries: Record<string, EmployeeSummary> = {}
-
-        ;(allAssets ?? []).forEach((row: { user_id: string; asset_type: string; asset_name: string; status: string; updated_at: string }) => {
-          if (!summaries[row.user_id]) summaries[row.user_id] = { assetCount: 0, accessCount: 0, assetTypes: [], assetNames: [], lastUpdated: null }
-          const s = summaries[row.user_id]
-          s.assetCount++
-          s.assetNames.push(row.asset_name)
-          if (!s.assetTypes.includes(row.asset_type)) s.assetTypes.push(row.asset_type)
-          if (!s.lastUpdated || row.updated_at > s.lastUpdated) s.lastUpdated = row.updated_at
-        })
-
-        ;(allAccess ?? []).forEach((row: { user_id: string; access_type: string; updated_at: string }) => {
-          if (!summaries[row.user_id]) summaries[row.user_id] = { assetCount: 0, accessCount: 0, assetTypes: [], assetNames: [], lastUpdated: null }
-          const s = summaries[row.user_id]
-          s.accessCount++
-          if (!s.lastUpdated || row.updated_at > s.lastUpdated) s.lastUpdated = row.updated_at
-        })
-
-        setEmpSummaries(summaries)
-      }
-
-      // In view mode, show the viewed employee's personal perspective
       const effectiveRole = inViewMode ? (viewAsProfile?.role ?? 'member') : prof.role
-      setView(effectiveRole === 'admin' && !inViewMode ? 'employee-overview' : 'my-details')
+      setView(effectiveRole === 'admin' && !inViewMode ? 'asset-inventory' : 'my-assets')
       setLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const refreshSummaries = async () => {
-    if (!profile || employees.length === 0) return
-    const [{ data: allAssets }, { data: allAccess }] = await Promise.all([
-      supabase.from('employee_assets').select('user_id, asset_type, asset_name, status, updated_at'),
-      supabase.from('employee_access_details').select('user_id, access_type, updated_at'),
-    ])
-    const summaries: Record<string, EmployeeSummary> = {}
-    ;(allAssets ?? []).forEach((row: { user_id: string; asset_type: string; asset_name: string; status: string; updated_at: string }) => {
-      if (!summaries[row.user_id]) summaries[row.user_id] = { assetCount: 0, accessCount: 0, assetTypes: [], assetNames: [], lastUpdated: null }
-      const s = summaries[row.user_id]
-      s.assetCount++
-      s.assetNames.push(row.asset_name)
-      if (!s.assetTypes.includes(row.asset_type)) s.assetTypes.push(row.asset_type)
-      if (!s.lastUpdated || row.updated_at > s.lastUpdated) s.lastUpdated = row.updated_at
-    })
-    ;(allAccess ?? []).forEach((row: { user_id: string; access_type: string; updated_at: string }) => {
-      if (!summaries[row.user_id]) summaries[row.user_id] = { assetCount: 0, accessCount: 0, assetTypes: [], assetNames: [], lastUpdated: null }
-      const s = summaries[row.user_id]
-      s.accessCount++
-      if (!s.lastUpdated || row.updated_at > s.lastUpdated) s.lastUpdated = row.updated_at
-    })
-    setEmpSummaries(summaries)
-  }
-
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.push('/login')
   }
 
-  const handleViewChange = (v: AssetsView) => {
-    setSelectedEmployee(null)
-    setView(v)
-  }
+  const handleViewChange = (v: AssetsView) => setView(v)
 
   if (loading || !view || !profile) return <LoadingScreen />
 
@@ -1869,48 +876,14 @@ export default function AssetsAccessPage() {
 
   const renderView = () => {
     switch (view) {
-      case 'employee-overview':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {!inViewMode && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button
-                  className="boe-btn boe-btn-ghost"
-                  style={{ padding: '8px 18px', fontSize: '13px' }}
-                  onClick={() => setShowAddLogin(true)}
-                >
-                  + Add Login
-                </button>
-                <button
-                  className="boe-btn boe-btn-primary"
-                  style={{ padding: '8px 18px', fontSize: '13px' }}
-                  onClick={() => setShowAddAsset(true)}
-                >
-                  + Add Asset
-                </button>
-              </div>
-            )}
-            <EmployeeOverview
-              employees={employees}
-              summaries={empSummaries}
-              onSelect={setSelectedEmployee}
-            />
-          </div>
-        )
-      case 'asset-inventory':
-        return <AssetInventory supabase={supabase} />
-      case 'access-register':
-        return <PlaceholderShell message="Access Register" />
-      case 'activity-log':
-        return <PlaceholderShell message="Activity Log" />
-      case 'my-details':
-        return <MyDetails />
       case 'my-assets':
         return <MyAssets userId={effectiveUserId} supabase={supabase} />
-      case 'login-details':
-        return <LoginDetails userId={effectiveUserId} supabase={supabase} />
-      case 'maintenance-history':
-        return <UserMaintenanceHistory userId={effectiveUserId} supabase={supabase} />
+      case 'my-access':
+        return <MyAccess userId={effectiveUserId} supabase={supabase} />
+      case 'asset-inventory':
+        return <AssetInventory employees={employees} supabase={supabase} />
+      case 'access-register':
+        return <AccessRegister employees={employees} supabase={supabase} />
     }
   }
 
@@ -1924,67 +897,6 @@ export default function AssetsAccessPage() {
       onSignOut={handleSignOut}
     >
       {renderView()}
-
-      {selectedEmployee && (
-        <EmployeeDetailPanel
-          emp={selectedEmployee}
-          onClose={() => setSelectedEmployee(null)}
-          supabase={supabase}
-          onEditAsset={setEditingAsset}
-          inViewMode={inViewMode}
-        />
-      )}
-
-      {showAddAsset && !inViewMode && (
-        <AddAssetModal
-          employees={employees}
-          supabase={supabase}
-          onClose={() => setShowAddAsset(false)}
-          onSaved={() => {
-            setShowAddAsset(false)
-            refreshSummaries()
-            if (selectedEmployee) {
-              const emp = selectedEmployee
-              setSelectedEmployee(null)
-              setTimeout(() => setSelectedEmployee(emp), 50)
-            }
-          }}
-        />
-      )}
-
-      {editingAsset && !inViewMode && (
-        <EditAssetModal
-          asset={editingAsset}
-          supabase={supabase}
-          onClose={() => setEditingAsset(null)}
-          onSaved={() => {
-            setEditingAsset(null)
-            refreshSummaries()
-            if (selectedEmployee) {
-              const emp = selectedEmployee
-              setSelectedEmployee(null)
-              setTimeout(() => setSelectedEmployee(emp), 50)
-            }
-          }}
-        />
-      )}
-
-      {showAddLogin && !inViewMode && (
-        <AddLoginModal
-          employees={employees}
-          supabase={supabase}
-          onClose={() => setShowAddLogin(false)}
-          onSaved={() => {
-            setShowAddLogin(false)
-            refreshSummaries()
-            if (selectedEmployee) {
-              const emp = selectedEmployee
-              setSelectedEmployee(null)
-              setTimeout(() => setSelectedEmployee(emp), 50)
-            }
-          }}
-        />
-      )}
     </AssetsLayout>
   )
 }
