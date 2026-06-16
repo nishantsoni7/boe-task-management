@@ -108,11 +108,29 @@ const ASSET_STATUS_BADGE: Record<string, string> = {
   lost: 'boe-badge-urgent',
 }
 
-const CATALOG_STATUS_BADGE: Record<string, string> = {
+const ACCEPTANCE_STATUS_BADGE: Record<string, string> = {
+  pending_acceptance: 'boe-badge-pending',
+  accepted: 'boe-badge-completed',
   available: 'boe-badge-completed',
-  assigned: 'boe-badge-pending',
   returned: 'boe-badge-pending',
   lost: 'boe-badge-urgent',
+}
+
+const ACCEPTANCE_STATUS_LABEL: Record<string, string> = {
+  pending_acceptance: 'Pending Acceptance',
+  accepted: 'Accepted',
+  available: 'Available',
+  returned: 'Returned',
+  lost: 'Lost',
+}
+
+// Derives the acceptance status shown to admins from the asset's catalog
+// status plus its active employee_assets row (if any) — no new table/state.
+function acceptanceStatusKey(asset: Asset, assignment: EmployeeAsset | undefined): string {
+  if (asset.status === 'returned') return 'returned'
+  if (asset.status === 'lost') return 'lost'
+  if (assignment) return assignment.status // pending_acceptance | accepted
+  return 'available'
 }
 
 const ACCESS_STATUS_BADGE: Record<string, string> = {
@@ -361,17 +379,27 @@ function AssetInventory({ employees, supabase }: { employees: Employee[]; supaba
         <div className="boe-card" style={{ overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <TableHead cols={['Asset Name', 'Type', 'Serial No.', 'Status', 'Assigned To', 'Actions']} />
+              <TableHead cols={['Asset', 'Type', 'Serial No.', 'Assigned To', 'Acceptance Status', 'Actions']} />
               <tbody>
                 {assets.map(asset => {
                   const assignment = activeAssignments[asset.id]
+                  const statusKey = acceptanceStatusKey(asset, assignment)
                   return (
                     <tr key={asset.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                       <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary }}>{asset.asset_name}</td>
                       <td style={{ padding: '12px 16px', color: colors.secondary, textTransform: 'capitalize' }}>{asset.asset_type.replace(/_/g, ' ')}</td>
                       <td style={{ padding: '12px 16px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px' }}>{asset.serial_no ?? '—'}</td>
-                      <td style={{ padding: '12px 16px' }}><Badge status={asset.status} map={CATALOG_STATUS_BADGE} /></td>
                       <td style={{ padding: '12px 16px', color: colors.secondary }}>{assignment ? employeeName(assignment.employee_id) : '—'}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span className={`boe-badge ${ACCEPTANCE_STATUS_BADGE[statusKey] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                          {ACCEPTANCE_STATUS_LABEL[statusKey] ?? statusKey}
+                        </span>
+                        {statusKey === 'accepted' && assignment?.accepted_at && (
+                          <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '3px' }}>
+                            Accepted {fmtDate(assignment.accepted_at)}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           {asset.status === 'available' && (
