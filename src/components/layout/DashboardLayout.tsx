@@ -106,7 +106,8 @@ export function DashboardLayout({
           .select('id', { count: 'exact', head: true })
           .eq('created_by', uid)
           .neq('assigned_to', uid)
-          .neq('status', 'completed'),
+          .neq('status', 'completed')
+          .neq('status', 'cancelled'),
       ]).then(([myRes, abmRes]) => {
         setNavCounts({
           myActive:             myRes.count  ?? 0,
