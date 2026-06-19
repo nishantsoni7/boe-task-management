@@ -214,7 +214,7 @@ export function MobileBottomNav({ profile, unreadNotifs = 0, navCounts, onSignOu
           zIndex: 1003,
           background: '#fff',
           borderTop: '1px solid #EEF0F4',
-          display: 'flex', alignItems: 'stretch',
+          alignItems: 'stretch',
           height: NAV_H,
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           boxShadow: '0 -1px 8px rgba(0,0,0,0.06)',
