@@ -312,9 +312,6 @@ export default function DashboardPage() {
         }
         onSignOut={handleLogout}
       >
-        {/* ── Quick Start Guide banner ── */}
-        <QuickStartBanner />
-
         {/* ── Top summary cards — always 3 ── */}
         <div style={{
           display: 'grid',
@@ -1347,70 +1344,6 @@ function BottomSummaryBar({ items, isMobile }: { items: BottomSummaryItem[]; isM
           </div>
         </React.Fragment>
       ))}
-    </div>
-  )
-}
-
-function QuickStartBanner() {
-  const [hovered, setHovered] = React.useState(false)
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: '16px',
-      background: '#fff',
-      border: '1.5px solid #E5E7EB',
-      borderRadius: '12px',
-      padding: '16px 20px',
-      marginBottom: '20px',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
-    }}>
-      {/* Icon + text */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: '10px', flexShrink: 0,
-          background: 'rgba(37,99,235,0.08)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-          </svg>
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '14px', fontWeight: 700, color: '#111827', letterSpacing: '-0.01em', marginBottom: '3px' }}>
-            Quick Start Guide
-          </div>
-          <div style={{ fontSize: '12.5px', color: '#6B7280', lineHeight: 1.5 }}>
-            New to the system? Read the basic rules for creating tasks, updating status, using Waiting On, and adding your end-of-day update.
-          </div>
-        </div>
-      </div>
-
-      {/* Button */}
-      <Link
-        href="/quick-start-guide"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          flexShrink: 0,
-          display: 'inline-flex', alignItems: 'center', gap: '6px',
-          fontSize: '13px', fontWeight: 600,
-          color: hovered ? '#fff' : '#2563EB',
-          background: hovered ? '#2563EB' : 'rgba(37,99,235,0.08)',
-          border: '1.5px solid rgba(37,99,235,0.2)',
-          borderRadius: '8px',
-          padding: '8px 16px',
-          textDecoration: 'none',
-          transition: 'background 0.15s, color 0.15s',
-        }}
-      >
-        Open Guide
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
-        </svg>
-      </Link>
     </div>
   )
 }
