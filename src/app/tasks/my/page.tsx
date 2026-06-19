@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
@@ -11,19 +12,13 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useRefresh } from '@/contexts/RefreshContext'
+import { useProfile } from '@/hooks/queries/useProfile'
+import { useMyTasks, useUserNames } from '@/hooks/queries/useMyTasks'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus,
 } from 'lucide-react'
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
-const TASK_COLUMNS = [
-  'id', 'title', 'note', 'status', 'priority', 'type',
-  'is_urgent', 'due_date', 'acknowledged_at',
-  'created_at', 'last_update_at', 'blocker_reason',
-  'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text',
-  'assigned_to', 'created_by', 'delegated_by', 'team',
-].join(', ')
 
 function localDateStr(offsetDays = 0): string {
   const d = new Date()
@@ -846,11 +841,7 @@ function EmptyState({ label }: { label: string }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function MyTasksPage() {
-  const [profile,      setProfile]      = useState<UserProfile | null>(null)
-  const [allTasks,     setAllTasks]     = useState<Task[]>([])
-  const [userId,       setUserId]       = useState<string>('')
-  const [userMap,      setUserMap]      = useState<Record<string, string>>({})
-  const [loading,      setLoading]      = useState(true)
+  const [loggedInId,   setLoggedInId]   = useState<string>('')
   const [activeTab,    setActiveTab]    = useState<TabKey>('all')
   const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
@@ -865,10 +856,48 @@ export default function MyTasksPage() {
   const [filterAssignedBy, setFilterAssignedBy] = useState('')
   const [focusFilter,      setFocusFilter]      = useState<'overdue' | 'today' | 'tomorrow' | null>(null)
 
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router      = useRouter()
+  const supabase    = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
   const { refreshKey } = useRefresh()
+
+  // Resolve the effective user ID — view-as overrides the logged-in user
+  const userId = viewAsUserId ?? loggedInId
+
+  // ── Query-backed data ─────────────────────────────────────────────────────
+  const { data: profile = null }  = useProfile(loggedInId)
+  const { data: allTasksRaw = [], isLoading: tasksLoading } = useMyTasks(userId || null)
+
+  // Allow manual task overrides (create / edit / delete) on top of cached data
+  const [taskOverrides, setTaskOverrides] = useState<Task[] | null>(null)
+  const allTasks = taskOverrides ?? allTasksRaw
+
+  const creatorIds = useMemo(
+    () => [...new Set(allTasksRaw.map(t => t.created_by))],
+    [allTasksRaw]
+  )
+  const { data: userMap = {} } = useUserNames(creatorIds)
+
+  // Invalidate task cache when refreshKey changes (e.g. after a task mutation elsewhere)
+  useEffect(() => {
+    if (!userId) return
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset local overrides when fresh data arrives from the server
+  useEffect(() => {
+    setTaskOverrides(null)
+  }, [allTasksRaw])
+
+  // Prefetch task detail pages for the first 15 visible tasks
+  useEffect(() => {
+    if (allTasksRaw.length === 0) return
+    allTasksRaw.slice(0, 15).forEach(t => router.prefetch(`/tasks/${t.id}`))
+  }, [allTasksRaw]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show cached tasks immediately; only block on first load when no cache exists
+  const loading = !loggedInId && tasksLoading && allTasksRaw.length === 0
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -877,47 +906,23 @@ export default function MyTasksPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // Auth check — runs once on mount
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-
-      const loggedInId = session.user.id
-      const uid = viewAsUserId ?? loggedInId
-      setUserId(uid)
-
-      const [{ data: callerProfile }, { data: tasks }] = await Promise.all([
-        supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', loggedInId).single(),
-        supabase.from('tasks').select(TASK_COLUMNS).eq('assigned_to', uid).neq('status', 'cancelled').order('due_date', { ascending: true, nullsFirst: false }),
-      ])
-
-      if (viewAsUserId && callerProfile?.role !== 'admin') {
-        exitViewMode()
-        router.push('/dashboard')
-        return
-      }
-
-      if (callerProfile) setProfile(callerProfile as UserProfile)
-      setAllTasks((tasks ?? []) as unknown as Task[])
-
-      // Only fetch user records for the unique creators that actually appear in this
-      // user's task list — avoids pulling down every user in the org.
-      const creatorIds = [...new Set((tasks ?? []).map((t: { created_by: string }) => t.created_by))]
-      if (creatorIds.length > 0) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('id, full_name')
-          .in('id', creatorIds)
-        if (userData) {
-          const map: Record<string, string> = {}
-          for (const u of userData) map[u.id] = u.full_name
-          setUserMap(map)
-        }
-      }
-      setLoading(false)
+      setLoggedInId(session.user.id)
     }
     init()
-  }, [viewAsUserId, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Guard view-as against non-admins
+  useEffect(() => {
+    if (viewAsUserId && profile && profile.role !== 'admin') {
+      exitViewMode()
+      router.push('/dashboard')
+    }
+  }, [viewAsUserId, profile]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -925,13 +930,16 @@ export default function MyTasksPage() {
   }
 
   const handleTaskCreated = (task: Task) => {
-    setAllTasks(prev => [task, ...prev])
+    setTaskOverrides(prev => [task, ...(prev ?? allTasksRaw)])
     setShowCreateModal(false)
+    // Invalidate so the cache refreshes in the background
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
   }
 
   const handleEditSaved = (updated: Task) => {
-    setAllTasks(prev => prev.map(t => t.id === updated.id ? updated : t))
+    setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === updated.id ? updated : t))
     setEditingTask(null)
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
   }
 
   const handleAddUpdate = async (note: string, newStatus: string, waitingOn?: { type: 'team_member' | 'external'; userId?: string; text?: string }) => {
@@ -991,7 +999,7 @@ export default function MyTasksPage() {
         localPatch.waiting_on_text    = null
       }
       setSelectedTask(prev => prev ? { ...prev, ...localPatch } : prev)
-      setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
+      setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
     } else if (trimmedNote) {
       const { error: taskErr } = await supabase
         .from('tasks').update({ last_update_at: now }).eq('id', selectedTask.id)
@@ -1015,7 +1023,7 @@ export default function MyTasksPage() {
         throw logErr
       }
 
-      setAllTasks(prev => prev.map(t =>
+      setTaskOverrides(prev => (prev ?? allTasksRaw).map(t =>
         t.id === selectedTask.id ? { ...t, last_update_at: now } : t
       ))
     }
@@ -1047,7 +1055,8 @@ export default function MyTasksPage() {
     }
     const patch = { acknowledged_at: now, status: 'working' as const, last_update_at: now }
     setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
-    setAllTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
+    setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
   }
 
   const handleDelete = async (task: Task) => {
@@ -1070,8 +1079,9 @@ export default function MyTasksPage() {
       console.warn('[delete] No rows deleted — RLS or policy blocked deletion for task', task.id)
       return
     }
-    setAllTasks(prev => prev.filter(t => t.id !== task.id))
+    setTaskOverrides(prev => (prev ?? allTasksRaw).filter(t => t.id !== task.id))
     if (selectedTask?.id === task.id) setSelectedTask(null)
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
   }
 
   const baseTasks = useMemo(() => {
@@ -1121,17 +1131,6 @@ export default function MyTasksPage() {
     completed:      buckets.completed.length,
   }
 
-  // DEBUG — remove after confirming counts are correct
-  useEffect(() => {
-    console.group('[MyTasks] Focus card debug')
-    console.log('TODAY_STR:', TODAY_STR, '  TOMORROW_STR:', TOMORROW_STR)
-    baseTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').forEach(t => {
-      const norm = normalizeDueDate(t.due_date)
-      const bucket = norm === TODAY_STR ? 'TODAY' : norm === TOMORROW_STR ? 'TOMORROW' : norm && norm < TODAY_STR ? 'OVERDUE' : 'other'
-      console.log(`[${bucket}] "${t.title}" | raw due_date: ${t.due_date} | normalized: ${norm} | status: ${t.status}`)
-    })
-    console.groupEnd()
-  }, [baseTasks])
 
   const visibleTasks = useMemo(() => {
     let tasks = buckets[activeTab]
@@ -1219,10 +1218,9 @@ export default function MyTasksPage() {
             if (isMobile) {
               return (
                 <div style={{
-                  display: 'flex', gap: '8px', overflowX: 'auto',
-                  padding: '12px 14px',
+                  display: 'flex', gap: '6px',
+                  padding: '10px 12px',
                   borderBottom: `1px solid ${colors.border}`,
-                  scrollbarWidth: 'none',
                 }}>
                   {TYPE_TABS.map(item => {
                     const isActive = taskType === item.key
@@ -1232,16 +1230,16 @@ export default function MyTasksPage() {
                         key={item.key}
                         onClick={() => handleTypeChange(item.key)}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: '6px',
-                          padding: '7px 13px', flexShrink: 0,
+                          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                          padding: '7px 6px',
                           background: isActive ? item.accent : 'transparent',
                           border: `1.5px solid ${isActive ? item.accent : colors.border}`,
                           borderRadius: '20px', cursor: 'pointer', outline: 'none',
-                          transition: 'all 0.12s', whiteSpace: 'nowrap',
+                          transition: 'all 0.12s', minWidth: 0,
                         }}
                       >
                         <Icon size={12} color={isActive ? '#fff' : colors.muted} />
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#fff' : colors.secondary }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: isActive ? '#fff' : colors.secondary, whiteSpace: 'nowrap' }}>
                           {item.label}
                         </span>
                         <span style={{ fontSize: '11px', fontWeight: 700, color: isActive ? 'rgba(255,255,255,0.8)' : colors.muted }}>

@@ -2,14 +2,17 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useRefresh } from '@/contexts/RefreshContext'
-import type { Notification, UserProfile } from '@/lib/types'
+import type { Notification } from '@/lib/types'
 import { timeAgo } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { Bell, CheckCheck, ExternalLink, Clock, Trash2, Check } from 'lucide-react'
+import { useProfile } from '@/hooks/queries/useProfile'
+import { useNotifications } from '@/hooks/queries/useNotifications'
 
 type FilterTab = 'all' | 'unread'
 
@@ -54,41 +57,47 @@ function parseNotif(title: string): ParsedNotif {
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function NotificationsPage() {
-  const [profile,        setProfile]       = useState<UserProfile | null>(null)
-  const [notifications,  setNotifications] = useState<Notification[]>([])
-  const [filter,         setFilter]        = useState<FilterTab>('all')
-  const [selected,       setSelected]      = useState<Set<string>>(new Set())
-  const [loading,        setLoading]       = useState(true)
-  const [markingAll,     setMarkingAll]    = useState(false)
-  const [deletingAll,    setDeletingAll]   = useState(false)
-  const [deletingBulk,   setDeletingBulk]  = useState(false)
+  const [loggedInId,   setLoggedInId]   = useState('')
+  const [filter,       setFilter]       = useState<FilterTab>('all')
+  const [selected,     setSelected]     = useState<Set<string>>(new Set())
+  const [markingAll,   setMarkingAll]   = useState(false)
+  const [deletingAll,  setDeletingAll]  = useState(false)
+  const [deletingBulk, setDeletingBulk] = useState(false)
 
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router      = useRouter()
+  const supabase    = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const { refreshKey } = useRefresh()
 
+  const { data: profile = null } = useProfile(loggedInId)
+  const { data: notifications = [], isLoading: notifLoading } = useNotifications()
+
+  // If TQ has cached notifications, show them immediately without waiting for auth re-confirm.
+  // Auth redirect (if needed) will fire from the init useEffect shortly after.
+  const loading = notifLoading && notifications.length === 0
+
+  // Invalidate notifications cache when refresh is triggered from elsewhere
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['notifications'] })
+  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auth check — once on mount
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
-
-      const [{ data: profileData }, res] = await Promise.all([
-        supabase.from('users')
-          .select('id, full_name, email, phone, role, team, is_active, created_at')
-          .eq('id', user.id).single(),
-        fetch('/api/notifications'),
-      ])
-      if (profileData) setProfile(profileData as UserProfile)
-      if (res.ok) {
-        const { notifications: list } = await res.json()
-        setNotifications(list ?? [])
-      } else {
-        console.error('[notifications] load failed:', await res.json().catch(() => null))
-      }
-      setLoading(false)
+      setLoggedInId(user.id)
     }
     init()
-  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Prefetch task detail pages for notifications in view
+  useEffect(() => {
+    if (notifications.length === 0) return
+    notifications.slice(0, 12).forEach(n => {
+      if (n.task_id) router.prefetch(`/tasks/${n.task_id}`)
+    })
+  }, [notifications]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const unreadCount = notifications.filter(n => !n.is_read).length
   const visible = filter === 'unread'
@@ -100,18 +109,22 @@ export default function NotificationsPage() {
     router.push('/login')
   }
 
+  // ── Mutation helpers — update TQ cache immediately, rollback on failure ──────
+
   const markAllRead = async () => {
     if (unreadCount === 0 || markingAll) return
     setMarkingAll(true)
+    const now = new Date().toISOString()
+    const snapshot = queryClient.getQueryData<Notification[]>(['notifications'])
+    queryClient.setQueryData<Notification[]>(['notifications'],
+      old => (old ?? []).map(n => n.is_read ? n : { ...n, is_read: true, read_at: now }))
     const res = await fetch('/api/notifications/mark-read', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ all: true }),
     })
-    if (res.ok) {
-      const now = new Date().toISOString()
-      setNotifications(prev => prev.map(n => n.is_read ? n : { ...n, is_read: true, read_at: now }))
-    } else {
+    if (!res.ok) {
+      queryClient.setQueryData(['notifications'], snapshot)
       console.error('[notifications] mark all failed:', await res.json().catch(() => null))
     }
     setMarkingAll(false)
@@ -119,34 +132,38 @@ export default function NotificationsPage() {
 
   const markRead = (id: string) => {
     const now = new Date().toISOString()
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true, read_at: now } : n))
+    queryClient.setQueryData<Notification[]>(['notifications'],
+      old => (old ?? []).map(n => n.id === id ? { ...n, is_read: true, read_at: now } : n))
     fetch('/api/notifications/mark-read', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
-    }).catch(err => console.error('[notifications] mark read failed:', err))
+    }).catch(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
   }
 
   const deleteSingle = (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id))
+    queryClient.setQueryData<Notification[]>(['notifications'],
+      old => (old ?? []).filter(n => n.id !== id))
     setSelected(prev => { const s = new Set(prev); s.delete(id); return s })
     fetch(`/api/notifications/${id}`, { method: 'DELETE' })
-      .catch(err => console.error('[notifications] delete failed:', err))
+      .catch(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
   }
 
   const deleteSelected = async () => {
     if (deletingBulk || selected.size === 0) return
     setDeletingBulk(true)
     const ids = [...selected]
+    const snapshot = queryClient.getQueryData<Notification[]>(['notifications'])
+    queryClient.setQueryData<Notification[]>(['notifications'],
+      old => (old ?? []).filter(n => !selected.has(n.id)))
+    setSelected(new Set())
     const res = await fetch('/api/notifications/delete-selected', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids }),
     })
-    if (res.ok) {
-      setNotifications(prev => prev.filter(n => !selected.has(n.id)))
-      setSelected(new Set())
-    } else {
+    if (!res.ok) {
+      queryClient.setQueryData(['notifications'], snapshot)
       console.error('[notifications] delete selected failed:', await res.json().catch(() => null))
     }
     setDeletingBulk(false)
@@ -155,11 +172,12 @@ export default function NotificationsPage() {
   const deleteAll = async () => {
     if (deletingAll || notifications.length === 0) return
     setDeletingAll(true)
+    const snapshot = queryClient.getQueryData<Notification[]>(['notifications'])
+    queryClient.setQueryData<Notification[]>(['notifications'], [])
+    setSelected(new Set())
     const res = await fetch('/api/notifications', { method: 'DELETE' })
-    if (res.ok) {
-      setNotifications([])
-      setSelected(new Set())
-    } else {
+    if (!res.ok) {
+      queryClient.setQueryData(['notifications'], snapshot)
       console.error('[notifications] delete all failed:', await res.json().catch(() => null))
     }
     setDeletingAll(false)

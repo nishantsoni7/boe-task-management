@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
 import { fetchHolidaysForPeriod } from '@/lib/payroll/store'
 import { isSkip } from '@/lib/payroll/types'
-import type { EngineEmployee, EngineAttendanceRecord } from '@/lib/payroll/types'
+import type { EngineEmployee, EngineAttendanceRecord, EnginePendingAdjustment } from '@/lib/payroll/types'
 
 type EmployeeRow = EngineEmployee & {
   full_name: string
@@ -86,12 +86,34 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  // Fetch holidays once
+  // Fetch holidays and adjustments for the month in parallel
   let holidays: Awaited<ReturnType<typeof fetchHolidaysForPeriod>>
+  let allAdjustments: { employee_id: string; adjustment_type: string; amount: number; id: string; description: string }[] = []
   try {
-    holidays = await fetchHolidaysForPeriod(svc, month, year)
+    const [hols, adjResult] = await Promise.all([
+      fetchHolidaysForPeriod(svc, month, year),
+      svc
+        .from('payroll_pending_adjustments')
+        .select('id, employee_id, adjustment_type, amount, description')
+        .eq('payroll_year',  year)
+        .eq('payroll_month', month)
+        .eq('status', 'pending'),
+    ])
+    holidays        = hols
+    allAdjustments  = adjResult.data ?? []
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+
+  // Group adjustments by employee
+  const adjByEmployee = new Map<string, EnginePendingAdjustment[]>()
+  for (const adj of allAdjustments) {
+    if (!adjByEmployee.has(adj.employee_id)) adjByEmployee.set(adj.employee_id, [])
+    adjByEmployee.get(adj.employee_id)!.push({
+      id:          adj.id,
+      amount:      adj.adjustment_type === 'deduction' ? -adj.amount : adj.amount,
+      description: adj.description,
+    })
   }
 
   // Dummy period for preview — no DB row required
@@ -104,8 +126,9 @@ export async function GET(req: NextRequest) {
 
   // Run engine for each employee
   const results = (employees as EmployeeRow[]).map(emp => {
-    const attendance = byEmployee.get(emp.id) ?? []
-    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, [])
+    const attendance   = byEmployee.get(emp.id)   ?? []
+    const adjustments  = adjByEmployee.get(emp.id) ?? []
+    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, adjustments)
 
     if (isSkip(outcome)) {
       return {
@@ -134,6 +157,7 @@ export async function GET(req: NextRequest) {
       late_deduction_hours:      outcome.late_deduction_hours,
       missing_punch_hours:       outcome.missing_punch_hours,
       total_deductions:          outcome.total_deductions,
+      adjustment_total:          outcome.pending_adjustment_total,
       net_salary:                outcome.net_salary,
     }
   })

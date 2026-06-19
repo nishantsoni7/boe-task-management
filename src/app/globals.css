@@ -1577,7 +1577,8 @@ body {
     padding: 11px 14px 10px;
   }
   .boe-page-body {
-    padding: 14px 12px;
+    /* Extra bottom clearance so content isn't hidden behind the fixed bottom nav */
+    padding: 14px 12px calc(72px + env(safe-area-inset-bottom, 0px));
   }
 
   /* ── Buttons ── */
@@ -1590,4 +1591,15 @@ body {
   .boe-dashboard-grid    { grid-template-columns: 1fr; }
   .boe-two-col-section   { grid-template-columns: 1fr; }
   .boe-kpi-grid          { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Mobile bottom navigation — hidden on desktop, shown on mobile ── */
+.boe-mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .boe-mobile-bottom-nav {
+    display: flex;
+  }
 }

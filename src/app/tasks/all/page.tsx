@@ -45,9 +45,17 @@ function ViewAllTasksContent() {
   const [tasks,    setTasks]    = useState<Task[]>([])
   const [userMap,  setUserMap]  = useState<Record<string, string>>({})
   const [loading,  setLoading]  = useState(true)
+  const [isMobile, setIsMobile] = useState(false)
   const router      = useRouter()
   const searchParams = useSearchParams()
   const supabase    = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const filterAssignedTo = searchParams.get('assignedTo') ?? null
   const filterStatuses   = useMemo(() => {
@@ -140,32 +148,18 @@ function ViewAllTasksContent() {
           </a>
         </div>
       )}
-      <div style={{
-        background: colors.base,
-        border: `1.5px solid ${colors.border}`,
-        borderRadius: '10px',
-        overflow: 'hidden',
-      }}>
-        {/* Table header */}
-        <div style={{
-          display: 'flex', alignItems: 'center',
-          padding: '7px 12px', borderBottom: `1px solid ${colors.border}`,
-          background: colors.raised,
-        }}>
-          {col('Task Name')}
-          {col('Assigned To', 130)}
-          {col('Created By', 130)}
-          {col('Status', 90, 'center')}
-          {col('Priority', 72, 'center')}
-          {col('Due Date', 88, 'right')}
-        </div>
-
-        {filteredTasks.length === 0 ? (
-          <div style={{ padding: '52px 24px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
-            No tasks found.
-          </div>
-        ) : (
-          filteredTasks.map(task => {
+      {isMobile ? (
+        /* ── Mobile: card list ── */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {filteredTasks.length === 0 ? (
+            <div style={{
+              background: colors.base, border: `1.5px solid ${colors.border}`,
+              borderRadius: '10px', padding: '52px 24px',
+              textAlign: 'center', color: colors.muted, fontSize: '13px',
+            }}>
+              No tasks found.
+            </div>
+          ) : filteredTasks.map(task => {
             const overdue = !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed'
             const pill    = PRIORITY_PILL[task.priority] ?? PRIORITY_PILL.low
             return (
@@ -174,70 +168,156 @@ function ViewAllTasksContent() {
                 role="button"
                 onClick={() => router.push(`/tasks/${task.id}`)}
                 style={{
-                  display: 'flex', alignItems: 'center',
-                  padding: '10px 12px',
-                  borderBottom: `1px solid ${colors.border}`,
-                  cursor: 'pointer', minHeight: '44px',
-                  borderLeft: overdue ? `3px solid ${colors.red}44` : '3px solid transparent',
-                  transition: 'background 0.1s',
+                  background: colors.base,
+                  border: `1.5px solid ${overdue ? colors.red + '44' : colors.border}`,
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  cursor: 'pointer',
                 }}
-                onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = colors.raised}
-                onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = ''}
               >
-                {/* Task name */}
-                <div style={{ flex: 1, minWidth: 0, padding: '0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {task.is_urgent && (
-                    <span style={{ fontSize: '11px', color: '#C49A28', flexShrink: 0 }}>⭐</span>
-                  )}
-                  <span style={{
-                    fontSize: '13px', fontWeight: 500,
-                    color: overdue ? colors.red : colors.primary,
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    display: 'block',
-                  }}>
-                    {task.title}
-                  </span>
+                {/* Row 1: title */}
+                <div style={{
+                  fontSize: '13px', fontWeight: 500,
+                  color: overdue ? colors.red : colors.primary,
+                  marginBottom: '8px', lineHeight: 1.4,
+                  display: 'flex', alignItems: 'flex-start', gap: '5px',
+                }}>
+                  {task.is_urgent && <span style={{ color: '#C49A28', flexShrink: 0 }}>⭐</span>}
+                  {task.title}
                 </div>
-                {/* Assigned to */}
-                <div style={{ width: '130px', padding: '0 8px' }}>
-                  <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-                    {userMap[task.assigned_to] ?? '—'}
-                  </span>
-                </div>
-                {/* Created by */}
-                <div style={{ width: '130px', padding: '0 8px' }}>
-                  <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-                    {userMap[task.created_by] ?? '—'}
-                  </span>
-                </div>
-                {/* Status */}
-                <div style={{ width: '90px', display: 'flex', justifyContent: 'center', padding: '0 4px' }}>
-                  <span className={statusBadgeClass(task.status)} />
-                </div>
-                {/* Priority */}
-                <div style={{ width: '72px', display: 'flex', justifyContent: 'center', padding: '0 4px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '2px 8px', borderRadius: '5px', whiteSpace: 'nowrap' }}>
+                {/* Row 2: meta */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                  <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px' }} />
+                  <span style={{ fontSize: '10.5px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '1px 7px', borderRadius: '5px' }}>
                     {pill.label}
                   </span>
+                  {task.due_date && (
+                    <span style={{ fontSize: '11px', fontWeight: overdue ? 600 : 400, color: overdue ? colors.red : colors.secondary }}>
+                      {formatDate(task.due_date)}
+                    </span>
+                  )}
                 </div>
-                {/* Due date */}
-                <div style={{ width: '88px', textAlign: 'right', padding: '0 8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: overdue ? 600 : 400, color: overdue ? colors.red : colors.secondary }}>
-                    {formatDate(task.due_date)}
-                  </span>
+                {/* Row 3: assignee + creator */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {task.assigned_to && userMap[task.assigned_to] && (
+                    <span style={{ fontSize: '11px', color: colors.muted }}>
+                      To: <span style={{ color: colors.secondary, fontWeight: 500 }}>{userMap[task.assigned_to]}</span>
+                    </span>
+                  )}
+                  {task.created_by && userMap[task.created_by] && task.created_by !== task.assigned_to && (
+                    <span style={{ fontSize: '11px', color: colors.muted }}>
+                      By: <span style={{ color: colors.secondary, fontWeight: 500 }}>{userMap[task.created_by]}</span>
+                    </span>
+                  )}
                 </div>
               </div>
             )
-          })
-        )}
-
-        <div style={{
-          padding: '9px 20px', fontSize: '11px', color: colors.muted,
-          borderTop: `1px solid ${colors.border}`, background: colors.raised,
-        }}>
-          {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${tasks.length})` : ''}
+          })}
+          <div style={{ padding: '4px 2px', fontSize: '11px', color: colors.muted }}>
+            {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${tasks.length})` : ''}
+          </div>
         </div>
-      </div>
+      ) : (
+        /* ── Desktop: original table ── */
+        <div style={{
+          background: colors.base,
+          border: `1.5px solid ${colors.border}`,
+          borderRadius: '10px',
+          overflow: 'hidden',
+        }}>
+          {/* Table header */}
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            padding: '7px 12px', borderBottom: `1px solid ${colors.border}`,
+            background: colors.raised,
+          }}>
+            {col('Task Name')}
+            {col('Assigned To', 130)}
+            {col('Created By', 130)}
+            {col('Status', 90, 'center')}
+            {col('Priority', 72, 'center')}
+            {col('Due Date', 88, 'right')}
+          </div>
+
+          {filteredTasks.length === 0 ? (
+            <div style={{ padding: '52px 24px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
+              No tasks found.
+            </div>
+          ) : (
+            filteredTasks.map(task => {
+              const overdue = !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed'
+              const pill    = PRIORITY_PILL[task.priority] ?? PRIORITY_PILL.low
+              return (
+                <div
+                  key={task.id}
+                  role="button"
+                  onClick={() => router.push(`/tasks/${task.id}`)}
+                  style={{
+                    display: 'flex', alignItems: 'center',
+                    padding: '10px 12px',
+                    borderBottom: `1px solid ${colors.border}`,
+                    cursor: 'pointer', minHeight: '44px',
+                    borderLeft: overdue ? `3px solid ${colors.red}44` : '3px solid transparent',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = colors.raised}
+                  onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = ''}
+                >
+                  {/* Task name */}
+                  <div style={{ flex: 1, minWidth: 0, padding: '0 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {task.is_urgent && (
+                      <span style={{ fontSize: '11px', color: '#C49A28', flexShrink: 0 }}>⭐</span>
+                    )}
+                    <span style={{
+                      fontSize: '13px', fontWeight: 500,
+                      color: overdue ? colors.red : colors.primary,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      display: 'block',
+                    }}>
+                      {task.title}
+                    </span>
+                  </div>
+                  {/* Assigned to */}
+                  <div style={{ width: '130px', padding: '0 8px' }}>
+                    <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                      {userMap[task.assigned_to] ?? '—'}
+                    </span>
+                  </div>
+                  {/* Created by */}
+                  <div style={{ width: '130px', padding: '0 8px' }}>
+                    <span style={{ fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                      {userMap[task.created_by] ?? '—'}
+                    </span>
+                  </div>
+                  {/* Status */}
+                  <div style={{ width: '90px', display: 'flex', justifyContent: 'center', padding: '0 4px' }}>
+                    <span className={statusBadgeClass(task.status)} />
+                  </div>
+                  {/* Priority */}
+                  <div style={{ width: '72px', display: 'flex', justifyContent: 'center', padding: '0 4px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: pill.fg, background: pill.bg, padding: '2px 8px', borderRadius: '5px', whiteSpace: 'nowrap' }}>
+                      {pill.label}
+                    </span>
+                  </div>
+                  {/* Due date */}
+                  <div style={{ width: '88px', textAlign: 'right', padding: '0 8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: overdue ? 600 : 400, color: overdue ? colors.red : colors.secondary }}>
+                      {formatDate(task.due_date)}
+                    </span>
+                  </div>
+                </div>
+              )
+            })
+          )}
+
+          <div style={{
+            padding: '9px 20px', fontSize: '11px', color: colors.muted,
+            borderTop: `1px solid ${colors.border}`, background: colors.raised,
+          }}>
+            {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${tasks.length})` : ''}
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   )
 }

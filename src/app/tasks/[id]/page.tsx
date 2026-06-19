@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, LogEntry, TaskStatus, UserProfile, TaskAttachment } from '@/lib/types'
 import {
@@ -109,9 +110,15 @@ export default function TaskDetailPage() {
   const [editDescription,     setEditDescription]     = useState('')
   const [savingDescription,   setSavingDescription]   = useState(false)
 
-  const router   = useRouter()
-  const params   = useParams()
-  const supabase = useMemo(() => createClient(), [])
+  const router      = useRouter()
+  const params      = useParams()
+  const supabase    = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
+
+  // After any task mutation, invalidate My Tasks cache so navigating back shows fresh data
+  const invalidateTaskCache = (assignedTo: string) => {
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', assignedTo] })
+  }
 
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,69 +128,107 @@ export default function TaskDetailPage() {
       if (!user) { router.push('/login'); return }
       setCurrentUserId(user.id)
 
-      const [{ data: taskData }, { data: profileData }, { data: members }] = await Promise.all([
-        supabase.from('tasks').select('*').eq('id', params.id).single(),
+      const taskId = params.id as string
+
+      // Fetch task (with creator name embedded), profile, members, activity log,
+      // and all attachments for this task — all in one parallel batch.
+      const [
+        { data: taskData },
+        { data: profileData },
+        { data: members },
+        { data: activityLogData },
+        { data: allAttachments },
+      ] = await Promise.all([
+        supabase.from('tasks').select('*, creator:created_by(full_name)').eq('id', taskId).single(),
         supabase.from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
           .eq('id', user.id).single(),
         supabase.from('users').select('id, full_name').eq('is_active', true).order('full_name'),
+        supabase.from('task_activity_log')
+          .select('id, action, note, from_status, to_status, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
+          .eq('task_id', taskId)
+          .order('created_at', { ascending: false }),
+        supabase.from('task_attachments')
+          .select('*')
+          .eq('task_id', taskId)
+          .order('created_at', { ascending: true }),
       ])
+
       if (members) setTeamMembers(members)
+      if (profileData) setProfile(profileData as UserProfile)
 
       if (taskData) {
-        setTask(taskData)
-        setSelectedStatus(taskData.status)
-        if (taskData.created_by) {
-          const { data: creator } = await supabase
-            .from('users').select('full_name').eq('id', taskData.created_by).single()
-          if (creator) setCreatorName(creator.full_name)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const creatorName = (taskData as any).creator?.full_name ?? null
+        if (creatorName) setCreatorName(creatorName)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { creator: _creator, ...taskFields } = taskData as any
+        setTask(taskFields)
+        setSelectedStatus(taskFields.status)
+      }
+
+      // Split attachments: task-level (no activity_log_id) vs per-log
+      const attachsByLogId: Record<string, TaskAttachment[]> = {}
+      const taskLevelAtts: TaskAttachment[] = []
+      for (const att of (allAttachments ?? []) as TaskAttachment[]) {
+        if (!att.activity_log_id) {
+          taskLevelAtts.push(att)
+        } else {
+          if (!attachsByLogId[att.activity_log_id]) attachsByLogId[att.activity_log_id] = []
+          attachsByLogId[att.activity_log_id].push(att)
         }
       }
-      if (profileData) setProfile(profileData as UserProfile)
-      await loadLog(params.id as string)
-      const { data: tAttData } = await supabase
-        .from('task_attachments')
-        .select('*')
-        .eq('task_id', params.id)
-        .is('activity_log_id', null)
-        .order('created_at', { ascending: true })
-      if (tAttData) setTaskLevelAttachments(tAttData as TaskAttachment[])
+      setTaskLevelAttachments(taskLevelAtts)
+
+      if (activityLogData) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setLog((activityLogData as any[]).map(e => ({
+          ...e,
+          actor_name:     e.users?.full_name ?? null,
+          attachment_url: e.attachment_url ?? null,
+          attachments:    attachsByLogId[e.id] ?? [],
+        })))
+      }
+
       setLoading(false)
     }
     init()
   }, [])
 
   const loadLog = async (taskId: string) => {
-    const { data } = await supabase
-      .from('task_activity_log')
-      .select(`id, action, note, from_status, to_status, created_at, actor_id, attachment_url,
-               users:actor_id ( full_name )`)
-      .eq('task_id', taskId)
-      .order('created_at', { ascending: false })
-    if (!data) return
-
-    const logIds = (data as any[]).map(e => e.id)
-    let attachmentsByLogId: Record<string, TaskAttachment[]> = {}
-    if (logIds.length > 0) {
-      const { data: attData } = await supabase
+    // Fetch activity log and all task attachments in parallel
+    const [{ data }, { data: allAtts }] = await Promise.all([
+      supabase
+        .from('task_activity_log')
+        .select('id, action, note, from_status, to_status, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: false }),
+      supabase
         .from('task_attachments')
         .select('*')
-        .in('activity_log_id', logIds)
-        .order('created_at', { ascending: true })
-      if (attData) {
-        for (const att of attData as TaskAttachment[]) {
-          const key = att.activity_log_id!
-          if (!attachmentsByLogId[key]) attachmentsByLogId[key] = []
-          attachmentsByLogId[key].push(att)
-        }
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: true }),
+    ])
+    if (!data) return
+
+    const attachsByLogId: Record<string, TaskAttachment[]> = {}
+    const taskLevelAtts: TaskAttachment[] = []
+    for (const att of (allAtts ?? []) as TaskAttachment[]) {
+      if (!att.activity_log_id) {
+        taskLevelAtts.push(att)
+      } else {
+        if (!attachsByLogId[att.activity_log_id]) attachsByLogId[att.activity_log_id] = []
+        attachsByLogId[att.activity_log_id].push(att)
       }
     }
+    setTaskLevelAttachments(taskLevelAtts)
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setLog((data as any[]).map(e => ({
       ...e,
       actor_name:     e.users?.full_name ?? null,
       attachment_url: e.attachment_url ?? null,
-      attachments:    attachmentsByLogId[e.id] ?? [],
+      attachments:    attachsByLogId[e.id] ?? [],
     })))
   }
 
@@ -217,6 +262,7 @@ export default function TaskDetailPage() {
     }
     setTask({ ...task, acknowledged_at: now, status: 'working' as TaskStatus, last_update_at: now })
     setSelectedStatus('working')
+    invalidateTaskCache(task.assigned_to)
     await loadLog(task.id)
   }
 
@@ -272,6 +318,7 @@ export default function TaskDetailPage() {
     }
     setTask({ ...task, ...localPatch })
     setSelectedStatus(newStatus)
+    invalidateTaskCache(task.assigned_to)
     await loadLog(task.id)
     if (newStatus === 'completed') setTimeout(() => router.push('/tasks/my'), 800)
   }
@@ -326,6 +373,7 @@ export default function TaskDetailPage() {
       if (task.status === 'blocked') localPatch.blocker_reason = null
       setTask({ ...task, ...localPatch })
       setSelectedStatus(selectedStatus)
+      invalidateTaskCache(task.assigned_to)
       await loadLog(task.id)
     } else {
       await applyStatusChange(selectedStatus, null)
@@ -356,6 +404,7 @@ export default function TaskDetailPage() {
     const restored = (restoredStatus ?? 'working') as TaskStatus
     setTask({ ...task, status: restored })
     setSelectedStatus(restored)
+    invalidateTaskCache(task.assigned_to)
     await loadLog(task.id)
     setReopening(false)
   }
@@ -388,6 +437,7 @@ export default function TaskDetailPage() {
     setCancelModalOpen(false)
     setCancelReason('')
     setCancelOtherText('')
+    invalidateTaskCache(task.assigned_to)
     await loadLog(task.id)
     setCancelling(false)
     setTimeout(() => router.push('/tasks/cancelled'), 600)

@@ -28,6 +28,7 @@ type EmployeeResult = {
   late_deduction_hours:      number
   missing_punch_hours:       number
   total_deductions:          number
+  adjustment_total:          number
   net_salary:                number
 }
 
@@ -142,12 +143,13 @@ export default function PayrollMonthlyReviewPage() {
   const skipped  = results ? results.filter((r): r is SkippedResult  =>  r.skipped) : null
 
   const kpi = active ? {
-    totalEmployees:  active.length,
-    totalGross:      active.reduce((s, r) => s + r.gross_salary,      0),
-    totalDeductions: active.reduce((s, r) => s + r.total_deductions,  0),
-    totalNet:        active.reduce((s, r) => s + r.net_salary,        0),
-    totalAbsent:     active.reduce((s, r) => s + r.days_absent,       0),
-    leaveAbsorbed:   active.filter(r => r.leave_absorbed_deductions).length,
+    totalEmployees:   active.length,
+    totalGross:       active.reduce((s, r) => s + r.gross_salary,      0),
+    totalDeductions:  active.reduce((s, r) => s + r.total_deductions,  0),
+    totalAdjustments: active.reduce((s, r) => s + (r.adjustment_total ?? 0), 0),
+    totalNet:         active.reduce((s, r) => s + r.net_salary,        0),
+    totalAbsent:      active.reduce((s, r) => s + r.days_absent,       0),
+    leaveAbsorbed:    active.filter(r => r.leave_absorbed_deductions).length,
   } : null
 
   const sorted = active ? [...active].sort((a, b) => b.net_salary - a.net_salary) : null
@@ -224,14 +226,15 @@ export default function PayrollMonthlyReviewPage() {
 
         {/* KPI cards */}
         {kpi && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, marginBottom: 20 }}>
             {[
-              { label: 'Employees',       value: String(kpi.totalEmployees),          color: colors.primary },
-              { label: 'Total Gross',     value: fmt(kpi.totalGross),                 color: '#3B82F6' },
-              { label: 'Total Deductions',value: fmt(kpi.totalDeductions),            color: kpi.totalDeductions > 0 ? '#DC2626' : colors.tertiary },
-              { label: 'Total Net',       value: fmt(kpi.totalNet),                   color: '#059669' },
-              { label: 'Absent Days',     value: String(kpi.totalAbsent),             color: kpi.totalAbsent > 0 ? '#D97706' : colors.tertiary },
-              { label: 'Leave Absorbed',  value: String(kpi.leaveAbsorbed),           color: kpi.leaveAbsorbed > 0 ? '#7C3AED' : colors.tertiary },
+              { label: 'Employees',        value: String(kpi.totalEmployees),           color: colors.primary },
+              { label: 'Total Gross',      value: fmt(kpi.totalGross),                  color: '#3B82F6' },
+              { label: 'Total Deductions', value: fmt(kpi.totalDeductions),             color: kpi.totalDeductions > 0 ? '#DC2626' : colors.tertiary },
+              { label: 'Total Adjustments',value: (kpi.totalAdjustments >= 0 ? '+' : '−') + fmt(Math.abs(kpi.totalAdjustments)), color: kpi.totalAdjustments > 0 ? '#059669' : kpi.totalAdjustments < 0 ? '#DC2626' : colors.tertiary },
+              { label: 'Total Net',        value: fmt(kpi.totalNet),                    color: '#059669' },
+              { label: 'Absent Days',      value: String(kpi.totalAbsent),              color: kpi.totalAbsent > 0 ? '#D97706' : colors.tertiary },
+              { label: 'Leave Absorbed',   value: String(kpi.leaveAbsorbed),            color: kpi.leaveAbsorbed > 0 ? '#7C3AED' : colors.tertiary },
             ].map(k => (
               <div key={k.label} style={{
                 background: colors.base, border: `1px solid ${colors.border}`,
@@ -281,6 +284,7 @@ export default function PayrollMonthlyReviewPage() {
                         { label: 'PL Used',       align: 'center' },
                         { label: 'Gross',         align: 'right'  },
                         { label: 'Deductions',    align: 'right'  },
+                        { label: 'Adjustments',   align: 'right'  },
                         { label: 'Net Salary',    align: 'right'  },
                         { label: '',              align: 'left'   },
                       ].map(col => (
@@ -352,6 +356,14 @@ export default function PayrollMonthlyReviewPage() {
                         }}>
                           {r.total_deductions > 0 ? `−${fmtExact(r.total_deductions)}` : '—'}
                         </td>
+                        <td style={{ padding: '11px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+                          color: (r.adjustment_total ?? 0) > 0 ? '#059669' : (r.adjustment_total ?? 0) < 0 ? '#DC2626' : colors.tertiary,
+                          fontWeight: (r.adjustment_total ?? 0) !== 0 ? 600 : 400,
+                        }}>
+                          {(r.adjustment_total ?? 0) !== 0
+                            ? `${(r.adjustment_total ?? 0) > 0 ? '+' : '−'}${fmtExact(Math.abs(r.adjustment_total ?? 0))}`
+                            : '—'}
+                        </td>
                         <td style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#111318', fontVariantNumeric: 'tabular-nums' }}>
                           {fmtExact(r.net_salary)}
                         </td>
@@ -415,7 +427,7 @@ export default function PayrollMonthlyReviewPage() {
             <div style={{ fontSize: 12, color: colors.tertiary, lineHeight: 1.7 }}>
               <strong style={{ color: colors.secondary }}>Preview</strong> — computed live from attendance records using V1 engine rules.
               Per-day rate = salary ÷ 26. Paid leave: 0.5d if present &gt;10 days, 1d if &gt;15 days.
-              Does not reflect any pending adjustments.
+              Adjustments are included in net salary. Click Detail to manage adjustments per employee.
             </div>
           </>
         )}

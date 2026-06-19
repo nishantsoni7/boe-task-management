@@ -136,7 +136,7 @@ export default function BoeOsHomePage() {
     {
       key: 'assets',
       title: 'Assets & Access',
-      description: 'Track company devices, assigned hardware, and manage login access records.',
+      description: 'View your assigned devices and access records, or manage the company inventory.',
       href: '/assets-access',
       status: 'foundation',
       accent: '#4B5563',

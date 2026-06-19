@@ -166,6 +166,20 @@ function computePaidLeaveEntitlement(daysPresent: number): number {
   return 1
 }
 
+// ─── Grace period rounding ────────────────────────────────────────────────────
+
+// Lateness / earliness is measured from the scheduled boundary (10:00 or 18:30).
+// 0–15 min → 0 deduction; after that, round UP to the next 30-min block → * 0.5h.
+//
+// Examples (minutes from scheduled time):
+//   9  → 0h   |  16 → 0.5h  |  30 → 0.5h
+//  31  → 1.0h |  38 → 1.0h  |  47 → 1.0h
+//  61  → 1.5h |  67 → 1.5h  |  91 → 2.0h
+function roundDeductionHours(minutesFromScheduled: number): number {
+  if (minutesFromScheduled <= 15) return 0
+  return Math.ceil(minutesFromScheduled / 30) * 0.5
+}
+
 // ─── Step 4: Classify attendance days ────────────────────────────────────────
 
 function classifyAttendanceDays(
@@ -194,19 +208,39 @@ function classifySingleDay(
   // No record or both punches missing → full_absent
   if (!record || (record.check_in_at == null && record.check_out_at == null)) return absent
 
-  // Missing punch: exactly one punch present → isolated 2h deduction, no other lines
+  // Missing punch: exactly one punch present → 2h fixed deduction.
+  // When punch-out is missing but punch-in exists, also apply late arrival if applicable.
   if (record.check_in_at == null || record.check_out_at == null) {
-    const type = record.check_in_at == null ? 'missing_punch_in' : 'missing_punch_out'
+    const missingType = record.check_in_at == null ? 'missing_punch_in' : 'missing_punch_out'
+    const missingLines: PendingDeductionLine[] = [{
+      line_date: date,
+      deduction_type: missingType,
+      hours_deducted: 2,
+      amount_deducted: 2 * rates.per_hour_rate,
+    }]
+
+    if (missingType === 'missing_punch_out') {
+      const inMin = istMinutes(record.check_in_at!)
+      const SCHEDULED_IN  = 10 * 60       // 10:00 IST
+      const LATE_THRESHOLD = 10 * 60 + 15 // 10:15 IST — grace period end
+      if (inMin > LATE_THRESHOLD) {
+        const lateHours = roundDeductionHours(inMin - SCHEDULED_IN)
+        if (lateHours > 0) {
+          missingLines.push({
+            line_date: date,
+            deduction_type: 'late_arrival',
+            hours_deducted: lateHours,
+            amount_deducted: lateHours * rates.per_hour_rate,
+          })
+        }
+      }
+    }
+
     return {
       date,
       classification: 'missing_punch',
       effective_hours_worked: 0,
-      deduction_lines: [{
-        line_date: date,
-        deduction_type: type,
-        hours_deducted: 2,
-        amount_deducted: 2 * rates.per_hour_rate,
-      }],
+      deduction_lines: missingLines,
     }
   }
 
@@ -248,27 +282,32 @@ function classifySingleDay(
   const deduction_lines: PendingDeductionLine[] = []
   const isNearFullDay = classification === 'full_present' || classification === 'present_with_shortfall'
   if (!onOfficeTiming && isNearFullDay) {
-    const LATE_THRESHOLD  = 10 * 60 + 15  // 10:15 IST in minutes
-    const EARLY_THRESHOLD = 18 * 60 + 30  // 18:30 IST in minutes
+    const SCHEDULED_IN   = 10 * 60       // 10:00 IST — scheduled start
+    const LATE_THRESHOLD = 10 * 60 + 15  // 10:15 IST — grace period end
+    const SCHEDULED_OUT  = 18 * 60 + 30  // 18:30 IST — scheduled end / early-checkout boundary
 
     if (inMin > LATE_THRESHOLD) {
-      const lateHours = (inMin - LATE_THRESHOLD) / 60
-      deduction_lines.push({
-        line_date: date,
-        deduction_type: 'late_arrival',
-        hours_deducted: lateHours,
-        amount_deducted: lateHours * rates.per_hour_rate,
-      })
+      const lateHours = roundDeductionHours(inMin - SCHEDULED_IN)
+      if (lateHours > 0) {
+        deduction_lines.push({
+          line_date: date,
+          deduction_type: 'late_arrival',
+          hours_deducted: lateHours,
+          amount_deducted: lateHours * rates.per_hour_rate,
+        })
+      }
     }
 
-    if (outMin < EARLY_THRESHOLD) {
-      const earlyHours = (EARLY_THRESHOLD - outMin) / 60
-      deduction_lines.push({
-        line_date: date,
-        deduction_type: 'early_checkout',
-        hours_deducted: earlyHours,
-        amount_deducted: earlyHours * rates.per_hour_rate,
-      })
+    if (outMin < SCHEDULED_OUT) {
+      const earlyHours = roundDeductionHours(SCHEDULED_OUT - outMin)
+      if (earlyHours > 0) {
+        deduction_lines.push({
+          line_date: date,
+          deduction_type: 'early_checkout',
+          hours_deducted: earlyHours,
+          amount_deducted: earlyHours * rates.per_hour_rate,
+        })
+      }
     }
   }
 

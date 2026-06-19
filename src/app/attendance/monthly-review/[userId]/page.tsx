@@ -17,9 +17,12 @@ type DayRecord = {
   check_in_at:      string | null
   check_out_at:     string | null
   status:           string
+  effective_status: string
   hours_worked:     number | null
+  late_minutes:     number | null
   is_late:          boolean
   is_missing_punch: boolean
+  penalty:          string | null
 }
 
 type EmployeeDetail = {
@@ -67,18 +70,14 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function Flag({ active, label, color }: { active: boolean; label: string; color: string }) {
-  if (!active) return <span style={{ color: colors.tertiary }}>—</span>
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: 20,
-      fontSize: 11, fontWeight: 600,
-      background: `${color}18`, color,
-    }}>
-      {label}
-    </span>
-  )
+function fmtLateDuration(minutes: number | null): string {
+  if (!minutes || minutes <= 0) return '—'
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m}m`
+  return `${h}h ${String(m).padStart(2, '0')}m`
 }
+
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -218,6 +217,52 @@ export default function EmployeeMonthlyDetailPage() {
           </div>
         )}
 
+        {/* ── Summary stats ── */}
+        {!fetching && records.length > 0 && (() => {
+          let present = 0, half_day = 0, missing_punch = 0, late = 0, totalHours = 0
+          for (const r of records) {
+            totalHours += r.hours_worked ?? 0
+            if (r.is_missing_punch) {
+              missing_punch++
+              present++
+            } else if (r.status === 'half_day') {
+              half_day++
+            } else if (r.status === 'present' || r.status === 'checked_in' || r.status === 'late') {
+              present++
+            }
+            if (r.is_late) late++
+          }
+          const absent = records.filter(r => r.status === 'absent').length
+          const total_records = records.length
+          const pct = total_records > 0 ? Math.round((present + half_day * 0.5) / total_records * 1000) / 10 : 0
+          const pctColor = pct >= 90 ? '#059669' : pct >= 75 ? '#D97706' : '#DC2626'
+          const hrs = Math.floor(totalHours); const mins = Math.round((totalHours - hrs) * 60)
+          const hoursLabel = totalHours <= 0 ? '—' : mins === 0 ? `${hrs}h` : `${hrs}h ${mins}m`
+          return (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+              {[
+                { label: 'Present',        value: String(present),       color: '#3B82F6' },
+                { label: 'Half Day',       value: String(half_day),      color: '#F59E0B' },
+                { label: 'Absent',         value: String(absent),        color: absent > 0 ? '#DC2626' : '#6B7384' },
+                { label: 'Missing Punch',  value: String(missing_punch), color: missing_punch > 0 ? '#7C3AED' : '#6B7384' },
+                { label: 'Late Marks',     value: String(late),          color: late > 0 ? '#D97706' : '#6B7384' },
+                { label: 'Productive Hrs', value: hoursLabel,            color: '#059669' },
+                { label: 'Attendance %',   value: total_records === 0 ? '—' : `${pct}%`, color: pctColor },
+              ].map(k => (
+                <div key={k.label} style={{
+                  background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)',
+                  borderRadius: 10, padding: '14px 18px', minWidth: 90,
+                }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: k.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                    {k.value}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#6B7384', marginTop: 5 }}>{k.label}</div>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
+
         {/* ── Records table ── */}
         {fetching ? (
           <div style={{
@@ -236,7 +281,7 @@ export default function EmployeeMonthlyDetailPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${colors.border}`, background: colors.raised }}>
-                    {['Date', 'Check In', 'Check Out', 'Hours', 'Status', 'Late', 'Missing Punch'].map(col => (
+                    {['Date', 'Check In', 'Check Out', 'Hours', 'Status', 'Late Duration', 'Penalty'].map(col => (
                       <th key={col} style={{
                         padding: '10px 16px',
                         textAlign: col === 'Date' ? 'left' : 'center',
@@ -269,13 +314,19 @@ export default function EmployeeMonthlyDetailPage() {
                         {rec.hours_worked !== null ? `${rec.hours_worked}h` : '—'}
                       </td>
                       <td style={{ padding: '11px 16px', textAlign: 'center' }}>
-                        <StatusBadge status={rec.status} />
+                        <StatusBadge status={rec.effective_status} />
                       </td>
-                      <td style={{ padding: '11px 16px', textAlign: 'center' }}>
-                        <Flag active={rec.is_late} label="Late" color="#EA580C" />
+                      <td style={{ padding: '11px 16px', textAlign: 'center', whiteSpace: 'nowrap',
+                        color: rec.is_late ? '#EA580C' : colors.tertiary,
+                        fontWeight: rec.is_late ? 600 : 400,
+                      }}>
+                        {fmtLateDuration(rec.late_minutes)}
                       </td>
-                      <td style={{ padding: '11px 16px', textAlign: 'center' }}>
-                        <Flag active={rec.is_missing_punch} label="Missing" color="#7C3AED" />
+                      <td style={{ padding: '11px 16px', textAlign: 'center', whiteSpace: 'nowrap',
+                        color: rec.penalty ? '#7C3AED' : colors.tertiary,
+                        fontWeight: rec.penalty ? 600 : 400,
+                      }}>
+                        {rec.penalty ?? '—'}
                       </td>
                     </tr>
                   ))}

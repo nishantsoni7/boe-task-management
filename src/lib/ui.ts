@@ -173,6 +173,12 @@ export function getAssignedByDisplay(
   return userMap[task.created_by] ?? fallback
 }
 
+// ─── UUID validation ─────────────────────────────────────────────────────────
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export function isValidUUID(id: string | null | undefined): id is string {
+  return !!id && UUID_RE.test(id)
+}
+
 // ─── Activity log label ───────────────────────────────────────────────────────
 export function formatLogAction(
   action: string,

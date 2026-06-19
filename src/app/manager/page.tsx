@@ -26,22 +26,12 @@ export default function ManagerPage() {
   const supabase = useMemo(() => createClient(), [])
 
   const loadData = useMemo(() => async () => {
-    // Members and tasks are independent — fetch in parallel (unchanged — already correct).
-    // .then() timing on each branch measures each query individually without
-    // breaking parallelism. Both start at the same instant.
-    const membersStart = performance.now()
-    const tasksStart   = performance.now()
-
     const [{ data: memberData }, { data: taskData }] = await Promise.all([
       supabase
         .from('users')
         .select('id, full_name, team, role, email, phone, is_active, created_at')
         .eq('is_active', true)
-        .order('full_name')
-        .then((r: any) => {
-          console.log('[manager] members fetch', Math.round(performance.now() - membersStart), 'ms')
-          return r
-        }),
+        .order('full_name'),
       supabase
         .from('tasks')
         .select(`
@@ -52,11 +42,7 @@ export default function ManagerPage() {
         `)
         .neq('status', 'completed')
         .neq('status', 'cancelled')
-        .order('created_at', { ascending: false })
-        .then((r: any) => {
-          console.log('[manager] tasks fetch', Math.round(performance.now() - tasksStart), 'ms')
-          return r
-        }),
+        .order('created_at', { ascending: false }),
     ])
 
     if (memberData) setMembers(memberData)
@@ -75,39 +61,18 @@ export default function ManagerPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
-      const pageStart = performance.now()
-      console.log('[manager] init started')
-
-      // ── CHANGE: getUser() → getSession() ─────────────────────────────────
-      // getUser() makes a verified network call to Supabase auth servers.
-      // getSession() reads cached session from localStorage — zero network cost.
-      // Safe here: UI gate only. session.user.id is used only for the profile
-      // fetch below. Role enforcement (manager/admin check) happens immediately
-      // after and is backed by RLS on every subsequent data query.
-      // ─────────────────────────────────────────────────────────────────────
-      const authStart = performance.now()
+      // getSession() reads from localStorage — zero network cost.
       const { data: { session } } = await supabase.auth.getSession()
-      console.log('[manager] getSession', Math.round(performance.now() - authStart), 'ms')
-
       if (!session) { router.push('/login'); return }
-
-      const dataStart    = performance.now()
-      const profileStart = performance.now()
 
       const [{ data: p }] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
           .eq('id', session.user.id)
-          .single()
-          .then((r: any) => {
-            console.log('[manager] profile fetch', Math.round(performance.now() - profileStart), 'ms')
-            return r
-          }),
+          .single(),
         loadData(),
       ])
-
-      console.log('[manager] parallel data TOTAL', Math.round(performance.now() - dataStart), 'ms')
 
       if (p) {
         if (p.role !== 'admin' && p.role !== 'manager') {
@@ -117,7 +82,6 @@ export default function ManagerPage() {
         setProfile(p)
       }
 
-      console.log('[manager] TOTAL', Math.round(performance.now() - pageStart), 'ms')
       setLoading(false)
     }
     init()

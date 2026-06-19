@@ -3,13 +3,16 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
-import { isOverdue, getAssignedByDisplay } from '@/lib/ui'
+import { isOverdue, getAssignedByDisplay, isValidUUID } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
+import { useProfile } from '@/hooks/queries/useProfile'
+import { useActiveUsers } from '@/hooks/queries/useMyTasks'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -20,12 +23,11 @@ const TASK_COLUMNS = [
 ].join(', ')
 
 export default function DashboardPage() {
-  const [profile,            setProfile]            = useState<UserProfile | null>(null)
+  const [loggedInId,         setLoggedInId]         = useState('')
   const [tasks,              setTasks]              = useState<Task[]>([])
   const [loading,            setLoading]            = useState(true)
   const [currentUserId,      setCurrentUserId]      = useState('')
   const [selectedTask,       setSelectedTask]       = useState<Task | null>(null)
-  const [teamUsers,          setTeamUsers]          = useState<{ id: string; full_name: string }[]>([])
   const [escalationTasks,    setEscalationTasks]    = useState<Task[]>([])
   const [myCompletedCount,   setMyCompletedCount]   = useState(0)
   const [assignedByMeInProg, setAssignedByMeInProg] = useState(0)
@@ -38,9 +40,16 @@ export default function DashboardPage() {
   const [assignedByMeTasksAll, setAssignedByMeTasksAll] = useState<Task[]>([])
   const [isMobile,           setIsMobile]           = useState(false)
 
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router      = useRouter()
+  const supabase    = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
+
+  // ── Cached queries ────────────────────────────────────────────────────────
+  const { data: profile = null } = useProfile(loggedInId)
+  // Active users cached across pages — admin/manager roles need this for team view
+  const { data: activeUsers = [] } = useActiveUsers()
+  const teamUsers = activeUsers
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -54,8 +63,10 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const loggedInId = session.user.id
-      const uid = viewAsUserId ?? loggedInId
+      const lid = session.user.id
+      setLoggedInId(lid)
+      const uid = viewAsUserId ?? lid
+      if (!isValidUUID(uid)) { setLoading(false); return }
       setCurrentUserId(uid)
 
       const monthStart = new Date()
@@ -63,19 +74,13 @@ export default function DashboardPage() {
       monthStart.setHours(0, 0, 0, 0)
       const monthStartISO = monthStart.toISOString()
 
-      // Batch 1: profile + all user-specific task queries in one parallel round-trip
+      // Batch 1: task queries in parallel (profile is now handled by useProfile hook)
       const [
-        { data: callerProfile },
         { data: taskData },
         { data: completedData },
         { data: abmTasks },
         { count: abmCompCount },
       ] = await Promise.all([
-        supabase
-          .from('users')
-          .select('id, full_name, email, phone, role, team, is_active, created_at')
-          .eq('id', loggedInId)
-          .single(),
         supabase
           .from('tasks')
           .select(TASK_COLUMNS)
@@ -105,14 +110,6 @@ export default function DashboardPage() {
           .gte('last_update_at', monthStartISO),
       ])
 
-      // Block non-admins from using view mode
-      if (viewAsUserId && callerProfile?.role !== 'admin') {
-        exitViewMode()
-        router.push('/dashboard')
-        return
-      }
-
-      if (callerProfile) setProfile(callerProfile as UserProfile)
       if (taskData) setTasks(taskData as unknown as Task[])
       if (completedData) {
         const completed = completedData as unknown as Task[]
@@ -127,7 +124,7 @@ export default function DashboardPage() {
       }
 
       // Batch 2: role-specific queries + creator names — all in parallel
-      const viewedProfile = viewAsProfile ?? callerProfile
+      // Note: team users are now served from useActiveUsers() cache above
       const creatorIds = [...new Set(
         (taskData as { created_by: string; assigned_to: string }[] ?? [])
           .filter(t => t.created_by !== uid)
@@ -148,14 +145,12 @@ export default function DashboardPage() {
         )
       }
 
-      type UserRow = { id: string; full_name: string }
       type CountResult = { count: number | null }
 
-      if (viewedProfile?.role === 'admin') {
+      // profile is loaded via useProfile — use viewAsProfile for role check
+      const viewedRole = viewAsProfile?.role ?? profile?.role
+      if (viewedRole === 'admin') {
         batch2.push(
-          supabase.from('users').select('id, full_name').eq('is_active', true).then(({ data: tUsers }: { data: UserRow[] | null }) => {
-            if (tUsers) setTeamUsers(tUsers)
-          }),
           supabase.from('tasks').select(TASK_COLUMNS).not('status', 'eq', 'completed').then(({ data: eTasks }: { data: unknown[] | null }) => {
             if (eTasks) {
               const all = eTasks as unknown as Task[]
@@ -164,11 +159,8 @@ export default function DashboardPage() {
             }
           }),
         )
-      } else if (viewedProfile?.role === 'manager') {
+      } else if (viewedRole === 'manager') {
         batch2.push(
-          supabase.from('users').select('id, full_name').eq('is_active', true).then(({ data: tUsers }: { data: UserRow[] | null }) => {
-            if (tUsers) setTeamUsers(tUsers)
-          }),
           supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('assigned_to', uid).eq('status', 'blocked').then(({ count: bCount }: CountResult) => {
             if (bCount != null) setBlockedCount(bCount)
           }),
@@ -183,11 +175,22 @@ export default function DashboardPage() {
 
       await Promise.all(batch2)
       setLoading(false)
+      // Prefetch the two most-visited next pages so navigation feels instant
+      router.prefetch('/tasks/my')
+      router.prefetch('/notifications')
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // Re-run when view mode changes so the correct user's data is fetched
   }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Guard view-as against non-admins — runs once profile is resolved from cache
+  useEffect(() => {
+    if (viewAsUserId && profile && profile.role !== 'admin') {
+      exitViewMode()
+      router.push('/dashboard')
+    }
+  }, [viewAsUserId, profile]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -221,6 +224,8 @@ export default function DashboardPage() {
     const patch = { acknowledged_at: now, status: 'working' as const, last_update_at: now }
     setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
     setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
+    // Invalidate My Tasks cache so it reflects the acknowledgement immediately
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', currentUserId] })
   }
 
   const userMap = useMemo(

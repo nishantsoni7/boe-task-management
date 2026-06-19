@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
@@ -10,6 +11,8 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
+import { useProfile } from '@/hooks/queries/useProfile'
+import { useActiveUsers } from '@/hooks/queries/useMyTasks'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert,
@@ -816,11 +819,10 @@ function EmptyState({ label }: { label: string }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function AssignedByMePage() {
-  const [profile,           setProfile]           = useState<UserProfile | null>(null)
+  const [loggedInId,        setLoggedInId]        = useState<string>('')
   const [allTasks,          setAllTasks]          = useState<Task[]>([])
   const [userId,            setUserId]            = useState<string>('')
   const [userMap,           setUserMap]           = useState<Record<string, string>>({})
-  const [allUsers,          setAllUsers]          = useState<UserProfile[]>([])
   const [loading,           setLoading]           = useState(true)
   const [activeTab,         setActiveTab]         = useState<TabKey>('all')
   const [selectedTask,      setSelectedTask]      = useState<Task | null>(null)
@@ -832,9 +834,15 @@ export default function AssignedByMePage() {
   const [filterAssignee, setFilterAssignee] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
 
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router      = useRouter()
+  const supabase    = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
   const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
+
+  // Cached queries — profile and active users shared across pages
+  const { data: profile = null } = useProfile(loggedInId)
+  const { data: activeUsersData = [] } = useActiveUsers()
+  const allUsers = activeUsersData as UserProfile[]
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -843,17 +851,26 @@ export default function AssignedByMePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // Guard view-as against non-admins once profile resolves
+  useEffect(() => {
+    if (viewAsUserId && profile && profile.role !== 'admin') {
+      exitViewMode()
+      router.push('/dashboard')
+    }
+  }, [viewAsUserId, profile]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const loggedInId = session.user.id
-      const uid = viewAsUserId ?? loggedInId
+      const lid = session.user.id
+      setLoggedInId(lid)
+      const uid = viewAsUserId ?? lid
       setUserId(uid)
 
-      const [{ data: callerProfile }, { data: tasks }, { data: userData }, { data: activeUsers }] = await Promise.all([
-        supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', loggedInId).single(),
+      // Profile and active users are now cached by hooks — only fetch tasks + user map here
+      const [{ data: tasks }, { data: userData }] = await Promise.all([
         supabase.from('tasks').select(TASK_COLUMNS)
           .eq('created_by', uid)
           .not('assigned_to', 'is', null)
@@ -862,24 +879,18 @@ export default function AssignedByMePage() {
           .neq('status', 'cancelled')
           .order('due_date', { ascending: true, nullsFirst: false }),
         supabase.from('users').select('id, full_name'),
-        supabase.from('users').select('id, full_name, team, role, email, phone, is_active, created_at').eq('is_active', true).order('full_name'),
       ])
 
-      if (viewAsUserId && callerProfile?.role !== 'admin') {
-        exitViewMode()
-        router.push('/dashboard')
-        return
-      }
-
-      if (callerProfile) setProfile(callerProfile as UserProfile)
-      setAllTasks((tasks ?? []) as unknown as Task[])
+      const taskList = (tasks ?? []) as unknown as Task[]
+      setAllTasks(taskList)
       if (userData) {
         const map: Record<string, string> = {}
         for (const u of userData) map[u.id] = u.full_name
         setUserMap(map)
       }
-      if (activeUsers) setAllUsers(activeUsers as UserProfile[])
       setLoading(false)
+      // Prefetch task detail pages for the first 15 tasks
+      taskList.slice(0, 15).forEach(t => router.prefetch(`/tasks/${t.id}`))
     }
     init()
   }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -892,6 +903,7 @@ export default function AssignedByMePage() {
   const handleTaskDelegated = (task: Task) => {
     setAllTasks(prev => [task, ...prev])
     setShowDelegateModal(false)
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })
   }
 
   const handleEditSaved = (updated: Task) => {
@@ -911,6 +923,7 @@ export default function AssignedByMePage() {
     if (!deleted || deleted.length === 0) { console.warn('[delete] No rows deleted'); return }
     setAllTasks(prev => prev.filter(t => t.id !== task.id))
     if (selectedTask?.id === task.id) setSelectedTask(null)
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })
   }
 
   const buckets = useMemo(() => {

@@ -977,7 +977,6 @@ export default function PerformancePage() {
   const [tab,              setTab]              = useState<Tab>('today')
   const [perfTodayData,    setPerfTodayData]    = useState<PerformanceData | null>(null)
   const [perfTodayLoading, setPerfTodayLoading] = useState(false)
-  const [trendLoading,     setTrendLoading]     = useState(false)
   const [loading,          setLoading]          = useState(true)
   const [audit,            setAudit]            = useState<PerformanceAudit | null>(null)
   const perfCacheRef = useRef<Record<string, PerformanceData>>({})
@@ -1012,10 +1011,10 @@ export default function PerformancePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, router, viewAsUserId])
 
-  // ── Fetch today's score only (fast path, 8 queries) ─────────────────────────
-  const fetchToday = useCallback(async (t: string, bustCache = false) => {
+  // ── Single fetch: today score + 7-day trend in one request ──────────────────
+  const fetchPerf = useCallback(async (t: string, bustCache = false) => {
     if (!t) return
-    const cacheKey = `${viewAsUserId ?? 'self'}:today`
+    const cacheKey = `${viewAsUserId ?? 'self'}:daily`
     if (!bustCache && perfCacheRef.current[cacheKey]) {
       setPerfTodayData(perfCacheRef.current[cacheKey])
       return
@@ -1023,9 +1022,9 @@ export default function PerformancePage() {
     setPerfTodayLoading(true)
     setAudit(null)
     try {
-      const params = new URLSearchParams({ period: 'today' })
-      if (viewAsUserId) params.set('userId', viewAsUserId)
-      const res = await fetch(`/api/performance-metrics?${params.toString()}`, {
+      const qs = new URLSearchParams({ period: 'daily' })
+      if (viewAsUserId) qs.set('userId', viewAsUserId)
+      const res = await fetch(`/api/performance-metrics?${qs.toString()}`, {
         headers: { Authorization: `Bearer ${t}` },
       })
       if (res.ok) {
@@ -1039,33 +1038,10 @@ export default function PerformancePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewAsUserId])
 
-  // ── Fetch 7-day trend silently after today's data renders ────────────────────
-  const fetchTrend = useCallback(async (t: string) => {
-    if (!t) return
-    setTrendLoading(true)
-    try {
-      const params = new URLSearchParams({ period: 'daily' })
-      if (viewAsUserId) params.set('userId', viewAsUserId)
-      const res = await fetch(`/api/performance-metrics?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${t}` },
-      })
-      if (res.ok) {
-        const data = await res.json()
-        perfCacheRef.current[`${viewAsUserId ?? 'self'}:daily`] = data
-        // Merge trend into today data; preserve today's already-displayed fields
-        setPerfTodayData(prev => prev ? { ...prev, trend: data.trend, trendAnalysis: data.trendAnalysis } : prev)
-      }
-    } finally {
-      setTrendLoading(false)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewAsUserId])
-
-  // On token ready: load today first, then silently fetch trend
   useEffect(() => {
     if (!token) return
-    fetchToday(token).then(() => fetchTrend(token))
-  }, [token, fetchToday, fetchTrend])
+    fetchPerf(token)
+  }, [token, fetchPerf])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1118,10 +1094,10 @@ export default function PerformancePage() {
         breakdown: { ...prev.breakdown, discipline: newDiscipline },
       }
     })
-    // Silent refetch of today's score for accuracy (period=today, 8 queries)
-    delete perfCacheRef.current[`${viewAsUserId ?? 'self'}:today`]
+    // Silent refetch for accuracy after EOD save
+    delete perfCacheRef.current[`${viewAsUserId ?? 'self'}:daily`]
     if (token) {
-      const params = new URLSearchParams({ period: 'today' })
+      const params = new URLSearchParams({ period: 'daily' })
       if (viewAsUserId) params.set('userId', viewAsUserId)
       fetch(`/api/performance-metrics?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -1129,13 +1105,8 @@ export default function PerformancePage() {
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (data) {
-            perfCacheRef.current[`${viewAsUserId ?? 'self'}:today`] = data
-            // Preserve trend data already loaded into state
-            setPerfTodayData(prev => prev ? {
-              ...data,
-              trend:         prev.trend?.length        ? prev.trend        : data.trend,
-              trendAnalysis: prev.trendAnalysis?.classification !== 'insufficient_data' ? prev.trendAnalysis : data.trendAnalysis,
-            } : data)
+            perfCacheRef.current[`${viewAsUserId ?? 'self'}:daily`] = data
+            setPerfTodayData(data)
           }
         })
         .catch(() => { /* optimistic update already applied */ })
@@ -1219,7 +1190,7 @@ export default function PerformancePage() {
                 <div style={{
                   background: '#fff', border: '1px solid #EEF0F4', borderRadius: 10,
                   padding: '20px 20px',
-                  display: 'flex', gap: 20, alignItems: 'flex-start',
+                  display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 20, alignItems: 'flex-start',
                 }}>
                   {/* Ring + accountability info */}
                   {(() => {
@@ -1292,7 +1263,7 @@ export default function PerformancePage() {
                       return (
                         <div style={{
                           display: 'grid',
-                          gridTemplateColumns: '68px 64px 1fr',
+                          gridTemplateColumns: isMobile ? '80px auto' : '68px 64px 1fr',
                           rowGap: 8,
                           alignItems: 'center',
                         }}>
@@ -1300,7 +1271,7 @@ export default function PerformancePage() {
                             <React.Fragment key={label}>
                               <div style={{ fontSize: 11, color: '#8C94A6' }}>{label}</div>
                               <div style={{ fontSize: 14, fontWeight: 700, color }}>{value}</div>
-                              <div style={{ fontSize: 11, color: '#A0A8B8', lineHeight: 1.3 }}>{sub}</div>
+                              {!isMobile && <div style={{ fontSize: 11, color: '#A0A8B8', lineHeight: 1.3 }}>{sub}</div>}
                             </React.Fragment>
                           ))}
                         </div>

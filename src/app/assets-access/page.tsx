@@ -19,6 +19,7 @@ type Asset = {
   asset_type: string
   asset_name: string
   serial_no: string | null
+  specifications: string | null
   status: string // available | assigned | returned | lost
   created_at: string
   updated_at: string
@@ -149,7 +150,7 @@ const ACCESS_TYPE_OPTIONS = ['gmail', 'clickup', 'system_login', 'other']
 
 // ─── Employee: My Assets ─────────────────────────────────────────────────────
 
-function MyAssets({ userId, supabase }: { userId: string; supabase: SupabaseClient }) {
+function MyAssets({ userId, supabase, isMobile }: { userId: string; supabase: SupabaseClient; isMobile?: boolean }) {
   const [rows, setRows] = useState<EmployeeAsset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -160,7 +161,7 @@ function MyAssets({ userId, supabase }: { userId: string; supabase: SupabaseClie
     setError(null)
     const { data, error: dbError } = await supabase
       .from('employee_assets')
-      .select('id, asset_id, employee_id, assigned_by, assigned_at, accepted_at, returned_at, lost_at, status, assets(id, asset_type, asset_name, serial_no, status, created_at, updated_at)')
+      .select('id, asset_id, employee_id, assigned_by, assigned_at, accepted_at, returned_at, lost_at, status, assets(id, asset_type, asset_name, serial_no, specifications, status, created_at, updated_at)')
       .eq('employee_id', userId)
       .order('assigned_at', { ascending: false })
     if (dbError) setError(dbError.message)
@@ -191,7 +192,36 @@ function MyAssets({ userId, supabase }: { userId: string; supabase: SupabaseClie
       {error && <ErrorBanner message={error} />}
       {rows.length === 0
         ? <EmptyState message="No assets assigned to you yet." />
-        : (
+        : isMobile ? (
+          /* ── Mobile: cards ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {rows.map(row => {
+              const asset = singleAsset(row.assets)
+              return (
+                <div key={row.id} className="boe-card" style={{ padding: '14px 16px' }}>
+                  <div style={{ fontWeight: 600, color: colors.primary, fontSize: '14px', marginBottom: '4px' }}>{asset?.asset_name ?? '—'}</div>
+                  {asset?.specifications && (
+                    <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '8px' }}>{asset.specifications}</div>
+                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px', fontSize: '12px', color: colors.secondary }}>
+                    <span style={{ textTransform: 'capitalize' }}>{(asset?.asset_type ?? '—').replace(/_/g, ' ')}</span>
+                    {asset?.serial_no && <span style={{ fontFamily: 'monospace' }}>{asset.serial_no}</span>}
+                    <span>{fmtDate(row.assigned_at)}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Badge status={row.status} map={ASSET_STATUS_BADGE} />
+                    {row.status === 'pending_acceptance' && (
+                      <button className="boe-btn boe-btn-primary" style={{ padding: '6px 14px', fontSize: '12px' }} disabled={acceptingId === row.id} onClick={() => handleAccept(row)}>
+                        {acceptingId === row.id ? 'Accepting…' : 'Accept Asset'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          /* ── Desktop: table ── */
           <div className="boe-card" style={{ overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -201,19 +231,21 @@ function MyAssets({ userId, supabase }: { userId: string; supabase: SupabaseClie
                     const asset = singleAsset(row.assets)
                     return (
                       <tr key={row.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                        <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary }}>{asset?.asset_name ?? '—'}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontWeight: 600, color: colors.primary }}>{asset?.asset_name ?? '—'}</div>
+                          {asset?.specifications && (
+                            <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', maxWidth: '280px', whiteSpace: 'pre-wrap' }}>
+                              {asset.specifications}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ padding: '12px 16px', color: colors.secondary, textTransform: 'capitalize' }}>{(asset?.asset_type ?? '—').replace(/_/g, ' ')}</td>
                         <td style={{ padding: '12px 16px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px' }}>{asset?.serial_no ?? '—'}</td>
                         <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(row.assigned_at)}</td>
                         <td style={{ padding: '12px 16px' }}><Badge status={row.status} map={ASSET_STATUS_BADGE} /></td>
                         <td style={{ padding: '12px 16px' }}>
                           {row.status === 'pending_acceptance' && (
-                            <button
-                              className="boe-btn boe-btn-primary"
-                              style={{ padding: '5px 12px', fontSize: '11px' }}
-                              disabled={acceptingId === row.id}
-                              onClick={() => handleAccept(row)}
-                            >
+                            <button className="boe-btn boe-btn-primary" style={{ padding: '5px 12px', fontSize: '11px' }} disabled={acceptingId === row.id} onClick={() => handleAccept(row)}>
                               {acceptingId === row.id ? 'Accepting…' : 'Accept Asset'}
                             </button>
                           )}
@@ -233,7 +265,7 @@ function MyAssets({ userId, supabase }: { userId: string; supabase: SupabaseClie
 
 // ─── Employee: My Access ──────────────────────────────────────────────────────
 
-function MyAccess({ userId, supabase }: { userId: string; supabase: SupabaseClient }) {
+function MyAccess({ userId, supabase, isMobile }: { userId: string; supabase: SupabaseClient; isMobile?: boolean }) {
   const [rows, setRows] = useState<AccessRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -260,7 +292,22 @@ function MyAccess({ userId, supabase }: { userId: string; supabase: SupabaseClie
       {error && <ErrorBanner message={error} />}
       {rows.length === 0
         ? <EmptyState message="No access records assigned to you yet." />
-        : (
+        : isMobile ? (
+          /* ── Mobile: cards ── */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {rows.map(r => (
+              <div key={r.id} className="boe-card" style={{ padding: '14px 16px' }}>
+                <div style={{ fontWeight: 600, color: colors.primary, fontSize: '14px', textTransform: 'capitalize', marginBottom: '4px' }}>{r.access_type.replace(/_/g, ' ')}</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '12px', color: colors.secondary, marginBottom: '8px' }}>{r.username}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Badge status={r.status} map={ACCESS_STATUS_BADGE} />
+                  <span style={{ fontSize: '11px', color: colors.muted }}>{fmtDate(r.assigned_at)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* ── Desktop: table ── */
           <div className="boe-card" style={{ overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -286,7 +333,7 @@ function MyAccess({ userId, supabase }: { userId: string; supabase: SupabaseClie
 
 // ─── Admin: Asset Inventory ───────────────────────────────────────────────────
 
-function AssetInventory({ employees, supabase }: { employees: Employee[]; supabase: SupabaseClient }) {
+function AssetInventory({ employees, supabase, isMobile }: { employees: Employee[]; supabase: SupabaseClient; isMobile?: boolean }) {
   const [assets, setAssets] = useState<Asset[]>([])
   const [activeAssignments, setActiveAssignments] = useState<Record<string, EmployeeAsset>>({})
   const [loading, setLoading] = useState(true)
@@ -300,7 +347,7 @@ function AssetInventory({ employees, supabase }: { employees: Employee[]; supaba
     setLoading(true)
     setError(null)
     const [{ data: a, error: aErr }, { data: ea, error: eaErr }] = await Promise.all([
-      supabase.from('assets').select('id, asset_type, asset_name, serial_no, status, created_at, updated_at').order('created_at', { ascending: false }),
+      supabase.from('assets').select('id, asset_type, asset_name, serial_no, specifications, status, created_at, updated_at').order('created_at', { ascending: false }),
       supabase.from('employee_assets').select('id, asset_id, employee_id, assigned_by, assigned_at, accepted_at, returned_at, lost_at, status').in('status', ['pending_acceptance', 'accepted']),
     ])
     if (aErr) setError(aErr.message)
@@ -375,7 +422,39 @@ function AssetInventory({ employees, supabase }: { employees: Employee[]; supaba
         <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
       ) : assets.length === 0 ? (
         <EmptyState message="No assets in inventory yet." />
+      ) : isMobile ? (
+        /* ── Mobile: cards ── */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {assets.map(asset => {
+            const assignment = activeAssignments[asset.id]
+            const statusKey = acceptanceStatusKey(asset, assignment)
+            return (
+              <div key={asset.id} className="boe-card" style={{ padding: '14px 16px' }}>
+                <div style={{ fontWeight: 600, color: colors.primary, fontSize: '14px', marginBottom: '2px' }}>{asset.asset_name}</div>
+                {asset.specifications && <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '6px' }}>{asset.specifications}</div>}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '12px', color: colors.secondary, marginBottom: '10px' }}>
+                  <span style={{ textTransform: 'capitalize' }}>{asset.asset_type.replace(/_/g, ' ')}</span>
+                  {asset.serial_no && <span style={{ fontFamily: 'monospace' }}>{asset.serial_no}</span>}
+                  {assignment && <span>→ {employeeName(assignment.employee_id)}</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <span className={`boe-badge ${ACCEPTANCE_STATUS_BADGE[statusKey] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                    {ACCEPTANCE_STATUS_LABEL[statusKey] ?? statusKey}
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {asset.status === 'available' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
+                    {asset.status === 'assigned' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Returned</button>}
+                    {asset.status !== 'lost' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Lost</button>}
+                    <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>
+                    <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px', color: '#C13030' }} disabled={busyId === asset.id} onClick={() => handleDelete(asset)}>Delete</button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       ) : (
+        /* ── Desktop: table ── */
         <div className="boe-card" style={{ overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -386,7 +465,14 @@ function AssetInventory({ employees, supabase }: { employees: Employee[]; supaba
                   const statusKey = acceptanceStatusKey(asset, assignment)
                   return (
                     <tr key={asset.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                      <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary }}>{asset.asset_name}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600, color: colors.primary }}>{asset.asset_name}</div>
+                        {asset.specifications && (
+                          <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', maxWidth: '280px', whiteSpace: 'pre-wrap' }}>
+                            {asset.specifications}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: '12px 16px', color: colors.secondary, textTransform: 'capitalize' }}>{asset.asset_type.replace(/_/g, ' ')}</td>
                       <td style={{ padding: '12px 16px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px' }}>{asset.serial_no ?? '—'}</td>
                       <td style={{ padding: '12px 16px', color: colors.secondary }}>{assignment ? employeeName(assignment.employee_id) : '—'}</td>
@@ -402,47 +488,11 @@ function AssetInventory({ employees, supabase }: { employees: Employee[]; supaba
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {asset.status === 'available' && (
-                            <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>
-                              Assign
-                            </button>
-                          )}
-                          {asset.status === 'assigned' && (
-                            <button
-                              className="boe-btn boe-btn-ghost"
-                              style={{ padding: '4px 10px', fontSize: '11px' }}
-                              disabled={busyId === asset.id}
-                              onClick={() => handleMarkReturned(asset)}
-                            >
-                              Mark Returned
-                            </button>
-                          )}
-                          {asset.status !== 'lost' && (
-                            <button
-                              className="boe-btn boe-btn-ghost"
-                              style={{ padding: '4px 10px', fontSize: '11px' }}
-                              disabled={busyId === asset.id}
-                              onClick={() => handleMarkLost(asset)}
-                            >
-                              Mark Lost
-                            </button>
-                          )}
-                          <button
-                            className="boe-btn boe-btn-ghost"
-                            style={{ padding: '4px 10px', fontSize: '11px' }}
-                            disabled={busyId === asset.id}
-                            onClick={() => setEditingAsset(asset)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="boe-btn boe-btn-ghost"
-                            style={{ padding: '4px 10px', fontSize: '11px', color: '#C13030' }}
-                            disabled={busyId === asset.id}
-                            onClick={() => handleDelete(asset)}
-                          >
-                            Delete
-                          </button>
+                          {asset.status === 'available' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
+                          {asset.status === 'assigned' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Mark Returned</button>}
+                          {asset.status !== 'lost' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Mark Lost</button>}
+                          <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>
+                          <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px', color: '#C13030' }} disabled={busyId === asset.id} onClick={() => handleDelete(asset)}>Delete</button>
                         </div>
                       </td>
                     </tr>
@@ -482,6 +532,7 @@ function CreateAssetModal({ supabase, onClose, onSaved }: { supabase: SupabaseCl
   const [assetType, setAssetType] = useState(ASSET_TYPE_OPTIONS[0])
   const [assetName, setAssetName] = useState('')
   const [serialNo, setSerialNo] = useState('')
+  const [specifications, setSpecifications] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -493,6 +544,7 @@ function CreateAssetModal({ supabase, onClose, onSaved }: { supabase: SupabaseCl
       asset_type: assetType,
       asset_name: assetName.trim(),
       serial_no: serialNo.trim() || null,
+      specifications: specifications.trim() || null,
     })
     setSaving(false)
     if (dbError) { setError(dbError.message); return }
@@ -512,6 +564,16 @@ function CreateAssetModal({ supabase, onClose, onSaved }: { supabase: SupabaseCl
       <Field label="Serial No.">
         <input className="boe-input" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="Optional" style={{ width: '100%' }} />
       </Field>
+      <Field label="Specifications / Details">
+        <textarea
+          className="boe-input"
+          value={specifications}
+          onChange={e => setSpecifications(e.target.value)}
+          placeholder="Example: Intel i5, 8GB RAM, 512GB SSD, Windows 11"
+          rows={3}
+          style={{ width: '100%', resize: 'vertical' }}
+        />
+      </Field>
       {error && <ErrorBanner message={error} />}
       <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Create Asset" />
     </Modal>
@@ -524,6 +586,7 @@ function EditAssetModal({
   const [assetType, setAssetType] = useState(asset.asset_type)
   const [assetName, setAssetName] = useState(asset.asset_name)
   const [serialNo, setSerialNo] = useState(asset.serial_no ?? '')
+  const [specifications, setSpecifications] = useState(asset.specifications ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -537,6 +600,7 @@ function EditAssetModal({
         asset_type: assetType,
         asset_name: assetName.trim(),
         serial_no: serialNo.trim() || null,
+        specifications: specifications.trim() || null,
       })
       .eq('id', asset.id)
     setSaving(false)
@@ -556,6 +620,16 @@ function EditAssetModal({
       </Field>
       <Field label="Serial No.">
         <input className="boe-input" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="Optional" style={{ width: '100%' }} />
+      </Field>
+      <Field label="Specifications / Details">
+        <textarea
+          className="boe-input"
+          value={specifications}
+          onChange={e => setSpecifications(e.target.value)}
+          placeholder="Example: Intel i5, 8GB RAM, 512GB SSD, Windows 11"
+          rows={3}
+          style={{ width: '100%', resize: 'vertical' }}
+        />
       </Field>
       {error && <ErrorBanner message={error} />}
       <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Save Changes" />
@@ -604,7 +678,7 @@ function AssignAssetModal({
 
 // ─── Admin: Access Register ───────────────────────────────────────────────────
 
-function AccessRegister({ employees, supabase }: { employees: Employee[]; supabase: SupabaseClient }) {
+function AccessRegister({ employees, supabase, isMobile }: { employees: Employee[]; supabase: SupabaseClient; isMobile?: boolean }) {
   const [rows, setRows] = useState<AccessRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -658,7 +732,28 @@ function AccessRegister({ employees, supabase }: { employees: Employee[]; supaba
         <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
       ) : rows.length === 0 ? (
         <EmptyState message="No access records yet." />
+      ) : isMobile ? (
+        /* ── Mobile: cards ── */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {rows.map(r => (
+            <div key={r.id} className="boe-card" style={{ padding: '14px 16px' }}>
+              <div style={{ fontWeight: 600, color: colors.primary, fontSize: '14px', marginBottom: '2px' }}>{employeeName(r.employee_id)}</div>
+              <div style={{ fontSize: '12px', color: colors.secondary, textTransform: 'capitalize', marginBottom: '4px' }}>{r.access_type.replace(/_/g, ' ')}</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '12px', color: colors.secondary, marginBottom: '8px' }}>{r.username}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <Badge status={r.status} map={ACCESS_STATUS_BADGE} />
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setEditingRow(r)}>Update</button>
+                  <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === r.id} onClick={() => handleToggleStatus(r)}>
+                    {r.status === 'active' ? 'Disable' : 'Re-enable'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
+        /* ── Desktop: table ── */
         <div className="boe-card" style={{ overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -673,15 +768,8 @@ function AccessRegister({ employees, supabase }: { employees: Employee[]; supaba
                     <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(r.assigned_at)}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setEditingRow(r)}>
-                          Update Credentials
-                        </button>
-                        <button
-                          className="boe-btn boe-btn-ghost"
-                          style={{ padding: '4px 10px', fontSize: '11px' }}
-                          disabled={busyId === r.id}
-                          onClick={() => handleToggleStatus(r)}
-                        >
+                        <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setEditingRow(r)}>Update Credentials</button>
+                        <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === r.id} onClick={() => handleToggleStatus(r)}>
                           {r.status === 'active' ? 'Disable Access' : 'Re-enable Access'}
                         </button>
                       </div>
@@ -853,11 +941,19 @@ export default function AssetsAccessPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<AssetsView | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
   const inViewMode = !!viewAsUserId
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     const init = async () => {
@@ -905,13 +1001,13 @@ export default function AssetsAccessPage() {
   const renderView = () => {
     switch (view) {
       case 'my-assets':
-        return <MyAssets userId={effectiveUserId} supabase={supabase} />
+        return <MyAssets userId={effectiveUserId} supabase={supabase} isMobile={isMobile} />
       case 'my-access':
-        return <MyAccess userId={effectiveUserId} supabase={supabase} />
+        return <MyAccess userId={effectiveUserId} supabase={supabase} isMobile={isMobile} />
       case 'asset-inventory':
-        return <AssetInventory employees={employees} supabase={supabase} />
+        return <AssetInventory employees={employees} supabase={supabase} isMobile={isMobile} />
       case 'access-register':
-        return <AccessRegister employees={employees} supabase={supabase} />
+        return <AccessRegister employees={employees} supabase={supabase} isMobile={isMobile} />
     }
   }
 

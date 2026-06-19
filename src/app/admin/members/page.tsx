@@ -76,35 +76,17 @@ export default function MembersPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
-      const pageStart = performance.now()
-      console.log('[members] init started')
-
-      // ── CHANGE: getUser() → getSession() ─────────────────────────────────
-      // getUser() verified against Supabase auth server on every page load.
-      // getSession() reads cached session from localStorage — zero network cost.
-      // Safe: this is a UI gate only. Admin enforcement is handled by RLS and
-      // the role check immediately below.
-      // ─────────────────────────────────────────────────────────────────────
-      const authStart = performance.now()
+      // getSession() reads from localStorage — zero network cost.
+      // Admin enforcement is backed by RLS on every subsequent data query.
       const { data: { session } } = await supabase.auth.getSession()
-      console.log('[members] getSession', Math.round(performance.now() - authStart), 'ms')
-
       if (!session) { router.push('/login'); return }
-
-      const dataStart    = performance.now()
-      const roleStart    = performance.now()
-      const membersStart = performance.now()
 
       const [{ data: p }, { data: posData }, membersRes, deletedRes] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, position, is_active, created_at')
           .eq('id', session.user.id)
-          .single()
-          .then((r: { data: UserProfile | null; error: unknown }) => {
-            console.log('[members] role fetch', Math.round(performance.now() - roleStart), 'ms')
-            return r
-          }),
+          .single(),
         supabase
           .from('positions')
           .select('id, name, created_at')
@@ -112,17 +94,12 @@ export default function MembersPage() {
         // Use service-role API — browser client blocked by RLS on inactive rows
         fetch('/api/admin-members', {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
-        }).then(r => r.json()).then(d => {
-          console.log('[members] members fetch', Math.round(performance.now() - membersStart), 'ms')
-          return d
-        }),
+        }).then(r => r.json()),
         // Use service-role API — browser client blocked by RLS on deleted rows
         fetch('/api/deleted-members', {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
         }).then(r => r.json()),
       ])
-
-      console.log('[members] parallel data TOTAL', Math.round(performance.now() - dataStart), 'ms')
 
       if (p?.role !== 'admin') { router.push('/dashboard'); return }
       if (viewAsUserId) { exitViewMode(); router.push('/dashboard'); return }
@@ -131,7 +108,6 @@ export default function MembersPage() {
       if (posData) setPositions(posData as Position[])
       if (Array.isArray(deletedRes?.members)) setDeletedMembers(deletedRes.members as UserProfile[])
 
-      console.log('[members] TOTAL', Math.round(performance.now() - pageStart), 'ms')
       setLoading(false)
     }
     init()

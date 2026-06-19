@@ -7,11 +7,14 @@ import {
   Settings, ChevronRight, Briefcase, ShieldCheck, TrendingUp,
   Home, Bell, RefreshCw,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
+import { isValidUUID } from '@/lib/ui'
 import { useViewAs } from '@/hooks/useViewAs'
 import { createClient } from '@/lib/supabase/client'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from './AdminViewModeControls'
+import { MobileBottomNav } from './MobileBottomNav'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
 
@@ -34,12 +37,24 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   const [sidebarOpen,  setSidebarOpen]  = useState(false)
   const [navCounts,    setNavCounts]    = useState({ myActive: 0, assignedByMeActive: 0 })
-  const [unreadNotifs, setUnreadNotifs] = useState(0)
   const [refreshing,   setRefreshing]   = useState(false)
 
   const router   = useRouter()
   const pathname = usePathname()
   const supabase = useMemo(() => createClient(), [])
+
+  // Notification count — TanStack Query deduplicates concurrent fetches (Strict Mode safe).
+  // Include pathname in the key so the badge refreshes after visiting /notifications.
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications', 'count', pathname],
+    queryFn: async () => {
+      const res = await fetch('/api/notifications?count=1')
+      if (!res.ok) return { unreadCount: 0 }
+      return res.json() as Promise<{ unreadCount: number }>
+    },
+    staleTime: 30 * 1000,
+  })
+  const unreadNotifs = notifData?.unreadCount ?? 0
 
   const { triggerRefresh } = useRefresh()
 
@@ -68,12 +83,17 @@ export function DashboardLayout({
   const isAdmin          = navProfile?.role === 'admin'
   const isAdminOrManager = isAdmin || navProfile?.role === 'manager'
 
-  // Fetch sidebar task counts for the logged-in user (or viewed user in view mode)
+  // Fetch sidebar task counts for the logged-in user (or viewed user in view mode).
+  // Skip when viewAsUserId is set but is not a real UUID (e.g. seed/test placeholder).
   useEffect(() => {
     supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
       const user = data.user
       if (!user) return
       const uid: string = viewAsUserId ?? user.id
+      if (!isValidUUID(uid)) {
+        setNavCounts({ myActive: 0, assignedByMeActive: 0 })
+        return
+      }
       Promise.all([
         supabase
           .from('tasks')
@@ -95,18 +115,6 @@ export function DashboardLayout({
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewAsUserId])
-
-  // Unread notification badge — scoped to the logged-in user via the service-role
-  // API route (independent of view mode). Refreshes on navigation so it clears
-  // after visiting /notifications and marking items read.
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/notifications?count=1')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => { if (!cancelled && data) setUnreadNotifs(data.unreadCount ?? 0) })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [pathname])
 
   const navTo = (path: string) => {
     router.push(path)
@@ -388,6 +396,15 @@ export function DashboardLayout({
         </div>
 
       </div>
+
+      {/* Mobile-only bottom navigation — hidden on desktop via CSS */}
+      <MobileBottomNav
+        profile={profile}
+        unreadNotifs={unreadNotifs}
+        navCounts={navCounts}
+        onSignOut={onSignOut}
+      />
+
     </div>
   )
 }

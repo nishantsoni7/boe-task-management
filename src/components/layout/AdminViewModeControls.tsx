@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Users, ChevronDown, LogOut, Settings,
   Eye, X,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 import { useViewAs } from '@/hooks/useViewAs'
@@ -84,7 +85,6 @@ export function ViewModeSidebarSection({
   onSettingsClick?: () => void
 }) {
   const { viewAsUserId, viewAsProfile, enterViewMode, exitViewMode } = useViewAs()
-  const [members,      setMembers]      = useState<UserProfile[]>([])
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
@@ -92,18 +92,20 @@ export function ViewModeSidebarSection({
   const inViewMode  = !!viewAsUserId
 
   // Fetch member list once — only needed for the admin switcher
-  useEffect(() => {
-    if (!isRealAdmin) return
-    supabase
-      .from('users')
-      .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-      .eq('is_active', true)
-      .order('full_name')
-      .then(({ data }: { data: UserProfile[] | null }) => {
-        if (data) setMembers(data)
-      })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRealAdmin])
+  const { data: members = [] } = useQuery<UserProfile[]>({
+    queryKey: ['users', 'active-full'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('users')
+        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+        .eq('is_active', true)
+        .order('full_name')
+      return (data as UserProfile[]) ?? []
+    },
+    enabled: isRealAdmin,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  })
 
   const handleEnterViewMode = (member: UserProfile) => {
     enterViewMode(member.id, member)

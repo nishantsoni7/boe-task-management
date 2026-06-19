@@ -3,24 +3,21 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  User, Monitor, Key, Wrench,
-  Users, Package, ShieldCheck, Activity,
+  Monitor, Key,
+  Package, ShieldCheck,
   Home, Briefcase,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 
 export type AssetsView =
   // All users
-  | 'my-details'
   | 'my-assets'
-  | 'login-details'
-  | 'maintenance-history'
+  | 'my-access'
   // Admin only
-  | 'employee-overview'
   | 'asset-inventory'
   | 'access-register'
-  | 'activity-log'
 
 type AssetsLayoutProps = {
   profile: UserProfile | null
@@ -33,17 +30,13 @@ type AssetsLayoutProps = {
 }
 
 const USER_NAV: { view: AssetsView; label: string; icon: React.ReactNode }[] = [
-  { view: 'my-details',          label: 'My Details',          icon: <User     size={15} strokeWidth={1.8} /> },
-  { view: 'my-assets',           label: 'My Assets',           icon: <Monitor  size={15} strokeWidth={1.8} /> },
-  { view: 'login-details',       label: 'Login Details',       icon: <Key      size={15} strokeWidth={1.8} /> },
-  { view: 'maintenance-history', label: 'Maintenance History', icon: <Wrench   size={15} strokeWidth={1.8} /> },
+  { view: 'my-assets', label: 'My Assets', icon: <Monitor size={15} strokeWidth={1.8} /> },
+  { view: 'my-access', label: 'My Access', icon: <Key     size={15} strokeWidth={1.8} /> },
 ]
 
 const ADMIN_NAV: { view: AssetsView; label: string; icon: React.ReactNode }[] = [
-  { view: 'employee-overview', label: 'Employee Overview', icon: <Users       size={15} strokeWidth={1.8} /> },
-  { view: 'asset-inventory',   label: 'Asset Inventory',   icon: <Package     size={15} strokeWidth={1.8} /> },
-  { view: 'access-register',   label: 'Access Register',   icon: <ShieldCheck size={15} strokeWidth={1.8} /> },
-  { view: 'activity-log',      label: 'Activity Log',      icon: <Activity    size={15} strokeWidth={1.8} /> },
+  { view: 'asset-inventory', label: 'Asset Inventory', icon: <Package     size={15} strokeWidth={1.8} /> },
+  { view: 'access-register', label: 'Access Register', icon: <ShieldCheck size={15} strokeWidth={1.8} /> },
 ]
 
 export function AssetsLayout({
@@ -181,6 +174,9 @@ export function AssetsLayout({
         </div>
 
       </div>
+
+      <MobileBottomNav profile={profile} onSignOut={onSignOut} />
+
     </div>
   )
 }
