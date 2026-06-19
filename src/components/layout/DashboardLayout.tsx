@@ -99,7 +99,8 @@ export function DashboardLayout({
           .from('tasks')
           .select('id', { count: 'exact', head: true })
           .eq('assigned_to', uid)
-          .neq('status', 'completed'),
+          .neq('status', 'completed')
+          .neq('status', 'cancelled'),
         supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
