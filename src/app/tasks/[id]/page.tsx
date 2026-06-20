@@ -145,7 +145,7 @@ export default function TaskDetailPage() {
           .eq('id', user.id).single(),
         supabase.from('users').select('id, full_name').eq('is_active', true).order('full_name'),
         supabase.from('task_activity_log')
-          .select('id, action, note, from_status, to_status, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
+          .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
           .eq('task_id', taskId)
           .order('created_at', { ascending: false }),
         supabase.from('task_attachments')
@@ -185,6 +185,8 @@ export default function TaskDetailPage() {
         setLog((activityLogData as any[]).map(e => ({
           ...e,
           actor_name:     e.users?.full_name ?? null,
+          old_val:        e.old_val ?? null,
+          new_val:        e.new_val ?? null,
           attachment_url: e.attachment_url ?? null,
           attachments:    attachsByLogId[e.id] ?? [],
         })))
@@ -200,7 +202,7 @@ export default function TaskDetailPage() {
     const [{ data }, { data: allAtts }] = await Promise.all([
       supabase
         .from('task_activity_log')
-        .select('id, action, note, from_status, to_status, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
+        .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
         .eq('task_id', taskId)
         .order('created_at', { ascending: false }),
       supabase
@@ -527,10 +529,12 @@ export default function TaskDetailPage() {
     const updates = { due_date: editDueDate || null }
     const { error } = await supabase.from('tasks').update(updates).eq('id', task.id)
     if (error) { setDueDateMsg({ ok: false, text: 'Failed to save.' }); setSavingDueDate(false); return }
-    await supabase.from('task_activity_log').insert({
+    const { error: logErrDue } = await supabase.from('task_activity_log').insert({
       task_id: task.id, actor_id: currentUserId,
-      action: 'deadline_changed', note: editDueDate ? `Due date set to ${editDueDate}` : 'Due date cleared',
+      action: 'due_date_changed', note: null,
+      old_val: task.due_date ?? null, new_val: editDueDate || null,
     })
+    if (logErrDue) console.error('[saveDueDate] activity log insert failed:', logErrDue.message)
     setTask({ ...task, ...updates as Partial<Task> })
     await loadLog(task.id)
     setEditingDueDate(false)
@@ -545,10 +549,12 @@ export default function TaskDetailPage() {
     const updates = { priority: editPriority }
     const { error } = await supabase.from('tasks').update(updates).eq('id', task.id)
     if (error) { setPriorityMsg({ ok: false, text: 'Failed to save.' }); setSavingPriority(false); return }
-    await supabase.from('task_activity_log').insert({
+    const { error: logErrPri } = await supabase.from('task_activity_log').insert({
       task_id: task.id, actor_id: currentUserId,
-      action: 'priority_changed', note: `Priority changed from ${task.priority} to ${editPriority}`,
+      action: 'priority_changed', note: null,
+      old_val: task.priority, new_val: editPriority,
     })
+    if (logErrPri) console.error('[savePriority] activity log insert failed:', logErrPri.message)
     setTask({ ...task, ...updates as Partial<Task> })
     await loadLog(task.id)
     setEditingPriority(false)
@@ -562,10 +568,12 @@ export default function TaskDetailPage() {
     setSavingTitle(true)
     const { error } = await supabase.from('tasks').update({ title: trimmed }).eq('id', task.id)
     if (error) { alert('Failed to save title.'); setSavingTitle(false); return }
-    await supabase.from('task_activity_log').insert({
+    const { error: logErrTitle } = await supabase.from('task_activity_log').insert({
       task_id: task.id, actor_id: currentUserId,
-      action: 'note_added', note: `Title updated to: ${trimmed}`,
+      action: 'title_changed', note: null,
+      old_val: task.title, new_val: trimmed,
     })
+    if (logErrTitle) console.error('[saveTitle] activity log insert failed:', logErrTitle.message)
     setTask({ ...task, title: trimmed })
     await loadLog(task.id)
     setEditingTitle(false)
@@ -1456,31 +1464,50 @@ export default function TaskDetailPage() {
           )}
 
           {/* Activity */}
-          <div className="boe-card boe-activity-card" style={{ padding: '0' }}>
-            <div style={{ padding: '10px 14px 9px', borderBottom: `1px solid ${colors.border}`, flexShrink: 0 }}>
-              <span style={{
-                fontSize: '11px', fontWeight: 700,
-                letterSpacing: '0.06em', textTransform: 'uppercase',
-                color: colors.secondary,
-              }}>
-                Activity
-              </span>
+          <div className="boe-card boe-activity-card" style={{ padding: '0', display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <div style={{
+              padding: '12px 16px 11px',
+              borderBottom: `1px solid ${colors.border}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary, display: 'block', letterSpacing: '-0.01em' }}>
+                  Activity
+                </span>
+                <span style={{ fontSize: '10.5px', color: colors.muted, marginTop: '1px', display: 'block' }}>
+                  Task changes and updates
+                </span>
+              </div>
+              {log.length > 0 && (
+                <span style={{
+                  fontSize: '10px', fontWeight: 700, color: colors.muted,
+                  background: colors.float, border: `1px solid ${colors.border}`,
+                  padding: '2px 7px', borderRadius: '20px', letterSpacing: '0.02em',
+                }}>
+                  {log.length} {log.length === 1 ? 'event' : 'events'}
+                </span>
+              )}
             </div>
+
             {log.length === 0 ? (
-              <div style={{ padding: '14px', opacity: 0.5 }}>
-                <p style={{ fontSize: '11px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+              <div style={{ padding: '20px 16px' }}>
+                <p style={{ fontSize: '11.5px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
                   No activity yet.
                 </p>
               </div>
             ) : (
-              <div className="boe-activity-list" style={{ padding: '4px 0' }}>
+              <div style={{ overflowY: 'auto', maxHeight: '520px' }}>
                 {(() => {
-                  // Newest entry overall (log is sorted descending)
                   const newestEntry = log[0]
                   const canEditDelete = (entry: LogEntry) =>
                     entry.action === 'note_added' &&
                     entry.id === newestEntry?.id &&
                     entry.actor_id === currentUserId
+
+                  const isFieldChange = (action: string) =>
+                    action === 'title_changed' || action === 'due_date_changed' ||
+                    action === 'deadline_changed' || action === 'priority_changed'
 
                   return log.map((entry, i) => {
                     const dotColor =
@@ -1488,89 +1515,49 @@ export default function TaskDetailPage() {
                       : entry.action === 'status_changed' && entry.to_status
                         ? (STATUS_COLORS[entry.to_status] ?? colors.muted)
                       : colors.muted
-                    const isEditing  = editingActivityId === entry.id
-                    const isDeleting = deletingActivityId === entry.id
+                    const isEditing   = editingActivityId === entry.id
+                    const isDeleting  = deletingActivityId === entry.id
                     const showActions = canEditDelete(entry)
+                    const isDate      = entry.action === 'due_date_changed' || entry.action === 'deadline_changed'
+                    const pillFont    = entry.action === 'title_changed' ? font.body : font.mono
+
+                    const oldDisplay = isDate
+                      ? (entry.old_val ? formatFullDate(entry.old_val) : 'No date')
+                      : (entry.old_val ?? '—')
+                    const newDisplay = isDate
+                      ? (entry.new_val ? formatFullDate(entry.new_val) : 'Cleared')
+                      : (entry.new_val ?? '—')
 
                     return (
                       <div
                         key={entry.id}
                         style={{
-                          display: 'flex', gap: '0', alignItems: 'stretch',
-                          padding: '0',
+                          display: 'flex', alignItems: 'flex-start', gap: '12px',
+                          padding: '14px 16px',
+                          borderBottom: i < log.length - 1 ? `1px solid ${colors.border}` : 'none',
                         }}
                       >
-                        {/* Timeline rail */}
-                        <div style={{
-                          display: 'flex', flexDirection: 'column', alignItems: 'center',
-                          width: '32px', flexShrink: 0, paddingTop: '12px',
-                        }}>
+                        {/* Dot */}
+                        <div style={{ paddingTop: '4px', flexShrink: 0 }}>
                           <div style={{
-                            width: '8px', height: '8px', borderRadius: '50%',
-                            background: dotColor, border: `2px solid #ffffff`,
-                            boxShadow: `0 0 0 1.5px ${dotColor}`,
-                            flexShrink: 0, zIndex: 1,
+                            width: '7px', height: '7px', borderRadius: '50%',
+                            background: dotColor, opacity: 0.75,
                           }} />
-                          {i < log.length - 1 && (
-                            <div style={{
-                              width: '1.5px', flex: 1, minHeight: '12px',
-                              background: colors.border, marginTop: '3px',
-                            }} />
-                          )}
                         </div>
 
-                        {/* Content */}
-                        <div style={{ flex: 1, minWidth: 0, padding: '10px 14px 10px 0' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '4px', alignItems: 'baseline', flexWrap: 'wrap' }}>
-                            <p style={{ color: colors.secondary, fontSize: '12px', lineHeight: 1.35, fontWeight: 600, margin: 0 }}>
-                              {formatLogAction(entry.action, entry.from_status, entry.to_status)}
-                            </p>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                              {entry.actor_name && (
-                                <span style={{ color: colors.muted, fontSize: '10.5px' }}>
-                                  {entry.actor_name}
-                                </span>
-                              )}
-                              {showActions && !isEditing && (
-                                <>
-                                  <button
-                                    onClick={() => { setEditActivityNote(entry.note ?? ''); setEditingActivityId(entry.id) }}
-                                    style={{
-                                      fontSize: '10.5px', fontWeight: 600, color: colors.blue,
-                                      background: 'none', border: 'none', cursor: 'pointer',
-                                      padding: '0', fontFamily: font.body, textDecoration: 'underline',
-                                    }}
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    onClick={() => deleteActivity(entry.id)}
-                                    disabled={isDeleting}
-                                    style={{
-                                      fontSize: '10.5px', fontWeight: 600, color: colors.red,
-                                      background: 'none', border: 'none', cursor: isDeleting ? 'not-allowed' : 'pointer',
-                                      padding: '0', fontFamily: font.body, textDecoration: 'underline',
-                                      opacity: isDeleting ? 0.5 : 1,
-                                    }}
-                                  >
-                                    {isDeleting ? '…' : 'Delete'}
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
+                        {/* Main content */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: '12.5px', fontWeight: 600, color: colors.primary, lineHeight: 1.35 }}>
+                            {formatLogAction(entry.action, entry.from_status, entry.to_status)}
+                          </p>
 
                           {isEditing ? (
-                            <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                               <textarea
                                 value={editActivityNote}
                                 onChange={e => setEditActivityNote(e.target.value)}
                                 className="boe-input"
-                                style={{
-                                  resize: 'none', height: '64px',
-                                  width: '100%', boxSizing: 'border-box',
-                                  fontSize: '12px', lineHeight: 1.5,
-                                }}
+                                style={{ resize: 'none', height: '64px', width: '100%', boxSizing: 'border-box', fontSize: '12px', lineHeight: 1.5 }}
                               />
                               <div style={{ display: 'flex', gap: '6px' }}>
                                 <button
@@ -1603,24 +1590,49 @@ export default function TaskDetailPage() {
                               </div>
                             </div>
                           ) : (
-                            entry.note && (
-                              <p style={{ color: colors.secondary, fontSize: '12px', marginTop: '3px', lineHeight: 1.5, margin: '3px 0 0' }}>
-                                {entry.note}
-                              </p>
-                            )
+                            <>
+                              {/* Diff pills: old → new */}
+                              {isFieldChange(entry.action) && (
+                                <div style={{ marginTop: '7px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span style={{
+                                    fontSize: '11px', color: colors.muted,
+                                    background: colors.float, border: `1px solid ${colors.border}`,
+                                    padding: '2px 8px', borderRadius: '5px',
+                                    textDecoration: 'line-through', fontFamily: pillFont,
+                                    maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  }} title={oldDisplay}>
+                                    {oldDisplay}
+                                  </span>
+                                  <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>→</span>
+                                  <span style={{
+                                    fontSize: '11px', fontWeight: 600, color: colors.primary,
+                                    background: colors.float, border: `1px solid ${colors.border}`,
+                                    padding: '2px 8px', borderRadius: '5px', fontFamily: pillFont,
+                                    maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  }} title={newDisplay}>
+                                    {newDisplay}
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Note text */}
+                              {entry.note && (
+                                <p style={{ margin: '5px 0 0', color: colors.secondary, fontSize: '12px', lineHeight: 1.55 }}>
+                                  {entry.note}
+                                </p>
+                              )}
+                            </>
                           )}
 
-                          {/* Legacy single attachment_url */}
+                          {/* Attachments */}
                           {entry.attachment_url && !(entry.attachments ?? []).some((a: TaskAttachment) => a.url === entry.attachment_url) && (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
                               <button
                                 onClick={() => setPreviewAttachment({ url: entry.attachment_url! })}
                                 style={{
                                   display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                  fontSize: '10.5px', fontWeight: 500,
-                                  color: colors.blue,
-                                  background: 'none', border: 'none', cursor: 'pointer',
-                                  padding: 0,
+                                  fontSize: '10.5px', fontWeight: 500, color: colors.blue,
+                                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                                 }}
                               >
                                 📎 View Attachment
@@ -1635,17 +1647,14 @@ export default function TaskDetailPage() {
                               </span>
                             </div>
                           )}
-                          {/* New multi-file task_attachments */}
                           {(entry.attachments ?? []).map((att: TaskAttachment) => (
-                            <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
+                            <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
                               <button
                                 onClick={() => setPreviewAttachment({ url: att.url, fileName: att.file_name ?? undefined })}
                                 style={{
                                   display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                  fontSize: '10.5px', fontWeight: 500,
-                                  color: colors.blue,
-                                  background: 'none', border: 'none', cursor: 'pointer',
-                                  padding: 0,
+                                  fontSize: '10.5px', fontWeight: 500, color: colors.blue,
+                                  background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                                 }}
                               >
                                 📎 {att.file_name ?? 'Attachment'}
@@ -1660,9 +1669,52 @@ export default function TaskDetailPage() {
                               </span>
                             </div>
                           ))}
-                          <p style={{ color: colors.muted, fontSize: '10px', marginTop: '3px', fontFamily: font.mono }}>
+                        </div>
+
+                        {/* Meta column: actor + timestamp, right-aligned */}
+                        <div style={{
+                          flexShrink: 0, textAlign: 'right',
+                          display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px',
+                          paddingTop: '1px', maxWidth: '112px',
+                        }}>
+                          {entry.actor_name && (
+                            <span style={{
+                              fontSize: '11px', fontWeight: 500, color: colors.secondary,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              maxWidth: '112px',
+                            }}>
+                              {entry.actor_name}
+                            </span>
+                          )}
+                          <span style={{ fontSize: '10px', color: colors.muted, fontFamily: font.mono, whiteSpace: 'nowrap' }}>
                             {formatDateTime(entry.created_at)}
-                          </p>
+                          </span>
+                          {showActions && !isEditing && (
+                            <div style={{ display: 'flex', gap: '6px', marginTop: '3px' }}>
+                              <button
+                                onClick={() => { setEditActivityNote(entry.note ?? ''); setEditingActivityId(entry.id) }}
+                                style={{
+                                  fontSize: '10.5px', fontWeight: 600, color: colors.blue,
+                                  background: 'none', border: 'none', cursor: 'pointer',
+                                  padding: '0', fontFamily: font.body, textDecoration: 'underline',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => deleteActivity(entry.id)}
+                                disabled={isDeleting}
+                                style={{
+                                  fontSize: '10.5px', fontWeight: 600, color: colors.red,
+                                  background: 'none', border: 'none', cursor: isDeleting ? 'not-allowed' : 'pointer',
+                                  padding: '0', fontFamily: font.body, textDecoration: 'underline',
+                                  opacity: isDeleting ? 0.5 : 1,
+                                }}
+                              >
+                                {isDeleting ? '…' : 'Delete'}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )
