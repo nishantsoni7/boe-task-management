@@ -67,7 +67,7 @@ export function AssetsLayout({
         onClick={() => handleNav(view)}
         style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
       >
-        <span style={{ color: active ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+        <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
           {icon}
         </span>
         {label}
@@ -102,12 +102,12 @@ export function AssetsLayout({
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(232,160,48,0.12)',
-              border: '1px solid rgba(232,160,48,0.25)',
-              color: '#E8A030', cursor: 'pointer', flexShrink: 0,
+              background: 'rgba(220,31,46,0.08)',
+              border: '1px solid rgba(220,31,46,0.20)',
+              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.22)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.12)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
           >
             <Home size={14} strokeWidth={2} />
           </button>

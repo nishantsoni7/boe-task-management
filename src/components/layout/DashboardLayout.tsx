@@ -149,12 +149,12 @@ export function DashboardLayout({
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(232,160,48,0.12)',
-              border: '1px solid rgba(232,160,48,0.25)',
-              color: '#E8A030', cursor: 'pointer', flexShrink: 0,
+              background: 'rgba(220,31,46,0.08)',
+              border: '1px solid rgba(220,31,46,0.20)',
+              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.22)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.12)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
           >
             <Home size={14} strokeWidth={2} />
           </button>
@@ -315,7 +315,7 @@ export function DashboardLayout({
               className="boe-notif-alert"
             >
               <div className="boe-notif-alert-bell">
-                <Bell size={24} strokeWidth={1.8} color="#E8A030" />
+                <Bell size={24} strokeWidth={1.8} color="#DC1F2E" />
               </div>
               <div style={{
                 fontSize: '28px', fontWeight: 800, color: '#111318', lineHeight: 1,
@@ -326,7 +326,7 @@ export function DashboardLayout({
                 unread {unreadNotifs === 1 ? 'notification' : 'notifications'}
               </div>
               <div style={{
-                fontSize: '10px', fontWeight: 600, color: '#E8A030',
+                fontSize: '10px', fontWeight: 600, color: '#DC1F2E',
                 letterSpacing: '0.05em', textTransform: 'uppercase',
               }}>
                 Tap to review →
@@ -370,13 +370,13 @@ export function DashboardLayout({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 32, height: 32, borderRadius: '8px',
-                background: refreshing ? 'rgba(232,160,48,0.15)' : 'rgba(0,0,0,0.05)',
+                background: refreshing ? 'rgba(220,31,46,0.08)' : 'rgba(0,0,0,0.05)',
                 border: '1px solid rgba(0,0,0,0.10)',
-                color: refreshing ? '#E8A030' : '#6B7384',
+                color: refreshing ? '#DC1F2E' : '#6B7384',
                 cursor: refreshing ? 'default' : 'pointer',
                 flexShrink: 0, transition: 'background 0.15s, color 0.15s',
               }}
-              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(232,160,48,0.12)'; e.currentTarget.style.color = '#E8A030' } }}
+              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(220,31,46,0.08)'; e.currentTarget.style.color = '#DC1F2E' } }}
               onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#6B7384' } }}
             >
               <RefreshCw
@@ -438,7 +438,7 @@ function CollapsibleNav({ label, active, count, icon, children }: CollapsibleNav
         }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: active ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+          <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
             {icon}
           </span>
           {label}
@@ -466,7 +466,7 @@ function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
       onClick={onClick}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
     >
-      <span style={{ color: active ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+      <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
       {label}

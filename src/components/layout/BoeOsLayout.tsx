@@ -78,7 +78,7 @@ export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: B
                 width: 30, height: 30, borderRadius: '8px',
                 background: '#1A2035',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '11px', fontWeight: 700, color: '#E8A030',
+                fontSize: '11px', fontWeight: 700, color: '#DC1F2E',
                 flexShrink: 0, letterSpacing: '0.02em',
               }}>
                 {initials(profile.full_name)}
@@ -153,7 +153,7 @@ function OsNavItem({
       onClick={onClick}
       style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
     >
-      <span style={{ color: active ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+      <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
       {label}

@@ -87,12 +87,12 @@ export function AttendanceLayout({
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(232,160,48,0.12)',
-              border: '1px solid rgba(232,160,48,0.25)',
-              color: '#E8A030', cursor: 'pointer', flexShrink: 0,
+              background: 'rgba(220,31,46,0.08)',
+              border: '1px solid rgba(220,31,46,0.20)',
+              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.22)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(232,160,48,0.12)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
           >
             <Home size={14} strokeWidth={2} />
           </button>
@@ -111,7 +111,7 @@ export function AttendanceLayout({
                 onClick={() => navTo(item.path)}
                 style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
               >
-                <span style={{ color: active ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+                <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
                   {item.icon}
                 </span>
                 {item.label}
@@ -126,7 +126,7 @@ export function AttendanceLayout({
               onClick={() => navTo('/attendance/holidays')}
               style={{ fontWeight: pathname.startsWith('/attendance/holidays') ? 600 : 400, marginBottom: '2px' }}
             >
-              <span style={{ color: pathname.startsWith('/attendance/holidays') ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+              <span style={{ color: pathname.startsWith('/attendance/holidays') ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
                 <CalendarX size={15} strokeWidth={1.8} />
               </span>
               Holiday Management
@@ -140,7 +140,7 @@ export function AttendanceLayout({
               onClick={() => navTo('/payroll')}
               style={{ fontWeight: pathname.startsWith('/payroll') && !pathname.startsWith('/payroll/monthly-review') ? 600 : 400, marginBottom: '2px' }}
             >
-              <span style={{ color: pathname.startsWith('/payroll') && !pathname.startsWith('/payroll/monthly-review') ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+              <span style={{ color: pathname.startsWith('/payroll') && !pathname.startsWith('/payroll/monthly-review') ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
                 <Banknote size={15} strokeWidth={1.8} />
               </span>
               Payroll
@@ -154,7 +154,7 @@ export function AttendanceLayout({
               onClick={() => navTo('/payroll/monthly-review')}
               style={{ fontWeight: pathname.startsWith('/payroll/monthly-review') ? 600 : 400, marginBottom: '2px' }}
             >
-              <span style={{ color: pathname.startsWith('/payroll/monthly-review') ? '#E8A030' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+              <span style={{ color: pathname.startsWith('/payroll/monthly-review') ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
                 <FileBarChart size={15} strokeWidth={1.8} />
               </span>
               Payroll Review
@@ -192,13 +192,13 @@ export function AttendanceLayout({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 32, height: 32, borderRadius: '8px',
-                background: refreshing ? 'rgba(232,160,48,0.15)' : 'rgba(0,0,0,0.05)',
+                background: refreshing ? 'rgba(220,31,46,0.08)' : 'rgba(0,0,0,0.05)',
                 border: '1px solid rgba(0,0,0,0.10)',
-                color: refreshing ? '#E8A030' : '#6B7384',
+                color: refreshing ? '#DC1F2E' : '#6B7384',
                 cursor: refreshing ? 'default' : 'pointer',
                 flexShrink: 0, transition: 'background 0.15s, color 0.15s',
               }}
-              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(232,160,48,0.12)'; e.currentTarget.style.color = '#E8A030' } }}
+              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(220,31,46,0.08)'; e.currentTarget.style.color = '#DC1F2E' } }}
               onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#6B7384' } }}
             >
               <RefreshCw
