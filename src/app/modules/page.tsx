@@ -133,6 +133,16 @@ export default function BoeOsHomePage() {
       notificationCount: null,  // no module-level API yet
     }] : []),
     {
+      key: 'showroom',
+      title: 'Showroom QR',
+      description: 'QR-based showroom inquiries and quotations.',
+      href: '/showroom-admin',
+      status: 'active',
+      accent: '#7C3AED',
+      icon: <ShowroomIcon />,
+      notificationCount: null,
+    },
+    {
       key: 'assets',
       title: 'Assets & Access',
       description: 'View your assigned devices and access records, or manage the company inventory.',
@@ -377,6 +387,16 @@ function MembersIcon() {
   return (
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+    </svg>
+  )
+}
+
+function ShowroomIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h2v2h-2zM18 14h3M14 18h2M18 18h3M14 21h5" />
     </svg>
   )
 }

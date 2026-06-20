@@ -386,6 +386,48 @@ export type TaskAttachment = {
   created_at: string
 }
 
+// ─── Showroom QR ──────────────────────────────────────────────────────────────
+
+export type ShowroomProduct = {
+  id: string
+  product_code: string
+  name: string
+  category: string
+  description: string | null
+  specifications: Record<string, string> | null
+  image_url: string | null
+  mrp: number
+  is_active: boolean
+  created_at: string
+}
+
+export type InquiryStatus = 'new' | 'in_discussion' | 'quotation_sent' | 'closed'
+
+export type ShowroomInquiry = {
+  id: string
+  salesperson_id: string
+  customer_name: string
+  customer_mobile: string
+  company: string | null
+  city: string | null
+  project_name: string | null
+  lead_source: string
+  status: InquiryStatus
+  discount_percent: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ShowroomInquiryItem = {
+  id: string
+  inquiry_id: string
+  product_id: string
+  quantity: number
+  mrp_at_time: number
+  created_at: string
+}
+
 // ─── Activity log ─────────────────────────────────────────────────────────────
 export type LogEntry = {
   id: string
