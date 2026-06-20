@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
+import DailyQuoteLoader from '@/components/DailyQuoteLoader'
 
 // ── Module definition ─────────────────────────────────────────────────────────
 
@@ -84,8 +85,6 @@ export default function BoeOsHomePage() {
     router.replace('/login')
   }
 
-  if (loading) return <LoadingScreen />
-
   const isAdmin   = profile?.role === 'admin'
 
   const modules: ModuleDef[] = [
@@ -157,35 +156,39 @@ export default function BoeOsHomePage() {
   ]
 
   return (
-    <BoeOsLayout
-      profile={profile}
-      title="BOE Operating System"
-      subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
-      onSignOut={handleSignOut}
-    >
-      {/* Section label */}
-      <div style={{
-        fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
-        color: '#8C94A6', textTransform: 'uppercase', marginBottom: '16px',
-      }}>
-        Modules
-      </div>
+    <DailyQuoteLoader>
+      {loading ? <LoadingScreen /> : (
+        <BoeOsLayout
+          profile={profile}
+          title="BOE Operating System"
+          subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+          onSignOut={handleSignOut}
+        >
+          {/* Section label */}
+          <div style={{
+            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
+            color: '#8C94A6', textTransform: 'uppercase', marginBottom: '16px',
+          }}>
+            Modules
+          </div>
 
-      {/* Responsive app-launcher grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-        gap: '20px',
-      }}>
-        {modules.map(mod => (
-          <ModuleCard
-            key={mod.key}
-            mod={mod}
-            onClick={() => router.push(mod.href)}
-          />
-        ))}
-      </div>
-    </BoeOsLayout>
+          {/* Responsive app-launcher grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+            gap: '20px',
+          }}>
+            {modules.map(mod => (
+              <ModuleCard
+                key={mod.key}
+                mod={mod}
+                onClick={() => router.push(mod.href)}
+              />
+            ))}
+          </div>
+        </BoeOsLayout>
+      )}
+    </DailyQuoteLoader>
   )
 }
 
