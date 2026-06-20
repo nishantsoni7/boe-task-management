@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Briefcase, Home, Settings, LogOut, X } from 'lucide-react'
+import { Home, Settings, LogOut, X } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 
@@ -39,7 +39,8 @@ export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: B
         {/* Brand */}
         <div className="boe-sidebar-brand">
           <div className="boe-sidebar-brand-icon">
-            <Briefcase size={15} color="#E8A030" strokeWidth={2} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/branding/boe-icon.png" alt="" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE</div>

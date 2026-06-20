@@ -125,7 +125,7 @@ export default function DailyQuoteLoader({ children }: { children: React.ReactNo
           <img
             src="/branding/boe-logo-white.png"
             alt="Best of Exports"
-            style={{ height: '32px', width: 'auto', opacity: 0.85 }}
+            style={{ maxWidth: '180px', width: '100%', height: 'auto', opacity: 0.85 }}
           />
         </div>
 

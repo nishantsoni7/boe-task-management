@@ -164,16 +164,6 @@ export default function BoeOsHomePage() {
           subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           onSignOut={handleSignOut}
         >
-          {/* BOE logo */}
-          <div style={{ marginBottom: '28px' }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/branding/boe-logo-full.png"
-              alt="Best of Exports"
-              style={{ height: '36px', width: 'auto' }}
-            />
-          </div>
-
           {/* Section label */}
           <div style={{
             fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',

@@ -40,15 +40,17 @@ function LoginForm() {
       <div style={{ width: '100%', maxWidth: '360px' }}>
 
         {/* Brand */}
-        <div style={{ textAlign: 'center', marginBottom: '36px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/branding/boe-logo-full.png"
             alt="Best of Exports"
             style={{
-              maxWidth: 'min(260px, 72vw)',
+              maxWidth: 'min(200px, 56vw)',
               height: 'auto',
-              marginBottom: '14px',
+              marginBottom: '16px',
+              display: 'block',
+              margin: '0 auto 16px',
             }}
           />
           <p style={{ color: colors.tertiary, fontSize: '12.5px', lineHeight: 1.5 }}>
