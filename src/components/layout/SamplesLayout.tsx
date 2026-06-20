@@ -3,10 +3,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Package, Bell, Home, RefreshCw,
+  Bell, Home, RefreshCw,
   LayoutList, CheckCheck, Truck, Archive, Clock, Send, ThumbsDown,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
+import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 
@@ -84,9 +85,7 @@ export function SamplesLayout({
 
         {/* Brand */}
         <div className="boe-sidebar-brand">
-          <div className="boe-sidebar-brand-icon">
-            <Package size={15} color="#E8A030" strokeWidth={2} />
-          </div>
+          <BoeBrandIcon />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE</div>
             <div className="boe-sidebar-brand-sub">Sample Tracking</div>

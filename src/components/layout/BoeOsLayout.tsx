@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Home, Settings, LogOut, X } from 'lucide-react'
+import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 
@@ -38,16 +39,7 @@ export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: B
 
         {/* Brand */}
         <div className="boe-sidebar-brand">
-          <div style={{
-            width: '36px', height: '36px', flexShrink: 0,
-            borderRadius: '9px', background: '#ffffff',
-            border: '1px solid #E5E7EB',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '4px', boxSizing: 'border-box',
-          }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/branding/boe-icon.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
-          </div>
+          <BoeBrandIcon />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE</div>
             <div className="boe-sidebar-brand-sub">Operating System</div>

@@ -4,13 +4,14 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
-  Settings, ChevronRight, Briefcase, ShieldCheck, TrendingUp,
+  Settings, ChevronRight, ShieldCheck, TrendingUp,
   Home, Bell, RefreshCw,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { isValidUUID } from '@/lib/ui'
 import { useViewAs } from '@/hooks/useViewAs'
+import { BoeBrandIcon } from './BoeBrandIcon'
 import { createClient } from '@/lib/supabase/client'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from './AdminViewModeControls'
@@ -137,9 +138,7 @@ export function DashboardLayout({
 
         {/* Brand header */}
         <div className="boe-sidebar-brand">
-          <div className="boe-sidebar-brand-icon">
-            <Briefcase size={15} color="#E8A030" strokeWidth={2} />
-          </div>
+          <BoeBrandIcon />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE</div>
             <div className="boe-sidebar-brand-sub">Task Management</div>

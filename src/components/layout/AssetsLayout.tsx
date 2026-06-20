@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import {
   Monitor, Key,
   Package, ShieldCheck,
-  Home, Briefcase,
+  Home,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
+import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
 
@@ -89,9 +90,7 @@ export function AssetsLayout({
         {/* Brand header */}
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div className="boe-sidebar-brand-icon">
-              <Briefcase size={15} color="#E8A030" strokeWidth={2} />
-            </div>
+            <BoeBrandIcon />
             <div>
               <div className="boe-sidebar-brand-name">BOE</div>
               <div className="boe-sidebar-brand-sub">Assets &amp; Access</div>

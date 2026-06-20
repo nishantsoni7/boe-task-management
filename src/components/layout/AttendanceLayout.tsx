@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, Upload, Home, Briefcase, ClipboardList, Banknote, RefreshCw, CalendarX, FileBarChart,
+  LayoutDashboard, Users, Upload, Home, ClipboardList, Banknote, RefreshCw, CalendarX, FileBarChart,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
+import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 
@@ -74,9 +75,7 @@ export function AttendanceLayout({
         {/* Brand header */}
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div className="boe-sidebar-brand-icon">
-              <Briefcase size={15} color="#E8A030" strokeWidth={2} />
-            </div>
+            <BoeBrandIcon />
             <div>
               <div className="boe-sidebar-brand-name">BOE</div>
               <div className="boe-sidebar-brand-sub">Attendance &amp; Salary</div>
