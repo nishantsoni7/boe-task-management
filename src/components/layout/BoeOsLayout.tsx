@@ -38,9 +38,15 @@ export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: B
 
         {/* Brand */}
         <div className="boe-sidebar-brand">
-          <div className="boe-sidebar-brand-icon">
+          <div style={{
+            width: '36px', height: '36px', flexShrink: 0,
+            borderRadius: '9px', background: '#ffffff',
+            border: '1px solid #E5E7EB',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '4px', boxSizing: 'border-box',
+          }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/branding/boe-icon.png" alt="" style={{ width: '36px', height: '36px', objectFit: 'cover', display: 'block' }} />
+            <img src="/branding/boe-icon.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE</div>
