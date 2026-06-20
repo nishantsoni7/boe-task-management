@@ -890,14 +890,16 @@ body {
 }
 
 .boe-sidebar-brand-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  background: #1A2035;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: #ffffff;
+  border: 1px solid #E5E7EB;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .boe-sidebar-brand-name {

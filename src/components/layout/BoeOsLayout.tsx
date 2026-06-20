@@ -40,7 +40,7 @@ export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: B
         <div className="boe-sidebar-brand">
           <div className="boe-sidebar-brand-icon">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/branding/boe-icon.png" alt="" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+            <img src="/branding/boe-icon.png" alt="" style={{ width: '36px', height: '36px', objectFit: 'cover', display: 'block' }} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="boe-sidebar-brand-name">BOE</div>
