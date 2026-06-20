@@ -175,7 +175,7 @@ export function ViewModeSidebarSection({
               background: '#1A2035',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '11px', fontWeight: 700,
-              color: '#E8A030', flexShrink: 0,
+              color: '#DC1F2E', flexShrink: 0,
               letterSpacing: '0.02em',
             }}>
               {initials(profile.full_name)}
@@ -253,7 +253,7 @@ export function ViewModeSidebarSection({
                             width: 26, height: 26, borderRadius: '6px',
                             background: '#1A2035',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '10px', fontWeight: 700, color: '#E8A030', flexShrink: 0,
+                            fontSize: '10px', fontWeight: 700, color: '#DC1F2E', flexShrink: 0,
                           }}>
                             {initials(member.full_name)}
                           </div>
