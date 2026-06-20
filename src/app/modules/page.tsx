@@ -300,10 +300,10 @@ function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
             overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
             {count == null
-              ? 'No pending'
+              ? 'No notifications'
               : hasNotif
-                ? `${count} pending`
-                : 'No pending'}
+                ? `${count} ${count === 1 ? 'notification' : 'notifications'}`
+                : 'No notifications'}
           </span>
         </div>
 
