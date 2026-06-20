@@ -742,7 +742,7 @@ export default function TaskDetailPage() {
       <div className="boe-task-2col">
 
         {/* ══ LEFT COLUMN ══════════════════════════════════════════════════ */}
-        <div className="boe-task-left-col" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
+        <div className="boe-task-left-col" style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: 0 }}>
 
             {/* ─ A. Task Summary Card ─ */}
             <div className="boe-card" style={{
@@ -819,8 +819,8 @@ export default function TaskDetailPage() {
                 </div>
               )}
 
-              {/* Due date chip + inline edit */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'flex-start' }}>
+              {/* Due date · Priority · Aging chips row */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'flex-start', marginTop: '6px' }}>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <div style={{
@@ -932,6 +932,21 @@ export default function TaskDetailPage() {
                   )}
                 </div>
 
+                {/* Aging chip — inline with due/priority */}
+                {aging && task.status !== 'completed' && task.status !== 'cancelled' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      fontSize: '11px', fontWeight: 600,
+                      color: agingColor,
+                      background: `${agingColor}14`,
+                      border: `1px solid ${agingColor}28`,
+                      padding: '4px 10px', borderRadius: '20px',
+                    }}>
+                      {aging.label} · {aging.daysSinceUpdate}d
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Description */}
@@ -962,9 +977,12 @@ export default function TaskDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
                   {task.note ? (
-                    <p style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap', flex: 1 }}>
+                    <p style={{
+                      fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6, margin: 0, flex: 1,
+                      display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                    }}>
                       {task.note}
                     </p>
                   ) : (
@@ -1040,16 +1058,157 @@ export default function TaskDetailPage() {
                   ))}
                 </div>
               )}
+
+              {/* ── Task actions inside summary card ─────────────────────── */}
+              {/* Unacknowledged: only show acknowledge button */}
+              {!task.acknowledged_at && isAssignee && task.created_by !== currentUserId && (
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}` }}>
+                  <button
+                    onClick={acknowledge}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      padding: '9px 14px', borderRadius: '8px',
+                      border: `1.5px solid ${colors.amber}50`,
+                      background: colors.amberTint, color: colors.amber,
+                      fontSize: '13px', fontWeight: 600,
+                      cursor: 'pointer', fontFamily: font.body,
+                    }}
+                  >
+                    Tap to Acknowledge
+                  </button>
+                </div>
+              )}
+
+              {/* Active task: Mark Complete + Cancel Task */}
+              {task.status !== 'completed' && task.status !== 'cancelled' && !isUnacknowledged && (isAssignee || showCancelButton) && (
+                <div style={{
+                  marginTop: '14px', paddingTop: '12px',
+                  borderTop: `1px solid ${colors.border}`,
+                  display: 'flex', gap: '8px', flexWrap: 'wrap',
+                }}>
+                  {isAssignee && (
+                    <button
+                      onClick={async () => {
+                        const confirmed = window.confirm(
+                          'Are you sure this task is completed? This will move it out of active work.'
+                        )
+                        if (!confirmed) return
+                        setMarkingComplete(true)
+                        await applyStatusChange('completed', null)
+                        setMarkingComplete(false)
+                      }}
+                      disabled={saving || markingComplete}
+                      style={{
+                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                        padding: '9px 14px', borderRadius: '8px',
+                        border: `1.5px solid ${colors.green}`,
+                        background: colors.green, color: '#ffffff',
+                        fontSize: '13px', fontWeight: 700,
+                        cursor: saving || markingComplete ? 'not-allowed' : 'pointer',
+                        fontFamily: font.body,
+                        opacity: saving || markingComplete ? 0.6 : 1,
+                        transition: 'all 0.15s',
+                        boxShadow: `0 2px 6px ${colors.green}38`,
+                      }}
+                    >
+                      <CircleCheckBig size={15} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+                      {markingComplete ? 'Marking…' : 'Mark Complete'}
+                    </button>
+                  )}
+                  {showCancelButton && (
+                    <button
+                      onClick={() => { setCancelReason(''); setCancelOtherText(''); setCancelModalOpen(true) }}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                        padding: '9px 12px', borderRadius: '8px',
+                        border: '1.5px solid #78716C40',
+                        background: '#F5F5F4', color: '#78716C',
+                        fontSize: '12px', fontWeight: 600,
+                        cursor: 'pointer', fontFamily: font.body,
+                        whiteSpace: 'nowrap', transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#E7E5E4' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#F5F5F4' }}
+                    >
+                      🚫 Cancel
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Completed: Reopen option */}
+              {task.status === 'completed' && (isCreator || isAssignee) && (
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.green}28` }}>
+                  <button
+                    onClick={handleReopen}
+                    disabled={reopening}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      padding: '8px 14px', borderRadius: '8px',
+                      border: `1.5px solid ${colors.amber}60`,
+                      background: colors.amberTint, color: colors.amber,
+                      fontSize: '12.5px', fontWeight: 600,
+                      cursor: reopening ? 'not-allowed' : 'pointer',
+                      fontFamily: font.body, opacity: reopening ? 0.6 : 1,
+                    }}
+                  >
+                    {reopening ? 'Reopening…' : 'Reopen Task'}
+                  </button>
+                </div>
+              )}
+
+              {/* Cancelled: Restore option */}
+              {task.status === 'cancelled' && (isCreator || isAdmin) && (
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid #78716C20' }}>
+                  <button
+                    onClick={async () => {
+                      const confirmed = window.confirm(
+                        'Restore this task? It will be returned to its previous status and the assignee will be notified.'
+                      )
+                      if (!confirmed) return
+                      setReopening(true)
+                      const res = await fetch('/api/restore-task', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ taskId: task.id, actorName: profile?.full_name }),
+                      })
+                      if (!res.ok) {
+                        window.alert('Failed to restore task. Please try again.')
+                        setReopening(false)
+                        return
+                      }
+                      const { restoredStatus } = await res.json()
+                      const restored = (restoredStatus ?? 'working') as TaskStatus
+                      setTask({ ...task, status: restored, cancelled_by: null, cancelled_at: null, cancellation_reason: null })
+                      setSelectedStatus(restored)
+                      await loadLog(task.id)
+                      setReopening(false)
+                    }}
+                    disabled={reopening}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      padding: '8px 14px', borderRadius: '8px',
+                      border: `1.5px solid ${colors.amber}60`,
+                      background: colors.amberTint, color: colors.amber,
+                      fontSize: '12.5px', fontWeight: 600,
+                      cursor: reopening ? 'not-allowed' : 'pointer',
+                      fontFamily: font.body, opacity: reopening ? 0.6 : 1,
+                    }}
+                  >
+                    {reopening ? 'Restoring…' : 'Restore Task'}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* ─ B. Current Status Card ─ */}
             <div className="boe-card" style={{
-              padding: '16px 20px',
+              padding: '10px 16px',
               background: statusTint,
               borderLeft: `3px solid ${statusColor}`,
             }}>
               {/* Top row: label + badge left, Change Status button right */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                 <span style={{
                   fontSize: '10px', fontWeight: 700,
                   letterSpacing: '0.08em', textTransform: 'uppercase',
@@ -1098,7 +1257,7 @@ export default function TaskDetailPage() {
 
               {/* Waiting On */}
               {task.status === 'waiting' && task.waiting_on_type && (
-                <p style={{ fontSize: '12px', color: colors.secondary, margin: '0 0 4px', lineHeight: 1.5 }}>
+                <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Waiting for: </span>
                   {task.waiting_on_type === 'team_member'
                     ? (teamMembers.find(m => m.id === task.waiting_on_user_id)?.full_name ?? 'Team member')
@@ -1109,7 +1268,7 @@ export default function TaskDetailPage() {
 
               {/* Blocker */}
               {task.status === 'blocked' && task.blocker_reason && (
-                <p style={{ fontSize: '12px', color: colors.secondary, margin: '0 0 4px', lineHeight: 1.5 }}>
+                <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Blocker: </span>
                   {task.blocker_reason}
                 </p>
@@ -1117,18 +1276,14 @@ export default function TaskDetailPage() {
 
               {/* Latest note */}
               {!noteIsDuplicateOfBlocker && currentStatusNote && (
-                <p style={{
-                  fontSize: '12px', color: colors.secondary,
-                  lineHeight: 1.6, margin: '4px 0',
-                  fontWeight: 500,
-                }}>
+                <p style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5, margin: '2px 0', fontWeight: 500 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Reason: </span>
                   {currentStatusNote}
                 </p>
               )}
 
               {latestNoteEntry && (
-                <p style={{ fontSize: '10.5px', color: statusColor, margin: '4px 0 0', fontWeight: 500 }}>
+                <p style={{ fontSize: '10px', color: statusColor, margin: '2px 0 0', fontWeight: 500 }}>
                   Updated by{latestNoteEntry.actor_name && <strong> {latestNoteEntry.actor_name}</strong>} · {timeAgo(latestNoteEntry.created_at)}
                 </p>
               )}
@@ -1261,207 +1416,6 @@ export default function TaskDetailPage() {
         {/* ══ RIGHT COLUMN ════════════════════════════════════════════════ */}
         <div className="boe-task-right-col" style={{ minWidth: 0 }}>
 
-          {/* ─ A. Cancelled Task Card ─ */}
-          {task.status === 'cancelled' && (
-            <div className="boe-card" style={{
-              padding: '14px',
-              background: '#F5F5F4',
-              borderColor: '#78716C30',
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                  padding: '11px 14px', borderRadius: '8px',
-                  background: '#ffffff', border: '1px solid #78716C28',
-                }}>
-                  <span style={{ fontSize: '15px' }}>🚫</span>
-                  <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#78716C' }}>Task Cancelled</span>
-                </div>
-                {task.cancellation_reason && (
-                  <p style={{ fontSize: '11.5px', color: '#78716C', margin: 0, padding: '8px 10px', background: '#ffffff', borderRadius: '6px', border: '1px solid #78716C20' }}>
-                    <strong>Reason:</strong> {task.cancellation_reason}
-                  </p>
-                )}
-                {(isCreator || isAdmin) && (
-                  <button
-                    onClick={async () => {
-                      const confirmed = window.confirm(
-                        'Restore this task? It will be returned to its previous status and the assignee will be notified.'
-                      )
-                      if (!confirmed) return
-                      setReopening(true)
-                      const res = await fetch('/api/restore-task', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ taskId: task.id, actorName: profile?.full_name }),
-                      })
-                      if (!res.ok) {
-                        window.alert('Failed to restore task. Please try again.')
-                        setReopening(false)
-                        return
-                      }
-                      const { restoredStatus } = await res.json()
-                      const restored = (restoredStatus ?? 'working') as TaskStatus
-                      setTask({ ...task, status: restored, cancelled_by: null, cancelled_at: null, cancellation_reason: null })
-                      setSelectedStatus(restored)
-                      await loadLog(task.id)
-                      setReopening(false)
-                    }}
-                    disabled={reopening}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                      padding: '9px 14px', borderRadius: '8px',
-                      border: `1.5px solid ${colors.amber}60`,
-                      background: colors.amberTint, color: colors.amber,
-                      fontSize: '13px', fontWeight: 600,
-                      cursor: reopening ? 'not-allowed' : 'pointer',
-                      fontFamily: font.body,
-                      opacity: reopening ? 0.6 : 1,
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {reopening ? 'Restoring…' : 'Restore Task'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ─ A. Complete Task Card ─ */}
-          {task.status !== 'cancelled' && (task.status === 'completed' || (isAssignee && !isUnacknowledged)) && (
-            <div className="boe-card" style={{
-              padding: '14px',
-              background: colors.greenTint,
-              borderColor: `${colors.green}30`,
-            }}>
-              {task.status === 'completed' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                    padding: '11px 14px', borderRadius: '8px',
-                    background: '#ffffff', border: `1px solid ${colors.green}28`,
-                  }}>
-                    <CircleCheckBig size={16} color={colors.green} strokeWidth={2.2} />
-                    <span style={{ fontSize: '13.5px', fontWeight: 700, color: colors.green }}>Task Completed</span>
-                  </div>
-                  {(isCreator || isAssignee) && (
-                    <button
-                      onClick={handleReopen}
-                      disabled={reopening}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                        padding: '9px 14px', borderRadius: '8px',
-                        border: `1.5px solid ${colors.amber}60`,
-                        background: colors.amberTint, color: colors.amber,
-                        fontSize: '13px', fontWeight: 600,
-                        cursor: reopening ? 'not-allowed' : 'pointer',
-                        fontFamily: font.body,
-                        opacity: reopening ? 0.6 : 1,
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      {reopening ? 'Reopening…' : 'Reopen Task'}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <button
-                  onClick={async () => {
-                    const confirmed = window.confirm(
-                      'Are you sure this task is completed? This will move it out of active work.'
-                    )
-                    if (!confirmed) return
-                    setMarkingComplete(true)
-                    await applyStatusChange('completed', null)
-                    setMarkingComplete(false)
-                  }}
-                  disabled={saving || markingComplete}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                    padding: '12px 14px', borderRadius: '8px',
-                    border: `1.5px solid ${colors.green}`,
-                    background: colors.green, color: '#ffffff',
-                    fontSize: '14px', fontWeight: 700,
-                    cursor: saving || markingComplete ? 'not-allowed' : 'pointer',
-                    fontFamily: font.body,
-                    opacity: saving || markingComplete ? 0.6 : 1,
-                    transition: 'all 0.15s',
-                    boxShadow: `0 2px 8px ${colors.green}38`,
-                  }}
-                >
-                  <CircleCheckBig size={17} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-                  {markingComplete ? 'Marking Complete…' : 'Mark Task Completed'}
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* ─ Cancel Task button ─ */}
-          {showCancelButton && (
-            <div className="boe-card" style={{ padding: '10px 14px' }}>
-              <button
-                onClick={() => { setCancelReason(''); setCancelOtherText(''); setCancelModalOpen(true) }}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  padding: '8px 14px', borderRadius: '7px',
-                  border: '1.5px solid #78716C50',
-                  background: '#F5F5F4', color: '#78716C',
-                  fontSize: '12px', fontWeight: 600,
-                  cursor: 'pointer', fontFamily: font.body,
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#E7E5E4' }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#F5F5F4' }}
-              >
-                🚫 Cancel Task
-              </button>
-            </div>
-          )}
-
-          {/* Acknowledge / awaiting */}
-          {!task.acknowledged_at && isAssignee && task.created_by !== currentUserId && (
-            <div className="boe-card" style={{ padding: '12px 14px' }}>
-              <button
-                onClick={acknowledge}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  padding: '8px 14px', borderRadius: '7px',
-                  border: `1.5px solid ${colors.amber}50`,
-                  background: colors.amberTint, color: colors.amber,
-                  fontSize: '12px', fontWeight: 600,
-                  cursor: 'pointer', fontFamily: font.body,
-                  transition: 'background 0.15s',
-                }}
-              >
-                Tap to Acknowledge
-              </button>
-            </div>
-          )}
-          {!task.acknowledged_at && !isAssignee && (
-            <div className="boe-card" style={{ padding: '10px 14px', textAlign: 'center' }}>
-              <p style={{ fontSize: '11px', color: colors.amber, fontWeight: 600, margin: 0 }}>
-                ⏳ Awaiting acknowledgement
-              </p>
-            </div>
-          )}
-
-          {/* Aging badge */}
-          {aging && (
-            <div className="boe-card" style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-              <span style={{ fontSize: '11px', color: colors.muted }}>Aging</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{
-                  fontSize: '11px', fontWeight: 700,
-                  color: agingColor, background: `${agingColor}14`,
-                  border: `1px solid ${agingColor}30`,
-                  padding: '2px 8px', borderRadius: '10px',
-                }}>
-                  {aging.label}
-                </span>
-                <span style={{ fontSize: '10px', color: colors.muted }}>{aging.daysSinceUpdate}d</span>
-              </div>
-            </div>
-          )}
 
           {/* Activity */}
           <div className="boe-card boe-activity-card" style={{ padding: '0', display: 'flex', flexDirection: 'column' }}>
@@ -1471,14 +1425,9 @@ export default function TaskDetailPage() {
               borderBottom: `1px solid ${colors.border}`,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-              <div>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary, display: 'block', letterSpacing: '-0.01em' }}>
-                  Activity
-                </span>
-                <span style={{ fontSize: '10.5px', color: colors.muted, marginTop: '1px', display: 'block' }}>
-                  Task changes and updates
-                </span>
-              </div>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary, letterSpacing: '-0.01em' }}>
+                Activity Timeline
+              </span>
               {log.length > 0 && (
                 <span style={{
                   fontSize: '10px', fontWeight: 700, color: colors.muted,
