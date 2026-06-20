@@ -41,17 +41,17 @@ function LoginForm() {
 
         {/* Brand */}
         <div style={{ textAlign: 'center', marginBottom: '36px' }}>
-          <h1 style={{
-            fontFamily: font.display,
-            fontSize: '20px',
-            fontWeight: 700,
-            color: colors.primary,
-            letterSpacing: '-0.01em',
-            lineHeight: 1.25,
-          }}>
-            Best of Exports Internal Management System
-          </h1>
-          <p style={{ color: colors.tertiary, fontSize: '12.5px', marginTop: '6px', lineHeight: 1.5 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/branding/boe-logo-full.png"
+            alt="Best of Exports"
+            style={{
+              maxWidth: 'min(260px, 72vw)',
+              height: 'auto',
+              marginBottom: '14px',
+            }}
+          />
+          <p style={{ color: colors.tertiary, fontSize: '12.5px', lineHeight: 1.5 }}>
             Tasks, follow-ups, accountability, and daily work tracking for the BOE team.
           </p>
         </div>

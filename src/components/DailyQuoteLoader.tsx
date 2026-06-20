@@ -119,16 +119,14 @@ export default function DailyQuoteLoader({ children }: { children: React.ReactNo
         opacity: visible ? 1 : 0,
         transition: 'opacity 0.4s ease',
       }}>
-        {/* BOE wordmark */}
-        <div style={{
-          fontSize: '11px',
-          fontWeight: 800,
-          letterSpacing: '0.25em',
-          color: '#4A5568',
-          textTransform: 'uppercase',
-          marginBottom: '48px',
-        }}>
-          BOE
+        {/* BOE logo */}
+        <div style={{ marginBottom: '48px' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/branding/boe-logo-white.png"
+            alt="Best of Exports"
+            style={{ height: '32px', width: 'auto', opacity: 0.85 }}
+          />
         </div>
 
         {/* Quote mark */}
