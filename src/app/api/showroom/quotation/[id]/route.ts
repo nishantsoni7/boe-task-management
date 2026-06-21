@@ -62,7 +62,7 @@ export async function GET(
   // ── 1. Fetch inquiry (flat) ─────────────────────────────────────────────────
   const { data: inquiry, error: inqErr } = await caller.client
     .from('showroom_inquiries')
-    .select('id, salesperson_id, customer_name, customer_mobile, company, city, project_name, status, discount_percent, quotation_status, quotation_sent_at, created_at')
+    .select('id, salesperson_id, customer_name, customer_mobile, company, city, project_name, status, discount_percent, quotation_no, quotation_status, quotation_sent_at, created_at')
     .eq('id', id)
     .single()
 
@@ -129,6 +129,7 @@ export async function GET(
       project_name:     inquiry.project_name,
       salesperson_name: (spProfile as { full_name: string } | null)?.full_name ?? '—',
       discount_percent: Number(inquiry.discount_percent),
+      quotation_no:     (inquiry.quotation_no as string | null) ?? null,
       created_at:       inquiry.created_at,
       items:            mergedItems,
     })
@@ -210,6 +211,7 @@ type PdfData = {
   project_name: string | null
   salesperson_name: string
   discount_percent: number
+  quotation_no: string | null
   created_at: string
   items: PdfItem[]
 }
@@ -235,7 +237,7 @@ export async function POST(
   // ── Fetch inquiry (flat) ─────────────────────────────────────────────────────
   const { data: inquiry, error: inqErr } = await caller.client
     .from('showroom_inquiries')
-    .select('id, salesperson_id, customer_name, customer_mobile, company, city, project_name, status, quotation_status, quotation_sent_at, created_at')
+    .select('id, salesperson_id, customer_name, customer_mobile, company, city, project_name, status, quotation_no, quotation_status, quotation_sent_at, created_at')
     .eq('id', id)
     .single()
 
@@ -312,6 +314,7 @@ export async function POST(
       project_name:     inquiry.project_name     ?? null,
       salesperson_name: (spProfile as { full_name: string } | null)?.full_name ?? '—',
       discount_percent: discountPercent,
+      quotation_no:     (inquiry.quotation_no as string | null) ?? null,
       created_at:       inquiry.created_at,
       items:            mergedItems,
     })
@@ -388,7 +391,9 @@ async function buildEnhancedPdf(data: PdfData): Promise<Buffer> {
     doc.fontSize(16).font('Helvetica-Bold').fillColor('#1A2035')
        .text('Quotation', 50, 50, { align: 'right', width: pageWidth })
     doc.fontSize(9).font('Helvetica').fillColor('#6B7280')
-       .text(`Date: ${date}`, 50, 76, { align: 'right', width: pageWidth })
+       .text(`No: ${data.quotation_no ?? 'Pending'}`, 50, 69, { align: 'right', width: pageWidth })
+    doc.fontSize(9).font('Helvetica').fillColor('#6B7280')
+       .text(`Date: ${date}`, 50, 82, { align: 'right', width: pageWidth })
     doc.moveTo(50, 100).lineTo(50 + pageWidth, 100).strokeColor('#E5E7EB').lineWidth(1).stroke()
 
     // ── Customer + salesperson ───────────────────────────────────────────────

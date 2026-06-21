@@ -175,6 +175,10 @@ export async function PATCH(
     if (existing.quotation_status === 'converted' || existing.quotation_status === 'lost') {
       return NextResponse.json({ error: 'Cannot change the status of a converted or lost quotation' }, { status: 409 })
     }
+    // Prevent reverting a sent quotation back to draft.
+    if (existing.quotation_status === 'sent' && body.quotation_status === 'draft') {
+      return NextResponse.json({ error: 'Cannot revert a sent quotation to draft' }, { status: 409 })
+    }
     updates.quotation_status = body.quotation_status
   }
   if ('converted_at' in body) {
