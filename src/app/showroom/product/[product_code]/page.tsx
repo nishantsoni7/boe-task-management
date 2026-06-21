@@ -28,9 +28,9 @@ export default function ProductPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Check sessionStorage for salesperson + customer before fetching product
-    const sp       = sessionStorage.getItem('boe_sp')
-    const customer = sessionStorage.getItem('boe_customer')
+    // Check localStorage for salesperson + customer before fetching product
+    const sp       = localStorage.getItem('boe_sp')
+    const customer = localStorage.getItem('boe_customer')
     if (!sp || !customer) {
       setNoSession(true)
       setLoading(false)
@@ -52,7 +52,7 @@ export default function ProductPage() {
   const handleAdd = () => {
     if (!product) return
 
-    const existing = sessionStorage.getItem('boe_cart')
+    const existing = localStorage.getItem('boe_cart')
     const cart: CartItem[] = existing ? JSON.parse(existing) : []
 
     // Same product added twice is kept as a separate row in V1
@@ -64,7 +64,7 @@ export default function ProductPage() {
       quantity,
     })
 
-    sessionStorage.setItem('boe_cart', JSON.stringify(cart))
+    localStorage.setItem('boe_cart', JSON.stringify(cart))
     setAdded(true)
     // Brief confirmation before redirect
     setTimeout(() => router.push('/showroom/project-list'), 600)

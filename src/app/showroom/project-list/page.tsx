@@ -33,8 +33,8 @@ export default function ProjectListPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const sp  = sessionStorage.getItem('boe_sp')
-    const raw = sessionStorage.getItem('boe_customer')
+    const sp  = localStorage.getItem('boe_sp')
+    const raw = localStorage.getItem('boe_customer')
 
     if (!sp || !raw) { setNoSession(true); setReady(true); return }
 
@@ -46,7 +46,7 @@ export default function ProjectListPage() {
 
     setSalespersonId(sp)
 
-    const cartRaw = sessionStorage.getItem('boe_cart')
+    const cartRaw = localStorage.getItem('boe_cart')
     if (cartRaw) {
       try { setCart(JSON.parse(cartRaw) as CartItem[]) } catch { /* ignore bad cart */ }
     }
@@ -57,7 +57,7 @@ export default function ProjectListPage() {
   // Persist cart changes back to sessionStorage whenever cart state changes
   const updateCart = (next: CartItem[]) => {
     setCart(next)
-    sessionStorage.setItem('boe_cart', JSON.stringify(next))
+    localStorage.setItem('boe_cart', JSON.stringify(next))
   }
 
   const handleQtyChange = (index: number, delta: number) => {
@@ -92,9 +92,9 @@ export default function ProjectListPage() {
     }
 
     // Clear all session data before redirecting
-    sessionStorage.removeItem('boe_sp')
-    sessionStorage.removeItem('boe_customer')
-    sessionStorage.removeItem('boe_cart')
+    localStorage.removeItem('boe_sp')
+    localStorage.removeItem('boe_customer')
+    localStorage.removeItem('boe_cart')
 
     router.push('/showroom/done')
   }
@@ -160,15 +160,21 @@ export default function ProjectListPage() {
       {cart.length === 0 ? (
         <div style={{
           textAlign: 'center', padding: '32px 0',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px',
         }}>
           <div style={{ fontSize: '32px' }}>🛋</div>
           <div style={{ fontSize: '14px', fontWeight: 600, color: colors.secondary }}>
             No products added yet
           </div>
-          <div style={{ fontSize: '12px', color: colors.tertiary }}>
-            Scan a product QR to add it to your list.
+          <div style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.6, maxWidth: '240px' }}>
+            Point your phone camera at a product QR label in the showroom.
           </div>
+          <button
+            onClick={() => router.push('/showroom/scan')}
+            style={{ ...primaryBtn, marginTop: '4px', padding: '12px 28px' }}
+          >
+            Scan Product QR
+          </button>
         </div>
       ) : (
         <>
@@ -217,6 +223,23 @@ export default function ProjectListPage() {
         }}>
           {submitError}
         </div>
+      )}
+
+      {/* Add more / submit row */}
+      {cart.length > 0 && (
+        <button
+          onClick={() => router.push('/showroom/scan')}
+          style={{
+            width: '100%', padding: '12px',
+            background: 'none', color: colors.secondary,
+            border: `1.5px solid ${colors.border}`, borderRadius: '10px',
+            fontSize: '13px', fontWeight: 600,
+            cursor: 'pointer', fontFamily: font.body,
+            marginBottom: '10px',
+          }}
+        >
+          + Scan Another Product
+        </button>
       )}
 
       {/* Submit */}

@@ -54,9 +54,9 @@ function JoinForm() {
 
     setSubmitting(true)
 
-    // Save to sessionStorage — no DB write in this phase
-    sessionStorage.setItem('boe_sp', salespersonId)
-    sessionStorage.setItem('boe_customer', JSON.stringify({
+    // Save to localStorage so session survives new tabs opened by QR camera scanning
+    localStorage.setItem('boe_sp', salespersonId)
+    localStorage.setItem('boe_customer', JSON.stringify({
       customer_name:   customerName.trim(),
       customer_mobile: customerMobile.trim(),
       company:         company.trim() || null,
