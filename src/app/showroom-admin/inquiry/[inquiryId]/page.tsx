@@ -16,6 +16,8 @@ type InquiryItem = {
   id: string
   quantity: number
   mrp_at_time: number
+  rate_override: number | null
+  customization_note: string | null
   showroom_products: {
     id: string
     product_code: string
@@ -61,6 +63,23 @@ const STATUSES: { value: InquiryStatus; label: string }[] = [
   { value: 'closed',         label: 'Closed' },
 ]
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function initItemEdits(
+  items: Array<{ id: string; mrp_at_time: number; rate_override: number | null; customization_note: string | null }>,
+  existing: Record<string, { rate: string; note: string }>
+): Record<string, { rate: string; note: string }> {
+  const next: Record<string, { rate: string; note: string }> = {}
+  for (const item of items) {
+    // Preserve in-progress edits; seed fresh entries from saved DB values.
+    next[item.id] = existing[item.id] ?? {
+      rate: String(item.rate_override ?? item.mrp_at_time),
+      note: item.customization_note ?? '',
+    }
+  }
+  return next
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function InquiryDetailPage() {
@@ -88,6 +107,12 @@ export default function InquiryDetailPage() {
   // Item editing state: itemId → pending qty string
   const [pendingQty,   setPendingQty]   = useState<Record<string, string>>({})
   const [removingId,   setRemovingId]   = useState<string | null>(null)
+
+  // Local editable overrides for rate and customization note (persisted via Save Edits)
+  const [itemEdits,    setItemEdits]    = useState<Record<string, { rate: string; note: string }>>({})
+  const [savingEdits,  setSavingEdits]  = useState(false)
+  const [saveEditsOk,  setSaveEditsOk]  = useState(false)
+  const [saveEditsErr, setSaveEditsErr] = useState('')
 
   // Product search
   const [search,      setSearch]      = useState('')
@@ -143,6 +168,7 @@ export default function InquiryDetailPage() {
       setStatus(inq.status)
       setDiscountPercent(String(inq.discount_percent))
       setNotes(inq.notes ?? '')
+      setItemEdits(initItemEdits(inq.showroom_inquiry_items, {}))
 
       if (prodRes.ok) {
         const prodData = await prodRes.json()
@@ -168,6 +194,8 @@ export default function InquiryDetailPage() {
     if (res.ok) {
       const data = await res.json()
       setInquiry(data.inquiry)
+      // Preserve existing edits; only seed new items that weren't edited before
+      setItemEdits(prev => initItemEdits(data.inquiry.showroom_inquiry_items, prev))
     }
   }
 
@@ -193,6 +221,38 @@ export default function InquiryDetailPage() {
       setTimeout(() => setSaveOk(false), 2500)
     }
     setSaving(false)
+  }
+
+  // ── Save per-item quotation edits (rate_override + customization_note) ────────
+
+  const handleSaveItemEdits = async (): Promise<boolean> => {
+    setSavingEdits(true)
+    setSaveEditsErr('')
+    setSaveEditsOk(false)
+    const currentItems = inquiry?.showroom_inquiry_items ?? []
+    const results = await Promise.all(currentItems.map(async item => {
+      const edit = itemEdits[item.id]
+      if (!edit) return true
+      const rateVal      = parseFloat(edit.rate)
+      const rate_override     = (!isNaN(rateVal) && rateVal > 0) ? rateVal : null
+      const customization_note = edit.note.trim() || null
+      const res = await fetch(`/api/showroom/inquiry-items/${item.id}`, {
+        method: 'PATCH',
+        headers: authHeader,
+        body: JSON.stringify({ rate_override, customization_note }),
+      })
+      return res.ok
+    }))
+    setSavingEdits(false)
+    if (results.every(Boolean)) {
+      setSaveEditsOk(true)
+      await reloadInquiry()
+      setTimeout(() => setSaveEditsOk(false), 2500)
+      return true
+    } else {
+      setSaveEditsErr('Some edits failed to save. Please try again.')
+      return false
+    }
   }
 
   // ── Quantity update ───────────────────────────────────────────────────────────
@@ -243,8 +303,30 @@ export default function InquiryDetailPage() {
   const handleDownloadQuotation = async () => {
     setPdfLoading(true)
     setPdfError('')
+
+    // Persist item edits to DB before generating so PDF always reflects saved state
+    const saved = await handleSaveItemEdits()
+    if (!saved) {
+      setPdfLoading(false)
+      return
+    }
+
+    const payload = {
+      discount_percent: parseFloat(discountPercent) || 0,
+      items: (inquiry?.showroom_inquiry_items ?? []).map(i => {
+        const rate = parseFloat(itemEdits[i.id]?.rate ?? '')
+        return {
+          id:                 i.id,
+          quantity:           i.quantity,
+          rate:               (isNaN(rate) || rate <= 0) ? i.mrp_at_time : rate,
+          customization_note: itemEdits[i.id]?.note?.trim() || null,
+        }
+      }),
+    }
     const res = await fetch(`/api/showroom/quotation/${inquiryId}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     })
     if (!res.ok) {
       const d = await res.json().catch(() => ({}))
@@ -281,10 +363,14 @@ export default function InquiryDetailPage() {
   // ── Derived totals ────────────────────────────────────────────────────────────
 
   const items = inquiry?.showroom_inquiry_items ?? []
-  const mrpTotal       = items.reduce((s, i) => s + i.mrp_at_time * i.quantity, 0)
+  const subtotal = items.reduce((s, i) => {
+    const rate = parseFloat(itemEdits[i.id]?.rate ?? '')
+    const effectiveRate = (isNaN(rate) || rate <= 0) ? i.mrp_at_time : rate
+    return s + effectiveRate * i.quantity
+  }, 0)
   const discPct        = parseFloat(discountPercent) || 0
-  const discountAmount = mrpTotal * discPct / 100
-  const finalTotal     = mrpTotal - discountAmount
+  const discountAmount = subtotal * discPct / 100
+  const finalTotal     = subtotal - discountAmount
 
   // Product search results
   const searchResults = useMemo(() => {
@@ -356,109 +442,188 @@ export default function InquiryDetailPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
               {items.map(item => {
                 const prod = item.showroom_products
-                const lineTotal = item.mrp_at_time * item.quantity
+                const rateVal = parseFloat(itemEdits[item.id]?.rate ?? '')
+                const effectiveRate = (isNaN(rateVal) || rateVal <= 0) ? item.mrp_at_time : rateVal
+                const lineTotal = effectiveRate * item.quantity
                 const isRemoving = removingId === item.id
                 return (
                   <div key={item.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
                     background: colors.raised,
                     border: `1px solid ${colors.border}`,
                     borderRadius: '9px', padding: '10px 14px',
                     opacity: isRemoving ? 0.4 : 1,
                   }}>
-                    {/* Product thumbnail */}
-                    {(() => {
-                      const primaryImg = prod?.images?.[0] ?? prod?.image_url ?? null
-                      return (
-                        <div style={{
-                          width: 44, height: 44, flexShrink: 0,
-                          borderRadius: '7px',
-                          background: colors.float,
-                          border: `1px solid ${colors.border}`,
-                          overflow: 'hidden',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          {primaryImg ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={primaryImg} alt={prod?.name ?? ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : (
-                            <Package size={16} color={colors.muted} strokeWidth={1.5} />
-                          )}
-                        </div>
-                      )
-                    })()}
+                    {/* Main row: thumbnail · info · qty · total · remove */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
 
-                    {/* Code + name + dims + MRP */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{
-                        fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
-                        color: '#1A2035', background: 'rgba(26,32,53,0.07)',
-                        borderRadius: '3px', padding: '1px 5px',
-                      }}>
-                        {prod?.product_code ?? '—'}
-                      </span>
-                      <div style={{ fontSize: '13px', fontWeight: 500, color: colors.primary, marginTop: '2px', lineHeight: 1.3 }}>
-                        {prod?.name ?? 'Unknown product'}
-                      </div>
-                      {prod?.dimensions && (() => {
-                        const d = prod.dimensions
-                        const u = d.unit === 'inches' ? '"' : ` ${d.unit ?? 'in'}`
-                        const parts: string[] = []
-                        if (d.width  != null) parts.push(`W ${d.width}${u}`)
-                        if (d.depth  != null) parts.push(`D ${d.depth}${u}`)
-                        if (d.height != null) parts.push(`H ${d.height}${u}`)
-                        return parts.length > 0 ? (
-                          <div style={{ fontSize: '10px', color: colors.muted, fontFamily: font.mono, marginTop: '1px' }}>
-                            {parts.join(' × ')}
+                      {/* Product thumbnail */}
+                      {(() => {
+                        const primaryImg = prod?.images?.[0] ?? prod?.image_url ?? null
+                        return (
+                          <div style={{
+                            width: 44, height: 44, flexShrink: 0,
+                            borderRadius: '7px',
+                            background: colors.float,
+                            border: `1px solid ${colors.border}`,
+                            overflow: 'hidden',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {primaryImg ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={primaryImg} alt={prod?.name ?? ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <Package size={16} color={colors.muted} strokeWidth={1.5} />
+                            )}
                           </div>
-                        ) : null
+                        )
                       })()}
-                      <div style={{ fontSize: '11px', color: colors.muted, fontFamily: font.mono, marginTop: '1px' }}>
-                        ₹{Number(item.mrp_at_time).toLocaleString('en-IN')} each
+
+                      {/* Code + name + dims + MRP */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{
+                          fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
+                          color: '#1A2035', background: 'rgba(26,32,53,0.07)',
+                          borderRadius: '3px', padding: '1px 5px',
+                        }}>
+                          {prod?.product_code ?? '—'}
+                        </span>
+                        <div style={{ fontSize: '13px', fontWeight: 500, color: colors.primary, marginTop: '2px', lineHeight: 1.3 }}>
+                          {prod?.name ?? 'Unknown product'}
+                        </div>
+                        {prod?.dimensions && (() => {
+                          const d = prod.dimensions
+                          const u = d.unit === 'inches' ? '"' : ` ${d.unit ?? 'in'}`
+                          const parts: string[] = []
+                          if (d.width  != null) parts.push(`W ${d.width}${u}`)
+                          if (d.depth  != null) parts.push(`D ${d.depth}${u}`)
+                          if (d.height != null) parts.push(`H ${d.height}${u}`)
+                          return parts.length > 0 ? (
+                            <div style={{ fontSize: '10px', color: colors.muted, fontFamily: font.mono, marginTop: '1px' }}>
+                              {parts.join(' × ')}
+                            </div>
+                          ) : null
+                        })()}
+                        <div style={{ fontSize: '11px', color: colors.muted, fontFamily: font.mono, marginTop: '1px' }}>
+                          Rs.{Number(item.mrp_at_time).toLocaleString('en-IN')} MRP
+                        </div>
+                      </div>
+
+                      {/* Qty input */}
+                      <input
+                        type="number"
+                        min={1}
+                        value={pendingQty[item.id] ?? item.quantity}
+                        onChange={e => setPendingQty(p => ({ ...p, [item.id]: e.target.value }))}
+                        onBlur={() => handleQtyBlur(item)}
+                        style={{
+                          width: '56px', padding: '6px 8px',
+                          fontSize: '13px', fontWeight: 600, textAlign: 'center',
+                          border: `1.5px solid ${colors.border}`, borderRadius: '6px',
+                          background: '#fff', color: colors.primary,
+                          fontFamily: font.body,
+                        }}
+                      />
+
+                      {/* Line total */}
+                      <div style={{
+                        width: '90px', textAlign: 'right', flexShrink: 0,
+                        fontSize: '13px', fontWeight: 600, color: colors.primary,
+                        fontFamily: font.mono,
+                      }}>
+                        ₹{Math.round(lineTotal).toLocaleString('en-IN')}
+                      </div>
+
+                      {/* Remove */}
+                      <button
+                        onClick={() => handleRemove(item.id)}
+                        disabled={isRemoving}
+                        title="Remove"
+                        style={{
+                          background: 'none', border: 'none',
+                          color: colors.muted, cursor: isRemoving ? 'default' : 'pointer',
+                          display: 'flex', alignItems: 'center', flexShrink: 0,
+                        }}
+                      >
+                        <Trash2 size={14} strokeWidth={1.8} />
+                      </button>
+                    </div>
+
+                    {/* Rate override + customization note */}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <label style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Rate (Rs.)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={itemEdits[item.id]?.rate ?? ''}
+                          onChange={e => setItemEdits(prev => ({
+                            ...prev,
+                            [item.id]: { ...(prev[item.id] ?? { rate: '', note: '' }), rate: e.target.value },
+                          }))}
+                          placeholder={String(item.mrp_at_time)}
+                          style={{
+                            width: '100px', padding: '5px 8px',
+                            fontSize: '12px', fontWeight: 600, fontFamily: font.mono,
+                            border: `1.5px solid ${colors.border}`, borderRadius: '6px',
+                            background: '#fff', color: colors.primary, outline: 'none',
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: '160px' }}>
+                        <label style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Customization Note
+                        </label>
+                        <input
+                          type="text"
+                          value={itemEdits[item.id]?.note ?? ''}
+                          onChange={e => setItemEdits(prev => ({
+                            ...prev,
+                            [item.id]: { ...(prev[item.id] ?? { rate: '', note: '' }), note: e.target.value },
+                          }))}
+                          placeholder="e.g. custom fabric, color change…"
+                          style={{
+                            width: '100%', padding: '5px 8px',
+                            fontSize: '12px', fontFamily: font.body,
+                            border: `1.5px solid ${colors.border}`, borderRadius: '6px',
+                            background: '#fff', color: colors.primary, outline: 'none',
+                            boxSizing: 'border-box',
+                          }}
+                        />
                       </div>
                     </div>
-
-                    {/* Qty input */}
-                    <input
-                      type="number"
-                      min={1}
-                      value={pendingQty[item.id] ?? item.quantity}
-                      onChange={e => setPendingQty(p => ({ ...p, [item.id]: e.target.value }))}
-                      onBlur={() => handleQtyBlur(item)}
-                      style={{
-                        width: '56px', padding: '6px 8px',
-                        fontSize: '13px', fontWeight: 600, textAlign: 'center',
-                        border: `1.5px solid ${colors.border}`, borderRadius: '6px',
-                        background: '#fff', color: colors.primary,
-                        fontFamily: font.body,
-                      }}
-                    />
-
-                    {/* Line total */}
-                    <div style={{
-                      width: '90px', textAlign: 'right', flexShrink: 0,
-                      fontSize: '13px', fontWeight: 600, color: colors.primary,
-                      fontFamily: font.mono,
-                    }}>
-                      ₹{lineTotal.toLocaleString('en-IN')}
-                    </div>
-
-                    {/* Remove */}
-                    <button
-                      onClick={() => handleRemove(item.id)}
-                      disabled={isRemoving}
-                      title="Remove"
-                      style={{
-                        background: 'none', border: 'none',
-                        color: colors.muted, cursor: isRemoving ? 'default' : 'pointer',
-                        display: 'flex', alignItems: 'center', flexShrink: 0,
-                      }}
-                    >
-                      <Trash2 size={14} strokeWidth={1.8} />
-                    </button>
                   </div>
                 )
               })}
+            </div>
+          )}
+
+          {/* ── Save quotation edits ─────────────────────────────────────── */}
+          {items.length > 0 && (
+            <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                onClick={handleSaveItemEdits}
+                disabled={savingEdits}
+                style={{
+                  padding: '8px 18px',
+                  background: saveEditsOk ? '#ECFDF5' : '#fff',
+                  color:      saveEditsOk ? '#065F46' : colors.secondary,
+                  border: `1.5px solid ${saveEditsOk ? '#A7F3D0' : colors.border}`,
+                  borderRadius: '8px',
+                  fontSize: '12px', fontWeight: 600,
+                  cursor: savingEdits ? 'default' : 'pointer',
+                  opacity: savingEdits ? 0.6 : 1,
+                  fontFamily: font.body,
+                  transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                }}
+              >
+                {savingEdits ? 'Saving…' : saveEditsOk ? '✓ Saved' : 'Save quotation changes'}
+              </button>
+              {saveEditsErr && (
+                <span style={{ fontSize: '12px', color: '#B91C1C' }}>{saveEditsErr}</span>
+              )}
             </div>
           )}
 
@@ -536,7 +701,7 @@ export default function InquiryDetailPage() {
               marginTop: '16px', borderTop: `1px solid ${colors.border}`,
               paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px',
             }}>
-              <TotalRow label="MRP Total"       value={`₹${mrpTotal.toLocaleString('en-IN')}`} />
+              <TotalRow label="Subtotal"       value={`₹${subtotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
               {discPct > 0 && (
                 <TotalRow label={`Discount (${discPct}%)`} value={`−₹${discountAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} muted />
               )}

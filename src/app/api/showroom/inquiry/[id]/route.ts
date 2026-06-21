@@ -62,7 +62,7 @@ export async function GET(
   // ── 3. Fetch inquiry items (flat) ───────────────────────────────────────────
   const { data: items, error: itemsErr } = await caller.client
     .from('showroom_inquiry_items')
-    .select('id, inquiry_id, product_id, quantity, mrp_at_time, created_at')
+    .select('id, inquiry_id, product_id, quantity, mrp_at_time, rate_override, customization_note, created_at')
     .eq('inquiry_id', id)
     .order('created_at')
 
@@ -97,10 +97,12 @@ export async function GET(
   const mergedItems = (items ?? []).map(item => {
     const prod = productsById[item.product_id] ?? null
     return {
-      id:          item.id,
-      quantity:    item.quantity,
-      mrp_at_time: item.mrp_at_time,
-      created_at:  item.created_at,
+      id:                 item.id,
+      quantity:           item.quantity,
+      mrp_at_time:        item.mrp_at_time,
+      rate_override:      item.rate_override      ?? null,
+      customization_note: item.customization_note ?? null,
+      created_at:         item.created_at,
       showroom_products: prod ? {
         id:           prod.id,
         product_code: prod.product_code,

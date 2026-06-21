@@ -42,7 +42,7 @@ async function resolveItem(
   return { item, forbidden: false, notFound: false }
 }
 
-// PATCH /api/showroom/inquiry-items/[itemId] — update quantity
+// PATCH /api/showroom/inquiry-items/[itemId] — update quantity, rate_override, customization_note
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ itemId: string }> }
@@ -58,14 +58,39 @@ export async function PATCH(
   if (forbidden) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const quantity = parseInt(body.quantity, 10)
-  if (!Number.isInteger(quantity) || quantity < 1) {
-    return NextResponse.json({ error: 'quantity must be a positive integer' }, { status: 400 })
+  const updates: Record<string, unknown> = {}
+
+  if ('quantity' in body) {
+    const quantity = parseInt(body.quantity, 10)
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      return NextResponse.json({ error: 'quantity must be a positive integer' }, { status: 400 })
+    }
+    updates.quantity = quantity
+  }
+
+  if ('rate_override' in body) {
+    if (body.rate_override === null || body.rate_override === undefined) {
+      updates.rate_override = null
+    } else {
+      const r = parseFloat(body.rate_override)
+      if (isNaN(r) || r <= 0) {
+        return NextResponse.json({ error: 'rate_override must be a positive number' }, { status: 400 })
+      }
+      updates.rate_override = r
+    }
+  }
+
+  if ('customization_note' in body) {
+    updates.customization_note = body.customization_note?.toString().trim() || null
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
   }
 
   const { data, error } = await caller.client
     .from('showroom_inquiry_items')
-    .update({ quantity })
+    .update(updates)
     .eq('id', item!.id)
     .select()
     .single()
