@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Syne, DM_Sans, DM_Mono } from 'next/font/google'
+import { Syne, DM_Sans, DM_Mono, Inter } from 'next/font/google'
 import { Providers } from '@/components/layout/Providers'
 import './globals.css'
 
@@ -21,6 +21,13 @@ const dmMono = DM_Mono({
   subsets: ['latin'],
   weight: ['400', '500'],
   variable: '--font-mono',
+  display: 'swap',
+})
+
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-inter',
   display: 'swap',
 })
 
@@ -50,7 +57,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${syne.variable} ${dmSans.variable} ${dmMono.variable}`}
+      className={`${syne.variable} ${dmSans.variable} ${dmMono.variable} ${inter.variable}`}
     >
       <body style={{ fontFamily: 'var(--font-body, DM Sans, sans-serif)' }}>
         <Providers>{children}</Providers>
