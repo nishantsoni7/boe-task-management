@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { AlertBanner } from '@/components/ui/atoms'
+import type { UserProfile } from '@/lib/types'
+import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
+import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { ArrowLeft } from 'lucide-react'
 
 const CATEGORIES = [
   'Dining Chairs',
@@ -18,6 +19,8 @@ const CATEGORIES = [
 ]
 
 export default function NewProductPage() {
+  const [profile,        setProfile]        = useState<UserProfile | null>(null)
+  const [loadingAuth,    setLoadingAuth]    = useState(true)
   const [productCode,    setProductCode]    = useState('')
   const [name,           setName]           = useState('')
   const [category,       setCategory]       = useState('')
@@ -30,6 +33,30 @@ export default function NewProductPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+
+      const { data: p } = await supabase
+        .from('users')
+        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+        .eq('id', session.user.id)
+        .single()
+
+      if (!p || p.role !== 'admin') { router.replace('/modules'); return }
+      setProfile(p as UserProfile)
+      setLoadingAuth(false)
+    }
+    init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -81,22 +108,15 @@ export default function NewProductPage() {
     router.push('/showroom-admin/products')
   }
 
-  return (
-    <div style={{ minHeight: '100vh', background: colors.void, padding: '32px 16px' }}>
-      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
+  if (loadingAuth) return <LoadingScreen />
 
-        {/* Back */}
-        <button
-          onClick={() => router.push('/showroom-admin/products')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            fontSize: '13px', color: colors.tertiary,
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: '0 0 20px', fontFamily: font.body,
-          }}
-        >
-          <ArrowLeft size={14} strokeWidth={2} /> Back to Products
-        </button>
+  return (
+    <ShowroomAdminLayout
+      profile={profile}
+      title="New Product"
+      onSignOut={handleSignOut}
+    >
+      <div style={{ maxWidth: '560px' }}>
 
         <div style={{
           background: colors.base,
@@ -104,12 +124,6 @@ export default function NewProductPage() {
           borderRadius: '14px',
           padding: '28px 28px 32px',
         }}>
-          <h1 style={{
-            fontFamily: font.display, fontSize: '20px', fontWeight: 700,
-            color: colors.primary, margin: '0 0 24px', letterSpacing: '-0.02em',
-          }}>
-            New Product
-          </h1>
 
           {error && (
             <div style={{ marginBottom: '20px' }}>
@@ -227,7 +241,7 @@ export default function NewProductPage() {
           </form>
         </div>
       </div>
-    </div>
+    </ShowroomAdminLayout>
   )
 }
 

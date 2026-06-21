@@ -3,10 +3,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { ShowroomProduct } from '@/lib/types'
+import type { UserProfile, ShowroomProduct } from '@/lib/types'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
+import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { ArrowLeft } from 'lucide-react'
 
 const CATEGORIES = [
   'Dining Chairs',
@@ -22,6 +22,7 @@ export default function EditProductPage() {
   const params      = useParams()
   const productCode = decodeURIComponent(params.product_code as string)
 
+  const [profile,        setProfile]        = useState<UserProfile | null>(null)
   const [product,        setProduct]        = useState<ShowroomProduct | null>(null)
   const [name,           setName]           = useState('')
   const [category,       setCategory]       = useState('')
@@ -44,12 +45,12 @@ export default function EditProductPage() {
 
       const { data: p } = await supabase
         .from('users')
-        .select('role')
+        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
         .eq('id', session.user.id)
         .single()
-      if (p?.role !== 'admin') { router.push('/modules'); return }
+      if (!p || p.role !== 'admin') { router.replace('/modules'); return }
+      setProfile(p as UserProfile)
 
-      // Fetch product via admin API (includes inactive)
       const res = await fetch('/api/showroom/admin/products', {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       })
@@ -73,6 +74,11 @@ export default function EditProductPage() {
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productCode])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -127,21 +133,12 @@ export default function EditProductPage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <div style={{ minHeight: '100vh', background: colors.void, padding: '32px 16px' }}>
-      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
-
-        {/* Back */}
-        <button
-          onClick={() => router.push('/showroom-admin/products')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            fontSize: '13px', color: colors.tertiary,
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: '0 0 20px', fontFamily: font.body,
-          }}
-        >
-          <ArrowLeft size={14} strokeWidth={2} /> Back to Products
-        </button>
+    <ShowroomAdminLayout
+      profile={profile}
+      title="Edit Product"
+      onSignOut={handleSignOut}
+    >
+      <div style={{ maxWidth: '560px' }}>
 
         <div style={{
           background: colors.base,
@@ -150,13 +147,6 @@ export default function EditProductPage() {
           padding: '28px 28px 32px',
         }}>
           <div style={{ marginBottom: '24px' }}>
-            <h1 style={{
-              fontFamily: font.display, fontSize: '20px', fontWeight: 700,
-              color: colors.primary, margin: '0 0 6px', letterSpacing: '-0.02em',
-            }}>
-              Edit Product
-            </h1>
-            {/* Product code shown but not editable — it is the URL key and QR identifier */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{
                 fontFamily: font.mono, fontSize: '11px', fontWeight: 600,
@@ -248,7 +238,6 @@ export default function EditProductPage() {
                 />
               </Field>
 
-              {/* Active status note */}
               <div style={{
                 fontSize: '12px', color: colors.tertiary,
                 background: colors.raised,
@@ -296,7 +285,7 @@ export default function EditProductPage() {
           )}
         </div>
       </div>
-    </div>
+    </ShowroomAdminLayout>
   )
 }
 
