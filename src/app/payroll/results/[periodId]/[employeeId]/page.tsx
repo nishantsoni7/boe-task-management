@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { PayrollLayout } from '@/components/layout/PayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ export default function PayrollResultDetailPage() {
     : {}
 
   return (
-    <AttendanceLayout
+    <PayrollLayout
       profile={profile}
       title="Payroll Result Detail"
       subtitle={result ? `${result.employee_name} — ${result.employee_code ?? ''}` : 'Loading…'}
@@ -383,6 +383,6 @@ export default function PayrollResultDetailPage() {
 
         </div>
       )}
-    </AttendanceLayout>
+    </PayrollLayout>
   )
 }

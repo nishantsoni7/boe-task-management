@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   const [{ data: taskRow }, { data: activityRows }] = await Promise.all([
     client.from('tasks').select('created_by').eq('id', taskId).single(),
     client.from('task_activity_log')
-      .select('action, note, from_status, to_status, created_at, actor_id')
+      .select('action, note, from_status, to_status, old_val, new_val, created_at, actor_id')
       .eq('task_id', taskId)
       .order('created_at', { ascending: false })
       .limit(8),
@@ -61,12 +61,15 @@ export async function GET(req: NextRequest) {
     activity: (activityRows ?? []).map((a: {
       action: string; note: string | null
       from_status: string | null; to_status: string | null
+      old_val: string | null; new_val: string | null
       created_at: string; actor_id: string
     }) => ({
       action:      a.action,
       note:        a.note,
       from_status: a.from_status,
       to_status:   a.to_status,
+      old_val:     a.old_val,
+      new_val:     a.new_val,
       created_at:  a.created_at,
       actor_name:  nameMap[a.actor_id] ?? null,
     })),

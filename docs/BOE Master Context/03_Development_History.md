@@ -393,3 +393,47 @@ Future modules:
 * Additional BOE operational systems
 
 The project continues to follow an implementation-first approach with small verified changes and incremental expansion.
+
+
+---
+
+# PHASE 10
+
+# Global Module Navigation Standard
+
+Objective:
+
+Create a consistent navigation and layout experience across all BOE modules.
+
+Business Need:
+
+As BOE expands beyond Task Management into Sample Tracking, Attendance, Payroll, Assets & Access, Showroom QR, Employee Records, and future operational modules, users should not need to relearn navigation patterns.
+
+Implemented:
+
+* Global navigation standard document
+* Global module layout standard document
+* Module header standard
+* Home button standard
+* User profile area standard
+* Account Settings standard
+* Admin View As standard
+* Sign Out standard
+
+Architectural Decisions:
+
+* Every module must have its own module-specific sidebar.
+* Cross-module navigation is not allowed inside module sidebars.
+* Home button always returns to `/modules`.
+* Account Settings must open inside the current module layout.
+* Admin View As must exist across modules.
+* User profile, View As, and Sign Out are mandatory sidebar elements.
+
+Result:
+
+All current and future BOE modules will follow a consistent navigation structure and user experience.
+
+Reference Documents:
+
+* BOE_GLOBAL_NAVIGATION_STANDARD.md
+* BOE_MODULE_LAYOUT_STANDARD.md

@@ -97,8 +97,8 @@ export function AssetsLayout({
             </div>
           </div>
           <button
-            onClick={() => router.push('/')}
-            title="Back to modules"
+            onClick={() => router.push('/modules')}
+            title="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '7px',
@@ -144,7 +144,11 @@ export function AssetsLayout({
         </div>
 
         {/* Bottom profile */}
-        <ViewModeSidebarSection profile={profile} onSignOut={onSignOut} />
+        <ViewModeSidebarSection
+          profile={profile}
+          onSignOut={onSignOut}
+          accountSettingsHref="/account?returnTo=/assets-access"
+        />
 
       </aside>
 

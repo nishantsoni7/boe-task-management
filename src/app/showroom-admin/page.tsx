@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, InquiryStatus } from '@/lib/types'
 import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
-import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
+import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { QrCode, Package } from 'lucide-react'
 
@@ -58,7 +58,12 @@ export default function ShowroomInboxPage() {
         .single()
 
       if (!p) { router.push('/login'); return }
-      setProfile(p as UserProfile)
+      const profile = p as UserProfile
+      const hasAccess = profile.role === 'admin' ||
+        profile.team?.toLowerCase().includes('sales') ||
+        profile.team?.toLowerCase().includes('showroom')
+      if (!hasAccess) { router.replace('/modules'); return }
+      setProfile(profile)
 
       const res = await fetch('/api/showroom/inquiry', {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -85,7 +90,7 @@ export default function ShowroomInboxPage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <BoeOsLayout
+    <ShowroomAdminLayout
       profile={profile}
       title="Showroom Inquiries"
       subtitle={isAdmin ? 'All inquiries' : 'My inquiries'}
@@ -133,7 +138,7 @@ export default function ShowroomInboxPage() {
           ))}
         </div>
       )}
-    </BoeOsLayout>
+    </ShowroomAdminLayout>
   )
 }
 

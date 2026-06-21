@@ -6,6 +6,7 @@ import {
   Eye, X,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 import { useViewAs } from '@/hooks/useViewAs'
@@ -76,17 +77,17 @@ export function ViewModeBanner() {
 export function ViewModeSidebarSection({
   profile,
   onSignOut,
-  showSettingsLink = false,
-  onSettingsClick,
+  accountSettingsHref,
 }: {
   profile: UserProfile | null
   onSignOut: () => void
-  showSettingsLink?: boolean
-  onSettingsClick?: () => void
+  /** If provided, shows an Account Settings link navigating to this URL. */
+  accountSettingsHref?: string
 }) {
   const { viewAsUserId, viewAsProfile, enterViewMode, exitViewMode } = useViewAs()
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
+  const router = useRouter()
 
   const isRealAdmin = profile?.role === 'admin'
   const inViewMode  = !!viewAsUserId
@@ -273,11 +274,11 @@ export function ViewModeSidebarSection({
             </div>
           )}
 
-          {/* Account Settings — non-admin only, opt-in per layout */}
-          {showSettingsLink && !isRealAdmin && onSettingsClick && (
+          {/* Account Settings — shown when href provided */}
+          {accountSettingsHref && (
             <button
               className="boe-nav-item"
-              onClick={onSettingsClick}
+              onClick={() => router.push(accountSettingsHref)}
               style={{ color: '#8C94A6', fontSize: '12.5px', gap: '8px' }}
             >
               <Settings size={14} strokeWidth={1.8} />

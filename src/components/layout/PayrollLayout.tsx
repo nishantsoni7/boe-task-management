@@ -2,15 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import {
-  LayoutDashboard, Users, Upload, Home, ClipboardList, RefreshCw, CalendarX,
-} from 'lucide-react'
+import { Banknote, FileBarChart, Home, RefreshCw } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 
-type AttendanceLayoutProps = {
+type PayrollLayoutProps = {
   profile: UserProfile | null
   title: string
   subtitle?: string
@@ -19,14 +17,14 @@ type AttendanceLayoutProps = {
   children: React.ReactNode
 }
 
-export function AttendanceLayout({
+export function PayrollLayout({
   profile,
   title,
   subtitle,
   actions,
   onSignOut,
   children,
-}: AttendanceLayoutProps) {
+}: PayrollLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [refreshing,  setRefreshing]  = useState(false)
   const router   = useRouter()
@@ -54,10 +52,8 @@ export function AttendanceLayout({
   }
 
   const navItems = [
-    { label: 'Attendance Dashboard', path: '/attendance',          icon: <LayoutDashboard size={15} strokeWidth={1.8} /> },
-    { label: 'Employee Master',      path: '/attendance/employees', icon: <Users size={15} strokeWidth={1.8} /> },
-    { label: 'Attendance Upload',    path: '/attendance/upload',   icon: <Upload size={15} strokeWidth={1.8} /> },
-    { label: 'Attendance Records',   path: '/attendance/records',  icon: <ClipboardList size={15} strokeWidth={1.8} /> },
+    { label: 'Payroll Dashboard', path: '/payroll',                icon: <Banknote     size={15} strokeWidth={1.8} /> },
+    { label: 'Monthly Review',    path: '/payroll/monthly-review', icon: <FileBarChart size={15} strokeWidth={1.8} /> },
   ]
 
   return (
@@ -78,7 +74,7 @@ export function AttendanceLayout({
             <BoeBrandIcon />
             <div>
               <div className="boe-sidebar-brand-name">BOE</div>
-              <div className="boe-sidebar-brand-sub">Attendance &amp; Salary</div>
+              <div className="boe-sidebar-brand-sub">Payroll</div>
             </div>
           </div>
           <button
@@ -101,7 +97,7 @@ export function AttendanceLayout({
         {/* Nav */}
         <div className="boe-sidebar-section">
           {navItems.map(item => {
-            const active = item.path === '/attendance'
+            const active = item.path === '/payroll'
               ? pathname === item.path
               : pathname.startsWith(item.path)
             return (
@@ -118,28 +114,13 @@ export function AttendanceLayout({
               </button>
             )
           })}
-
-          {/* Holiday Management — admin only */}
-          {profile?.role === 'admin' && (
-            <button
-              className={`boe-nav-item${pathname.startsWith('/attendance/holidays') ? ' active' : ''}`}
-              onClick={() => navTo('/attendance/holidays')}
-              style={{ fontWeight: pathname.startsWith('/attendance/holidays') ? 600 : 400, marginBottom: '2px' }}
-            >
-              <span style={{ color: pathname.startsWith('/attendance/holidays') ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
-                <CalendarX size={15} strokeWidth={1.8} />
-              </span>
-              Holiday Management
-            </button>
-          )}
-
         </div>
 
         {/* Bottom profile section */}
         <ViewModeSidebarSection
           profile={profile}
           onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/attendance"
+          accountSettingsHref="/account?returnTo=/payroll"
         />
 
       </aside>

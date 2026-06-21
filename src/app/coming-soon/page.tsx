@@ -93,7 +93,7 @@ export default function ComingSoonPage() {
 
         {/* Back button */}
         <button
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/modules')}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             fontSize: '13px', fontWeight: 600,

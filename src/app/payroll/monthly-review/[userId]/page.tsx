@@ -5,7 +5,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { PayrollLayout } from '@/components/layout/PayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 
@@ -440,7 +440,7 @@ export default function PayrollMonthlyReviewDetailPage() {
   }
 
   return (
-    <AttendanceLayout
+    <PayrollLayout
       profile={profile}
       title={data && !data.skipped ? `${data.employee.full_name} — ${monthLabel}` : 'Payroll Preview Detail'}
       subtitle="Engine-computed payroll breakdown"
@@ -709,6 +709,6 @@ export default function PayrollMonthlyReviewDetailPage() {
         )}
 
       </div>
-    </AttendanceLayout>
+    </PayrollLayout>
   )
 }

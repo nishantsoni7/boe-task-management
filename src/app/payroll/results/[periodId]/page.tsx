@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { PayrollLayout } from '@/components/layout/PayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ export default function PayrollResultsPage() {
     : ''
 
   return (
-    <AttendanceLayout
+    <PayrollLayout
       profile={profile}
       title="Payroll Results"
       subtitle={periodLabel ? `Results — ${periodLabel}` : 'Results for this payroll period'}
@@ -330,6 +330,6 @@ export default function PayrollResultsPage() {
           </div>
         )}
       </div>
-    </AttendanceLayout>
+    </PayrollLayout>
   )
 }

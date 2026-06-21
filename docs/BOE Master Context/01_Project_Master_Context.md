@@ -62,6 +62,18 @@ The goal is adoption and usability rather than feature count.
 
 ---
 
+
+## Global Module Standards
+
+All BOE modules must comply with:
+
+- BOE_GLOBAL_NAVIGATION_STANDARD.md
+- BOE_MODULE_LAYOUT_STANDARD.md
+
+These standards apply to all current and future modules.
+
+No new module should be designed or implemented without following these standards.
+
 ## Primary Business Objectives
 
 The platform is designed to improve:

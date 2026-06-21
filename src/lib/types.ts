@@ -435,6 +435,8 @@ export type LogEntry = {
   note: string | null
   from_status: TaskStatus | null
   to_status: TaskStatus | null
+  old_val: string | null
+  new_val: string | null
   created_at: string
   actor_id: string
   actor_name?: string

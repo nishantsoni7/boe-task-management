@@ -192,8 +192,10 @@ export function formatLogAction(
   if (action === 'acknowledged')     return 'Task acknowledged'
   if (action === 'delegated')        return 'Task delegated'
   if (action === 'created')          return 'Task created'
-  if (action === 'deadline_changed') return 'Deadline updated'
-  if (action === 'priority_changed') return 'Priority updated'
+  if (action === 'title_changed')    return 'Title changed'
+  if (action === 'due_date_changed') return 'Due date changed'
+  if (action === 'deadline_changed') return 'Due date changed'
+  if (action === 'priority_changed') return 'Priority changed'
   if (action === 'escalated')        return 'Escalated'
   if (action === 'progress_update')  return 'Progress update'
   return action.replace(/_/g, ' ')

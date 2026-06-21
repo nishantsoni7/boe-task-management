@@ -86,6 +86,9 @@ export default function BoeOsHomePage() {
   }
 
   const isAdmin   = profile?.role === 'admin'
+  const hasShowroomAccess = isAdmin ||
+    (profile?.team?.toLowerCase().includes('sales') ?? false) ||
+    (profile?.team?.toLowerCase().includes('showroom') ?? false)
 
   const modules: ModuleDef[] = [
     {
@@ -132,16 +135,16 @@ export default function BoeOsHomePage() {
       adminOnly: true,
       notificationCount: null,  // no module-level API yet
     }] : []),
-    {
+    ...(hasShowroomAccess ? [{
       key: 'showroom',
       title: 'Showroom QR',
       description: 'QR-based showroom inquiries and quotations.',
       href: '/showroom-admin',
-      status: 'active',
+      status: 'active' as ModuleStatus,
       accent: '#7C3AED',
       icon: <ShowroomIcon />,
       notificationCount: null,
-    },
+    }] : []),
     {
       key: 'assets',
       title: 'Assets & Access',

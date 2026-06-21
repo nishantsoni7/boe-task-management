@@ -91,8 +91,8 @@ export function SamplesLayout({
             <div className="boe-sidebar-brand-sub">Sample Tracking</div>
           </div>
           <button
-            onClick={() => router.push('/')}
-            title="Home"
+            onClick={() => router.push('/modules')}
+            title="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '7px',
@@ -174,7 +174,11 @@ export function SamplesLayout({
         )}
 
         {/* Profile + sign out */}
-        <ViewModeSidebarSection profile={profile} onSignOut={onSignOut} />
+        <ViewModeSidebarSection
+          profile={profile}
+          onSignOut={onSignOut}
+          accountSettingsHref="/account?returnTo=/samples"
+        />
       </aside>
 
       {/* ── Main content ── */}

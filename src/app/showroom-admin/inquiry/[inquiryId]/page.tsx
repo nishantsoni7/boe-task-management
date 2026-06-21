@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, InquiryStatus } from '@/lib/types'
 import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
-import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
+import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { ArrowLeft, Trash2, Search, Plus, FileDown } from 'lucide-react'
 
@@ -104,8 +104,13 @@ export default function InquiryDetailPage() {
         .eq('id', session.user.id)
         .single()
       if (!p) { router.push('/login'); return }
+      const profile = p as UserProfile
+      const hasAccess = profile.role === 'admin' ||
+        profile.team?.toLowerCase().includes('sales') ||
+        profile.team?.toLowerCase().includes('showroom')
+      if (!hasAccess) { router.replace('/modules'); return }
 
-      setProfile(p as UserProfile)
+      setProfile(profile)
       setToken(session.access_token)
 
       const [inqRes, prodRes] = await Promise.all([
@@ -276,16 +281,16 @@ export default function InquiryDetailPage() {
 
   if (forbidden || !inquiry) {
     return (
-      <BoeOsLayout profile={profile} title="Inquiry" onSignOut={handleSignOut}>
+      <ShowroomAdminLayout profile={profile} title="Inquiry" onSignOut={handleSignOut}>
         <div style={{ padding: '48px 0', textAlign: 'center', color: colors.muted, fontSize: '14px' }}>
           {forbidden ? 'You do not have access to this inquiry.' : 'Inquiry not found.'}
         </div>
-      </BoeOsLayout>
+      </ShowroomAdminLayout>
     )
   }
 
   return (
-    <BoeOsLayout profile={profile} title="Inquiry Detail" onSignOut={handleSignOut}>
+    <ShowroomAdminLayout profile={profile} title="Inquiry Detail" onSignOut={handleSignOut}>
 
       {/* Back */}
       <button
@@ -565,7 +570,7 @@ export default function InquiryDetailPage() {
         </Section>
 
       </div>
-    </BoeOsLayout>
+    </ShowroomAdminLayout>
   )
 }
 

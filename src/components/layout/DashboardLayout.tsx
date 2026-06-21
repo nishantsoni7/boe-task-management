@@ -144,8 +144,8 @@ export function DashboardLayout({
             <div className="boe-sidebar-brand-sub">Task Management</div>
           </div>
           <button
-            onClick={() => navTo('/')}
-            title="BOE Home"
+            onClick={() => navTo('/modules')}
+            title="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '7px',
@@ -292,8 +292,8 @@ export function DashboardLayout({
                 />
                 <NavChild
                   label="My Account"
-                  active={pathname === '/settings'}
-                  onClick={() => navTo('/settings')}
+                  active={pathname === '/account'}
+                  onClick={() => navTo('/account?returnTo=/dashboard')}
                 />
               </CollapsibleNav>
 
@@ -339,8 +339,7 @@ export function DashboardLayout({
         <ViewModeSidebarSection
           profile={profile}
           onSignOut={onSignOut}
-          showSettingsLink
-          onSettingsClick={() => navTo('/settings')}
+          accountSettingsHref="/account?returnTo=/dashboard"
         />
 
       </aside>

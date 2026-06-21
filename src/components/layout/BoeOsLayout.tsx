@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, Settings, LogOut, X } from 'lucide-react'
+import { Home, Settings, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
-import { initials } from '@/lib/ui'
+import { ViewModeSidebarSection } from './AdminViewModeControls'
 
 type BoeOsLayoutProps = {
   profile: UserProfile | null
@@ -51,62 +51,23 @@ export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: B
           <OsNavItem
             label="Home"
             icon={<Home size={15} strokeWidth={1.8} />}
-            active={pathname === '/dashboard'}
-            onClick={() => navTo('/dashboard')}
+            active={pathname === '/modules'}
+            onClick={() => navTo('/modules')}
           />
           <OsNavItem
             label="Account Settings"
             icon={<Settings size={15} strokeWidth={1.8} />}
-            active={pathname === '/settings'}
-            onClick={() => navTo('/settings')}
+            active={pathname === '/account'}
+            onClick={() => navTo('/account?returnTo=/modules')}
           />
         </div>
 
-        {/* Bottom: user info + sign out */}
-        {profile && (
-          <div style={{
-            marginTop: 'auto',
-            borderTop: '1px solid rgba(0,0,0,0.07)',
-            padding: '10px 10px 8px',
-          }}>
-            {/* User row */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '8px 10px 6px',
-            }}>
-              <div style={{
-                width: 30, height: 30, borderRadius: '8px',
-                background: '#1A2035',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '11px', fontWeight: 700, color: '#DC1F2E',
-                flexShrink: 0, letterSpacing: '0.02em',
-              }}>
-                {initials(profile.full_name)}
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{
-                  fontSize: '12.5px', fontWeight: 600, color: '#111318',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>
-                  {profile.full_name}
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#8C94A6', textTransform: 'capitalize' }}>
-                  {profile.role}{profile.team ? ` · ${profile.team}` : ''}
-                </div>
-              </div>
-            </div>
-
-            {/* Sign out */}
-            <button
-              onClick={onSignOut}
-              className="boe-nav-item"
-              style={{ color: '#8C94A6', fontSize: '12.5px', gap: '8px', marginTop: '2px' }}
-            >
-              <LogOut size={14} strokeWidth={1.8} />
-              Sign out
-            </button>
-          </div>
-        )}
+        {/* Bottom: profile + account settings + view as + sign out */}
+        <ViewModeSidebarSection
+          profile={profile}
+          onSignOut={onSignOut}
+          accountSettingsHref="/account?returnTo=/modules"
+        />
       </aside>
 
       {/* Main content */}

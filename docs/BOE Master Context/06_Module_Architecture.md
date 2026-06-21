@@ -335,6 +335,25 @@ Expected Areas:
 
 # NAVIGATION STRUCTURE
 
+## BOE OS Module Navigation Rule
+
+Each BOE OS module must have independent module-specific navigation. No module sidebar should link directly into unrelated modules.
+
+- Every authenticated module layout must use its own layout component with only that module's nav items.
+- "Back to BOE OS" (→ `/modules`) is the only permitted cross-module exit from within a module sidebar.
+- Shared generic layouts (e.g. `BoeOsLayout`) must NOT be used inside module pages if they carry nav links to other modules.
+
+### Showroom QR sidebar items
+
+| Label | Route | Condition |
+|---|---|---|
+| My Inquiries | `/showroom-admin` | All users |
+| My QR Code | `/showroom-admin/qr` | All users |
+| Product Master | `/showroom-admin/products` | Admin only |
+| Back to BOE OS | `/modules` | All users |
+
+---
+
 Current navigation follows a role-based model.
 
 Examples:
@@ -459,6 +478,139 @@ Reference Folder:
 These documents collectively represent the source of truth for the project.
 
 ---
+
+
+---
+
+# GLOBAL MODULE NAVIGATION STANDARD
+
+All current and future BOE modules must follow a consistent navigation structure.
+
+The purpose is to ensure employees do not need to relearn navigation when moving between modules.
+
+---
+
+## Sidebar Layout Structure
+
+Every module must use the following layout:
+
+```text
+Top Section
+- Module Icon
+- Module Name
+- Home Button
+
+Middle Section
+- Module-specific navigation only
+
+Bottom Section
+- User Profile
+- Account Settings
+- View As User (Admin)
+- Sign Out
+```
+
+---
+
+## Module Header
+
+The top section must contain:
+
+- Module icon
+- Module name
+- Home button
+
+The Home button must always return the user to:
+
+```text
+/modules
+```
+
+The Home button should never take the user directly into another module.
+
+---
+
+## Module Navigation
+
+The middle section should contain only navigation items related to the current module.
+
+Examples:
+
+Task Management:
+- Dashboard
+- My Tasks
+- Assigned By Me
+
+Sample Tracking:
+- Pending Approval
+- Approved
+- Dispatched
+
+Assets & Access:
+- Employee Overview
+- Inventory
+
+Future modules should follow the same principle.
+
+Cross-module navigation is not permitted inside module sidebars.
+
+---
+
+## Global User Area
+
+The bottom section must be present in every module.
+
+Required elements:
+
+- User profile
+- Account Settings
+- View As User
+- Sign Out
+
+---
+
+## Account Settings
+
+Account Settings should open within the current module layout.
+
+The sidebar must remain visible.
+
+Users should not be redirected into another module to access account settings.
+
+---
+
+## View As User
+
+All modules must support Admin View Mode.
+
+Purpose:
+
+- Permission testing
+- Visibility testing
+- Workflow testing
+
+Rules:
+
+- Admin remains in the current module
+- Only effective user context changes
+- Same page remains open
+- Clear active-view banner must be shown
+- Exit View Mode returns to admin context
+
+---
+
+## Future Module Requirement
+
+Before creating a new module, verify:
+
+1. Module-specific sidebar exists.
+2. Home button returns to /modules.
+3. User profile area exists.
+4. Account Settings exists.
+5. View As support exists.
+6. Sign Out exists.
+
+No module should be launched without complying with this standard.
 
 # LONG-TERM ARCHITECTURE DIRECTION
 

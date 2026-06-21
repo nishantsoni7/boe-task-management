@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import type { ShowroomProduct } from '@/lib/types'
 import { LoadingScreen, AlertBanner, EmptyState } from '@/components/ui/atoms'
-import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
+import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { Package, PlusCircle, Pencil } from 'lucide-react'
 
@@ -86,7 +86,7 @@ export default function ShowroomProductsPage() {
   const inactive = products.filter(p => !p.is_active)
 
   return (
-    <BoeOsLayout
+    <ShowroomAdminLayout
       profile={profile}
       title="Showroom Products"
       subtitle={`${active.length} active · ${inactive.length} inactive`}
@@ -147,7 +147,7 @@ export default function ShowroomProductsPage() {
           )}
         </>
       )}
-    </BoeOsLayout>
+    </ShowroomAdminLayout>
   )
 }
 

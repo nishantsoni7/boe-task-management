@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { PayrollLayout } from '@/components/layout/PayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 
@@ -155,7 +155,7 @@ export default function PayrollMonthlyReviewPage() {
   const sorted = active ? [...active].sort((a, b) => b.net_salary - a.net_salary) : null
 
   return (
-    <AttendanceLayout
+    <PayrollLayout
       profile={profile}
       title="Payroll Monthly Preview"
       subtitle="Engine-computed payroll summary for the selected month"
@@ -443,6 +443,6 @@ export default function PayrollMonthlyReviewPage() {
         )}
 
       </div>
-    </AttendanceLayout>
+    </PayrollLayout>
   )
 }
