@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -8,8 +8,9 @@ import type { ShowroomProduct } from '@/lib/types'
 import { LoadingScreen, AlertBanner, EmptyState } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { Package, PlusCircle, Pencil } from 'lucide-react'
+import { Package, PlusCircle, Pencil, QrCode, X, Printer } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
+import { QRCodeSVG } from 'qrcode.react'
 
 export default function ShowroomProductsPage() {
   const [profile,   setProfile]   = useState<UserProfile | null>(null)
@@ -17,6 +18,7 @@ export default function ShowroomProductsPage() {
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState('')
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [qrProduct, setQrProduct] = useState<ShowroomProduct | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -100,6 +102,9 @@ export default function ShowroomProductsPage() {
       subtitle={`${active.length} active · ${inactive.length} inactive`}
       onSignOut={handleSignOut}
     >
+      {qrProduct && (
+        <QrPrintModal product={qrProduct} onClose={() => setQrProduct(null)} />
+      )}
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ fontSize: '13px', color: colors.tertiary }}>
@@ -141,6 +146,7 @@ export default function ShowroomProductsPage() {
             togglingId={togglingId}
             onEdit={code => router.push(`/showroom-admin/products/${code}/edit`)}
             onToggle={handleToggleActive}
+            onPrintQr={setQrProduct}
           />
           {inactive.length > 0 && (
             <div style={{ marginTop: '32px' }}>
@@ -150,6 +156,7 @@ export default function ShowroomProductsPage() {
                 togglingId={togglingId}
                 onEdit={code => router.push(`/showroom-admin/products/${code}/edit`)}
                 onToggle={handleToggleActive}
+                onPrintQr={setQrProduct}
               />
             </div>
           )}
@@ -162,13 +169,14 @@ export default function ShowroomProductsPage() {
 // ── Product table ─────────────────────────────────────────────────────────────
 
 function ProductTable({
-  products, label, togglingId, onEdit, onToggle,
+  products, label, togglingId, onEdit, onToggle, onPrintQr,
 }: {
   products: ShowroomProduct[]
   label: string
   togglingId: string | null
   onEdit: (code: string) => void
   onToggle: (p: ShowroomProduct) => void
+  onPrintQr: (p: ShowroomProduct) => void
 }) {
   if (products.length === 0) return null
 
@@ -190,6 +198,7 @@ function ProductTable({
             toggling={togglingId === product.id}
             onEdit={() => onEdit(product.product_code)}
             onToggle={() => onToggle(product)}
+            onPrintQr={() => onPrintQr(product)}
           />
         ))}
       </div>
@@ -198,12 +207,13 @@ function ProductTable({
 }
 
 function ProductRow({
-  product, toggling, onEdit, onToggle,
+  product, toggling, onEdit, onToggle, onPrintQr,
 }: {
   product: ShowroomProduct
   toggling: boolean
   onEdit: () => void
   onToggle: () => void
+  onPrintQr: () => void
 }) {
   return (
     <div style={{
@@ -265,6 +275,26 @@ function ProductRow({
         ₹{Number(product.mrp).toLocaleString('en-IN')}
       </div>
 
+      {/* Print QR button */}
+      <button
+        onClick={onPrintQr}
+        title="Print QR label"
+        style={{
+          display: 'flex', alignItems: 'center', gap: '5px',
+          fontSize: '12px', fontWeight: 500,
+          color: '#1A2035',
+          background: 'rgba(26,32,53,0.06)',
+          border: `1px solid rgba(26,32,53,0.15)`,
+          borderRadius: '6px',
+          padding: '6px 10px',
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        <QrCode size={13} strokeWidth={1.8} />
+        Print QR
+      </button>
+
       {/* Edit button */}
       <button
         onClick={onEdit}
@@ -304,6 +334,109 @@ function ProductRow({
       >
         {toggling ? '...' : product.is_active ? 'Active' : 'Inactive'}
       </button>
+    </div>
+  )
+}
+
+// ── QR Print Modal ────────────────────────────────────────────────────────────
+
+function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose: () => void }) {
+  const printRef = useRef<HTMLDivElement>(null)
+  const qrUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/showroom/product/${product.product_code}`
+
+  const handlePrint = () => {
+    const content = printRef.current
+    if (!content) return
+    const win = window.open('', '_blank', 'width=400,height=520')
+    if (!win) return
+    win.document.write(`
+      <html><head><title>QR Label – ${product.name}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #fff; }
+        .label { text-align: center; padding: 28px 32px; border: 1.5px solid #e5e7eb; border-radius: 12px; display: inline-block; }
+        .brand { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6b7280; margin-bottom: 4px; }
+        .name { font-size: 17px; font-weight: 700; color: #111827; margin: 10px 0 2px; }
+        .code { font-size: 11px; font-family: monospace; color: #6b7280; margin-bottom: 2px; }
+        .mrp { font-size: 20px; font-weight: 700; color: #111827; margin: 6px 0 16px; }
+        svg { display: block; margin: 0 auto; }
+      </style></head><body>${content.innerHTML}</body></html>
+    `)
+    win.document.close()
+    win.focus()
+    win.print()
+    win.close()
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '24px',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: '#fff',
+          borderRadius: '14px',
+          padding: '28px 32px',
+          width: '100%', maxWidth: '360px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          position: 'relative',
+        }}
+      >
+        {/* Close */}
+        <button
+          onClick={onClose}
+          style={{
+            position: 'absolute', top: '14px', right: '14px',
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: '#9ca3af', padding: '4px',
+          }}
+        >
+          <X size={18} />
+        </button>
+
+        {/* Label preview */}
+        <div ref={printRef} className="label" style={{ textAlign: 'center' }}>
+          <div className="brand" style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '4px' }}>
+            BOE · Showroom
+          </div>
+          <QRCodeSVG value={qrUrl} size={160} style={{ display: 'block', margin: '0 auto' }} />
+          <div className="name" style={{ fontSize: '17px', fontWeight: 700, color: '#111827', margin: '12px 0 2px' }}>
+            {product.name}
+          </div>
+          <div className="code" style={{ fontSize: '11px', fontFamily: 'monospace', color: '#6b7280', marginBottom: '2px' }}>
+            {product.product_code}
+          </div>
+          <div className="mrp" style={{ fontSize: '20px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>
+            ₹{Number(product.mrp).toLocaleString('en-IN')}
+          </div>
+        </div>
+
+        {/* Print button */}
+        <button
+          onClick={handlePrint}
+          style={{
+            marginTop: '20px',
+            width: '100%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+            fontSize: '14px', fontWeight: 600,
+            color: '#fff',
+            background: '#1A2035',
+            border: 'none', borderRadius: '8px',
+            padding: '11px 0',
+            cursor: 'pointer',
+          }}
+        >
+          <Printer size={15} strokeWidth={2} />
+          Print QR Label
+        </button>
+      </div>
     </div>
   )
 }
