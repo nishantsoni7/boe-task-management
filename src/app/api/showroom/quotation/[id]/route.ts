@@ -62,7 +62,7 @@ export async function GET(
   // ── 1. Fetch inquiry (flat) ─────────────────────────────────────────────────
   const { data: inquiry, error: inqErr } = await caller.client
     .from('showroom_inquiries')
-    .select('id, salesperson_id, customer_name, customer_mobile, company, city, project_name, status, discount_percent, created_at')
+    .select('id, salesperson_id, customer_name, customer_mobile, company, city, project_name, status, discount_percent, quotation_status, quotation_sent_at, created_at')
     .eq('id', id)
     .single()
 
@@ -145,6 +145,18 @@ export async function GET(
       .update({ status: 'quotation_sent' })
       .eq('id', id)
   }
+  // Mark quotation as sent only if still in draft — never overwrite converted/lost.
+  // COALESCE preserves the original quotation_sent_at if already recorded.
+  if (inquiry.quotation_status === 'draft') {
+    await caller.client
+      .from('showroom_inquiries')
+      .update({
+        quotation_status:  'sent',
+        quotation_sent_at: inquiry.quotation_sent_at ?? new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('quotation_status', 'draft')
+  }
 
   // ── 9. Return PDF ───────────────────────────────────────────────────────────
   const date     = new Date().toISOString().slice(0, 10)
@@ -223,7 +235,7 @@ export async function POST(
   // ── Fetch inquiry (flat) ─────────────────────────────────────────────────────
   const { data: inquiry, error: inqErr } = await caller.client
     .from('showroom_inquiries')
-    .select('id, salesperson_id, customer_name, customer_mobile, company, city, project_name, status, created_at')
+    .select('id, salesperson_id, customer_name, customer_mobile, company, city, project_name, status, quotation_status, quotation_sent_at, created_at')
     .eq('id', id)
     .single()
 
@@ -320,6 +332,18 @@ export async function POST(
       .from('showroom_inquiries')
       .update({ discount_percent: discountPercent })
       .eq('id', id)
+  }
+  // Mark quotation as sent only if still in draft — never overwrite converted/lost.
+  // COALESCE preserves the original quotation_sent_at if already recorded.
+  if (inquiry.quotation_status === 'draft') {
+    await caller.client
+      .from('showroom_inquiries')
+      .update({
+        quotation_status:  'sent',
+        quotation_sent_at: inquiry.quotation_sent_at ?? new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('quotation_status', 'draft')
   }
 
   const date     = new Date().toISOString().slice(0, 10)

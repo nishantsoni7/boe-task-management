@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile, InquiryStatus } from '@/lib/types'
+import type { UserProfile, InquiryStatus, QuotationStatus } from '@/lib/types'
 import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
@@ -43,6 +43,9 @@ type InquiryDetail = {
   status: InquiryStatus
   discount_percent: number
   notes: string | null
+  quotation_no: string | null
+  quotation_status: QuotationStatus
+  quotation_sent_at: string | null
   created_at: string
   share_token: string
   showroom_inquiry_items: InquiryItem[]
@@ -96,8 +99,9 @@ export default function InquiryDetailPage() {
   const [saving,    setSaving]      = useState(false)
   const [pdfError,  setPdfError]    = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
-  const [copied,    setCopied]    = useState(false)
-  const [token,     setToken]     = useState('')
+  const [copied,          setCopied]          = useState(false)
+  const [token,           setToken]           = useState('')
+  const [salespersonName, setSalespersonName] = useState('')
 
   // Editable fields
   const [status,          setStatus]          = useState<InquiryStatus>('new')
@@ -169,6 +173,14 @@ export default function InquiryDetailPage() {
       setDiscountPercent(String(inq.discount_percent))
       setNotes(inq.notes ?? '')
       setItemEdits(initItemEdits(inq.showroom_inquiry_items, {}))
+
+      // Fetch salesperson name (may differ from caller when admin views another user's inquiry)
+      const { data: sp } = await supabase
+        .from('users')
+        .select('full_name')
+        .eq('id', inq.salesperson_id)
+        .single()
+      setSalespersonName((sp as { full_name: string } | null)?.full_name ?? '—')
 
       if (prodRes.ok) {
         const prodData = await prodRes.json()
@@ -349,6 +361,78 @@ export default function InquiryDetailPage() {
     setStatus(s => s === 'new' || s === 'in_discussion' ? 'quotation_sent' : s)
   }
 
+  // ── Mark converted / lost ─────────────────────────────────────────────────────
+
+  const [outcomeLoading, setOutcomeLoading] = useState<'converted' | 'lost' | null>(null)
+  const [outcomeError,   setOutcomeError]   = useState('')
+
+  const handleMarkOutcome = async (outcome: 'converted' | 'lost') => {
+    if (outcome === 'lost') {
+      if (!window.confirm('Mark this quotation as lost?')) return
+    } else {
+      if (!window.confirm('Mark this quotation as converted?')) return
+    }
+
+    setOutcomeLoading(outcome)
+    setOutcomeError('')
+
+    const body = outcome === 'converted'
+      ? { quotation_status: 'converted', converted_at: new Date().toISOString() }
+      : { quotation_status: 'lost',      lost_at:      new Date().toISOString() }
+
+    const res = await fetch(`/api/showroom/inquiry/${inquiryId}`, {
+      method: 'PATCH',
+      headers: authHeader,
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      setOutcomeError(d.error ?? 'Failed to update. Please try again.')
+    } else {
+      await reloadInquiry()
+    }
+
+    setOutcomeLoading(null)
+  }
+
+  // ── WhatsApp share ────────────────────────────────────────────────────────────
+
+  const handleWhatsAppShare = () => {
+    if (!inquiry) return
+
+    const message = [
+      `Hello ${inquiry.customer_name},`,
+      '',
+      'Please find your quotation attached.',
+      '',
+      `Quotation No: ${inquiry.quotation_no ?? 'Pending'}`,
+      '',
+      'Regards,',
+      `${salespersonName || 'Your Salesperson'}`,
+      'Best of Exports',
+    ].join('\n')
+
+    const encoded = encodeURIComponent(message)
+
+    // Normalise mobile: strip non-digits, add India country code if 10-digit local number
+    const digits = (inquiry.customer_mobile ?? '').replace(/\D/g, '')
+    let phone = ''
+    if (digits.length === 10) {
+      phone = '91' + digits
+    } else if (digits.length === 12 && digits.startsWith('91')) {
+      phone = digits
+    } else if (digits.length > 0) {
+      phone = digits  // use as-is for other formats
+    }
+
+    const url = phone
+      ? `https://wa.me/${phone}?text=${encoded}`
+      : `https://wa.me/?text=${encoded}`
+
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
   // ── Copy share link ───────────────────────────────────────────────────────────
 
   const handleCopyShareLink = () => {
@@ -417,6 +501,70 @@ export default function InquiryDetailPage() {
       </button>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '680px' }}>
+
+        {/* ── Quotation summary ────────────────────────────────────────────── */}
+        <Section title="Quotation">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{
+                fontFamily: font.mono, fontSize: '15px', fontWeight: 700, color: '#1A2035',
+                letterSpacing: '0.01em',
+              }}>
+                {inquiry.quotation_no ?? 'Pending assignment'}
+              </span>
+              <QuotationBadge status={inquiry.quotation_status} />
+            </div>
+            <Grid>
+              <KV label="Created"     value={new Date(inquiry.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} />
+              <KV label="Salesperson" value={salespersonName || '—'} />
+              <KV label="Customer"    value={inquiry.customer_name} />
+              <KV label="Final Value" value={`₹${Math.round(finalTotal).toLocaleString('en-IN')}`} />
+            </Grid>
+
+            {/* Outcome actions — hidden once already converted or lost */}
+            {inquiry.quotation_status !== 'converted' && inquiry.quotation_status !== 'lost' && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingTop: '4px' }}>
+                <button
+                  onClick={() => handleMarkOutcome('converted')}
+                  disabled={outcomeLoading !== null}
+                  style={{
+                    padding: '7px 16px',
+                    background: outcomeLoading === 'converted' ? '#D1FAE5' : '#ECFDF5',
+                    color: '#065F46',
+                    border: '1.5px solid #A7F3D0',
+                    borderRadius: '8px',
+                    fontSize: '12px', fontWeight: 600,
+                    cursor: outcomeLoading !== null ? 'default' : 'pointer',
+                    opacity: outcomeLoading !== null ? 0.6 : 1,
+                    fontFamily: font.body,
+                  }}
+                >
+                  {outcomeLoading === 'converted' ? 'Saving…' : 'Mark Converted'}
+                </button>
+                <button
+                  onClick={() => handleMarkOutcome('lost')}
+                  disabled={outcomeLoading !== null}
+                  style={{
+                    padding: '7px 16px',
+                    background: outcomeLoading === 'lost' ? '#FEE2E2' : '#FEF2F2',
+                    color: '#991B1B',
+                    border: '1.5px solid #FECACA',
+                    borderRadius: '8px',
+                    fontSize: '12px', fontWeight: 600,
+                    cursor: outcomeLoading !== null ? 'default' : 'pointer',
+                    opacity: outcomeLoading !== null ? 0.6 : 1,
+                    fontFamily: font.body,
+                  }}
+                >
+                  {outcomeLoading === 'lost' ? 'Saving…' : 'Mark Lost'}
+                </button>
+              </div>
+            )}
+            {outcomeError && (
+              <div style={{ fontSize: '12px', color: '#B91C1C', paddingTop: '2px' }}>{outcomeError}</div>
+            )}
+          </div>
+        </Section>
 
         {/* ── Customer details ─────────────────────────────────────────────── */}
         <Section title="Customer">
@@ -790,6 +938,27 @@ export default function InquiryDetailPage() {
               </button>
 
               <button
+                onClick={handleWhatsAppShare}
+                title="Share quotation message via WhatsApp"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '10px 18px',
+                  background: '#fff', color: '#15803D',
+                  border: '1.5px solid #86EFAC',
+                  borderRadius: '8px',
+                  fontSize: '13px', fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: font.body,
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                  <path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.523 5.837L.057 23.492a.75.75 0 0 0 .921.921l5.655-1.466A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.907 0-3.686-.528-5.207-1.44l-.374-.22-3.877 1.005 1.006-3.877-.22-.374A9.96 9.96 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                </svg>
+                WhatsApp Share
+              </button>
+
+              <button
                 onClick={handleCopyShareLink}
                 title="Copy shareable link for customer"
                 style={{
@@ -877,6 +1046,29 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>{label}</label>
       {children}
     </div>
+  )
+}
+
+const QUOTATION_STATUS_CONFIG: Record<QuotationStatus, { label: string; bg: string; color: string; border: string }> = {
+  draft:     { label: 'Draft',     bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB' },
+  sent:      { label: 'Sent',      bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
+  converted: { label: 'Converted', bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0' },
+  lost:      { label: 'Lost',      bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
+}
+
+function QuotationBadge({ status }: { status: QuotationStatus }) {
+  const cfg = QUOTATION_STATUS_CONFIG[status] ?? QUOTATION_STATUS_CONFIG.draft
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: '3px 10px', borderRadius: '999px',
+      fontSize: '11px', fontWeight: 600, letterSpacing: '0.03em',
+      background: cfg.bg, color: cfg.color,
+      border: `1px solid ${cfg.border}`,
+      fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+    }}>
+      {cfg.label}
+    </span>
   )
 }
 

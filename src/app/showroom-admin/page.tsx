@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile, InquiryStatus } from '@/lib/types'
+import type { UserProfile, InquiryStatus, QuotationStatus } from '@/lib/types'
 import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
@@ -18,10 +18,35 @@ type InquirySummary = {
   city: string | null
   project_name: string | null
   status: InquiryStatus
+  quotation_status: QuotationStatus | null
   discount_percent: number
   created_at: string
   item_count: number
   mrp_total: number
+}
+
+type QuotationFilter = 'all' | QuotationStatus
+
+const QUOTATION_FILTER_TABS: { value: QuotationFilter; label: string }[] = [
+  { value: 'all',       label: 'All' },
+  { value: 'draft',     label: 'Draft' },
+  { value: 'sent',      label: 'Sent' },
+  { value: 'converted', label: 'Converted' },
+  { value: 'lost',      label: 'Lost' },
+]
+
+const QUOTATION_STATUS_STYLE: Record<QuotationStatus, { color: string; bg: string; border: string }> = {
+  draft:     { color: '#6B7280', bg: '#F3F4F6', border: '#D1D5DB' },
+  sent:      { color: '#1E40AF', bg: '#EFF6FF', border: '#BFDBFE' },
+  converted: { color: '#065F46', bg: '#ECFDF5', border: '#A7F3D0' },
+  lost:      { color: '#991B1B', bg: '#FEF2F2', border: '#FECACA' },
+}
+
+const QUOTATION_STATUS_LABEL: Record<QuotationStatus, string> = {
+  draft:     'Draft',
+  sent:      'Sent',
+  converted: 'Converted',
+  lost:      'Lost',
 }
 
 const STATUS_STYLE: Record<InquiryStatus, { color: string; bg: string; border: string }> = {
@@ -39,11 +64,12 @@ const STATUS_LABEL: Record<InquiryStatus, string> = {
 }
 
 export default function ShowroomInboxPage() {
-  const [profile,    setProfile]    = useState<UserProfile | null>(null)
-  const [inquiries,  setInquiries]  = useState<InquirySummary[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState('')
-  const [token,      setToken]      = useState('')
+  const [profile,         setProfile]         = useState<UserProfile | null>(null)
+  const [inquiries,       setInquiries]       = useState<InquirySummary[]>([])
+  const [loading,         setLoading]         = useState(true)
+  const [error,           setError]           = useState('')
+  const [token,           setToken]           = useState('')
+  const [quotationFilter, setQuotationFilter] = useState<QuotationFilter>('all')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -107,6 +133,11 @@ export default function ShowroomInboxPage() {
   const effectiveProfile = viewAsProfile ?? profile
   const isAdmin = effectiveProfile?.role === 'admin'
 
+  const filteredInquiries = useMemo(() => {
+    if (quotationFilter === 'all') return inquiries
+    return inquiries.filter(inq => (inq.quotation_status ?? 'draft') === quotationFilter)
+  }, [inquiries, quotationFilter])
+
   if (loading) return <LoadingScreen />
 
   return (
@@ -142,14 +173,50 @@ export default function ShowroomInboxPage() {
         </div>
       )}
 
-      {inquiries.length === 0 ? (
-        <EmptyState
-          message="No inquiries yet"
-          hint="Inquiries appear here after customers scan your QR and submit their product list."
-        />
+      {/* Quotation status filter tabs */}
+      {inquiries.length > 0 && (
+        <div style={{
+          display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap',
+        }}>
+          {QUOTATION_FILTER_TABS.map(tab => {
+            const active = quotationFilter === tab.value
+            return (
+              <button
+                key={tab.value}
+                onClick={() => setQuotationFilter(tab.value)}
+                style={{
+                  fontSize: '12px', fontWeight: active ? 700 : 500,
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: active ? '1.5px solid #1A2035' : `1px solid ${colors.border}`,
+                  background: active ? '#1A2035' : colors.base,
+                  color: active ? '#fff' : colors.secondary,
+                  cursor: 'pointer', fontFamily: font.body,
+                  transition: 'all 0.1s',
+                }}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {filteredInquiries.length === 0 ? (
+        inquiries.length === 0 ? (
+          <EmptyState
+            message="No inquiries yet"
+            hint="Inquiries appear here after customers scan your QR and submit their product list."
+          />
+        ) : (
+          <EmptyState
+            message={`No ${quotationFilter} quotations`}
+            hint="Try a different filter."
+          />
+        )
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {inquiries.map(inq => (
+          {filteredInquiries.map(inq => (
             <InquiryCard
               key={inq.id}
               inquiry={inq}
@@ -167,6 +234,8 @@ export default function ShowroomInboxPage() {
 function InquiryCard({ inquiry, onClick }: { inquiry: InquirySummary; onClick: () => void }) {
   const [hovered, setHovered] = useState(false)
   const st = STATUS_STYLE[inquiry.status] ?? STATUS_STYLE.new
+  const qs = QUOTATION_STATUS_STYLE[inquiry.quotation_status ?? 'draft']
+  const qLabel = QUOTATION_STATUS_LABEL[inquiry.quotation_status ?? 'draft']
 
   const discountedTotal = inquiry.mrp_total * (1 - inquiry.discount_percent / 100)
 
@@ -200,16 +269,29 @@ function InquiryCard({ inquiry, onClick }: { inquiry: InquirySummary; onClick: (
             {inquiry.project_name ? ` · ${inquiry.project_name}` : ''}
           </div>
         </div>
-        {/* Status badge */}
-        <span style={{
-          fontSize: '10px', fontWeight: 700,
-          color: st.color, background: st.bg,
-          border: `1px solid ${st.border}`,
-          borderRadius: '5px', padding: '2px 8px',
-          whiteSpace: 'nowrap', flexShrink: 0,
-        }}>
-          {STATUS_LABEL[inquiry.status]}
-        </span>
+        {/* Badges */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+          {/* Inquiry status badge */}
+          <span style={{
+            fontSize: '10px', fontWeight: 700,
+            color: st.color, background: st.bg,
+            border: `1px solid ${st.border}`,
+            borderRadius: '5px', padding: '2px 8px',
+            whiteSpace: 'nowrap',
+          }}>
+            {STATUS_LABEL[inquiry.status]}
+          </span>
+          {/* Quotation status badge */}
+          <span style={{
+            fontSize: '10px', fontWeight: 600,
+            color: qs.color, background: qs.bg,
+            border: `1px solid ${qs.border}`,
+            borderRadius: '5px', padding: '2px 8px',
+            whiteSpace: 'nowrap',
+          }}>
+            {qLabel}
+          </span>
+        </div>
       </div>
 
       {/* Bottom row */}

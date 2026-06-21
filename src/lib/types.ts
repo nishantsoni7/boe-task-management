@@ -411,6 +411,7 @@ export type ShowroomProduct = {
 }
 
 export type InquiryStatus = 'new' | 'in_discussion' | 'quotation_sent' | 'closed'
+export type QuotationStatus = 'draft' | 'sent' | 'converted' | 'lost'
 
 export type ShowroomInquiry = {
   id: string
@@ -424,6 +425,11 @@ export type ShowroomInquiry = {
   status: InquiryStatus
   discount_percent: number
   notes: string | null
+  quotation_no: string | null
+  quotation_status: QuotationStatus
+  quotation_sent_at: string | null
+  converted_at: string | null
+  lost_at: string | null
   created_at: string
   updated_at: string
 }
