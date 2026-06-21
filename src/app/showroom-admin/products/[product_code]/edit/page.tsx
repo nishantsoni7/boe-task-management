@@ -7,6 +7,7 @@ import type { UserProfile, ShowroomProduct } from '@/lib/types'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
+import { useViewAs } from '@/hooks/useViewAs'
 
 const CATEGORIES = [
   'Dining Chairs',
@@ -37,6 +38,12 @@ export default function EditProductPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile } = useViewAs()
+
+  useEffect(() => {
+    if (!profile || !viewAsUserId || !viewAsProfile) return
+    if (viewAsProfile.role !== 'admin') router.replace('/modules')
+  }, [profile, viewAsUserId, viewAsProfile, router])
 
   useEffect(() => {
     const init = async () => {

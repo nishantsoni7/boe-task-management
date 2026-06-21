@@ -2,13 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { ClipboardList, QrCode, Package, Home, X } from 'lucide-react'
+import { Home, LayoutGrid, Building2, Users, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
-import { useViewAs } from '@/hooks/useViewAs'
 
-type ShowroomAdminLayoutProps = {
+type ControlCenterLayoutProps = {
   profile: UserProfile | null
   title: string
   subtitle?: string
@@ -16,14 +15,12 @@ type ShowroomAdminLayoutProps = {
   children: React.ReactNode
 }
 
-export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, children }: ShowroomAdminLayoutProps) {
+export function ControlCenterLayout({
+  profile, title, subtitle, onSignOut, children,
+}: ControlCenterLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
-
-  const { viewAsProfile } = useViewAs()
-  const effectiveProfile = viewAsProfile ?? profile
-  const isAdmin = effectiveProfile?.role === 'admin'
 
   const navTo = (path: string) => {
     router.push(path)
@@ -42,12 +39,12 @@ export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, child
       {/* Sidebar */}
       <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
 
-        {/* Brand header — with home icon top-right matching other modules */}
+        {/* Section 1: Module header with Home button */}
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <BoeBrandIcon />
             <div>
-              <div className="boe-sidebar-brand-name">Showroom QR</div>
+              <div className="boe-sidebar-brand-name">Control Center</div>
               <div className="boe-sidebar-brand-sub">BOE Operating System</div>
             </div>
           </div>
@@ -68,35 +65,33 @@ export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, child
           </button>
         </div>
 
-        {/* Module nav — Showroom QR links only */}
+        {/* Section 2: Control Center navigation only */}
         <div className="boe-sidebar-section">
           <NavItem
-            label="My Inquiries"
-            icon={<ClipboardList size={15} strokeWidth={1.8} />}
-            active={pathname === '/showroom-admin'}
-            onClick={() => navTo('/showroom-admin')}
+            label="Modules"
+            icon={<LayoutGrid size={15} strokeWidth={1.8} />}
+            active={pathname === '/admin/control-center' || pathname === '/admin/control-center/modules'}
+            onClick={() => navTo('/admin/control-center')}
           />
           <NavItem
-            label="My QR Code"
-            icon={<QrCode size={15} strokeWidth={1.8} />}
-            active={pathname === '/showroom-admin/qr'}
-            onClick={() => navTo('/showroom-admin/qr')}
+            label="Departments"
+            icon={<Building2 size={15} strokeWidth={1.8} />}
+            active={pathname === '/admin/control-center/departments'}
+            onClick={() => navTo('/admin/control-center/departments')}
           />
-          {isAdmin && (
-            <NavItem
-              label="Product Master"
-              icon={<Package size={15} strokeWidth={1.8} />}
-              active={pathname.startsWith('/showroom-admin/products')}
-              onClick={() => navTo('/showroom-admin/products')}
-            />
-          )}
+          <NavItem
+            label="People"
+            icon={<Users size={15} strokeWidth={1.8} />}
+            active={pathname === '/admin/control-center/people'}
+            onClick={() => navTo('/admin/control-center/people')}
+          />
         </div>
 
-        {/* Bottom: profile + account settings + view as + sign out */}
+        {/* Section 3: Global user area */}
         <ViewModeSidebarSection
           profile={profile}
           onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/showroom-admin"
+          accountSettingsHref="/account?returnTo=/admin/control-center"
         />
       </aside>
 
@@ -116,18 +111,16 @@ export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, child
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
-          {/* Top-right home icon — same pattern as other modules */}
           <div className="boe-header-actions">
             <button
-              onClick={() => router.push('/modules')}
+              onClick={() => navTo('/modules')}
               title="BOE OS Home"
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 32, height: 32, borderRadius: '8px',
                 background: 'rgba(0,0,0,0.05)',
                 border: '1px solid rgba(0,0,0,0.10)',
-                color: '#6B7384',
-                cursor: 'pointer',
+                color: '#6B7384', cursor: 'pointer',
                 flexShrink: 0, transition: 'background 0.15s, color 0.15s',
               }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)'; e.currentTarget.style.color = '#DC1F2E' }}

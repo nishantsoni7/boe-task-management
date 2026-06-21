@@ -8,6 +8,7 @@ import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { QrCode, Package } from 'lucide-react'
+import { useViewAs } from '@/hooks/useViewAs'
 
 type InquirySummary = {
   id: string
@@ -42,9 +43,11 @@ export default function ShowroomInboxPage() {
   const [inquiries,  setInquiries]  = useState<InquirySummary[]>([])
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState('')
+  const [token,      setToken]      = useState('')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile } = useViewAs()
 
   useEffect(() => {
     const init = async () => {
@@ -64,8 +67,13 @@ export default function ShowroomInboxPage() {
         profile.team?.toLowerCase().includes('showroom')
       if (!hasAccess) { router.replace('/modules'); return }
       setProfile(profile)
+      setToken(session.access_token)
 
-      const res = await fetch('/api/showroom/inquiry', {
+      const url = new URL('/api/showroom/inquiry', window.location.origin)
+      if (profile.role === 'admin' && viewAsUserId) {
+        url.searchParams.set('viewAs', viewAsUserId)
+      }
+      const res = await fetch(url.toString(), {
         headers: { 'Authorization': `Bearer ${session.access_token}` },
       })
       if (!res.ok) {
@@ -78,14 +86,26 @@ export default function ShowroomInboxPage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [viewAsUserId])
+
+  // Redirect when view mode switches to a user without showroom access
+  useEffect(() => {
+    if (!profile || !viewAsUserId || !viewAsProfile) return
+    const effectiveHasAccess = viewAsProfile.role === 'admin' ||
+      viewAsProfile.team?.toLowerCase().includes('sales') ||
+      viewAsProfile.team?.toLowerCase().includes('showroom')
+    if (!effectiveHasAccess) router.replace('/modules')
+  }, [profile, viewAsUserId, viewAsProfile, router])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
   }
 
-  const isAdmin = profile?.role === 'admin'
+  void token
+
+  const effectiveProfile = viewAsProfile ?? profile
+  const isAdmin = effectiveProfile?.role === 'admin'
 
   if (loading) return <LoadingScreen />
 
@@ -93,7 +113,7 @@ export default function ShowroomInboxPage() {
     <ShowroomAdminLayout
       profile={profile}
       title="Showroom Inquiries"
-      subtitle={isAdmin ? 'All inquiries' : 'My inquiries'}
+      subtitle={isAdmin ? 'All inquiries' : (viewAsProfile ? `${viewAsProfile.full_name}'s inquiries` : 'My inquiries')}
       onSignOut={handleSignOut}
     >
       {/* Quick links */}

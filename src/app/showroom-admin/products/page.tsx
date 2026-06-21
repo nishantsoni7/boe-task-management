@@ -9,6 +9,7 @@ import { LoadingScreen, AlertBanner, EmptyState } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { Package, PlusCircle, Pencil } from 'lucide-react'
+import { useViewAs } from '@/hooks/useViewAs'
 
 export default function ShowroomProductsPage() {
   const [profile,   setProfile]   = useState<UserProfile | null>(null)
@@ -19,6 +20,7 @@ export default function ShowroomProductsPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile } = useViewAs()
 
   useEffect(() => {
     const init = async () => {
@@ -40,6 +42,12 @@ export default function ShowroomProductsPage() {
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Redirect when viewing as a non-admin user
+  useEffect(() => {
+    if (!profile || !viewAsUserId || !viewAsProfile) return
+    if (viewAsProfile.role !== 'admin') router.replace('/modules')
+  }, [profile, viewAsUserId, viewAsProfile, router])
 
   const loadProducts = async (token: string) => {
     const res = await fetch('/api/showroom/admin/products', {

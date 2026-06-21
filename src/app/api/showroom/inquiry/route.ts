@@ -23,17 +23,27 @@ async function requireAuth(req: NextRequest) {
   return { client, id: profile.id as string, role: profile.role as string }
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 // GET /api/showroom/inquiry — list own (salesperson) or all (admin)
+// Supports ?viewAs=<userId> for admin callers to filter as another user.
 export async function GET(req: NextRequest) {
   const caller = await requireAuth(req)
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const viewAs = req.nextUrl.searchParams.get('viewAs')
+  const effectiveId =
+    caller.role === 'admin' && viewAs && UUID_RE.test(viewAs) ? viewAs : null
 
   let query = caller.client
     .from('showroom_inquiries')
     .select('*, showroom_inquiry_items(quantity, mrp_at_time)')
     .order('created_at', { ascending: false })
 
-  if (caller.role !== 'admin') {
+  if (effectiveId) {
+    // Admin viewing as another user: show only that user's inquiries
+    query = query.eq('salesperson_id', effectiveId)
+  } else if (caller.role !== 'admin') {
     query = query.eq('salesperson_id', caller.id)
   }
 

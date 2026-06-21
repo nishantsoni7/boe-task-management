@@ -24,6 +24,8 @@ type ModuleDef = {
   adminOnly?: boolean
   managerOrAdmin?: boolean
   notificationCount?: number | null  // null = no API yet → "No pending", 0 = confirmed zero, >0 = badge
+  visibilityType?: string   // from app_modules — drives badge when present
+  allowedDepartment?: string | null
 }
 
 const STATUS_LABEL: Record<ModuleStatus, { label: string; color: string; bg: string }> = {
@@ -34,12 +36,37 @@ const STATUS_LABEL: Record<ModuleStatus, { label: string; color: string; bg: str
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
+// ── Visibility resolver — used by /modules to evaluate app_modules DB rules ──
+
+type ModVisRow = { visibility_type: string; allowed_department: string | null }
+
+function canSeeModule(
+  key: string,
+  modVis: Record<string, ModVisRow>,
+  effectiveProfile: UserProfile | null,
+  fallback: boolean,
+): boolean {
+  const mod = modVis[key]
+  if (!mod || !effectiveProfile) return fallback
+  const isAdmin = effectiveProfile.role === 'admin'
+  switch (mod.visibility_type) {
+    case 'hidden':           return false
+    case 'admin_only':       return isAdmin
+    case 'department_only':
+      return isAdmin || (effectiveProfile.team?.toLowerCase() === mod.allowed_department?.toLowerCase())
+    default:                 return true  // 'live'
+  }
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
 export default function BoeOsHomePage() {
   const [profile,  setProfile]  = useState<UserProfile | null>(null)
   const [loading,  setLoading]  = useState(true)
   // null = count unavailable (no API), number = real count from module's own API
   const [taskNotif,   setTaskNotif]   = useState<number | null>(null)
   const [sampleNotif, setSampleNotif] = useState<number | null>(null)
+  const [modVis,      setModVis]      = useState<Record<string, ModVisRow>>({})
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -54,6 +81,7 @@ export default function BoeOsHomePage() {
 
       const [
         { data: profileData },
+        { data: appModulesData },
         taskNotifsRes,
         sampleNotifsRes,
       ] = await Promise.all([
@@ -62,6 +90,10 @@ export default function BoeOsHomePage() {
           .select('id, full_name, email, phone, role, team, is_active, created_at')
           .eq('id', uid)
           .single(),
+        supabase
+          .from('app_modules')
+          .select('module_key, visibility_type, allowed_department')
+          .order('sort_order'),
         // Task Management: same unread count the /notifications page shows
         fetch('/api/notifications?count=1')
           .then(r => r.ok ? r.json() : null)
@@ -73,6 +105,13 @@ export default function BoeOsHomePage() {
       ])
 
       if (profileData) setProfile(profileData as UserProfile)
+
+      if (appModulesData) {
+        const vis: Record<string, ModVisRow> = {}
+        for (const m of appModulesData) vis[m.module_key] = m
+        setModVis(vis)
+      }
+
       // Keep null if the API failed so the card shows "No pending" rather than a wrong number
       setTaskNotif(taskNotifsRes != null ? (taskNotifsRes.unreadCount ?? 0) : null)
       setSampleNotif(sampleNotifsRes != null ? (sampleNotifsRes.unreadCount ?? 0) : null)
@@ -90,35 +129,38 @@ export default function BoeOsHomePage() {
   // In View Mode use the viewed user's profile for card visibility; fall back to actual profile.
   const effectiveProfile = (viewAsUserId && viewAsProfile) ? viewAsProfile : profile
 
-  const isAdmin   = effectiveProfile?.role === 'admin'
-  const hasShowroomAccess = isAdmin ||
+  // Fallback values used when app_modules DB data is unavailable
+  const isAdminFallback = effectiveProfile?.role === 'admin'
+  const hasShowroomFallback = isAdminFallback ||
     (effectiveProfile?.team?.toLowerCase().includes('sales') ?? false) ||
     (effectiveProfile?.team?.toLowerCase().includes('showroom') ?? false)
 
   const modules: ModuleDef[] = [
-    {
+    ...(canSeeModule('task_management', modVis, effectiveProfile, true) ? [{
       key: 'tasks',
       title: 'Task Management',
       description: 'Create, assign, and track tasks across your team.',
       href: '/dashboard',
-      status: 'active',
+      status: 'active' as ModuleStatus,
       accent: '#1A2035',
       icon: <TaskIcon />,
-      // Real count — same source the /notifications page uses
       notificationCount: taskNotif,
-    },
-    {
+      visibilityType: modVis['task_management']?.visibility_type,
+      allowedDepartment: modVis['task_management']?.allowed_department,
+    }] : []),
+    ...(canSeeModule('sample_tracking', modVis, effectiveProfile, true) ? [{
       key: 'samples',
       title: 'Sample Tracking',
       description: 'Request sample catalogs, track dispatch and returns, follow up on overdue items.',
       href: '/samples',
-      status: 'active',
+      status: 'active' as ModuleStatus,
       accent: '#B45309',
       icon: <BoxIcon />,
-      // Real count — from sample_notifications table
       notificationCount: sampleNotif,
-    },
-    ...(isAdmin ? [{
+      visibilityType: modVis['sample_tracking']?.visibility_type,
+      allowedDepartment: modVis['sample_tracking']?.allowed_department,
+    }] : []),
+    ...(canSeeModule('attendance', modVis, effectiveProfile, isAdminFallback) ? [{
       key: 'attendance',
       title: 'Attendance',
       description: 'Manage employee attendance records, uploads, and leave history.',
@@ -127,9 +169,11 @@ export default function BoeOsHomePage() {
       accent: '#0F766E',
       icon: <CalIcon />,
       adminOnly: true,
-      notificationCount: null,  // no module-level API yet
+      notificationCount: null,
+      visibilityType: modVis['attendance']?.visibility_type,
+      allowedDepartment: modVis['attendance']?.allowed_department,
     }] : []),
-    ...(isAdmin ? [{
+    ...(canSeeModule('payroll', modVis, effectiveProfile, isAdminFallback) ? [{
       key: 'payroll',
       title: 'Payroll',
       description: 'Process payroll runs, view salary breakdowns, and download payslips.',
@@ -138,9 +182,11 @@ export default function BoeOsHomePage() {
       accent: '#166534',
       icon: <PayIcon />,
       adminOnly: true,
-      notificationCount: null,  // no module-level API yet
+      notificationCount: null,
+      visibilityType: modVis['payroll']?.visibility_type,
+      allowedDepartment: modVis['payroll']?.allowed_department,
     }] : []),
-    ...(hasShowroomAccess ? [{
+    ...(canSeeModule('showroom_qr', modVis, effectiveProfile, hasShowroomFallback) ? [{
       key: 'showroom',
       title: 'Showroom QR',
       description: 'QR-based showroom inquiries and quotations.',
@@ -149,18 +195,22 @@ export default function BoeOsHomePage() {
       accent: '#7C3AED',
       icon: <ShowroomIcon />,
       notificationCount: null,
+      visibilityType: modVis['showroom_qr']?.visibility_type,
+      allowedDepartment: modVis['showroom_qr']?.allowed_department,
     }] : []),
-    {
+    ...(canSeeModule('assets_access', modVis, effectiveProfile, true) ? [{
       key: 'assets',
       title: 'Assets & Access',
       description: 'View your assigned devices and access records, or manage the company inventory.',
       href: '/assets-access',
-      status: 'foundation',
+      status: 'foundation' as ModuleStatus,
       accent: '#4B5563',
       icon: <AssetIcon />,
-      notificationCount: null,  // no module-level API yet
-    },
-    ...(isAdmin ? [{
+      notificationCount: null,
+      visibilityType: modVis['assets_access']?.visibility_type,
+      allowedDepartment: modVis['assets_access']?.allowed_department,
+    }] : []),
+    ...(canSeeModule('employee_records', modVis, effectiveProfile, isAdminFallback) ? [{
       key: 'members',
       title: 'Employee Records',
       description: 'View and manage employee profiles, roles, and team assignments.',
@@ -169,7 +219,22 @@ export default function BoeOsHomePage() {
       accent: '#1E40AF',
       icon: <MembersIcon />,
       adminOnly: true,
-      notificationCount: null,  // no module-level API yet
+      notificationCount: null,
+      visibilityType: modVis['employee_records']?.visibility_type,
+      allowedDepartment: modVis['employee_records']?.allowed_department,
+    }] : []),
+    ...(effectiveProfile?.role === 'admin' ? [{
+      key: 'control_center',
+      title: 'Admin Control Center',
+      description: 'Control modules, departments, and user department access.',
+      href: '/admin/control-center',
+      status: 'active' as ModuleStatus,
+      accent: '#6B21A8',
+      icon: <ControlCenterIcon />,
+      adminOnly: true,
+      notificationCount: null,
+      visibilityType: 'admin_only',
+      allowedDepartment: null,
     }] : []),
   ]
 
@@ -212,9 +277,21 @@ export default function BoeOsHomePage() {
 
 // ── ModuleCard ────────────────────────────────────────────────────────────────
 
+const VIS_BADGE: Record<string, { color: string; bg: string; label: (dept?: string | null) => string }> = {
+  live:            { color: '#166534', bg: '#F0FDF4', label: () => 'Live' },
+  admin_only:      { color: '#1E40AF', bg: '#EFF6FF', label: () => 'Admin Only' },
+  department_only: { color: '#92400E', bg: '#FFFBEB', label: (dept) => dept ? `${dept.charAt(0).toUpperCase()}${dept.slice(1)} Only` : 'Dept Only' },
+  hidden:          { color: '#4B5563', bg: '#F3F4F6', label: () => 'Hidden' },
+}
+
 function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
   const [hovered, setHovered] = useState(false)
-  const st = STATUS_LABEL[mod.status]
+
+  // Use DB visibility badge when available; fall back to legacy status label.
+  const visMeta = mod.visibilityType ? VIS_BADGE[mod.visibilityType] : undefined
+  const st = visMeta
+    ? { label: visMeta.label(mod.allowedDepartment), color: visMeta.color, bg: visMeta.bg }
+    : STATUS_LABEL[mod.status]
   const hasNotif = (mod.notificationCount ?? 0) > 0
   const count    = mod.notificationCount
 
@@ -395,6 +472,16 @@ function MembersIcon() {
   return (
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+    </svg>
+  )
+}
+
+function ControlCenterIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07" />
     </svg>
   )
 }

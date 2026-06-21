@@ -7,7 +7,8 @@ import type { UserProfile, InquiryStatus } from '@/lib/types'
 import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { ArrowLeft, Trash2, Search, Plus, FileDown } from 'lucide-react'
+import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check } from 'lucide-react'
+import { useViewAs } from '@/hooks/useViewAs'
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ type InquiryDetail = {
   discount_percent: number
   notes: string | null
   created_at: string
+  share_token: string
   showroom_inquiry_items: InquiryItem[]
 }
 
@@ -72,6 +74,7 @@ export default function InquiryDetailPage() {
   const [saving,    setSaving]      = useState(false)
   const [pdfError,  setPdfError]    = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [copied,    setCopied]    = useState(false)
   const [token,     setToken]     = useState('')
 
   // Editable fields
@@ -90,6 +93,7 @@ export default function InquiryDetailPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId } = useViewAs()
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 
@@ -113,8 +117,13 @@ export default function InquiryDetailPage() {
       setProfile(profile)
       setToken(session.access_token)
 
+      const inqUrl = new URL(`/api/showroom/inquiry/${inquiryId}`, window.location.origin)
+      if (profile.role === 'admin' && viewAsUserId) {
+        inqUrl.searchParams.set('viewAs', viewAsUserId)
+      }
+
       const [inqRes, prodRes] = await Promise.all([
-        fetch(`/api/showroom/inquiry/${inquiryId}`, {
+        fetch(inqUrl.toString(), {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
         }),
         fetch('/api/showroom/products', {
@@ -148,7 +157,9 @@ export default function InquiryDetailPage() {
   const authHeader = useMemo(() => ({ 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }), [token])
 
   const reloadInquiry = async () => {
-    const res = await fetch(`/api/showroom/inquiry/${inquiryId}`, {
+    const reloadUrl = new URL(`/api/showroom/inquiry/${inquiryId}`, window.location.origin)
+    if (viewAsUserId) reloadUrl.searchParams.set('viewAs', viewAsUserId)
+    const res = await fetch(reloadUrl.toString(), {
       headers: { 'Authorization': `Bearer ${token}` },
     })
     if (res.ok) {
@@ -251,6 +262,17 @@ export default function InquiryDetailPage() {
     // Status may have changed to quotation_sent — reload inquiry to reflect it
     await reloadInquiry()
     setStatus(s => s === 'new' || s === 'in_discussion' ? 'quotation_sent' : s)
+  }
+
+  // ── Copy share link ───────────────────────────────────────────────────────────
+
+  const handleCopyShareLink = () => {
+    if (!inquiry?.share_token) return
+    const url = `${window.location.origin}/showroom/share/${inquiry.share_token}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
   // ── Derived totals ────────────────────────────────────────────────────────────
@@ -562,6 +584,26 @@ export default function InquiryDetailPage() {
               >
                 <FileDown size={14} strokeWidth={2} />
                 {pdfLoading ? 'Generating…' : 'Generate Quotation'}
+              </button>
+
+              <button
+                onClick={handleCopyShareLink}
+                title="Copy shareable link for customer"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '10px 18px',
+                  background: copied ? '#ECFDF5' : '#fff',
+                  color: copied ? '#065F46' : colors.secondary,
+                  border: `1.5px solid ${copied ? '#A7F3D0' : colors.border}`,
+                  borderRadius: '8px',
+                  fontSize: '13px', fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: font.body,
+                  transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                }}
+              >
+                {copied ? <Check size={14} strokeWidth={2.5} /> : <Link2 size={14} strokeWidth={2} />}
+                {copied ? 'Copied!' : 'Copy Share Link'}
               </button>
             </div>
 

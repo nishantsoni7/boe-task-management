@@ -22,7 +22,10 @@ async function requireAuth(req: NextRequest) {
   return { client, id: profile.id as string, role: profile.role as string }
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 // GET /api/showroom/inquiry/[id]
+// Supports ?viewAs=<userId> for admin callers: enforces ownership check against viewAs user.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -46,7 +49,12 @@ export async function GET(
 
   if (error || !inquiry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  if (caller.role !== 'admin' && inquiry.salesperson_id !== caller.id) {
+  if (caller.role === 'admin') {
+    const viewAs = req.nextUrl.searchParams.get('viewAs')
+    if (viewAs && UUID_RE.test(viewAs) && inquiry.salesperson_id !== viewAs) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+  } else if (inquiry.salesperson_id !== caller.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

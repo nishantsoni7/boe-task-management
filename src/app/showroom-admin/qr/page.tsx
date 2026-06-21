@@ -9,6 +9,7 @@ import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { QRCodeSVG } from 'qrcode.react'
 import { colors, font } from '@/lib/tokens'
 import { Printer } from 'lucide-react'
+import { useViewAs } from '@/hooks/useViewAs'
 
 export default function MyQRPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -17,6 +18,7 @@ export default function MyQRPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile } = useViewAs()
 
   useEffect(() => {
     const init = async () => {
@@ -37,12 +39,25 @@ export default function MyQRPage() {
       if (!hasAccess) { router.replace('/modules'); return }
 
       setProfile(prof)
-      setQrUrl(`${window.location.origin}/showroom/join?sp=${session.user.id}`)
+      // In view mode, generate QR for the viewed user; otherwise for self
+      const spId = (prof.role === 'admin' && viewAsUserId) ? viewAsUserId : session.user.id
+      setQrUrl(`${window.location.origin}/showroom/join?sp=${spId}`)
       setLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [viewAsUserId])
+
+  // Redirect when view mode switches to a user without showroom access
+  useEffect(() => {
+    if (!profile || !viewAsUserId || !viewAsProfile) return
+    const effectiveHasAccess = viewAsProfile.role === 'admin' ||
+      viewAsProfile.team?.toLowerCase().includes('sales') ||
+      viewAsProfile.team?.toLowerCase().includes('showroom')
+    if (!effectiveHasAccess) router.replace('/modules')
+  }, [profile, viewAsUserId, viewAsProfile, router])
+
+  const effectiveProfile = viewAsProfile ?? profile
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -94,7 +109,7 @@ export default function MyQRPage() {
             My Showroom QR
           </h1>
           <div style={{ fontSize: '13px', color: colors.secondary, marginBottom: '28px' }}>
-            {profile?.full_name}
+            {effectiveProfile?.full_name}
           </div>
 
           <div style={{
@@ -113,7 +128,7 @@ export default function MyQRPage() {
                 marginSize={1}
                 fgColor="#111318"
                 bgColor="#ffffff"
-                title={`Showroom QR for ${profile?.full_name}`}
+                title={`Showroom QR for ${effectiveProfile?.full_name}`}
               />
             )}
           </div>
