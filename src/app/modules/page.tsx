@@ -7,6 +7,7 @@ import type { UserProfile } from '@/lib/types'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
 import DailyQuoteLoader from '@/components/DailyQuoteLoader'
+import { useViewAs } from '@/hooks/useViewAs'
 
 // ── Module definition ─────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ export default function BoeOsHomePage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { viewAsUserId, viewAsProfile } = useViewAs()
 
   useEffect(() => {
     const init = async () => {
@@ -85,10 +87,13 @@ export default function BoeOsHomePage() {
     router.replace('/login')
   }
 
-  const isAdmin   = profile?.role === 'admin'
+  // In View Mode use the viewed user's profile for card visibility; fall back to actual profile.
+  const effectiveProfile = (viewAsUserId && viewAsProfile) ? viewAsProfile : profile
+
+  const isAdmin   = effectiveProfile?.role === 'admin'
   const hasShowroomAccess = isAdmin ||
-    (profile?.team?.toLowerCase().includes('sales') ?? false) ||
-    (profile?.team?.toLowerCase().includes('showroom') ?? false)
+    (effectiveProfile?.team?.toLowerCase().includes('sales') ?? false) ||
+    (effectiveProfile?.team?.toLowerCase().includes('showroom') ?? false)
 
   const modules: ModuleDef[] = [
     {
