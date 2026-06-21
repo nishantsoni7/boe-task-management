@@ -7,7 +7,7 @@ import type { UserProfile, InquiryStatus, QuotationStatus } from '@/lib/types'
 import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package } from 'lucide-react'
+import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package, Box, User, Phone, CalendarDays, Save } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -74,7 +74,6 @@ function initItemEdits(
 ): Record<string, { rate: string; note: string }> {
   const next: Record<string, { rate: string; note: string }> = {}
   for (const item of items) {
-    // Preserve in-progress edits; seed fresh entries from saved DB values.
     next[item.id] = existing[item.id] ?? {
       rate: String(item.rate_override ?? item.mrp_at_time),
       note: item.customization_note ?? '',
@@ -103,22 +102,20 @@ export default function InquiryDetailPage() {
   const [token,           setToken]           = useState('')
   const [salespersonName, setSalespersonName] = useState('')
 
-  // Editable fields
   const [status,          setStatus]          = useState<InquiryStatus>('new')
   const [discountPercent, setDiscountPercent] = useState('0')
   const [notes,           setNotes]           = useState('')
 
-  // Item editing state: itemId → pending qty string
   const [pendingQty,   setPendingQty]   = useState<Record<string, string>>({})
   const [removingId,   setRemovingId]   = useState<string | null>(null)
 
-  // Local editable overrides for rate and customization note (persisted via Save Edits)
   const [itemEdits,    setItemEdits]    = useState<Record<string, { rate: string; note: string }>>({})
   const [savingEdits,  setSavingEdits]  = useState(false)
   const [saveEditsOk,  setSaveEditsOk]  = useState(false)
   const [saveEditsErr, setSaveEditsErr] = useState('')
 
-  // Product search
+  const [savingQuotation, setSavingQuotation] = useState(false)
+
   const [search,      setSearch]      = useState('')
   const [addingId,    setAddingId]    = useState<string | null>(null)
   const [searchOpen,  setSearchOpen]  = useState(false)
@@ -174,7 +171,6 @@ export default function InquiryDetailPage() {
       setNotes(inq.notes ?? '')
       setItemEdits(initItemEdits(inq.showroom_inquiry_items, {}))
 
-      // Fetch salesperson name (may differ from caller when admin views another user's inquiry)
       const { data: sp } = await supabase
         .from('users')
         .select('full_name')
@@ -206,7 +202,6 @@ export default function InquiryDetailPage() {
     if (res.ok) {
       const data = await res.json()
       setInquiry(data.inquiry)
-      // Preserve existing edits; only seed new items that weren't edited before
       setItemEdits(prev => initItemEdits(data.inquiry.showroom_inquiry_items, prev))
     }
   }
@@ -235,7 +230,7 @@ export default function InquiryDetailPage() {
     setSaving(false)
   }
 
-  // ── Save per-item quotation edits (rate_override + customization_note) ────────
+  // ── Save per-item quotation edits ─────────────────────────────────────────────
 
   const handleSaveItemEdits = async (): Promise<boolean> => {
     setSavingEdits(true)
@@ -316,7 +311,6 @@ export default function InquiryDetailPage() {
     setPdfLoading(true)
     setPdfError('')
 
-    // Persist item edits to DB before generating so PDF always reflects saved state
     const saved = await handleSaveItemEdits()
     if (!saved) {
       setPdfLoading(false)
@@ -356,7 +350,6 @@ export default function InquiryDetailPage() {
     a.click()
     URL.revokeObjectURL(url)
     setPdfLoading(false)
-    // Status may have changed to quotation_sent — reload inquiry to reflect it
     await reloadInquiry()
     setStatus(s => s === 'new' || s === 'in_discussion' ? 'quotation_sent' : s)
   }
@@ -367,11 +360,8 @@ export default function InquiryDetailPage() {
   const [outcomeError,   setOutcomeError]   = useState('')
 
   const handleMarkOutcome = async (outcome: 'converted' | 'lost') => {
-    if (outcome === 'lost') {
-      if (!window.confirm('Mark this quotation as lost?')) return
-    } else {
-      if (!window.confirm('Mark this quotation as converted?')) return
-    }
+    const label = outcome === 'converted' ? 'converted' : 'lost'
+    if (!window.confirm(`Mark this quotation as ${label}?`)) return
 
     setOutcomeLoading(outcome)
     setOutcomeError('')
@@ -396,6 +386,14 @@ export default function InquiryDetailPage() {
     setOutcomeLoading(null)
   }
 
+  // ── Combined Save Quotation ───────────────────────────────────────────────────
+
+  const handleSaveQuotation = async () => {
+    setSavingQuotation(true)
+    await Promise.all([handleSaveItemEdits(), handleSave()])
+    setSavingQuotation(false)
+  }
+
   // ── WhatsApp share ────────────────────────────────────────────────────────────
 
   const handleWhatsAppShare = () => {
@@ -414,8 +412,6 @@ export default function InquiryDetailPage() {
     ].join('\n')
 
     const encoded = encodeURIComponent(message)
-
-    // Normalise mobile: strip non-digits, add India country code if 10-digit local number
     const digits = (inquiry.customer_mobile ?? '').replace(/\D/g, '')
     let phone = ''
     if (digits.length === 10) {
@@ -423,7 +419,7 @@ export default function InquiryDetailPage() {
     } else if (digits.length === 12 && digits.startsWith('91')) {
       phone = digits
     } else if (digits.length > 0) {
-      phone = digits  // use as-is for other formats
+      phone = digits
     }
 
     const url = phone
@@ -456,7 +452,6 @@ export default function InquiryDetailPage() {
   const discountAmount = subtotal * discPct / 100
   const finalTotal     = subtotal - discountAmount
 
-  // Product search results
   const searchResults = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return []
@@ -491,467 +486,601 @@ export default function InquiryDetailPage() {
       <button
         onClick={() => router.push('/showroom-admin')}
         style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          fontSize: '13px', color: colors.tertiary,
+          display: 'inline-flex', alignItems: 'center', gap: '6px',
+          fontSize: '13px', color: '#6B7384',
           background: 'none', border: 'none', cursor: 'pointer',
-          padding: '0 0 20px', fontFamily: font.body,
+          padding: '0 0 22px', fontFamily: font.body, fontWeight: 500,
         }}
       >
         <ArrowLeft size={14} strokeWidth={2} /> Back to Inquiries
       </button>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '680px' }}>
+      {/* Two-column layout */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) 340px',
+        gap: '24px',
+        alignItems: 'flex-start',
+      }}>
 
-        {/* ── Quotation summary ────────────────────────────────────────────── */}
-        <Section title="Quotation">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <span style={{
-                fontFamily: font.mono, fontSize: '15px', fontWeight: 700, color: '#1A2035',
-                letterSpacing: '0.01em',
-              }}>
-                {inquiry.quotation_no ?? 'Pending assignment'}
-              </span>
-              <QuotationBadge status={inquiry.quotation_status} />
+        {/* ── LEFT ──────────────────────────────────────────────────────── */}
+        <div>
+          {/* Products container */}
+          <div style={{
+            background: '#ffffff',
+            border: '1px solid #e5e7eb',
+            borderRadius: '16px',
+            padding: '16px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+          }}>
+            {/* Header */}
+            <div style={{
+              fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em',
+              textTransform: 'uppercase', color: '#8C94A6',
+              marginBottom: '16px',
+            }}>
+              Products · {items.length}
             </div>
-            <Grid>
-              <KV label="Created"     value={new Date(inquiry.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} />
-              <KV label="Salesperson" value={salespersonName || '—'} />
-              <KV label="Customer"    value={inquiry.customer_name} />
-              <KV label="Final Value" value={`₹${Math.round(finalTotal).toLocaleString('en-IN')}`} />
-            </Grid>
 
-            {/* Outcome actions — hidden once already converted or lost */}
-            {inquiry.quotation_status !== 'converted' && inquiry.quotation_status !== 'lost' && (
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingTop: '4px' }}>
-                <button
-                  onClick={() => handleMarkOutcome('converted')}
-                  disabled={outcomeLoading !== null}
-                  style={{
-                    padding: '7px 16px',
-                    background: outcomeLoading === 'converted' ? '#D1FAE5' : '#ECFDF5',
-                    color: '#065F46',
-                    border: '1.5px solid #A7F3D0',
-                    borderRadius: '8px',
-                    fontSize: '12px', fontWeight: 600,
-                    cursor: outcomeLoading !== null ? 'default' : 'pointer',
-                    opacity: outcomeLoading !== null ? 0.6 : 1,
-                    fontFamily: font.body,
-                  }}
-                >
-                  {outcomeLoading === 'converted' ? 'Saving…' : 'Mark Converted'}
-                </button>
-                <button
-                  onClick={() => handleMarkOutcome('lost')}
-                  disabled={outcomeLoading !== null}
-                  style={{
-                    padding: '7px 16px',
-                    background: outcomeLoading === 'lost' ? '#FEE2E2' : '#FEF2F2',
-                    color: '#991B1B',
-                    border: '1.5px solid #FECACA',
-                    borderRadius: '8px',
-                    fontSize: '12px', fontWeight: 600,
-                    cursor: outcomeLoading !== null ? 'default' : 'pointer',
-                    opacity: outcomeLoading !== null ? 0.6 : 1,
-                    fontFamily: font.body,
-                  }}
-                >
-                  {outcomeLoading === 'lost' ? 'Saving…' : 'Mark Lost'}
-                </button>
+            {/* Product cards */}
+            {items.length === 0 ? (
+              <div style={{ fontSize: '13px', color: colors.muted, padding: '8px 0 16px' }}>
+                No products yet. Search below to add.
               </div>
-            )}
-            {outcomeError && (
-              <div style={{ fontSize: '12px', color: '#B91C1C', paddingTop: '2px' }}>{outcomeError}</div>
-            )}
-          </div>
-        </Section>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '14px' }}>
+                {items.map((item, idx) => {
+                  const prod = item.showroom_products
+                  const rateVal = parseFloat(itemEdits[item.id]?.rate ?? '')
+                  const effectiveRate = (isNaN(rateVal) || rateVal <= 0) ? item.mrp_at_time : rateVal
+                  const lineTotal = effectiveRate * item.quantity
+                  const isRemoving = removingId === item.id
+                  const primaryImg = prod?.images?.[0] ?? prod?.image_url ?? null
+                  const hasCustomNote = (itemEdits[item.id]?.note ?? '').trim().length > 0
 
-        {/* ── Customer details ─────────────────────────────────────────────── */}
-        <Section title="Customer">
-          <Grid>
-            <KV label="Name"    value={inquiry.customer_name} />
-            <KV label="Mobile"  value={inquiry.customer_mobile} />
-            {inquiry.company     && <KV label="Company"  value={inquiry.company} />}
-            {inquiry.city        && <KV label="City"     value={inquiry.city} />}
-            {inquiry.project_name && <KV label="Project" value={inquiry.project_name} />}
-            <KV label="Source"  value={inquiry.lead_source} />
-            <KV label="Date"    value={new Date(inquiry.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} />
-          </Grid>
-        </Section>
+                  const dimParts: string[] = []
+                  if (prod?.dimensions) {
+                    const d = prod.dimensions
+                    const u = d.unit === 'inches' ? '"' : ` ${d.unit ?? 'in'}`
+                    if (d.width  != null) dimParts.push(`W ${d.width}${u}`)
+                    if (d.depth  != null) dimParts.push(`D ${d.depth}${u}`)
+                    if (d.height != null) dimParts.push(`H ${d.height}${u}`)
+                  }
+                  const dimStr = dimParts.length > 0 ? dimParts.join(' × ') : null
 
-        {/* ── Items ────────────────────────────────────────────────────────── */}
-        <Section title={`Products · ${items.length}`}>
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        position: 'relative',
+                        background: '#ffffff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '14px',
+                        padding: '12px 16px 12px 52px',
+                        overflow: 'hidden',
+                        opacity: isRemoving ? 0.4 : 1,
+                        transition: 'opacity 0.2s',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      {/* # badge — absolute top-left */}
+                      <div style={{
+                        position: 'absolute', top: '16px', left: '11px',
+                        width: '30px', height: '30px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: '#F3F4F6', borderRadius: '7px',
+                        fontSize: '10px', fontWeight: 700, color: '#6B7384',
+                        fontFamily: font.body, flexShrink: 0,
+                      }}>
+                        #{idx + 1}
+                      </div>
 
-          {items.length === 0 ? (
-            <div style={{ fontSize: '13px', color: colors.muted, padding: '12px 0' }}>
-              No products. Use the search below to add products.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-              {items.map(item => {
-                const prod = item.showroom_products
-                const rateVal = parseFloat(itemEdits[item.id]?.rate ?? '')
-                const effectiveRate = (isNaN(rateVal) || rateVal <= 0) ? item.mrp_at_time : rateVal
-                const lineTotal = effectiveRate * item.quantity
-                const isRemoving = removingId === item.id
-                return (
-                  <div key={item.id} style={{
-                    background: colors.raised,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '9px', padding: '10px 14px',
-                    opacity: isRemoving ? 0.4 : 1,
-                  }}>
-                    {/* Main row: thumbnail · info · qty · total · remove */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-
-                      {/* Product thumbnail */}
-                      {(() => {
-                        const primaryImg = prod?.images?.[0] ?? prod?.image_url ?? null
-                        return (
-                          <div style={{
-                            width: 44, height: 44, flexShrink: 0,
-                            borderRadius: '7px',
-                            background: colors.float,
-                            border: `1px solid ${colors.border}`,
-                            overflow: 'hidden',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}>
-                            {primaryImg ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={primaryImg} alt={prod?.name ?? ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            ) : (
-                              <Package size={16} color={colors.muted} strokeWidth={1.5} />
-                            )}
-                          </div>
-                        )
-                      })()}
-
-                      {/* Code + name + dims + MRP */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* Code + delete — absolute top-right */}
+                      <div style={{
+                        position: 'absolute', top: '20px', right: '14px',
+                        display: 'flex', alignItems: 'center', gap: '7px',
+                      }}>
                         <span style={{
-                          fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
-                          color: '#1A2035', background: 'rgba(26,32,53,0.07)',
-                          borderRadius: '3px', padding: '1px 5px',
+                          fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                          fontFeatureSettings: '"tnum" 1',
+                          fontSize: '10px', fontWeight: 700,
+                          color: '#4A5568', background: '#ECEEF2',
+                          borderRadius: '6px', padding: '2px 8px',
+                          letterSpacing: '0.05em',
                         }}>
                           {prod?.product_code ?? '—'}
                         </span>
-                        <div style={{ fontSize: '13px', fontWeight: 500, color: colors.primary, marginTop: '2px', lineHeight: 1.3 }}>
-                          {prod?.name ?? 'Unknown product'}
-                        </div>
-                        {prod?.dimensions && (() => {
-                          const d = prod.dimensions
-                          const u = d.unit === 'inches' ? '"' : ` ${d.unit ?? 'in'}`
-                          const parts: string[] = []
-                          if (d.width  != null) parts.push(`W ${d.width}${u}`)
-                          if (d.depth  != null) parts.push(`D ${d.depth}${u}`)
-                          if (d.height != null) parts.push(`H ${d.height}${u}`)
-                          return parts.length > 0 ? (
-                            <div style={{ fontSize: '10px', color: colors.muted, fontFamily: font.mono, marginTop: '1px' }}>
-                              {parts.join(' × ')}
-                            </div>
-                          ) : null
-                        })()}
-                        <div style={{ fontSize: '11px', color: colors.muted, fontFamily: font.mono, marginTop: '1px' }}>
-                          Rs.{Number(item.mrp_at_time).toLocaleString('en-IN')} MRP
-                        </div>
+                        <button
+                          onClick={() => handleRemove(item.id)}
+                          disabled={isRemoving}
+                          title="Remove item"
+                          style={{
+                            background: 'none', border: 'none',
+                            color: '#C8D0DC', cursor: isRemoving ? 'default' : 'pointer',
+                            display: 'flex', alignItems: 'center', padding: '2px',
+                            borderRadius: '4px',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.color = '#EF4444' }}
+                          onMouseLeave={e => { e.currentTarget.style.color = '#C8D0DC' }}
+                        >
+                          <Trash2 size={13} strokeWidth={1.8} />
+                        </button>
                       </div>
 
-                      {/* Qty input */}
-                      <input
-                        type="number"
-                        min={1}
-                        value={pendingQty[item.id] ?? item.quantity}
-                        onChange={e => setPendingQty(p => ({ ...p, [item.id]: e.target.value }))}
-                        onBlur={() => handleQtyBlur(item)}
-                        style={{
-                          width: '56px', padding: '6px 8px',
-                          fontSize: '13px', fontWeight: 600, textAlign: 'center',
-                          border: `1.5px solid ${colors.border}`, borderRadius: '6px',
-                          background: '#fff', color: colors.primary,
-                          fontFamily: font.body,
-                        }}
-                      />
-
-                      {/* Line total */}
+                      {/* Body: image | right content */}
                       <div style={{
-                        width: '90px', textAlign: 'right', flexShrink: 0,
-                        fontSize: '13px', fontWeight: 600, color: colors.primary,
-                        fontFamily: font.mono,
+                        display: 'grid',
+                        gridTemplateColumns: '170px minmax(0, 1fr)',
+                        gap: '16px',
+                        alignItems: 'flex-start',
+                        height: '100%',
                       }}>
-                        ₹{Math.round(lineTotal).toLocaleString('en-IN')}
-                      </div>
+                        {/* Image */}
+                        <div style={{
+                          width: 160, height: 160,
+                          borderRadius: '12px',
+                          overflow: 'hidden',
+                          background: '#F4F5F7',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0,
+                          alignSelf: 'flex-start',
+                          marginTop: '2px',
+                        }}>
+                          {primaryImg ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={primaryImg}
+                              alt={prod?.name ?? ''}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <Package size={32} color="#C0C8D8" strokeWidth={1.2} />
+                          )}
+                        </div>
 
-                      {/* Remove */}
-                      <button
-                        onClick={() => handleRemove(item.id)}
-                        disabled={isRemoving}
-                        title="Remove"
-                        style={{
-                          background: 'none', border: 'none',
-                          color: colors.muted, cursor: isRemoving ? 'default' : 'pointer',
-                          display: 'flex', alignItems: 'center', flexShrink: 0,
-                        }}
-                      >
-                        <Trash2 size={14} strokeWidth={1.8} />
-                      </button>
-                    </div>
+                        {/* Right: grid rows, compact */}
+                        <div style={{
+                          minWidth: 0, width: '100%', overflow: 'hidden',
+                          display: 'grid',
+                          gridTemplateRows: 'auto auto auto',
+                          rowGap: '8px',
+                          alignContent: 'flex-start',
+                          paddingTop: '2px',
+                        }}>
+                          {/* Title block */}
+                          <div>
+                            <div style={{
+                              fontSize: '19px', fontWeight: 700,
+                              color: '#0F1117', lineHeight: 1.2,
+                              fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                              letterSpacing: '-0.02em',
+                              paddingRight: '150px',
+                            }}>
+                              {prod?.name ?? 'Unknown product'}
+                            </div>
+                            <div style={{
+                              fontSize: '14px', color: '#6B7384', fontWeight: 400,
+                              marginTop: '3px',
+                            }}>
+                              {prod?.category}
+                            </div>
+                          </div>
 
-                    {/* Rate override + customization note */}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <label style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          Rate (Rs.)
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          value={itemEdits[item.id]?.rate ?? ''}
-                          onChange={e => setItemEdits(prev => ({
-                            ...prev,
-                            [item.id]: { ...(prev[item.id] ?? { rate: '', note: '' }), rate: e.target.value },
-                          }))}
-                          placeholder={String(item.mrp_at_time)}
-                          style={{
-                            width: '100px', padding: '5px 8px',
-                            fontSize: '12px', fontWeight: 600, fontFamily: font.mono,
-                            border: `1.5px solid ${colors.border}`, borderRadius: '6px',
-                            background: '#fff', color: colors.primary, outline: 'none',
-                          }}
-                        />
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: '160px' }}>
-                        <label style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          Customization Note
-                        </label>
-                        <input
-                          type="text"
-                          value={itemEdits[item.id]?.note ?? ''}
-                          onChange={e => setItemEdits(prev => ({
-                            ...prev,
-                            [item.id]: { ...(prev[item.id] ?? { rate: '', note: '' }), note: e.target.value },
-                          }))}
-                          placeholder="e.g. custom fabric, color change…"
-                          style={{
-                            width: '100%', padding: '5px 8px',
-                            fontSize: '12px', fontFamily: font.body,
-                            border: `1.5px solid ${colors.border}`, borderRadius: '6px',
-                            background: '#fff', color: colors.primary, outline: 'none',
+                          {/* Info row: all 4 in one line */}
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            flexWrap: 'nowrap',
+                          }}>
+                            {/* Dimensions — fixed width so MRP always aligns */}
+                            <div style={{ width: 190, flexShrink: 0 }}>
+                              {dimStr ? (
+                                <div style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: '6px',
+                                  background: '#F8F9FB',
+                                  border: '1px solid #E8EAED',
+                                  borderRadius: '7px', padding: '6px 9px',
+                                }}>
+                                  <Box size={10} color="#94A3B8" strokeWidth={1.8} style={{ flexShrink: 0, marginTop: '2px' }} />
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{
+                                      fontSize: '8px', fontWeight: 700, color: '#94A3B8',
+                                      textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px',
+                                    }}>
+                                      Dimensions
+                                    </div>
+                                    <div style={{
+                                      fontSize: '11px', fontWeight: 600, color: '#475569',
+                                      fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                      fontFeatureSettings: '"tnum" 1',
+                                      whiteSpace: 'nowrap',
+                                    }}>
+                                      {dimStr}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ padding: '6px 0' }}>
+                                  <div style={{
+                                    fontSize: '8px', fontWeight: 700, color: '#94A3B8',
+                                    textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '2px',
+                                  }}>
+                                    Dimensions
+                                  </div>
+                                  <div style={{
+                                    fontSize: '11px', fontWeight: 400, color: '#C0C8D8',
+                                    fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                  }}>
+                                    Not added
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#E8EAED', flexShrink: 0 }} />
+
+                            {/* MRP / PC */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flexShrink: 0 }}>
+                              <div style={{
+                                fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
+                                textTransform: 'uppercase', letterSpacing: '0.1em',
+                              }}>
+                                MRP / PC
+                              </div>
+                              <div style={{
+                                fontSize: '17px', fontWeight: 700, color: '#1A2035',
+                                fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                fontFeatureSettings: '"tnum" 1', letterSpacing: '-0.01em',
+                              }}>
+                                ₹{Number(item.mrp_at_time).toLocaleString('en-IN')}
+                              </div>
+                            </div>
+
+                            <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#E8EAED', flexShrink: 0 }} />
+
+                            {/* QTY */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flexShrink: 0 }}>
+                              <div style={{
+                                fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
+                                textTransform: 'uppercase', letterSpacing: '0.1em',
+                              }}>
+                                QTY
+                              </div>
+                              <input
+                                type="number"
+                                min={1}
+                                value={pendingQty[item.id] ?? item.quantity}
+                                onChange={e => setPendingQty(p => ({ ...p, [item.id]: e.target.value }))}
+                                onBlur={() => handleQtyBlur(item)}
+                                style={{
+                                  width: '76px', height: '36px',
+                                  padding: '0 6px',
+                                  fontSize: '15px', fontWeight: 700, textAlign: 'center',
+                                  border: '1.5px solid #E8EAED', borderRadius: '7px',
+                                  background: '#fff', color: '#0F1117',
+                                  fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                  fontFeatureSettings: '"tnum" 1',
+                                  outline: 'none', boxSizing: 'border-box',
+                                }}
+                              />
+                            </div>
+
+                            <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#E8EAED', flexShrink: 0 }} />
+
+                            {/* Line Total */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flexShrink: 0 }}>
+                              <div style={{
+                                fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
+                                textTransform: 'uppercase', letterSpacing: '0.1em',
+                              }}>
+                                Line Total
+                              </div>
+                              <div style={{
+                                fontSize: '18px', fontWeight: 800, color: '#0F1117',
+                                fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                                letterSpacing: '-0.03em', fontFeatureSettings: '"tnum" 1',
+                                lineHeight: 1,
+                              }}>
+                                ₹{Math.round(lineTotal).toLocaleString('en-IN')}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Customization note */}
+                          <div style={{
+                            borderRadius: '7px',
+                            border: `1px solid ${hasCustomNote ? '#facc15' : '#e5e7eb'}`,
+                            background: hasCustomNote ? '#fffbeb' : '#F9FAFB',
+                            padding: '8px 12px',
+                            width: '100%',
+                            maxWidth: '600px',
                             boxSizing: 'border-box',
-                          }}
-                        />
+                            minHeight: '58px', maxHeight: '64px',
+                          }}>
+                            <div style={{
+                              fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
+                              textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px',
+                            }}>
+                              Customization Note
+                            </div>
+                            <input
+                              type="text"
+                              value={itemEdits[item.id]?.note ?? ''}
+                              onChange={e => setItemEdits(prev => ({
+                                ...prev,
+                                [item.id]: { ...(prev[item.id] ?? { rate: '', note: '' }), note: e.target.value },
+                              }))}
+                              placeholder="e.g. custom fabric, color change…"
+                              style={{
+                                width: '100%', padding: '0',
+                                fontSize: '14px', fontFamily: font.body,
+                                border: 'none', background: 'transparent',
+                                color: '#0F1117', outline: 'none', boxSizing: 'border-box',
+                              }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {/* ── Save quotation edits ─────────────────────────────────────── */}
-          {items.length > 0 && (
-            <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                onClick={handleSaveItemEdits}
-                disabled={savingEdits}
-                style={{
-                  padding: '8px 18px',
-                  background: saveEditsOk ? '#ECFDF5' : '#fff',
-                  color:      saveEditsOk ? '#065F46' : colors.secondary,
-                  border: `1.5px solid ${saveEditsOk ? '#A7F3D0' : colors.border}`,
-                  borderRadius: '8px',
-                  fontSize: '12px', fontWeight: 600,
-                  cursor: savingEdits ? 'default' : 'pointer',
-                  opacity: savingEdits ? 0.6 : 1,
-                  fontFamily: font.body,
-                  transition: 'background 0.15s, color 0.15s, border-color 0.15s',
-                }}
-              >
-                {savingEdits ? 'Saving…' : saveEditsOk ? '✓ Saved' : 'Save quotation changes'}
-              </button>
-              {saveEditsErr && (
-                <span style={{ fontSize: '12px', color: '#B91C1C' }}>{saveEditsErr}</span>
-              )}
-            </div>
-          )}
-
-          {/* ── Product search / add ──────────────────────────────────────── */}
-          <div style={{ position: 'relative' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px',
-              border: `1.5px solid ${searchOpen ? '#1A2035' : colors.border}`,
-              borderRadius: '8px', padding: '8px 12px', background: '#fff',
-            }}>
-              <Search size={14} color={colors.muted} strokeWidth={1.8} />
-              <input
-                value={search}
-                onChange={e => { setSearch(e.target.value); setSearchOpen(true) }}
-                onFocus={() => setSearchOpen(true)}
-                placeholder="Search product by name or code to add…"
-                style={{
-                  flex: 1, border: 'none', outline: 'none',
-                  fontSize: '13px', color: colors.primary, background: 'transparent',
-                  fontFamily: font.body,
-                }}
-              />
-            </div>
-
-            {searchOpen && searchResults.length > 0 && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
-                background: '#fff',
-                border: `1.5px solid ${colors.border}`,
-                borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
-                zIndex: 10, overflow: 'hidden',
-              }}>
-                {searchResults.map(prod => (
-                  <button
-                    key={prod.id}
-                    onClick={() => handleAddProduct(prod)}
-                    disabled={addingId === prod.id}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      width: '100%', padding: '10px 14px',
-                      background: 'none', border: 'none',
-                      borderBottom: `1px solid ${colors.border}`,
-                      cursor: addingId === prod.id ? 'default' : 'pointer',
-                      fontFamily: font.body, textAlign: 'left',
-                      opacity: addingId === prod.id ? 0.5 : 1,
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = colors.raised }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
-                  >
-                    <div>
-                      <span style={{
-                        fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
-                        color: '#1A2035', background: 'rgba(26,32,53,0.07)',
-                        borderRadius: '3px', padding: '1px 5px', marginRight: '6px',
-                      }}>
-                        {prod.product_code}
-                      </span>
-                      <span style={{ fontSize: '13px', color: colors.primary }}>{prod.name}</span>
-                      <span style={{ fontSize: '11px', color: colors.muted, marginLeft: '6px' }}>{prod.category}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, fontFamily: font.mono }}>
-                        ₹{Number(prod.mrp).toLocaleString('en-IN')}
-                      </span>
-                      <Plus size={13} color={colors.muted} strokeWidth={2} />
-                    </div>
-                  </button>
-                ))}
+                  )
+                })}
               </div>
             )}
-          </div>
 
-          {/* ── Totals ───────────────────────────────────────────────────── */}
-          {items.length > 0 && (
+            {/* Search + Add Product row */}
             <div style={{
-              marginTop: '16px', borderTop: `1px solid ${colors.border}`,
-              paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px',
+              borderTop: items.length > 0 ? '1px solid #f0f1f3' : 'none',
+              paddingTop: '14px',
+              position: 'relative',
+              display: 'flex', gap: '12px', alignItems: 'center',
             }}>
-              <TotalRow label="Subtotal"       value={`₹${subtotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
-              {discPct > 0 && (
-                <TotalRow label={`Discount (${discPct}%)`} value={`−₹${discountAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} muted />
-              )}
-              <TotalRow label="Final Total" value={`₹${finalTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} bold />
-            </div>
-          )}
-        </Section>
+              <div style={{
+                flex: 1,
+                display: 'flex', alignItems: 'center', gap: '10px',
+                border: `1px solid ${searchOpen ? '#1A2035' : '#E8EAED'}`,
+                borderRadius: '10px', padding: '0 14px', background: '#fff',
+                height: '44px',
+                transition: 'border-color 0.14s',
+              }}>
+                <Search size={14} color="#8C94A6" strokeWidth={1.8} />
+                <input
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setSearchOpen(true) }}
+                  onFocus={() => setSearchOpen(true)}
+                  placeholder="Search product by name or code to add…"
+                  style={{
+                    flex: 1, border: 'none', outline: 'none',
+                    fontSize: '13px', color: '#0F1117', background: 'transparent',
+                    fontFamily: font.body,
+                  }}
+                />
+              </div>
 
-        {/* ── Status / Discount / Notes / Save ──────────────────────────── */}
-        <Section title="Manage">
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-            {/* Status */}
-            <Field label="Status">
-              <select
-                value={status}
-                onChange={e => setStatus(e.target.value as InquiryStatus)}
-                style={inputStyle}
-              >
-                {STATUSES.map(s => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-            </Field>
-
-            {/* Discount */}
-            <Field label="Discount %">
-              <input
-                type="number" min={0} max={100} step={0.5}
-                value={discountPercent}
-                onChange={e => setDiscountPercent(e.target.value)}
-                placeholder="0"
-                style={{ ...inputStyle, maxWidth: '120px' }}
-              />
-            </Field>
-
-            {/* Notes */}
-            <Field label="Notes">
-              <textarea
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Internal notes about this inquiry…"
-                rows={3}
-                style={{ ...inputStyle, resize: 'vertical' }}
-              />
-            </Field>
-
-            {saveError && <AlertBanner variant="red">{saveError}</AlertBanner>}
-            {saveOk    && <AlertBanner variant="green">Saved</AlertBanner>}
-
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button
-                onClick={handleSave}
-                disabled={saving}
+                onClick={() => setSearchOpen(true)}
                 style={{
-                  padding: '10px 22px',
-                  background: '#1A2035', color: '#fff',
-                  border: 'none', borderRadius: '8px',
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  height: '44px', padding: '0 18px',
+                  background: '#fff', color: '#1A2035',
+                  border: '1.5px solid #E8EAED', borderRadius: '10px',
                   fontSize: '13px', fontWeight: 600,
-                  cursor: saving ? 'default' : 'pointer',
-                  opacity: saving ? 0.7 : 1,
-                  fontFamily: font.body,
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                  fontFamily: font.body, flexShrink: 0,
                 }}
               >
-                {saving ? 'Saving…' : 'Save Changes'}
+                <Plus size={14} strokeWidth={2.5} />
+                Add Product
               </button>
+
+              {searchOpen && searchResults.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 160,
+                  background: '#fff',
+                  border: '1px solid #E8EAED',
+                  borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+                  zIndex: 10, overflow: 'hidden',
+                }}>
+                  {searchResults.map(prod => (
+                    <button
+                      key={prod.id}
+                      onClick={() => handleAddProduct(prod)}
+                      disabled={addingId === prod.id}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        width: '100%', padding: '10px 16px',
+                        background: 'none', border: 'none',
+                        borderBottom: '1px solid #F3F4F6',
+                        cursor: addingId === prod.id ? 'default' : 'pointer',
+                        fontFamily: font.body, textAlign: 'left',
+                        opacity: addingId === prod.id ? 0.5 : 1,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F8F9FB' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
+                    >
+                      <div>
+                        <span style={{
+                          fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                          fontFeatureSettings: '"tnum" 1',
+                          fontSize: '10px', fontWeight: 700,
+                          color: '#4A5261', background: 'rgba(0,0,0,0.06)',
+                          borderRadius: '4px', padding: '1px 6px', marginRight: '8px',
+                        }}>
+                          {prod.product_code}
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#0F1117', fontWeight: 500 }}>{prod.name}</span>
+                        <span style={{ fontSize: '11px', color: '#8C94A6', marginLeft: '6px' }}>{prod.category}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        <span style={{
+                          fontSize: '12.5px', fontWeight: 700, color: '#0F1117',
+                          fontFamily: 'var(--font-inter, Inter, sans-serif)', fontFeatureSettings: '"tnum" 1',
+                        }}>
+                          ₹{Number(prod.mrp).toLocaleString('en-IN')}
+                        </span>
+                        <Plus size={13} color="#1A2035" strokeWidth={2.2} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── RIGHT: sticky sidebar ─────────────────────────────────────── */}
+        <div style={{ position: 'sticky', top: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* 1 · Inquiry Details */}
+          <div style={sideCardStyle}>
+            <SideLabel>Inquiry Details</SideLabel>
+
+            {/* Quotation number — prominent */}
+            <div style={{ marginBottom: '18px' }}>
+              <div style={{
+                fontSize: '9.5px', fontWeight: 700, color: '#9AA3B2',
+                textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '5px',
+              }}>
+                Quotation No.
+              </div>
+              <div style={{
+                fontSize: '22px', fontWeight: 800, color: '#1A2035',
+                fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                letterSpacing: '-0.02em', fontFeatureSettings: '"tnum" 1', lineHeight: 1.1,
+              }}>
+                {inquiry.quotation_no ?? '—'}
+              </div>
+            </div>
+
+            <div style={{ height: '1px', background: '#F0F1F3', marginBottom: '18px' }} />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <IconDetailRow
+                icon={<User size={13} color="#94A3B8" strokeWidth={1.8} />}
+                label="Customer"
+                value={inquiry.customer_name}
+              />
+              <IconDetailRow
+                icon={<Phone size={13} color="#94A3B8" strokeWidth={1.8} />}
+                label="Mobile"
+                value={inquiry.customer_mobile}
+              />
+              <IconDetailRow
+                icon={<CalendarDays size={13} color="#94A3B8" strokeWidth={1.8} />}
+                label="Created"
+                value={
+                  new Date(inquiry.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) +
+                  ' · ' +
+                  new Date(inquiry.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                }
+              />
+              <IconDetailRow
+                icon={<Package size={13} color="#94A3B8" strokeWidth={1.8} />}
+                label="Items"
+                value={String(items.length)}
+              />
+            </div>
+          </div>
+
+          {/* 2 · Pricing */}
+          <div style={sideCardStyle}>
+            <SideLabel>Pricing</SideLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <Field label="Discount %">
+                <input
+                  type="number" min={0} max={100} step={0.5}
+                  value={discountPercent}
+                  onChange={e => setDiscountPercent(e.target.value)}
+                  placeholder="0"
+                  style={inputStyle}
+                />
+              </Field>
+
+              <div style={{ height: '1px', background: '#F0F1F3' }} />
+
+              <div>
+                <div style={{
+                  fontSize: '9.5px', fontWeight: 700, color: '#9AA3B2',
+                  textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px',
+                }}>
+                  Final Value
+                </div>
+                <div style={{
+                  fontSize: '28px', fontWeight: 800, color: '#0F1117',
+                  fontFeatureSettings: '"tnum" 1', letterSpacing: '-0.03em',
+                  fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                  textAlign: 'right',
+                }}>
+                  ₹{Math.round(finalTotal).toLocaleString('en-IN')}
+                </div>
+              </div>
+
+              {(saveError || saveEditsErr) && (
+                <AlertBanner variant="red">{saveError || saveEditsErr}</AlertBanner>
+              )}
+              {(saveOk && saveEditsOk) && (
+                <AlertBanner variant="green">Quotation saved</AlertBanner>
+              )}
+
+              <button
+                onClick={handleSaveQuotation}
+                disabled={savingQuotation}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                  padding: '12px 18px',
+                  background: '#fff', color: '#1A2035',
+                  border: '1.5px solid #D1D5DB', borderRadius: '10px',
+                  fontSize: '13.5px', fontWeight: 600,
+                  cursor: savingQuotation ? 'default' : 'pointer',
+                  opacity: savingQuotation ? 0.6 : 1,
+                  fontFamily: font.body, width: '100%', minHeight: '44px',
+                }}
+              >
+                <Save size={15} strokeWidth={1.8} />
+                {savingQuotation ? 'Saving…' : 'Save Quotation'}
+              </button>
+            </div>
+          </div>
+
+          {/* 3 · Share & Export */}
+          <div style={sideCardStyle}>
+            <SideLabel>Share & Export</SideLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
               <button
                 onClick={handleDownloadQuotation}
                 disabled={pdfLoading || items.length === 0}
                 title={items.length === 0 ? 'Add products before generating a quotation' : undefined}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '10px 18px',
-                  background: '#fff', color: '#1A2035',
-                  border: '1.5px solid #1A2035', borderRadius: '8px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                  padding: '11px 16px',
+                  background: '#fff',
+                  color: (pdfLoading || items.length === 0) ? '#9CA3AF' : '#1A2035',
+                  border: `1px solid ${(pdfLoading || items.length === 0) ? '#E8EAED' : '#D1D5DB'}`,
+                  borderRadius: '10px',
                   fontSize: '13px', fontWeight: 600,
                   cursor: (pdfLoading || items.length === 0) ? 'default' : 'pointer',
-                  opacity: (pdfLoading || items.length === 0) ? 0.5 : 1,
-                  fontFamily: font.body,
+                  fontFamily: font.body, width: '100%', minHeight: '44px',
                 }}
               >
-                <FileDown size={14} strokeWidth={2} />
-                {pdfLoading ? 'Generating…' : 'Generate Quotation'}
+                <FileDown size={15} strokeWidth={1.8} />
+                {pdfLoading ? 'Generating PDF…' : 'Generate Quotation PDF'}
               </button>
 
               <button
                 onClick={handleWhatsAppShare}
-                title="Share quotation message via WhatsApp"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '10px 18px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                  padding: '11px 16px',
                   background: '#fff', color: '#15803D',
-                  border: '1.5px solid #86EFAC',
-                  borderRadius: '8px',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: '10px',
                   fontSize: '13px', fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: font.body,
+                  cursor: 'pointer', fontFamily: font.body,
+                  width: '100%', minHeight: '44px',
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="#15803D" aria-hidden="true">
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
                   <path d="M12 0C5.373 0 0 5.373 0 12c0 2.122.554 4.112 1.523 5.837L.057 23.492a.75.75 0 0 0 .921.921l5.655-1.466A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.907 0-3.686-.528-5.207-1.44l-.374-.22-3.877 1.005 1.006-3.877-.22-.374A9.96 9.96 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
                 </svg>
@@ -962,80 +1091,66 @@ export default function InquiryDetailPage() {
                 onClick={handleCopyShareLink}
                 title="Copy shareable link for customer"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '10px 18px',
-                  background: copied ? '#ECFDF5' : '#fff',
-                  color: copied ? '#065F46' : colors.secondary,
-                  border: `1.5px solid ${copied ? '#A7F3D0' : colors.border}`,
-                  borderRadius: '8px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                  padding: '11px 16px',
+                  background: copied ? '#F0FDF4' : '#fff',
+                  color: copied ? '#065F46' : '#4A5261',
+                  border: `1px solid ${copied ? '#A7F3D0' : '#D1D5DB'}`,
+                  borderRadius: '10px',
                   fontSize: '13px', fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: font.body,
+                  cursor: 'pointer', fontFamily: font.body,
+                  width: '100%', minHeight: '44px',
                   transition: 'background 0.15s, color 0.15s, border-color 0.15s',
                 }}
               >
                 {copied ? <Check size={14} strokeWidth={2.5} /> : <Link2 size={14} strokeWidth={2} />}
                 {copied ? 'Copied!' : 'Copy Share Link'}
               </button>
+
+              {pdfError && <AlertBanner variant="red">{pdfError}</AlertBanner>}
             </div>
-
-            {pdfError && <AlertBanner variant="red">{pdfError}</AlertBanner>}
           </div>
-        </Section>
 
+        </div>
       </div>
     </ShowroomAdminLayout>
   )
 }
 
-// ── Small layout helpers ──────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+const sideCardStyle: React.CSSProperties = {
+  background: '#ffffff',
+  border: '1px solid #E8EAED',
+  borderRadius: '16px',
+  padding: '20px 22px 22px',
+  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+}
+
+function SideLabel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      background: colors.base,
-      border: `1.5px solid ${colors.border}`,
-      borderRadius: '12px',
-      padding: '18px 20px 20px',
+      fontSize: '10px', fontWeight: 800, letterSpacing: '0.1em',
+      textTransform: 'uppercase', color: '#8C94A6', marginBottom: '16px',
     }}>
-      <div style={{
-        fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em',
-        textTransform: 'uppercase', color: colors.muted, marginBottom: '14px',
-      }}>
-        {title}
+      {children}
+    </div>
+  )
+}
+
+function IconDetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+      <div style={{ marginTop: '1px', flexShrink: 0 }}>{icon}</div>
+      <div>
+        <div style={{
+          fontSize: '9.5px', fontWeight: 700, color: '#9AA3B2',
+          textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: '2px',
+        }}>
+          {label}
+        </div>
+        <div style={{ fontSize: '13px', fontWeight: 500, color: '#0F1117', lineHeight: 1.3 }}>{value}</div>
       </div>
-      {children}
-    </div>
-  )
-}
-
-function Grid({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px' }}>
-      {children}
-    </div>
-  )
-}
-
-function KV({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>{label}</div>
-      <div style={{ fontSize: '13px', color: colors.primary }}>{value}</div>
-    </div>
-  )
-}
-
-function TotalRow({ label, value, bold, muted }: { label: string; value: string; bold?: boolean; muted?: boolean }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: '12px', color: muted ? colors.muted : colors.secondary }}>{label}</span>
-      <span style={{
-        fontSize: bold ? '15px' : '13px',
-        fontWeight: bold ? 700 : 500,
-        color: bold ? colors.primary : muted ? colors.muted : colors.secondary,
-        fontFamily: font.mono,
-      }}>{value}</span>
     </div>
   )
 }
@@ -1043,42 +1158,19 @@ function TotalRow({ label, value, bold, muted }: { label: string; value: string;
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-      <label style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>{label}</label>
+      <label style={{ fontSize: '11px', fontWeight: 700, color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
       {children}
     </div>
-  )
-}
-
-const QUOTATION_STATUS_CONFIG: Record<QuotationStatus, { label: string; bg: string; color: string; border: string }> = {
-  draft:     { label: 'Draft',     bg: '#F3F4F6', color: '#4B5563', border: '#D1D5DB' },
-  sent:      { label: 'Sent',      bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
-  converted: { label: 'Converted', bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0' },
-  lost:      { label: 'Lost',      bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
-}
-
-function QuotationBadge({ status }: { status: QuotationStatus }) {
-  const cfg = QUOTATION_STATUS_CONFIG[status] ?? QUOTATION_STATUS_CONFIG.draft
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      padding: '3px 10px', borderRadius: '999px',
-      fontSize: '11px', fontWeight: 600, letterSpacing: '0.03em',
-      background: cfg.bg, color: cfg.color,
-      border: `1px solid ${cfg.border}`,
-      fontFamily: 'var(--font-body, DM Sans, sans-serif)',
-    }}>
-      {cfg.label}
-    </span>
   )
 }
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '9px 11px',
-  fontSize: '13px', color: '#111318',
+  fontSize: '13px', color: '#0F1117',
   background: '#fff',
-  border: '1.5px solid rgba(0,0,0,0.13)',
-  borderRadius: '7px', outline: 'none',
+  border: '1px solid #E5E7EB',
+  borderRadius: '8px', outline: 'none',
   boxSizing: 'border-box',
   fontFamily: 'var(--font-body, DM Sans, sans-serif)',
 }
