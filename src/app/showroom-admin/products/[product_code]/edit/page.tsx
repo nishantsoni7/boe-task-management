@@ -21,6 +21,68 @@ const CATEGORIES = [
   'Other',
 ]
 
+const FORM_CSS = `
+.form-card {
+  background: var(--fc-base);
+  border: 1.5px solid var(--fc-border);
+  border-radius: 16px;
+  padding: 28px;
+}
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.section-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0;
+}
+.product-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+  align-items: start;
+}
+.product-field {
+  display: flex;
+  flex-direction: column;
+}
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  display: block;
+  margin-bottom: 5px;
+}
+.field-helper {
+  font-size: 11px;
+  line-height: 1.4;
+  display: block;
+  margin-top: 4px;
+}
+.spec-row {
+  display: grid;
+  grid-template-columns: 32% 1fr 40px;
+  gap: 8px;
+  align-items: center;
+}
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--fc-border);
+}
+@media (max-width: 520px) {
+  .product-field-grid { grid-template-columns: 1fr; }
+  .form-actions       { flex-direction: column-reverse; }
+  .form-actions > *   { width: 100%; text-align: center; }
+}
+`
+
 export default function EditProductPage() {
   const params      = useParams()
   const productCode = decodeURIComponent(params.product_code as string)
@@ -32,11 +94,11 @@ export default function EditProductPage() {
   const [description, setDescription] = useState('')
   const [specs,       setSpecs]       = useState<SpecRow[]>([{ attr: '', val: '' }])
   const [imageUrl,    setImageUrl]    = useState('')
-  const [mrp,            setMrp]            = useState('')
-  const [loading,        setLoading]        = useState(true)
-  const [saving,         setSaving]         = useState(false)
-  const [error,          setError]          = useState('')
-  const [success,        setSuccess]        = useState('')
+  const [mrp,         setMrp]         = useState('')
+  const [loading,     setLoading]     = useState(true)
+  const [saving,      setSaving]      = useState(false)
+  const [error,       setError]       = useState('')
+  const [success,     setSuccess]     = useState('')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -141,27 +203,28 @@ export default function EditProductPage() {
       title="Edit Product"
       onSignOut={handleSignOut}
     >
-      <div style={{ maxWidth: '560px' }}>
+      <style>{FORM_CSS}</style>
+      <div style={{
+        maxWidth: '780px',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ['--fc-base' as any]: colors.base,
+        ['--fc-border' as any]: colors.border,
+      }}>
 
-        <div style={{
-          background: colors.base,
-          border: `1.5px solid ${colors.border}`,
-          borderRadius: '14px',
-          padding: '28px 28px 32px',
-        }}>
-          <div style={{ marginBottom: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{
-                fontFamily: font.mono, fontSize: '11px', fontWeight: 600,
-                color: '#1A2035', background: 'rgba(26,32,53,0.07)',
-                borderRadius: '4px', padding: '2px 8px',
-              }}>
-                {productCode}
-              </span>
-              <span style={{ fontSize: '11px', color: colors.muted }}>
-                Product code cannot be changed after creation
-              </span>
-            </div>
+        <div className="form-card">
+
+          {/* Product code badge */}
+          <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              fontFamily: font.mono, fontSize: '11px', fontWeight: 600,
+              color: '#1A2035', background: 'rgba(26,32,53,0.07)',
+              borderRadius: '4px', padding: '2px 8px',
+            }}>
+              {productCode}
+            </span>
+            <span style={{ fontSize: '11px', color: colors.muted }}>
+              Product code cannot be changed after creation
+            </span>
           </div>
 
           {error && (
@@ -176,118 +239,116 @@ export default function EditProductPage() {
           )}
 
           {product && (
-            <>
-            <style>{`.sp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:520px){.sp-grid{grid-template-columns:1fr}}`}</style>
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
 
-              <div className="sp-grid">
-                <Field label="Name *">
-                  <input
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="Dining Chair"
-                    style={inputStyle}
+              {/* ── Basic Information ───────────────────────── */}
+              <div className="form-section">
+                <p className="section-label">Basic information</p>
+
+                <div className="product-field-grid">
+                  <Field label="Name *">
+                    <input
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      placeholder="Dining Chair"
+                      style={inputStyle}
+                    />
+                  </Field>
+
+                  <Field label="Category *">
+                    <select
+                      value={category}
+                      onChange={e => setCategory(e.target.value)}
+                      style={inputStyle}
+                    >
+                      <option value="">Select category</option>
+                      {CATEGORIES.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="MRP (₹) *">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={mrp}
+                      onChange={e => setMrp(e.target.value)}
+                      placeholder="12500"
+                      style={inputStyle}
+                    />
+                  </Field>
+                </div>
+
+                <Field label="Description">
+                  <textarea
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    placeholder="Short product description shown to customers"
+                    style={{ ...inputStyle, height: '90px', resize: 'vertical' }}
                   />
                 </Field>
+              </div>
 
-                <Field label="Category *">
-                  <select
-                    value={category}
-                    onChange={e => setCategory(e.target.value)}
-                    style={inputStyle}
-                  >
-                    <option value="">Select category</option>
-                    {CATEGORIES.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </Field>
+              {/* ── Specifications ──────────────────────────── */}
+              <div className="form-section">
+                <p className="section-label">Specifications</p>
+                <SpecsEditor specs={specs} onChange={setSpecs} />
+              </div>
 
-                <Field label="MRP (₹) *">
+              {/* ── Product Image ───────────────────────────── */}
+              <div className="form-section">
+                <p className="section-label">Product image</p>
+                <Field label="Image URL" hint="Direct link to product image (JPG, PNG, WebP)">
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={mrp}
-                    onChange={e => setMrp(e.target.value)}
-                    placeholder="12500"
+                    value={imageUrl}
+                    onChange={e => setImageUrl(e.target.value)}
+                    placeholder="https://..."
                     style={inputStyle}
                   />
                 </Field>
               </div>
 
-              <Field label="Description">
-                <textarea
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  placeholder="Short product description shown to customers"
-                  rows={3}
-                  style={{ ...inputStyle, resize: 'vertical' }}
-                />
-              </Field>
-
-              <SpecsEditor specs={specs} onChange={setSpecs} />
-
-              <Field label="Image URL" hint="Direct link to product image">
-                <input
-                  value={imageUrl}
-                  onChange={e => setImageUrl(e.target.value)}
-                  placeholder="https://..."
-                  style={inputStyle}
-                />
-              </Field>
-
+              {/* Status note */}
               <div style={{
                 fontSize: '12px', color: colors.tertiary,
                 background: colors.raised,
                 border: `1px solid ${colors.border}`,
                 borderRadius: '7px', padding: '10px 12px',
+                marginTop: '-8px',
               }}>
                 Status: <strong>{product.is_active ? 'Active' : 'Inactive'}</strong> —
                 use the toggle on the products list to activate or deactivate.
               </div>
 
-              <div style={{ paddingTop: '8px', display: 'flex', gap: '10px' }}>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  style={{
-                    flex: 1, padding: '11px',
-                    background: '#1A2035', color: '#fff',
-                    border: 'none', borderRadius: '8px',
-                    fontSize: '13px', fontWeight: 600,
-                    cursor: saving ? 'default' : 'pointer',
-                    opacity: saving ? 0.7 : 1,
-                    fontFamily: font.body,
-                  }}
-                >
-                  {saving ? 'Saving…' : 'Save Changes'}
-                </button>
+              {/* ── Actions ─────────────────────────────────── */}
+              <div className="form-actions">
                 <button
                   type="button"
                   onClick={() => router.push('/showroom-admin/products')}
-                  style={{
-                    padding: '11px 20px',
-                    background: colors.float,
-                    color: colors.secondary,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '8px',
-                    fontSize: '13px', fontWeight: 500,
-                    cursor: 'pointer',
-                    fontFamily: font.body,
-                  }}
+                  style={cancelBtnStyle}
                 >
                   Cancel
                 </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  style={{ ...primaryBtnStyle, opacity: saving ? 0.7 : 1, cursor: saving ? 'default' : 'pointer' }}
+                >
+                  {saving ? 'Saving…' : 'Save Changes'}
+                </button>
               </div>
+
             </form>
-            </>
           )}
         </div>
       </div>
     </ShowroomAdminLayout>
   )
 }
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function jsonToSpecs(raw: unknown): SpecRow[] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [{ attr: '', val: '' }]
@@ -304,82 +365,70 @@ function specsToJson(rows: SpecRow[]): Record<string, string> | null {
   return Object.keys(obj).length > 0 ? obj : null
 }
 
-const SPEC_PLACEHOLDERS = ['Material', 'Height', 'Width', 'Depth', 'Finish', 'Fabric', 'Seat Height']
+const SPEC_ATTR_PLACEHOLDERS = ['Material', 'Height', 'Width', 'Depth', 'Finish', 'Fabric', 'Seat Height']
+
 
 function SpecsEditor({ specs, onChange }: { specs: SpecRow[]; onChange: (rows: SpecRow[]) => void }) {
   const update = (i: number, field: 'attr' | 'val', value: string) => {
-    const next = specs.map((r, idx) => idx === i ? { ...r, [field]: value } : r)
-    onChange(next)
+    onChange(specs.map((r, idx) => idx === i ? { ...r, [field]: value } : r))
   }
   const remove = (i: number) => onChange(specs.filter((_, idx) => idx !== i))
   const add    = () => onChange([...specs, { attr: '', val: '' }])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <label style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>
-        Specifications
-      </label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
       {specs.map((row, i) => (
-        <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <div key={i} className="spec-row">
           <input
             value={row.attr}
             onChange={e => update(i, 'attr', e.target.value)}
-            placeholder={SPEC_PLACEHOLDERS[i % SPEC_PLACEHOLDERS.length]}
-            style={{ ...inputStyle, flex: '0 0 38%' }}
+            placeholder={`e.g. ${SPEC_ATTR_PLACEHOLDERS[i % SPEC_ATTR_PLACEHOLDERS.length]}`}
+            style={inputStyle}
           />
           <input
             value={row.val}
             onChange={e => update(i, 'val', e.target.value)}
-            placeholder="Value"
-            style={{ ...inputStyle, flex: 1 }}
+            placeholder="e.g. Steel"
+            style={inputStyle}
           />
           <button
             type="button"
             onClick={() => remove(i)}
-            style={{
-              flexShrink: 0, width: '28px', height: '28px',
-              border: '1.5px solid rgba(0,0,0,0.13)', borderRadius: '6px',
-              background: '#fff', color: colors.muted,
-              cursor: 'pointer', fontSize: '14px', lineHeight: 1,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
+            style={removeBtnStyle}
           >
             ×
           </button>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={add}
-        style={{
-          alignSelf: 'flex-start', marginTop: '2px',
-          padding: '5px 12px', fontSize: '12px', fontWeight: 500,
-          background: colors.float, color: colors.secondary,
-          border: `1px solid ${colors.border}`, borderRadius: '6px',
-          cursor: 'pointer', fontFamily: font.body,
-        }}
-      >
-        + Add Specification
-      </button>
+      <div>
+        <button
+          type="button"
+          onClick={add}
+          style={addSpecBtnStyle}
+        >
+          + Add Specification
+        </button>
+      </div>
     </div>
   )
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-      <label style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary }}>
-        {label}
-      </label>
-      {hint && <span style={{ fontSize: '11px', color: colors.muted, marginTop: '-2px' }}>{hint}</span>}
+    <div className="product-field">
+      <span className="field-label" style={{ color: colors.secondary }}>{label}</span>
       {children}
+      {hint && <span className="field-helper" style={{ color: colors.muted }}>{hint}</span>}
     </div>
   )
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────
+
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '9px 11px',
+  height: '36px',
   fontSize: '13px',
   color: '#111318',
   background: '#fff',
@@ -388,4 +437,57 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
   boxSizing: 'border-box',
   fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+}
+
+const removeBtnStyle: React.CSSProperties = {
+  width: '36px',
+  height: '36px',
+  flexShrink: 0,
+  border: '1.5px solid rgba(0,0,0,0.13)',
+  borderRadius: '7px',
+  background: '#fff',
+  color: '#888',
+  cursor: 'pointer',
+  fontSize: '16px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+}
+
+const addSpecBtnStyle: React.CSSProperties = {
+  padding: '6px 14px',
+  fontSize: '12px',
+  fontWeight: 500,
+  background: 'transparent',
+  color: '#555',
+  border: '1px solid rgba(0,0,0,0.13)',
+  borderRadius: '6px',
+  cursor: 'pointer',
+  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+}
+
+const primaryBtnStyle: React.CSSProperties = {
+  padding: '10px 24px',
+  background: '#1A2035',
+  color: '#fff',
+  border: 'none',
+  borderRadius: '8px',
+  fontSize: '13px',
+  fontWeight: 600,
+  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+  whiteSpace: 'nowrap',
+}
+
+const cancelBtnStyle: React.CSSProperties = {
+  padding: '10px 20px',
+  background: 'transparent',
+  color: '#555',
+  border: '1px solid rgba(0,0,0,0.13)',
+  borderRadius: '8px',
+  fontSize: '13px',
+  fontWeight: 500,
+  cursor: 'pointer',
+  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
+  whiteSpace: 'nowrap',
 }
