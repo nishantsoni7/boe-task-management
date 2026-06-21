@@ -25,7 +25,9 @@ async function requireAuth(req: NextRequest) {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // GET /api/showroom/inquiry/[id]
-// Supports ?viewAs=<userId> for admin callers: enforces ownership check against viewAs user.
+// Supports ?viewAs=<userId> for admin callers.
+// Uses three flat queries instead of one large nested join to avoid PostgREST
+// schema-cache failures when showroom_products columns change.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -35,44 +37,19 @@ export async function GET(
 
   const { id } = await params
 
-  // Try with new columns added in migration 20260647 (images, dimensions).
-  // If migration hasn't been applied yet, fall back to the pre-migration column set
-  // so the inquiry page keeps working while the DB is being updated.
-  let { data: inquiry, error } = await caller.client
+  // ── 1. Fetch the inquiry (flat, no joins) ───────────────────────────────────
+  const { data: inquiry, error: inqErr } = await caller.client
     .from('showroom_inquiries')
-    .select(`
-      *,
-      showroom_inquiry_items (
-        id, quantity, mrp_at_time, created_at,
-        showroom_products ( id, product_code, name, category, mrp, is_active, image_url, images, dimensions )
-      )
-    `)
+    .select('*')
     .eq('id', id)
     .single()
 
-  if (error) {
-    const msg = error.message ?? ''
-    const isColumnMissing = msg.includes('images') || msg.includes('dimensions') || error.code === 'PGRST204'
-    if (isColumnMissing) {
-      // Migration not yet applied — fall back to legacy columns
-      const fallback = await caller.client
-        .from('showroom_inquiries')
-        .select(`
-          *,
-          showroom_inquiry_items (
-            id, quantity, mrp_at_time, created_at,
-            showroom_products ( id, product_code, name, category, mrp, is_active, image_url )
-          )
-        `)
-        .eq('id', id)
-        .single()
-      inquiry = fallback.data
-      error   = fallback.error
-    }
+  if (inqErr || !inquiry) {
+    console.error('[inquiry GET] inquiry fetch failed:', inqErr?.message, 'id:', id)
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  if (error || !inquiry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
+  // ── 2. Ownership / viewAs check ─────────────────────────────────────────────
   if (caller.role === 'admin') {
     const viewAs = req.nextUrl.searchParams.get('viewAs')
     if (viewAs && UUID_RE.test(viewAs) && inquiry.salesperson_id !== viewAs) {
@@ -82,7 +59,68 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  return NextResponse.json({ inquiry })
+  // ── 3. Fetch inquiry items (flat) ───────────────────────────────────────────
+  const { data: items, error: itemsErr } = await caller.client
+    .from('showroom_inquiry_items')
+    .select('id, inquiry_id, product_id, quantity, mrp_at_time, created_at')
+    .eq('inquiry_id', id)
+    .order('created_at')
+
+  if (itemsErr) {
+    console.error('[inquiry GET] items fetch failed:', itemsErr.message)
+    return NextResponse.json({ error: 'Failed to load inquiry items' }, { status: 500 })
+  }
+
+  // ── 4. Fetch products for those items ───────────────────────────────────────
+  // Use wildcard (*) so new columns (images, dimensions) are included if present,
+  // without failing if the migration hasn't been applied yet.
+  const productIds = [...new Set((items ?? []).map(i => i.product_id).filter(Boolean))]
+  let productsById: Record<string, Record<string, unknown>> = {}
+
+  if (productIds.length > 0) {
+    const { data: products, error: prodErr } = await caller.client
+      .from('showroom_products')
+      .select('*')
+      .in('id', productIds)
+
+    if (prodErr) {
+      console.error('[inquiry GET] products fetch failed:', prodErr.message)
+      // Non-fatal: return items without product details rather than failing
+    } else {
+      for (const p of products ?? []) {
+        productsById[p.id as string] = p
+      }
+    }
+  }
+
+  // ── 5. Merge items with product data ────────────────────────────────────────
+  const mergedItems = (items ?? []).map(item => {
+    const prod = productsById[item.product_id] ?? null
+    return {
+      id:          item.id,
+      quantity:    item.quantity,
+      mrp_at_time: item.mrp_at_time,
+      created_at:  item.created_at,
+      showroom_products: prod ? {
+        id:           prod.id,
+        product_code: prod.product_code,
+        name:         prod.name,
+        category:     prod.category,
+        mrp:          prod.mrp,
+        is_active:    prod.is_active,
+        image_url:    prod.image_url   ?? null,
+        images:       prod.images      ?? [],
+        dimensions:   prod.dimensions  ?? null,
+      } : null,
+    }
+  })
+
+  return NextResponse.json({
+    inquiry: {
+      ...inquiry,
+      showroom_inquiry_items: mergedItems,
+    },
+  })
 }
 
 // PATCH /api/showroom/inquiry/[id] — update status, discount_percent, notes
