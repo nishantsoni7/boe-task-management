@@ -65,7 +65,13 @@ export async function GET(
 
   // ── Build PDF ───────────────────────────────────────────────────────────────
 
-  const pdfBytes = await buildPdf(inquiry as unknown as InquiryRow)
+  let pdfBytes: Buffer
+  try {
+    pdfBytes = await buildPdf(inquiry as unknown as InquiryRow)
+  } catch (e) {
+    console.error('[quotation] buildPdf failed:', e)
+    return NextResponse.json({ error: 'Failed to generate PDF. Please try again.' }, { status: 500 })
+  }
 
   // ── Update status to quotation_sent if currently new or in_discussion ───────
 
@@ -120,12 +126,14 @@ function buildPdf(inquiry: InquiryRow): Promise<Buffer> {
     doc.on('error', reject)
 
     const pageWidth  = doc.page.width  - 100   // margins 50 each side
-    const usersArr = inquiry.users as { full_name: string }[] | null
-  const salesperson = usersArr?.[0]?.full_name ?? '—'
+    const usersArr = inquiry.users as { full_name: string }[] | { full_name: string } | null
+    const salesperson = Array.isArray(usersArr)
+      ? (usersArr[0]?.full_name ?? '—')
+      : (usersArr as { full_name: string } | null)?.full_name ?? '—'
     const date        = new Date(inquiry.created_at).toLocaleDateString('en-IN', {
       day: 'numeric', month: 'long', year: 'numeric',
     })
-    const items = inquiry.showroom_inquiry_items
+    const items = inquiry.showroom_inquiry_items ?? []
 
     // ── BOE Header ──────────────────────────────────────────────────────────
 
@@ -254,5 +262,7 @@ function buildPdf(inquiry: InquiryRow): Promise<Buffer> {
 }
 
 function fmt(n: number): string {
-  return '₹' + Math.round(n).toLocaleString('en-IN')
+  // Use "Rs." instead of ₹ — Helvetica (built-in PDF font) only covers Latin-1;
+  // the rupee sign U+20B9 is outside that range and causes PDFKit to throw.
+  return 'Rs. ' + Math.round(n).toLocaleString('en-IN')
 }

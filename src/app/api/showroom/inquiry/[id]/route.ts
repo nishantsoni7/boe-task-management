@@ -35,7 +35,10 @@ export async function GET(
 
   const { id } = await params
 
-  const { data: inquiry, error } = await caller.client
+  // Try with new columns added in migration 20260647 (images, dimensions).
+  // If migration hasn't been applied yet, fall back to the pre-migration column set
+  // so the inquiry page keeps working while the DB is being updated.
+  let { data: inquiry, error } = await caller.client
     .from('showroom_inquiries')
     .select(`
       *,
@@ -46,6 +49,27 @@ export async function GET(
     `)
     .eq('id', id)
     .single()
+
+  if (error) {
+    const msg = error.message ?? ''
+    const isColumnMissing = msg.includes('images') || msg.includes('dimensions') || error.code === 'PGRST204'
+    if (isColumnMissing) {
+      // Migration not yet applied — fall back to legacy columns
+      const fallback = await caller.client
+        .from('showroom_inquiries')
+        .select(`
+          *,
+          showroom_inquiry_items (
+            id, quantity, mrp_at_time, created_at,
+            showroom_products ( id, product_code, name, category, mrp, is_active, image_url )
+          )
+        `)
+        .eq('id', id)
+        .single()
+      inquiry = fallback.data
+      error   = fallback.error
+    }
+  }
 
   if (error || !inquiry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
