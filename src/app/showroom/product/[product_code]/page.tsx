@@ -7,11 +7,13 @@ import { colors, font } from '@/lib/tokens'
 import { Package } from 'lucide-react'
 
 type CartItem = {
-  product_id: string
+  product_id:   string
   product_code: string
-  name: string
-  mrp: number
-  quantity: number
+  name:         string
+  mrp:          number
+  quantity:     number
+  image_url:    string | null
+  dim_str:      string | null
 }
 
 export default function ProductPage() {
@@ -55,6 +57,9 @@ export default function ProductPage() {
     const existing = localStorage.getItem('boe_cart')
     const cart: CartItem[] = existing ? JSON.parse(existing) : []
 
+    const primaryImg = product.images?.[0] ?? product.image_url ?? null
+    const dimStr = formatDimensions(product.dimensions)
+
     // Same product added twice is kept as a separate row in V1
     cart.push({
       product_id:   product.id,
@@ -62,6 +67,8 @@ export default function ProductPage() {
       name:         product.name,
       mrp:          Number(product.mrp),
       quantity,
+      image_url:    primaryImg,
+      dim_str:      dimStr,
     })
 
     localStorage.setItem('boe_cart', JSON.stringify(cart))
@@ -154,9 +161,12 @@ export default function ProductPage() {
   }
 
   // ── Product page ──────────────────────────────────────────────────────────
+  const allImages = product.images?.length ? product.images : product.image_url ? [product.image_url] : []
+  const dimStr = formatDimensions(product.dimensions)
+
   return (
     <Shell>
-      {/* Product image */}
+      {/* Primary image */}
       <div style={{
         width: '100%', aspectRatio: '4/3',
         background: colors.raised,
@@ -164,12 +174,12 @@ export default function ProductPage() {
         borderRadius: '12px',
         overflow: 'hidden',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        marginBottom: '20px',
+        marginBottom: allImages.length > 1 ? '8px' : '20px',
       }}>
-        {product.image_url ? (
+        {allImages[0] ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={product.image_url}
+            src={allImages[0]}
             alt={product.name}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
@@ -177,6 +187,28 @@ export default function ProductPage() {
           <Package size={48} color={colors.muted} strokeWidth={1.2} />
         )}
       </div>
+
+      {/* Additional images gallery */}
+      {allImages.length > 1 && (
+        <div style={{
+          display: 'flex', gap: '8px', overflowX: 'auto',
+          paddingBottom: '4px', marginBottom: '16px',
+        }}>
+          {allImages.map((url, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={i}
+              src={url}
+              alt={`${product.name} ${i + 1}`}
+              style={{
+                width: 64, height: 64, flexShrink: 0,
+                borderRadius: '8px', objectFit: 'cover',
+                border: `1.5px solid ${i === 0 ? '#1A2035' : colors.border}`,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Code + category */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
@@ -207,13 +239,23 @@ export default function ProductPage() {
         fontSize: '20px', fontWeight: 700,
         color: '#1A2035',
         fontFamily: font.mono,
-        marginBottom: '20px',
+        marginBottom: dimStr ? '8px' : '20px',
       }}>
         ₹{Number(product.mrp).toLocaleString('en-IN')}
         <span style={{ fontSize: '12px', fontWeight: 500, color: colors.muted, marginLeft: '5px', fontFamily: font.body }}>
           MRP
         </span>
       </div>
+
+      {/* Dimensions */}
+      {dimStr && (
+        <div style={{
+          fontSize: '12px', color: colors.tertiary, fontFamily: font.mono,
+          marginBottom: '18px', letterSpacing: '0.01em',
+        }}>
+          {dimStr}
+        </div>
+      )}
 
       {/* Description */}
       {product.description && (
@@ -319,6 +361,18 @@ export default function ProductPage() {
       </div>
     </Shell>
   )
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatDimensions(dim: { width?: number | null; depth?: number | null; height?: number | null; unit?: string } | null | undefined): string | null {
+  if (!dim) return null
+  const u = dim.unit === 'inches' ? '"' : ` ${dim.unit ?? 'in'}`
+  const parts: string[] = []
+  if (dim.width  != null) parts.push(`W ${dim.width}${u}`)
+  if (dim.depth  != null) parts.push(`D ${dim.depth}${u}`)
+  if (dim.height != null) parts.push(`H ${dim.height}${u}`)
+  return parts.length > 0 ? parts.join(' × ') : null
 }
 
 // ── Page shell ────────────────────────────────────────────────────────────────

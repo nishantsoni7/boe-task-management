@@ -388,6 +388,13 @@ export type TaskAttachment = {
 
 // ─── Showroom QR ──────────────────────────────────────────────────────────────
 
+export type ShowroomDimensions = {
+  width:  number | null
+  depth:  number | null
+  height: number | null
+  unit:   string
+}
+
 export type ShowroomProduct = {
   id: string
   product_code: string
@@ -395,7 +402,9 @@ export type ShowroomProduct = {
   category: string
   description: string | null
   specifications: Record<string, string> | null
-  image_url: string | null
+  image_url: string | null   // legacy single image — still stored for compat
+  images: string[]           // new: multiple image URLs (may be empty [])
+  dimensions: ShowroomDimensions | null
   mrp: number
   is_active: boolean
   created_at: string

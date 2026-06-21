@@ -10,6 +10,7 @@ import { colors, font } from '@/lib/tokens'
 import { useViewAs } from '@/hooks/useViewAs'
 
 type SpecRow = { attr: string; val: string }
+type DimState = { width: string; depth: string; height: string; unit: string }
 
 const CATEGORIES = [
   'Dining Chairs',
@@ -93,7 +94,8 @@ export default function EditProductPage() {
   const [category,    setCategory]    = useState('')
   const [description, setDescription] = useState('')
   const [specs,       setSpecs]       = useState<SpecRow[]>([{ attr: '', val: '' }])
-  const [imageUrl,    setImageUrl]    = useState('')
+  const [images,      setImages]      = useState<string[]>([''])
+  const [dims,        setDims]        = useState<DimState>({ width: '', depth: '', height: '', unit: 'inches' })
   const [mrp,         setMrp]         = useState('')
   const [loading,     setLoading]     = useState(true)
   const [saving,      setSaving]      = useState(false)
@@ -136,7 +138,17 @@ export default function EditProductPage() {
       setCategory(found.category)
       setDescription(found.description ?? '')
       setSpecs(jsonToSpecs(found.specifications))
-      setImageUrl(found.image_url ?? '')
+      // Populate images: prefer new images[] array, fall back to legacy image_url
+      const loadedImages = found.images?.length ? found.images : found.image_url ? [found.image_url] : ['']
+      setImages(loadedImages.length ? loadedImages : [''])
+      if (found.dimensions) {
+        setDims({
+          width:  found.dimensions.width  != null ? String(found.dimensions.width)  : '',
+          depth:  found.dimensions.depth  != null ? String(found.dimensions.depth)  : '',
+          height: found.dimensions.height != null ? String(found.dimensions.height) : '',
+          unit:   found.dimensions.unit ?? 'inches',
+        })
+      }
       setMrp(String(found.mrp))
       setLoading(false)
     }
@@ -180,7 +192,8 @@ export default function EditProductPage() {
         category: category.trim(),
         description: description.trim() || null,
         specifications: specsObj,
-        image_url: imageUrl.trim() || null,
+        images: images.map(u => u.trim()).filter(Boolean),
+        dimensions: buildDims(dims),
         mrp: parseFloat(mrp),
       }),
     })
@@ -297,17 +310,16 @@ export default function EditProductPage() {
                 <SpecsEditor specs={specs} onChange={setSpecs} />
               </div>
 
-              {/* ── Product Image ───────────────────────────── */}
+              {/* ── Dimensions ──────────────────────────────── */}
               <div className="form-section">
-                <p className="section-label">Product image</p>
-                <Field label="Image URL" hint="Direct link to product image (JPG, PNG, WebP)">
-                  <input
-                    value={imageUrl}
-                    onChange={e => setImageUrl(e.target.value)}
-                    placeholder="https://..."
-                    style={inputStyle}
-                  />
-                </Field>
+                <p className="section-label">Dimensions</p>
+                <DimsEditor dims={dims} onChange={setDims} />
+              </div>
+
+              {/* ── Product Images ───────────────────────────── */}
+              <div className="form-section">
+                <p className="section-label">Product images</p>
+                <ImagesEditor images={images} onChange={setImages} />
               </div>
 
               {/* Status note */}
@@ -365,6 +377,19 @@ function specsToJson(rows: SpecRow[]): Record<string, string> | null {
   return Object.keys(obj).length > 0 ? obj : null
 }
 
+function buildDims(d: DimState) {
+  const w = parseFloat(d.width)
+  const dep = parseFloat(d.depth)
+  const h = parseFloat(d.height)
+  if (isNaN(w) && isNaN(dep) && isNaN(h)) return null
+  return {
+    width:  isNaN(w)   ? null : w,
+    depth:  isNaN(dep) ? null : dep,
+    height: isNaN(h)   ? null : h,
+    unit:   d.unit || 'inches',
+  }
+}
+
 const SPEC_ATTR_PLACEHOLDERS = ['Material', 'Height', 'Width', 'Depth', 'Finish', 'Fabric', 'Seat Height']
 
 
@@ -409,6 +434,64 @@ function SpecsEditor({ specs, onChange }: { specs: SpecRow[]; onChange: (rows: S
           + Add Specification
         </button>
       </div>
+    </div>
+  )
+}
+
+function ImagesEditor({ images, onChange }: { images: string[]; onChange: (imgs: string[]) => void }) {
+  const update = (i: number, val: string) => onChange(images.map((u, idx) => idx === i ? val : u))
+  const remove = (i: number) => onChange(images.filter((_, idx) => idx !== i))
+  const add    = () => onChange([...images, ''])
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {images.map((url, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 40px', gap: '8px', alignItems: 'center' }}>
+          <input
+            value={url}
+            onChange={e => update(i, e.target.value)}
+            placeholder={i === 0 ? 'https://… (primary image)' : 'https://… (additional image)'}
+            style={inputStyle}
+          />
+          {images.length > 1 && (
+            <button type="button" onClick={() => remove(i)} style={removeBtnStyle}>×</button>
+          )}
+        </div>
+      ))}
+      <div>
+        <button type="button" onClick={add} style={addSpecBtnStyle}>+ Add Image URL</button>
+      </div>
+      <span style={{ fontSize: '11px', color: '#888' }}>First URL is the primary display image</span>
+    </div>
+  )
+}
+
+const DIM_UNITS = ['inches', 'cm', 'mm', 'ft']
+
+function DimsEditor({ dims, onChange }: { dims: DimState; onChange: (d: DimState) => void }) {
+  const set = (field: keyof DimState, val: string) => onChange({ ...dims, [field]: val })
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: '12px', alignItems: 'end' }}>
+        <div className="product-field">
+          <span className="field-label" style={{ color: '#555' }}>Width</span>
+          <input value={dims.width} onChange={e => set('width', e.target.value)} placeholder="e.g. 24" type="number" min="0" step="0.1" style={inputStyle} />
+        </div>
+        <div className="product-field">
+          <span className="field-label" style={{ color: '#555' }}>Depth</span>
+          <input value={dims.depth} onChange={e => set('depth', e.target.value)} placeholder="e.g. 24" type="number" min="0" step="0.1" style={inputStyle} />
+        </div>
+        <div className="product-field">
+          <span className="field-label" style={{ color: '#555' }}>Height</span>
+          <input value={dims.height} onChange={e => set('height', e.target.value)} placeholder="e.g. 32" type="number" min="0" step="0.1" style={inputStyle} />
+        </div>
+        <div className="product-field">
+          <span className="field-label" style={{ color: '#555' }}>Unit</span>
+          <select value={dims.unit} onChange={e => set('unit', e.target.value)} style={inputStyle}>
+            {DIM_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </div>
+      </div>
+      <span style={{ fontSize: '11px', color: '#888' }}>Leave blank for any dimension you don&apos;t want to display</span>
     </div>
   )
 }

@@ -233,10 +233,10 @@ function ProductRow({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',
       }}>
-        {product.image_url ? (
+        {(product.images?.[0] ?? product.image_url) ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={product.image_url}
+            src={product.images?.[0] ?? product.image_url!}
             alt={product.name}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />

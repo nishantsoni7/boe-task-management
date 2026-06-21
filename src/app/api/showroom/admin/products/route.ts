@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   if (!client) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
-  const { product_code, name, category, description, specifications, image_url, mrp } = body
+  const { product_code, name, category, description, specifications, image_url, images, dimensions, mrp } = body
 
   if (!product_code?.trim() || !name?.trim() || !category?.trim() || mrp == null) {
     return NextResponse.json({ error: 'product_code, name, category and mrp are required' }, { status: 400 })
@@ -64,6 +64,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Normalise images: filter empty strings, dedupe
+  const imagesArr: string[] = Array.isArray(images)
+    ? images.map((u: string) => u.trim()).filter(Boolean)
+    : image_url?.trim() ? [image_url.trim()] : []
+
+  // Primary image_url stays in sync with first image for backward compat
+  const primaryUrl = imagesArr[0] ?? image_url?.trim() ?? null
+
   const { data, error } = await client
     .from('showroom_products')
     .insert({
@@ -72,7 +80,9 @@ export async function POST(req: NextRequest) {
       category: category.trim(),
       description: description?.trim() || null,
       specifications: specs,
-      image_url: image_url?.trim() || null,
+      image_url: primaryUrl,
+      images: imagesArr,
+      dimensions: dimensions ?? null,
       mrp: parseFloat(mrp),
     })
     .select()

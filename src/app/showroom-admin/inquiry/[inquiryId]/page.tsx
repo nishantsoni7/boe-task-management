@@ -7,7 +7,7 @@ import type { UserProfile, InquiryStatus } from '@/lib/types'
 import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check } from 'lucide-react'
+import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -23,6 +23,9 @@ type InquiryItem = {
     category: string
     mrp: number
     is_active: boolean
+    image_url: string | null
+    images: string[]
+    dimensions: { width?: number | null; depth?: number | null; height?: number | null; unit?: string } | null
   } | null
 }
 
@@ -357,13 +360,35 @@ export default function InquiryDetailPage() {
                 const isRemoving = removingId === item.id
                 return (
                   <div key={item.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
+                    display: 'flex', alignItems: 'center', gap: '10px',
                     background: colors.raised,
                     border: `1px solid ${colors.border}`,
                     borderRadius: '9px', padding: '10px 14px',
                     opacity: isRemoving ? 0.4 : 1,
                   }}>
-                    {/* Code + name */}
+                    {/* Product thumbnail */}
+                    {(() => {
+                      const primaryImg = prod?.images?.[0] ?? prod?.image_url ?? null
+                      return (
+                        <div style={{
+                          width: 44, height: 44, flexShrink: 0,
+                          borderRadius: '7px',
+                          background: colors.float,
+                          border: `1px solid ${colors.border}`,
+                          overflow: 'hidden',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {primaryImg ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={primaryImg} alt={prod?.name ?? ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <Package size={16} color={colors.muted} strokeWidth={1.5} />
+                          )}
+                        </div>
+                      )
+                    })()}
+
+                    {/* Code + name + dims + MRP */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <span style={{
                         fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
@@ -372,10 +397,23 @@ export default function InquiryDetailPage() {
                       }}>
                         {prod?.product_code ?? '—'}
                       </span>
-                      <div style={{ fontSize: '13px', fontWeight: 500, color: colors.primary, marginTop: '2px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 500, color: colors.primary, marginTop: '2px', lineHeight: 1.3 }}>
                         {prod?.name ?? 'Unknown product'}
                       </div>
-                      <div style={{ fontSize: '11px', color: colors.muted, fontFamily: font.mono }}>
+                      {prod?.dimensions && (() => {
+                        const d = prod.dimensions
+                        const u = d.unit === 'inches' ? '"' : ` ${d.unit ?? 'in'}`
+                        const parts: string[] = []
+                        if (d.width  != null) parts.push(`W ${d.width}${u}`)
+                        if (d.depth  != null) parts.push(`D ${d.depth}${u}`)
+                        if (d.height != null) parts.push(`H ${d.height}${u}`)
+                        return parts.length > 0 ? (
+                          <div style={{ fontSize: '10px', color: colors.muted, fontFamily: font.mono, marginTop: '1px' }}>
+                            {parts.join(' × ')}
+                          </div>
+                        ) : null
+                      })()}
+                      <div style={{ fontSize: '11px', color: colors.muted, fontFamily: font.mono, marginTop: '1px' }}>
                         ₹{Number(item.mrp_at_time).toLocaleString('en-IN')} each
                       </div>
                     </div>

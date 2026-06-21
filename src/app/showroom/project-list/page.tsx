@@ -6,11 +6,13 @@ import { colors, font } from '@/lib/tokens'
 import { Trash2 } from 'lucide-react'
 
 type CartItem = {
-  product_id: string
+  product_id:   string
   product_code: string
-  name: string
-  mrp: number
-  quantity: number
+  name:         string
+  mrp:          number
+  quantity:     number
+  image_url?:   string | null
+  dim_str?:     string | null
 }
 
 type CustomerDetails = {
@@ -285,9 +287,28 @@ function CartRow({
       borderRadius: '10px',
       padding: '12px 14px',
     }}>
-      {/* Top row: code + name + remove */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
-        <div style={{ minWidth: 0 }}>
+      {/* Top row: image + info + remove */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }}>
+
+        {/* Thumbnail */}
+        <div style={{
+          width: 52, height: 52, flexShrink: 0,
+          borderRadius: '8px',
+          background: colors.float,
+          border: `1px solid ${colors.border}`,
+          overflow: 'hidden',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {item.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <span style={{ fontSize: '20px' }}>🪑</span>
+          )}
+        </div>
+
+        {/* Code + name + dims + price */}
+        <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{
             fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
             color: '#1A2035', background: 'rgba(26,32,53,0.07)',
@@ -295,13 +316,20 @@ function CartRow({
           }}>
             {item.product_code}
           </span>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, marginTop: '3px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, marginTop: '3px', lineHeight: 1.3 }}>
             {item.name}
           </div>
-          <div style={{ fontSize: '12px', color: colors.muted, fontFamily: font.mono }}>
+          {item.dim_str && (
+            <div style={{ fontSize: '11px', color: colors.muted, fontFamily: font.mono, marginTop: '2px' }}>
+              {item.dim_str}
+            </div>
+          )}
+          <div style={{ fontSize: '12px', color: colors.muted, fontFamily: font.mono, marginTop: '2px' }}>
             ₹{item.mrp.toLocaleString('en-IN')} each
           </div>
         </div>
+
+        {/* Remove */}
         <button
           onClick={onRemove}
           title="Remove"

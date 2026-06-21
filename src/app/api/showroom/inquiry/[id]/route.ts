@@ -41,7 +41,7 @@ export async function GET(
       *,
       showroom_inquiry_items (
         id, quantity, mrp_at_time, created_at,
-        showroom_products ( id, product_code, name, category, mrp, is_active )
+        showroom_products ( id, product_code, name, category, mrp, is_active, image_url, images, dimensions )
       )
     `)
     .eq('id', id)

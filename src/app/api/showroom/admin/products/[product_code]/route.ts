@@ -36,7 +36,7 @@ export async function PATCH(
   const { product_code } = await params
   const body = await req.json()
 
-  const allowed = ['name', 'category', 'description', 'specifications', 'image_url', 'mrp', 'is_active', 'product_code']
+  const allowed = ['name', 'category', 'description', 'specifications', 'image_url', 'images', 'dimensions', 'mrp', 'is_active', 'product_code']
   const updates: Record<string, unknown> = {}
 
   for (const key of allowed) {
@@ -58,6 +58,13 @@ export async function PATCH(
   // Normalise product_code if being changed
   if (typeof updates.product_code === 'string') {
     updates.product_code = updates.product_code.trim().toUpperCase()
+  }
+
+  // Normalise images: filter empty strings, keep primary image_url in sync
+  if (Array.isArray(updates.images)) {
+    const imgs = (updates.images as string[]).map(u => u.trim()).filter(Boolean)
+    updates.images    = imgs
+    updates.image_url = imgs[0] ?? null
   }
 
   if (typeof updates.mrp !== 'undefined') {
