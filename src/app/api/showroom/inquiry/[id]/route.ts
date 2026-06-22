@@ -172,6 +172,9 @@ export async function PATCH(
   if ('lost_at' in body) {
     updates.lost_at = body.lost_at ?? null
   }
+  if ('shared_at' in body) {
+    updates.shared_at = body.shared_at ?? null
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })

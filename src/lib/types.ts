@@ -428,6 +428,7 @@ export type ShowroomInquiry = {
   quotation_no: string | null
   quotation_status: QuotationStatus
   quotation_sent_at: string | null
+  shared_at: string | null
   converted_at: string | null
   lost_at: string | null
   created_at: string

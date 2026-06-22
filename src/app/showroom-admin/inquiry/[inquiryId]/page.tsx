@@ -46,6 +46,9 @@ type InquiryDetail = {
   quotation_no: string | null
   quotation_status: QuotationStatus
   quotation_sent_at: string | null
+  shared_at: string | null
+  converted_at: string | null
+  lost_at: string | null
   created_at: string
   share_token: string
   showroom_inquiry_items: InquiryItem[]
@@ -397,7 +400,7 @@ export default function InquiryDetailPage() {
 
   // ── WhatsApp share ────────────────────────────────────────────────────────────
 
-  const handleWhatsAppShare = () => {
+  const handleWhatsAppShare = async () => {
     if (!inquiry) return
 
     const message = [
@@ -428,6 +431,16 @@ export default function InquiryDetailPage() {
       : `https://wa.me/?text=${encoded}`
 
     window.open(url, '_blank', 'noopener,noreferrer')
+
+    // Record first share timestamp — do not overwrite if already set.
+    if (!inquiry.shared_at) {
+      await fetch(`/api/showroom/inquiry/${inquiryId}`, {
+        method: 'PATCH',
+        headers: authHeader,
+        body: JSON.stringify({ shared_at: new Date().toISOString() }),
+      })
+      await reloadInquiry()
+    }
   }
 
   // ── Copy share link ───────────────────────────────────────────────────────────
@@ -1160,6 +1173,41 @@ export default function InquiryDetailPage() {
             </div>
           </div>
 
+          {/* 3 · Quotation Timeline */}
+          <div style={sideCardStyle}>
+            <SideLabel>Quotation Timeline</SideLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+              <TimelineRow
+                label="Inquiry Created"
+                timestamp={inquiry.created_at}
+                done
+              />
+              <TimelineRow
+                label="Quotation Generated"
+                timestamp={inquiry.quotation_sent_at}
+              />
+              <TimelineRow
+                label="Quotation Shared"
+                timestamp={inquiry.shared_at}
+              />
+              {inquiry.lost_at ? (
+                <TimelineRow
+                  label="Lost"
+                  timestamp={inquiry.lost_at}
+                  variant="lost"
+                  last
+                />
+              ) : (
+                <TimelineRow
+                  label="Converted"
+                  timestamp={inquiry.converted_at}
+                  variant="converted"
+                  last
+                />
+              )}
+            </div>
+          </div>
+
         </div>
       </div>
     </ShowroomAdminLayout>
@@ -1199,6 +1247,68 @@ function IconDetailRow({ icon, label, value }: { icon: React.ReactNode; label: s
           {label}
         </div>
         <div style={{ fontSize: '13px', fontWeight: 500, color: '#0F1117', lineHeight: 1.3 }}>{value}</div>
+      </div>
+    </div>
+  )
+}
+
+function fmtTimestamp(ts: string): string {
+  const d = new Date(ts)
+  return (
+    d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) +
+    ' · ' +
+    d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+  )
+}
+
+function TimelineRow({
+  label,
+  timestamp,
+  done = false,
+  variant,
+  last = false,
+}: {
+  label: string
+  timestamp: string | null
+  done?: boolean
+  variant?: 'converted' | 'lost'
+  last?: boolean
+}) {
+  const filled = done || !!timestamp
+  const dotColor =
+    variant === 'converted' ? '#059669' :
+    variant === 'lost'      ? '#DC2626' :
+    filled                  ? '#1A2035' : '#D1D5DB'
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', paddingBottom: last ? 0 : '14px' }}>
+      {/* Dot + line */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{
+          width: '8px', height: '8px', borderRadius: '50%',
+          background: dotColor, marginTop: '3px', flexShrink: 0,
+          transition: 'background 0.2s',
+        }} />
+        {!last && (
+          <div style={{ width: '1px', flex: 1, minHeight: '22px', background: '#E8EAED', marginTop: '3px' }} />
+        )}
+      </div>
+      {/* Text */}
+      <div style={{ paddingBottom: last ? 0 : '0' }}>
+        <div style={{
+          fontSize: '12px', fontWeight: 600,
+          color: variant === 'converted' ? '#059669' : variant === 'lost' ? '#DC2626' : '#1A2035',
+          lineHeight: 1.2,
+        }}>
+          {label}
+        </div>
+        <div style={{
+          fontSize: '11px', marginTop: '2px',
+          color: filled ? '#6B7384' : '#C0C8D8',
+          fontFamily: 'var(--font-inter, Inter, sans-serif)',
+        }}>
+          {timestamp ? fmtTimestamp(timestamp) : 'Not yet'}
+        </div>
       </div>
     </div>
   )
