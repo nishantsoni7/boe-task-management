@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
 const VALID_STATUSES           = ['new', 'in_discussion', 'quotation_sent', 'closed']
-const VALID_QUOTATION_STATUSES = ['draft', 'sent', 'converted', 'lost']
 
 function svc() {
   return createClient(
@@ -139,7 +138,7 @@ export async function PATCH(
   // Verify ownership before updating
   const { data: existing, error: fetchErr } = await caller.client
     .from('showroom_inquiries')
-    .select('id, salesperson_id, quotation_status')
+    .select('id, salesperson_id')
     .eq('id', id)
     .single()
 
@@ -166,20 +165,6 @@ export async function PATCH(
   }
   if ('notes' in body) {
     updates.notes = body.notes?.trim() || null
-  }
-  if ('quotation_status' in body) {
-    if (!VALID_QUOTATION_STATUSES.includes(body.quotation_status)) {
-      return NextResponse.json({ error: 'Invalid quotation_status' }, { status: 400 })
-    }
-    // Prevent overwriting a final outcome — converted and lost are terminal states.
-    if (existing.quotation_status === 'converted' || existing.quotation_status === 'lost') {
-      return NextResponse.json({ error: 'Cannot change the status of a converted or lost quotation' }, { status: 409 })
-    }
-    // Prevent reverting a sent quotation back to draft.
-    if (existing.quotation_status === 'sent' && body.quotation_status === 'draft') {
-      return NextResponse.json({ error: 'Cannot revert a sent quotation to draft' }, { status: 409 })
-    }
-    updates.quotation_status = body.quotation_status
   }
   if ('converted_at' in body) {
     updates.converted_at = body.converted_at ?? null

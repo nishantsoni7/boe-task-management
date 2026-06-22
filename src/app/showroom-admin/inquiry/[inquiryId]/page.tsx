@@ -390,7 +390,8 @@ export default function InquiryDetailPage() {
 
   const handleSaveQuotation = async () => {
     setSavingQuotation(true)
-    await Promise.all([handleSaveItemEdits(), handleSave()])
+    await handleSaveItemEdits()
+    await handleSave()
     setSavingQuotation(false)
   }
 
@@ -668,10 +669,9 @@ export default function InquiryDetailPage() {
 
                           {/* Info row: all 4 in one line */}
                           <div style={{
-                            display: 'flex',
+                            display: 'grid',
+                            gridTemplateColumns: '190px 1px 1fr 1px 1fr 1px 1fr',
                             alignItems: 'center',
-                            gap: '12px',
-                            flexWrap: 'nowrap',
                           }}>
                             {/* Dimensions — fixed width so MRP always aligns */}
                             <div style={{ width: 190, flexShrink: 0 }}>
@@ -721,7 +721,7 @@ export default function InquiryDetailPage() {
                             <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#E8EAED', flexShrink: 0 }} />
 
                             {/* MRP / PC */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flexShrink: 0 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '12px' }}>
                               <div style={{
                                 fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
                                 textTransform: 'uppercase', letterSpacing: '0.1em',
@@ -740,7 +740,7 @@ export default function InquiryDetailPage() {
                             <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#E8EAED', flexShrink: 0 }} />
 
                             {/* QTY */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flexShrink: 0 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '12px' }}>
                               <div style={{
                                 fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
                                 textTransform: 'uppercase', letterSpacing: '0.1em',
@@ -769,7 +769,7 @@ export default function InquiryDetailPage() {
                             <div style={{ width: '1px', height: '40px', alignSelf: 'center', background: '#E8EAED', flexShrink: 0 }} />
 
                             {/* Line Total */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flexShrink: 0 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '12px' }}>
                               <div style={{
                                 fontSize: '9px', fontWeight: 700, color: '#9AA3B2',
                                 textTransform: 'uppercase', letterSpacing: '0.1em',
@@ -925,6 +925,120 @@ export default function InquiryDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Quotation Summary ─────────────────────────────────────── */}
+            {items.length > 0 && (
+              <div style={{
+                borderTop: '1px solid #E5E7EB',
+                marginTop: '14px',
+                paddingTop: '24px',
+              }}>
+                {/* Section label */}
+                <div style={{
+                  fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', color: '#8C94A6',
+                  marginBottom: '20px',
+                }}>
+                  Quotation Summary
+                </div>
+
+                {/* Rows */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+                  {/* Subtotal */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#6B7384', fontFamily: font.body }}>Subtotal</span>
+                    <span style={{
+                      fontSize: '15px', fontWeight: 600, color: '#1A2035',
+                      fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                      fontFeatureSettings: '"tnum" 1',
+                    }}>₹{Math.round(subtotal).toLocaleString('en-IN')}</span>
+                  </div>
+
+                  {/* Discount % */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#6B7384', fontFamily: font.body }}>Discount</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <input
+                        type="number" min={0} max={100} step={0.5}
+                        value={discountPercent}
+                        onChange={e => setDiscountPercent(e.target.value)}
+                        placeholder="0"
+                        style={{
+                          width: '64px', height: '32px', padding: '0 8px',
+                          fontSize: '15px', fontWeight: 600, textAlign: 'right',
+                          border: '1.5px solid #E8EAED', borderRadius: '7px',
+                          background: '#fff', color: '#1A2035',
+                          fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                          fontFeatureSettings: '"tnum" 1',
+                          outline: 'none', boxSizing: 'border-box',
+                        }}
+                      />
+                      <span style={{
+                        fontSize: '15px', fontWeight: 600, color: '#1A2035',
+                        fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                      }}>%</span>
+                    </div>
+                  </div>
+
+                  {/* Discount Amount */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: '#6B7384', fontFamily: font.body }}>Discount Amount</span>
+                    <span style={{
+                      fontSize: '15px', fontWeight: 600, color: '#DC2626',
+                      fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                      fontFeatureSettings: '"tnum" 1',
+                    }}>−₹{Math.round(discountAmount).toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+
+                {/* Divider before final value */}
+                <div style={{ height: '1px', background: '#E5E7EB', margin: '20px 0 28px' }} />
+
+                {/* Final Quotation Value */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#6B7384', fontFamily: font.body }}>Final Quotation Value</span>
+                  <span style={{
+                    fontSize: '32px', fontWeight: 800, color: '#0F1117',
+                    fontFamily: 'var(--font-inter, Inter, sans-serif)',
+                    letterSpacing: '-0.03em', fontFeatureSettings: '"tnum" 1',
+                    lineHeight: 1,
+                  }}>₹{Math.round(finalTotal).toLocaleString('en-IN')}</span>
+                </div>
+
+                {/* Alerts */}
+                {(saveError || saveEditsErr) && (
+                  <div style={{ marginTop: '16px' }}>
+                    <AlertBanner variant="red">{saveError || saveEditsErr}</AlertBanner>
+                  </div>
+                )}
+                {(saveOk && saveEditsOk) && (
+                  <div style={{ marginTop: '16px' }}>
+                    <AlertBanner variant="green">Quotation saved</AlertBanner>
+                  </div>
+                )}
+
+                {/* Save Quotation button */}
+                <button
+                  onClick={handleSaveQuotation}
+                  disabled={savingQuotation}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                    padding: '12px 18px',
+                    background: savingQuotation ? '#3D4760' : '#1A2035', color: '#ffffff',
+                    border: 'none', borderRadius: '10px',
+                    fontSize: '13.5px', fontWeight: 600,
+                    cursor: savingQuotation ? 'default' : 'pointer',
+                    opacity: savingQuotation ? 0.7 : 1,
+                    fontFamily: font.body, width: '100%', minHeight: '44px',
+                    marginTop: '20px',
+                  }}
+                >
+                  <Save size={15} strokeWidth={1.8} />
+                  {savingQuotation ? 'Saving…' : 'Save Quotation'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -948,7 +1062,7 @@ export default function InquiryDetailPage() {
                 fontFamily: 'var(--font-inter, Inter, sans-serif)',
                 letterSpacing: '-0.02em', fontFeatureSettings: '"tnum" 1', lineHeight: 1.1,
               }}>
-                {inquiry.quotation_no ?? '—'}
+                {inquiry.quotation_no || 'Not generated yet'}
               </div>
             </div>
 
@@ -974,75 +1088,10 @@ export default function InquiryDetailPage() {
                   new Date(inquiry.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
                 }
               />
-              <IconDetailRow
-                icon={<Package size={13} color="#94A3B8" strokeWidth={1.8} />}
-                label="Items"
-                value={String(items.length)}
-              />
             </div>
           </div>
 
-          {/* 2 · Pricing */}
-          <div style={sideCardStyle}>
-            <SideLabel>Pricing</SideLabel>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <Field label="Discount %">
-                <input
-                  type="number" min={0} max={100} step={0.5}
-                  value={discountPercent}
-                  onChange={e => setDiscountPercent(e.target.value)}
-                  placeholder="0"
-                  style={inputStyle}
-                />
-              </Field>
-
-              <div style={{ height: '1px', background: '#F0F1F3' }} />
-
-              <div>
-                <div style={{
-                  fontSize: '9.5px', fontWeight: 700, color: '#9AA3B2',
-                  textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '4px',
-                }}>
-                  Final Value
-                </div>
-                <div style={{
-                  fontSize: '28px', fontWeight: 800, color: '#0F1117',
-                  fontFeatureSettings: '"tnum" 1', letterSpacing: '-0.03em',
-                  fontFamily: 'var(--font-inter, Inter, sans-serif)',
-                  textAlign: 'right',
-                }}>
-                  ₹{Math.round(finalTotal).toLocaleString('en-IN')}
-                </div>
-              </div>
-
-              {(saveError || saveEditsErr) && (
-                <AlertBanner variant="red">{saveError || saveEditsErr}</AlertBanner>
-              )}
-              {(saveOk && saveEditsOk) && (
-                <AlertBanner variant="green">Quotation saved</AlertBanner>
-              )}
-
-              <button
-                onClick={handleSaveQuotation}
-                disabled={savingQuotation}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                  padding: '12px 18px',
-                  background: '#fff', color: '#1A2035',
-                  border: '1.5px solid #D1D5DB', borderRadius: '10px',
-                  fontSize: '13.5px', fontWeight: 600,
-                  cursor: savingQuotation ? 'default' : 'pointer',
-                  opacity: savingQuotation ? 0.6 : 1,
-                  fontFamily: font.body, width: '100%', minHeight: '44px',
-                }}
-              >
-                <Save size={15} strokeWidth={1.8} />
-                {savingQuotation ? 'Saving…' : 'Save Quotation'}
-              </button>
-            </div>
-          </div>
-
-          {/* 3 · Share & Export */}
+          {/* 2 · Share & Export */}
           <div style={sideCardStyle}>
             <SideLabel>Share & Export</SideLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
