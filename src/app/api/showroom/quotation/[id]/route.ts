@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import sharp from 'sharp'
 
 export const runtime = 'nodejs'
 
@@ -144,8 +145,15 @@ async function fetchImageBuffer(
     // WebP: starts with RIFF….WEBP (bytes 0-3 = 52 49 46 46, bytes 8-11 = 57 45 42 50)
     if (buf[0] === 0x52 && buf[1] === 0x49 && buf.length >= 12 &&
         buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) {
-      console.warn(`[pdf-img] ${label} | detected WebP — PDFKit does not support WebP; skipping image. Store PNG/JPEG in Supabase instead.`)
-      return null
+      console.log(`[pdf-img] ${label} | detected WebP — converting to JPEG via sharp`)
+      try {
+        const jpeg = await sharp(buf).jpeg({ quality: 85 }).toBuffer()
+        console.log(`[pdf-img] ${label} | WebP→JPEG conversion succeeded, size: ${jpeg.length} bytes`)
+        return jpeg
+      } catch (convErr) {
+        console.error(`[pdf-img] ${label} | WebP→JPEG conversion failed:`, convErr)
+        return null
+      }
     }
 
     const ct = res.headers.get('content-type') ?? ''
