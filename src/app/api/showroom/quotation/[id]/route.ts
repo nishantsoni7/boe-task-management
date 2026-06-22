@@ -49,22 +49,110 @@ async function getOrCreateQuotationNo(
   return data as string | null
 }
 
-async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+/**
+ * Resolves a raw image field value to a fetchable HTTPS URL.
+ *
+ * Handles three shapes stored in showroom_products:
+ *   1. Full URL  — "https://…"
+ *   2. Supabase storage path — "products/abc.jpg"  (no scheme)
+ *   3. JSON array  — already unwrapped by caller before reaching here,
+ *      but guard anyway
+ *
+ * For storage paths we generate a signed URL via the admin client so the
+ * request works even when the bucket is not public.
+ */
+async function resolveImageUrl(rawValue: unknown): Promise<string | null> {
+  // Unwrap JSON arrays — take the first element
+  let value = rawValue
+  if (Array.isArray(value)) value = value[0] ?? null
+  if (!value || typeof value !== 'string') return null
+
+  const str = value.trim()
+  if (!str) return null
+
+  // Already an absolute URL
+  if (str.startsWith('http://') || str.startsWith('https://')) return str
+
+  // Supabase storage path — generate a signed URL (1 hour)
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceKey) {
+    console.warn('[image] storage path detected but SUPABASE_SERVICE_ROLE_KEY is missing — cannot sign URL:', str)
+    return null
+  }
+
+  // Determine bucket: first path segment if it looks like "bucket/path…", else "products"
+  const slash = str.indexOf('/')
+  const bucket = slash > 0 ? str.slice(0, slash) : 'products'
+  const objectPath = slash > 0 ? str.slice(slash + 1) : str
+
   try {
-    // Include Supabase service-role key so images from private Storage buckets
-    // are accessible on the server without a signed URL.
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
-    const headers: Record<string, string> = supabaseKey
-      ? { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` }
+    const adminClient = createClient(supabaseUrl, serviceKey)
+    const { data, error } = await adminClient.storage
+      .from(bucket)
+      .createSignedUrl(objectPath, 3600)
+    if (error || !data?.signedUrl) {
+      console.warn('[image] createSignedUrl failed for', str, error?.message)
+      return null
+    }
+    return data.signedUrl
+  } catch (err) {
+    console.warn('[image] createSignedUrl threw for', str, err)
+    return null
+  }
+}
+
+async function fetchImageBuffer(
+  rawImageField: unknown,
+  label: string,   // product code/name for logging
+): Promise<Buffer | null> {
+  console.log(`[pdf-img] ${label} | raw field:`, JSON.stringify(rawImageField))
+
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!serviceKey) {
+    console.warn(`[pdf-img] ${label} | SUPABASE_SERVICE_ROLE_KEY is not set — image fetch will likely fail for private buckets`)
+  }
+
+  const url = await resolveImageUrl(rawImageField)
+  console.log(`[pdf-img] ${label} | resolved URL:`, url ?? '(null — skipping)')
+  if (!url) return null
+
+  try {
+    const headers: Record<string, string> = serviceKey
+      ? { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` }
       : {}
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) })
-    if (!res.ok) return null
+    console.log(`[pdf-img] ${label} | fetch status: ${res.status}, content-type: ${res.headers.get('content-type') ?? 'unknown'}`)
+    if (!res.ok) {
+      console.warn(`[pdf-img] ${label} | fetch failed with status ${res.status}`)
+      return null
+    }
+
     const buf = Buffer.from(await res.arrayBuffer())
-    // Only return buffers PDFKit can embed: PNG (\x89PNG) or JPEG (\xff\xd8)
-    if (buf[0] === 0x89 && buf[1] === 0x50) return buf  // PNG
-    if (buf[0] === 0xff && buf[1] === 0xd8) return buf  // JPEG
+    console.log(`[pdf-img] ${label} | buffer size: ${buf.length} bytes, magic: 0x${buf[0]?.toString(16) ?? '??'}${buf[1]?.toString(16) ?? '??'}`)
+
+    // PNG: 89 50 4E 47
+    if (buf[0] === 0x89 && buf[1] === 0x50) {
+      console.log(`[pdf-img] ${label} | detected PNG — will embed`)
+      return buf
+    }
+    // JPEG: FF D8
+    if (buf[0] === 0xff && buf[1] === 0xd8) {
+      console.log(`[pdf-img] ${label} | detected JPEG — will embed`)
+      return buf
+    }
+    // WebP: starts with RIFF….WEBP (bytes 0-3 = 52 49 46 46, bytes 8-11 = 57 45 42 50)
+    if (buf[0] === 0x52 && buf[1] === 0x49 && buf.length >= 12 &&
+        buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) {
+      console.warn(`[pdf-img] ${label} | detected WebP — PDFKit does not support WebP; skipping image. Store PNG/JPEG in Supabase instead.`)
+      return null
+    }
+
+    const ct = res.headers.get('content-type') ?? ''
+    console.warn(`[pdf-img] ${label} | unrecognised format (content-type: ${ct}) — skipping`)
     return null
-  } catch {
+  } catch (err) {
+    console.error(`[pdf-img] ${label} | fetch threw:`, err)
     return null
   }
 }
@@ -398,11 +486,12 @@ export async function POST(
 // ── Enhanced PDF builder ──────────────────────────────────────────────────────
 
 async function buildEnhancedPdf(data: PdfData): Promise<Buffer> {
-  // Pre-fetch product images concurrently (best-effort, failures silently skipped)
+  // Pre-fetch product images concurrently (best-effort, failures logged and skipped)
   const imageBuffers: Array<Buffer | null> = await Promise.all(
-    data.items.map(item =>
-      item.product?.image_url ? fetchImageBuffer(item.product.image_url) : Promise.resolve(null)
-    )
+    data.items.map(item => {
+      const label = `${item.product?.product_code ?? '?'} / ${item.product?.name ?? '?'}`
+      return fetchImageBuffer(item.product?.image_url ?? null, label)
+    })
   )
 
   return new Promise<Buffer>((resolve, reject) => {
@@ -537,7 +626,10 @@ async function buildEnhancedPdf(data: PdfData): Promise<Buffer> {
       if (imgBuf) {
         try {
           doc.image(imgBuf, cImg, y, { fit: [IMG_W, IMG_H], align: 'center', valign: 'center' })
-        } catch { /* skip unsupported format */ }
+        } catch (imgErr) {
+          const label = `${item.product?.product_code ?? '?'} / ${item.product?.name ?? '?'}`
+          console.error(`[pdf-img] ${label} | PDFKit image insert failed:`, imgErr)
+        }
       } else {
         doc.rect(cImg, y, IMG_W, IMG_H).fillColor('#F1F5F9').fill()
         doc.fontSize(6).font('Helvetica').fillColor('#CBD5E1')
