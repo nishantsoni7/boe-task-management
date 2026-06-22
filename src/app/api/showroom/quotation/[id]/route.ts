@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
@@ -30,6 +30,23 @@ async function requireAuth(req: NextRequest) {
     role:      profile.role      as string,
     full_name: profile.full_name as string,
   }
+}
+
+// Idempotent: returns existing quotation_no or generates the next one.
+// Safe to call twice — the DB function never increments the counter twice
+// for the same inquiry.
+async function getOrCreateQuotationNo(
+  client: SupabaseClient,
+  inquiryId: string,
+): Promise<string | null> {
+  const { data, error } = await client.rpc('get_or_create_quotation_no', {
+    p_inquiry_id: inquiryId,
+  })
+  if (error) {
+    console.error('[getOrCreateQuotationNo] rpc failed:', error.message)
+    return null
+  }
+  return data as string | null
 }
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
@@ -118,7 +135,10 @@ export async function GET(
     }
   })
 
-  // ── 7. Build PDF ────────────────────────────────────────────────────────────
+  // ── 7. Assign quotation number (idempotent) ─────────────────────────────────
+  const quotationNo = await getOrCreateQuotationNo(caller.client, id)
+
+  // ── 8. Build PDF ────────────────────────────────────────────────────────────
   let pdfBytes: Buffer
   try {
     pdfBytes = await buildEnhancedPdf({
@@ -129,7 +149,7 @@ export async function GET(
       project_name:     inquiry.project_name,
       salesperson_name: (spProfile as { full_name: string } | null)?.full_name ?? '—',
       discount_percent: Number(inquiry.discount_percent),
-      quotation_no:     (inquiry.quotation_no as string | null) ?? null,
+      quotation_no:     quotationNo,
       created_at:       inquiry.created_at,
       items:            mergedItems,
     })
@@ -139,7 +159,7 @@ export async function GET(
     return NextResponse.json({ error: `PDF generation failed: ${detail}` }, { status: 500 })
   }
 
-  // ── 8. Update status ────────────────────────────────────────────────────────
+  // ── 9. Update status ────────────────────────────────────────────────────────
   if (inquiry.status === 'new' || inquiry.status === 'in_discussion') {
     await caller.client
       .from('showroom_inquiries')
@@ -159,7 +179,7 @@ export async function GET(
       .eq('quotation_status', 'draft')
   }
 
-  // ── 9. Return PDF ───────────────────────────────────────────────────────────
+  // ── 10. Return PDF ──────────────────────────────────────────────────────────
   const date     = new Date().toISOString().slice(0, 10)
   const safeName = inquiry.customer_name.replace(/[^a-zA-Z0-9\-_]/g, '_')
   const filename = `BOE-Quotation-${safeName}-${date}.pdf`
@@ -303,6 +323,9 @@ export async function POST(
     }
   })
 
+  // ── Assign quotation number (idempotent) ─────────────────────────────────────
+  const quotationNo = await getOrCreateQuotationNo(caller.client, id)
+
   // ── Build PDF ────────────────────────────────────────────────────────────────
   let pdfBytes: Buffer
   try {
@@ -314,7 +337,7 @@ export async function POST(
       project_name:     inquiry.project_name     ?? null,
       salesperson_name: (spProfile as { full_name: string } | null)?.full_name ?? '—',
       discount_percent: discountPercent,
-      quotation_no:     (inquiry.quotation_no as string | null) ?? null,
+      quotation_no:     quotationNo,
       created_at:       inquiry.created_at,
       items:            mergedItems,
     })
@@ -391,7 +414,7 @@ async function buildEnhancedPdf(data: PdfData): Promise<Buffer> {
     doc.fontSize(16).font('Helvetica-Bold').fillColor('#1A2035')
        .text('Quotation', 50, 50, { align: 'right', width: pageWidth })
     doc.fontSize(9).font('Helvetica').fillColor('#6B7280')
-       .text(`No: ${data.quotation_no ?? 'Pending'}`, 50, 69, { align: 'right', width: pageWidth })
+       .text(`Quotation No.: ${data.quotation_no ?? 'Pending'}`, 50, 69, { align: 'right', width: pageWidth })
     doc.fontSize(9).font('Helvetica').fillColor('#6B7280')
        .text(`Date: ${date}`, 50, 82, { align: 'right', width: pageWidth })
     doc.moveTo(50, 100).lineTo(50 + pageWidth, 100).strokeColor('#E5E7EB').lineWidth(1).stroke()

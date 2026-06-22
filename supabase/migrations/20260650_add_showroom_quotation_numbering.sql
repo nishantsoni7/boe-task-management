@@ -1,100 +1,77 @@
--- Showroom QR Phase 3 — Step 2: auto-generate quotation_no on insert.
--- Format: BOE-Q-YYYY-NNNN (e.g. BOE-Q-2026-0001), permanent, never overwritten.
--- Race-condition safety: per-year counter row locked atomically via
--- INSERT ... ON CONFLICT DO UPDATE, which is serialized by Postgres.
+-- Showroom QR Phase 3 — Quotation numbering.
+-- Format: BOE-QTN-YYYY-NNNN (e.g. BOE-QTN-2026-0001).
+-- Generated only when the quotation PDF is first produced — NOT on row insert.
+-- Existing rows stay null until PDF is generated.
+-- Race-condition safety: get_or_create_quotation_no() uses a per-year counter
+-- row locked atomically via INSERT ... ON CONFLICT DO UPDATE.
 
--- ─── 1. Per-year sequence counter table ──────────────────────────────────────
+-- ─── 1. Clean up old trigger-based approach (if applied previously) ───────────
+
+drop trigger if exists showroom_inquiries_assign_quotation_no
+  on public.showroom_inquiries;
+
+drop function if exists public.assign_showroom_quotation_no();
+
+-- ─── 2. Per-year sequence counter table ──────────────────────────────────────
 
 create table if not exists public.showroom_quotation_seq (
   year     integer primary key,
   last_seq integer not null default 0
 );
 
--- Only admins/service role should touch this table — no public access needed.
 alter table public.showroom_quotation_seq enable row level security;
+-- Only service role (bypasses RLS) accesses this table.
 
--- No select/insert/update policy: only service role (bypasses RLS) uses this.
+-- ─── 3. Uniqueness constraint on quotation_no ────────────────────────────────
+-- Partial: only enforces uniqueness where quotation_no is not null,
+-- so historical null rows don't conflict.
 
--- ─── 2. Function: assign quotation_no before insert ──────────────────────────
+create unique index if not exists showroom_inquiries_quotation_no_uidx
+  on public.showroom_inquiries (quotation_no)
+  where quotation_no is not null;
 
-create or replace function public.assign_showroom_quotation_no()
-returns trigger
+-- ─── 4. Function: get or create quotation_no ─────────────────────────────────
+-- Called from the API when a PDF is first generated.
+-- Idempotent: returns existing quotation_no without incrementing the counter.
+
+create or replace function public.get_or_create_quotation_no(p_inquiry_id uuid)
+returns text
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_year integer;
-  v_seq  integer;
+  v_existing text;
+  v_year     integer;
+  v_seq      integer;
+  v_no       text;
 begin
-  -- Idempotent: never overwrite an existing quotation_no
-  if NEW.quotation_no is not null then
-    return NEW;
+  -- 1. Return existing number without touching the sequence.
+  select quotation_no into v_existing
+    from public.showroom_inquiries
+    where id = p_inquiry_id;
+
+  if v_existing is not null then
+    return v_existing;
   end if;
 
-  -- Column defaults (including created_at = now()) are applied before
-  -- BEFORE triggers fire, so NEW.created_at is already populated.
-  v_year := extract(year from coalesce(NEW.created_at, now()))::integer;
+  -- 2. Generate next number using atomic upsert on the sequence table.
+  v_year := extract(year from now())::integer;
 
-  -- Atomic upsert: increment counter for this year, return new value.
-  -- ON CONFLICT DO UPDATE is serialized per-row in Postgres, so concurrent
-  -- inserts for the same year are safely sequenced without an explicit lock.
   insert into public.showroom_quotation_seq (year, last_seq)
   values (v_year, 1)
   on conflict (year) do update
     set last_seq = showroom_quotation_seq.last_seq + 1
   returning last_seq into v_seq;
 
-  NEW.quotation_no := 'BOE-Q-' || v_year || '-' || lpad(v_seq::text, 4, '0');
-  return NEW;
-end;
-$$;
+  v_no := 'BOE-QTN-' || v_year || '-' || lpad(v_seq::text, 4, '0');
 
--- ─── 3. Trigger: fire before every insert ────────────────────────────────────
+  -- 3. Write it back — unique index catches any rare concurrent duplicate.
+  update public.showroom_inquiries
+    set quotation_no = v_no
+    where id = p_inquiry_id
+      and quotation_no is null;
 
-drop trigger if exists showroom_inquiries_assign_quotation_no
-  on public.showroom_inquiries;
-
-create trigger showroom_inquiries_assign_quotation_no
-  before insert on public.showroom_inquiries
-  for each row execute function public.assign_showroom_quotation_no();
-
--- ─── 4. Uniqueness constraint on quotation_no ────────────────────────────────
--- Partial: only enforces uniqueness where quotation_no is not null,
--- so historical null rows (before backfill completes) don't conflict.
-
-create unique index if not exists showroom_inquiries_quotation_no_uidx
-  on public.showroom_inquiries (quotation_no)
-  where quotation_no is not null;
-
--- ─── 5. Backfill existing rows ───────────────────────────────────────────────
--- Assigns quotation_no to every row that lacks one, ordered by created_at
--- (oldest first) so numbering reflects the original submission order.
--- Runs entirely within a single transaction to stay consistent.
-
-do $$
-declare
-  rec     record;
-  v_year  integer;
-  v_seq   integer;
-begin
-  for rec in
-    select id, created_at
-    from   public.showroom_inquiries
-    where  quotation_no is null
-    order  by created_at asc
-  loop
-    v_year := extract(year from rec.created_at)::integer;
-
-    insert into public.showroom_quotation_seq (year, last_seq)
-    values (v_year, 1)
-    on conflict (year) do update
-      set last_seq = showroom_quotation_seq.last_seq + 1
-    returning last_seq into v_seq;
-
-    update public.showroom_inquiries
-      set quotation_no = 'BOE-Q-' || v_year || '-' || lpad(v_seq::text, 4, '0')
-      where id = rec.id;
-  end loop;
+  return v_no;
 end;
 $$;
