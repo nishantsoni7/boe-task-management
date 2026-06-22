@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { colors, font } from '@/lib/tokens'
 import { getExt, getFileTypeLabel, IMAGE_EXTS } from '@/lib/attachment-utils'
 
-const SHEET_EXTS = ['xlsx', 'xls', 'csv']
+const CSV_EXTS = ['csv']
+const EXCEL_EXTS = ['xlsx', 'xls']
 const MAX_PREVIEW_ROWS = 100
 
 type SheetState =
@@ -33,7 +34,8 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
   const label    = getFileTypeLabel(url)
   const isImage  = (IMAGE_EXTS as readonly string[]).includes(ext)
   const isPdf    = ext === 'pdf'
-  const isSheet  = SHEET_EXTS.includes(ext)
+  const isCsv    = CSV_EXTS.includes(ext)
+  const isExcel  = EXCEL_EXTS.includes(ext)
   const chip     = FILE_TYPE_COLORS[label] ?? FILE_TYPE_COLORS.File
   const name     = fileName ?? decodeURIComponent(url.split('/').pop() ?? 'Attachment')
 
@@ -47,7 +49,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
   }, [onClose])
 
   useEffect(() => {
-    if (!isSheet) return
+    if (!isCsv) return
     let cancelled = false
     setSheetState({ status: 'loading' })
 
@@ -79,7 +81,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
     })()
 
     return () => { cancelled = true }
-  }, [isSheet, url])
+  }, [isCsv, url])
 
   return (
     <div
@@ -98,7 +100,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
           borderRadius: '12px',
           boxShadow: '0 8px 40px rgba(0,0,0,0.3)',
           width: '100%',
-          maxWidth: isSheet ? '1100px' : '860px',
+          maxWidth: isCsv ? '1100px' : '860px',
           maxHeight: '90dvh',
           display: 'flex',
           flexDirection: 'column',
@@ -136,7 +138,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
           </span>
 
           {/* Sheet selector */}
-          {isSheet && sheetState.status === 'ready' && sheetState.sheetNames.length > 1 && (
+          {isCsv && sheetState.status === 'ready' && sheetState.sheetNames.length > 1 && (
             <select
               value={activeSheet ?? ''}
               onChange={e => setActiveSheet(e.target.value)}
@@ -201,18 +203,27 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
         {/* Preview area */}
         <div style={{
           flex: 1, overflow: 'auto',
-          display: 'flex', alignItems: isSheet ? 'stretch' : 'center', justifyContent: isSheet ? 'flex-start' : 'center',
+          display: 'flex', alignItems: isCsv ? 'stretch' : 'center', justifyContent: isCsv ? 'flex-start' : 'center',
           padding: isImage ? '16px' : 0,
           minHeight: 0,
         }}>
-          {isSheet && sheetState.status === 'loading' && (
+          {/* Excel: Office Online viewer for full formatting/merged-cell preview */}
+          {isExcel && (
+            <iframe
+              src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`}
+              title={name}
+              style={{ width: '100%', height: '70dvh', border: 'none', display: 'block' }}
+            />
+          )}
+          {/* CSV: plain table preview */}
+          {isCsv && sheetState.status === 'loading' && (
             <div style={{ margin: 'auto', textAlign: 'center', padding: '40px 24px' }}>
               <p style={{ fontSize: '13px', color: colors.muted }}>Loading preview…</p>
             </div>
           )}
-          {isSheet && sheetState.status === 'error' && (
+          {isCsv && sheetState.status === 'error' && (
             <div style={{ margin: 'auto', textAlign: 'center', padding: '40px 24px' }}>
-              <div style={{ fontSize: '44px', marginBottom: '14px' }}>📊</div>
+              <div style={{ fontSize: '44px', marginBottom: '14px' }}>📋</div>
               <p style={{ fontSize: '14px', fontWeight: 600, color: colors.primary, marginBottom: '6px' }}>
                 Couldn&apos;t preview this file
               </p>
@@ -235,7 +246,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
               </a>
             </div>
           )}
-          {isSheet && sheetState.status === 'ready' && activeSheet && (
+          {isCsv && sheetState.status === 'ready' && activeSheet && (
             <div style={{ width: '100%', overflow: 'auto', padding: '12px' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '12px', fontFamily: font.body, width: '100%' }}>
                 <tbody>
@@ -280,7 +291,7 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
               style={{ width: '100%', height: '70dvh', border: 'none', display: 'block' }}
             />
           )}
-          {!isImage && !isPdf && !isSheet && (
+          {!isImage && !isPdf && !isExcel && !isCsv && (
             <div style={{ textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: '44px', marginBottom: '14px' }}>
                 {label === 'Excel'   ? '📊'
