@@ -9,9 +9,9 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 import { Target, CalendarDays, FileText, Paperclip, X } from 'lucide-react'
+import { prepareFiles, getExt, getFileTypeLabel } from '@/lib/attachment-utils'
 
 const PRIORITIES = ['low', 'medium', 'high'] as const
-const MAX_FILE_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export default function CreateTaskPage() {
   const { viewAsUserId } = useViewAs()
@@ -34,7 +34,7 @@ export default function CreateTaskPage() {
   const [createdId,      setCreatedId]      = useState<string | null>(null)
   const [submitError,    setSubmitError]    = useState<string | null>(null)
   const [isMobile,       setIsMobile]       = useState(false)
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [attachFiles,    setAttachFiles]    = useState<File[]>([])
   const [attachError,    setAttachError]    = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
@@ -79,15 +79,14 @@ export default function CreateTaskPage() {
     router.push('/login')
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null
-    setAttachError(null)
-    if (file && file.size > MAX_FILE_BYTES) {
-      setAttachError('File must be 10 MB or smaller.')
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      return
-    }
-    setAttachmentFile(file)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? [])
+    if (!selected.length) return
+    const merged = [...attachFiles, ...selected]
+    const { ready, error } = await prepareFiles(merged)
+    setAttachError(error)
+    if (!error) setAttachFiles(ready)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleSubmit = async () => {
@@ -119,24 +118,14 @@ export default function CreateTaskPage() {
       if (!ok) { setLoading(false); return }
     }
 
-    // Upload attachment if selected
-    let attachmentUrl: string | null = null
-    if (attachmentFile) {
-      const ext  = attachmentFile.name.split('.').pop() ?? 'bin'
-      const path = `${session.user.id}/${Date.now()}.${ext}`
-      const { error: uploadError } = await supabase.storage
-        .from('task-attachments')
-        .upload(path, attachmentFile)
-      if (uploadError) {
-        console.error('[storage upload error]', uploadError)
-        setSubmitError(`File upload failed: ${uploadError.message}. Task was not created — please try again.`)
+    // Validate attachments before creating the task
+    if (attachFiles.length) {
+      const { error: prepErr } = await prepareFiles(attachFiles)
+      if (prepErr) {
+        setAttachError(prepErr)
         setLoading(false)
         return
       }
-      const { data: urlData } = supabase.storage
-        .from('task-attachments')
-        .getPublicUrl(path)
-      attachmentUrl = urlData.publicUrl
     }
 
     const notePayload = description.trim() || null
@@ -155,8 +144,6 @@ export default function CreateTaskPage() {
       status:         isSelf ? 'working' : 'pending',
       acknowledged_at: isSelf ? now : null,
     }
-    if (attachmentUrl !== null) taskPayload.attachment_url = attachmentUrl
-
     const { data: task, error } = await supabase
       .from('tasks')
       .insert(taskPayload)
@@ -180,6 +167,30 @@ export default function CreateTaskPage() {
       body:         title.trim(),
       is_push_sent: true,
     })
+
+    // Upload attachments and link to the new task
+    if (attachFiles.length) {
+      const { ready } = await prepareFiles(attachFiles)
+      let anyFailed = false
+      for (const file of ready) {
+        const ext  = getExt(file.name)
+        const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from('task-attachments')
+          .upload(path, file, { upsert: false })
+        if (upErr) { console.error('[attach upload]', upErr); anyFailed = true; continue }
+        const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
+        await supabase.from('task_attachments').insert({
+          task_id:    task.id,
+          url:        urlData.publicUrl,
+          file_name:  file.name,
+          file_type:  getFileTypeLabel(file.name),
+          created_by: session.user.id,
+        })
+      }
+      if (anyFailed) setSubmitError('Task created, but some attachments failed to upload.')
+    }
+
     // Reset form and show success — stay on page
     setTitle('')
     setDescription('')
@@ -190,7 +201,8 @@ export default function CreateTaskPage() {
     setDateDirty(false)
     setPriorityDirty(false)
     setAssigneeId('')
-    setAttachmentFile(null)
+    setAttachFiles([])
+    setAttachError(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
     setCreatedId(task.id)
     setSuccess(true)
@@ -392,97 +404,84 @@ export default function CreateTaskPage() {
             />
           </div>
 
-          {/* Mark Important + Attachment — side by side on desktop */}
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+          {/* Mark Important */}
+          <div
+            onClick={() => setIsUrgent(!isUrgent)}
+            style={{
+              marginBottom: '14px',
+              padding: '11px 13px', cursor: 'pointer', height: '42px', boxSizing: 'border-box',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              borderRadius: '8px',
+              background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
+              border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+            }}
+          >
+            <p style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
+              {isUrgent ? 'Marked Important' : 'Mark Important'}
+            </p>
+            <div style={{
+              width: '34px', height: '20px', borderRadius: '10px',
+              background: isUrgent ? '#C49A28' : colors.float,
+              position: 'relative', flexShrink: 0,
+              transition: 'background 0.16s',
+              border: `1px solid ${colors.border}`,
+            }}>
+              <div style={{
+                position: 'absolute', top: '2px',
+                left: isUrgent ? '15px' : '2px',
+                width: '14px', height: '14px',
+                borderRadius: '50%', background: '#fff',
+                transition: 'left 0.16s',
+              }} />
+            </div>
+          </div>
 
-            {/* Mark Important — label lives inside the box */}
-            <div
-              onClick={() => setIsUrgent(!isUrgent)}
+          {/* Attachments */}
+          <div style={{ marginBottom: '14px' }}>
+            <label className="boe-form-section-label">Attachments <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span></label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+              accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+            />
+            {attachFiles.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
+                {attachFiles.map((f, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '8px 12px', borderRadius: '8px',
+                    background: colors.raised, border: `1px solid ${colors.border}`,
+                  }}>
+                    <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: '12px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                    <span style={{ fontSize: '11px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
+                    <button
+                      onClick={() => { setAttachFiles(prev => prev.filter((_, j) => j !== i)); setAttachError(null) }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                    >
+                      <X size={13} color={colors.muted} strokeWidth={2} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => fileInputRef.current?.click()}
               style={{
-                padding: '11px 13px', cursor: 'pointer', height: '42px', boxSizing: 'border-box',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                borderRadius: '8px',
-                background: isUrgent ? 'rgba(196,154,40,0.06)' : colors.raised,
-                border: `1px solid ${isUrgent ? 'rgba(196,154,40,0.3)' : colors.border}`,
+                width: '100%', height: '40px', boxSizing: 'border-box',
+                borderRadius: '8px', border: `1.5px dashed ${colors.border}`,
+                background: colors.raised, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
               }}
             >
-              <p style={{ fontSize: '12px', fontWeight: 600, color: isUrgent ? '#C49A28' : colors.primary }}>
-                {isUrgent ? 'Marked Important' : 'Mark Important'}
-              </p>
-              <div style={{
-                width: '34px', height: '20px', borderRadius: '10px',
-                background: isUrgent ? '#C49A28' : colors.float,
-                position: 'relative', flexShrink: 0,
-                transition: 'background 0.16s',
-                border: `1px solid ${colors.border}`,
-              }}>
-                <div style={{
-                  position: 'absolute', top: '2px',
-                  left: isUrgent ? '15px' : '2px',
-                  width: '14px', height: '14px',
-                  borderRadius: '50%', background: '#fff',
-                  transition: 'left 0.16s',
-                }} />
-              </div>
-            </div>
-
-            {/* Attachment — no external label */}
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                id="task-attachment"
-                onChange={handleFileChange}
-                style={{ display: 'none' }}
-                accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
-              />
-              {attachmentFile ? (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '8px',
-                  padding: '11px 12px', height: '42px', boxSizing: 'border-box',
-                  borderRadius: '8px',
-                  background: colors.raised,
-                  border: `1px solid ${colors.border}`,
-                }}>
-                  <Paperclip size={13} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: '12px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {attachmentFile.name}
-                  </span>
-                  <span style={{ fontSize: '11px', color: colors.muted, flexShrink: 0 }}>
-                    {(attachmentFile.size / 1024).toFixed(0)} KB
-                  </span>
-                  <button
-                    onClick={() => {
-                      setAttachmentFile(null)
-                      setAttachError(null)
-                      if (fileInputRef.current) fileInputRef.current.value = ''
-                    }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
-                  >
-                    <X size={13} color={colors.muted} strokeWidth={2} />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    width: '100%', height: '42px', boxSizing: 'border-box',
-                    borderRadius: '8px',
-                    border: `1.5px dashed ${colors.border}`,
-                    background: colors.raised,
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  }}
-                >
-                  <Paperclip size={13} color={colors.secondary} strokeWidth={1.8} />
-                  <span style={{ fontSize: '12px', color: colors.secondary }}>Attach a file</span>
-                  <span style={{ fontSize: '11px', color: colors.muted }}>— max 10 MB</span>
-                </button>
-              )}
-              {attachError && (
-                <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>
-              )}
-            </div>
+              <Paperclip size={13} color={colors.secondary} strokeWidth={1.8} />
+              <span style={{ fontSize: '12px', color: colors.secondary }}>Add files</span>
+              <span style={{ fontSize: '11px', color: colors.muted }}>— 10 MB total</span>
+            </button>
+            {attachError && <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
           </div>
 
           {/* Required fields note */}
@@ -508,7 +507,7 @@ export default function CreateTaskPage() {
               letterSpacing: '0.01em',
             }}
           >
-            {loading ? (attachmentFile ? 'Uploading & Saving…' : 'Saving…') : 'Create & Assign'}
+            {loading ? (attachFiles.length ? 'Uploading & Saving…' : 'Saving…') : 'Create & Assign'}
           </button>
 
         </div>

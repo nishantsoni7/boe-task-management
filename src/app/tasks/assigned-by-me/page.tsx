@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -16,8 +16,9 @@ import { useActiveUsers } from '@/hooks/queries/useMyTasks'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert,
-  Search, Pencil, Trash2, Plus,
+  Search, Pencil, Trash2, Plus, Paperclip, X,
 } from 'lucide-react'
+import { prepareFiles, getExt, getFileTypeLabel } from '@/lib/attachment-utils'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const TASK_COLUMNS = [
@@ -385,11 +386,13 @@ function DelegateTaskModal({
   allUsers,
   onClose,
   onCreated,
+  onError,
 }: {
   profile: UserProfile
   allUsers: UserProfile[]
   onClose: () => void
   onCreated: (task: Task) => void
+  onError: (msg: string) => void
 }) {
   const [title,         setTitle]         = useState('')
   const [description,   setDescription]   = useState('')
@@ -403,9 +406,22 @@ function DelegateTaskModal({
   const [assigneeDirty, setAssigneeDirty] = useState(false)
   const [saving,        setSaving]        = useState(false)
   const [saveError,     setSaveError]     = useState<string | null>(null)
+  const [attachFiles,   setAttachFiles]   = useState<File[]>([])
+  const [attachError,   setAttachError]   = useState<string | null>(null)
+  const attachInputRef = useRef<HTMLInputElement>(null)
   const supabase = useMemo(() => createClient(), [])
 
   const canSave = !saving && title.trim().length > 0 && assigneeId !== '' && dueDate !== '' && priority !== ''
+
+  const handleAttachChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? [])
+    if (!selected.length) return
+    const merged = [...attachFiles, ...selected]
+    const { ready, error } = await prepareFiles(merged)
+    setAttachError(error)
+    if (!error) setAttachFiles(ready)
+    if (attachInputRef.current) attachInputRef.current.value = ''
+  }
 
   const handleSubmit = async () => {
     setTitleDirty(true)
@@ -476,7 +492,39 @@ function DelegateTaskModal({
       }),
     ])
 
+    // Upload attachments and link to the new task
+    let attachUploadFailed = false
+    if (attachFiles.length) {
+      const { ready, error: prepErr } = await prepareFiles(attachFiles)
+      if (prepErr) {
+        setAttachError(prepErr)
+        attachUploadFailed = true
+      } else {
+        let anyFailed = false
+        for (const file of ready) {
+          const ext  = getExt(file.name)
+          const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+          const { error: upErr } = await supabase.storage
+            .from('task-attachments')
+            .upload(path, file, { upsert: false })
+          if (upErr) { console.error('[attach upload]', upErr); anyFailed = true; continue }
+          const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
+          await supabase.from('task_attachments').insert({
+            task_id:    task.id,
+            url:        urlData.publicUrl,
+            file_name:  file.name,
+            file_type:  getFileTypeLabel(file.name),
+            created_by: session.user.id,
+          })
+        }
+        if (anyFailed) attachUploadFailed = true
+      }
+    }
+
+    // onCreated closes the modal and adds the task to the list.
+    // If uploads partially failed, surface the error at the page level after close.
     onCreated(task as unknown as Task)
+    if (attachUploadFailed) onError('Task created, but some attachments failed to upload.')
   }
 
   const PRIORITY_CFG = {
@@ -607,6 +655,49 @@ function DelegateTaskModal({
             className="boe-input"
             style={{ resize: 'none', width: '100%', boxSizing: 'border-box' }}
           />
+        </div>
+
+        {/* Attachments */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={LABEL_STYLE}>Attachments <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span></label>
+          <input
+            ref={attachInputRef}
+            type="file"
+            multiple
+            onChange={handleAttachChange}
+            style={{ display: 'none' }}
+            accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+          />
+          {attachFiles.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
+              {attachFiles.map((f, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '6px', background: colors.raised, border: `1px solid ${colors.border}` }}>
+                  <Paperclip size={11} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: '11px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                  <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
+                  <button
+                    onClick={() => { setAttachFiles(prev => prev.filter((_, j) => j !== i)); setAttachError(null) }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                  >
+                    <X size={11} color={colors.muted} strokeWidth={2} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={() => attachInputRef.current?.click()}
+            style={{
+              width: '100%', padding: '7px 0', borderRadius: '7px',
+              border: `1.5px dashed ${colors.border}`, background: colors.raised,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+            }}
+          >
+            <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} />
+            <span style={{ fontSize: '11px', color: colors.secondary }}>Add files</span>
+            <span style={{ fontSize: '10px', color: colors.muted }}>— 10 MB total</span>
+          </button>
+          {attachError && <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
         </div>
 
         {/* Important toggle */}
@@ -828,6 +919,7 @@ export default function AssignedByMePage() {
   const [selectedTask,      setSelectedTask]      = useState<Task | null>(null)
   const [editingTask,       setEditingTask]       = useState<Task | null>(null)
   const [showDelegateModal, setShowDelegateModal] = useState(false)
+  const [delegateError,     setDelegateError]     = useState<string | null>(null)
   const [isMobile,          setIsMobile]          = useState(false)
 
   const [search,         setSearch]         = useState('')
@@ -1123,12 +1215,33 @@ export default function AssignedByMePage() {
         />
       )}
 
+      {delegateError && (
+        <div style={{
+          position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 1100,
+          padding: '10px 16px',
+          borderRadius: '8px',
+          background: colors.redTint,
+          border: `1px solid rgba(217,79,79,0.3)`,
+          display: 'flex', alignItems: 'center', gap: '12px',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+          whiteSpace: 'nowrap',
+        }}>
+          <span style={{ fontSize: '13px', fontWeight: 500, color: colors.red }}>{delegateError}</span>
+          <button
+            onClick={() => setDelegateError(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px', lineHeight: 1, padding: '0 2px' }}
+          >×</button>
+        </div>
+      )}
+
       {showDelegateModal && profile && (
         <DelegateTaskModal
           profile={profile}
           allUsers={allUsers}
           onClose={() => setShowDelegateModal(false)}
           onCreated={handleTaskDelegated}
+          onError={setDelegateError}
         />
       )}
     </>
