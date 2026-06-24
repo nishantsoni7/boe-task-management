@@ -981,7 +981,7 @@ export default function TaskDetailPage() {
                   {task.note ? (
                     <p style={{
                       fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6, margin: 0, flex: 1,
-                      display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     }}>
                       {task.note}
                     </p>

@@ -1,5 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import fsPromises from 'fs/promises'
 import { NextRequest, NextResponse } from 'next/server'
+import path from 'path'
 import sharp from 'sharp'
 
 export const runtime = 'nodejs'
@@ -491,10 +493,19 @@ export async function POST(
   })
 }
 
-// ── Enhanced PDF builder ──────────────────────────────────────────────────────
+// ── PDF builder ───────────────────────────────────────────────────────────────
 
 async function buildEnhancedPdf(data: PdfData): Promise<Buffer> {
-  // Pre-fetch product images concurrently (best-effort, failures logged and skipped)
+  // Load BOE logo from project public assets
+  const logoPath = path.join(process.cwd(), 'public', 'branding', 'boe-logo-full.png')
+  let logoBuffer: Buffer | null = null
+  try {
+    logoBuffer = await fsPromises.readFile(logoPath)
+  } catch {
+    console.warn('[pdf] logo not found at', logoPath)
+  }
+
+  // Pre-fetch product images concurrently (best-effort)
   const imageBuffers: Array<Buffer | null> = await Promise.all(
     data.items.map(item => {
       const label = `${item.product?.product_code ?? '?'} / ${item.product?.name ?? '?'}`
@@ -503,99 +514,127 @@ async function buildEnhancedPdf(data: PdfData): Promise<Buffer> {
   )
 
   return new Promise<Buffer>((resolve, reject) => {
-    const doc      = new PDFDocument({ margin: 50, size: 'A4' })
+    const doc      = new PDFDocument({ margin: 36, size: 'A4' })
     const buffers: Buffer[] = []
     doc.on('data',  (chunk: Buffer) => buffers.push(chunk))
     doc.on('end',   ()              => resolve(Buffer.concat(buffers)))
     doc.on('error', reject)
 
-    const pageW = doc.page.width   // 595
-    const L = 40, R = 40           // left / right margin
-    const contentW = pageW - L - R // 515
+    const pageW    = doc.page.width   // 595
+    const L        = 36
+    const contentW = pageW - L - 36   // 523
+    const R_EDGE   = pageW - 36       // 559
+
+    // Brand palette — derived from BOE logo
+    const RED    = '#C41920'
+    const DARK   = '#1F2937'
+    const GRAY   = '#6B7280'
+    const LGRAY  = '#9CA3AF'
+    const BORDER = '#E5E7EB'
 
     const date = new Date(data.created_at).toLocaleDateString('en-IN', {
       day: 'numeric', month: 'long', year: 'numeric',
     })
 
-    // ── Header band ─────────────────────────────────────────────────────────
-    doc.rect(0, 0, pageW, 72).fillColor('#1A2035').fill()
+    // ── Red top accent stripe ─────────────────────────────────────────────────
+    doc.rect(0, 0, pageW, 3).fillColor(RED).fill()
 
-    doc.fontSize(20).font('Helvetica-Bold').fillColor('#FFFFFF')
-       .text('BOE', L, 18)
-    doc.fontSize(8).font('Helvetica').fillColor('#94A3B8')
-       .text('Best of Exports', L, 42)
+    // ── Header: logo left, quotation meta right ───────────────────────────────
+    let y = 40
 
-    doc.fontSize(18).font('Helvetica-Bold').fillColor('#FFFFFF')
-       .text('QUOTATION', L, 18, { align: 'right', width: contentW })
-    doc.fontSize(8).font('Helvetica').fillColor('#94A3B8')
-       .text(`No. ${data.quotation_no ?? 'Pending'}`, L, 40, { align: 'right', width: contentW })
-    doc.fontSize(8).font('Helvetica').fillColor('#94A3B8')
-       .text(`Date: ${date}`, L, 52, { align: 'right', width: contentW })
-
-    // ── Customer + salesperson block ─────────────────────────────────────────
-    let y = 88
-    const colMid = L + Math.floor(contentW / 2) + 8
-
-    doc.fontSize(7).font('Helvetica-Bold').fillColor('#9CA3AF').text('BILL TO', L, y)
-    doc.fontSize(7).font('Helvetica-Bold').fillColor('#9CA3AF').text('PREPARED BY', colMid, y)
-    y += 12
-
-    doc.fontSize(10).font('Helvetica-Bold').fillColor('#111827').text(data.customer_name, L, y)
-    doc.fontSize(10).font('Helvetica-Bold').fillColor('#111827').text(data.salesperson_name, colMid, y)
-    y += 13
-
-    doc.fontSize(9).font('Helvetica').fillColor('#374151').text(data.customer_mobile, L, y)
-    doc.fontSize(9).font('Helvetica').fillColor('#374151').text('Best of Exports', colMid, y)
-    y += 12
-
-    if (data.company) {
-      doc.fontSize(9).font('Helvetica').fillColor('#374151').text(data.company, L, y)
-      y += 12
-    }
-    if (data.city) {
-      doc.fontSize(9).font('Helvetica').fillColor('#374151').text(data.city, L, y)
-      y += 12
-    }
-    if (data.project_name) {
-      doc.fontSize(9).font('Helvetica').fillColor('#6B7280').text(`Project: ${data.project_name}`, L, y)
-      y += 12
+    // Logo — natural ratio ~2.65:1, rendered at height 44 → width ≈ 117
+    if (logoBuffer) {
+      try {
+        doc.image(logoBuffer, L, y, { height: 44 })
+      } catch {
+        doc.fontSize(20).font('Helvetica-Bold').fillColor(RED).text('BOE', L, y)
+      }
+    } else {
+      doc.fontSize(20).font('Helvetica-Bold').fillColor(RED).text('BOE', L, y)
     }
 
-    y += 10
-    doc.moveTo(L, y).lineTo(L + contentW, y).strokeColor('#E5E7EB').lineWidth(0.5).stroke()
-    y += 12
+    // Tagline sits below the logo
+    doc.fontSize(6.5).font('Helvetica-Bold').fillColor(RED)
+       .text('CRAFTING SPACES. DEFINING EXPERIENCES.', L, y + 52)
 
-    // ── Table columns ────────────────────────────────────────────────────────
-    // img | code | name/dims/note | qty | unit price | total
-    const IMG_W  = 52
-    const CODE_W = 56
-    const QTY_W  = 28
-    const RATE_W = 76
-    const TOT_W  = 76
-    const NAME_W = contentW - IMG_W - CODE_W - QTY_W - RATE_W - TOT_W - 10 // ~227
+    // Right: QUOTATION heading, right-aligned
+    doc.fontSize(22).font('Helvetica-Bold').fillColor(DARK)
+       .text('QUOTATION', L, y, { align: 'right', width: contentW })
 
-    const cImg  = L
-    const cCode = cImg  + IMG_W + 6
-    const cName = cCode + CODE_W + 4
-    const cQty  = cName + NAME_W + 4
-    const cRate = cQty  + QTY_W  + 4
-    const cTot  = cRate + RATE_W + 4
+    // Short red accent dash under the heading
+    doc.moveTo(R_EDGE - 36, y + 29).lineTo(R_EDGE, y + 29)
+       .strokeColor(RED).lineWidth(2).stroke()
 
-    // Table header row
-    doc.rect(L - 2, y - 4, contentW + 4, 18).fillColor('#F1F5F9').fill()
-    doc.fontSize(7).font('Helvetica-Bold').fillColor('#64748B')
-    doc.text('IMAGE',    cImg,  y, { width: IMG_W })
-    doc.text('CODE',     cCode, y, { width: CODE_W })
-    doc.text('PRODUCT / DIMENSIONS', cName, y, { width: NAME_W })
-    doc.text('QTY',  cQty,  y, { width: QTY_W,  align: 'right' })
-    doc.text('UNIT PRICE', cRate, y, { width: RATE_W, align: 'right' })
-    doc.text('TOTAL', cTot, y, { width: TOT_W,  align: 'right' })
+    // Quotation details — two-column grid anchored to the right
+    const qLabelW  = 96
+    const qBlockX  = R_EDGE - 260
+    const qValueX  = qBlockX + qLabelW + 8
+    const qValueW  = R_EDGE - qValueX
+    const qRow1    = y + 38
+    const qRow2    = qRow1 + 17
+
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor(LGRAY)
+       .text('QUOTATION NO.', qBlockX, qRow1, { width: qLabelW })
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(DARK)
+       .text(data.quotation_no ?? '—', qValueX, qRow1, { width: qValueW })
+
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor(LGRAY)
+       .text('DATE', qBlockX, qRow2, { width: qLabelW })
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(DARK)
+       .text(date, qValueX, qRow2, { width: qValueW })
+
+    // Advance past whichever header column is taller
+    y = Math.max(y + 52 + 10, qRow2 + 18) + 10
+
+    doc.moveTo(L, y).lineTo(R_EDGE, y).strokeColor(BORDER).lineWidth(0.5).stroke()
+    y += 20
+
+    // ── Client block ─────────────────────────────────────────────────────────
+    doc.fontSize(7).font('Helvetica-Bold').fillColor(RED)
+       .text('QUOTATION FOR', L, y)
+    doc.moveTo(L, y + 10).lineTo(L + 40, y + 10).strokeColor(RED).lineWidth(1.5).stroke()
     y += 18
 
-    doc.moveTo(L, y).lineTo(L + contentW, y).strokeColor('#CBD5E1').lineWidth(0.5).stroke()
-    y += 6
+    doc.fontSize(16).font('Helvetica-Bold').fillColor(DARK)
+       .text(data.customer_name, L, y)
+    y += 22
 
-    // ── Product rows ─────────────────────────────────────────────────────────
+    doc.fontSize(8.5).font('Helvetica').fillColor(GRAY)
+       .text(data.customer_mobile, L, y)
+    y += 13
+
+    if (data.company) {
+      doc.fontSize(8.5).font('Helvetica').fillColor(GRAY)
+         .text(data.company, L, y)
+      y += 13
+    }
+    if (data.city) {
+      doc.fontSize(8.5).font('Helvetica').fillColor(GRAY)
+         .text(data.city, L, y)
+      y += 13
+    }
+    if (data.project_name) {
+      doc.fontSize(8).font('Helvetica').fillColor(LGRAY)
+         .text(`Project: ${data.project_name}`, L, y)
+      y += 13
+    }
+
+    y += 22
+    doc.moveTo(L, y).lineTo(R_EDGE, y).strokeColor(BORDER).lineWidth(0.5).stroke()
+    y += 20
+
+    // ── Product cards ─────────────────────────────────────────────────────────
+    // Single horizontal card per product — image left, all info right.
+    // Spec row sits inside the right column (no full-width bottom section).
+    // Target: 4 cards per page, ~180pt each.
+    const CARD_PAD = 10
+    const IMG_SIZE = 160                          // 160×160 fit box
+    const IMG_X    = L + CARD_PAD                // 46
+    const INFO_X   = IMG_X + IMG_SIZE + 14       // 220
+    const INFO_W   = R_EDGE - INFO_X - CARD_PAD  // 329
+    const CARD_H   = CARD_PAD + IMG_SIZE + CARD_PAD  // 180
+    const CARD_GAP = 8
+
     let subtotal = 0
 
     data.items.forEach((item, idx) => {
@@ -603,7 +642,7 @@ async function buildEnhancedPdf(data: PdfData): Promise<Buffer> {
       const lineTotal = item.rate * item.quantity
       subtotal       += lineTotal
 
-      // Build text lines for height estimation
+      // Build dimension string
       const dimParts: string[] = []
       if (prod?.dimensions) {
         const d = prod.dimensions
@@ -612,133 +651,153 @@ async function buildEnhancedPdf(data: PdfData): Promise<Buffer> {
         if (d.depth  != null) dimParts.push(`D ${d.depth}${u}`)
         if (d.height != null) dimParts.push(`H ${d.height}${u}`)
       }
-      const hasDims   = dimParts.length > 0
-      const hasNote   = !!item.customization_note
-      const hasAdj    = item.mrp_at_time > 0 && Math.abs(item.rate - item.mrp_at_time) > 0.5
-      const textLines = 1 + (hasDims ? 1 : 0) + (hasNote ? 1 : 0) + (hasAdj ? 1 : 0)
-      const IMG_H     = 52
-      const rowHeight = Math.max(IMG_H + 8, textLines * 13 + 10)
+      const dimStr = dimParts.join(' × ') || '—'
 
-      if (y + rowHeight > doc.page.height - 160) {
+      if (y + CARD_H > doc.page.height - 80) {
         doc.addPage()
         y = 50
       }
 
-      // Alternating row background
-      if (idx % 2 === 1) {
-        doc.rect(L - 2, y - 2, contentW + 4, rowHeight + 4).fillColor('#F8FAFC').fill()
-      }
+      const cardY = y
 
-      // Product image
+      // Card border
+      doc.rect(L, cardY, contentW, CARD_H).strokeColor(BORDER).lineWidth(0.5).stroke()
+
+      // ── Image (left column) ──────────────────────────────────────────────────
       const imgBuf = imageBuffers[idx]
       if (imgBuf) {
         try {
-          doc.image(imgBuf, cImg, y, { fit: [IMG_W, IMG_H], align: 'center', valign: 'center' })
+          doc.image(imgBuf, IMG_X, cardY + CARD_PAD, {
+            fit: [IMG_SIZE, IMG_SIZE],
+            align: 'center',
+            valign: 'center',
+          })
         } catch (imgErr) {
-          const label = `${item.product?.product_code ?? '?'} / ${item.product?.name ?? '?'}`
-          console.error(`[pdf-img] ${label} | PDFKit image insert failed:`, imgErr)
+          const label = `${prod?.product_code ?? '?'} / ${prod?.name ?? '?'}`
+          console.error(`[pdf-img] ${label} | image insert failed:`, imgErr)
         }
-      } else {
-        doc.rect(cImg, y, IMG_W, IMG_H).fillColor('#F1F5F9').fill()
-        doc.fontSize(6).font('Helvetica').fillColor('#CBD5E1')
-           .text('No image', cImg, y + IMG_H / 2 - 4, { width: IMG_W, align: 'center' })
       }
 
-      // Product code
-      doc.fontSize(8).font('Helvetica-Bold').fillColor('#1E293B')
-         .text(prod?.product_code ?? '—', cCode, y, { width: CODE_W })
+      // ── Right column: name → code → note → spec row ──────────────────────────
+      let infoY = cardY + CARD_PAD
 
       // Product name
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#111827')
-         .text(prod?.name ?? 'Unknown product', cName, y, { width: NAME_W })
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(DARK)
+         .text(prod?.name ?? 'Unknown product', INFO_X, infoY, { width: INFO_W })
+      infoY += 17
 
-      let textY = y + 13
-
-      // Dimensions
-      if (hasDims) {
-        doc.fontSize(7.5).font('Helvetica').fillColor('#6B7280')
-           .text(dimParts.join(' x '), cName, textY, { width: NAME_W })
-        textY += 11
+      // Product code
+      if (prod?.product_code && prod.product_code !== '—') {
+        doc.fontSize(7).font('Helvetica').fillColor(LGRAY)
+           .text(prod.product_code, INFO_X, infoY, { width: INFO_W })
+        infoY += 13
       }
 
-      // Customization note
+      // Customization note — compact tinted strip
       if (item.customization_note) {
-        doc.fontSize(7.5).font('Helvetica').fillColor('#92400E')
-           .text(`Customization: ${item.customization_note}`, cName, textY, { width: NAME_W })
-        textY += 11
+        const np    = 7
+        const noteH = 26
+        doc.rect(INFO_X, infoY, INFO_W, noteH).fillColor('#F9FAFB').fill()
+        doc.fontSize(6).font('Helvetica-Bold').fillColor(LGRAY)
+           .text('CUSTOMIZATION', INFO_X + np, infoY + 5, { width: INFO_W - np * 2 })
+        doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
+           .text(item.customization_note, INFO_X + np, infoY + 14, { width: INFO_W - np * 2 })
+        infoY += noteH + 6
+      } else {
+        infoY += 4
       }
 
-      // Price adjustment indicator
-      if (hasAdj) {
-        const delta = item.rate - item.mrp_at_time
-        const sign  = delta > 0 ? '+' : ''
-        doc.fontSize(7).font('Helvetica').fillColor(delta < 0 ? '#059669' : '#DC2626')
-           .text(`Adj: ${sign}${fmt(delta)} vs MRP ${fmt(item.mrp_at_time)}`, cName, textY, { width: NAME_W })
-      }
+      // Thin separator before spec row
+      doc.moveTo(INFO_X, infoY + 4).lineTo(R_EDGE - CARD_PAD, infoY + 4)
+         .strokeColor(BORDER).lineWidth(0.5).stroke()
 
-      // Qty / unit price / line total
-      doc.fontSize(9).font('Helvetica').fillColor('#111827')
-      doc.text(String(item.quantity), cQty,  y, { width: QTY_W,  align: 'right' })
+      // Spec row — 4 equal blocks across INFO_W
+      const specLabelY = infoY + 10
+      const specValueY = specLabelY + 10
+      const blkW       = INFO_W / 4   // ~82pt each
 
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#1A2035')
-         .text(fmt(item.rate), cRate, y, { width: RATE_W, align: 'right' })
+      const specs: Array<{ label: string; value: string }> = [
+        { label: 'DIMENSIONS', value: dimStr },
+        { label: 'MRP',        value: fmt(item.rate) },
+        { label: 'QTY',        value: String(item.quantity) },
+        { label: 'LINE TOTAL', value: fmt(lineTotal) },
+      ]
 
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#0F172A')
-         .text(fmt(lineTotal), cTot, y, { width: TOT_W, align: 'right' })
+      specs.forEach((spec, i) => {
+        const bx = INFO_X + i * blkW
+        doc.fontSize(6).font('Helvetica-Bold').fillColor(LGRAY)
+           .text(spec.label, bx, specLabelY, { width: blkW, align: 'center' })
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(DARK)
+           .text(spec.value, bx, specValueY, { width: blkW, align: 'center' })
+      })
 
-      y += rowHeight + 4
-
-      // Light row divider
-      doc.moveTo(L, y - 2).lineTo(L + contentW, y - 2).strokeColor('#F1F5F9').lineWidth(0.3).stroke()
+      y = cardY + CARD_H + CARD_GAP
     })
 
     y += 6
-    doc.moveTo(L, y).lineTo(L + contentW, y).strokeColor('#CBD5E1').lineWidth(0.5).stroke()
-    y += 14
 
-    // ── Totals block (right-aligned) ─────────────────────────────────────────
+    // ── Commercial summary card ───────────────────────────────────────────────
     const discAmt    = subtotal * data.discount_percent / 100
     const finalTotal = subtotal - discAmt
-    const tLabelX    = L + contentW - TOT_W - RATE_W - 10
-    const tValueX    = L + contentW - TOT_W
-    const tLabelW    = RATE_W + 6
-    const tValueW    = TOT_W
 
-    doc.fontSize(9).font('Helvetica').fillColor('#374151')
-    doc.text('Subtotal (Ex-Factory)',  tLabelX, y, { width: tLabelW })
-    doc.text(fmt(subtotal), tValueX, y, { width: tValueW, align: 'right' })
-    y += 15
+    const SUM_PAD = 20
+    const nRows   = 1 + (data.discount_percent > 0 ? 1 : 0)
+    const SUM_H   = SUM_PAD + nRows * 20 + 12 + 46 + SUM_PAD
 
-    if (data.discount_percent > 0) {
-      doc.fillColor('#059669')
-      doc.text(`Discount (${data.discount_percent}%)`, tLabelX, y, { width: tLabelW })
-      doc.text(`- ${fmt(discAmt)}`, tValueX, y, { width: tValueW, align: 'right' })
-      y += 15
-    }
-
-    doc.moveTo(tLabelX, y).lineTo(L + contentW, y).strokeColor('#CBD5E1').lineWidth(0.5).stroke()
-    y += 10
-
-    // Final Quotation Value — prominent
-    doc.rect(tLabelX - 8, y - 4, contentW - (tLabelX - L) + 8, 28)
-       .fillColor('#1A2035').fill()
-    doc.fontSize(10).font('Helvetica-Bold').fillColor('#FFFFFF')
-       .text('Final Quotation Value', tLabelX, y + 2, { width: tLabelW })
-    doc.fontSize(11).font('Helvetica-Bold').fillColor('#FFFFFF')
-       .text(fmt(finalTotal), tValueX, y + 1, { width: tValueW, align: 'right' })
-    y += 36
-
-    // ── Commercial Notes ─────────────────────────────────────────────────────
-    if (y > doc.page.height - 140) {
+    if (y + SUM_H > doc.page.height - 80) {
       doc.addPage()
       y = 50
     }
 
-    doc.moveTo(L, y).lineTo(L + contentW, y).strokeColor('#E5E7EB').lineWidth(0.5).stroke()
-    y += 12
+    const sumCardY = y
+    doc.rect(L, sumCardY, contentW, SUM_H).strokeColor(BORDER).lineWidth(0.5).stroke()
 
-    doc.fontSize(8).font('Helvetica-Bold').fillColor('#374151').text('COMMERCIAL NOTES', L, y)
-    y += 13
+    const sumLabelX = L + SUM_PAD
+    const sumValueX = R_EDGE - 200
+    const sumLabelW = sumValueX - sumLabelX - 8
+    const sumValueW = 200 - SUM_PAD
+
+    let sumY = sumCardY + SUM_PAD
+
+    doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+       .text('Subtotal (Ex-Factory)', sumLabelX, sumY, { width: sumLabelW })
+    doc.fontSize(8.5).font('Helvetica').fillColor(GRAY)
+       .text(fmt(subtotal), sumValueX, sumY, { width: sumValueW, align: 'right' })
+    sumY += 20
+
+    if (data.discount_percent > 0) {
+      doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+         .text(`Discount (${data.discount_percent}%)`, sumLabelX, sumY, { width: sumLabelW })
+      doc.fontSize(8.5).font('Helvetica').fillColor(LGRAY)
+         .text(`- ${fmt(discAmt)}`, sumValueX, sumY, { width: sumValueW, align: 'right' })
+      sumY += 20
+    }
+
+    doc.moveTo(L + SUM_PAD, sumY + 6).lineTo(R_EDGE - SUM_PAD, sumY + 6)
+       .strokeColor(RED).lineWidth(0.75).stroke()
+    sumY += 14
+
+    doc.fontSize(8).font('Helvetica-Bold').fillColor(RED)
+       .text('FINAL QUOTATION VALUE', sumLabelX, sumY + 10, { width: sumLabelW })
+    doc.fontSize(22).font('Helvetica-Bold').fillColor(RED)
+       .text(fmt(finalTotal), sumValueX, sumY, { width: sumValueW, align: 'right' })
+
+    y += SUM_H + 20
+
+    // ── Commercial notes ──────────────────────────────────────────────────────
+    if (y > doc.page.height - 180) {
+      doc.addPage()
+      y = 50
+    }
+
+    y += 4
+    doc.moveTo(L, y).lineTo(R_EDGE, y).strokeColor(BORDER).lineWidth(0.5).stroke()
+    y += 16
+
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor(DARK)
+       .text('COMMERCIAL NOTES', L, y)
+    doc.moveTo(L, y + 11).lineTo(L + 32, y + 11).strokeColor(RED).lineWidth(1.5).stroke()
+    y += 20
 
     const notes = [
       'Prices are ex-factory.',
@@ -749,17 +808,26 @@ async function buildEnhancedPdf(data: PdfData): Promise<Buffer> {
       'This is a preliminary showroom quotation. Final detailed quotation will be shared after confirmation.',
     ]
 
-    doc.fontSize(8).font('Helvetica').fillColor('#6B7280')
+    doc.fontSize(8.5).font('Helvetica').fillColor(GRAY)
     for (const note of notes) {
       doc.text(`•  ${note}`, L + 4, y, { width: contentW - 4 })
-      y += 12
+      y += 13
     }
 
-    // ── Page footer ──────────────────────────────────────────────────────────
-    const footerY = doc.page.height - 32
-    doc.moveTo(L, footerY).lineTo(L + contentW, footerY).strokeColor('#E5E7EB').lineWidth(0.3).stroke()
-    doc.fontSize(7).font('Helvetica').fillColor('#9CA3AF')
-       .text('Best of Exports  |  Showroom Preliminary Quotation', L, footerY + 6, { width: contentW, align: 'center' })
+    // ── Footer ────────────────────────────────────────────────────────────────
+    const footerY = doc.page.height - 44
+    doc.moveTo(L, footerY).lineTo(R_EDGE, footerY).strokeColor(RED).lineWidth(0.75).stroke()
+
+    doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
+       .text(
+         'B-7, Trade World, Basni Phase-II, Jodhpur, Rajasthan 342005',
+         L, footerY + 9, { width: contentW * 0.44 },
+       )
+    doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
+       .text(
+         '+91 80030 34966   |   info@bestofexports.com   |   bestofexports.com',
+         L, footerY + 9, { width: contentW, align: 'right' },
+       )
 
     doc.end()
   })
