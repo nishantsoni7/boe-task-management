@@ -24,6 +24,25 @@ export async function GET(req: NextRequest) {
   const from  = (page - 1) * PAGE_SIZE
   const to    = from + PAGE_SIZE - 1
 
+  // Validate month param strictly before using it in date arithmetic
+  if (month !== null) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      return NextResponse.json({ error: 'Invalid month parameter. Expected format: YYYY-MM (e.g. 2026-04)' }, { status: 400 })
+    }
+  }
+
+  // Build a safe half-open range [startDate, endDate) to avoid invalid dates
+  // like 2026-04-31 or 2026-02-31.
+  let startDate: string | null = null
+  let endDate:   string | null = null
+  if (month) {
+    const [y, m] = month.split('-').map(Number)
+    startDate = `${y}-${String(m).padStart(2, '0')}-01`
+    const nextMonth = m === 12 ? 1 : m + 1
+    const nextYear  = m === 12 ? y + 1 : y
+    endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
+  }
+
   let query = svc
     .from('attendance_correction_log')
     .select(`
@@ -41,11 +60,10 @@ export async function GET(req: NextRequest) {
     .order('corrected_at', { ascending: false })
     .range(from, to)
 
-  if (month) {
-    // attendance_date is a date column; filter by YYYY-MM prefix
+  if (startDate && endDate) {
     query = query
-      .gte('attendance_date', `${month}-01`)
-      .lte('attendance_date', `${month}-31`)
+      .gte('attendance_date', startDate)
+      .lt('attendance_date', endDate)
   }
 
   const { data: rows, error: logErr, count } = await query
