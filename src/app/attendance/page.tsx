@@ -159,7 +159,7 @@ export default function AttendancePage() {
             <div style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
               Admin
             </div>
-            <div style={{ marginBottom: 28 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 28 }}>
               <Link href="/attendance/holidays" style={{ textDecoration: 'none' }}>
                 <div style={{
                   background: colors.base,
@@ -167,16 +167,31 @@ export default function AttendancePage() {
                   borderRadius: 10,
                   padding: '18px 20px',
                   cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  minWidth: 260,
+                  height: '100%',
+                  boxSizing: 'border-box',
                 }}>
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#6366F1', flexShrink: 0 }} />
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: colors.primary, marginBottom: 3 }}>Holiday Management</div>
-                    <div style={{ fontSize: 12.5, color: colors.tertiary }}>Add or remove public holidays excluded from working days.</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#6366F1', flexShrink: 0 }} />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: colors.primary }}>Holiday Management</span>
                   </div>
+                  <p style={{ margin: 0, fontSize: 12.5, color: colors.tertiary, lineHeight: 1.5 }}>Add or remove public holidays excluded from working days.</p>
+                </div>
+              </Link>
+              <Link href="/attendance/correction-log" style={{ textDecoration: 'none' }}>
+                <div style={{
+                  background: colors.base,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 10,
+                  padding: '18px 20px',
+                  cursor: 'pointer',
+                  height: '100%',
+                  boxSizing: 'border-box',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#F59E0B', flexShrink: 0 }} />
+                    <span style={{ fontSize: 14, fontWeight: 600, color: colors.primary }}>Correction Log</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 12.5, color: colors.tertiary, lineHeight: 1.5 }}>Audit trail of attendance records created or modified during import.</p>
                 </div>
               </Link>
             </div>
