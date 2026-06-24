@@ -161,6 +161,16 @@ export default function PayrollResultsPage() {
     ? `${MONTHS[period.payroll_month - 1]} ${period.payroll_year}`
     : ''
 
+  const reviewedCount = results.filter(r => r.employee_reviewed_at).length
+  const totalCount    = results.length
+
+  const totals = results.length > 0 ? {
+    gross:       results.reduce((s, r) => s + (r.gross_salary             ?? 0), 0),
+    deductions:  results.reduce((s, r) => s + (r.total_deductions         ?? 0), 0),
+    adjustments: results.reduce((s, r) => s + (r.pending_adjustment_total ?? 0), 0),
+    net:         results.reduce((s, r) => s + (r.net_salary               ?? 0), 0),
+  } : null
+
   return (
     <PayrollLayout
       profile={profile}
@@ -208,6 +218,11 @@ export default function PayrollResultsPage() {
         }}>
           <div style={{ fontSize: 13, color: '#6B7280' }}>
             Lock this payroll period to finalise it. Generation and employee review will be disabled.
+            {totalCount > 0 && (
+              <div style={{ marginTop: 4, fontSize: 12.5, color: reviewedCount === totalCount ? '#059669' : '#D97706' }}>
+                {reviewedCount} of {totalCount} employee{totalCount !== 1 ? 's' : ''} have reviewed their payslip.
+              </div>
+            )}
           </div>
           <button
             onClick={handleLock}
@@ -325,6 +340,28 @@ export default function PayrollResultsPage() {
                     </td>
                   </tr>
                 ))}
+                {totals && (
+                  <tr style={{ borderTop: '2px solid rgba(0,0,0,0.10)', background: 'rgba(0,0,0,0.025)' }}>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#111318' }}>
+                      Total ({totalCount})
+                    </td>
+                    <td style={{ padding: '12px 16px' }} />
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#111318', fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(totals.gross)}
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: totals.deductions > 0 ? '#DC2626' : '#111318', fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(totals.deductions)}
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#111318', fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(totals.adjustments)}
+                    </td>
+                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#111318', fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(totals.net)}
+                    </td>
+                    <td style={{ padding: '12px 16px' }} />
+                    <td style={{ padding: '12px 16px' }} />
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

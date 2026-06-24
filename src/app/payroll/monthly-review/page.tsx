@@ -102,6 +102,14 @@ export default function PayrollMonthlyReviewPage() {
       if (!prof || prof.role !== 'admin') { router.push('/dashboard'); return }
       setProfile(prof as UserProfile)
       setLoading(false)
+
+      // Auto-load current month preview once token is available
+      const { year: y, month: m } = currentYearMonth()
+      const res  = await fetch(`/api/payroll/monthly-review?year=${y}&month=${m}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const json = await res.json()
+      if (res.ok) setResults(json.results)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,6 +161,10 @@ export default function PayrollMonthlyReviewPage() {
   } : null
 
   const sorted = active ? [...active].sort((a, b) => b.net_salary - a.net_salary) : null
+
+  const zeroAttendanceCount = active
+    ? active.filter(r => r.days_present === 0 && r.working_days_in_month > 0).length
+    : 0
 
   return (
     <PayrollLayout
@@ -246,6 +258,21 @@ export default function PayrollMonthlyReviewPage() {
                 <div style={{ fontSize: 11, color: colors.tertiary, marginTop: 6 }}>{k.label}</div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Zero-attendance warning */}
+        {zeroAttendanceCount > 0 && (
+          <div style={{
+            background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.35)',
+            borderRadius: 8, padding: '12px 16px', marginBottom: 16,
+            fontSize: 13, color: '#92400E', display: 'flex', alignItems: 'flex-start', gap: 8,
+          }}>
+            <span style={{ fontSize: 15, flexShrink: 0 }}>⚠</span>
+            <span>
+              <strong>{zeroAttendanceCount} employee{zeroAttendanceCount !== 1 ? 's' : ''}</strong> have no attendance records for this month.
+              Check that fingerprint import is complete before generating payroll.
+            </span>
           </div>
         )}
 
