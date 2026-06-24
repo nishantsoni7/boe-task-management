@@ -663,7 +663,7 @@ export default function TaskDetailPage() {
 
   const isAdmin          = profile?.role === 'admin'
   const showCancelButton = (isCreator || isAdmin) && task.status !== 'completed' && task.status !== 'cancelled'
-  const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at
+  const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at && task.status !== 'cancelled'
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
     : isAssignee                    ? 'Assigned To Me'
@@ -1061,7 +1061,7 @@ export default function TaskDetailPage() {
 
               {/* ── Task actions inside summary card ─────────────────────── */}
               {/* Unacknowledged: only show acknowledge button */}
-              {!task.acknowledged_at && isAssignee && task.created_by !== currentUserId && (
+              {!task.acknowledged_at && isAssignee && task.created_by !== currentUserId && task.status !== 'cancelled' && (
                 <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}` }}>
                   <button
                     onClick={acknowledge}
