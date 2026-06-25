@@ -159,19 +159,32 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-            <a
-              href={url}
-              download
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(url)
+                  const blob = await res.blob()
+                  const blobUrl = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = blobUrl
+                  a.download = name
+                  a.click()
+                  URL.revokeObjectURL(blobUrl)
+                } catch {
+                  window.open(url, '_blank')
+                }
+              }}
               style={{
                 fontSize: '11px', fontWeight: 500,
                 color: colors.blue, textDecoration: 'none',
                 padding: '4px 10px', borderRadius: '6px',
                 border: `1px solid ${colors.blue}40`,
                 background: colors.blueTint,
+                cursor: 'pointer', fontFamily: 'inherit',
               }}
             >
               ⬇ Download
-            </a>
+            </button>
             <a
               href={url}
               target="_blank"
