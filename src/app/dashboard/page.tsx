@@ -466,7 +466,7 @@ export default function DashboardPage() {
               <QuotationRequestsSection
                 tasks={quotationTasks}
                 userMap={mergedUserMap}
-                onView={task => router.push(`/tasks/${task.id}`)}
+                onOpen={task => router.push(`/tasks/${task.id}`)}
               />
             )}
           </div>
@@ -567,35 +567,46 @@ function ChevronRightIcon() {
 function QuotationRequestsSection({
   tasks,
   userMap,
-  onView,
+  onOpen,
 }: {
   tasks: Task[]
   userMap: Record<string, string>
-  onView: (task: Task) => void
+  onOpen: (task: Task) => void
 }) {
   return (
     <div>
       {tasks.slice(0, 8).map((task, idx) => {
-        const isLast = idx === Math.min(tasks.length, 8) - 1
-        const assignedByName = userMap[task.created_by] ?? 'Unknown'
+        const isLast       = idx === Math.min(tasks.length, 8) - 1
+        const requesterName = userMap[task.created_by] ?? 'Unknown'
         const createdDateStr = new Date(task.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
+        const priorityCfg = task.priority === 'high'
+          ? { color: '#B45309', bg: '#FFFBEB' }
+          : task.priority === 'low'
+            ? { color: '#6B7280', bg: '#F3F4F6' }
+            : { color: '#92400E', bg: '#FFFBEB' }
+
         return (
           <div
             key={task.id}
+            onClick={() => onOpen(task)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && onOpen(task)}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '10px',
-              padding: '10px 14px',
+              gap: '12px',
+              padding: '11px 16px',
               borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
+              cursor: 'pointer',
               transition: 'background 0.12s',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
+            onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
             onMouseLeave={e => (e.currentTarget.style.background = '')}
           >
             {/* Icon */}
             <div style={{
-              width: '28px', height: '28px', borderRadius: '50%',
+              width: '30px', height: '30px', borderRadius: '50%',
               background: '#F0FDF4',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
@@ -609,79 +620,41 @@ function QuotationRequestsSection({
               </svg>
             </div>
 
-            {/* Content */}
+            {/* Lead name + meta */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
                 <span style={{
-                  fontSize: '13px', fontWeight: 600, color: '#111827',
+                  fontSize: '13px', fontWeight: 700, color: '#111827',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {task.customer_name ?? task.title}
                 </span>
-                {task.priority && (() => {
-                  const p = task.priority
-                  const cfg = p === 'high'
-                    ? { color: '#B45309', bg: '#FFFBEB' }
-                    : p === 'low'
-                      ? { color: '#6B7280', bg: '#F3F4F6' }
-                      : { color: '#374151', bg: '#F3F4F6' }
-                  return (
-                    <span style={{
-                      fontSize: '10px', fontWeight: 600,
-                      color: cfg.color, background: cfg.bg,
-                      borderRadius: '4px', padding: '1px 6px',
-                      flexShrink: 0, textTransform: 'capitalize',
-                    }}>{p}</span>
-                  )
-                })()}
+                <span style={{
+                  fontSize: '10px', fontWeight: 600, flexShrink: 0,
+                  color: priorityCfg.color, background: priorityCfg.bg,
+                  borderRadius: '4px', padding: '1px 6px', textTransform: 'capitalize',
+                }}>
+                  {task.priority}
+                </span>
               </div>
-              <div style={{
-                display: 'flex', alignItems: 'center', flexWrap: 'wrap',
-                gap: '3px', fontSize: '11px', color: '#9CA3AF',
-              }}>
-                {task.company_name && (
-                  <>
-                    <span style={{ color: '#6B7280' }}>{task.company_name}</span>
-                    <span>•</span>
-                  </>
-                )}
-                {task.city_project && (
-                  <>
-                    <span style={{ color: '#6B7280' }}>{task.city_project}</span>
-                    <span>•</span>
-                  </>
-                )}
-                {task.contact_number && (
-                  <>
-                    <span style={{ color: '#6B7280' }}>{task.contact_number}</span>
-                    <span>•</span>
-                  </>
-                )}
-                <span style={{ color: '#6B7280' }}>by {assignedByName.split(' ')[0]}</span>
-                <span>•</span>
+              <div style={{ fontSize: '11px', color: '#9CA3AF' }}>
+                {task.contact_number
+                  ? <span style={{ color: '#6B7280' }}>{task.contact_number} · </span>
+                  : null}
                 <span>{createdDateStr}</span>
               </div>
             </div>
 
-            {/* View button */}
-            <button
-              onClick={() => onView(task)}
-              style={{
-                flexShrink: 0,
-                padding: '4px 10px',
-                borderRadius: '6px',
-                border: '1px solid #D1FAE5',
-                background: '#F0FDF4',
-                color: '#15803D',
-                fontSize: '11px', fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'background 0.12s',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#DCFCE7')}
-              onMouseLeave={e => (e.currentTarget.style.background = '#F0FDF4')}
-            >
-              View
-            </button>
+            {/* Requester — right side, prominent */}
+            <div style={{ flexShrink: 0, textAlign: 'right' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#6B4FA0' }}>
+                {requesterName.split(' ')[0]}
+              </div>
+              <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '1px' }}>Requested by</div>
+            </div>
+
+            {/* Chevron */}
+            <ChevronRightIcon />
           </div>
         )
       })}

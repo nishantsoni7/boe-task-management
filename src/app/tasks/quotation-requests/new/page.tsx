@@ -102,7 +102,6 @@ export default function NewQuotationRequestPage() {
     if (prepErr) { setAttachError(prepErr); setLoading(false); return }
 
     const autoTitle = `Quotation - ${customerName.trim()}`
-    const isSelf    = quotationOwnerId === session.user.id
     const now       = new Date().toISOString()
 
     const { data: task, error } = await supabase
@@ -118,8 +117,8 @@ export default function NewQuotationRequestPage() {
         assigned_to:     quotationOwnerId,
         created_by:      session.user.id,
         team:            profile?.team ?? 'sales',
-        status:          isSelf ? 'working' : 'pending',
-        acknowledged_at: isSelf ? now : null,
+        status:          'working',
+        acknowledged_at: now,
         customer_name:   customerName.trim(),
         contact_number:  contactNumber.trim() || null,
       })
