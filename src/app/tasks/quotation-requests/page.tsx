@@ -226,9 +226,9 @@ export default function QuotationRequestsPage() {
       ? tasks.filter(t => t.status === 'completed')
       : tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')
     return [...filtered].sort((a, b) => {
-      const pDiff = (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1)
-      if (pDiff !== 0) return pDiff
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      const aTime = new Date(a.last_update_at ?? a.created_at).getTime()
+      const bTime = new Date(b.last_update_at ?? b.created_at).getTime()
+      return bTime - aTime
     })
   }, [tasks, viewTab])
 
