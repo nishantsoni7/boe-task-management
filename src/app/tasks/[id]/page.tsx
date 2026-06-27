@@ -322,7 +322,10 @@ export default function TaskDetailPage() {
     setSelectedStatus(newStatus)
     invalidateTaskCache(task.assigned_to)
     await loadLog(task.id)
-    if (newStatus === 'completed') setTimeout(() => router.push('/tasks/my'), 800)
+    if (newStatus === 'completed') {
+      const dest = task.task_type === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'
+      setTimeout(() => router.push(dest), 800)
+    }
   }
 
   const saveStatus = async () => {
@@ -699,6 +702,20 @@ export default function TaskDetailPage() {
 
   const aging = getTaskAging(task)
   const agingColor = aging ? (aging.severity === 'danger' ? colors.red : colors.amber) : colors.muted
+
+  const isQuotation = task.task_type === 'quotation_request'
+  const quotationCompletedAt = isQuotation
+    ? (log.find(e => e.action === 'status_changed' && e.to_status === 'completed')?.created_at ?? null)
+    : null
+  const qStatusColor = isQuotation
+    ? (task.status === 'completed' ? colors.green : '#6B4FA0')
+    : statusColor
+  const qStatusTint = isQuotation
+    ? (task.status === 'completed' ? colors.greenTint : '#F5F0FF')
+    : statusTint
+  const qStatusLabel = isQuotation
+    ? (task.status === 'completed' ? 'Completed' : 'Open')
+    : (task.status.charAt(0).toUpperCase() + task.status.slice(1))
 
   return (
     <DashboardLayout
@@ -1204,30 +1221,30 @@ export default function TaskDetailPage() {
             {/* ─ B. Current Status Card ─ */}
             <div className="boe-card" style={{
               padding: '10px 16px',
-              background: statusTint,
-              borderLeft: `3px solid ${statusColor}`,
+              background: qStatusTint,
+              borderLeft: `3px solid ${qStatusColor}`,
             }}>
               {/* Top row: label + badge left, Change Status button right */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                 <span style={{
                   fontSize: '10px', fontWeight: 700,
                   letterSpacing: '0.08em', textTransform: 'uppercase',
-                  color: statusColor, flexShrink: 0,
+                  color: qStatusColor, flexShrink: 0,
                 }}>
-                  Current Status
+                  {isQuotation ? 'Quotation Status' : 'Current Status'}
                 </span>
                 <span style={{
                   fontSize: '13px', fontWeight: 700, letterSpacing: '0.01em',
                   color: '#ffffff',
                   padding: '4px 14px', borderRadius: '20px',
-                  background: statusColor,
-                  boxShadow: `0 1px 4px ${statusColor}40`,
+                  background: qStatusColor,
+                  boxShadow: `0 1px 4px ${qStatusColor}40`,
                   flexShrink: 0,
                 }}>
-                  {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
+                  {qStatusLabel}
                 </span>
 
-                {isAssignee && task.status !== 'completed' && task.status !== 'cancelled' && !isUnacknowledged && (
+                {!isQuotation && isAssignee && task.status !== 'completed' && task.status !== 'cancelled' && !isUnacknowledged && (
                   <button
                     onClick={() => {
                       setModalStatus('')
@@ -1255,8 +1272,26 @@ export default function TaskDetailPage() {
                 )}
               </div>
 
-              {/* Waiting On */}
-              {task.status === 'waiting' && task.waiting_on_type && (
+              {/* Quotation timeline: created + completed dates */}
+              {isQuotation && (
+                <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '6px' }}>
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: qStatusColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Requested</div>
+                    <div style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary, marginTop: '2px' }}>
+                      {formatDateTime(task.created_at)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: qStatusColor, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Completed</div>
+                    <div style={{ fontSize: '12.5px', fontWeight: 600, color: quotationCompletedAt ? colors.green : colors.muted, marginTop: '2px' }}>
+                      {quotationCompletedAt ? formatDateTime(quotationCompletedAt) : '—'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Waiting On (non-quotation) */}
+              {!isQuotation && task.status === 'waiting' && task.waiting_on_type && (
                 <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Waiting for: </span>
                   {task.waiting_on_type === 'team_member'
@@ -1266,23 +1301,23 @@ export default function TaskDetailPage() {
                 </p>
               )}
 
-              {/* Blocker */}
-              {task.status === 'blocked' && task.blocker_reason && (
+              {/* Blocker (non-quotation) */}
+              {!isQuotation && task.status === 'blocked' && task.blocker_reason && (
                 <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Blocker: </span>
                   {task.blocker_reason}
                 </p>
               )}
 
-              {/* Latest note */}
-              {!noteIsDuplicateOfBlocker && currentStatusNote && (
+              {/* Latest note (non-quotation) */}
+              {!isQuotation && !noteIsDuplicateOfBlocker && currentStatusNote && (
                 <p style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5, margin: '2px 0', fontWeight: 500 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Reason: </span>
                   {currentStatusNote}
                 </p>
               )}
 
-              {latestNoteEntry && (
+              {!isQuotation && latestNoteEntry && (
                 <p style={{ fontSize: '10px', color: statusColor, margin: '2px 0 0', fontWeight: 500 }}>
                   Updated by{latestNoteEntry.actor_name && <strong> {latestNoteEntry.actor_name}</strong>} · {timeAgo(latestNoteEntry.created_at)}
                 </p>
