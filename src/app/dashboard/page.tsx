@@ -20,6 +20,7 @@ const TASK_COLUMNS = [
   'created_at', 'last_update_at', 'blocker_reason',
   'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text',
   'assigned_to', 'created_by', 'delegated_by', 'team',
+  'task_type', 'customer_name', 'contact_number', 'company_name', 'city_project',
 ].join(', ')
 
 export default function DashboardPage() {
@@ -236,9 +237,10 @@ export default function DashboardPage() {
   const now = new Date()
   const msPerDay = 24 * 60 * 60 * 1000
 
-  const unacknowledged  = tasks.filter(t => !t.acknowledged_at)
-  // Tasks assigned to me by someone else that I haven't acknowledged yet
-  const unacknowledgedForMe = tasks.filter(t => !t.acknowledged_at && t.created_by !== currentUserId)
+  const unacknowledged  = tasks.filter(t => !t.acknowledged_at && t.task_type !== 'quotation_request')
+  // Tasks assigned to me by someone else that I haven't acknowledged yet (exclude quotation requests — shown separately)
+  const unacknowledgedForMe = tasks.filter(t => !t.acknowledged_at && t.created_by !== currentUserId && t.task_type !== 'quotation_request')
+  const quotationTasks = tasks.filter(t => t.task_type === 'quotation_request')
   const mergedUserMap   = { ...assignerNames, ...userMap }
   const allOverdueTasks = tasks.filter(t => isOverdue(t.due_date, t.status) && t.acknowledged_at)
   const actionRequired  = [...allOverdueTasks, ...unacknowledgedForMe]
@@ -362,8 +364,8 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* ── Two-column: Unacknowledged | Escalations ── */}
-        <div className={isAdmin ? 'boe-two-col-section' : undefined} style={{ marginBottom: '24px' }}>
+        {/* ── Two-column: Unacknowledged | Quotation Requests ── */}
+        <div className="boe-two-col-section" style={{ marginBottom: '24px' }}>
           {/* Left: Unacknowledged Tasks */}
           <div style={{
             background: '#fff',
@@ -420,118 +422,59 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Right: Escalations (admin only) */}
-          {isAdmin && (
-            <div id="escalations" style={{
-              background: '#fff',
-              border: '1px solid #E5E7EB',
-              borderRadius: '12px',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-              overflow: 'hidden',
-            }}>
-              <div
-                onClick={() => adminEscalations.length > 0 && setEscalationPreview(true)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
-                  borderBottom: '1px solid #F3F4F6',
-                  cursor: adminEscalations.length > 0 ? 'pointer' : 'default',
-                  transition: 'background 0.12s',
-                }}
-                onMouseEnter={e => { if (adminEscalations.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
-                onMouseLeave={e => { e.currentTarget.style.background = '' }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
-                      Escalations
-                    </span>
-                    <span style={{
-                      background: '#EFF6FF', color: '#2563EB',
-                      fontWeight: 700, fontSize: '11px',
-                      borderRadius: '999px', padding: '1px 8px',
-                    }}>
-                      {adminEscalations.length}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
-                    Tasks that need your immediate attention.
-                  </div>
-                </div>
-                {adminEscalations.length > 0 && (
-                  <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
-                    View all →
+          {/* Right: Quotation Requests */}
+          <div style={{
+            background: '#fff',
+            border: '1px solid #E5E7EB',
+            borderRadius: '12px',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            overflow: 'hidden',
+          }}>
+            <div
+              onClick={() => quotationTasks.length > 0 && router.push('/tasks/quotation-requests')}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
+                borderBottom: '1px solid #F3F4F6',
+                cursor: quotationTasks.length > 0 ? 'pointer' : 'default',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => { if (quotationTasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '' }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
+                    Quotation Requests
                   </span>
-                )}
-              </div>
-
-              {adminEscalations.length === 0 ? (
-                <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-                  No escalations right now.
+                  <span style={{
+                    background: '#F0FDF4', color: '#15803D',
+                    fontWeight: 700, fontSize: '11px',
+                    borderRadius: '999px', padding: '1px 8px',
+                  }}>
+                    {quotationTasks.length}
+                  </span>
                 </div>
-              ) : (
-                adminEscalations.slice(0, 8).map(({ task, owner, days, reason }, idx) => {
-                  const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
-                  const isLast = idx === Math.min(adminEscalations.length, 8) - 1
-                  return (
-                    <div
-                      key={task.id}
-                      onClick={() => setSelectedTask(task)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={e => e.key === 'Enter' && setSelectedTask(task)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '10px 14px',
-                        borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
-                        cursor: 'pointer',
-                        transition: 'background 0.12s',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '')}
-                    >
-                      {/* Avatar */}
-                      <div style={{
-                        width: '28px', height: '28px', borderRadius: '50%',
-                        background: '#E5E7EB',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '10px', fontWeight: 700, color: '#374151',
-                        flexShrink: 0,
-                      }}>
-                        {owner.slice(0, 2).toUpperCase()}
-                      </div>
-
-                      {/* Content */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontSize: '13px', fontWeight: 600, color: '#111827',
-                          lineHeight: 1.3, marginBottom: '3px',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
-                          {task.title}
-                        </div>
-                        <div style={{
-                          display: 'flex', alignItems: 'center', flexWrap: 'wrap',
-                          gap: '3px', fontSize: '11px', color: '#9CA3AF',
-                        }}>
-                          <ReasonBadge reason={reason} />
-                          <span>•</span>
-                          <span style={{ color: '#6B7280' }}>{owner.split(' ')[0]}</span>
-                          <span>•</span>
-                          <span style={{ fontWeight: 600, color: daysColor }}>{days}d overdue</span>
-                        </div>
-                      </div>
-
-                      {/* Chevron */}
-                      <ChevronRightIcon />
-                    </div>
-                  )
-                })
+                <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
+                  Active quotation requests assigned to you.
+                </div>
+              </div>
+              {quotationTasks.length > 0 && (
+                <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>View all →</span>
               )}
             </div>
-          )}
+            {quotationTasks.length === 0 ? (
+              <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
+                No active quotation requests.
+              </div>
+            ) : (
+              <QuotationRequestsSection
+                tasks={quotationTasks}
+                userMap={mergedUserMap}
+                onView={task => router.push(`/tasks/${task.id}`)}
+              />
+            )}
+          </div>
         </div>
 
         {/* ── Bottom summary bar ── */}
@@ -623,6 +566,114 @@ function ChevronRightIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="9 18 15 12 9 6" />
     </svg>
+  )
+}
+
+function QuotationRequestsSection({
+  tasks,
+  userMap,
+  onView,
+}: {
+  tasks: Task[]
+  userMap: Record<string, string>
+  onView: (task: Task) => void
+}) {
+  return (
+    <div>
+      {tasks.slice(0, 8).map((task, idx) => {
+        const isLast = idx === Math.min(tasks.length, 8) - 1
+        const assignedByName = userMap[task.created_by] ?? 'Unknown'
+        const createdDateStr = new Date(task.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
+        return (
+          <div
+            key={task.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '10px 14px',
+              borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
+              transition: 'background 0.12s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
+            onMouseLeave={e => (e.currentTarget.style.background = '')}
+          >
+            {/* Icon */}
+            <div style={{
+              width: '28px', height: '28px', borderRadius: '50%',
+              background: '#F0FDF4',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+            </div>
+
+            {/* Content */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: '13px', fontWeight: 600, color: '#111827',
+                lineHeight: 1.3, marginBottom: '3px',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {task.customer_name ?? task.title}
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center', flexWrap: 'wrap',
+                gap: '3px', fontSize: '11px', color: '#9CA3AF',
+              }}>
+                {task.company_name && (
+                  <>
+                    <span style={{ color: '#6B7280' }}>{task.company_name}</span>
+                    <span>•</span>
+                  </>
+                )}
+                {task.city_project && (
+                  <>
+                    <span style={{ color: '#6B7280' }}>{task.city_project}</span>
+                    <span>•</span>
+                  </>
+                )}
+                {task.contact_number && (
+                  <>
+                    <span style={{ color: '#6B7280' }}>{task.contact_number}</span>
+                    <span>•</span>
+                  </>
+                )}
+                <span style={{ color: '#6B7280' }}>by {assignedByName.split(' ')[0]}</span>
+                <span>•</span>
+                <span>{createdDateStr}</span>
+              </div>
+            </div>
+
+            {/* View button */}
+            <button
+              onClick={() => onView(task)}
+              style={{
+                flexShrink: 0,
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: '1px solid #D1FAE5',
+                background: '#F0FDF4',
+                color: '#15803D',
+                fontSize: '11px', fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#DCFCE7')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#F0FDF4')}
+            >
+              View
+            </button>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

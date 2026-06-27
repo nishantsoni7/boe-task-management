@@ -37,7 +37,7 @@ export function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
   const [sidebarOpen,  setSidebarOpen]  = useState(false)
-  const [navCounts,    setNavCounts]    = useState({ myActive: 0, assignedByMeActive: 0 })
+  const [navCounts,    setNavCounts]    = useState({ myActive: 0, assignedByMeActive: 0, quotationActive: 0 })
   const [refreshing,   setRefreshing]   = useState(false)
 
   const router   = useRouter()
@@ -92,7 +92,7 @@ export function DashboardLayout({
       if (!user) return
       const uid: string = viewAsUserId ?? user.id
       if (!isValidUUID(uid)) {
-        setNavCounts({ myActive: 0, assignedByMeActive: 0 })
+        setNavCounts({ myActive: 0, assignedByMeActive: 0, quotationActive: 0 })
         return
       }
       Promise.all([
@@ -100,7 +100,8 @@ export function DashboardLayout({
           .from('tasks')
           .select('id', { count: 'exact', head: true })
           .eq('assigned_to', uid)
-          .in('status', ['pending', 'started', 'working']),
+          .in('status', ['pending', 'started', 'working'])
+          .neq('task_type', 'quotation_request'),
         supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
@@ -108,10 +109,18 @@ export function DashboardLayout({
           .neq('assigned_to', uid)
           .neq('status', 'completed')
           .neq('status', 'cancelled'),
-      ]).then(([myRes, abmRes]) => {
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_to', uid)
+          .eq('task_type', 'quotation_request')
+          .neq('status', 'completed')
+          .neq('status', 'cancelled'),
+      ]).then(([myRes, abmRes, qrRes]) => {
         setNavCounts({
-          myActive:             myRes.count  ?? 0,
-          assignedByMeActive:   abmRes.count ?? 0,
+          myActive:           myRes.count  ?? 0,
+          assignedByMeActive: abmRes.count ?? 0,
+          quotationActive:    qrRes.count  ?? 0,
         })
       })
     })
@@ -250,6 +259,7 @@ export function DashboardLayout({
             icon={<FileText size={15} strokeWidth={1.8} />}
             active={pathname === '/tasks/quotation-requests'}
             onClick={() => navTo('/tasks/quotation-requests')}
+            badge={navCounts.quotationActive || undefined}
           />
 
           {/* 5. Performance */}
