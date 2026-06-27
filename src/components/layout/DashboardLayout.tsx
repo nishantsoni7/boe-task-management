@@ -494,8 +494,8 @@ function NavLeaf({ label, active, onClick, icon, badge }: NavLeafProps) {
       {badge != null && badge > 0 && (
         <span style={{
           marginLeft: 'auto',
-          fontSize: '10px', fontWeight: 700, color: '#ffffff',
-          background: '#D94F4F', borderRadius: '999px',
+          fontSize: '10px', fontWeight: 600, color: '#8C94A6',
+          background: 'rgba(0,0,0,0.07)', borderRadius: '999px',
           padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
         }}>
           {badge > 99 ? '99+' : badge}

@@ -21,6 +21,24 @@ const QTN_COLUMNS = [
   'customer_name', 'contact_number', 'company_name', 'city_project',
 ].join(', ')
 
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
+
+function PriorityBadge({ priority }: { priority: string }) {
+  const cfg = priority === 'high'
+    ? { color: '#B45309', bg: '#FFFBEB' }
+    : priority === 'low'
+      ? { color: '#6B7280', bg: '#F3F4F6' }
+      : { color: '#374151', bg: '#F3F4F6' }
+  return (
+    <span style={{
+      fontSize: '10px', fontWeight: 600,
+      color: cfg.color, background: cfg.bg,
+      borderRadius: '4px', padding: '1px 6px',
+      textTransform: 'capitalize', flexShrink: 0,
+    }}>{priority}</span>
+  )
+}
+
 function formatDate(d: string | null): string | null {
   if (!d) return null
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
@@ -69,13 +87,14 @@ function RequestCard({
         boxShadow: hovered ? '0 2px 8px rgba(0,0,0,0.07)' : '0 1px 3px rgba(0,0,0,0.04)',
       }}
     >
-      {/* Customer + company */}
+      {/* Customer + priority */}
       <div style={{ minWidth: 0, padding: '10px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
           <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', border: '1px solid rgba(155,111,212,0.20)', letterSpacing: '0.04em', flexShrink: 0 }}>QTN</span>
           <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {task.customer_name ?? task.title}
           </span>
+          <PriorityBadge priority={task.priority} />
         </div>
         {task.company_name && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -202,8 +221,12 @@ export default function QuotationRequestsPage() {
   const { data: userMap = {} } = useUserNames(allUserIds)
 
   const visibleTasks = useMemo(() => {
-    if (!statusFilter) return tasks
-    return tasks.filter(t => t.status === statusFilter)
+    const filtered = statusFilter ? tasks.filter(t => t.status === statusFilter) : tasks
+    return [...filtered].sort((a, b) => {
+      const pDiff = (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1)
+      if (pDiff !== 0) return pDiff
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
   }, [tasks, statusFilter])
 
   const openCount   = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length

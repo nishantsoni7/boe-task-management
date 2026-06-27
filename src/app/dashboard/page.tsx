@@ -340,18 +340,13 @@ export default function DashboardPage() {
             sublabel="Waiting for your acknowledgement"
           />
           <SummaryCard
-            onClick={() => setPreviewList({
-              title: 'Blocked Tasks',
-              items: isAdmin
-                ? escalationTasks.filter(t => t.status === 'blocked')
-                : tasks.filter(t => t.status === 'blocked'),
-            })}
-            icon={<FlagIcon />}
-            iconBg="rgba(59,130,246,0.10)"
-            count={blockedCount}
-            countColor="#2563EB"
-            label="Blocked Tasks"
-            sublabel="Tasks currently blocked"
+            onClick={() => router.push('/tasks/quotation-requests')}
+            icon={<QuotationIcon />}
+            iconBg="rgba(107,79,160,0.10)"
+            count={quotationTasks.length}
+            countColor="#6B4FA0"
+            label="Quotation Requests"
+            sublabel="Active requests assigned to you"
           />
           <SummaryCard
             onClick={() => setPreviewList({ title: 'Waiting Tasks', items: waitingTasks })}
@@ -616,12 +611,29 @@ function QuotationRequestsSection({
 
             {/* Content */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontSize: '13px', fontWeight: 600, color: '#111827',
-                lineHeight: 1.3, marginBottom: '3px',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {task.customer_name ?? task.title}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                <span style={{
+                  fontSize: '13px', fontWeight: 600, color: '#111827',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {task.customer_name ?? task.title}
+                </span>
+                {task.priority && (() => {
+                  const p = task.priority
+                  const cfg = p === 'high'
+                    ? { color: '#B45309', bg: '#FFFBEB' }
+                    : p === 'low'
+                      ? { color: '#6B7280', bg: '#F3F4F6' }
+                      : { color: '#374151', bg: '#F3F4F6' }
+                  return (
+                    <span style={{
+                      fontSize: '10px', fontWeight: 600,
+                      color: cfg.color, background: cfg.bg,
+                      borderRadius: '4px', padding: '1px 6px',
+                      flexShrink: 0, textTransform: 'capitalize',
+                    }}>{p}</span>
+                  )
+                })()}
               </div>
               <div style={{
                 display: 'flex', alignItems: 'center', flexWrap: 'wrap',
@@ -1234,6 +1246,18 @@ function FlagIcon() {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C0392B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
       <line x1="4" y1="22" x2="4" y2="15" />
+    </svg>
+  )
+}
+
+function QuotationIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6B4FA0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
     </svg>
   )
 }

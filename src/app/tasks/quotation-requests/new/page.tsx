@@ -10,29 +10,36 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { prepareFiles, getExt, getFileTypeLabel } from '@/lib/attachment-utils'
 import { Paperclip, X, Info } from 'lucide-react'
 
-export default function NewQuotationRequestPage() {
-  const [profile,       setProfile]       = useState<UserProfile | null>(null)
-  const [users,         setUsers]         = useState<UserProfile[]>([])
-  const [initDone,      setInitDone]      = useState(false)
+// Every quotation request is assigned to this user (resolved by email at init).
+const DEFAULT_QUOTATION_OWNER = 'admin@bestofexports.com'
 
-  // Quotation-specific fields
+const PRIORITY_CFG = {
+  low:    { active: '#6B7280', activeBg: '#F9FAFB', border: 'rgba(107,114,128,0.30)' },
+  medium: { active: '#B45309', activeBg: '#FFFBEB', border: 'rgba(180,83,9,0.30)'   },
+  high:   { active: '#9B3D3D', activeBg: '#FEF2F2', border: 'rgba(155,61,61,0.35)'  },
+} as const
+
+export default function NewQuotationRequestPage() {
+  const [profile,          setProfile]          = useState<UserProfile | null>(null)
+  const [quotationOwnerId, setQuotationOwnerId] = useState<string>('')
+  const [initDone,         setInitDone]         = useState(false)
+
+  // Form fields
   const [customerName,  setCustomerName]  = useState('')
   const [contactNumber, setContactNumber] = useState('')
-  const [companyName,   setCompanyName]   = useState('')
-  const [cityProject,   setCityProject]   = useState('')
-  const [requirement,   setRequirement]   = useState('')
-  const [assigneeId,    setAssigneeId]    = useState('')
+  const [priority,      setPriority]      = useState<'low' | 'medium' | 'high'>('medium')
   const [attachFiles,   setAttachFiles]   = useState<File[]>([])
-  const [attachError,   setAttachError]   = useState<string | null>(null)
+  const [requirement,   setRequirement]   = useState('')
 
   // Validation dirty flags
-  const [nameDirty,     setNameDirty]     = useState(false)
-  const [assigneeDirty, setAssigneeDirty] = useState(false)
+  const [nameDirty,   setNameDirty]   = useState(false)
+  const [attachDirty, setAttachDirty] = useState(false)
+  const [attachError, setAttachError] = useState<string | null>(null)
 
-  const [loading,       setLoading]       = useState(false)
-  const [submitError,   setSubmitError]   = useState<string | null>(null)
-  const [success,       setSuccess]       = useState(false)
-  const [createdId,     setCreatedId]     = useState<string | null>(null)
+  const [loading,     setLoading]     = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [success,     setSuccess]     = useState(false)
+  const [createdId,   setCreatedId]   = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
@@ -44,15 +51,13 @@ export default function NewQuotationRequestPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { router.push('/login'); return }
 
-        const [{ data: profileData }, { data: allUsers }] = await Promise.all([
+        const [{ data: profileData }, { data: ownerData }] = await Promise.all([
           supabase.from('users').select('*').eq('id', session.user.id).single(),
-          supabase.from('users')
-            .select('id, full_name, team, role, email, phone, is_active, created_at')
-            .eq('is_active', true).order('full_name'),
+          supabase.from('users').select('id').eq('email', DEFAULT_QUOTATION_OWNER).single(),
         ])
 
         if (profileData) setProfile(profileData as UserProfile)
-        if (allUsers)    setUsers(allUsers as UserProfile[])
+        if (ownerData)   setQuotationOwnerId(ownerData.id)
       } finally {
         setInitDone(true)
       }
@@ -71,14 +76,15 @@ export default function NewQuotationRequestPage() {
     const merged = [...attachFiles, ...selected]
     const { ready, error } = await prepareFiles(merged)
     setAttachError(error)
-    if (!error) setAttachFiles(ready)
+    if (!error) { setAttachFiles(ready); setAttachDirty(true) }
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleSubmit = async () => {
     setNameDirty(true)
-    setAssigneeDirty(true)
-    if (!customerName.trim() || !assigneeId) return
+    setAttachDirty(true)
+    if (!customerName.trim()) return
+    if (!attachFiles.length) return
 
     setLoading(true)
     setSubmitError(null)
@@ -86,13 +92,17 @@ export default function NewQuotationRequestPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setLoading(false); return }
 
-    if (attachFiles.length) {
-      const { error: prepErr } = await prepareFiles(attachFiles)
-      if (prepErr) { setAttachError(prepErr); setLoading(false); return }
+    if (!quotationOwnerId) {
+      setSubmitError('Quotation owner not configured. Please contact your administrator.')
+      setLoading(false)
+      return
     }
 
+    const { error: prepErr } = await prepareFiles(attachFiles)
+    if (prepErr) { setAttachError(prepErr); setLoading(false); return }
+
     const autoTitle = `Quotation - ${customerName.trim()}`
-    const isSelf    = assigneeId === session.user.id
+    const isSelf    = quotationOwnerId === session.user.id
     const now       = new Date().toISOString()
 
     const { data: task, error } = await supabase
@@ -100,20 +110,18 @@ export default function NewQuotationRequestPage() {
       .insert({
         title:           autoTitle,
         note:            requirement.trim() || null,
-        priority:        'high',
+        priority,
         type:            'completion',
         task_type:       'quotation_request',
         is_urgent:       false,
         due_date:        null,
-        assigned_to:     assigneeId,
+        assigned_to:     quotationOwnerId,
         created_by:      session.user.id,
         team:            profile?.team ?? 'sales',
         status:          isSelf ? 'working' : 'pending',
         acknowledged_at: isSelf ? now : null,
         customer_name:   customerName.trim(),
         contact_number:  contactNumber.trim() || null,
-        company_name:    companyName.trim()   || null,
-        city_project:    cityProject.trim()   || null,
       })
       .select()
       .single()
@@ -129,7 +137,7 @@ export default function NewQuotationRequestPage() {
       action: 'created', note: 'Quotation request submitted',
     })
     await supabase.from('notifications').insert({
-      user_id:      assigneeId,
+      user_id:      quotationOwnerId,
       task_id:      task.id,
       type:         'task_assigned',
       title:        'New quotation request',
@@ -137,38 +145,36 @@ export default function NewQuotationRequestPage() {
       is_push_sent: true,
     })
 
-    if (attachFiles.length) {
-      const { ready } = await prepareFiles(attachFiles)
-      for (const file of ready) {
-        const ext  = getExt(file.name)
-        const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-        const { error: upErr } = await supabase.storage
-          .from('task-attachments')
-          .upload(path, file, { upsert: false })
-        if (upErr) { console.error('[qtn attach upload]', upErr); continue }
-        const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
-        await supabase.from('task_attachments').insert({
-          task_id:    task.id,
-          url:        urlData.publicUrl,
-          file_name:  file.name,
-          file_type:  getFileTypeLabel(file.name),
-          created_by: session.user.id,
-        })
-      }
+    // Upload attachments
+    const { ready } = await prepareFiles(attachFiles)
+    for (const file of ready) {
+      const ext  = getExt(file.name)
+      const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('task-attachments')
+        .upload(path, file, { upsert: false })
+      if (upErr) { console.error('[qtn attach upload]', upErr); continue }
+      const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
+      await supabase.from('task_attachments').insert({
+        task_id:    task.id,
+        url:        urlData.publicUrl,
+        file_name:  file.name,
+        file_type:  getFileTypeLabel(file.name),
+        created_by: session.user.id,
+      })
     }
 
     // Reset
-    setCustomerName('');  setContactNumber(''); setCompanyName('')
-    setCityProject('');   setRequirement('');   setAssigneeId('')
-    setAttachFiles([]);   setAttachError(null)
-    setNameDirty(false);  setAssigneeDirty(false)
+    setCustomerName('');  setContactNumber(''); setPriority('medium')
+    setRequirement('');   setAttachFiles([]);   setAttachError(null)
+    setNameDirty(false);  setAttachDirty(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
     setCreatedId(task.id)
     setSuccess(true)
     setLoading(false)
   }
 
-  const canSubmit = !loading && customerName.trim().length > 0 && assigneeId !== ''
+  const canSubmit = !loading && customerName.trim().length > 0 && attachFiles.length > 0
 
   if (!initDone) return <LoadingScreen />
 
@@ -234,14 +240,14 @@ export default function NewQuotationRequestPage() {
           }}>
             <Info size={13} color="#6B4FA0" style={{ flexShrink: 0, marginTop: '1px' }} />
             <p style={{ fontSize: '12px', color: '#6B4FA0', lineHeight: 1.5 }}>
-              Fill in the customer details. The request will be assigned and appear in the assignee&apos;s task list.
+              Fill in the lead details and attach relevant files. The request will be sent for quotation preparation.
             </p>
           </div>
 
-          {/* Customer / Lead Name */}
+          {/* 1. Lead Name */}
           <div style={{ marginBottom: '14px' }}>
             <label className="boe-form-section-label">
-              Customer / Lead Name <span style={{ color: colors.red }}>*</span>
+              Lead Name <span style={{ color: colors.red }}>*</span>
             </label>
             <input
               type="text"
@@ -252,14 +258,16 @@ export default function NewQuotationRequestPage() {
               autoFocus
             />
             {nameDirty && !customerName.trim() && (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Customer name is required</p>
+              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Lead name is required</p>
             )}
           </div>
 
-          {/* Contact + Company */}
+          {/* 2. Phone + Priority */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
             <div>
-              <label className="boe-form-section-label">Contact Number <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span></label>
+              <label className="boe-form-section-label">
+                Phone Number <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
+              </label>
               <input
                 type="text"
                 value={contactNumber}
@@ -269,67 +277,39 @@ export default function NewQuotationRequestPage() {
               />
             </div>
             <div>
-              <label className="boe-form-section-label">Company Name <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span></label>
-              <input
-                type="text"
-                value={companyName}
-                onChange={e => setCompanyName(e.target.value)}
-                placeholder="e.g. Taj Hotels Pvt Ltd"
-                className="boe-input"
-              />
+              <label className="boe-form-section-label">Priority</label>
+              <div style={{ display: 'flex', gap: '6px', marginTop: '1px' }}>
+                {(['low', 'medium', 'high'] as const).map(p => {
+                  const selected = priority === p
+                  const cfg = PRIORITY_CFG[p]
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriority(p)}
+                      style={{
+                        flex: 1, padding: '6px 4px', borderRadius: '6px', cursor: 'pointer',
+                        fontSize: '11px', fontWeight: selected ? 700 : 500,
+                        textTransform: 'capitalize',
+                        border: `1px solid ${selected ? cfg.active : cfg.border}`,
+                        background: selected ? cfg.activeBg : 'transparent',
+                        color: selected ? cfg.active : '#6B7280',
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      {p}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
-          {/* City / Project */}
-          <div style={{ marginBottom: '14px' }}>
-            <label className="boe-form-section-label">City / Project <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span></label>
-            <input
-              type="text"
-              value={cityProject}
-              onChange={e => setCityProject(e.target.value)}
-              placeholder="e.g. Mumbai — Lobby Renovation"
-              className="boe-input"
-            />
-          </div>
-
-          {/* Requirement */}
-          <div style={{ marginBottom: '14px' }}>
-            <label className="boe-form-section-label">Requirement / Notes <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span></label>
-            <textarea
-              value={requirement}
-              onChange={e => setRequirement(e.target.value)}
-              placeholder="Product type, quantity, finish, special requirements, budget range…"
-              rows={3}
-              className="boe-input"
-              style={{ resize: 'none' }}
-            />
-          </div>
-
-          {/* Assign To */}
+          {/* 3. Attachments (required) */}
           <div style={{ marginBottom: '14px' }}>
             <label className="boe-form-section-label">
-              Assign To <span style={{ color: colors.red }}>*</span>
-            </label>
-            <select
-              value={assigneeId}
-              onChange={e => { setAssigneeId(e.target.value); setAssigneeDirty(true) }}
-              className="boe-input"
-            >
-              <option value="">Select who will prepare this quotation</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.full_name} — {u.team}</option>
-              ))}
-            </select>
-            {assigneeDirty && !assigneeId && (
-              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>Please select an assignee</p>
-            )}
-          </div>
-
-          {/* Attachment */}
-          <div style={{ marginBottom: '20px' }}>
-            <label className="boe-form-section-label">
-              Attachment
-              <span style={{ fontWeight: 400, color: colors.secondary, marginLeft: '5px' }}>— drawings, spec sheets, or photos are strongly encouraged</span>
+              Attachments <span style={{ color: colors.red }}>*</span>
+              <span style={{ fontWeight: 400, color: colors.secondary, marginLeft: '5px' }}>— drawings, spec sheets, or photos</span>
             </label>
             <input
               ref={fileInputRef}
@@ -361,6 +341,7 @@ export default function NewQuotationRequestPage() {
               </div>
             )}
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
               style={{
                 width: '100%', height: '42px', boxSizing: 'border-box',
@@ -372,7 +353,27 @@ export default function NewQuotationRequestPage() {
               <Paperclip size={13} color="#6B4FA0" strokeWidth={1.8} />
               <span style={{ fontSize: '12px', color: '#6B4FA0' }}>Add drawings, photos or spec sheet</span>
             </button>
+            {attachDirty && attachFiles.length === 0 && !attachError && (
+              <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>
+                Please attach at least one file for the quotation request.
+              </p>
+            )}
             {attachError && <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
+          </div>
+
+          {/* 4. Notes (optional) */}
+          <div style={{ marginBottom: '20px' }}>
+            <label className="boe-form-section-label">
+              Notes <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
+            </label>
+            <textarea
+              value={requirement}
+              onChange={e => setRequirement(e.target.value)}
+              placeholder="Product type, quantity, finish, special requirements, budget range…"
+              rows={3}
+              className="boe-input"
+              style={{ resize: 'none' }}
+            />
           </div>
 
           <p style={{ fontSize: '11px', color: colors.muted, marginBottom: '10px' }}>
