@@ -249,13 +249,15 @@ function TaskCard({
 
       {/* Title + note */}
       <div style={{ flex: 1, minWidth: 0, padding: '10px 8px 10px 0' }}>
-        <div style={{
-          fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500,
-          color: colors.primary,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          letterSpacing: '-0.01em',
-        }}>
-          {task.title}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+          <span style={{
+            fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500,
+            color: colors.primary,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            letterSpacing: '-0.01em',
+          }}>
+            {task.title}
+          </span>
         </div>
         {task.note && (
           <div style={{

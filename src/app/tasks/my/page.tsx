@@ -66,7 +66,19 @@ function formatDate(d: string | null): string | null {
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
-type TabKey = 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
+type TabKey = 'action_required' | 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
+
+const TAB_LABELS: Record<TabKey, string> = {
+  action_required: 'Action Required',
+  all:             'All Tasks',
+  important:       'Important',
+  unacknowledged:  'Unacknowledged',
+  in_progress:     'In Progress',
+  overdue:         'Overdue',
+  needs_update:    'Needs Update',
+  non_completion:  'Non-Completion',
+  completed:       'Completed',
+}
 type TaskType = 'all' | 'self' | 'delegated'
 
 // ─── Priority config ──────────────────────────────────────────────────────────
@@ -223,7 +235,7 @@ function TaskCard({
       </div>
 
       {/* Title */}
-      <div style={{ minWidth: 0, padding: '0 8px 0 0', display: 'flex', alignItems: 'center' }}>
+      <div style={{ minWidth: 0, padding: '0 8px 0 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
         <span style={{
           fontSize: '13px',
           fontWeight: task.is_urgent ? 600 : 500,
@@ -842,7 +854,7 @@ function EmptyState({ label }: { label: string }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function MyTasksPage() {
   const [loggedInId,   setLoggedInId]   = useState<string>('')
-  const [activeTab,    setActiveTab]    = useState<TabKey>('all')
+  const [activeTab,    setActiveTab]    = useState<TabKey>('action_required')
   const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [editingTask,      setEditingTask]      = useState<Task | null>(null)
@@ -1105,6 +1117,10 @@ export default function MyTasksPage() {
     const sortImportantFirst = (arr: Task[]) =>
       [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
 
+    // Action Required: only tasks that need the user's attention (excludes waiting, blocked, completed, cancelled)
+    const action_required = sortImportantFirst(baseTasks.filter(t =>
+      t.status === 'pending' || t.status === 'started' || t.status === 'working'
+    ))
     // "All" shows active tasks only — completed/cancelled tasks are only visible in their respective tabs
     const all            = sortImportantFirst(baseTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled'))
     const important      = sortImportantFirst(baseTasks.filter(t => t.is_urgent && t.status !== 'completed' && t.status !== 'cancelled'))
@@ -1117,10 +1133,11 @@ export default function MyTasksPage() {
     const non_completion = sortImportantFirst(baseTasks.filter(isNonCompletion))
     const completed      = baseTasks.filter(t => t.status === 'completed')
 
-    return { all, important, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
+    return { action_required, all, important, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
   }, [baseTasks])
 
   const counts: Record<TabKey, number> = {
+    action_required: buckets.action_required.length,
     all:            buckets.all.length,
     important:      buckets.important.length,
     unacknowledged: buckets.unacknowledged.length,
@@ -1312,6 +1329,53 @@ export default function MyTasksPage() {
           {/* ── Right: task list area ── */}
           <div style={{ flex: 1, minWidth: 0, background: '#fff' }}>
 
+            {/* ── View tabs: Action Required / All Tasks ── */}
+            {(() => {
+              const VIEW_TABS: { key: TabKey; label: string; accent: string }[] = [
+                { key: 'action_required', label: 'Action Required', accent: '#2E9E6B' },
+                { key: 'all',             label: 'All Tasks',        accent: '#5B7FA6' },
+              ]
+              return (
+                <div style={{
+                  display: 'flex', gap: '0',
+                  borderBottom: `1px solid ${colors.border}`,
+                  padding: '0 24px',
+                }}>
+                  {VIEW_TABS.map(tab => {
+                    const isActive = activeTab === tab.key
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => handleTabChange(tab.key)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '6px',
+                          padding: '12px 4px', marginRight: '20px',
+                          background: 'transparent', border: 'none',
+                          borderBottom: `2px solid ${isActive ? tab.accent : 'transparent'}`,
+                          cursor: 'pointer', outline: 'none',
+                          fontSize: '12.5px', fontWeight: isActive ? 700 : 500,
+                          color: isActive ? tab.accent : colors.secondary,
+                          transition: 'color 0.12s, border-color 0.12s',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {tab.label}
+                        <span style={{
+                          fontSize: '11px', fontWeight: 700,
+                          padding: '1px 7px', borderRadius: '10px',
+                          background: isActive ? `${tab.accent}18` : 'rgba(0,0,0,0.05)',
+                          color: isActive ? tab.accent : colors.muted,
+                          minWidth: '20px', textAlign: 'center',
+                        }}>
+                          {counts[tab.key]}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+
             {/* Focus date cards */}
             {(() => {
               const activeTasks = baseTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')
@@ -1491,7 +1555,7 @@ export default function MyTasksPage() {
 
             {/* Task cards */}
             {visibleTasks.length === 0 ? (
-              <EmptyState label={activeTab} />
+              <EmptyState label={TAB_LABELS[activeTab]} />
             ) : (
               <div style={{ padding: '10px 24px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {visibleTasks.map(task => (

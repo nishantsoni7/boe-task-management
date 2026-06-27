@@ -14,6 +14,8 @@ export type TaskPriority = 'high' | 'medium' | 'low'
 
 export type TaskType = 'completion' | 'daily_update'
 
+export type TaskCategoryType = 'general' | 'quotation_request'
+
 export type UserRole = 'admin' | 'manager' | 'member'
 
 // ─── Task ─────────────────────────────────────────────────────────────────────
@@ -37,6 +39,11 @@ export type Task = {
   waiting_on_user_id: string | null
   waiting_on_text: string | null
   team: string
+  task_type: TaskCategoryType
+  customer_name: string | null
+  contact_number: string | null
+  company_name: string | null
+  city_project: string | null
   attachment_url: string | null
   cancelled_by: string | null
   cancelled_at: string | null

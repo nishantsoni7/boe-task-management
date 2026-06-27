@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   Settings, ChevronRight, ShieldCheck, TrendingUp,
-  Home, Bell, RefreshCw,
+  Home, Bell, RefreshCw, FileText,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
@@ -100,8 +100,7 @@ export function DashboardLayout({
           .from('tasks')
           .select('id', { count: 'exact', head: true })
           .eq('assigned_to', uid)
-          .neq('status', 'completed')
-          .neq('status', 'cancelled'),
+          .in('status', ['pending', 'started', 'working']),
         supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
@@ -175,7 +174,7 @@ export function DashboardLayout({
             <CollapsibleNav
               label="New Task"
               icon={<PlusCircle size={15} strokeWidth={1.8} />}
-              active={pathname === '/tasks/create-self' || pathname === '/tasks/create'}
+              active={pathname === '/tasks/create-self' || pathname === '/tasks/create' || pathname === '/tasks/quotation-requests/new'}
             >
               <NavChild
                 label="Self Task"
@@ -186,6 +185,11 @@ export function DashboardLayout({
                 label="Delegate Task"
                 active={pathname === '/tasks/create'}
                 onClick={() => navTo('/tasks/create')}
+              />
+              <NavChild
+                label="Quotation Request"
+                active={pathname === '/tasks/quotation-requests/new'}
+                onClick={() => navTo('/tasks/quotation-requests/new')}
               />
             </CollapsibleNav>
           )}
@@ -198,7 +202,7 @@ export function DashboardLayout({
             count={navCounts.myActive || undefined}
           >
             <NavChild
-              label="In Progress"
+              label="Action Required"
               active={pathname === '/tasks/my'}
               onClick={() => navTo('/tasks/my')}
               count={navCounts.myActive || undefined}
@@ -239,6 +243,14 @@ export function DashboardLayout({
               onClick={() => navTo('/tasks/assigned-by-me/cancelled')}
             />
           </CollapsibleNav>
+
+          {/* 4b. Quotation Requests */}
+          <NavLeaf
+            label="Quotation Requests"
+            icon={<FileText size={15} strokeWidth={1.8} />}
+            active={pathname === '/tasks/quotation-requests'}
+            onClick={() => navTo('/tasks/quotation-requests')}
+          />
 
           {/* 5. Performance */}
           {isAdminOrManager ? (
