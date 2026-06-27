@@ -7,7 +7,6 @@ import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useUserNames } from '@/hooks/queries/useMyTasks'
 import { ExternalLink, Plus, Building2, Phone, MapPin, User } from 'lucide-react'
@@ -90,7 +89,7 @@ function RequestCard({
       {/* Customer + priority */}
       <div style={{ minWidth: 0, padding: '10px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
-          <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', border: '1px solid rgba(155,111,212,0.20)', letterSpacing: '0.04em', flexShrink: 0 }}>QTN</span>
+          <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px', color: '#DC1F2E', background: 'rgba(220,31,46,0.08)', border: '1px solid rgba(220,31,46,0.18)', letterSpacing: '0.04em', flexShrink: 0 }}>QTN</span>
           <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {task.customer_name ?? task.title}
           </span>
@@ -168,7 +167,7 @@ function RequestCard({
             background: hoveredView ? 'rgba(155,111,212,0.10)' : 'transparent',
             border: `1px solid ${hoveredView ? 'rgba(155,111,212,0.30)' : 'transparent'}`,
             cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredView ? '#6B4FA0' : colors.muted,
+            color: hoveredView ? '#DC1F2E' : colors.muted,
           }}
         >
           <ExternalLink size={12} />
@@ -182,8 +181,7 @@ export default function QuotationRequestsPage() {
   const [loggedInId,   setLoggedInId]   = useState('')
   const [tasks,        setTasks]        = useState<Task[]>([])
   const [loading,      setLoading]      = useState(true)
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [statusFilter, setStatusFilter] = useState('')
+  const [viewTab, setViewTab] = useState<'pending' | 'closed'>('pending')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -220,17 +218,19 @@ export default function QuotationRequestsPage() {
   )
   const { data: userMap = {} } = useUserNames(allUserIds)
 
+  const pendingCount = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length
+  const closedCount  = tasks.filter(t => t.status === 'completed').length
+
   const visibleTasks = useMemo(() => {
-    const filtered = statusFilter ? tasks.filter(t => t.status === statusFilter) : tasks
+    const filtered = viewTab === 'closed'
+      ? tasks.filter(t => t.status === 'completed')
+      : tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')
     return [...filtered].sort((a, b) => {
       const pDiff = (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1)
       if (pDiff !== 0) return pDiff
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
-  }, [tasks, statusFilter])
-
-  const openCount   = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length
-  const closedCount = tasks.filter(t => t.status === 'completed' || t.status === 'cancelled').length
+  }, [tasks, viewTab])
 
   if (loading) return <LoadingScreen />
 
@@ -247,7 +247,7 @@ export default function QuotationRequestsPage() {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '7px 14px', borderRadius: '8px', border: 'none',
-              background: '#6B4FA0', color: '#fff',
+              background: '#DC1F2E', color: '#fff',
               fontSize: '12px', fontWeight: 600, cursor: 'pointer',
               transition: 'opacity 0.12s', whiteSpace: 'nowrap',
             }}
@@ -259,45 +259,41 @@ export default function QuotationRequestsPage() {
           </button>
         }
       >
-        {/* Summary chips */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-          {[
-            { label: 'Open', count: openCount,   accent: '#6B4FA0' },
-            { label: 'Closed', count: closedCount, accent: colors.muted },
-          ].map(chip => (
-            <div key={chip.label} style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '6px 14px', borderRadius: '20px',
-              background: colors.base, border: `1.5px solid ${colors.border}`,
-            }}>
-              <span style={{ fontSize: '16px', fontWeight: 700, color: chip.count > 0 ? chip.accent : colors.muted }}>{chip.count}</span>
-              <span style={{ fontSize: '12px', color: colors.secondary }}>{chip.label}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Toolbar */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', alignItems: 'center' }}>
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            style={{
-              padding: '6px 10px', borderRadius: '6px',
-              background: colors.raised, border: `1px solid ${colors.border}`,
-              fontSize: '12px', color: statusFilter ? colors.primary : colors.muted,
-              outline: 'none', cursor: 'pointer',
-            }}
-          >
-            <option value="">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="working">Working</option>
-            <option value="completed">Completed</option>
-            <option value="waiting">Waiting</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <span style={{ fontSize: '11px', color: colors.muted, marginLeft: '4px' }}>
-            {visibleTasks.length} request{visibleTasks.length !== 1 ? 's' : ''}
-          </span>
+        {/* Prominent Pending / Closed toggle */}
+        <div style={{ display: 'flex', gap: '0', marginBottom: '18px', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid #E5E7EB', width: 'fit-content', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+          {([
+            { key: 'pending', label: 'Pending Quotations', count: pendingCount },
+            { key: 'closed',  label: 'Closed Quotations',  count: closedCount  },
+          ] as const).map((tab, i) => {
+            const active = viewTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setViewTab(tab.key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '9px 20px',
+                  background: active ? '#DC1F2E' : '#F9FAFB',
+                  color: active ? '#fff' : '#374151',
+                  fontSize: '13px', fontWeight: 700,
+                  border: 'none',
+                  borderLeft: i > 0 ? '1.5px solid #E5E7EB' : 'none',
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {tab.label}
+                <span style={{
+                  fontSize: '11px', fontWeight: 700,
+                  padding: '1px 7px', borderRadius: '20px',
+                  background: active ? 'rgba(255,255,255,0.22)' : '#E5E7EB',
+                  color: active ? '#fff' : '#6B7280',
+                }}>
+                  {tab.count}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
         {/* Table */}
@@ -318,8 +314,8 @@ export default function QuotationRequestsPage() {
             letterSpacing: '0.07em', color: colors.muted,
           }}>
             <div style={{ paddingLeft: '6px' }}>Customer</div>
-            <div style={{ paddingLeft: '4px' }}>Contact / City</div>
-            <div style={{ paddingLeft: '4px' }}>Requirement</div>
+            <div style={{ paddingLeft: '4px' }}>Contact</div>
+            <div style={{ paddingLeft: '4px' }}>Notes</div>
             <div style={{ paddingLeft: '4px' }}>Assigned / From</div>
             <div style={{ paddingLeft: '4px' }}>Status</div>
             <div />
@@ -341,7 +337,7 @@ export default function QuotationRequestsPage() {
                   task={task}
                   userMap={userMap}
                   userId={loggedInId}
-                  onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
+                  onClick={() => router.push(`/tasks/${task.id}`)}
                   onView={() => router.push(`/tasks/${task.id}`)}
                 />
               ))}
@@ -350,15 +346,6 @@ export default function QuotationRequestsPage() {
         </div>
       </DashboardLayout>
 
-      {selectedTask && (
-        <TaskDetailPanel
-          task={selectedTask}
-          userMap={userMap}
-          onClose={() => setSelectedTask(null)}
-          onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
-          currentUserId={loggedInId}
-        />
-      )}
     </>
   )
 }

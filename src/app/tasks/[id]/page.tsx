@@ -666,7 +666,7 @@ export default function TaskDetailPage() {
 
   const isAdmin          = profile?.role === 'admin'
   const showCancelButton = (isCreator || isAdmin) && task.status !== 'completed' && task.status !== 'cancelled'
-  const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at && task.status !== 'cancelled'
+  const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at && task.status !== 'cancelled' && task.task_type !== 'quotation_request'
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
     : isAssignee                    ? 'Assigned To Me'
@@ -708,10 +708,10 @@ export default function TaskDetailPage() {
     ? (log.find(e => e.action === 'status_changed' && e.to_status === 'completed')?.created_at ?? null)
     : null
   const qStatusColor = isQuotation
-    ? (task.status === 'completed' ? colors.green : '#6B4FA0')
+    ? (task.status === 'completed' ? colors.green : '#DC1F2E')
     : statusColor
   const qStatusTint = isQuotation
-    ? (task.status === 'completed' ? colors.greenTint : '#F5F0FF')
+    ? (task.status === 'completed' ? colors.greenTint : '#FEF2F2')
     : statusTint
   const qStatusLabel = isQuotation
     ? (task.status === 'completed' ? 'Completed' : 'Open')
@@ -740,16 +740,16 @@ export default function TaskDetailPage() {
           >
             ← Back
           </button>
-          <span>Task Details</span>
+          <span>{isQuotation ? 'Quotation Details' : 'Task Details'}</span>
           <span style={{
             fontSize: '11px', fontWeight: 700,
             letterSpacing: '0.06em', textTransform: 'uppercase',
-            color: relationColor,
-            background: relationColor + '14',
-            border: `1px solid ${relationColor}28`,
+            color: isQuotation ? '#DC1F2E' : relationColor,
+            background: isQuotation ? 'rgba(220,31,46,0.08)' : relationColor + '14',
+            border: `1px solid ${isQuotation ? 'rgba(220,31,46,0.20)' : relationColor + '28'}`,
             padding: '3px 10px', borderRadius: '20px',
           }}>
-            {relationLabel}
+            {isQuotation ? 'QUOTATION' : relationLabel}
           </span>
         </div>
       }
@@ -765,7 +765,7 @@ export default function TaskDetailPage() {
             <div className="boe-card" style={{
               padding: '14px 22px',
               background: '#ffffff',
-              borderLeft: `3px solid ${relationColor}`,
+              borderLeft: isQuotation ? `1px solid ${colors.border}` : `3px solid ${relationColor}`,
             }}>
               {/* Task title */}
               <div style={{ marginBottom: '6px' }}>
@@ -808,7 +808,19 @@ export default function TaskDetailPage() {
                     }}>
                       {task.title}
                     </h2>
-                    {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
+                    {isQuotation && (
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center',
+                        padding: '3px 10px', borderRadius: '20px',
+                        background: priorityStyle.bg,
+                        border: `1px solid ${priorityStyle.fg}30`,
+                        fontSize: '11px', fontWeight: 700, color: priorityStyle.fg,
+                        flexShrink: 0, marginTop: '3px',
+                      }}>
+                        {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                      </span>
+                    )}
+                    {!isQuotation && isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
                       <button
                         onClick={() => { setEditTitle(task.title); setEditingTitle(true); setEditingDescription(false) }}
                         style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0, marginTop: '3px' }}
@@ -820,151 +832,175 @@ export default function TaskDetailPage() {
                 )}
               </div>
 
-              {/* Assigned by / Assigned to (delegated) */}
-              {(isDelegated ? assigneeName : (isSelfTask ? true : creatorName)) && (
-                <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {isDelegated
-                    ? <UserCheck size={15} color="#2563EB" />
-                    : <UserRound size={15} color="#2563EB" />
-                  }
-                  <span style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>
-                    {isDelegated ? 'Assigned To:' : 'Assigned by:'}
-                  </span>
-                  <span style={{ fontSize: '13px', color: '#2563EB', fontWeight: 600 }}>
-                    {isDelegated ? assigneeName : (isSelfTask ? 'Self' : creatorName)}
-                  </span>
-                </div>
+              {/* Assigned by / Requested by */}
+              {isQuotation ? (
+                creatorName && (
+                  <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <UserRound size={15} color="#DC1F2E" />
+                    <span style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>Requested by:</span>
+                    <span style={{ fontSize: '13px', color: '#DC1F2E', fontWeight: 700 }}>{creatorName}</span>
+                  </div>
+                )
+              ) : (
+                (isDelegated ? assigneeName : (isSelfTask ? true : creatorName)) && (
+                  <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {isDelegated
+                      ? <UserCheck size={15} color="#2563EB" />
+                      : <UserRound size={15} color="#2563EB" />
+                    }
+                    <span style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>
+                      {isDelegated ? 'Assigned To:' : 'Assigned by:'}
+                    </span>
+                    <span style={{ fontSize: '13px', color: '#2563EB', fontWeight: 600 }}>
+                      {isDelegated ? assigneeName : (isSelfTask ? 'Self' : creatorName)}
+                    </span>
+                  </div>
+                )
               )}
 
-              {/* Due date · Priority · Aging chips row */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'flex-start', marginTop: '6px' }}>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                    padding: '4px 10px', borderRadius: '20px',
-                    background: riskOverdue ? colors.redTint : colors.float,
-                    border: `1px solid ${riskOverdue ? colors.red + '40' : colors.border}`,
-                  }}>
-                    <span style={{ fontSize: '11.5px', color: riskOverdue ? colors.red : colors.secondary, fontWeight: 500 }}>
-                      {task.due_date ? <>Due: <strong>{formatFullDate(task.due_date)}</strong>{riskOverdue && ' · Overdue'}</> : 'No due date'}
-                    </span>
-                    {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingDueDate && (
-                      <button
-                        onClick={() => { setEditDueDate(task.due_date ? task.due_date.slice(0, 10) : ''); setDueDateMsg(null); setEditingDueDate(true); setEditingPriority(false) }}
-                        style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
-                      >
-                        Edit
-                      </button>
-                    )}
-                  </div>
-                  {editingDueDate && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <input
-                        type="date"
-                        value={editDueDate}
-                        onChange={e => setEditDueDate(e.target.value)}
-                        className="boe-input"
-                        style={{ width: '150px', boxSizing: 'border-box' }}
-                      />
-                      <button
-                        onClick={saveDueDate}
-                        disabled={savingDueDate}
-                        style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingDueDate ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingDueDate ? 0.6 : 1 }}
-                      >
-                        {savingDueDate ? '…' : 'Save'}
-                      </button>
-                      <button
-                        onClick={() => { setEditingDueDate(false); setDueDateMsg(null) }}
-                        disabled={savingDueDate}
-                        style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
-                      >
-                        Cancel
-                      </button>
-                      {dueDateMsg && <span style={{ fontSize: '11px', color: dueDateMsg.ok ? colors.green : colors.red }}>{dueDateMsg.text}</span>}
-                    </div>
-                  )}
-                </div>
-
-                {/* Priority chip + inline edit */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                    padding: '4px 10px', borderRadius: '20px',
-                    background: priorityStyle.bg,
-                    border: `1px solid ${priorityStyle.fg}30`,
-                  }}>
-                    <span style={{ fontSize: '11.5px', color: priorityStyle.fg, fontWeight: 600 }}>
-                      Priority: {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                    </span>
-                    {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingPriority && (
-                      <button
-                        onClick={() => { setEditPriority(task.priority); setPriorityMsg(null); setEditingPriority(true); setEditingDueDate(false) }}
-                        style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
-                      >
-                        Edit
-                      </button>
-                    )}
-                  </div>
-                  {editingPriority && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      {(['high', 'medium', 'low'] as const).map(p => {
-                        const ps = PRIORITY_COLORS[p]
-                        const active = editPriority === p
-                        return (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() => setEditPriority(p)}
-                            style={{
-                              padding: '5px 10px', borderRadius: '5px',
-                              border: `1.5px solid ${active ? ps.fg : colors.border}`,
-                              background: active ? ps.bg : 'transparent',
-                              color: active ? ps.fg : colors.tertiary,
-                              fontSize: '11.5px', fontWeight: active ? 600 : 400,
-                              cursor: 'pointer', textTransform: 'capitalize',
-                              fontFamily: font.body, transition: 'all 0.12s',
-                            }}
-                          >
-                            {p}
-                          </button>
-                        )
-                      })}
-                      <button
-                        onClick={savePriority}
-                        disabled={savingPriority}
-                        style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingPriority ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingPriority ? 0.6 : 1 }}
-                      >
-                        {savingPriority ? '…' : 'Save'}
-                      </button>
-                      <button
-                        onClick={() => { setEditingPriority(false); setPriorityMsg(null) }}
-                        disabled={savingPriority}
-                        style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
-                      >
-                        Cancel
-                      </button>
-                      {priorityMsg && <span style={{ fontSize: '11px', color: priorityMsg.ok ? colors.green : colors.red }}>{priorityMsg.text}</span>}
-                    </div>
-                  )}
-                </div>
-
-                {/* Aging chip — inline with due/priority */}
-                {aging && task.status !== 'completed' && task.status !== 'cancelled' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      fontSize: '11px', fontWeight: 600,
-                      color: agingColor,
-                      background: `${agingColor}14`,
-                      border: `1px solid ${agingColor}28`,
+              {/* Due date · Priority · Aging chips row — hidden for quotations */}
+              {isQuotation ? (
+                task.contact_number ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '5px',
                       padding: '4px 10px', borderRadius: '20px',
+                      background: colors.float, border: `1px solid ${colors.border}`,
                     }}>
-                      {aging.label} · {aging.daysSinceUpdate}d
-                    </span>
+                      <span style={{ fontSize: '11.5px', color: colors.secondary, fontWeight: 500 }}>📞 {task.contact_number}</span>
+                    </div>
                   </div>
-                )}
-              </div>
+                ) : null
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'flex-start', marginTop: '6px' }}>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      padding: '4px 10px', borderRadius: '20px',
+                      background: riskOverdue ? colors.redTint : colors.float,
+                      border: `1px solid ${riskOverdue ? colors.red + '40' : colors.border}`,
+                    }}>
+                      <span style={{ fontSize: '11.5px', color: riskOverdue ? colors.red : colors.secondary, fontWeight: 500 }}>
+                        {task.due_date ? <>Due: <strong>{formatFullDate(task.due_date)}</strong>{riskOverdue && ' · Overdue'}</> : 'No due date'}
+                      </span>
+                      {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingDueDate && (
+                        <button
+                          onClick={() => { setEditDueDate(task.due_date ? task.due_date.slice(0, 10) : ''); setDueDateMsg(null); setEditingDueDate(true); setEditingPriority(false) }}
+                          style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    {editingDueDate && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <input
+                          type="date"
+                          value={editDueDate}
+                          onChange={e => setEditDueDate(e.target.value)}
+                          className="boe-input"
+                          style={{ width: '150px', boxSizing: 'border-box' }}
+                        />
+                        <button
+                          onClick={saveDueDate}
+                          disabled={savingDueDate}
+                          style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingDueDate ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingDueDate ? 0.6 : 1 }}
+                        >
+                          {savingDueDate ? '…' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => { setEditingDueDate(false); setDueDateMsg(null) }}
+                          disabled={savingDueDate}
+                          style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                        >
+                          Cancel
+                        </button>
+                        {dueDateMsg && <span style={{ fontSize: '11px', color: dueDateMsg.ok ? colors.green : colors.red }}>{dueDateMsg.text}</span>}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Priority chip + inline edit */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      padding: '4px 10px', borderRadius: '20px',
+                      background: priorityStyle.bg,
+                      border: `1px solid ${priorityStyle.fg}30`,
+                    }}>
+                      <span style={{ fontSize: '11.5px', color: priorityStyle.fg, fontWeight: 600 }}>
+                        Priority: {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                      </span>
+                      {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && !editingPriority && (
+                        <button
+                          onClick={() => { setEditPriority(task.priority); setPriorityMsg(null); setEditingPriority(true); setEditingDueDate(false) }}
+                          style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline' }}
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                    {editingPriority && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {(['high', 'medium', 'low'] as const).map(p => {
+                          const ps = PRIORITY_COLORS[p]
+                          const active = editPriority === p
+                          return (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setEditPriority(p)}
+                              style={{
+                                padding: '5px 10px', borderRadius: '5px',
+                                border: `1.5px solid ${active ? ps.fg : colors.border}`,
+                                background: active ? ps.bg : 'transparent',
+                                color: active ? ps.fg : colors.tertiary,
+                                fontSize: '11.5px', fontWeight: active ? 600 : 400,
+                                cursor: 'pointer', textTransform: 'capitalize',
+                                fontFamily: font.body, transition: 'all 0.12s',
+                              }}
+                            >
+                              {p}
+                            </button>
+                          )
+                        })}
+                        <button
+                          onClick={savePriority}
+                          disabled={savingPriority}
+                          style={{ padding: '5px 12px', borderRadius: '6px', border: `1.5px solid ${colors.blue}`, background: colors.blue, color: '#ffffff', fontSize: '11.5px', fontWeight: 600, cursor: savingPriority ? 'not-allowed' : 'pointer', fontFamily: font.body, opacity: savingPriority ? 0.6 : 1 }}
+                        >
+                          {savingPriority ? '…' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => { setEditingPriority(false); setPriorityMsg(null) }}
+                          disabled={savingPriority}
+                          style={{ padding: '5px 10px', borderRadius: '6px', border: `1.5px solid ${colors.border}`, background: 'transparent', color: colors.tertiary, fontSize: '11.5px', fontWeight: 500, cursor: 'pointer', fontFamily: font.body }}
+                        >
+                          Cancel
+                        </button>
+                        {priorityMsg && <span style={{ fontSize: '11px', color: priorityMsg.ok ? colors.green : colors.red }}>{priorityMsg.text}</span>}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Aging chip */}
+                  {aging && task.status !== 'completed' && task.status !== 'cancelled' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center',
+                        fontSize: '11px', fontWeight: 600,
+                        color: agingColor,
+                        background: `${agingColor}14`,
+                        border: `1px solid ${agingColor}28`,
+                        padding: '4px 10px', borderRadius: '20px',
+                      }}>
+                        {aging.label} · {aging.daysSinceUpdate}d
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Description */}
               {editingDescription ? (
@@ -994,33 +1030,45 @@ export default function TaskDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                  {task.note ? (
-                    <p style={{
-                      fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6, margin: 0, flex: 1,
-                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                    }}>
-                      {task.note}
-                    </p>
-                  ) : (
-                    <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0, flex: 1 }}>
-                      No description.
+                <div style={{ marginTop: '12px' }}>
+                  {isQuotation && (
+                    <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted, margin: '0 0 4px' }}>
+                      Notes
                     </p>
                   )}
-                  {isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
-                    <button
-                      onClick={() => { setEditDescription(task.note ?? ''); setEditingDescription(true); setEditingTitle(false) }}
-                      style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0 }}
-                    >
-                      Edit
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    {task.note ? (
+                      <p style={{
+                        fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6, margin: 0, flex: 1,
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                      }}>
+                        {task.note}
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: '12px', color: colors.muted, margin: 0, flex: 1 }}>
+                        {isQuotation ? 'No notes added.' : 'No description.'}
+                      </p>
+                    )}
+                    {!isQuotation && isCreator && task.status !== 'completed' && task.status !== 'cancelled' && (
+                      <button
+                        onClick={() => { setEditDescription(task.note ?? ''); setEditingDescription(true); setEditingTitle(false) }}
+                        style={{ fontSize: '10px', fontWeight: 600, color: colors.blue, background: 'none', border: 'none', cursor: 'pointer', padding: '0', fontFamily: font.body, textDecoration: 'underline', flexShrink: 0 }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* Task attachments — legacy single + new multi-file */}
               {(task.attachment_url || taskLevelAttachments.length > 0) && (
                 <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {isQuotation && (
+                    <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colors.muted, margin: '0 0 2px' }}>
+                      Attachments
+                    </p>
+                  )}
                   {/* Legacy single attachment_url */}
                   {task.attachment_url && !taskLevelAttachments.some(a => a.url === task.attachment_url) && (
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
@@ -1077,8 +1125,8 @@ export default function TaskDetailPage() {
               )}
 
               {/* ── Task actions inside summary card ─────────────────────── */}
-              {/* Unacknowledged: only show acknowledge button */}
-              {!task.acknowledged_at && isAssignee && task.created_by !== currentUserId && task.status !== 'cancelled' && (
+              {/* Unacknowledged: only show acknowledge button (never for quotations) */}
+              {!isQuotation && !task.acknowledged_at && isAssignee && task.created_by !== currentUserId && task.status !== 'cancelled' && (
                 <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}` }}>
                   <button
                     onClick={acknowledge}
@@ -1102,12 +1150,15 @@ export default function TaskDetailPage() {
                   marginTop: '14px', paddingTop: '12px',
                   borderTop: `1px solid ${colors.border}`,
                   display: 'flex', gap: '8px', flexWrap: 'wrap',
+                  justifyContent: isQuotation ? 'center' : 'flex-start',
                 }}>
                   {isAssignee && (
                     <button
                       onClick={async () => {
                         const confirmed = window.confirm(
-                          'Are you sure this task is completed? This will move it out of active work.'
+                          isQuotation
+                            ? 'Mark this quotation as completed? The requester will be notified.'
+                            : 'Are you sure this task is completed? This will move it out of active work.'
                         )
                         if (!confirmed) return
                         setMarkingComplete(true)
@@ -1116,7 +1167,10 @@ export default function TaskDetailPage() {
                       }}
                       disabled={saving || markingComplete}
                       style={{
-                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                        ...(isQuotation
+                          ? { width: '240px' }
+                          : { flex: 1 }),
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                         padding: '9px 14px', borderRadius: '8px',
                         border: `1.5px solid ${colors.green}`,
                         background: colors.green, color: '#ffffff',
@@ -1129,10 +1183,10 @@ export default function TaskDetailPage() {
                       }}
                     >
                       <CircleCheckBig size={15} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-                      {markingComplete ? 'Marking…' : 'Mark Complete'}
+                      {markingComplete ? 'Marking…' : (isQuotation ? 'Mark Quotation Complete' : 'Mark Complete')}
                     </button>
                   )}
-                  {showCancelButton && (
+                  {showCancelButton && !isQuotation && (
                     <button
                       onClick={() => { setCancelReason(''); setCancelOtherText(''); setCancelModalOpen(true) }}
                       style={{
@@ -1169,7 +1223,7 @@ export default function TaskDetailPage() {
                       fontFamily: font.body, opacity: reopening ? 0.6 : 1,
                     }}
                   >
-                    {reopening ? 'Reopening…' : 'Reopen Task'}
+                    {reopening ? 'Reopening…' : (isQuotation ? 'Reopen Quotation' : 'Reopen Task')}
                   </button>
                 </div>
               )}
@@ -1349,14 +1403,14 @@ export default function TaskDetailPage() {
                   letterSpacing: '0.09em', textTransform: 'uppercase',
                   color: colors.muted,
                 }}>
-                  Conversation
+                  Updates
                 </span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <div style={{ position: 'relative' }}>
                     <textarea
                       value={commentNote}
                       onChange={e => setCommentNote(e.target.value)}
-                      placeholder="Add a comment or share details…"
+                      placeholder={isQuotation ? 'Add an update...' : 'Add a comment or share details…'}
                       className="boe-input"
                       style={{
                         resize: 'none', height: '98px', paddingBottom: '36px',
@@ -1438,7 +1492,7 @@ export default function TaskDetailPage() {
                         flexShrink: 0,
                       }}
                     >
-                      {commentSaving ? 'Sending…' : 'Send Update'}
+                      {commentSaving ? (isQuotation ? 'Adding…' : 'Sending…') : (isQuotation ? 'Add Update' : 'Send Update')}
                     </button>
                   </div>
                 </div>
@@ -1461,7 +1515,7 @@ export default function TaskDetailPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
               <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary, letterSpacing: '-0.01em' }}>
-                Activity Timeline
+                {isQuotation ? 'Quotation History' : 'Activity Timeline'}
               </span>
               {log.length > 0 && (
                 <span style={{
@@ -1532,7 +1586,22 @@ export default function TaskDetailPage() {
                         {/* Main content */}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ margin: 0, fontSize: '12.5px', fontWeight: 600, color: colors.primary, lineHeight: 1.35 }}>
-                            {formatLogAction(entry.action, entry.from_status, entry.to_status)}
+                            {isQuotation
+                              ? (() => {
+                                  const { action, from_status: f, to_status: t } = entry
+                                  if (action === 'created')     return 'Quotation request created'
+                                  if (action === 'status_changed') {
+                                    if (t === 'completed')      return 'Quotation marked completed'
+                                    if (f === 'completed')      return 'Quotation reopened'
+                                    if (f === 'cancelled')      return 'Quotation restored'
+                                    if (t === 'cancelled')      return 'Quotation cancelled'
+                                    return formatLogAction(action, f, t)
+                                  }
+                                  if (action === 'note_added')  return 'Update added'
+                                  return formatLogAction(action, f, t)
+                                })()
+                              : formatLogAction(entry.action, entry.from_status, entry.to_status)
+                            }
                           </p>
 
                           {isEditing ? (
