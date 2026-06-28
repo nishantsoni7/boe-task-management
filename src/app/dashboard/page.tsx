@@ -291,30 +291,22 @@ export default function DashboardPage() {
         }
         onSignOut={handleLogout}
       >
-        {/* ── 2×2 operational grid ── */}
+        {/* ── Today's Focus — full-width hero panel ── */}
+        <TodaysFocusPanel
+          tasks={top3Tasks}
+          onSelectTask={setSelectedTask}
+          isMobile={isMobile}
+          onGoToMyTasks={() => router.push('/tasks/my')}
+          userMap={mergedUserMap}
+        />
+
+        {/* ── Lower two-column ── */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
           gap: '16px',
-          marginBottom: '24px',
+          marginBottom: '16px',
         }}>
-
-          {/* Top-left: Top 3 Focus Tasks */}
-          <Top3Panel
-            tasks={top3Tasks}
-            onSelectTask={setSelectedTask}
-            isMobile={isMobile}
-          />
-
-          {/* Top-right: Operational Status */}
-          <OperationalStatusPanel
-            overdueTasks={tasks.filter(t => isOverdue(t.due_date, t.status))}
-            waitingTasks={waitingTasks}
-            dueTodayTasks={dueTodayTasks}
-            onShowList={setPreviewList}
-          />
-
-          {/* Bottom-left: Unacknowledged Tasks */}
           <UnacknowledgedPanel
             tasks={unacknowledgedForMe}
             userMap={mergedUserMap}
@@ -323,8 +315,6 @@ export default function DashboardPage() {
             onPreview={task => setSelectedTask(task)}
             onViewAll={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
           />
-
-          {/* Bottom-right: Quotation Requests */}
           <QuotationPanel
             tasks={quotationTasks}
             userMap={mergedUserMap}
@@ -332,8 +322,16 @@ export default function DashboardPage() {
             onOpen={task => router.push(`/tasks/${task.id}`)}
             onViewAll={() => router.push('/tasks/quotation-requests')}
           />
-
         </div>
+
+        {/* ── Status rail — bottom ── */}
+        <OperationalStatusPanel
+          overdueTasks={tasks.filter(t => isOverdue(t.due_date, t.status))}
+          waitingTasks={waitingTasks}
+          dueTodayTasks={dueTodayTasks}
+          onShowList={setPreviewList}
+          isMobile={isMobile}
+        />
       </DashboardLayout>
 
       {previewList && !selectedTask && (
@@ -379,71 +377,145 @@ export default function DashboardPage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ChevronRightIcon() {
+function ChevronRightIcon({ color = '#9CA3AF' }: { color?: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, flexShrink: 0 }}>
       <polyline points="9 18 15 12 9 6" />
     </svg>
   )
 }
 
-// ── Top 3 Focus Tasks panel ───────────────────────────────────────────────────
+// ── Today's Focus panel ───────────────────────────────────────────────────────
 
-function Top3Panel({
+function TodaysFocusPanel({
   tasks,
   onSelectTask,
   isMobile,
+  onGoToMyTasks,
+  userMap,
 }: {
   tasks: Task[]
   onSelectTask: (task: Task) => void
   isMobile: boolean
+  onGoToMyTasks: () => void
+  userMap: Record<string, string>
 }) {
-  const isEmpty = tasks.length === 0
   return (
     <div style={{
-      background: '#fff',
-      border: '1px solid #E5E7EB',
-      borderRadius: '12px',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-      overflow: 'hidden',
+      background: '#F8F7F5',
+      border: '1px solid rgba(0,0,0,0.06)',
+      borderRadius: '16px',
+      padding: isMobile ? '12px 14px' : '14px 24px 10px',
+      marginBottom: '20px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
     }}>
+      {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
-        borderBottom: '1px solid #F3F4F6',
+        marginBottom: tasks.length === 0 ? '14px' : '10px',
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
-              Top 3 Focus Tasks
-            </span>
-            {tasks.length > 0 && (
-              <span style={{ background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, fontSize: '11px', borderRadius: '999px', padding: '1px 8px' }}>
-                {tasks.length}
-              </span>
-            )}
+          <div style={{ fontWeight: 800, fontSize: isMobile ? '17px' : '19px', color: '#0F172A', letterSpacing: '-0.03em', lineHeight: 1 }}>
+            Today&apos;s Focus
           </div>
-          <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
-            Your personal focus list for today
+          <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '3px', letterSpacing: '0.01em' }}>
+            {tasks.length === 0
+              ? 'Choose up to three tasks for today.'
+              : `${tasks.length} of 3 focus slots filled`}
           </div>
         </div>
+        <button
+          onClick={onGoToMyTasks}
+          style={{
+            fontSize: '11px', fontWeight: 500, color: '#9CA3AF',
+            background: 'transparent', border: 'none',
+            padding: '4px 0', cursor: 'pointer',
+            letterSpacing: '0.01em', transition: 'color 0.12s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#374151' }}
+          onMouseLeave={e => { e.currentTarget.style.color = '#9CA3AF' }}
+        >
+          My Tasks →
+        </button>
       </div>
-      {isEmpty ? (
-        <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-          No focus tasks pinned. Go to My Tasks to pin up to 3.
-        </div>
-      ) : (
-        tasks.map((task, idx) => {
-          const isLast       = idx === tasks.length - 1
-          const isOverdueTask = task.due_date && new Date(task.due_date) < new Date()
-          const dueDateStr   = task.due_date
-            ? new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+
+      {/* 3-column card grid — always rendered, all 3 slots */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+        gap: isMobile ? '8px' : '10px',
+      }}>
+        {[0, 1, 2].map(idx => {
+          const task = tasks[idx]
+
+          /* ── Empty slot ── */
+          if (!task) {
+            return (
+              <div
+                key={`empty-${idx}`}
+                onClick={onGoToMyTasks}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => e.key === 'Enter' && onGoToMyTasks()}
+                style={{
+                  background: 'rgba(255,255,255,0.5)',
+                  border: '1px dashed #D4D4D4',
+                  borderRadius: '12px',
+                  padding: isMobile ? '12px 14px' : '13px 16px',
+                  display: 'flex', flexDirection: 'column',
+                  minHeight: isMobile ? 'auto' : '130px',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s, border-color 0.15s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.82)'
+                  e.currentTarget.style.borderColor = '#B0B0B0'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.5)'
+                  e.currentTarget.style.borderColor = '#D4D4D4'
+                }}
+              >
+                {/* Slot number */}
+                <div style={{ fontSize: '12px', color: '#C4C9D4', marginBottom: '4px', lineHeight: 1 }}>
+                  {['①','②','③'][idx]}
+                </div>
+                <div style={{ fontSize: '13px', fontWeight: 500, color: '#A8B2BF', marginBottom: '2px', lineHeight: 1.4 }}>
+                  Focus slot available
+                </div>
+                <div style={{ fontSize: '12px', color: '#C4C9D4', lineHeight: 1.3 }}>
+                  Open My Tasks to add one.
+                </div>
+              </div>
+            )
+          }
+
+          /* ── Filled slot ── */
+          const now = new Date()
+          const dueDate = task.due_date ? new Date(task.due_date) : null
+          const isUrgentDate = dueDate
+            ? (dueDate.toDateString() === now.toDateString() || dueDate < now)
+            : false
+          const dueDateStr = dueDate
+            ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
             : null
-          const priorityCfg = (
-            task.priority === 'high'   ? { color: '#B45309', bg: '#FFFBEB' } :
-            task.priority === 'low'    ? { color: '#6B7280', bg: '#F3F4F6' } :
-                                         { color: '#92400E', bg: '#FFFBEB' }
-          )
+          const priorityLabel = task.priority
+            ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1)
+            : null
+          const priorityLower = task.priority?.toLowerCase() ?? ''
+          const statusLabel = task.status
+            ? task.status.charAt(0).toUpperCase() + task.status.slice(1)
+            : null
+          const assignerDisplay = getAssignedByDisplay(task, userMap)
+          const isSelf = assignerDisplay === 'Self'
+
+          // Subtle priority colour — text only, no background change
+          const priorityColor = priorityLower === 'high'
+            ? '#C0432B'
+            : priorityLower === 'medium'
+              ? '#92700A'
+              : '#7B8494'
+
           return (
             <div
               key={task.id}
@@ -452,126 +524,168 @@ function Top3Panel({
               tabIndex={0}
               onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
               style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                padding: '12px 16px',
-                borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
-                cursor: 'pointer', transition: 'background 0.12s',
+                background: '#ffffff',
+                borderTop: '1px solid rgba(0,0,0,0.06)',
+                borderRight: '1px solid rgba(0,0,0,0.06)',
+                borderBottom: '1px solid rgba(0,0,0,0.06)',
+                borderLeft: '3px solid #B8ACA0',
+                borderRadius: '12px',
+                padding: isMobile ? '12px 14px' : '13px 16px',
+                display: 'flex', flexDirection: 'column',
+                minHeight: isMobile ? 'auto' : '130px',
+                cursor: 'pointer',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                transition: 'box-shadow 0.15s',
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
-              onMouseLeave={e => (e.currentTarget.style.background = '')}
+              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 3px 10px rgba(0,0,0,0.08)' }}
+              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)' }}
             >
-              {/* Order number */}
-              <div style={{
-                width: '22px', height: '22px', borderRadius: '50%',
-                background: '#F3F4F6',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '11px', fontWeight: 700, color: '#6B7280', flexShrink: 0,
-              }}>
-                {idx + 1}
+              {/* Zone 1 — slot number */}
+              <div style={{ fontSize: '12px', color: '#B0BAC8', marginBottom: '4px', lineHeight: 1 }}>
+                {['①','②','③'][idx]}
               </div>
 
-              {/* Content */}
-              <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Zone 2 — title + source (grows to push zone 3 to bottom) */}
+              <div style={{ flex: 1, marginBottom: '6px' }}>
                 <div style={{
-                  fontSize: '13px', fontWeight: 600, color: '#111827',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  marginBottom: '3px',
+                  fontSize: isMobile ? '13px' : '14px',
+                  fontWeight: 700,
+                  color: '#0F172A',
+                  lineHeight: 1.4,
+                  letterSpacing: '-0.01em',
+                  marginBottom: '2px',
                 }}>
                   {task.title}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  <span style={{
-                    fontSize: '10px', fontWeight: 600,
-                    color: priorityCfg.color, background: priorityCfg.bg,
-                    borderRadius: '4px', padding: '1px 6px', textTransform: 'capitalize',
-                  }}>
-                    {task.priority}
-                  </span>
-                  <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '10px', padding: '1px 7px', textTransform: 'capitalize', fontWeight: 600 }}>
-                    {task.status}
-                  </span>
-                  {dueDateStr && (
-                    <span style={{ fontSize: '11px', color: isOverdueTask ? '#C0392B' : '#6B7280', fontWeight: isOverdueTask ? 600 : 400 }}>
-                      {dueDateStr}
-                    </span>
-                  )}
+                <div style={{ fontSize: '12px', color: '#8A94A6', lineHeight: 1.3 }}>
+                  {isSelf
+                    ? 'Self Task'
+                    : <span>Delegated by <span style={{ color: '#6B7280', fontWeight: 500 }}>{assignerDisplay}</span></span>
+                  }
                 </div>
               </div>
 
-              <ChevronRightIcon />
+              {/* Zone 3 — chips + date + chevron, anchored to bottom */}
+              <div>
+                {/* Priority + status chips */}
+                {(priorityLabel || statusLabel) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                    {priorityLabel && (
+                      <span style={{
+                        fontSize: '10.5px',
+                        color: priorityColor,
+                        background: '#F8F9FB',
+                        border: '1px solid #E6E8EC',
+                        borderRadius: '999px',
+                        padding: '2px 7px',
+                        lineHeight: 1.5,
+                        fontWeight: 500,
+                      }}>
+                        {priorityLabel}
+                      </span>
+                    )}
+                    {statusLabel && (
+                      <span style={{
+                        fontSize: '10.5px',
+                        color: '#7B8494',
+                        background: '#F8F9FB',
+                        border: '1px solid #E6E8EC',
+                        borderRadius: '999px',
+                        padding: '2px 7px',
+                        lineHeight: 1.5,
+                      }}>
+                        {statusLabel}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {/* Due date + chevron */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  {dueDateStr
+                    ? <span style={{
+                        fontSize: '11px',
+                        fontWeight: isUrgentDate ? 600 : 500,
+                        color: isUrgentDate ? '#C0392B' : '#9CA3AF',
+                      }}>{`Due ${dueDateStr}`}</span>
+                    : <span />
+                  }
+                  <ChevronRightIcon />
+                </div>
+              </div>
             </div>
           )
-        })
-      )}
+        })}
+      </div>
     </div>
   )
 }
 
-// ── Operational Status panel (Overdue / Waiting / Due Today) ──────────────────
+// ── Operational status strip ──────────────────────────────────────────────────
 
 function OperationalStatusPanel({
   overdueTasks,
   waitingTasks,
   dueTodayTasks,
   onShowList,
+  isMobile,
 }: {
   overdueTasks: Task[]
   waitingTasks: Task[]
   dueTodayTasks: Task[]
   onShowList: (list: { title: string; items: Task[] }) => void
+  isMobile: boolean
 }) {
-  const rows = [
-    { label: 'Overdue',   count: overdueTasks.length,   countColor: '#C0392B', countBg: '#FEF2F2', items: overdueTasks,   title: 'Overdue Tasks'  },
-    { label: 'Waiting',   count: waitingTasks.length,   countColor: '#92400E', countBg: '#FFFBEB', items: waitingTasks,   title: 'Waiting Tasks'  },
-    { label: 'Due Today', count: dueTodayTasks.length,  countColor: '#1D4ED8', countBg: '#EFF6FF', items: dueTodayTasks,  title: 'Due Today'      },
+  const items = [
+    { label: 'Overdue',   sub: 'Needs attention',  count: overdueTasks.length,  items: overdueTasks,  title: 'Overdue Tasks', countColor: '#C0392B' },
+    { label: 'Waiting',   sub: 'Pending action',   count: waitingTasks.length,  items: waitingTasks,  title: 'Waiting Tasks', countColor: '#92400E' },
+    { label: 'Due Today', sub: 'Finish today',      count: dueTodayTasks.length, items: dueTodayTasks, title: 'Due Today',      countColor: '#374151' },
   ]
   return (
     <div style={{
       background: '#fff',
-      border: '1px solid #E5E7EB',
+      border: '1px solid #E7E9EE',
       borderRadius: '12px',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      display: 'grid',
+      gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+      marginBottom: '24px',
       overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     }}>
-      <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid #F3F4F6' }}>
-        <div style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
-          Task Status
-        </div>
-        <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
-          Priority signals for today
-        </div>
-      </div>
-      {rows.map((row, idx) => {
-        const isLast        = idx === rows.length - 1
-        const isInteractive = row.count > 0
+      {items.map((item, idx) => {
+        const isInteractive = item.count > 0
+        const isLast = idx === items.length - 1
         return (
           <div
-            key={row.label}
-            onClick={() => isInteractive && onShowList({ title: row.title, items: row.items })}
+            key={item.label}
+            onClick={() => isInteractive && onShowList({ title: item.title, items: item.items })}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '15px 20px',
-              borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
+              borderRight: !isMobile && !isLast ? '1px solid rgba(0,0,0,0.05)' : 'none',
+              borderBottom: isMobile && !isLast ? '1px solid rgba(0,0,0,0.05)' : 'none',
+              padding: '15px 22px',
               cursor: isInteractive ? 'pointer' : 'default',
-              transition: 'background 0.12s',
+              transition: 'background 0.15s',
             }}
             onMouseEnter={e => { if (isInteractive) e.currentTarget.style.background = '#FAFAFA' }}
             onMouseLeave={e => { e.currentTarget.style.background = '' }}
           >
-            <span style={{ fontSize: '13px', fontWeight: 500, color: '#374151' }}>
-              {row.label}
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 500, color: '#9CA3AF', letterSpacing: '0.01em', lineHeight: 1 }}>
+                {item.label}
+              </div>
+              <div style={{ fontSize: '10.5px', color: '#C4C9D4', marginTop: '4px', lineHeight: 1 }}>
+                {item.sub}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{
-                fontSize: '16px', fontWeight: 800,
-                color: row.count > 0 ? row.countColor : '#9CA3AF',
-                background: row.count > 0 ? row.countBg : 'transparent',
-                borderRadius: '6px', padding: '2px 12px',
-                minWidth: '36px', textAlign: 'center',
+                fontSize: '20px', fontWeight: 700,
+                color: item.count > 0 ? item.countColor : '#D1D5DB',
+                letterSpacing: '-0.03em',
               }}>
-                {row.count}
+                {item.count}
               </span>
-              {isInteractive && <ChevronRightIcon />}
+              {isInteractive && <ChevronRightIcon color="#C4C9D4" />}
             </div>
           </div>
         )
@@ -600,43 +714,45 @@ function UnacknowledgedPanel({
   return (
     <div style={{
       background: '#fff',
-      border: '1px solid #E5E7EB',
+      border: '1px solid #E7E9EE',
       borderRadius: '12px',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     }}>
       <div
         onClick={() => tasks.length > 0 && onViewAll()}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
-          borderBottom: '1px solid #F3F4F6',
+          padding: isMobile ? '13px 16px' : '14px 18px',
+          borderBottom: '1px solid #F0F1F4',
           cursor: tasks.length > 0 ? 'pointer' : 'default',
-          transition: 'background 0.12s',
+          transition: 'background 0.15s',
         }}
         onMouseEnter={e => { if (tasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
         onMouseLeave={e => { e.currentTarget.style.background = '' }}
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
-              Unacknowledged Tasks
+            <span style={{ fontWeight: 700, fontSize: '13px', color: '#0F172A', letterSpacing: '-0.02em' }}>
+              Needs Acknowledgement
             </span>
-            <span style={{ background: '#FEF2F2', color: '#B91C1C', fontWeight: 700, fontSize: '11px', borderRadius: '999px', padding: '1px 8px' }}>
-              {tasks.length}
-            </span>
+            {tasks.length > 0 && (
+              <span style={{ background: '#FEF2F2', color: '#C0392B', fontWeight: 600, fontSize: '10px', borderRadius: '999px', padding: '1px 7px' }}>
+                {tasks.length}
+              </span>
+            )}
           </div>
-          <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
-            Please acknowledge your assigned tasks to keep things moving.
+          <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '3px' }}>
+            Tasks waiting for your acknowledgement
           </div>
         </div>
         {tasks.length > 0 && (
-          <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>View all →</span>
+          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>View all →</span>
         )}
       </div>
       {tasks.length === 0 ? (
-        <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-          No unacknowledged tasks.
+        <div style={{ padding: '24px 18px', textAlign: 'center', color: '#C4C9D4', fontSize: '13px' }}>
+          All clear.
         </div>
       ) : (
         <UnacknowledgedTasksSection
@@ -669,43 +785,45 @@ function QuotationPanel({
   return (
     <div style={{
       background: '#fff',
-      border: '1px solid #E5E7EB',
+      border: '1px solid #E7E9EE',
       borderRadius: '12px',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     }}>
       <div
         onClick={() => tasks.length > 0 && onViewAll()}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
-          borderBottom: '1px solid #F3F4F6',
+          padding: isMobile ? '13px 16px' : '14px 18px',
+          borderBottom: '1px solid #F0F1F4',
           cursor: tasks.length > 0 ? 'pointer' : 'default',
-          transition: 'background 0.12s',
+          transition: 'background 0.15s',
         }}
         onMouseEnter={e => { if (tasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
         onMouseLeave={e => { e.currentTarget.style.background = '' }}
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
+            <span style={{ fontWeight: 700, fontSize: '13px', color: '#0F172A', letterSpacing: '-0.02em' }}>
               Quotation Requests
             </span>
-            <span style={{ background: '#F0FDF4', color: '#15803D', fontWeight: 700, fontSize: '11px', borderRadius: '999px', padding: '1px 8px' }}>
-              {tasks.length}
-            </span>
+            {tasks.length > 0 && (
+              <span style={{ background: '#F3F4F6', color: '#6B7280', fontWeight: 600, fontSize: '10px', borderRadius: '999px', padding: '1px 7px' }}>
+                {tasks.length}
+              </span>
+            )}
           </div>
-          <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
-            Active quotation requests assigned to you.
+          <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '3px' }}>
+            Active requests assigned to you
           </div>
         </div>
         {tasks.length > 0 && (
-          <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>View all →</span>
+          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>View all →</span>
         )}
       </div>
       {tasks.length === 0 ? (
-        <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-          No active quotation requests.
+        <div style={{ padding: '24px 18px', textAlign: 'center', color: '#C4C9D4', fontSize: '13px' }}>
+          No active requests.
         </div>
       ) : (
         <QuotationRequestsSection
@@ -734,12 +852,17 @@ function QuotationRequestsSection({
       {tasks.slice(0, 8).map((task, idx) => {
         const isLast        = idx === Math.min(tasks.length, 8) - 1
         const requesterName = userMap[task.created_by] ?? 'Unknown'
-        const createdDateStr = new Date(task.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
-        const priorityCfg   = task.priority === 'high'
-          ? { color: '#B45309', bg: '#FFFBEB' }
-          : task.priority === 'low'
-            ? { color: '#6B7280', bg: '#F3F4F6' }
-            : { color: '#92400E', bg: '#FFFBEB' }
+        const now           = new Date()
+        const dueDate       = task.due_date ? new Date(task.due_date) : null
+        const isToday       = dueDate ? dueDate.toDateString() === now.toDateString() : false
+        const isOverdueDate = dueDate ? dueDate < now && !isToday : false
+        const isUrgent      = isToday || isOverdueDate
+        const dueDateStr    = dueDate
+          ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+          : null
+        const priorityLabel = task.priority
+          ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1)
+          : null
 
         return (
           <div
@@ -750,46 +873,44 @@ function QuotationRequestsSection({
             onKeyDown={e => e.key === 'Enter' && onOpen(task)}
             style={{
               display: 'flex', alignItems: 'center', gap: '12px',
-              padding: '11px 16px',
-              borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
-              cursor: 'pointer', transition: 'background 0.12s',
+              padding: '11px 18px',
+              borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
+              cursor: 'pointer', transition: 'background 0.15s',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+            onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
             onMouseLeave={e => (e.currentTarget.style.background = '')}
           >
-            <div style={{
-              width: '30px', height: '30px', borderRadius: '50%',
-              background: '#F0FDF4',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-                <polyline points="10 9 9 9 8 9" />
-              </svg>
-            </div>
+            {/* LEFT — client + priority/due */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {task.customer_name ?? task.title}
-                </span>
-                <span style={{ fontSize: '10px', fontWeight: 600, flexShrink: 0, color: priorityCfg.color, background: priorityCfg.bg, borderRadius: '4px', padding: '1px 6px', textTransform: 'capitalize' }}>
-                  {task.priority}
-                </span>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '3px', letterSpacing: '-0.01em' }}>
+                {task.customer_name ?? task.title}
               </div>
-              <div style={{ fontSize: '11px', color: '#9CA3AF' }}>
-                {task.contact_number ? <span style={{ color: '#6B7280' }}>{task.contact_number} · </span> : null}
-                <span>{createdDateStr}</span>
+              <div style={{ fontSize: '11px', color: '#9CA3AF', display: 'flex', gap: '4px', alignItems: 'center' }}>
+                {priorityLabel && (
+                  <span style={{ color: '#B0BAC8' }}>{priorityLabel}</span>
+                )}
+                {priorityLabel && dueDateStr && <span style={{ color: '#D1D5DB' }}>·</span>}
+                {dueDateStr && (
+                  <span style={{
+                    fontWeight: isUrgent ? 600 : 400,
+                    color: isUrgent ? '#C0392B' : '#9CA3AF',
+                  }}>
+                    {isOverdueDate ? 'Overdue' : isToday ? 'Due today' : `Due ${dueDateStr}`}
+                  </span>
+                )}
               </div>
             </div>
-            <div style={{ flexShrink: 0, textAlign: 'right' }}>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#6B4FA0' }}>
+
+            {/* RIGHT — assigner */}
+            <div style={{ flexShrink: 0, textAlign: 'right', marginRight: '8px' }}>
+              <div style={{ fontSize: '10.5px', color: '#C4C9D4', lineHeight: 1, marginBottom: '3px' }}>
+                Assigned by
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', lineHeight: 1 }}>
                 {requesterName.split(' ')[0]}
               </div>
-              <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '1px' }}>Requested by</div>
             </div>
+
             <ChevronRightIcon />
           </div>
         )
@@ -835,42 +956,37 @@ function UnacknowledgedTasksSection({
             onKeyDown={e => e.key === 'Enter' && onPreview(task)}
             style={{
               display: 'flex', alignItems: 'center',
-              borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
-              cursor: 'pointer', transition: 'background 0.12s',
-              minHeight: '52px',
+              borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
+              cursor: 'pointer', transition: 'background 0.15s',
+              minHeight: '48px',
             }}
             onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
             onMouseLeave={e => (e.currentTarget.style.background = '')}
           >
-            <div style={{ width: '3px', height: '38px', flexShrink: 0, background: isOverdueRow ? '#EF4444' : 'transparent', borderRadius: '2px', marginLeft: '1px' }} />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: '10px', flexShrink: 0 }}>
-              <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: isOverdueRow ? '#FEF2F2' : '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isOverdueRow ? '#EF4444' : '#9CA3AF'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-              </div>
-            </div>
-            <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 10px 10px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#111827', lineHeight: 1.3, marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {isOverdueRow && (
+              <div style={{ width: '2px', height: '32px', flexShrink: 0, background: '#EF4444', borderRadius: '2px', marginLeft: '1px' }} />
+            )}
+            <div style={{ flex: 1, minWidth: 0, padding: isOverdueRow ? '9px 12px 9px 11px' : '9px 12px 9px 18px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', lineHeight: 1.3, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {task.title}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '3px', fontSize: '11px', color: '#9CA3AF' }}>
-                <span style={{ color: '#6B7280' }}>{assignedByName.split(' ')[0]}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#9CA3AF' }}>
+                <span>{assignedByName.split(' ')[0]}</span>
                 {dueDateStr && (
                   <>
-                    <span>•</span>
-                    <span style={{ color: isDueOverdue ? '#B91C1C' : '#6B7280' }}>{dueDateStr}</span>
+                    <span>·</span>
+                    <span style={{ color: isDueOverdue ? '#C0392B' : '#9CA3AF' }}>{dueDateStr}</span>
                   </>
                 )}
-                <span>•</span>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: isOverdueRow ? '#B91C1C' : '#92600A', background: isOverdueRow ? '#FEF2F2' : '#FFFBEB', borderRadius: '4px', padding: '0 5px' }}>
-                  {isOverdueRow ? 'Overdue' : 'Pending'}
-                </span>
+                {isOverdueRow && (
+                  <>
+                    <span>·</span>
+                    <span style={{ color: '#C0392B', fontWeight: 500 }}>Overdue</span>
+                  </>
+                )}
               </div>
             </div>
-            <div style={{ paddingRight: '12px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+            <div style={{ paddingRight: '18px', flexShrink: 0 }}>
               <ChevronRightIcon />
             </div>
           </div>

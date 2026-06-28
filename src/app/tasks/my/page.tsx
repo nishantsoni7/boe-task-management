@@ -171,7 +171,7 @@ function TaskCard({
             {(onPin || onUnpin) && (
               <button
                 onClick={e => { e.stopPropagation(); isPinned ? onUnpin?.() : onPin?.() }}
-                title={isPinned ? 'Remove from Top 3' : 'Pin to Top 3'}
+                title={isPinned ? 'Remove from Focus' : 'Add to Today\'s Focus'}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: isPinned ? 'rgba(196,154,40,0.10)' : 'transparent', border: `1px solid ${isPinned ? 'rgba(196,154,40,0.3)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: isPinned ? '#C49A28' : colors.muted }}
               >
                 <Pin size={13} />
@@ -262,6 +262,11 @@ function TaskCard({
         }}>
           {task.title}
         </span>
+        {isPinned && (
+          <span style={{ fontSize: '9px', fontWeight: 700, color: '#92710A', background: 'rgba(196,154,40,0.12)', borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.02em' }}>
+            Today&apos;s Focus
+          </span>
+        )}
       </div>
 
       {/* Assigned by */}
@@ -334,7 +339,7 @@ function TaskCard({
             onClick={e => { e.stopPropagation(); isPinned ? onUnpin?.() : onPin?.() }}
             onMouseEnter={() => setHoveredPin(true)}
             onMouseLeave={() => setHoveredPin(false)}
-            title={isPinned ? 'Remove from Top 3' : 'Pin to Top 3'}
+            title={isPinned ? 'Remove from Focus' : 'Add to Today\'s Focus'}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: '26px', height: '26px', borderRadius: '6px',
@@ -1137,7 +1142,7 @@ export default function MyTasksPage() {
   const handlePin = async (task: Task) => {
     if (!userId || viewAsUserId) return
     if ((top3Data?.tasks?.length ?? 0) >= 3) {
-      window.alert('You already have 3 tasks pinned to Top 3. Remove one before adding another.')
+      window.alert('You already have 3 tasks in Today\'s Focus. Remove one before adding another.')
       return
     }
     const nextOrder = (top3Data?.tasks?.length ?? 0) + 1
@@ -1150,7 +1155,7 @@ export default function MyTasksPage() {
       return
     }
     queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
-    showToast('Added to Top 3')
+    showToast('Added to Today\'s Focus')
   }
 
   const handleUnpin = async (task: Task) => {
@@ -1166,7 +1171,7 @@ export default function MyTasksPage() {
       return
     }
     queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
-    showToast('Removed from Top 3')
+    showToast('Removed from Today\'s Focus')
   }
 
   const baseTasks = useMemo(() => {
