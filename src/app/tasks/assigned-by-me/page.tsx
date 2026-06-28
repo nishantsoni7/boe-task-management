@@ -591,7 +591,7 @@ function DelegateTaskModal({
             style={{ width: '100%', boxSizing: 'border-box' }}
           >
             <option value="">Select team member</option>
-            {allUsers.map(u => (
+            {allUsers.filter(u => u.id !== profile.id).map(u => (
               <option key={u.id} value={u.id}>{u.full_name} — {u.team}</option>
             ))}
           </select>

@@ -329,7 +329,7 @@ export default function CreateTaskPage() {
               className="boe-input"
             >
               <option value="">Select team member</option>
-              {users.map(u => (
+              {users.filter(u => u.id !== profile?.id).map(u => (
                 <option key={u.id} value={u.id}>{u.full_name} — {u.team}</option>
               ))}
             </select>
