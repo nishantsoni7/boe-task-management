@@ -723,7 +723,7 @@ function UnacknowledgedPanel({
         onClick={() => tasks.length > 0 && onViewAll()}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '13px 16px' : '14px 18px',
+          padding: isMobile ? '13px 16px' : '15px 18px',
           borderBottom: '1px solid #F0F1F4',
           cursor: tasks.length > 0 ? 'pointer' : 'default',
           transition: 'background 0.15s',
@@ -732,26 +732,26 @@ function UnacknowledgedPanel({
         onMouseLeave={e => { e.currentTarget.style.background = '' }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontWeight: 700, fontSize: '13px', color: '#0F172A', letterSpacing: '-0.02em' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+            <span style={{ fontWeight: 675, fontSize: '15px', color: '#0F172A', letterSpacing: '-0.02em', lineHeight: 1 }}>
               Needs Acknowledgement
             </span>
             {tasks.length > 0 && (
-              <span style={{ background: '#FEF2F2', color: '#C0392B', fontWeight: 600, fontSize: '10px', borderRadius: '999px', padding: '1px 7px' }}>
+              <span style={{ background: '#FEF2F2', color: '#C0392B', fontWeight: 600, fontSize: '10px', borderRadius: '999px', padding: '1px 7px', lineHeight: 1.6 }}>
                 {tasks.length}
               </span>
             )}
           </div>
-          <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '3px' }}>
+          <div style={{ fontSize: '12px', color: '#B0B8C6', fontWeight: 400, lineHeight: 1 }}>
             Tasks waiting for your acknowledgement
           </div>
         </div>
         {tasks.length > 0 && (
-          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>View all →</span>
+          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', letterSpacing: '0.01em', flexShrink: 0 }}>View all →</span>
         )}
       </div>
       {tasks.length === 0 ? (
-        <div style={{ padding: '24px 18px', textAlign: 'center', color: '#C4C9D4', fontSize: '13px' }}>
+        <div style={{ padding: '28px 18px', textAlign: 'center', color: '#C4C9D4', fontSize: '13px' }}>
           All clear.
         </div>
       ) : (
@@ -794,7 +794,7 @@ function QuotationPanel({
         onClick={() => tasks.length > 0 && onViewAll()}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '13px 16px' : '14px 18px',
+          padding: isMobile ? '13px 16px' : '15px 18px',
           borderBottom: '1px solid #F0F1F4',
           cursor: tasks.length > 0 ? 'pointer' : 'default',
           transition: 'background 0.15s',
@@ -803,22 +803,22 @@ function QuotationPanel({
         onMouseLeave={e => { e.currentTarget.style.background = '' }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontWeight: 700, fontSize: '13px', color: '#0F172A', letterSpacing: '-0.02em' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+            <span style={{ fontWeight: 675, fontSize: '15px', color: '#0F172A', letterSpacing: '-0.02em', lineHeight: 1 }}>
               Quotation Requests
             </span>
             {tasks.length > 0 && (
-              <span style={{ background: '#F3F4F6', color: '#6B7280', fontWeight: 600, fontSize: '10px', borderRadius: '999px', padding: '1px 7px' }}>
+              <span style={{ background: '#F3F4F6', color: '#6B7280', fontWeight: 600, fontSize: '10px', borderRadius: '999px', padding: '1px 7px', lineHeight: 1.6 }}>
                 {tasks.length}
               </span>
             )}
           </div>
-          <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '3px' }}>
+          <div style={{ fontSize: '12px', color: '#B0B8C6', fontWeight: 400, lineHeight: 1 }}>
             Active requests assigned to you
           </div>
         </div>
         {tasks.length > 0 && (
-          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>View all →</span>
+          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', letterSpacing: '0.01em', flexShrink: 0 }}>View all →</span>
         )}
       </div>
       {tasks.length === 0 ? (
@@ -847,22 +847,30 @@ function QuotationRequestsSection({
   userMap: Record<string, string>
   onOpen: (task: Task) => void
 }) {
+  const now = new Date()
   return (
     <div>
       {tasks.slice(0, 8).map((task, idx) => {
         const isLast        = idx === Math.min(tasks.length, 8) - 1
         const requesterName = userMap[task.created_by] ?? 'Unknown'
-        const now           = new Date()
         const dueDate       = task.due_date ? new Date(task.due_date) : null
+        const todayStart    = new Date(now); todayStart.setHours(0, 0, 0, 0)
         const isToday       = dueDate ? dueDate.toDateString() === now.toDateString() : false
-        const isOverdueDate = dueDate ? dueDate < now && !isToday : false
-        const isUrgent      = isToday || isOverdueDate
+        const isDueOverdue  = dueDate ? dueDate < todayStart && !isToday : false
         const dueDateStr    = dueDate
           ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
           : null
+        const dueDateColor  = isDueOverdue ? '#C0392B' : isToday ? '#D97706' : '#9CA3AF'
+
+        const priorityLower = task.priority?.toLowerCase() ?? ''
         const priorityLabel = task.priority
           ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1)
           : null
+        const priorityColor = priorityLower === 'high'
+          ? '#C0432B'
+          : priorityLower === 'medium'
+            ? '#92700A'
+            : '#8A94A6'
 
         return (
           <div
@@ -873,29 +881,41 @@ function QuotationRequestsSection({
             onKeyDown={e => e.key === 'Enter' && onOpen(task)}
             style={{
               display: 'flex', alignItems: 'center', gap: '12px',
-              padding: '11px 18px',
+              padding: '12px 18px',
               borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
-              cursor: 'pointer', transition: 'background 0.15s',
+              cursor: 'pointer',
+              transition: 'background 0.15s, box-shadow 0.15s',
+              minHeight: '58px',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
-            onMouseLeave={e => (e.currentTarget.style.background = '')}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#F7F8FA'
+              e.currentTarget.style.boxShadow = 'inset 2px 0 0 #D1D5DB'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = ''
+              e.currentTarget.style.boxShadow = ''
+            }}
           >
-            {/* LEFT — client + priority/due */}
+            {/* LEFT — client name + priority/due */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '13px', fontWeight: 600, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '3px', letterSpacing: '-0.01em' }}>
+              <div style={{
+                fontSize: '15px', fontWeight: 600, color: '#111827',
+                letterSpacing: '-0.01em', lineHeight: 1.35,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                marginBottom: '4px',
+              }}>
                 {task.customer_name ?? task.title}
               </div>
-              <div style={{ fontSize: '11px', color: '#9CA3AF', display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 500 }}>
                 {priorityLabel && (
-                  <span style={{ color: '#B0BAC8' }}>{priorityLabel}</span>
+                  <span style={{ color: priorityColor }}>{priorityLabel}</span>
                 )}
-                {priorityLabel && dueDateStr && <span style={{ color: '#D1D5DB' }}>·</span>}
+                {priorityLabel && dueDateStr && (
+                  <span style={{ color: '#D1D5DB' }}>·</span>
+                )}
                 {dueDateStr && (
-                  <span style={{
-                    fontWeight: isUrgent ? 600 : 400,
-                    color: isUrgent ? '#C0392B' : '#9CA3AF',
-                  }}>
-                    {isOverdueDate ? 'Overdue' : isToday ? 'Due today' : `Due ${dueDateStr}`}
+                  <span style={{ color: dueDateColor }}>
+                    {isDueOverdue ? `Overdue · ${dueDateStr}` : isToday ? 'Due today' : `Due ${dueDateStr}`}
                   </span>
                 )}
               </div>
@@ -903,10 +923,10 @@ function QuotationRequestsSection({
 
             {/* RIGHT — assigner */}
             <div style={{ flexShrink: 0, textAlign: 'right', marginRight: '8px' }}>
-              <div style={{ fontSize: '10.5px', color: '#C4C9D4', lineHeight: 1, marginBottom: '3px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 500, color: '#C4C9D4', lineHeight: 1, marginBottom: '4px' }}>
                 Assigned by
               </div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', lineHeight: 1 }}>
+              <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', lineHeight: 1 }}>
                 {requesterName.split(' ')[0]}
               </div>
             </div>
@@ -934,17 +954,29 @@ function UnacknowledgedTasksSection({
   onPreview: (task: Task) => void
   compact?: boolean
 }) {
-  const msPerDay = 24 * 60 * 60 * 1000
   return (
     <div style={compact ? {} : { marginBottom: '24px' }}>
       {tasks.map((task, idx) => {
-        const isLate       = (now.getTime() - new Date(task.created_at).getTime()) > msPerDay
-        const isDueOverdue = task.due_date && new Date(task.due_date) < now
-        const isOverdueRow = isLate || isDueOverdue
-        const assignedByName = getAssignedByDisplay(task, userMap)
-        const dueDateStr   = task.due_date
-          ? new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+        const dueDate      = task.due_date ? new Date(task.due_date) : null
+        const todayStart   = new Date(now); todayStart.setHours(0, 0, 0, 0)
+        const isToday      = dueDate ? dueDate.toDateString() === now.toDateString() : false
+        const isDueOverdue = dueDate ? dueDate < todayStart && !isToday : false
+        const dueDateStr   = dueDate
+          ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
           : null
+        const dueDateColor = isDueOverdue ? '#C0392B' : isToday ? '#D97706' : '#9CA3AF'
+
+        const priorityLower = task.priority?.toLowerCase() ?? ''
+        const priorityLabel = task.priority
+          ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1)
+          : null
+        const priorityColor = priorityLower === 'high'
+          ? '#C0432B'
+          : priorityLower === 'medium'
+            ? '#92700A'
+            : '#8A94A6'
+
+        const assignedByName = getAssignedByDisplay(task, userMap)
         const isLast = idx === tasks.length - 1
 
         return (
@@ -956,39 +988,58 @@ function UnacknowledgedTasksSection({
             onKeyDown={e => e.key === 'Enter' && onPreview(task)}
             style={{
               display: 'flex', alignItems: 'center',
+              padding: '12px 18px',
               borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
-              cursor: 'pointer', transition: 'background 0.15s',
-              minHeight: '48px',
+              cursor: 'pointer',
+              transition: 'background 0.15s, box-shadow 0.15s',
+              minHeight: '58px',
+              gap: '12px',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
-            onMouseLeave={e => (e.currentTarget.style.background = '')}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#F7F8FA'
+              e.currentTarget.style.boxShadow = 'inset 2px 0 0 #D1D5DB'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = ''
+              e.currentTarget.style.boxShadow = ''
+            }}
           >
-            {isOverdueRow && (
-              <div style={{ width: '2px', height: '32px', flexShrink: 0, background: '#EF4444', borderRadius: '2px', marginLeft: '1px' }} />
-            )}
-            <div style={{ flex: 1, minWidth: 0, padding: isOverdueRow ? '9px 12px 9px 11px' : '9px 12px 9px 18px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', lineHeight: 1.3, marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {/* LEFT — title + meta */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: '15px', fontWeight: 600, color: '#111827',
+                letterSpacing: '-0.01em', lineHeight: 1.35,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                marginBottom: '4px',
+              }}>
                 {task.title}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#9CA3AF' }}>
-                <span>{assignedByName.split(' ')[0]}</span>
-                {dueDateStr && (
-                  <>
-                    <span>·</span>
-                    <span style={{ color: isDueOverdue ? '#C0392B' : '#9CA3AF' }}>{dueDateStr}</span>
-                  </>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 500 }}>
+                {priorityLabel && (
+                  <span style={{ color: priorityColor }}>{priorityLabel}</span>
                 )}
-                {isOverdueRow && (
-                  <>
-                    <span>·</span>
-                    <span style={{ color: '#C0392B', fontWeight: 500 }}>Overdue</span>
-                  </>
+                {priorityLabel && dueDateStr && (
+                  <span style={{ color: '#D1D5DB' }}>·</span>
+                )}
+                {dueDateStr && (
+                  <span style={{ color: dueDateColor }}>
+                    {isDueOverdue ? `Overdue · ${dueDateStr}` : isToday ? `Due today` : `Due ${dueDateStr}`}
+                  </span>
                 )}
               </div>
             </div>
-            <div style={{ paddingRight: '18px', flexShrink: 0 }}>
-              <ChevronRightIcon />
+
+            {/* RIGHT — assigned by */}
+            <div style={{ flexShrink: 0, textAlign: 'right', marginRight: '8px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 500, color: '#C4C9D4', lineHeight: 1, marginBottom: '4px' }}>
+                Assigned by
+              </div>
+              <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', lineHeight: 1 }}>
+                {assignedByName === 'Self' ? 'You' : assignedByName.split(' ')[0]}
+              </div>
             </div>
+
+            <ChevronRightIcon />
           </div>
         )
       })}
