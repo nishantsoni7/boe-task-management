@@ -16,8 +16,9 @@ import { useProfile } from '@/hooks/queries/useProfile'
 import { useMyTasks, useUserNames } from '@/hooks/queries/useMyTasks'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
-  LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus,
+  LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus, Pin,
 } from 'lucide-react'
+import { useTopTasks } from '@/hooks/queries/useTopTasks'
 
 
 function localDateStr(offsetDays = 0): string {
@@ -98,6 +99,7 @@ const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
   task, accentColor, userId, userMap, onClick, onView, onEdit, onDelete, isMobile,
+  isPinned, onPin, onUnpin,
 }: {
   task: Task
   accentColor: string
@@ -108,11 +110,15 @@ function TaskCard({
   onEdit?: () => void
   onDelete?: () => void
   isMobile?: boolean
+  isPinned?: boolean
+  onPin?: () => void
+  onUnpin?: () => void
 }) {
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
   const [hoveredDel,  setHoveredDel]  = useState(false)
   const [hoveredView, setHoveredView] = useState(false)
+  const [hoveredPin,  setHoveredPin]  = useState(false)
   const overdue    = isOverdue(task)
   const completed  = task.status === 'completed'
   const priority   = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
@@ -161,6 +167,15 @@ function TaskCard({
             {task.title}
           </div>
           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+            {(onPin || onUnpin) && (
+              <button
+                onClick={e => { e.stopPropagation(); isPinned ? onUnpin?.() : onPin?.() }}
+                title={isPinned ? 'Remove from Top 3' : 'Pin to Top 3'}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: isPinned ? 'rgba(196,154,40,0.10)' : 'transparent', border: `1px solid ${isPinned ? 'rgba(196,154,40,0.3)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: isPinned ? '#C49A28' : colors.muted }}
+              >
+                <Pin size={13} />
+              </button>
+            )}
             {isSelf && (
               <>
                 <button onClick={e => { e.stopPropagation(); onEdit?.() }} title="Edit"
@@ -207,7 +222,7 @@ function TaskCard({
       onClick={onClick}
       style={{
         display: 'grid',
-        gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(82px, 0.45fr)',
+        gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(110px, 0.45fr)',
         columnGap: '14px',
         alignItems: 'center',
         background: cardBackground,
@@ -312,6 +327,27 @@ function TaskCard({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         gap: '2px',
       }}>
+        {/* Pin to Top 3 */}
+        {(onPin || onUnpin) && (
+          <button
+            onClick={e => { e.stopPropagation(); isPinned ? onUnpin?.() : onPin?.() }}
+            onMouseEnter={() => setHoveredPin(true)}
+            onMouseLeave={() => setHoveredPin(false)}
+            title={isPinned ? 'Remove from Top 3' : 'Pin to Top 3'}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '26px', height: '26px', borderRadius: '6px',
+              background: isPinned
+                ? 'rgba(196,154,40,0.10)'
+                : hoveredPin ? 'rgba(91,127,166,0.10)' : 'transparent',
+              border: `1px solid ${isPinned ? 'rgba(196,154,40,0.3)' : hoveredPin ? 'rgba(91,127,166,0.30)' : 'transparent'}`,
+              cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
+              color: isPinned ? '#C49A28' : hoveredPin ? '#5B7FA6' : colors.muted,
+            }}
+          >
+            <Pin size={11} />
+          </button>
+        )}
         {isSelf ? (
           <>
             <button
@@ -879,6 +915,7 @@ export default function MyTasksPage() {
   // ── Query-backed data ─────────────────────────────────────────────────────
   const { data: profile = null }  = useProfile(loggedInId)
   const { data: allTasksRaw = [], isLoading: tasksLoading } = useMyTasks(userId || null)
+  const { data: top3Data } = useTopTasks(userId || null)
 
   // Allow manual task overrides (create / edit / delete) on top of cached data
   const [taskOverrides, setTaskOverrides] = useState<Task[] | null>(null)
@@ -1093,6 +1130,29 @@ export default function MyTasksPage() {
     setTaskOverrides(prev => (prev ?? allTasksRaw).filter(t => t.id !== task.id))
     if (selectedTask?.id === task.id) setSelectedTask(null)
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+  }
+
+  const handlePin = async (task: Task) => {
+    if (!userId || viewAsUserId) return
+    if ((top3Data?.tasks?.length ?? 0) >= 3) {
+      window.alert('You already have 3 tasks pinned to Top 3. Remove one before adding another.')
+      return
+    }
+    const nextOrder = (top3Data?.tasks?.length ?? 0) + 1
+    const { error } = await supabase
+      .from('user_top_tasks')
+      .insert({ user_id: userId, task_id: task.id, display_order: nextOrder })
+    if (!error) queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+  }
+
+  const handleUnpin = async (task: Task) => {
+    if (!userId || viewAsUserId) return
+    const { error } = await supabase
+      .from('user_top_tasks')
+      .delete()
+      .eq('user_id', userId)
+      .eq('task_id', task.id)
+    if (!error) queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
   }
 
   const baseTasks = useMemo(() => {
@@ -1440,7 +1500,7 @@ export default function MyTasksPage() {
             {!isMobile && (
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(82px, 0.45fr)',
+                gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(110px, 0.45fr)',
         columnGap: '14px',
                 alignItems: 'center',
                 margin: '8px 24px 0',
@@ -1479,6 +1539,16 @@ export default function MyTasksPage() {
                     onEdit={!viewAsUserId && task.created_by === userId ? () => setEditingTask(task) : undefined}
                     onDelete={!viewAsUserId && task.created_by === userId ? () => handleDelete(task) : undefined}
                     isMobile={isMobile}
+                    isPinned={!!(top3Data?.pinnedIds?.has(task.id))}
+                    onPin={
+                      !viewAsUserId && !top3Data?.pinnedIds?.has(task.id) &&
+                      task.status !== 'completed' && task.status !== 'cancelled'
+                        ? () => handlePin(task) : undefined
+                    }
+                    onUnpin={
+                      !viewAsUserId && top3Data?.pinnedIds?.has(task.id)
+                        ? () => handleUnpin(task) : undefined
+                    }
                   />
                 ))}
                 <div style={{ padding: '4px 4px', fontSize: '11px', color: colors.muted }}>

@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
@@ -13,6 +12,7 @@ import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers } from '@/hooks/queries/useMyTasks'
+import { useTopTasks } from '@/hooks/queries/useTopTasks'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -51,6 +51,8 @@ export default function DashboardPage() {
   // Active users cached across pages — admin/manager roles need this for team view
   const { data: activeUsers = [] } = useActiveUsers()
   const teamUsers = activeUsers
+  const { data: top3Data } = useTopTasks(loggedInId || null)
+  const top3Tasks = top3Data?.tasks ?? []
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -125,7 +127,6 @@ export default function DashboardPage() {
       }
 
       // Batch 2: role-specific queries + creator names — all in parallel
-      // Note: team users are now served from useActiveUsers() cache above
       const creatorIds = [...new Set(
         (taskData as { created_by: string; assigned_to: string }[] ?? [])
           .filter(t => t.created_by !== uid)
@@ -148,7 +149,6 @@ export default function DashboardPage() {
 
       type CountResult = { count: number | null }
 
-      // profile is loaded via useProfile — use viewAsProfile for role check
       const viewedRole = viewAsProfile?.role ?? profile?.role
       if (viewedRole === 'admin') {
         batch2.push(
@@ -158,12 +158,6 @@ export default function DashboardPage() {
               setEscalationTasks(all)
               setBlockedCount(all.filter(t => t.status === 'blocked').length)
             }
-          }),
-        )
-      } else if (viewedRole === 'manager') {
-        batch2.push(
-          supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('assigned_to', uid).eq('status', 'blocked').then(({ count: bCount }: CountResult) => {
-            if (bCount != null) setBlockedCount(bCount)
           }),
         )
       } else {
@@ -176,16 +170,14 @@ export default function DashboardPage() {
 
       await Promise.all(batch2)
       setLoading(false)
-      // Prefetch the two most-visited next pages so navigation feels instant
       router.prefetch('/tasks/my')
       router.prefetch('/notifications')
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // Re-run when view mode changes so the correct user's data is fetched
   }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Guard view-as against non-admins — runs once profile is resolved from cache
+  // Guard view-as against non-admins
   useEffect(() => {
     if (viewAsUserId && profile && profile.role !== 'admin') {
       exitViewMode()
@@ -225,8 +217,8 @@ export default function DashboardPage() {
     const patch = { acknowledged_at: now, status: 'working' as const, last_update_at: now }
     setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
     setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
-    // Invalidate My Tasks cache so it reflects the acknowledgement immediately
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', currentUserId] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', loggedInId] })
   }
 
   const userMap = useMemo(
@@ -237,13 +229,9 @@ export default function DashboardPage() {
   const now = new Date()
   const msPerDay = 24 * 60 * 60 * 1000
 
-  const unacknowledged  = tasks.filter(t => !t.acknowledged_at && t.task_type !== 'quotation_request')
-  // Tasks assigned to me by someone else that I haven't acknowledged yet (exclude quotation requests — shown separately)
   const unacknowledgedForMe = tasks.filter(t => !t.acknowledged_at && t.created_by !== currentUserId && t.task_type !== 'quotation_request')
   const quotationTasks = tasks.filter(t => t.task_type === 'quotation_request')
   const mergedUserMap   = { ...assignerNames, ...userMap }
-  const allOverdueTasks = tasks.filter(t => isOverdue(t.due_date, t.status) && t.acknowledged_at)
-  const actionRequired  = [...allOverdueTasks, ...unacknowledgedForMe]
 
   const adminEscalations = useMemo(() => {
     if ((viewAsProfile ?? profile)?.role !== 'admin') return []
@@ -279,27 +267,16 @@ export default function DashboardPage() {
 
   if (loading) return <LoadingScreen />
 
-  const isAdmin = (viewAsProfile ?? profile)?.role === 'admin'
+  const totalOverdue   = tasks.filter(t => isOverdue(t.due_date, t.status)).length
+  const waitingTasks   = tasks.filter(t => t.status === 'waiting')
 
-  const totalOverdue = tasks.filter(t => isOverdue(t.due_date, t.status)).length
-  const waitingTasks = tasks.filter(t => t.status === 'waiting')
-  const waitingCount = waitingTasks.length
-
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
-  const tomorrowStart = new Date(todayStart.getTime() + msPerDay)
-  const weekEnd = new Date(todayStart.getTime() + 7 * msPerDay)
-
-  const dueTodayTasks = tasks.filter(t => {
+  const todayStart     = new Date(now); todayStart.setHours(0, 0, 0, 0)
+  const tomorrowStart  = new Date(todayStart.getTime() + msPerDay)
+  const dueTodayTasks  = tasks.filter(t => {
     if (!t.due_date) return false
     const d = new Date(t.due_date); d.setHours(0, 0, 0, 0)
     return d.getTime() === todayStart.getTime()
   })
-  const dueThisWeekTasks = tasks.filter(t => {
-    if (!t.due_date) return false
-    const d = new Date(t.due_date)
-    return d >= tomorrowStart && d < weekEnd
-  })
-  const activeProjectsTasks = tasks.filter(t => ['working', 'started', 'pending'].includes(t.status))
 
   return (
     <>
@@ -314,203 +291,49 @@ export default function DashboardPage() {
         }
         onSignOut={handleLogout}
       >
-        {/* ── Top summary cards — always 3 ── */}
+        {/* ── 2×2 operational grid ── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, 1fr)',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
           gap: '16px',
           marginBottom: '24px',
         }}>
-          <SummaryCard
-            onClick={() => setPreviewList({ title: 'Overdue Tasks', items: tasks.filter(t => isOverdue(t.due_date, t.status)) })}
-            icon={<AlertIcon />}
-            iconBg="rgba(220,53,53,0.10)"
-            count={totalOverdue}
-            countColor="#C0392B"
-            label="Total Overdue Tasks"
-            sublabel="Tasks past their due date"
+
+          {/* Top-left: Top 3 Focus Tasks */}
+          <Top3Panel
+            tasks={top3Tasks}
+            onSelectTask={setSelectedTask}
+            isMobile={isMobile}
           />
-          <SummaryCard
-            onClick={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
-            icon={<BellIcon />}
-            iconBg="rgba(234,136,33,0.12)"
-            count={unacknowledgedForMe.length}
-            countColor="#D4893A"
-            label="Total Unacknowledged Tasks"
-            sublabel="Waiting for your acknowledgement"
+
+          {/* Top-right: Operational Status */}
+          <OperationalStatusPanel
+            overdueTasks={tasks.filter(t => isOverdue(t.due_date, t.status))}
+            waitingTasks={waitingTasks}
+            dueTodayTasks={dueTodayTasks}
+            onShowList={setPreviewList}
           />
-          <SummaryCard
-            onClick={() => router.push('/tasks/quotation-requests')}
-            icon={<QuotationIcon />}
-            iconBg="rgba(107,79,160,0.10)"
-            count={quotationTasks.length}
-            countColor="#6B4FA0"
-            label="Quotation Requests"
-            sublabel="Active requests assigned to you"
+
+          {/* Bottom-left: Unacknowledged Tasks */}
+          <UnacknowledgedPanel
+            tasks={unacknowledgedForMe}
+            userMap={mergedUserMap}
+            now={now}
+            isMobile={isMobile}
+            onPreview={task => setSelectedTask(task)}
+            onViewAll={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
           />
-          <SummaryCard
-            onClick={() => setPreviewList({ title: 'Waiting Tasks', items: waitingTasks })}
-            icon={<HourglassIcon />}
-            iconBg="rgba(146,64,14,0.10)"
-            count={waitingCount}
-            countColor="#92400E"
-            label="Waiting Tasks"
-            sublabel="Tasks waiting on someone"
+
+          {/* Bottom-right: Quotation Requests */}
+          <QuotationPanel
+            tasks={quotationTasks}
+            userMap={mergedUserMap}
+            isMobile={isMobile}
+            onOpen={task => router.push(`/tasks/${task.id}`)}
+            onViewAll={() => router.push('/tasks/quotation-requests')}
           />
+
         </div>
-
-        {/* ── Two-column: Unacknowledged | Quotation Requests ── */}
-        <div className="boe-two-col-section" style={{ marginBottom: '24px' }}>
-          {/* Left: Unacknowledged Tasks */}
-          <div style={{
-            background: '#fff',
-            border: '1px solid #E5E7EB',
-            borderRadius: '12px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-            overflow: 'hidden',
-          }}>
-            <div
-              onClick={() => unacknowledgedForMe.length > 0 && setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
-                borderBottom: '1px solid #F3F4F6',
-                cursor: unacknowledgedForMe.length > 0 ? 'pointer' : 'default',
-                transition: 'background 0.12s',
-              }}
-              onMouseEnter={e => { if (unacknowledgedForMe.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
-              onMouseLeave={e => { e.currentTarget.style.background = '' }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
-                    Unacknowledged Tasks
-                  </span>
-                  <span style={{
-                    background: '#FEF2F2', color: '#B91C1C',
-                    fontWeight: 700, fontSize: '11px',
-                    borderRadius: '999px', padding: '1px 8px',
-                  }}>
-                    {unacknowledgedForMe.length}
-                  </span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
-                  Please acknowledge your assigned tasks to keep things moving.
-                </div>
-              </div>
-              {unacknowledgedForMe.length > 0 && (
-                <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>View all →</span>
-              )}
-            </div>
-            {unacknowledgedForMe.length === 0 ? (
-              <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-                No unacknowledged tasks.
-              </div>
-            ) : (
-              <UnacknowledgedTasksSection
-                tasks={unacknowledgedForMe}
-                userMap={mergedUserMap}
-                now={now}
-                onPreview={task => setSelectedTask(task)}
-                compact
-              />
-            )}
-          </div>
-
-          {/* Right: Quotation Requests */}
-          <div style={{
-            background: '#fff',
-            border: '1px solid #E5E7EB',
-            borderRadius: '12px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-            overflow: 'hidden',
-          }}>
-            <div
-              onClick={() => quotationTasks.length > 0 && router.push('/tasks/quotation-requests')}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
-                borderBottom: '1px solid #F3F4F6',
-                cursor: quotationTasks.length > 0 ? 'pointer' : 'default',
-                transition: 'background 0.12s',
-              }}
-              onMouseEnter={e => { if (quotationTasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
-              onMouseLeave={e => { e.currentTarget.style.background = '' }}
-            >
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
-                    Quotation Requests
-                  </span>
-                  <span style={{
-                    background: '#F0FDF4', color: '#15803D',
-                    fontWeight: 700, fontSize: '11px',
-                    borderRadius: '999px', padding: '1px 8px',
-                  }}>
-                    {quotationTasks.length}
-                  </span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
-                  Active quotation requests assigned to you.
-                </div>
-              </div>
-              {quotationTasks.length > 0 && (
-                <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>View all →</span>
-              )}
-            </div>
-            {quotationTasks.length === 0 ? (
-              <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-                No active quotation requests.
-              </div>
-            ) : (
-              <QuotationRequestsSection
-                tasks={quotationTasks}
-                userMap={mergedUserMap}
-                onOpen={task => router.push(`/tasks/${task.id}`)}
-              />
-            )}
-          </div>
-        </div>
-
-        {/* ── Bottom summary bar ── */}
-        <BottomSummaryBar
-          isMobile={isMobile}
-          items={[
-            {
-              icon: <CheckCircleIcon color="#16A34A" />,
-              iconBg: 'rgba(22,163,74,0.10)',
-              count: myCompletedCount,
-              label: 'Tasks Completed',
-              subtext: 'This month',
-              onClick: () => setPreviewList({ title: 'Completed Tasks', items: completedTasksData }),
-            },
-            {
-              icon: <CalendarIcon color="#D97706" />,
-              iconBg: 'rgba(217,119,6,0.10)',
-              count: dueTodayTasks.length,
-              label: 'Due Today',
-              subtext: 'Tasks due today',
-              onClick: () => setPreviewList({ title: 'Due Today', items: dueTodayTasks }),
-            },
-            {
-              icon: <CalendarWeekIcon color="#7C3AED" />,
-              iconBg: 'rgba(124,58,237,0.10)',
-              count: dueThisWeekTasks.length,
-              label: 'Due This Week',
-              subtext: 'Tasks due this week',
-              onClick: () => setPreviewList({ title: 'Due This Week', items: dueThisWeekTasks }),
-            },
-            {
-              icon: <TimerIcon />,
-              iconBg: 'rgba(37,99,235,0.10)',
-              count: activeProjectsTasks.length,
-              label: 'Active Projects',
-              subtext: 'In progress',
-              onClick: () => setPreviewList({ title: 'Active Tasks', items: activeProjectsTasks }),
-            },
-          ]}
-        />
-
       </DashboardLayout>
 
       {previewList && !selectedTask && (
@@ -564,6 +387,339 @@ function ChevronRightIcon() {
   )
 }
 
+// ── Top 3 Focus Tasks panel ───────────────────────────────────────────────────
+
+function Top3Panel({
+  tasks,
+  onSelectTask,
+  isMobile,
+}: {
+  tasks: Task[]
+  onSelectTask: (task: Task) => void
+  isMobile: boolean
+}) {
+  const isEmpty = tasks.length === 0
+  return (
+    <div style={{
+      background: '#fff',
+      border: '1px solid #E5E7EB',
+      borderRadius: '12px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
+        borderBottom: '1px solid #F3F4F6',
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
+              Top 3 Focus Tasks
+            </span>
+            {tasks.length > 0 && (
+              <span style={{ background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, fontSize: '11px', borderRadius: '999px', padding: '1px 8px' }}>
+                {tasks.length}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
+            Your personal focus list for today
+          </div>
+        </div>
+      </div>
+      {isEmpty ? (
+        <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
+          No focus tasks pinned. Go to My Tasks to pin up to 3.
+        </div>
+      ) : (
+        tasks.map((task, idx) => {
+          const isLast       = idx === tasks.length - 1
+          const isOverdueTask = task.due_date && new Date(task.due_date) < new Date()
+          const dueDateStr   = task.due_date
+            ? new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+            : null
+          const priorityCfg = (
+            task.priority === 'high'   ? { color: '#B45309', bg: '#FFFBEB' } :
+            task.priority === 'low'    ? { color: '#6B7280', bg: '#F3F4F6' } :
+                                         { color: '#92400E', bg: '#FFFBEB' }
+          )
+          return (
+            <div
+              key={task.id}
+              onClick={() => onSelectTask(task)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '12px',
+                padding: '12px 16px',
+                borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
+                cursor: 'pointer', transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
+              onMouseLeave={e => (e.currentTarget.style.background = '')}
+            >
+              {/* Order number */}
+              <div style={{
+                width: '22px', height: '22px', borderRadius: '50%',
+                background: '#F3F4F6',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '11px', fontWeight: 700, color: '#6B7280', flexShrink: 0,
+              }}>
+                {idx + 1}
+              </div>
+
+              {/* Content */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: '13px', fontWeight: 600, color: '#111827',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  marginBottom: '3px',
+                }}>
+                  {task.title}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '10px', fontWeight: 600,
+                    color: priorityCfg.color, background: priorityCfg.bg,
+                    borderRadius: '4px', padding: '1px 6px', textTransform: 'capitalize',
+                  }}>
+                    {task.priority}
+                  </span>
+                  <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '10px', padding: '1px 7px', textTransform: 'capitalize', fontWeight: 600 }}>
+                    {task.status}
+                  </span>
+                  {dueDateStr && (
+                    <span style={{ fontSize: '11px', color: isOverdueTask ? '#C0392B' : '#6B7280', fontWeight: isOverdueTask ? 600 : 400 }}>
+                      {dueDateStr}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <ChevronRightIcon />
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
+// ── Operational Status panel (Overdue / Waiting / Due Today) ──────────────────
+
+function OperationalStatusPanel({
+  overdueTasks,
+  waitingTasks,
+  dueTodayTasks,
+  onShowList,
+}: {
+  overdueTasks: Task[]
+  waitingTasks: Task[]
+  dueTodayTasks: Task[]
+  onShowList: (list: { title: string; items: Task[] }) => void
+}) {
+  const rows = [
+    { label: 'Overdue',   count: overdueTasks.length,   countColor: '#C0392B', countBg: '#FEF2F2', items: overdueTasks,   title: 'Overdue Tasks'  },
+    { label: 'Waiting',   count: waitingTasks.length,   countColor: '#92400E', countBg: '#FFFBEB', items: waitingTasks,   title: 'Waiting Tasks'  },
+    { label: 'Due Today', count: dueTodayTasks.length,  countColor: '#1D4ED8', countBg: '#EFF6FF', items: dueTodayTasks,  title: 'Due Today'      },
+  ]
+  return (
+    <div style={{
+      background: '#fff',
+      border: '1px solid #E5E7EB',
+      borderRadius: '12px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      overflow: 'hidden',
+    }}>
+      <div style={{ padding: '14px 20px 12px', borderBottom: '1px solid #F3F4F6' }}>
+        <div style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
+          Task Status
+        </div>
+        <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
+          Priority signals for today
+        </div>
+      </div>
+      {rows.map((row, idx) => {
+        const isLast        = idx === rows.length - 1
+        const isInteractive = row.count > 0
+        return (
+          <div
+            key={row.label}
+            onClick={() => isInteractive && onShowList({ title: row.title, items: row.items })}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '15px 20px',
+              borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
+              cursor: isInteractive ? 'pointer' : 'default',
+              transition: 'background 0.12s',
+            }}
+            onMouseEnter={e => { if (isInteractive) e.currentTarget.style.background = '#FAFAFA' }}
+            onMouseLeave={e => { e.currentTarget.style.background = '' }}
+          >
+            <span style={{ fontSize: '13px', fontWeight: 500, color: '#374151' }}>
+              {row.label}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                fontSize: '16px', fontWeight: 800,
+                color: row.count > 0 ? row.countColor : '#9CA3AF',
+                background: row.count > 0 ? row.countBg : 'transparent',
+                borderRadius: '6px', padding: '2px 12px',
+                minWidth: '36px', textAlign: 'center',
+              }}>
+                {row.count}
+              </span>
+              {isInteractive && <ChevronRightIcon />}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Unacknowledged Tasks panel ────────────────────────────────────────────────
+
+function UnacknowledgedPanel({
+  tasks,
+  userMap,
+  now,
+  isMobile,
+  onPreview,
+  onViewAll,
+}: {
+  tasks: Task[]
+  userMap: Record<string, string>
+  now: Date
+  isMobile: boolean
+  onPreview: (task: Task) => void
+  onViewAll: () => void
+}) {
+  return (
+    <div style={{
+      background: '#fff',
+      border: '1px solid #E5E7EB',
+      borderRadius: '12px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      overflow: 'hidden',
+    }}>
+      <div
+        onClick={() => tasks.length > 0 && onViewAll()}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
+          borderBottom: '1px solid #F3F4F6',
+          cursor: tasks.length > 0 ? 'pointer' : 'default',
+          transition: 'background 0.12s',
+        }}
+        onMouseEnter={e => { if (tasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
+        onMouseLeave={e => { e.currentTarget.style.background = '' }}
+      >
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
+              Unacknowledged Tasks
+            </span>
+            <span style={{ background: '#FEF2F2', color: '#B91C1C', fontWeight: 700, fontSize: '11px', borderRadius: '999px', padding: '1px 8px' }}>
+              {tasks.length}
+            </span>
+          </div>
+          <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
+            Please acknowledge your assigned tasks to keep things moving.
+          </div>
+        </div>
+        {tasks.length > 0 && (
+          <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>View all →</span>
+        )}
+      </div>
+      {tasks.length === 0 ? (
+        <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
+          No unacknowledged tasks.
+        </div>
+      ) : (
+        <UnacknowledgedTasksSection
+          tasks={tasks}
+          userMap={userMap}
+          now={now}
+          onPreview={onPreview}
+          compact
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Quotation Requests panel ──────────────────────────────────────────────────
+
+function QuotationPanel({
+  tasks,
+  userMap,
+  isMobile,
+  onOpen,
+  onViewAll,
+}: {
+  tasks: Task[]
+  userMap: Record<string, string>
+  isMobile: boolean
+  onOpen: (task: Task) => void
+  onViewAll: () => void
+}) {
+  return (
+    <div style={{
+      background: '#fff',
+      border: '1px solid #E5E7EB',
+      borderRadius: '12px',
+      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+      overflow: 'hidden',
+    }}>
+      <div
+        onClick={() => tasks.length > 0 && onViewAll()}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: isMobile ? '12px 14px 10px' : '14px 20px 12px',
+          borderBottom: '1px solid #F3F4F6',
+          cursor: tasks.length > 0 ? 'pointer' : 'default',
+          transition: 'background 0.12s',
+        }}
+        onMouseEnter={e => { if (tasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
+        onMouseLeave={e => { e.currentTarget.style.background = '' }}
+      >
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontWeight: 700, fontSize: '14px', color: '#111827', letterSpacing: '-0.01em' }}>
+              Quotation Requests
+            </span>
+            <span style={{ background: '#F0FDF4', color: '#15803D', fontWeight: 700, fontSize: '11px', borderRadius: '999px', padding: '1px 8px' }}>
+              {tasks.length}
+            </span>
+          </div>
+          <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '2px' }}>
+            Active quotation requests assigned to you.
+          </div>
+        </div>
+        {tasks.length > 0 && (
+          <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>View all →</span>
+        )}
+      </div>
+      {tasks.length === 0 ? (
+        <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
+          No active quotation requests.
+        </div>
+      ) : (
+        <QuotationRequestsSection
+          tasks={tasks}
+          userMap={userMap}
+          onOpen={onOpen}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── QuotationRequestsSection ──────────────────────────────────────────────────
+
 function QuotationRequestsSection({
   tasks,
   userMap,
@@ -576,10 +732,10 @@ function QuotationRequestsSection({
   return (
     <div>
       {tasks.slice(0, 8).map((task, idx) => {
-        const isLast       = idx === Math.min(tasks.length, 8) - 1
+        const isLast        = idx === Math.min(tasks.length, 8) - 1
         const requesterName = userMap[task.created_by] ?? 'Unknown'
         const createdDateStr = new Date(task.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
-        const priorityCfg = task.priority === 'high'
+        const priorityCfg   = task.priority === 'high'
           ? { color: '#B45309', bg: '#FFFBEB' }
           : task.priority === 'low'
             ? { color: '#6B7280', bg: '#F3F4F6' }
@@ -593,23 +749,18 @@ function QuotationRequestsSection({
             tabIndex={0}
             onKeyDown={e => e.key === 'Enter' && onOpen(task)}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
+              display: 'flex', alignItems: 'center', gap: '12px',
               padding: '11px 16px',
               borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
-              cursor: 'pointer',
-              transition: 'background 0.12s',
+              cursor: 'pointer', transition: 'background 0.12s',
             }}
             onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
             onMouseLeave={e => (e.currentTarget.style.background = '')}
           >
-            {/* Icon */}
             <div style={{
               width: '30px', height: '30px', borderRadius: '50%',
               background: '#F0FDF4',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -619,41 +770,26 @@ function QuotationRequestsSection({
                 <polyline points="10 9 9 9 8 9" />
               </svg>
             </div>
-
-            {/* Lead name + meta */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                <span style={{
-                  fontSize: '13px', fontWeight: 700, color: '#111827',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {task.customer_name ?? task.title}
                 </span>
-                <span style={{
-                  fontSize: '10px', fontWeight: 600, flexShrink: 0,
-                  color: priorityCfg.color, background: priorityCfg.bg,
-                  borderRadius: '4px', padding: '1px 6px', textTransform: 'capitalize',
-                }}>
+                <span style={{ fontSize: '10px', fontWeight: 600, flexShrink: 0, color: priorityCfg.color, background: priorityCfg.bg, borderRadius: '4px', padding: '1px 6px', textTransform: 'capitalize' }}>
                   {task.priority}
                 </span>
               </div>
               <div style={{ fontSize: '11px', color: '#9CA3AF' }}>
-                {task.contact_number
-                  ? <span style={{ color: '#6B7280' }}>{task.contact_number} · </span>
-                  : null}
+                {task.contact_number ? <span style={{ color: '#6B7280' }}>{task.contact_number} · </span> : null}
                 <span>{createdDateStr}</span>
               </div>
             </div>
-
-            {/* Requester — right side, prominent */}
             <div style={{ flexShrink: 0, textAlign: 'right' }}>
               <div style={{ fontSize: '12px', fontWeight: 700, color: '#6B4FA0' }}>
                 {requesterName.split(' ')[0]}
               </div>
               <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '1px' }}>Requested by</div>
             </div>
-
-            {/* Chevron */}
             <ChevronRightIcon />
           </div>
         )
@@ -661,6 +797,8 @@ function QuotationRequestsSection({
     </div>
   )
 }
+
+// ── UnacknowledgedTasksSection ────────────────────────────────────────────────
 
 function UnacknowledgedTasksSection({
   tasks,
@@ -679,11 +817,11 @@ function UnacknowledgedTasksSection({
   return (
     <div style={compact ? {} : { marginBottom: '24px' }}>
       {tasks.map((task, idx) => {
-        const isLate = (now.getTime() - new Date(task.created_at).getTime()) > msPerDay
+        const isLate       = (now.getTime() - new Date(task.created_at).getTime()) > msPerDay
         const isDueOverdue = task.due_date && new Date(task.due_date) < now
         const isOverdueRow = isLate || isDueOverdue
         const assignedByName = getAssignedByDisplay(task, userMap)
-        const dueDateStr = task.due_date
+        const dueDateStr   = task.due_date
           ? new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
           : null
         const isLast = idx === tasks.length - 1
@@ -696,60 +834,29 @@ function UnacknowledgedTasksSection({
             tabIndex={0}
             onKeyDown={e => e.key === 'Enter' && onPreview(task)}
             style={{
-              display: 'flex',
-              alignItems: 'center',
+              display: 'flex', alignItems: 'center',
               borderBottom: isLast ? 'none' : '1px solid #F3F4F6',
-              cursor: 'pointer',
-              transition: 'background 0.12s',
+              cursor: 'pointer', transition: 'background 0.12s',
               minHeight: '52px',
             }}
             onMouseEnter={e => (e.currentTarget.style.background = '#FAFAFA')}
             onMouseLeave={e => (e.currentTarget.style.background = '')}
           >
-            {/* Left accent — fixed height, centered */}
-            <div style={{
-              width: '3px',
-              height: '38px',
-              flexShrink: 0,
-              background: isOverdueRow ? '#EF4444' : 'transparent',
-              borderRadius: '2px',
-              marginLeft: '1px',
-            }} />
-
-            {/* Icon */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              paddingLeft: '10px', flexShrink: 0,
-            }}>
-              <div style={{
-                width: '26px', height: '26px', borderRadius: '50%',
-                background: isOverdueRow ? '#FEF2F2' : '#F3F4F6',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-              }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                  stroke={isOverdueRow ? '#EF4444' : '#9CA3AF'}
-                  strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <div style={{ width: '3px', height: '38px', flexShrink: 0, background: isOverdueRow ? '#EF4444' : 'transparent', borderRadius: '2px', marginLeft: '1px' }} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', paddingLeft: '10px', flexShrink: 0 }}>
+              <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: isOverdueRow ? '#FEF2F2' : '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={isOverdueRow ? '#EF4444' : '#9CA3AF'} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="12" />
                   <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
               </div>
             </div>
-
-            {/* Main content */}
             <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 10px 10px' }}>
-              <div style={{
-                fontSize: '13px', fontWeight: 600, color: '#111827',
-                lineHeight: 1.3, marginBottom: '3px',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: '#111827', lineHeight: 1.3, marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {task.title}
               </div>
-              <div style={{
-                display: 'flex', alignItems: 'center', flexWrap: 'wrap',
-                gap: '3px', fontSize: '11px', color: '#9CA3AF',
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '3px', fontSize: '11px', color: '#9CA3AF' }}>
                 <span style={{ color: '#6B7280' }}>{assignedByName.split(' ')[0]}</span>
                 {dueDateStr && (
                   <>
@@ -758,18 +865,11 @@ function UnacknowledgedTasksSection({
                   </>
                 )}
                 <span>•</span>
-                <span style={{
-                  fontSize: '10px', fontWeight: 600,
-                  color: isOverdueRow ? '#B91C1C' : '#92600A',
-                  background: isOverdueRow ? '#FEF2F2' : '#FFFBEB',
-                  borderRadius: '4px', padding: '0 5px',
-                }}>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: isOverdueRow ? '#B91C1C' : '#92600A', background: isOverdueRow ? '#FEF2F2' : '#FFFBEB', borderRadius: '4px', padding: '0 5px' }}>
                   {isOverdueRow ? 'Overdue' : 'Pending'}
                 </span>
               </div>
             </div>
-
-            {/* Chevron */}
             <div style={{ paddingRight: '12px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
               <ChevronRightIcon />
             </div>
@@ -780,156 +880,7 @@ function UnacknowledgedTasksSection({
   )
 }
 
-function SummaryCard({
-  href,
-  onClick,
-  icon,
-  iconBg,
-  count,
-  countColor,
-  label,
-  sublabel,
-}: {
-  href?: string
-  onClick?: () => void
-  icon: React.ReactNode
-  iconBg: string
-  count: number
-  countColor: string
-  label: string
-  sublabel: string
-}) {
-  const isInteractive = !!(href || onClick)
-  const cardStyle: React.CSSProperties = {
-    background: '#fff',
-    border: '1px solid #E5E7EB',
-    borderRadius: '10px',
-    padding: '12px 16px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    textDecoration: 'none',
-    cursor: isInteractive ? 'pointer' : 'default',
-    transition: 'box-shadow 0.15s, border-color 0.15s',
-  }
-  const handleMouseEnter = isInteractive
-    ? (e: React.MouseEvent<HTMLElement>) => {
-        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.09)'
-        e.currentTarget.style.borderColor = '#D1D5DB'
-      }
-    : undefined
-  const handleMouseLeave = isInteractive
-    ? (e: React.MouseEvent<HTMLElement>) => {
-        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)'
-        e.currentTarget.style.borderColor = '#E5E7EB'
-      }
-    : undefined
-
-  const inner = (
-    <>
-      <div style={{
-        width: '38px', height: '38px', borderRadius: '10px',
-        background: iconBg,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0,
-      }}>
-        {icon}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
-          {label}
-        </div>
-        <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px' }}>
-          {sublabel}
-        </div>
-      </div>
-      <div style={{
-        fontSize: '26px', fontWeight: 800, color: countColor,
-        lineHeight: 1, letterSpacing: '-0.02em', flexShrink: 0,
-      }}>
-        {count}
-      </div>
-    </>
-  )
-
-  if (href) {
-    return (
-      <Link href={href} style={cardStyle} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-        {inner}
-      </Link>
-    )
-  }
-  return (
-    <div style={cardStyle} onClick={onClick} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-      {inner}
-    </div>
-  )
-}
-
-function QuickSummaryCard({
-  icon,
-  title,
-  viewAllHref,
-  rows,
-}: {
-  icon: React.ReactNode
-  title: string
-  viewAllHref: string
-  rows: { label: string; count: number; color: string; href: string }[]
-}) {
-  return (
-    <div style={{
-      background: '#fff',
-      border: '1px solid #E5E7EB',
-      borderRadius: '12px',
-      padding: '20px 22px',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: '#6B7280' }}>{icon}</span>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: '#374151', letterSpacing: '0.05em' }}>
-            {title}
-          </span>
-        </div>
-        <Link href={viewAllHref} style={{ fontSize: '12px', color: '#2563EB', fontWeight: 600, textDecoration: 'none' }}>
-          View all
-        </Link>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {rows.map(row => (
-          <Link key={row.label} href={row.href} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 14px',
-            background: '#F9FAFB',
-            borderRadius: '8px',
-            border: '1px solid #F3F4F6',
-            textDecoration: 'none',
-            cursor: 'pointer',
-            transition: 'background 0.12s',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = '#F3F4F6')}
-          onMouseLeave={e => (e.currentTarget.style.background = '#F9FAFB')}
-          >
-            <span style={{ fontSize: '14px', color: '#374151', fontWeight: 500 }}>{row.label}</span>
-            <span style={{
-              fontSize: '13px', fontWeight: 700,
-              color: row.color,
-              background: row.color === '#2563EB' ? '#EFF6FF' : '#F0FDF4',
-              borderRadius: '6px',
-              padding: '2px 10px',
-              minWidth: '28px',
-              textAlign: 'center',
-            }}>
-              {row.count}
-            </span>
-          </Link>
-        ))}
-      </div>
-    </div>
-  )
-}
+// ── TaskListDrawer ────────────────────────────────────────────────────────────
 
 function TaskListDrawer({
   title,
@@ -946,61 +897,25 @@ function TaskListDrawer({
 }) {
   return (
     <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.25)',
-          zIndex: 40,
-        }}
-      />
-
-      {/* Drawer */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.25)', zIndex: 40 }} />
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0,
         width: isMobile ? '100%' : '420px',
-        background: '#fff',
-        boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
-        zIndex: 50,
-        display: 'flex',
-        flexDirection: 'column',
+        background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
+        zIndex: 50, display: 'flex', flexDirection: 'column',
       }}>
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '20px 24px',
-          borderBottom: '1px solid #F3F4F6',
-          flexShrink: 0,
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #F3F4F6', flexShrink: 0 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: '15px', color: '#111827' }}>{title}</div>
             <div style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '2px' }}>
               {items.length} task{items.length !== 1 ? 's' : ''}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: '#6B7280', fontSize: '20px', lineHeight: 1,
-              padding: '4px 8px', borderRadius: '6px',
-            }}
-            aria-label="Close"
-          >
-            ×
-          </button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', fontSize: '20px', lineHeight: 1, padding: '4px 8px', borderRadius: '6px' }} aria-label="Close">×</button>
         </div>
-
-        {/* List */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {items.length === 0 ? (
-            <div style={{
-              padding: '48px 24px', textAlign: 'center',
-              color: '#9CA3AF', fontSize: '14px',
-            }}>
-              No tasks here.
-            </div>
+            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>No tasks here.</div>
           ) : (
             items.map(task => {
               const isOverdueTask = task.due_date && new Date(task.due_date) < new Date()
@@ -1011,30 +926,18 @@ function TaskListDrawer({
                   role="button"
                   tabIndex={0}
                   onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
-                  style={{
-                    padding: '14px 24px',
-                    borderBottom: '1px solid #F9FAFB',
-                    cursor: 'pointer',
-                    transition: 'background 0.1s',
-                  }}
+                  style={{ padding: '14px 24px', borderBottom: '1px solid #F9FAFB', cursor: 'pointer', transition: 'background 0.1s' }}
                   onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
                   onMouseLeave={e => (e.currentTarget.style.background = '')}
                 >
-                  <div style={{
-                    fontSize: '14px', fontWeight: 500, color: '#111827',
-                    marginBottom: '6px',
-                    lineHeight: 1.4,
-                  }}>
+                  <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827', marginBottom: '6px', lineHeight: 1.4 }}>
                     {task.title}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <StatusChip status={task.status} />
                     {task.priority && <PriorityChip priority={task.priority} />}
                     {task.due_date && (
-                      <span style={{
-                        fontSize: '11px', fontWeight: 500,
-                        color: isOverdueTask ? '#C0392B' : '#6B7280',
-                      }}>
+                      <span style={{ fontSize: '11px', fontWeight: 500, color: isOverdueTask ? '#C0392B' : '#6B7280' }}>
                         Due {new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                       </span>
                     )}
@@ -1060,12 +963,7 @@ function StatusChip({ status }: { status: string }) {
   }
   const s = map[status] ?? { color: '#374151', bg: '#F3F4F6' }
   return (
-    <span style={{
-      fontSize: '11px', fontWeight: 600,
-      color: s.color, background: s.bg,
-      borderRadius: '5px', padding: '2px 8px',
-      textTransform: 'capitalize',
-    }}>
+    <span style={{ fontSize: '11px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '5px', padding: '2px 8px', textTransform: 'capitalize' }}>
       {status}
     </span>
   )
@@ -1079,16 +977,13 @@ function PriorityChip({ priority }: { priority: string }) {
   }
   const s = map[priority] ?? { color: '#374151', bg: '#F3F4F6' }
   return (
-    <span style={{
-      fontSize: '11px', fontWeight: 600,
-      color: s.color, background: s.bg,
-      borderRadius: '5px', padding: '2px 8px',
-      textTransform: 'capitalize',
-    }}>
+    <span style={{ fontSize: '11px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '5px', padding: '2px 8px', textTransform: 'capitalize' }}>
       {priority}
     </span>
   )
 }
+
+// ── EscalationListDrawer ──────────────────────────────────────────────────────
 
 function EscalationListDrawer({
   items,
@@ -1109,27 +1004,16 @@ function EscalationListDrawer({
         background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
         zIndex: 50, display: 'flex', flexDirection: 'column',
       }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '20px 24px', borderBottom: '1px solid #F3F4F6', flexShrink: 0,
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #F3F4F6', flexShrink: 0 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: '15px', color: '#111827' }}>Escalations</div>
-            <div style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '2px' }}>
-              {items.length} task{items.length !== 1 ? 's' : ''} requiring attention
-            </div>
+            <div style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '2px' }}>{items.length} task{items.length !== 1 ? 's' : ''} requiring attention</div>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', fontSize: '20px', lineHeight: 1, padding: '4px 8px', borderRadius: '6px' }}
-            aria-label="Close"
-          >×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', fontSize: '20px', lineHeight: 1, padding: '4px 8px', borderRadius: '6px' }} aria-label="Close">×</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
           {items.length === 0 ? (
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>
-              No escalations right now.
-            </div>
+            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>No escalations right now.</div>
           ) : items.map(({ task, owner, days, reason }) => {
             const daysColor = days >= 10 ? '#C0392B' : days >= 7 ? '#D4893A' : '#374151'
             return (
@@ -1143,9 +1027,7 @@ function EscalationListDrawer({
                 onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
                 onMouseLeave={e => (e.currentTarget.style.background = '')}
               >
-                <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827', marginBottom: '6px', lineHeight: 1.4 }}>
-                  {task.title}
-                </div>
+                <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827', marginBottom: '6px', lineHeight: 1.4 }}>{task.title}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: '#374151' }}>
@@ -1166,256 +1048,15 @@ function EscalationListDrawer({
 }
 
 function ReasonBadge({ reason }: { reason: string }) {
-  const styles: Record<string, { color: string; bg: string; border: string }> = {
-    Blocked: { color: '#991B1B', bg: '#FEF2F2', border: '#FECACA' },
-    Waiting: { color: '#92400E', bg: '#FFFBEB', border: '#FDE68A' },
-    Stale:   { color: '#BE185D', bg: '#FDF2F8', border: '#FBCFE8' },
+  const styles: Record<string, { color: string; bg: string }> = {
+    Blocked: { color: '#991B1B', bg: '#FEF2F2' },
+    Waiting: { color: '#92400E', bg: '#FFFBEB' },
+    Stale:   { color: '#BE185D', bg: '#FDF2F8' },
   }
-  const s = styles[reason] ?? { color: '#374151', bg: '#F3F4F6', border: '#E5E7EB' }
+  const s = styles[reason] ?? { color: '#374151', bg: '#F3F4F6' }
   return (
-    <span style={{
-      fontSize: '10px', fontWeight: 600,
-      color: s.color, background: s.bg,
-      borderRadius: '4px', padding: '1px 6px',
-      whiteSpace: 'nowrap',
-    }}>
+    <span style={{ fontSize: '10px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
       {reason}
     </span>
-  )
-}
-
-function BellIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D4893A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  )
-}
-
-function AlertIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D4893A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="8" x2="12" y2="12" />
-      <line x1="12" y1="16" x2="12.01" y2="16" />
-    </svg>
-  )
-}
-
-function HourglassIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 22h14" />
-      <path d="M5 2h14" />
-      <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" />
-      <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
-    </svg>
-  )
-}
-
-function FlagIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C0392B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-      <line x1="4" y1="22" x2="4" y2="15" />
-    </svg>
-  )
-}
-
-function QuotationIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6B4FA0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <polyline points="10 9 9 9 8 9" />
-    </svg>
-  )
-}
-
-function TimerIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-      <line x1="3" y1="9" x2="21" y2="9" />
-      <line x1="9" y1="21" x2="9" y2="9" />
-    </svg>
-  )
-}
-
-function CheckCircleIcon({ color }: { color: string }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-  )
-}
-
-function CalendarIcon({ color }: { color: string }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  )
-}
-
-function CalendarWeekIcon({ color }: { color: string }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
-      <line x1="8" y1="14" x2="16" y2="14" />
-    </svg>
-  )
-}
-
-type BottomSummaryItem = {
-  icon: React.ReactNode
-  iconBg: string
-  count: number
-  label: string
-  subtext: string
-  onClick: () => void
-}
-
-function BottomSummaryBar({ items, isMobile }: { items: BottomSummaryItem[]; isMobile?: boolean }) {
-  if (isMobile) {
-    return (
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2, 1fr)',
-        gap: '10px',
-        marginBottom: '12px',
-      }}>
-        {items.map(item => (
-          <div
-            key={item.label}
-            onClick={item.onClick}
-            role="button"
-            tabIndex={0}
-            onKeyDown={e => e.key === 'Enter' && item.onClick()}
-            style={{
-              background: '#fff',
-              border: '1px solid #E5E7EB',
-              borderRadius: '10px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '12px 14px',
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{
-              width: '30px', height: '30px', borderRadius: '50%',
-              background: item.iconBg,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              {item.icon}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {item.label}
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: '#111827', lineHeight: 1, letterSpacing: '-0.02em' }}>
-                {item.count}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <div style={{
-      background: '#fff',
-      border: '1px solid #E5E7EB',
-      borderRadius: '12px',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-      display: 'flex',
-      alignItems: 'stretch',
-      overflow: 'hidden',
-      marginBottom: '12px',
-    }}>
-      {items.map((item, i) => (
-        <React.Fragment key={item.label}>
-          {i > 0 && (
-            <div style={{ width: '1px', background: '#F3F4F6', flexShrink: 0, alignSelf: 'stretch' }} />
-          )}
-          <div
-            onClick={item.onClick}
-            role="button"
-            tabIndex={0}
-            onKeyDown={e => e.key === 'Enter' && item.onClick()}
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '12px 16px',
-              cursor: 'pointer',
-              transition: 'background 0.12s',
-              minWidth: 0,
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
-            onMouseLeave={e => (e.currentTarget.style.background = '')}
-          >
-            <div style={{
-              width: '30px', height: '30px', borderRadius: '50%',
-              background: item.iconBg,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              {item.icon}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {item.label}
-              </div>
-              <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '1px' }}>
-                {item.subtext}
-              </div>
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: 800, color: '#111827', lineHeight: 1, letterSpacing: '-0.02em', flexShrink: 0 }}>
-              {item.count}
-            </div>
-          </div>
-        </React.Fragment>
-      ))}
-    </div>
-  )
-}
-
-function TaskListIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="8" y1="6" x2="21" y2="6" />
-      <line x1="8" y1="12" x2="21" y2="12" />
-      <line x1="8" y1="18" x2="21" y2="18" />
-      <line x1="3" y1="6" x2="3.01" y2="6" />
-      <line x1="3" y1="12" x2="3.01" y2="12" />
-      <line x1="3" y1="18" x2="3.01" y2="18" />
-    </svg>
-  )
-}
-
-function AssignedIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
   )
 }
