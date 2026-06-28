@@ -223,6 +223,18 @@ export default function BoeOsHomePage() {
       visibilityType: modVis['employee_records']?.visibility_type,
       allowedDepartment: modVis['employee_records']?.allowed_department,
     }] : []),
+    ...(canSeeModule('finance', modVis, effectiveProfile, true) ? [{
+      key: 'finance',
+      title: 'Finance',
+      description: 'Payment confirmations, order advances, and finance approvals.',
+      href: '/finance',
+      status: 'foundation' as ModuleStatus,
+      accent: '#065F46',
+      icon: <FinanceIcon />,
+      notificationCount: null,
+      visibilityType: modVis['finance']?.visibility_type,
+      allowedDepartment: modVis['finance']?.allowed_department,
+    }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{
       key: 'control_center',
       title: 'Admin Control Center',
@@ -482,6 +494,14 @@ function ControlCenterIcon() {
       <circle cx="12" cy="12" r="3" />
       <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07" />
+    </svg>
+  )
+}
+
+function FinanceIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
   )
 }
