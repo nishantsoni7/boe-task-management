@@ -723,7 +723,7 @@ function UnacknowledgedPanel({
         onClick={() => tasks.length > 0 && onViewAll()}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '13px 16px' : '15px 18px',
+          padding: isMobile ? '14px 16px' : '16px 20px',
           borderBottom: '1px solid #F0F1F4',
           cursor: tasks.length > 0 ? 'pointer' : 'default',
           transition: 'background 0.15s',
@@ -732,36 +732,32 @@ function UnacknowledgedPanel({
         onMouseLeave={e => { e.currentTarget.style.background = '' }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-            <span style={{ fontWeight: 675, fontSize: '15px', color: '#0F172A', letterSpacing: '-0.02em', lineHeight: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '4px' }}>
+            <span style={{ fontWeight: 600, fontSize: '15px', color: '#111827', letterSpacing: '-0.015em', lineHeight: 1 }}>
               Needs Acknowledgement
             </span>
             {tasks.length > 0 && (
-              <span style={{ background: '#FEF2F2', color: '#C0392B', fontWeight: 600, fontSize: '10px', borderRadius: '999px', padding: '1px 7px', lineHeight: 1.6 }}>
+              <span style={{ background: '#F3F4F6', color: '#6B7280', fontWeight: 500, fontSize: '11px', borderRadius: '5px', padding: '1px 6px', lineHeight: 1.6 }}>
                 {tasks.length}
               </span>
             )}
           </div>
-          <div style={{ fontSize: '12px', color: '#B0B8C6', fontWeight: 400, lineHeight: 1 }}>
+          <div style={{ fontSize: '12px', color: '#9CA3AF', fontWeight: 400, lineHeight: 1 }}>
             Tasks waiting for your acknowledgement
           </div>
         </div>
         {tasks.length > 0 && (
-          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', letterSpacing: '0.01em', flexShrink: 0 }}>View all →</span>
+          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', flexShrink: 0 }}>View all →</span>
         )}
       </div>
+
       {tasks.length === 0 ? (
-        <div style={{ padding: '28px 18px', textAlign: 'center', color: '#C4C9D4', fontSize: '13px' }}>
-          All clear.
+        <div style={{ padding: '36px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>All clear</div>
+          <div style={{ fontSize: '12px', color: '#C4C9D4' }}>No tasks waiting for acknowledgement</div>
         </div>
       ) : (
-        <UnacknowledgedTasksSection
-          tasks={tasks}
-          userMap={userMap}
-          now={now}
-          onPreview={onPreview}
-          compact
-        />
+        <UnacknowledgedTasksSection tasks={tasks} userMap={userMap} now={now} onPreview={onPreview} compact />
       )}
     </div>
   )
@@ -794,7 +790,7 @@ function QuotationPanel({
         onClick={() => tasks.length > 0 && onViewAll()}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '13px 16px' : '15px 18px',
+          padding: isMobile ? '14px 16px' : '16px 20px',
           borderBottom: '1px solid #F0F1F4',
           cursor: tasks.length > 0 ? 'pointer' : 'default',
           transition: 'background 0.15s',
@@ -803,34 +799,32 @@ function QuotationPanel({
         onMouseLeave={e => { e.currentTarget.style.background = '' }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-            <span style={{ fontWeight: 675, fontSize: '15px', color: '#0F172A', letterSpacing: '-0.02em', lineHeight: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '4px' }}>
+            <span style={{ fontWeight: 600, fontSize: '15px', color: '#111827', letterSpacing: '-0.015em', lineHeight: 1 }}>
               Quotation Requests
             </span>
             {tasks.length > 0 && (
-              <span style={{ background: '#F3F4F6', color: '#6B7280', fontWeight: 600, fontSize: '10px', borderRadius: '999px', padding: '1px 7px', lineHeight: 1.6 }}>
+              <span style={{ background: '#F3F4F6', color: '#6B7280', fontWeight: 500, fontSize: '11px', borderRadius: '5px', padding: '1px 6px', lineHeight: 1.6 }}>
                 {tasks.length}
               </span>
             )}
           </div>
-          <div style={{ fontSize: '12px', color: '#B0B8C6', fontWeight: 400, lineHeight: 1 }}>
+          <div style={{ fontSize: '12px', color: '#9CA3AF', fontWeight: 400, lineHeight: 1 }}>
             Active requests assigned to you
           </div>
         </div>
         {tasks.length > 0 && (
-          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', letterSpacing: '0.01em', flexShrink: 0 }}>View all →</span>
+          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', flexShrink: 0 }}>View all →</span>
         )}
       </div>
+
       {tasks.length === 0 ? (
-        <div style={{ padding: '24px 18px', textAlign: 'center', color: '#C4C9D4', fontSize: '13px' }}>
-          No active requests.
+        <div style={{ padding: '36px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>No active requests</div>
+          <div style={{ fontSize: '12px', color: '#C4C9D4' }}>Quotation requests will appear here</div>
         </div>
       ) : (
-        <QuotationRequestsSection
-          tasks={tasks}
-          userMap={userMap}
-          onOpen={onOpen}
-        />
+        <QuotationRequestsSection tasks={tasks} userMap={userMap} onOpen={onOpen} />
       )}
     </div>
   )
@@ -847,30 +841,35 @@ function QuotationRequestsSection({
   userMap: Record<string, string>
   onOpen: (task: Task) => void
 }) {
-  const now = new Date()
+  const now          = new Date()
+  const todayStart   = new Date(now); todayStart.setHours(0, 0, 0, 0)
+  const yesterdayStart = new Date(todayStart.getTime() - 86400000)
+  const tomorrowStart  = new Date(todayStart.getTime() + 86400000)
+
   return (
     <div>
       {tasks.slice(0, 8).map((task, idx) => {
         const isLast        = idx === Math.min(tasks.length, 8) - 1
         const requesterName = userMap[task.created_by] ?? 'Unknown'
         const dueDate       = task.due_date ? new Date(task.due_date) : null
-        const todayStart    = new Date(now); todayStart.setHours(0, 0, 0, 0)
         const isToday       = dueDate ? dueDate.toDateString() === now.toDateString() : false
         const isDueOverdue  = dueDate ? dueDate < todayStart && !isToday : false
-        const dueDateStr    = dueDate
-          ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-          : null
-        const dueDateColor  = isDueOverdue ? '#C0392B' : isToday ? '#D97706' : '#9CA3AF'
+        const isTomorrow    = dueDate ? dueDate >= tomorrowStart && dueDate < new Date(tomorrowStart.getTime() + 86400000) : false
+        const dueDateStr    = dueDate ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null
 
-        const priorityLower = task.priority?.toLowerCase() ?? ''
-        const priorityLabel = task.priority
-          ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1)
-          : null
-        const priorityColor = priorityLower === 'high'
-          ? '#C0432B'
-          : priorityLower === 'medium'
-            ? '#92700A'
-            : '#8A94A6'
+        // Date/created text — no priority dot in quotation rows (distinct from acknowledgement)
+        let dateText: string | null = null
+        let dateColor = '#6B7280'
+        if (dueDate) {
+          if (isDueOverdue)    { dateText = `Overdue · ${dueDateStr}`; dateColor = '#C0392B' }
+          else if (isToday)    { dateText = 'Due today';               dateColor = '#D97706' }
+          else if (isTomorrow) { dateText = 'Due tomorrow';            dateColor = '#6B7280' }
+          else                 { dateText = `Due ${dueDateStr}`;       dateColor = '#6B7280' }
+        } else {
+          const created = new Date(task.created_at)
+          if (created >= todayStart)        { dateText = 'Created today';     dateColor = '#9CA3AF' }
+          else if (created >= yesterdayStart) { dateText = 'Created yesterday'; dateColor = '#9CA3AF' }
+        }
 
         return (
           <div
@@ -880,58 +879,57 @@ function QuotationRequestsSection({
             tabIndex={0}
             onKeyDown={e => e.key === 'Enter' && onOpen(task)}
             style={{
-              display: 'flex', alignItems: 'center', gap: '12px',
-              padding: '12px 18px',
+              display: 'flex', alignItems: 'stretch',
               borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
               cursor: 'pointer',
-              transition: 'background 0.15s, box-shadow 0.15s',
-              minHeight: '58px',
+              transition: 'background 0.12s',
+              minHeight: '76px',
             }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = '#F7F8FA'
-              e.currentTarget.style.boxShadow = 'inset 2px 0 0 #D1D5DB'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = ''
-              e.currentTarget.style.boxShadow = ''
-            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+            onMouseLeave={e => { e.currentTarget.style.background = '' }}
           >
-            {/* LEFT — client name + priority/due */}
-            <div style={{ flex: 1, minWidth: 0 }}>
+            {/* LEFT — client name + date */}
+            <div style={{
+              flex: 1, minWidth: 0,
+              display: 'flex', flexDirection: 'column', justifyContent: 'center',
+              padding: '14px 16px 14px 20px',
+            }}>
               <div style={{
-                fontSize: '15px', fontWeight: 600, color: '#111827',
-                letterSpacing: '-0.01em', lineHeight: 1.35,
+                fontSize: '16px', fontWeight: 600, color: '#111827',
+                letterSpacing: '-0.015em', lineHeight: 1.3,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                marginBottom: '4px',
+                marginBottom: '5px',
               }}>
                 {task.customer_name ?? task.title}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 500 }}>
-                {priorityLabel && (
-                  <span style={{ color: priorityColor }}>{priorityLabel}</span>
-                )}
-                {priorityLabel && dueDateStr && (
-                  <span style={{ color: '#D1D5DB' }}>·</span>
-                )}
-                {dueDateStr && (
-                  <span style={{ color: dueDateColor }}>
-                    {isDueOverdue ? `Overdue · ${dueDateStr}` : isToday ? 'Due today' : `Due ${dueDateStr}`}
-                  </span>
-                )}
-              </div>
+              {dateText && (
+                <div style={{ fontSize: '13px', fontWeight: 400, color: dateColor, lineHeight: 1 }}>
+                  {dateText}
+                </div>
+              )}
             </div>
 
-            {/* RIGHT — assigner */}
-            <div style={{ flexShrink: 0, textAlign: 'right', marginRight: '8px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 500, color: '#C4C9D4', lineHeight: 1, marginBottom: '4px' }}>
-                Assigned by
+            {/* RIGHT — requested by column */}
+            <div style={{
+              width: '112px', flexShrink: 0,
+              borderLeft: '1px solid #F5F7FA',
+              display: 'flex', flexDirection: 'column', justifyContent: 'center',
+              padding: '0 14px 0 18px',
+            }}>
+              <div style={{
+                fontSize: '10px', fontWeight: 500, color: '#9CA3AF',
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                lineHeight: 1, marginBottom: '6px',
+              }}>
+                Requested by
               </div>
-              <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', lineHeight: 1 }}>
-                {requesterName.split(' ')[0]}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: '#111827', lineHeight: 1 }}>
+                  {requesterName.split(' ')[0]}
+                </span>
+                <ChevronRightIcon />
               </div>
             </div>
-
-            <ChevronRightIcon />
           </div>
         )
       })}
@@ -954,27 +952,27 @@ function UnacknowledgedTasksSection({
   onPreview: (task: Task) => void
   compact?: boolean
 }) {
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
+
   return (
     <div style={compact ? {} : { marginBottom: '24px' }}>
       {tasks.map((task, idx) => {
         const dueDate      = task.due_date ? new Date(task.due_date) : null
-        const todayStart   = new Date(now); todayStart.setHours(0, 0, 0, 0)
         const isToday      = dueDate ? dueDate.toDateString() === now.toDateString() : false
         const isDueOverdue = dueDate ? dueDate < todayStart && !isToday : false
-        const dueDateStr   = dueDate
-          ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-          : null
-        const dueDateColor = isDueOverdue ? '#C0392B' : isToday ? '#D97706' : '#9CA3AF'
+        const dueDateStr   = dueDate ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null
+
+        let dateText: string | null = null
+        let dateColor = '#6B7280'
+        if (dueDate) {
+          if (isDueOverdue) { dateText = `Overdue · ${dueDateStr}`; dateColor = '#C0392B' }
+          else if (isToday) { dateText = 'Due today';               dateColor = '#D97706' }
+          else              { dateText = `Due ${dueDateStr}`;        dateColor = '#6B7280' }
+        }
 
         const priorityLower = task.priority?.toLowerCase() ?? ''
-        const priorityLabel = task.priority
-          ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1)
-          : null
-        const priorityColor = priorityLower === 'high'
-          ? '#C0432B'
-          : priorityLower === 'medium'
-            ? '#92700A'
-            : '#8A94A6'
+        const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : null
+        const dotColor      = priorityLower === 'high' ? '#D97706' : priorityLower === 'medium' ? '#B45309' : '#9CA3AF'
 
         const assignedByName = getAssignedByDisplay(task, userMap)
         const isLast = idx === tasks.length - 1
@@ -987,59 +985,64 @@ function UnacknowledgedTasksSection({
             tabIndex={0}
             onKeyDown={e => e.key === 'Enter' && onPreview(task)}
             style={{
-              display: 'flex', alignItems: 'center',
-              padding: '12px 18px',
+              display: 'flex', alignItems: 'stretch',
               borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
               cursor: 'pointer',
-              transition: 'background 0.15s, box-shadow 0.15s',
-              minHeight: '58px',
-              gap: '12px',
+              transition: 'background 0.12s',
+              minHeight: '76px',
             }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = '#F7F8FA'
-              e.currentTarget.style.boxShadow = 'inset 2px 0 0 #D1D5DB'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = ''
-              e.currentTarget.style.boxShadow = ''
-            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+            onMouseLeave={e => { e.currentTarget.style.background = '' }}
           >
-            {/* LEFT — title + meta */}
-            <div style={{ flex: 1, minWidth: 0 }}>
+            {/* LEFT — task title + metadata */}
+            <div style={{
+              flex: 1, minWidth: 0,
+              display: 'flex', flexDirection: 'column', justifyContent: 'center',
+              padding: '14px 16px 14px 20px',
+            }}>
               <div style={{
-                fontSize: '15px', fontWeight: 600, color: '#111827',
-                letterSpacing: '-0.01em', lineHeight: 1.35,
+                fontSize: '16px', fontWeight: 600, color: '#111827',
+                letterSpacing: '-0.015em', lineHeight: 1.3,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                marginBottom: '4px',
+                marginBottom: '5px',
               }}>
                 {task.title}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 500 }}>
+              <div style={{ display: 'flex', alignItems: 'center', fontSize: '13px', fontWeight: 400, color: '#6B7280', lineHeight: 1 }}>
                 {priorityLabel && (
-                  <span style={{ color: priorityColor }}>{priorityLabel}</span>
-                )}
-                {priorityLabel && dueDateStr && (
-                  <span style={{ color: '#D1D5DB' }}>·</span>
-                )}
-                {dueDateStr && (
-                  <span style={{ color: dueDateColor }}>
-                    {isDueOverdue ? `Overdue · ${dueDateStr}` : isToday ? `Due today` : `Due ${dueDateStr}`}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: dateText ? '6px' : 0 }}>
+                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+                    {priorityLabel}
                   </span>
                 )}
+                {priorityLabel && dateText && (
+                  <span style={{ color: '#D1D5DB', marginRight: '6px' }}>·</span>
+                )}
+                {dateText && <span style={{ color: dateColor }}>{dateText}</span>}
               </div>
             </div>
 
-            {/* RIGHT — assigned by */}
-            <div style={{ flexShrink: 0, textAlign: 'right', marginRight: '8px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 500, color: '#C4C9D4', lineHeight: 1, marginBottom: '4px' }}>
+            {/* RIGHT — ownership column with border divider */}
+            <div style={{
+              width: '112px', flexShrink: 0,
+              borderLeft: '1px solid #F5F7FA',
+              display: 'flex', flexDirection: 'column', justifyContent: 'center',
+              padding: '0 14px 0 18px',
+            }}>
+              <div style={{
+                fontSize: '10px', fontWeight: 500, color: '#9CA3AF',
+                letterSpacing: '0.06em', textTransform: 'uppercase',
+                lineHeight: 1, marginBottom: '6px',
+              }}>
                 Assigned by
               </div>
-              <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', lineHeight: 1 }}>
-                {assignedByName === 'Self' ? 'You' : assignedByName.split(' ')[0]}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: '#111827', lineHeight: 1 }}>
+                  {assignedByName === 'Self' ? 'You' : assignedByName.split(' ')[0]}
+                </span>
+                <ChevronRightIcon />
               </div>
             </div>
-
-            <ChevronRightIcon />
           </div>
         )
       })}
