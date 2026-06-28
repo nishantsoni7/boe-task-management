@@ -68,11 +68,12 @@ function formatDate(d: string | null): string | null {
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
-type TabKey = 'today_actionable' | 'overdue_actionable' | 'waiting_blocked' | 'action_required' | 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
+type TabKey = 'today_actionable' | 'overdue_actionable' | 'future_actionable' | 'waiting_blocked' | 'action_required' | 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
 
 const TAB_LABELS: Record<TabKey, string> = {
   today_actionable:   'Today Actionable',
   overdue_actionable: 'Overdue Actionable',
+  future_actionable:  'Future Actionable',
   waiting_blocked:    'Waiting / Blocked',
   action_required:    'Action Required',
   all:                'All Tasks',
@@ -1189,6 +1190,11 @@ export default function MyTasksPage() {
       const d = normalizeDueDate(t.due_date)
       return isActiveActionable(t) && !!d && d < TODAY_STR
     }))
+    // Future Actionable: due after today, active (not waiting/blocked/completed/cancelled)
+    const future_actionable  = sortImportantFirst(baseTasks.filter(t => {
+      const d = normalizeDueDate(t.due_date)
+      return isActiveActionable(t) && !!d && d > TODAY_STR
+    }))
     // Waiting / Blocked
     const waiting_blocked    = sortImportantFirst(baseTasks.filter(t =>
       t.status === 'waiting' || t.status === 'blocked'
@@ -1209,12 +1215,13 @@ export default function MyTasksPage() {
     const non_completion = sortImportantFirst(baseTasks.filter(isNonCompletion))
     const completed      = baseTasks.filter(t => t.status === 'completed')
 
-    return { today_actionable, overdue_actionable, waiting_blocked, action_required, all, important, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
+    return { today_actionable, overdue_actionable, future_actionable, waiting_blocked, action_required, all, important, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
   }, [baseTasks])
 
   const counts: Record<TabKey, number> = {
     today_actionable:   buckets.today_actionable.length,
     overdue_actionable: buckets.overdue_actionable.length,
+    future_actionable:  buckets.future_actionable.length,
     waiting_blocked:    buckets.waiting_blocked.length,
     action_required:    buckets.action_required.length,
     all:                buckets.all.length,
@@ -1408,6 +1415,7 @@ export default function MyTasksPage() {
               const VIEW_TABS: { key: TabKey; label: string; accent: string }[] = [
                 { key: 'today_actionable',   label: 'Today Actionable',   accent: '#2E9E6B' },
                 { key: 'overdue_actionable', label: 'Overdue Actionable', accent: '#C0551A' },
+                { key: 'future_actionable',  label: 'Future Actionable',  accent: '#7C5CBF' },
                 { key: 'waiting_blocked',    label: 'Waiting / Blocked',  accent: '#5B7FA6' },
               ]
               return (
