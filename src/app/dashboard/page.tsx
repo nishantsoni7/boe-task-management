@@ -416,12 +416,12 @@ function TodaysFocusPanel({
       }}>
         <div>
           <div style={{ fontWeight: 800, fontSize: isMobile ? '17px' : '19px', color: '#0F172A', letterSpacing: '-0.03em', lineHeight: 1 }}>
-            Today&apos;s Focus
+            Top 3 Focus
           </div>
           <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '3px', letterSpacing: '0.01em' }}>
             {tasks.length === 0
-              ? 'Choose up to three tasks for today.'
-              : `${tasks.length} of 3 focus slots filled`}
+              ? 'Pin up to three tasks to keep in focus.'
+              : `${tasks.length} of 3 slots active`}
           </div>
         </div>
         <button
@@ -732,8 +732,8 @@ function UnacknowledgedPanel({
         onMouseLeave={e => { e.currentTarget.style.background = '' }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '4px' }}>
-            <span style={{ fontWeight: 600, fontSize: '15px', color: '#111827', letterSpacing: '-0.015em', lineHeight: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <span style={{ fontWeight: 600, fontSize: '15px', color: '#6B7280', letterSpacing: '-0.015em', lineHeight: 1 }}>
               Needs Acknowledgement
             </span>
             {tasks.length > 0 && (
@@ -741,9 +741,6 @@ function UnacknowledgedPanel({
                 {tasks.length}
               </span>
             )}
-          </div>
-          <div style={{ fontSize: '12px', color: '#9CA3AF', fontWeight: 400, lineHeight: 1 }}>
-            Tasks waiting for your acknowledgement
           </div>
         </div>
         {tasks.length > 0 && (
@@ -799,8 +796,8 @@ function QuotationPanel({
         onMouseLeave={e => { e.currentTarget.style.background = '' }}
       >
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '4px' }}>
-            <span style={{ fontWeight: 600, fontSize: '15px', color: '#111827', letterSpacing: '-0.015em', lineHeight: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <span style={{ fontWeight: 600, fontSize: '15px', color: '#6B7280', letterSpacing: '-0.015em', lineHeight: 1 }}>
               Quotation Requests
             </span>
             {tasks.length > 0 && (
@@ -808,9 +805,6 @@ function QuotationPanel({
                 {tasks.length}
               </span>
             )}
-          </div>
-          <div style={{ fontSize: '12px', color: '#9CA3AF', fontWeight: 400, lineHeight: 1 }}>
-            Active requests assigned to you
           </div>
         </div>
         {tasks.length > 0 && (
