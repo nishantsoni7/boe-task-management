@@ -211,7 +211,7 @@ export function DashboardLayout({
             count={navCounts.myActive || undefined}
           >
             <NavChild
-              label="Action Required"
+              label="In Progress"
               active={pathname === '/tasks/my'}
               onClick={() => navTo('/tasks/my')}
               count={navCounts.myActive || undefined}
