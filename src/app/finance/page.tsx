@@ -24,9 +24,10 @@ type PaymentRequest = {
   created_at: string
 }
 
+type AdminAction = 'approve' | 'needs_clarification' | 'reject'
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Map DB snake_case values to readable labels
 const PAYMENT_MODE_LABEL: Record<string, string> = {
   bank_transfer:   'Bank Transfer',
   cash:            'Cash',
@@ -45,12 +46,11 @@ const RECEIVED_IN_LABEL: Record<string, string> = {
 const STATUS_META: Record<string, { label: string; bg: string; color: string }> = {
   pending_approval:    { label: 'Pending Approval',    bg: '#FFFBEB', color: '#92400E' },
   approved_unlinked:   { label: 'Approved',            bg: '#F0FDF4', color: '#166534' },
-  approved_linked:     { label: 'Approved',            bg: '#F0FDF4', color: '#166534' },
+  approved_linked:     { label: 'Approved (Linked)',   bg: '#F0FDF4', color: '#166534' },
   needs_clarification: { label: 'Needs Clarification', bg: '#EFF6FF', color: '#1E40AF' },
   rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B' },
 }
 
-// UI select options → DB values
 const PAYMENT_MODE_OPTIONS: { label: string; value: string }[] = [
   { label: 'Bank Transfer', value: 'bank_transfer' },
   { label: 'Cash',          value: 'cash' },
@@ -74,7 +74,7 @@ function fmtAmount(n: number) {
   return '₹' + n.toLocaleString('en-IN')
 }
 
-// ── Modal shell ───────────────────────────────────────────────────────────────
+// ── Shared modal shell ────────────────────────────────────────────────────────
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -106,6 +106,30 @@ function Field({ label, required, children }: { label: string; required?: boolea
         {label}{required && <span style={{ color: colors.red, marginLeft: '2px' }}>*</span>}
       </label>
       {children}
+    </div>
+  )
+}
+
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div style={{
+      padding: '10px 12px', borderRadius: '8px',
+      background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
+    }}>
+      {message}
+    </div>
+  )
+}
+
+// ── Read-only detail row used inside admin review modal ───────────────────────
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </span>
+      <span style={{ fontSize: '13px', color: colors.primary }}>{value}</span>
     </div>
   )
 }
@@ -171,35 +195,18 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
     <Modal title="New Payment Confirmation" onClose={onClose}>
 
       <Field label="Client Name" required>
-        <input
-          className="boe-input"
-          value={form.clientName}
-          onChange={set('clientName')}
-          placeholder="e.g. Raj Enterprises"
-          style={{ width: '100%' }}
-        />
+        <input className="boe-input" value={form.clientName} onChange={set('clientName')}
+          placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
       </Field>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Field label="Amount (₹)" required>
-          <input
-            className="boe-input"
-            type="number"
-            min="0"
-            value={form.amount}
-            onChange={set('amount')}
-            placeholder="0"
-            style={{ width: '100%' }}
-          />
+          <input className="boe-input" type="number" min="0" value={form.amount}
+            onChange={set('amount')} placeholder="0" style={{ width: '100%' }} />
         </Field>
         <Field label="Payment Date" required>
-          <input
-            className="boe-input"
-            type="date"
-            value={form.paymentDate}
-            onChange={set('paymentDate')}
-            style={{ width: '100%' }}
-          />
+          <input className="boe-input" type="date" value={form.paymentDate}
+            onChange={set('paymentDate')} style={{ width: '100%' }} />
         </Field>
       </div>
 
@@ -217,57 +224,195 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
       </div>
 
       <Field label="Payment Proof / Reference Note" required>
-        <textarea
-          className="boe-input"
-          value={form.proofNote}
-          onChange={set('proofNote')}
+        <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
           placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office"
-          rows={2}
-          style={{ width: '100%', resize: 'vertical' }}
-        />
+          rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
 
       <Field label="Order Number (optional)">
-        <input
-          className="boe-input"
-          value={form.orderNumber}
-          onChange={set('orderNumber')}
-          placeholder="Leave blank if order not yet created"
-          style={{ width: '100%' }}
-        />
+        <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
+          placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
       </Field>
 
       <Field label="Sales Note (optional)">
-        <textarea
-          className="boe-input"
-          value={form.salesNote}
-          onChange={set('salesNote')}
+        <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
           placeholder="Any additional context for admin"
-          rows={2}
-          style={{ width: '100%', resize: 'vertical' }}
-        />
+          rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
 
-      {error && (
-        <div style={{
-          padding: '10px 12px', borderRadius: '8px',
-          background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
-        }}>
-          {error}
+      {error && <ErrorBanner message={error} />}
+
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
+          Cancel
+        </button>
+        <button onClick={handleSubmit} disabled={!canSubmit || saving}
+          className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
+          {saving ? 'Submitting…' : 'Submit Request'}
+        </button>
+      </div>
+
+    </Modal>
+  )
+}
+
+// ── Admin Review modal ────────────────────────────────────────────────────────
+
+type AdminReviewModalProps = {
+  request: PaymentRequest
+  adminUserId: string
+  supabase: ReturnType<typeof createClient>
+  onClose: () => void
+  onActioned: () => void
+}
+
+function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onActioned }: AdminReviewModalProps) {
+  const [action, setAction]       = useState<AdminAction | null>(null)
+  const [adminNote, setAdminNote] = useState('')
+  const [orderNumber, setOrderNumber] = useState(r.order_number ?? '')
+  const [saving, setSaving]       = useState(false)
+  const [error, setError]         = useState<string | null>(null)
+
+  const noteRequired = action === 'needs_clarification' || action === 'reject'
+  const canConfirm   = action !== null && (!noteRequired || adminNote.trim())
+
+  const handleConfirm = async () => {
+    if (!action) return
+    setSaving(true)
+    setError(null)
+
+    let newStatus: string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updates: Record<string, any> = {
+      admin_note:   adminNote.trim() || null,
+      updated_at:   new Date().toISOString(),
+    }
+
+    if (action === 'approve') {
+      const linked = orderNumber.trim() !== ''
+      newStatus = linked ? 'approved_linked' : 'approved_unlinked'
+      updates.status       = newStatus
+      updates.approved_by  = adminUserId
+      updates.approved_at  = new Date().toISOString()
+      updates.order_number = orderNumber.trim() || null
+    } else if (action === 'needs_clarification') {
+      updates.status = 'needs_clarification'
+    } else {
+      updates.status = 'rejected'
+    }
+
+    const { error: dbError } = await supabase
+      .from('finance_payment_requests')
+      .update(updates)
+      .eq('id', r.id)
+
+    setSaving(false)
+    if (dbError) { setError(dbError.message); return }
+    onActioned()
+  }
+
+  // Action button styles
+  const actionStyle = (a: AdminAction): React.CSSProperties => {
+    const active = action === a
+    if (a === 'approve') return {
+      padding: '7px 16px', fontSize: '12px', fontWeight: 600, borderRadius: '7px',
+      border: `1px solid ${active ? colors.green : colors.border}`,
+      background: active ? colors.greenTint : 'transparent',
+      color: active ? colors.green : colors.secondary,
+      cursor: 'pointer',
+    }
+    if (a === 'needs_clarification') return {
+      padding: '7px 16px', fontSize: '12px', fontWeight: 600, borderRadius: '7px',
+      border: `1px solid ${active ? colors.blue : colors.border}`,
+      background: active ? colors.blueTint : 'transparent',
+      color: active ? colors.blue : colors.secondary,
+      cursor: 'pointer',
+    }
+    return {
+      padding: '7px 16px', fontSize: '12px', fontWeight: 600, borderRadius: '7px',
+      border: `1px solid ${active ? colors.red : colors.border}`,
+      background: active ? colors.redTint : 'transparent',
+      color: active ? colors.red : colors.secondary,
+      cursor: 'pointer',
+    }
+  }
+
+  return (
+    <Modal title="Review Payment Confirmation" onClose={onClose}>
+
+      {/* Request summary */}
+      <div style={{
+        background: colors.raised, borderRadius: '8px', padding: '14px 16px',
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
+        border: `1px solid ${colors.border}`,
+      }}>
+        <DetailRow label="Client"       value={r.client_name} />
+        <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
+        <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
+        <DetailRow label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
+        <DetailRow label="Received In"  value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
+        <DetailRow label="Order No."    value={r.order_number ?? '—'} />
+        <div style={{ gridColumn: '1 / -1' }}>
+          <DetailRow label="Proof / Reference" value={r.proof_note} />
         </div>
+        {r.sales_note && (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <DetailRow label="Sales Note" value={r.sales_note} />
+          </div>
+        )}
+      </div>
+
+      {/* Action selector */}
+      <div>
+        <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+          Action
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button style={actionStyle('approve')}          onClick={() => setAction('approve')}>Approve</button>
+          <button style={actionStyle('needs_clarification')} onClick={() => setAction('needs_clarification')}>Needs Clarification</button>
+          <button style={actionStyle('reject')}           onClick={() => setAction('reject')}>Reject</button>
+        </div>
+      </div>
+
+      {/* Approve: order number field */}
+      {action === 'approve' && (
+        <Field label="Order Number (optional — links payment to order)">
+          <input className="boe-input" value={orderNumber} onChange={e => setOrderNumber(e.target.value)}
+            placeholder="Leave blank to approve as unlinked" style={{ width: '100%' }} />
+        </Field>
       )}
+
+      {/* Admin note */}
+      {action && (
+        <Field label={`Admin Note${noteRequired ? '' : ' (optional)'}`} required={noteRequired}>
+          <textarea
+            className="boe-input"
+            value={adminNote}
+            onChange={e => setAdminNote(e.target.value)}
+            placeholder={
+              action === 'approve'              ? 'Optional note for the salesperson' :
+              action === 'needs_clarification'  ? 'Explain what clarification is needed' :
+                                                  'Explain why this is being rejected'
+            }
+            rows={2}
+            style={{ width: '100%', resize: 'vertical' }}
+          />
+        </Field>
+      )}
+
+      {error && <ErrorBanner message={error} />}
 
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
         <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
           Cancel
         </button>
         <button
-          onClick={handleSubmit}
-          disabled={!canSubmit || saving}
+          onClick={handleConfirm}
+          disabled={!canConfirm || saving}
           className="boe-btn boe-btn-primary"
           style={{ padding: '8px 18px', fontSize: '13px' }}
         >
-          {saving ? 'Submitting…' : 'Submit Request'}
+          {saving ? 'Saving…' : 'Confirm'}
         </button>
       </div>
 
@@ -281,8 +426,7 @@ function StatusBadge({ status }: { status: string }) {
   const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563' }
   return (
     <span style={{
-      display: 'inline-block',
-      padding: '2px 8px', borderRadius: '5px',
+      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
       background: meta.bg, color: meta.color,
       fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
@@ -294,21 +438,33 @@ function StatusBadge({ status }: { status: string }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function FinancePage() {
-  const [pageLoading, setPageLoading] = useState(true)
-  const [userId, setUserId]           = useState<string>('')
-  const [requests, setRequests]       = useState<PaymentRequest[]>([])
-  const [listLoading, setListLoading] = useState(false)
-  const [showForm, setShowForm]       = useState(false)
+  const [pageLoading, setPageLoading]   = useState(true)
+  const [userId, setUserId]             = useState<string>('')
+  const [isAdmin, setIsAdmin]           = useState(false)
+  const [requests, setRequests]         = useState<PaymentRequest[]>([])
+  const [listLoading, setListLoading]   = useState(false)
+  const [showForm, setShowForm]         = useState(false)
+  const [reviewRequest, setReviewRequest] = useState<PaymentRequest | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  // ── Auth + initial load ──────────────────────────────────────────────────────
+  // ── Auth + profile + initial load ───────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-      setUserId(session.user.id)
+
+      const uid = session.user.id
+      setUserId(uid)
+
+      const { data: profile } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', uid)
+        .single()
+
+      setIsAdmin(profile?.role === 'admin')
       await loadRequests()
       setPageLoading(false)
     }
@@ -316,7 +472,7 @@ export default function FinancePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Fetch list ───────────────────────────────────────────────────────────────
+  // ── Fetch list (RLS scopes automatically: own rows for sales, all for admin) ─
   const loadRequests = async () => {
     setListLoading(true)
     const { data } = await supabase
@@ -327,7 +483,7 @@ export default function FinancePage() {
     setListLoading(false)
   }
 
-  // ── Counts for status chips ──────────────────────────────────────────────────
+  // ── Status counts ────────────────────────────────────────────────────────────
   const counts = {
     pending_approval:    requests.filter(r => r.status === 'pending_approval').length,
     approved:            requests.filter(r => r.status === 'approved_unlinked' || r.status === 'approved_linked').length,
@@ -349,11 +505,8 @@ export default function FinancePage() {
       title="Finance"
       subtitle="Payment confirmations, order advances, and finance approvals."
       actions={
-        <button
-          onClick={() => router.push('/modules')}
-          className="boe-btn boe-btn-ghost"
-          style={{ padding: '6px 14px', fontSize: '12px' }}
-        >
+        <button onClick={() => router.push('/modules')} className="boe-btn boe-btn-ghost"
+          style={{ padding: '6px 14px', fontSize: '12px' }}>
           ← Modules
         </button>
       }
@@ -372,27 +525,21 @@ export default function FinancePage() {
               Sales can submit customer payment details here for admin confirmation.
             </div>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="boe-btn boe-btn-primary"
-            style={{ padding: '8px 18px', fontSize: '13px', flexShrink: 0 }}
-          >
+          <button onClick={() => setShowForm(true)} className="boe-btn boe-btn-primary"
+            style={{ padding: '8px 18px', fontSize: '13px', flexShrink: 0 }}>
             + New Payment Confirmation
           </button>
         </div>
 
-        {/* Status summary chips */}
+        {/* Status chips */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {STATUS_CHIPS.map(chip => (
-            <span
-              key={chip.label}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                padding: '4px 10px', borderRadius: '6px',
-                background: chip.bg, color: chip.color,
-                fontSize: '11px', fontWeight: 600,
-              }}
-            >
+            <span key={chip.label} style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '4px 10px', borderRadius: '6px',
+              background: chip.bg, color: chip.color,
+              fontSize: '11px', fontWeight: 600,
+            }}>
               {chip.label}
               <span style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -403,12 +550,10 @@ export default function FinancePage() {
           ))}
         </div>
 
-        {/* List / empty state */}
+        {/* List */}
         <div style={{ borderTop: `1px solid ${colors.border}` }}>
           {listLoading ? (
-            <div style={{ padding: '32px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
-              Loading…
-            </div>
+            <div style={{ padding: '32px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
           ) : requests.length === 0 ? (
             <div style={{ padding: '32px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
               No payment confirmations yet.
@@ -416,24 +561,30 @@ export default function FinancePage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {requests.map((r, i) => (
-                <div
-                  key={r.id}
-                  style={{
-                    padding: '14px 0',
-                    borderBottom: i < requests.length - 1 ? `1px solid ${colors.border}` : 'none',
-                    display: 'flex', flexDirection: 'column', gap: '6px',
-                  }}
-                >
-                  {/* Row 1: client + amount + status */}
+                <div key={r.id} style={{
+                  padding: '14px 0',
+                  borderBottom: i < requests.length - 1 ? `1px solid ${colors.border}` : 'none',
+                  display: 'flex', flexDirection: 'column', gap: '6px',
+                }}>
+                  {/* Row 1: client + amount + status + admin button */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
                     <div style={{ fontWeight: 600, fontSize: '14px', color: colors.primary }}>
                       {r.client_name}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 700, fontSize: '14px', color: colors.primary }}>
                         {fmtAmount(r.amount)}
                       </span>
                       <StatusBadge status={r.status} />
+                      {isAdmin && r.status === 'pending_approval' && (
+                        <button
+                          onClick={() => setReviewRequest(r)}
+                          className="boe-btn boe-btn-ghost"
+                          style={{ padding: '3px 10px', fontSize: '11px', fontWeight: 600 }}
+                        >
+                          Review
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -445,7 +596,10 @@ export default function FinancePage() {
                     <span>·</span>
                     <span>{RECEIVED_IN_LABEL[r.received_in] ?? r.received_in}</span>
                     <span>·</span>
-                    <span style={{ color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic' }}>
+                    <span style={{
+                      color: r.order_number ? colors.secondary : colors.muted,
+                      fontStyle: r.order_number ? 'normal' : 'italic',
+                    }}>
                       {r.order_number ?? 'Order pending'}
                     </span>
                     <span>·</span>
@@ -459,12 +613,23 @@ export default function FinancePage() {
 
       </div>
 
+      {/* ── Modals ── */}
       {showForm && (
         <NewPaymentConfirmationModal
           userId={userId}
           supabase={supabase}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); loadRequests() }}
+        />
+      )}
+
+      {reviewRequest && (
+        <AdminReviewModal
+          request={reviewRequest}
+          adminUserId={userId}
+          supabase={supabase}
+          onClose={() => setReviewRequest(null)}
+          onActioned={() => { setReviewRequest(null); loadRequests() }}
         />
       )}
 
