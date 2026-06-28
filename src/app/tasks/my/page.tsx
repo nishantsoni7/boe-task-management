@@ -876,7 +876,7 @@ function EmptyState({ label }: { label: string }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function MyTasksPage() {
   const [loggedInId,   setLoggedInId]   = useState<string>('')
-  const [activeTab,    setActiveTab]    = useState<TabKey>('today_actionable')
+  const [activeTab,    setActiveTab]    = useState<TabKey | null>(null)
   const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [editingTask,      setEditingTask]      = useState<Task | null>(null)
@@ -1229,7 +1229,7 @@ export default function MyTasksPage() {
 
 
   const visibleTasks = useMemo(() => {
-    let tasks = buckets[activeTab]
+    let tasks = activeTab === null ? buckets.all : buckets[activeTab]
     if (filterAssignedBy) tasks = tasks.filter(t => t.created_by === filterAssignedBy)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -1240,7 +1240,7 @@ export default function MyTasksPage() {
     return tasks
   }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy])
 
-  function handleTabChange(key: TabKey) {
+  function handleTabChange(key: TabKey | null) {
     setActiveTab(key)
     setSelectedTask(null)
     setSearch('')
@@ -1298,7 +1298,7 @@ export default function MyTasksPage() {
             }
             const handleTypeChange = (key: TaskType) => {
               setTaskType(key)
-              setActiveTab('today_actionable')
+              setActiveTab(null)
               setSelectedTask(null)
               setSearch('')
               setFilterStatus('')
@@ -1547,7 +1547,7 @@ export default function MyTasksPage() {
 
             {/* Task cards */}
             {visibleTasks.length === 0 ? (
-              <EmptyState label={TAB_LABELS[activeTab]} />
+              <EmptyState label={activeTab ? TAB_LABELS[activeTab] : 'active'} />
             ) : (
               <div style={{ padding: '10px 24px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {visibleTasks.map(task => (
