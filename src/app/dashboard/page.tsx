@@ -267,8 +267,9 @@ export default function DashboardPage() {
 
   if (loading) return <LoadingScreen />
 
-  const totalOverdue   = tasks.filter(t => isOverdue(t.due_date, t.status)).length
+  const overdueTasks   = tasks.filter(t => isOverdue(t.due_date, t.status))
   const waitingTasks   = tasks.filter(t => t.status === 'waiting')
+  const isAdmin        = (viewAsProfile ?? profile)?.role === 'admin'
 
   const todayStart     = new Date(now); todayStart.setHours(0, 0, 0, 0)
   const tomorrowStart  = new Date(todayStart.getTime() + msPerDay)
@@ -315,18 +316,29 @@ export default function DashboardPage() {
             onPreview={task => setSelectedTask(task)}
             onViewAll={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
           />
-          <QuotationPanel
-            tasks={quotationTasks}
-            userMap={mergedUserMap}
-            isMobile={isMobile}
-            onOpen={task => router.push(`/tasks/${task.id}`)}
-            onViewAll={() => router.push('/tasks/quotation-requests')}
-          />
+          {isAdmin ? (
+            <QuotationPanel
+              tasks={quotationTasks}
+              userMap={mergedUserMap}
+              isMobile={isMobile}
+              onOpen={task => router.push(`/tasks/${task.id}`)}
+              onViewAll={() => router.push('/tasks/quotation-requests')}
+            />
+          ) : (
+            <OverdueTasksPanel
+              tasks={overdueTasks}
+              userMap={mergedUserMap}
+              now={now}
+              isMobile={isMobile}
+              onSelectTask={task => setSelectedTask(task)}
+              onViewAll={() => setPreviewList({ title: 'Overdue Tasks', items: overdueTasks })}
+            />
+          )}
         </div>
 
         {/* ── Status rail — bottom ── */}
         <OperationalStatusPanel
-          overdueTasks={tasks.filter(t => isOverdue(t.due_date, t.status))}
+          overdueTasks={overdueTasks}
           waitingTasks={waitingTasks}
           dueTodayTasks={dueTodayTasks}
           onShowList={setPreviewList}
@@ -339,6 +351,7 @@ export default function DashboardPage() {
           title={previewList.title}
           items={previewList.items}
           isMobile={isMobile}
+          userMap={mergedUserMap}
           onClose={() => setPreviewList(null)}
           onSelectTask={task => { setPreviewList(null); setSelectedTask(task) }}
         />
@@ -824,6 +837,70 @@ function QuotationPanel({
   )
 }
 
+// ── Overdue Tasks panel (non-admin) ──────────────────────────────────────────
+
+function OverdueTasksPanel({
+  tasks,
+  userMap,
+  now,
+  isMobile,
+  onSelectTask,
+  onViewAll,
+}: {
+  tasks: Task[]
+  userMap: Record<string, string>
+  now: Date
+  isMobile: boolean
+  onSelectTask: (task: Task) => void
+  onViewAll: () => void
+}) {
+  return (
+    <div style={{
+      background: '#fff',
+      border: '1px solid #E7E9EE',
+      borderRadius: '12px',
+      overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+    }}>
+      <div
+        onClick={() => tasks.length > 0 && onViewAll()}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: isMobile ? '14px 16px' : '16px 20px',
+          borderBottom: '1px solid #F0F1F4',
+          cursor: tasks.length > 0 ? 'pointer' : 'default',
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => { if (tasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
+        onMouseLeave={e => { e.currentTarget.style.background = '' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+          <span style={{ fontWeight: 600, fontSize: '15px', color: '#6B7280', letterSpacing: '-0.015em', lineHeight: 1 }}>
+            Overdue Tasks
+          </span>
+          {tasks.length > 0 && (
+            <span style={{ background: '#FEF2F2', color: '#C0392B', fontWeight: 500, fontSize: '11px', borderRadius: '5px', padding: '1px 6px', lineHeight: 1.6 }}>
+              {tasks.length}
+            </span>
+          )}
+        </div>
+        {tasks.length > 0 && (
+          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', flexShrink: 0 }}>View all →</span>
+        )}
+      </div>
+
+      {tasks.length === 0 ? (
+        <div style={{ padding: '36px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>All caught up</div>
+          <div style={{ fontSize: '12px', color: '#C4C9D4' }}>No overdue tasks</div>
+        </div>
+      ) : (
+        <UnacknowledgedTasksSection tasks={tasks} userMap={userMap} now={now} onPreview={onSelectTask} compact />
+      )}
+    </div>
+  )
+}
+
 // ── QuotationRequestsSection ──────────────────────────────────────────────────
 
 function QuotationRequestsSection({
@@ -1052,13 +1129,26 @@ function TaskListDrawer({
   isMobile,
   onClose,
   onSelectTask,
+  userMap,
 }: {
   title: string
   items: Task[]
   isMobile?: boolean
   onClose: () => void
   onSelectTask: (task: Task) => void
+  userMap: Record<string, string>
 }) {
+  const isOverdueDrawer = title === 'Overdue Tasks'
+  const isWaitingDrawer = title === 'Waiting Tasks'
+  const now = new Date()
+  const msPerDay = 24 * 60 * 60 * 1000
+
+  const subtitle = isOverdueDrawer
+    ? `${items.length} task${items.length !== 1 ? 's' : ''} need your attention`
+    : isWaitingDrawer
+      ? `${items.length} task${items.length !== 1 ? 's' : ''} waiting on action`
+      : `${items.length} task${items.length !== 1 ? 's' : ''}`
+
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.25)', zIndex: 40 }} />
@@ -1068,21 +1158,48 @@ function TaskListDrawer({
         background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
         zIndex: 50, display: 'flex', flexDirection: 'column',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #F3F4F6', flexShrink: 0 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid #F3F4F6', flexShrink: 0 }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: '15px', color: '#111827' }}>{title}</div>
-            <div style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '2px' }}>
-              {items.length} task{items.length !== 1 ? 's' : ''}
+            <div style={{ fontWeight: 700, fontSize: '16px', color: '#111827', letterSpacing: '-0.01em', lineHeight: 1 }}>
+              {title}
+            </div>
+            <div style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '6px' }}>
+              {subtitle}
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', fontSize: '20px', lineHeight: 1, padding: '4px 8px', borderRadius: '6px' }} aria-label="Close">×</button>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', fontSize: '22px', lineHeight: 1, padding: '0 0 0 12px', flexShrink: 0 }}
+            aria-label="Close"
+          >×</button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
           {items.length === 0 ? (
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>No tasks here.</div>
+            <div style={{ padding: '52px 24px', textAlign: 'center' }}>
+              <div style={{ fontSize: '14px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>All clear</div>
+              <div style={{ fontSize: '13px', color: '#C4C9D4' }}>No tasks here right now.</div>
+            </div>
           ) : (
-            items.map(task => {
-              const isOverdueTask = task.due_date && new Date(task.due_date) < new Date()
+            items.map((task, idx) => {
+              const isLast    = idx === items.length - 1
+              const dueDate   = task.due_date ? new Date(task.due_date) : null
+              const daysOver  = dueDate ? Math.floor((now.getTime() - dueDate.getTime()) / msPerDay) : 0
+              const dueDateStr = dueDate ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null
+              const assignedBy = getAssignedByDisplay(task, userMap)
+
+              let dateLabel = ''
+              let dateColor = '#6B7280'
+              if (isOverdueDrawer && dueDate && daysOver > 0) {
+                dateLabel = daysOver === 1 ? 'Overdue by 1 day' : `Overdue by ${daysOver} days`
+                dateColor = '#C0392B'
+              } else if (dueDateStr) {
+                dateLabel = `Due ${dueDateStr}`
+                dateColor = '#6B7280'
+              }
+
               return (
                 <div
                   key={task.id}
@@ -1090,21 +1207,61 @@ function TaskListDrawer({
                   role="button"
                   tabIndex={0}
                   onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
-                  style={{ padding: '14px 24px', borderBottom: '1px solid #F9FAFB', cursor: 'pointer', transition: 'background 0.1s' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#F9FAFB')}
-                  onMouseLeave={e => (e.currentTarget.style.background = '')}
+                  style={{
+                    display: 'flex', alignItems: 'stretch',
+                    borderBottom: isLast ? 'none' : '1px solid #F4F5F7',
+                    cursor: 'pointer',
+                    transition: 'background 0.12s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '' }}
                 >
-                  <div style={{ fontSize: '14px', fontWeight: 500, color: '#111827', marginBottom: '6px', lineHeight: 1.4 }}>
-                    {task.title}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <StatusChip status={task.status} />
-                    {task.priority && <PriorityChip priority={task.priority} />}
-                    {task.due_date && (
-                      <span style={{ fontSize: '11px', fontWeight: 500, color: isOverdueTask ? '#C0392B' : '#6B7280' }}>
-                        Due {new Date(task.due_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                      </span>
+                  {/* Left accent strip — overdue drawer only */}
+                  {isOverdueDrawer && (
+                    <div style={{ width: '3px', flexShrink: 0, background: '#EF4444' }} />
+                  )}
+
+                  {/* Card content */}
+                  <div style={{ flex: 1, minWidth: 0, padding: '18px 16px 18px 20px' }}>
+                    {/* Title */}
+                    <div style={{
+                      fontSize: '15px', fontWeight: 600, color: '#111827',
+                      letterSpacing: '-0.01em', lineHeight: 1.35,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      marginBottom: '8px',
+                    }}>
+                      {task.title}
+                    </div>
+
+                    {/* Assigned by */}
+                    {assignedBy && assignedBy !== 'Self' && (
+                      <div style={{ marginBottom: '10px' }}>
+                        <div style={{ fontSize: '10px', fontWeight: 500, color: '#C4C9D4', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '3px' }}>
+                          Assigned by
+                        </div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>
+                          {assignedBy}
+                        </div>
+                      </div>
                     )}
+
+                    {/* Status + Priority chips */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: dateLabel ? '8px' : 0, flexWrap: 'wrap' }}>
+                      <StatusChip status={task.status} />
+                      {task.priority && <PriorityChip priority={task.priority} />}
+                    </div>
+
+                    {/* Date label */}
+                    {dateLabel && (
+                      <div style={{ fontSize: '12px', fontWeight: 500, color: dateColor }}>
+                        {dateLabel}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Chevron */}
+                  <div style={{ display: 'flex', alignItems: 'center', paddingRight: '16px', flexShrink: 0 }}>
+                    <ChevronRightIcon />
                   </div>
                 </div>
               )
