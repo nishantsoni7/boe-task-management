@@ -19,6 +19,7 @@ import {
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus, Pin,
 } from 'lucide-react'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
+import { useToast, Toast } from '@/components/ui/toast'
 
 
 function localDateStr(offsetDays = 0): string {
@@ -916,6 +917,7 @@ export default function MyTasksPage() {
   const { data: profile = null }  = useProfile(loggedInId)
   const { data: allTasksRaw = [], isLoading: tasksLoading } = useMyTasks(userId || null)
   const { data: top3Data } = useTopTasks(userId || null)
+  const { toast, show: showToast, dismiss: dismissToast } = useToast()
 
   // Allow manual task overrides (create / edit / delete) on top of cached data
   const [taskOverrides, setTaskOverrides] = useState<Task[] | null>(null)
@@ -1142,7 +1144,13 @@ export default function MyTasksPage() {
     const { error } = await supabase
       .from('user_top_tasks')
       .insert({ user_id: userId, task_id: task.id, display_order: nextOrder })
-    if (!error) queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+    if (error) {
+      console.error('[handlePin] failed:', error.message, error)
+      window.alert(`Failed to pin task: ${error.message}`)
+      return
+    }
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+    showToast('Added to Top 3')
   }
 
   const handleUnpin = async (task: Task) => {
@@ -1152,7 +1160,13 @@ export default function MyTasksPage() {
       .delete()
       .eq('user_id', userId)
       .eq('task_id', task.id)
-    if (!error) queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+    if (error) {
+      console.error('[handleUnpin] failed:', error.message, error)
+      window.alert(`Failed to unpin task: ${error.message}`)
+      return
+    }
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+    showToast('Removed from Top 3')
   }
 
   const baseTasks = useMemo(() => {
@@ -1588,6 +1602,7 @@ export default function MyTasksPage() {
           onCreated={handleTaskCreated}
         />
       )}
+      <Toast toast={toast} onDismiss={dismissToast} />
     </>
   )
 }
