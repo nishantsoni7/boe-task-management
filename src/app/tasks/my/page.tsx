@@ -15,7 +15,7 @@ import { useRefresh } from '@/contexts/RefreshContext'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useMyTasks, useUserNames } from '@/hooks/queries/useMyTasks'
 import {
-  CheckCircle2, ExternalLink, Star, AlertCircle,
+  CheckCircle2, Star, AlertCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus, Pin,
 } from 'lucide-react'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
@@ -68,18 +68,21 @@ function formatDate(d: string | null): string | null {
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
-type TabKey = 'action_required' | 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
+type TabKey = 'today_actionable' | 'overdue_actionable' | 'waiting_blocked' | 'action_required' | 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
 
 const TAB_LABELS: Record<TabKey, string> = {
-  action_required: 'Action Required',
-  all:             'All Tasks',
-  important:       'Important',
-  unacknowledged:  'Unacknowledged',
-  in_progress:     'In Progress',
-  overdue:         'Overdue',
-  needs_update:    'Needs Update',
-  non_completion:  'Non-Completion',
-  completed:       'Completed',
+  today_actionable:   'Today Actionable',
+  overdue_actionable: 'Overdue Actionable',
+  waiting_blocked:    'Waiting / Blocked',
+  action_required:    'Action Required',
+  all:                'All Tasks',
+  important:          'Important',
+  unacknowledged:     'Unacknowledged',
+  in_progress:        'In Progress',
+  overdue:            'Overdue',
+  needs_update:       'Needs Update',
+  non_completion:     'Non-Completion',
+  completed:          'Completed',
 }
 type TaskType = 'all' | 'self' | 'delegated'
 
@@ -99,7 +102,7 @@ const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
-  task, accentColor, userId, userMap, onClick, onView, onEdit, onDelete, isMobile,
+  task, accentColor, userId, userMap, onClick, onEdit, onDelete, isMobile,
   isPinned, onPin, onUnpin,
 }: {
   task: Task
@@ -107,7 +110,6 @@ function TaskCard({
   userId: string
   userMap: Record<string, string>
   onClick: () => void
-  onView: () => void
   onEdit?: () => void
   onDelete?: () => void
   isMobile?: boolean
@@ -118,7 +120,6 @@ function TaskCard({
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
   const [hoveredDel,  setHoveredDel]  = useState(false)
-  const [hoveredView, setHoveredView] = useState(false)
   const [hoveredPin,  setHoveredPin]  = useState(false)
   const overdue    = isOverdue(task)
   const completed  = task.status === 'completed'
@@ -191,11 +192,6 @@ function TaskCard({
                 </button>
               </>
             )}
-            <button onClick={e => { e.stopPropagation(); onView() }} title="View full page"
-              onMouseEnter={() => setHoveredView(true)} onMouseLeave={() => setHoveredView(false)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredView ? `${accentColor}14` : 'transparent', border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredView ? accentColor : colors.muted }}>
-              <ExternalLink size={13} />
-            </button>
           </div>
         </div>
         {/* Row 2: meta badges */}
@@ -395,22 +391,6 @@ function TaskCard({
             <div style={{ width: '26px', height: '26px', flexShrink: 0 }} />
           </>
         )}
-        <button
-          onClick={e => { e.stopPropagation(); onView() }}
-          onMouseEnter={() => setHoveredView(true)}
-          onMouseLeave={() => setHoveredView(false)}
-          title="Open full page"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '26px', height: '26px', borderRadius: '6px',
-            background: hoveredView ? `${accentColor}14` : 'transparent',
-            border: `1px solid ${hoveredView ? accentColor + '44' : 'transparent'}`,
-            cursor: 'pointer', outline: 'none', transition: 'all 0.12s',
-            color: hoveredView ? accentColor : colors.muted,
-          }}
-        >
-          <ExternalLink size={12} />
-        </button>
       </div>
     </div>
   )
@@ -896,7 +876,7 @@ function EmptyState({ label }: { label: string }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function MyTasksPage() {
   const [loggedInId,   setLoggedInId]   = useState<string>('')
-  const [activeTab,    setActiveTab]    = useState<TabKey>('action_required')
+  const [activeTab,    setActiveTab]    = useState<TabKey>('today_actionable')
   const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [editingTask,      setEditingTask]      = useState<Task | null>(null)
@@ -938,6 +918,7 @@ export default function MyTasksPage() {
   useEffect(() => {
     if (!userId) return
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset local overrides when fresh data arrives from the server
@@ -1195,11 +1176,28 @@ export default function MyTasksPage() {
     const sortImportantFirst = (arr: Task[]) =>
       [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
 
-    // Action Required: only tasks that need the user's attention (excludes waiting, blocked, completed, cancelled)
+    const isActiveActionable = (t: Task) =>
+      t.status !== 'completed' && t.status !== 'cancelled' &&
+      t.status !== 'waiting'   && t.status !== 'blocked'
+
+    // Today Actionable: due today, active (not waiting/blocked/completed/cancelled)
+    const today_actionable   = sortImportantFirst(baseTasks.filter(t =>
+      isActiveActionable(t) && normalizeDueDate(t.due_date) === TODAY_STR
+    ))
+    // Overdue Actionable: past due, active
+    const overdue_actionable = sortImportantFirst(baseTasks.filter(t => {
+      const d = normalizeDueDate(t.due_date)
+      return isActiveActionable(t) && !!d && d < TODAY_STR
+    }))
+    // Waiting / Blocked
+    const waiting_blocked    = sortImportantFirst(baseTasks.filter(t =>
+      t.status === 'waiting' || t.status === 'blocked'
+    ))
+
+    // Legacy buckets (kept for internal use)
     const action_required = sortImportantFirst(baseTasks.filter(t =>
       t.status === 'pending' || t.status === 'started' || t.status === 'working'
     ))
-    // "All" shows active tasks only — completed/cancelled tasks are only visible in their respective tabs
     const all            = sortImportantFirst(baseTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled'))
     const important      = sortImportantFirst(baseTasks.filter(t => t.is_urgent && t.status !== 'completed' && t.status !== 'cancelled'))
     const unacknowledged = sortImportantFirst(baseTasks.filter(isUnacknowledged))
@@ -1211,19 +1209,22 @@ export default function MyTasksPage() {
     const non_completion = sortImportantFirst(baseTasks.filter(isNonCompletion))
     const completed      = baseTasks.filter(t => t.status === 'completed')
 
-    return { action_required, all, important, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
+    return { today_actionable, overdue_actionable, waiting_blocked, action_required, all, important, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
   }, [baseTasks])
 
   const counts: Record<TabKey, number> = {
-    action_required: buckets.action_required.length,
-    all:            buckets.all.length,
-    important:      buckets.important.length,
-    unacknowledged: buckets.unacknowledged.length,
-    in_progress:    buckets.in_progress.length,
-    overdue:        buckets.overdue.length,
-    needs_update:   buckets.needs_update.length,
-    non_completion: buckets.non_completion.length,
-    completed:      buckets.completed.length,
+    today_actionable:   buckets.today_actionable.length,
+    overdue_actionable: buckets.overdue_actionable.length,
+    waiting_blocked:    buckets.waiting_blocked.length,
+    action_required:    buckets.action_required.length,
+    all:                buckets.all.length,
+    important:          buckets.important.length,
+    unacknowledged:     buckets.unacknowledged.length,
+    in_progress:        buckets.in_progress.length,
+    overdue:            buckets.overdue.length,
+    needs_update:       buckets.needs_update.length,
+    non_completion:     buckets.non_completion.length,
+    completed:          buckets.completed.length,
   }
 
 
@@ -1297,7 +1298,7 @@ export default function MyTasksPage() {
             }
             const handleTypeChange = (key: TaskType) => {
               setTaskType(key)
-              setActiveTab('all')
+              setActiveTab('today_actionable')
               setSelectedTask(null)
               setSearch('')
               setFilterStatus('')
@@ -1402,11 +1403,12 @@ export default function MyTasksPage() {
           {/* ── Right: task list area ── */}
           <div style={{ flex: 1, minWidth: 0, background: '#fff' }}>
 
-            {/* ── View tabs: Action Required / All Tasks ── */}
+            {/* ── View tabs: Today Actionable / Overdue Actionable / Waiting Blocked ── */}
             {(() => {
               const VIEW_TABS: { key: TabKey; label: string; accent: string }[] = [
-                { key: 'action_required', label: 'Action Required', accent: '#2E9E6B' },
-                { key: 'all',             label: 'All Tasks',        accent: '#5B7FA6' },
+                { key: 'today_actionable',   label: 'Today Actionable',   accent: '#2E9E6B' },
+                { key: 'overdue_actionable', label: 'Overdue Actionable', accent: '#C0551A' },
+                { key: 'waiting_blocked',    label: 'Waiting / Blocked',  accent: '#5B7FA6' },
               ]
               return (
                 <div style={{
@@ -1449,30 +1451,11 @@ export default function MyTasksPage() {
               )
             })()}
 
-            {/* Search + filter toolbar */}
+            {/* Filter toolbar: Assignee, Priority, Search (right-aligned) */}
             <div style={{
               padding: '14px 24px 12px',
               display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center',
             }}>
-              {/* Search */}
-              <div style={{
-                flex: '2 1 160px', display: 'flex', alignItems: 'center', gap: '6px',
-                background: colors.raised, border: `1px solid ${colors.border}`,
-                borderRadius: '6px', padding: '6px 10px',
-              }}>
-                <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
-                <input
-                  type="text"
-                  placeholder="Find tasks…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  style={{
-                    flex: 1, background: 'transparent', border: 'none',
-                    outline: 'none', fontSize: '12px', color: colors.primary,
-                    minWidth: 0,
-                  }}
-                />
-              </div>
               {/* Assignees */}
               {taskType !== 'self' && assignerOptions.length > 0 && (
                 <select
@@ -1513,6 +1496,27 @@ export default function MyTasksPage() {
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
               </select>
+              {/* Search — aligned far right */}
+              <div style={{
+                marginLeft: 'auto',
+                display: 'flex', alignItems: 'center', gap: '6px',
+                background: colors.raised, border: `1px solid ${colors.border}`,
+                borderRadius: '6px', padding: '6px 10px',
+                minWidth: '160px',
+              }}>
+                <Search size={13} color={colors.muted} style={{ flexShrink: 0 }} />
+                <input
+                  type="text"
+                  placeholder="Find tasks…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  style={{
+                    flex: 1, background: 'transparent', border: 'none',
+                    outline: 'none', fontSize: '12px', color: colors.primary,
+                    minWidth: 0,
+                  }}
+                />
+              </div>
             </div>
 
             {/* Table header — desktop only */}
@@ -1554,7 +1558,6 @@ export default function MyTasksPage() {
                     userId={userId}
                     userMap={userMap}
                     onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
-                    onView={() => router.push(`/tasks/${task.id}`)}
                     onEdit={!viewAsUserId && task.created_by === userId ? () => setEditingTask(task) : undefined}
                     onDelete={!viewAsUserId && task.created_by === userId ? () => handleDelete(task) : undefined}
                     isMobile={isMobile}
