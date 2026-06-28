@@ -866,7 +866,6 @@ export default function MyTasksPage() {
   const [filterStatus,     setFilterStatus]     = useState('')
   const [filterPriority,   setFilterPriority]   = useState('')
   const [filterAssignedBy, setFilterAssignedBy] = useState('')
-  const [focusFilter,      setFocusFilter]      = useState<'overdue' | 'today' | 'tomorrow' | null>(null)
 
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
@@ -1158,11 +1157,8 @@ export default function MyTasksPage() {
     }
     if (filterStatus)   tasks = tasks.filter(t => t.status === filterStatus)
     if (filterPriority) tasks = tasks.filter(t => t.priority === filterPriority)
-    if (focusFilter === 'overdue')   tasks = tasks.filter(t => { const d = normalizeDueDate(t.due_date); return t.status !== 'completed' && t.status !== 'cancelled' && !!d && d < TODAY_STR })
-    if (focusFilter === 'today')     tasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && normalizeDueDate(t.due_date) === TODAY_STR)
-    if (focusFilter === 'tomorrow')  tasks = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && normalizeDueDate(t.due_date) === TOMORROW_STR)
     return tasks
-  }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy, focusFilter])
+  }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy])
 
   function handleTabChange(key: TabKey) {
     setActiveTab(key)
@@ -1170,7 +1166,6 @@ export default function MyTasksPage() {
     setSearch('')
     setFilterStatus('')
     setFilterPriority('')
-    setFocusFilter(null)
     // Note: intentionally NOT resetting filterAssignedBy here — tab changes stay within same task type
   }
 
@@ -1229,7 +1224,6 @@ export default function MyTasksPage() {
               setFilterStatus('')
               setFilterPriority('')
               setFilterAssignedBy('')
-              setFocusFilter(null)
             }
 
             if (isMobile) {
@@ -1369,91 +1363,6 @@ export default function MyTasksPage() {
                         }}>
                           {counts[tab.key]}
                         </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )
-            })()}
-
-            {/* Focus date cards */}
-            {(() => {
-              const activeTasks = baseTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled')
-              const focusCards = [
-                {
-                  key: 'overdue' as const,
-                  label: 'Overdue',
-                  sub: 'Past due tasks',
-                  count: activeTasks.filter(t => { const d = normalizeDueDate(t.due_date); return !!d && d < TODAY_STR }).length,
-                  activeColor: '#D94F4F',
-                  idleBg: 'rgba(217,79,79,0.03)',
-                  idleBorder: 'rgba(217,79,79,0.14)',
-                  activeBg: 'rgba(217,79,79,0.08)',
-                  activeBorder: 'rgba(217,79,79,0.35)',
-                },
-                {
-                  key: 'today' as const,
-                  label: 'Today Focus',
-                  sub: 'Due today',
-                  count: activeTasks.filter(t => normalizeDueDate(t.due_date) === TODAY_STR).length,
-                  activeColor: '#E8A030',
-                  idleBg: 'rgba(232,160,48,0.03)',
-                  idleBorder: 'rgba(232,160,48,0.18)',
-                  activeBg: 'rgba(232,160,48,0.08)',
-                  activeBorder: 'rgba(232,160,48,0.40)',
-                },
-                {
-                  key: 'tomorrow' as const,
-                  label: 'Tomorrow',
-                  sub: 'Due tomorrow',
-                  count: activeTasks.filter(t => normalizeDueDate(t.due_date) === TOMORROW_STR).length,
-                  activeColor: '#5B7FA6',
-                  idleBg: 'rgba(91,127,166,0.03)',
-                  idleBorder: 'rgba(91,127,166,0.14)',
-                  activeBg: 'rgba(91,127,166,0.08)',
-                  activeBorder: 'rgba(91,127,166,0.35)',
-                },
-              ]
-              return (
-                <div style={{
-                  display: 'flex',
-                  flexDirection: isMobile ? 'column' : 'row',
-                  gap: '10px',
-                  padding: '14px 24px 0',
-                }}>
-                  {focusCards.map(card => {
-                    const isActive = focusFilter === card.key
-                    return (
-                      <button
-                        key={card.key}
-                        onClick={() => setFocusFilter(isActive ? null : card.key)}
-                        style={{
-                          display: 'flex', flexDirection: 'row', alignItems: 'center',
-                          gap: '10px', padding: '7px 14px',
-                          width: isMobile ? '100%' : '220px', flexShrink: 0,
-                          borderRadius: '10px', cursor: 'pointer', outline: 'none',
-                          border: `1.5px solid ${isActive ? card.activeBorder : card.idleBorder}`,
-                          background: isActive ? card.activeBg : card.idleBg,
-                          transition: 'all 0.14s', textAlign: 'left',
-                        }}
-                      >
-                        <span style={{
-                          fontSize: '20px', fontWeight: 700, lineHeight: 1, flexShrink: 0,
-                          color: card.count > 0 || isActive ? card.activeColor : colors.muted,
-                        }}>
-                          {card.count}
-                        </span>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
-                          <span style={{
-                            fontSize: '11.5px', fontWeight: 600, whiteSpace: 'nowrap',
-                            color: isActive ? card.activeColor : colors.primary,
-                          }}>
-                            {card.label}
-                          </span>
-                          <span style={{ fontSize: '10px', color: colors.muted, whiteSpace: 'nowrap' }}>
-                            {card.sub}
-                          </span>
-                        </div>
                       </button>
                     )
                   })}
