@@ -95,6 +95,13 @@ function fmtAmount(n: number) {
   return '₹' + n.toLocaleString('en-IN')
 }
 
+function fmtDateTime(iso: string) {
+  const d = new Date(iso)
+  const date = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+  return `${date}, ${time}`
+}
+
 function matchesTab(r: PaymentRequest, tab: FilterTab): boolean {
   switch (tab) {
     case 'pending':       return r.status === 'pending_approval'
@@ -645,7 +652,7 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
 // ── Payments table ────────────────────────────────────────────────────────────
 
 const TH_STYLE: React.CSSProperties = {
-  padding: '9px 12px',
+  padding: '8px 12px',
   textAlign: 'left',
   fontSize: '10px',
   fontWeight: 700,
@@ -676,7 +683,7 @@ function PaymentsTable({
   onEdit: (r: PaymentRequest) => void
   onDelete: (r: PaymentRequest) => void
 }) {
-  const TD: React.CSSProperties = { padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
+  const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
 
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -732,7 +739,7 @@ function PaymentsTable({
                 <td style={{ ...TD, fontSize: '12px', color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic' }}>
                   {r.order_number ?? '—'}
                 </td>
-                <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right' }}>
+                <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                   {fmtAmount(r.amount)}
                 </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
@@ -747,8 +754,8 @@ function PaymentsTable({
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {r.submitted_by_name ?? '—'}
                 </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.muted }}>
-                  {fmtDate(r.created_at)}
+                <td style={{ ...TD, fontSize: '11px', color: colors.muted }}>
+                  {fmtDateTime(r.created_at)}
                 </td>
                 <td style={TD}>
                   <StatusBadge status={r.status} />
