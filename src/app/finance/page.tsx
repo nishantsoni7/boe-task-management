@@ -572,6 +572,76 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
   )
 }
 
+// ── Delete confirm modal (admin only) ────────────────────────────────────────
+
+type DeleteConfirmModalProps = {
+  request: PaymentRequest
+  supabase: ReturnType<typeof createClient>
+  onClose: () => void
+  onDeleted: () => void
+}
+
+function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: DeleteConfirmModalProps) {
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError]       = useState<string | null>(null)
+  const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    setError(null)
+    const { error: dbError, count } = await supabase
+      .from('finance_payment_requests')
+      .delete({ count: 'exact' })
+      .eq('id', r.id)
+    setDeleting(false)
+    if (dbError) { setError(dbError.message); return }
+    if (count === 0) { setError('No row was deleted. Check permissions.'); return }
+    onDeleted()
+  }
+
+  return (
+    <Modal title="Delete Payment Confirmation" onClose={onClose}>
+      <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7 }}>
+        Delete this payment confirmation? This cannot be undone.
+      </div>
+      <div style={{
+        background: colors.raised, borderRadius: '8px', padding: '12px 14px',
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
+        border: `1px solid ${colors.border}`,
+      }}>
+        <DetailRow label="Client"       value={r.client_name} />
+        <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
+        <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</span>
+          <span style={{
+            display: 'inline-block', padding: '2px 8px', borderRadius: '5px', alignSelf: 'flex-start',
+            background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
+            fontSize: '11px', fontWeight: 600,
+          }}>
+            {meta.label}
+          </span>
+        </div>
+      </div>
+      {error && <ErrorBanner message={error} />}
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          style={{
+            padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
+            border: `1px solid ${colors.red}`, background: colors.redTint, color: colors.red,
+            cursor: deleting ? 'default' : 'pointer', opacity: deleting ? 0.6 : 1,
+          }}
+        >
+          {deleting ? 'Deleting…' : 'Delete'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Payments table ────────────────────────────────────────────────────────────
 
 const TH_STYLE: React.CSSProperties = {
@@ -596,6 +666,7 @@ function PaymentsTable({
   onRowClick,
   onView,
   onEdit,
+  onDelete,
 }: {
   rows: PaymentRequest[]
   isAdmin: boolean
@@ -603,6 +674,7 @@ function PaymentsTable({
   onRowClick: (r: PaymentRequest) => void
   onView: (r: PaymentRequest) => void
   onEdit: (r: PaymentRequest) => void
+  onDelete: (r: PaymentRequest) => void
 }) {
   const TD: React.CSSProperties = { padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
 
@@ -714,10 +786,9 @@ function PaymentsTable({
                     )}
                     {showDelete && (
                       <button
-                        disabled
+                        onClick={() => onDelete(r)}
                         className="boe-btn boe-btn-ghost"
-                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, opacity: 0.45, cursor: 'not-allowed', color: colors.red }}
-                        title="Delete — coming next"
+                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.red }}
                       >
                         Delete
                       </button>
@@ -746,6 +817,7 @@ export default function FinancePage() {
   const [reviewRequest, setReviewRequest] = useState<PaymentRequest | null>(null)
   const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
   const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
+  const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
   const [activeTab, setActiveTab]       = useState<FilterTab>('pending')
   const [search, setSearch]             = useState('')
 
@@ -924,6 +996,7 @@ export default function FinancePage() {
             onRowClick={handleRowClick}
             onView={r => setDetailRequest(r)}
             onEdit={r => setEditRequest(r)}
+            onDelete={r => setDeleteRequest(r)}
           />
         )}
 
@@ -960,6 +1033,14 @@ export default function FinancePage() {
           supabase={supabase}
           onClose={() => setEditRequest(null)}
           onSaved={() => { setEditRequest(null); loadRequests() }}
+        />
+      )}
+      {deleteRequest && (
+        <DeleteConfirmModal
+          request={deleteRequest}
+          supabase={supabase}
+          onClose={() => setDeleteRequest(null)}
+          onDeleted={() => { setDeleteRequest(null); loadRequests() }}
         />
       )}
 
