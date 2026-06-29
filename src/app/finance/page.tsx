@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { PageShell } from '@/components/layout/PageShell'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
+import { FinanceLayout } from '@/components/layout/FinanceLayout'
+import type { UserProfile } from '@/lib/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,19 +22,21 @@ type PaymentRequest = {
   sales_note: string | null
   status: string
   submitted_by: string
+  submitted_by_name?: string
   created_at: string
 }
 
 type AdminAction = 'approve' | 'needs_clarification' | 'reject'
+type FilterTab   = 'pending' | 'approved' | 'clarification' | 'rejected' | 'all'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const PAYMENT_MODE_LABEL: Record<string, string> = {
-  bank_transfer:   'Bank Transfer',
-  cash:            'Cash',
-  upi:             'UPI',
-  cheque:          'Cheque',
-  other:           'Other',
+  bank_transfer: 'Bank Transfer',
+  cash:          'Cash',
+  upi:           'UPI',
+  cheque:        'Cheque',
+  other:         'Other',
 }
 
 const RECEIVED_IN_LABEL: Record<string, string> = {
@@ -43,12 +46,12 @@ const RECEIVED_IN_LABEL: Record<string, string> = {
   other:           'Other',
 }
 
-const STATUS_META: Record<string, { label: string; bg: string; color: string }> = {
-  pending_approval:    { label: 'Pending Approval',    bg: '#FFFBEB', color: '#92400E' },
-  approved_unlinked:   { label: 'Approved',            bg: '#F0FDF4', color: '#166534' },
-  approved_linked:     { label: 'Approved (Linked)',   bg: '#F0FDF4', color: '#166534' },
-  needs_clarification: { label: 'Needs Clarification', bg: '#EFF6FF', color: '#1E40AF' },
-  rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B' },
+const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  pending_approval:    { label: 'Pending Approval',    bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
+  approved_unlinked:   { label: 'Approved',            bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
+  approved_linked:     { label: 'Approved (Linked)',   bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
+  needs_clarification: { label: 'Needs Clarification', bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
+  rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
 }
 
 const PAYMENT_MODE_OPTIONS: { label: string; value: string }[] = [
@@ -66,6 +69,24 @@ const RECEIVED_IN_OPTIONS: { label: string; value: string }[] = [
   { label: 'Other',           value: 'other' },
 ]
 
+const FILTER_TABS: { key: FilterTab; label: string }[] = [
+  { key: 'pending',       label: 'Pending' },
+  { key: 'approved',      label: 'Approved' },
+  { key: 'clarification', label: 'Needs Clarification' },
+  { key: 'rejected',      label: 'Rejected' },
+  { key: 'all',           label: 'All' },
+]
+
+const EMPTY_MESSAGES: Record<FilterTab, string> = {
+  pending:       'No pending payment confirmations.',
+  approved:      'No approved payments yet.',
+  clarification: 'No payments awaiting clarification.',
+  rejected:      'No rejected payments.',
+  all:           'No payment confirmations yet.',
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
@@ -74,15 +95,22 @@ function fmtAmount(n: number) {
   return '₹' + n.toLocaleString('en-IN')
 }
 
+function matchesTab(r: PaymentRequest, tab: FilterTab): boolean {
+  switch (tab) {
+    case 'pending':       return r.status === 'pending_approval'
+    case 'approved':      return r.status === 'approved_unlinked' || r.status === 'approved_linked'
+    case 'clarification': return r.status === 'needs_clarification'
+    case 'rejected':      return r.status === 'rejected'
+    default:              return true
+  }
+}
+
 // ── Shared modal shell ────────────────────────────────────────────────────────
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <>
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 59 }}
-      />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 59 }} />
       <div style={{
         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
         width: '480px', maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
@@ -112,25 +140,81 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div style={{
-      padding: '10px 12px', borderRadius: '8px',
-      background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
-    }}>
+    <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px' }}>
       {message}
     </div>
   )
 }
 
-// ── Read-only detail row used inside admin review modal ───────────────────────
-
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-      <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        {label}
-      </span>
+      <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
       <span style={{ fontSize: '13px', color: colors.primary }}>{value}</span>
     </div>
+  )
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: string }) {
+  const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+      background: meta.bg, color: meta.color,
+      border: `1px solid ${meta.border}`,
+      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+    }}>
+      {meta.label}
+    </span>
+  )
+}
+
+// ── Read-only details modal (normal user) ─────────────────────────────────────
+
+function DetailsModal({ request: r, onClose }: { request: PaymentRequest; onClose: () => void }) {
+  const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+  return (
+    <Modal title="Payment Confirmation Details" onClose={onClose}>
+      {/* Status banner */}
+      <div style={{
+        padding: '10px 14px', borderRadius: '8px',
+        background: meta.bg, border: `1px solid ${meta.border}`,
+        fontSize: '12px', fontWeight: 600, color: meta.color,
+      }}>
+        {meta.label}
+      </div>
+
+      <div style={{
+        background: colors.raised, borderRadius: '8px', padding: '14px 16px',
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
+        border: `1px solid ${colors.border}`,
+      }}>
+        <DetailRow label="Client"       value={r.client_name} />
+        <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
+        <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
+        <DetailRow label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
+        <DetailRow label="Received In"  value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
+        <DetailRow label="Order No."    value={r.order_number ?? '—'} />
+        <div style={{ gridColumn: '1 / -1' }}>
+          <DetailRow label="Proof / Reference" value={r.proof_note} />
+        </div>
+        {r.sales_note && (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <DetailRow label="Sales Note" value={r.sales_note} />
+          </div>
+        )}
+        <DetailRow label="Submitted"    value={fmtDate(r.created_at)} />
+        {r.submitted_by_name && <DetailRow label="Submitted By" value={r.submitted_by_name} />}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
+          Close
+        </button>
+      </div>
+    </Modal>
   )
 }
 
@@ -170,7 +254,6 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
     if (!canSubmit) return
     setSaving(true)
     setError(null)
-
     const { error: dbError } = await supabase
       .from('finance_payment_requests')
       .insert({
@@ -185,7 +268,6 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
         status:       'pending_approval',
         submitted_by: userId,
       })
-
     setSaving(false)
     if (dbError) { setError(dbError.message); return }
     onSaved()
@@ -193,12 +275,10 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
 
   return (
     <Modal title="New Payment Confirmation" onClose={onClose}>
-
       <Field label="Client Name" required>
         <input className="boe-input" value={form.clientName} onChange={set('clientName')}
           placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
       </Field>
-
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Field label="Amount (₹)" required>
           <input className="boe-input" type="number" min="0" value={form.amount}
@@ -209,7 +289,6 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
             onChange={set('paymentDate')} style={{ width: '100%' }} />
         </Field>
       </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Field label="Payment Mode" required>
           <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
@@ -222,36 +301,28 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
           </select>
         </Field>
       </div>
-
       <Field label="Payment Proof / Reference Note" required>
         <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
           placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office"
           rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
-
       <Field label="Order Number (optional)">
         <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
           placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
       </Field>
-
       <Field label="Sales Note (optional)">
         <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
           placeholder="Any additional context for admin"
           rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
-
       {error && <ErrorBanner message={error} />}
-
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          Cancel
-        </button>
+        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
         <button onClick={handleSubmit} disabled={!canSubmit || saving}
           className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
           {saving ? 'Submitting…' : 'Submit Request'}
         </button>
       </div>
-
     </Modal>
   )
 }
@@ -267,11 +338,11 @@ type AdminReviewModalProps = {
 }
 
 function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onActioned }: AdminReviewModalProps) {
-  const [action, setAction]       = useState<AdminAction | null>(null)
-  const [adminNote, setAdminNote] = useState('')
+  const [action, setAction]           = useState<AdminAction | null>(null)
+  const [adminNote, setAdminNote]     = useState('')
   const [orderNumber, setOrderNumber] = useState(r.order_number ?? '')
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState<string | null>(null)
+  const [saving, setSaving]           = useState(false)
+  const [error, setError]             = useState<string | null>(null)
 
   const noteRequired = action === 'needs_clarification' || action === 'reject'
   const canConfirm   = action !== null && (!noteRequired || adminNote.trim())
@@ -280,67 +351,41 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
     if (!action) return
     setSaving(true)
     setError(null)
-
-    let newStatus: string
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updates: Record<string, any> = {
-      admin_note:   adminNote.trim() || null,
-      updated_at:   new Date().toISOString(),
+      admin_note: adminNote.trim() || null,
+      updated_at: new Date().toISOString(),
     }
-
     if (action === 'approve') {
-      const linked = orderNumber.trim() !== ''
-      newStatus = linked ? 'approved_linked' : 'approved_unlinked'
-      updates.status       = newStatus
+      updates.status       = orderNumber.trim() ? 'approved_linked' : 'approved_unlinked'
       updates.approved_by  = adminUserId
       updates.approved_at  = new Date().toISOString()
       updates.order_number = orderNumber.trim() || null
-    } else if (action === 'needs_clarification') {
-      updates.status = 'needs_clarification'
     } else {
-      updates.status = 'rejected'
+      updates.status = action === 'needs_clarification' ? 'needs_clarification' : 'rejected'
     }
-
     const { error: dbError } = await supabase
       .from('finance_payment_requests')
       .update(updates)
       .eq('id', r.id)
-
     setSaving(false)
     if (dbError) { setError(dbError.message); return }
     onActioned()
   }
 
-  // Action button styles
-  const actionStyle = (a: AdminAction): React.CSSProperties => {
+  const actionBtn = (a: AdminAction, label: string, activeColor: string, activeBg: string): React.CSSProperties => {
     const active = action === a
-    if (a === 'approve') return {
-      padding: '7px 16px', fontSize: '12px', fontWeight: 600, borderRadius: '7px',
-      border: `1px solid ${active ? colors.green : colors.border}`,
-      background: active ? colors.greenTint : 'transparent',
-      color: active ? colors.green : colors.secondary,
-      cursor: 'pointer',
-    }
-    if (a === 'needs_clarification') return {
-      padding: '7px 16px', fontSize: '12px', fontWeight: 600, borderRadius: '7px',
-      border: `1px solid ${active ? colors.blue : colors.border}`,
-      background: active ? colors.blueTint : 'transparent',
-      color: active ? colors.blue : colors.secondary,
-      cursor: 'pointer',
-    }
     return {
-      padding: '7px 16px', fontSize: '12px', fontWeight: 600, borderRadius: '7px',
-      border: `1px solid ${active ? colors.red : colors.border}`,
-      background: active ? colors.redTint : 'transparent',
-      color: active ? colors.red : colors.secondary,
-      cursor: 'pointer',
+      padding: '7px 16px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer',
+      border: `1px solid ${active ? activeColor : colors.border}`,
+      background: active ? activeBg : 'transparent',
+      color: active ? activeColor : colors.secondary,
     }
   }
 
   return (
     <Modal title="Review Payment Confirmation" onClose={onClose}>
-
-      {/* Request summary */}
+      {/* Summary */}
       <div style={{
         background: colors.raised, borderRadius: '8px', padding: '14px 16px',
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
@@ -360,21 +405,23 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
             <DetailRow label="Sales Note" value={r.sales_note} />
           </div>
         )}
+        {r.submitted_by_name && (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <DetailRow label="Submitted By" value={r.submitted_by_name} />
+          </div>
+        )}
       </div>
 
       {/* Action selector */}
       <div>
-        <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-          Action
-        </div>
+        <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Action</div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button style={actionStyle('approve')}          onClick={() => setAction('approve')}>Approve</button>
-          <button style={actionStyle('needs_clarification')} onClick={() => setAction('needs_clarification')}>Needs Clarification</button>
-          <button style={actionStyle('reject')}           onClick={() => setAction('reject')}>Reject</button>
+          <button style={actionBtn('approve',            'Approve',            colors.green, colors.greenTint)} onClick={() => setAction('approve')}>Approve</button>
+          <button style={actionBtn('needs_clarification','Needs Clarification',colors.blue,  colors.blueTint)}  onClick={() => setAction('needs_clarification')}>Needs Clarification</button>
+          <button style={actionBtn('reject',             'Reject',             colors.red,   colors.redTint)}   onClick={() => setAction('reject')}>Reject</button>
         </div>
       </div>
 
-      {/* Approve: order number field */}
       {action === 'approve' && (
         <Field label="Order Number (optional — links payment to order)">
           <input className="boe-input" value={orderNumber} onChange={e => setOrderNumber(e.target.value)}
@@ -382,56 +429,132 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
         </Field>
       )}
 
-      {/* Admin note */}
       {action && (
         <Field label={`Admin Note${noteRequired ? '' : ' (optional)'}`} required={noteRequired}>
-          <textarea
-            className="boe-input"
-            value={adminNote}
-            onChange={e => setAdminNote(e.target.value)}
+          <textarea className="boe-input" value={adminNote} onChange={e => setAdminNote(e.target.value)}
             placeholder={
-              action === 'approve'              ? 'Optional note for the salesperson' :
-              action === 'needs_clarification'  ? 'Explain what clarification is needed' :
-                                                  'Explain why this is being rejected'
+              action === 'approve'             ? 'Optional note for the salesperson' :
+              action === 'needs_clarification' ? 'Explain what clarification is needed' :
+                                                 'Explain why this is being rejected'
             }
-            rows={2}
-            style={{ width: '100%', resize: 'vertical' }}
-          />
+            rows={2} style={{ width: '100%', resize: 'vertical' }} />
         </Field>
       )}
 
       {error && <ErrorBanner message={error} />}
 
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          Cancel
-        </button>
-        <button
-          onClick={handleConfirm}
-          disabled={!canConfirm || saving}
-          className="boe-btn boe-btn-primary"
-          style={{ padding: '8px 18px', fontSize: '13px' }}
-        >
+        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
+        <button onClick={handleConfirm} disabled={!canConfirm || saving}
+          className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
           {saving ? 'Saving…' : 'Confirm'}
         </button>
       </div>
-
     </Modal>
   )
 }
 
-// ── Status badge ──────────────────────────────────────────────────────────────
+// ── Payments table ────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563' }
+const TH_STYLE: React.CSSProperties = {
+  padding: '9px 12px',
+  textAlign: 'left',
+  fontSize: '10px',
+  fontWeight: 700,
+  color: colors.muted,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  whiteSpace: 'nowrap',
+  borderBottom: `1px solid ${colors.border}`,
+  background: colors.raised,
+}
+
+function PaymentsTable({
+  rows,
+  isAdmin,
+  onRowClick,
+}: {
+  rows: PaymentRequest[]
+  isAdmin: boolean
+  onRowClick: (r: PaymentRequest) => void
+}) {
   return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-      background: meta.bg, color: meta.color,
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
-    }}>
-      {meta.label}
-    </span>
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
+        <thead>
+          <tr>
+            <th style={TH_STYLE}>Client</th>
+            <th style={TH_STYLE}>Order No.</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
+            <th style={TH_STYLE}>Payment Date</th>
+            <th style={TH_STYLE}>Mode</th>
+            <th style={TH_STYLE}>Received In</th>
+            <th style={TH_STYLE}>Submitted By</th>
+            <th style={TH_STYLE}>Submitted On</th>
+            <th style={TH_STYLE}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => {
+            const isPending  = r.status === 'pending_approval'
+            const isClarif   = r.status === 'needs_clarification'
+            const isRejected = r.status === 'rejected'
+            const accentColor =
+              isPending  ? '#F59E0B' :
+              isClarif   ? colors.blue :
+              isRejected ? colors.red :
+              'transparent'
+
+            return (
+              <tr
+                key={r.id}
+                onClick={() => onRowClick(r)}
+                style={{ cursor: 'pointer', borderLeft: `3px solid ${accentColor}` }}
+                onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
+                onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
+              >
+                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '13px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
+                  {r.client_name}
+                  {isAdmin && isPending && (
+                    <span style={{
+                      marginLeft: '6px', fontSize: '10px', fontWeight: 600,
+                      color: '#92400E', background: '#FEF3C7',
+                      padding: '1px 5px', borderRadius: '4px',
+                    }}>
+                      Review
+                    </span>
+                  )}
+                </td>
+                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic', whiteSpace: 'nowrap' }}>
+                  {r.order_number ?? '—'}
+                </td>
+                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {fmtAmount(r.amount)}
+                </td>
+                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                  {fmtDate(r.payment_date)}
+                </td>
+                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                  {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
+                </td>
+                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                  {RECEIVED_IN_LABEL[r.received_in] ?? r.received_in}
+                </td>
+                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                  {r.submitted_by_name ?? '—'}
+                </td>
+                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                  {fmtDate(r.created_at)}
+                </td>
+                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}` }}>
+                  <StatusBadge status={r.status} />
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -441,15 +564,19 @@ export default function FinancePage() {
   const [pageLoading, setPageLoading]   = useState(true)
   const [userId, setUserId]             = useState<string>('')
   const [isAdmin, setIsAdmin]           = useState(false)
+  const [profile, setProfile]           = useState<UserProfile | null>(null)
   const [requests, setRequests]         = useState<PaymentRequest[]>([])
   const [listLoading, setListLoading]   = useState(false)
   const [showForm, setShowForm]         = useState(false)
   const [reviewRequest, setReviewRequest] = useState<PaymentRequest | null>(null)
+  const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
+  const [activeTab, setActiveTab]       = useState<FilterTab>('pending')
+  const [search, setSearch]             = useState('')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  // ── Auth + profile + initial load ───────────────────────────────────────────
+  // ── Auth + profile ───────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -458,13 +585,14 @@ export default function FinancePage() {
       const uid = session.user.id
       setUserId(uid)
 
-      const { data: profile } = await supabase
+      const { data: me } = await supabase
         .from('users')
-        .select('role')
+        .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code')
         .eq('id', uid)
         .single()
 
-      setIsAdmin(profile?.role === 'admin')
+      setProfile(me as UserProfile)
+      setIsAdmin(me?.role === 'admin')
       await loadRequests()
       setPageLoading(false)
     }
@@ -472,144 +600,149 @@ export default function FinancePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Fetch list (RLS scopes automatically: own rows for sales, all for admin) ─
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
+
+  // ── Fetch — join submitted_by_name via users ─────────────────────────────────
   const loadRequests = async () => {
     setListLoading(true)
     const { data } = await supabase
       .from('finance_payment_requests')
-      .select('id, client_name, amount, payment_date, payment_mode, received_in, proof_note, order_number, sales_note, status, submitted_by, created_at')
+      .select(`
+        id, client_name, amount, payment_date, payment_mode,
+        received_in, proof_note, order_number, sales_note,
+        status, submitted_by, created_at,
+        submitted_by_user:users!submitted_by(full_name)
+      `)
       .order('created_at', { ascending: false })
-    setRequests((data ?? []) as PaymentRequest[])
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
+      ...r,
+      submitted_by_name: r.submitted_by_user?.full_name ?? undefined,
+      submitted_by_user: undefined,
+    }))
+    setRequests(mapped)
     setListLoading(false)
   }
 
-  // ── Status counts ────────────────────────────────────────────────────────────
-  const counts = {
-    pending_approval:    requests.filter(r => r.status === 'pending_approval').length,
-    approved:            requests.filter(r => r.status === 'approved_unlinked' || r.status === 'approved_linked').length,
-    needs_clarification: requests.filter(r => r.status === 'needs_clarification').length,
-    rejected:            requests.filter(r => r.status === 'rejected').length,
+  // ── Filtered + searched list (client-side, newest-first already from DB) ─────
+  const visible = useMemo(() => {
+    let list = requests.filter(r => matchesTab(r, activeTab))
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter(r =>
+        r.client_name.toLowerCase().includes(q) ||
+        (r.order_number ?? '').toLowerCase().includes(q)
+      )
+    }
+    return list
+  }, [requests, activeTab, search])
+
+  // ── Status counts (across all unfiltered) ────────────────────────────────────
+  const counts = useMemo(() => ({
+    pending:       requests.filter(r => r.status === 'pending_approval').length,
+    approved:      requests.filter(r => r.status === 'approved_unlinked' || r.status === 'approved_linked').length,
+    clarification: requests.filter(r => r.status === 'needs_clarification').length,
+    rejected:      requests.filter(r => r.status === 'rejected').length,
+    all:           requests.length,
+  }), [requests])
+
+  const tabCount: Record<FilterTab, number> = {
+    pending:       counts.pending,
+    approved:      counts.approved,
+    clarification: counts.clarification,
+    rejected:      counts.rejected,
+    all:           counts.all,
   }
 
-  const STATUS_CHIPS = [
-    { label: 'Pending Approval',    count: counts.pending_approval,    bg: '#FFFBEB', color: '#92400E' },
-    { label: 'Approved',            count: counts.approved,            bg: '#F0FDF4', color: '#166534' },
-    { label: 'Needs Clarification', count: counts.needs_clarification, bg: '#EFF6FF', color: '#1E40AF' },
-    { label: 'Rejected',            count: counts.rejected,            bg: '#FEF2F2', color: '#991B1B' },
-  ]
+  // ── Row click handler ────────────────────────────────────────────────────────
+  const handleRowClick = (r: PaymentRequest) => {
+    if (isAdmin && r.status === 'pending_approval') {
+      setReviewRequest(r)
+    } else {
+      setDetailRequest(r)
+    }
+  }
 
   if (pageLoading) return <LoadingScreen />
 
   return (
-    <PageShell
-      title="Finance"
-      subtitle="Payment confirmations, order advances, and finance approvals."
+    <FinanceLayout
+      profile={profile}
+      title="Payment Confirmations"
+      subtitle="Sales can submit customer payment details here for admin confirmation."
+      onSignOut={handleSignOut}
+      onRefresh={loadRequests}
       actions={
-        <button onClick={() => router.push('/modules')} className="boe-btn boe-btn-ghost"
+        <button onClick={() => setShowForm(true)} className="boe-btn boe-btn-primary"
           style={{ padding: '6px 14px', fontSize: '12px' }}>
-          ← Modules
+          + New
         </button>
       }
     >
+      <div className="boe-card" style={{ overflow: 'hidden' }}>
 
-      {/* ── Payment Confirmations section ── */}
-      <div className="boe-card" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, marginBottom: '4px' }}>
-              Payment Confirmations
-            </div>
-            <div style={{ fontSize: '12px', color: colors.muted }}>
-              Sales can submit customer payment details here for admin confirmation.
-            </div>
-          </div>
-          <button onClick={() => setShowForm(true)} className="boe-btn boe-btn-primary"
-            style={{ padding: '8px 18px', fontSize: '13px', flexShrink: 0 }}>
-            + New Payment Confirmation
-          </button>
-        </div>
-
-        {/* Status chips */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-          {STATUS_CHIPS.map(chip => (
-            <span key={chip.label} style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '4px 10px', borderRadius: '6px',
-              background: chip.bg, color: chip.color,
-              fontSize: '11px', fontWeight: 600,
-            }}>
-              {chip.label}
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                minWidth: '16px', height: '16px', borderRadius: '4px',
-                background: 'rgba(0,0,0,0.08)', fontSize: '10px', fontWeight: 700,
-              }}>{chip.count}</span>
-            </span>
-          ))}
-        </div>
-
-        {/* List */}
-        <div style={{ borderTop: `1px solid ${colors.border}` }}>
-          {listLoading ? (
-            <div style={{ padding: '32px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
-          ) : requests.length === 0 ? (
-            <div style={{ padding: '32px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
-              No payment confirmations yet.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {requests.map((r, i) => (
-                <div key={r.id} style={{
-                  padding: '14px 0',
-                  borderBottom: i < requests.length - 1 ? `1px solid ${colors.border}` : 'none',
-                  display: 'flex', flexDirection: 'column', gap: '6px',
+        {/* ── Filter tabs + search ── */}
+        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          {FILTER_TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => { setActiveTab(tab.key); setSearch('') }}
+              className={`boe-filter-tab${activeTab === tab.key ? ' boe-filter-tab-active' : ''}`}
+            >
+              {tab.label}
+              {tabCount[tab.key] > 0 && (
+                <span style={{
+                  marginLeft: '5px',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: '16px', height: '16px', borderRadius: '4px',
+                  background: activeTab === tab.key ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.08)',
+                  fontSize: '10px', fontWeight: 700,
                 }}>
-                  {/* Row 1: client + amount + status + admin button */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                    <div style={{ fontWeight: 600, fontSize: '14px', color: colors.primary }}>
-                      {r.client_name}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 700, fontSize: '14px', color: colors.primary }}>
-                        {fmtAmount(r.amount)}
-                      </span>
-                      <StatusBadge status={r.status} />
-                      {isAdmin && r.status === 'pending_approval' && (
-                        <button
-                          onClick={() => setReviewRequest(r)}
-                          className="boe-btn boe-btn-ghost"
-                          style={{ padding: '3px 10px', fontSize: '11px', fontWeight: 600 }}
-                        >
-                          Review
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  {tabCount[tab.key]}
+                </span>
+              )}
+            </button>
+          ))}
 
-                  {/* Row 2: meta details */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '12px', color: colors.secondary }}>
-                    <span>{fmtDate(r.payment_date)}</span>
-                    <span>·</span>
-                    <span>{PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}</span>
-                    <span>·</span>
-                    <span>{RECEIVED_IN_LABEL[r.received_in] ?? r.received_in}</span>
-                    <span>·</span>
-                    <span style={{
-                      color: r.order_number ? colors.secondary : colors.muted,
-                      fontStyle: r.order_number ? 'normal' : 'italic',
-                    }}>
-                      {r.order_number ?? 'Order pending'}
-                    </span>
-                    <span>·</span>
-                    <span style={{ color: colors.muted }}>Submitted {fmtDate(r.created_at)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Search — right-aligned */}
+          <div style={{
+            marginLeft: 'auto',
+            display: 'flex', alignItems: 'center', gap: '6px',
+            background: colors.raised, border: `1px solid ${colors.border}`,
+            borderRadius: '6px', padding: '5px 10px', minWidth: '160px',
+          }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Client or order…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
+            )}
+          </div>
         </div>
+
+        {/* ── Table ── */}
+        {listLoading ? (
+          <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
+        ) : visible.length === 0 ? (
+          <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
+            {search.trim()
+              ? `No results for "${search.trim()}".`
+              : EMPTY_MESSAGES[activeTab]}
+          </div>
+        ) : (
+          <PaymentsTable rows={visible} isAdmin={isAdmin} onRowClick={handleRowClick} />
+        )}
 
       </div>
 
@@ -622,7 +755,6 @@ export default function FinancePage() {
           onSaved={() => { setShowForm(false); loadRequests() }}
         />
       )}
-
       {reviewRequest && (
         <AdminReviewModal
           request={reviewRequest}
@@ -632,7 +764,13 @@ export default function FinancePage() {
           onActioned={() => { setReviewRequest(null); loadRequests() }}
         />
       )}
+      {detailRequest && (
+        <DetailsModal
+          request={detailRequest}
+          onClose={() => setDetailRequest(null)}
+        />
+      )}
 
-    </PageShell>
+    </FinanceLayout>
   )
 }
