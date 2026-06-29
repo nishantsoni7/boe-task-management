@@ -23,11 +23,12 @@ type PaymentRequest = {
   status: string
   submitted_by: string
   submitted_by_name?: string
+  admin_note: string | null
   created_at: string
 }
 
 type AdminAction = 'approve' | 'needs_clarification' | 'reject'
-type FilterTab   = 'pending' | 'approved' | 'clarification' | 'rejected' | 'all'
+type FilterTab   = 'pending' | 'order_pending' | 'clarification' | 'rejected' | 'all'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -47,9 +48,9 @@ const RECEIVED_IN_LABEL: Record<string, string> = {
 }
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  pending_approval:    { label: 'Pending Approval',    bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
-  approved_unlinked:   { label: 'Approved',            bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
-  approved_linked:     { label: 'Approved (Linked)',   bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
+  pending_approval:    { label: 'Pending',             bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
+  approved_unlinked:   { label: 'Order No. Pending',   bg: '#FFF7ED', color: '#92400E', border: '#FED7AA' },
+  approved_linked:     { label: 'Received Payment',    bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
   needs_clarification: { label: 'Needs Clarification', bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
   rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
 }
@@ -71,7 +72,7 @@ const RECEIVED_IN_OPTIONS: { label: string; value: string }[] = [
 
 const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: 'pending',       label: 'Pending' },
-  { key: 'approved',      label: 'Approved' },
+  { key: 'order_pending', label: 'Order No. Pending' },
   { key: 'clarification', label: 'Needs Clarification' },
   { key: 'rejected',      label: 'Rejected' },
   { key: 'all',           label: 'All' },
@@ -79,10 +80,10 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
 
 const EMPTY_MESSAGES: Record<FilterTab, string> = {
   pending:       'No pending payment confirmations.',
-  approved:      'No approved payments yet.',
+  order_pending: 'No payments with order number pending.',
   clarification: 'No payments awaiting clarification.',
   rejected:      'No rejected payments.',
-  all:           'No payment confirmations yet.',
+  all:           'No payment confirmations here.',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -105,10 +106,10 @@ function fmtDateTime(iso: string) {
 function matchesTab(r: PaymentRequest, tab: FilterTab): boolean {
   switch (tab) {
     case 'pending':       return r.status === 'pending_approval'
-    case 'approved':      return r.status === 'approved_unlinked' || r.status === 'approved_linked'
+    case 'order_pending': return r.status === 'approved_unlinked'
     case 'clarification': return r.status === 'needs_clarification'
     case 'rejected':      return r.status === 'rejected'
-    default:              return true
+    default:              return r.status !== 'approved_linked'
   }
 }
 
@@ -178,10 +179,60 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-// ── Read-only details modal (normal user) ─────────────────────────────────────
+// ── Status correction options (admin) ────────────────────────────────────────
 
-function DetailsModal({ request: r, onClose }: { request: PaymentRequest; onClose: () => void }) {
+const STATUS_CORRECTION_OPTIONS: { value: string; label: string }[] = [
+  { value: 'pending_approval',    label: 'Pending Review' },
+  { value: 'needs_clarification', label: 'Needs Clarification' },
+  { value: 'approved_unlinked',   label: 'Received – Order No. Pending' },
+  { value: 'approved_linked',     label: 'Received – Order No. Added' },
+  { value: 'rejected',            label: 'Rejected' },
+]
+
+// ── Details modal (read-only for creators; includes status correction for admin) ──
+
+function DetailsModal({
+  request: r,
+  onClose,
+  isAdmin,
+  supabase,
+  onCorrected,
+}: {
+  request: PaymentRequest
+  onClose: () => void
+  isAdmin?: boolean
+  supabase?: ReturnType<typeof createClient>
+  onCorrected?: () => void
+}) {
   const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+
+  const [newStatus,       setNewStatus]       = useState(r.status)
+  const [correctionNote,  setCorrectionNote]  = useState('')
+  const [correcting,      setCorrecting]      = useState(false)
+  const [correctionError, setCorrectionError] = useState<string | null>(null)
+
+  const noteRequiredForCorrection = newStatus === 'needs_clarification' || newStatus === 'rejected'
+  const linkedRequiresOrderNo = newStatus === 'approved_linked' && !r.order_number?.trim()
+  const statusChanged = newStatus !== r.status
+  const canCorrect = statusChanged && (!noteRequiredForCorrection || correctionNote.trim()) && !linkedRequiresOrderNo
+
+  const handleCorrect = async () => {
+    if (!canCorrect || !supabase || !onCorrected) return
+    setCorrecting(true)
+    setCorrectionError(null)
+    const { error: dbError } = await supabase
+      .from('finance_payment_requests')
+      .update({
+        status:     newStatus,
+        admin_note: correctionNote.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', r.id)
+    setCorrecting(false)
+    if (dbError) { setCorrectionError(dbError.message); return }
+    onCorrected()
+  }
+
   return (
     <Modal title="Payment Confirmation Details" onClose={onClose}>
       {/* Status banner */}
@@ -192,6 +243,19 @@ function DetailsModal({ request: r, onClose }: { request: PaymentRequest; onClos
       }}>
         {meta.label}
       </div>
+
+      {/* Clarification note from admin */}
+      {r.status === 'needs_clarification' && r.admin_note && (
+        <div style={{
+          padding: '12px 14px', borderRadius: '8px',
+          background: '#EFF6FF', border: '1px solid #BFDBFE',
+        }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#1E40AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            Clarification Required
+          </div>
+          <div style={{ fontSize: '13px', color: '#1E3A8A', lineHeight: 1.6 }}>{r.admin_note}</div>
+        </div>
+      )}
 
       <div style={{
         background: colors.raised, borderRadius: '8px', padding: '14px 16px',
@@ -215,6 +279,67 @@ function DetailsModal({ request: r, onClose }: { request: PaymentRequest; onClos
         <DetailRow label="Submitted"    value={fmtDate(r.created_at)} />
         {r.submitted_by_name && <DetailRow label="Submitted By" value={r.submitted_by_name} />}
       </div>
+
+      {/* Admin-only status correction */}
+      {isAdmin && supabase && onCorrected && (
+        <div style={{
+          borderTop: `1px solid ${colors.border}`,
+          paddingTop: '14px',
+          display: 'flex', flexDirection: 'column', gap: '10px',
+        }}>
+          <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Admin — Correct Status
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <select
+              className="boe-input"
+              value={newStatus}
+              onChange={e => { setNewStatus(e.target.value); setCorrectionNote(''); setCorrectionError(null) }}
+              style={{ fontSize: '12px', flex: '1 1 180px' }}
+            >
+              {STATUS_CORRECTION_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          {statusChanged && noteRequiredForCorrection && (
+            <textarea
+              className="boe-input"
+              value={correctionNote}
+              onChange={e => setCorrectionNote(e.target.value)}
+              placeholder={newStatus === 'needs_clarification' ? 'Clarification note (required)' : 'Rejection reason (required)'}
+              rows={2}
+              style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
+            />
+          )}
+          {statusChanged && !noteRequiredForCorrection && (
+            <textarea
+              className="boe-input"
+              value={correctionNote}
+              onChange={e => setCorrectionNote(e.target.value)}
+              placeholder="Admin note (optional)"
+              rows={2}
+              style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
+            />
+          )}
+          {linkedRequiresOrderNo && (
+            <ErrorBanner message="Order number is required before moving to Received Payments." />
+          )}
+          {correctionError && <ErrorBanner message={correctionError} />}
+          {statusChanged && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={handleCorrect}
+                disabled={!canCorrect || correcting}
+                className="boe-btn boe-btn-primary"
+                style={{ padding: '7px 16px', fontSize: '12px' }}
+              >
+                {correcting ? 'Saving…' : 'Save Correction'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
@@ -367,8 +492,14 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
 
   const handleSave = async () => {
     if (!canSubmit) return
+    if (r.status === 'approved_linked' && !form.orderNumber.trim()) {
+      setError('Order number is required for Received Payments.')
+      return
+    }
     setSaving(true)
     setError(null)
+    const newOrderNumber = form.orderNumber.trim() || null
+    const autoUpgrade = isAdmin && r.status === 'approved_unlinked' && !!newOrderNumber
     const { data: updated, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
@@ -378,10 +509,10 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         payment_mode: form.paymentMode,
         received_in:  form.receivedIn,
         proof_note:   form.proofNote.trim(),
-        order_number: form.orderNumber.trim() || null,
+        order_number: newOrderNumber,
         sales_note:   form.salesNote.trim()   || null,
-        // Creator resubmits for review; admin edits never change status
         ...(!isAdmin && r.status === 'needs_clarification' ? { status: 'pending_approval' } : {}),
+        ...(autoUpgrade ? { status: 'approved_linked' } : {}),
         updated_at:   new Date().toISOString(),
       })
       .eq('id', r.id)
@@ -396,8 +527,19 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   return (
     <Modal title="Edit Payment Confirmation" onClose={onClose}>
       {!isAdmin && r.status === 'needs_clarification' && (
-        <div style={{ padding: '8px 12px', borderRadius: '7px', background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '12px', color: '#1E40AF' }}>
-          Saving will resubmit this request for admin review.
+        <div style={{
+          padding: '12px 14px', borderRadius: '8px',
+          background: '#EFF6FF', border: '1px solid #BFDBFE',
+        }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#1E40AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: r.admin_note ? '6px' : '0' }}>
+            Clarification Required
+          </div>
+          {r.admin_note && (
+            <div style={{ fontSize: '13px', color: '#1E3A8A', lineHeight: 1.6, marginBottom: '6px' }}>{r.admin_note}</div>
+          )}
+          <div style={{ fontSize: '11px', color: '#3B82F6', marginTop: '4px' }}>
+            Saving your changes will resubmit this request for admin review.
+          </div>
         </div>
       )}
       <Field label="Client Name" required>
@@ -463,11 +605,10 @@ type AdminReviewModalProps = {
 }
 
 function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onActioned }: AdminReviewModalProps) {
-  const [action, setAction]           = useState<AdminAction | null>(null)
-  const [adminNote, setAdminNote]     = useState('')
-  const [orderNumber, setOrderNumber] = useState(r.order_number ?? '')
-  const [saving, setSaving]           = useState(false)
-  const [error, setError]             = useState<string | null>(null)
+  const [action,    setAction]    = useState<AdminAction | null>(null)
+  const [adminNote, setAdminNote] = useState('')
+  const [saving,    setSaving]    = useState(false)
+  const [error,     setError]     = useState<string | null>(null)
 
   const noteRequired = action === 'needs_clarification' || action === 'reject'
   const canConfirm   = action !== null && (!noteRequired || adminNote.trim())
@@ -482,10 +623,9 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
       updated_at: new Date().toISOString(),
     }
     if (action === 'approve') {
-      updates.status       = orderNumber.trim() ? 'approved_linked' : 'approved_unlinked'
-      updates.approved_by  = adminUserId
-      updates.approved_at  = new Date().toISOString()
-      updates.order_number = orderNumber.trim() || null
+      updates.status      = r.order_number?.trim() ? 'approved_linked' : 'approved_unlinked'
+      updates.approved_by = adminUserId
+      updates.approved_at = new Date().toISOString()
     } else {
       updates.status = action === 'needs_clarification' ? 'needs_clarification' : 'rejected'
     }
@@ -541,18 +681,11 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
       <div>
         <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Action</div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button style={actionBtn('approve',            'Approve',            colors.green, colors.greenTint)} onClick={() => setAction('approve')}>Approve</button>
+          <button style={actionBtn('approve', 'Mark Payment Received', colors.green, colors.greenTint)} onClick={() => setAction('approve')}>Mark Payment Received</button>
           <button style={actionBtn('needs_clarification','Needs Clarification',colors.blue,  colors.blueTint)}  onClick={() => setAction('needs_clarification')}>Needs Clarification</button>
           <button style={actionBtn('reject',             'Reject',             colors.red,   colors.redTint)}   onClick={() => setAction('reject')}>Reject</button>
         </div>
       </div>
-
-      {action === 'approve' && (
-        <Field label="Order Number (optional — links payment to order)">
-          <input className="boe-input" value={orderNumber} onChange={e => setOrderNumber(e.target.value)}
-            placeholder="Leave blank to approve as unlinked" style={{ width: '100%' }} />
-        </Field>
-      )}
 
       {action && (
         <Field label={`Admin Note${noteRequired ? '' : ' (optional)'}`} required={noteRequired}>
@@ -868,9 +1001,10 @@ export default function FinancePage() {
       .select(`
         id, client_name, amount, payment_date, payment_mode,
         received_in, proof_note, order_number, sales_note,
-        status, submitted_by, created_at,
+        status, submitted_by, admin_note, created_at,
         submitted_by_user:users!submitted_by(full_name)
       `)
+      .neq('status', 'approved_linked')
       .order('created_at', { ascending: false })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -899,15 +1033,15 @@ export default function FinancePage() {
   // ── Status counts (across all unfiltered) ────────────────────────────────────
   const counts = useMemo(() => ({
     pending:       requests.filter(r => r.status === 'pending_approval').length,
-    approved:      requests.filter(r => r.status === 'approved_unlinked' || r.status === 'approved_linked').length,
+    order_pending: requests.filter(r => r.status === 'approved_unlinked').length,
     clarification: requests.filter(r => r.status === 'needs_clarification').length,
     rejected:      requests.filter(r => r.status === 'rejected').length,
-    all:           requests.length,
+    all:           requests.filter(r => r.status !== 'approved_linked').length,
   }), [requests])
 
   const tabCount: Record<FilterTab, number> = {
     pending:       counts.pending,
-    approved:      counts.approved,
+    order_pending: counts.order_pending,
     clarification: counts.clarification,
     rejected:      counts.rejected,
     all:           counts.all,
@@ -1031,6 +1165,9 @@ export default function FinancePage() {
         <DetailsModal
           request={detailRequest}
           onClose={() => setDetailRequest(null)}
+          isAdmin={isAdmin}
+          supabase={supabase}
+          onCorrected={() => { setDetailRequest(null); loadRequests() }}
         />
       )}
       {editRequest && (
