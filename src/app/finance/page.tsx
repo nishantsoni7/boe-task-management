@@ -327,6 +327,123 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
   )
 }
 
+// ── Edit Payment modal (creator only) ────────────────────────────────────────
+
+type EditPaymentModalProps = {
+  request: PaymentRequest
+  supabase: ReturnType<typeof createClient>
+  onClose: () => void
+  onSaved: () => void
+}
+
+function EditPaymentModal({ request: r, supabase, onClose, onSaved }: EditPaymentModalProps) {
+  const [form, setForm] = useState({
+    clientName:  r.client_name,
+    amount:      String(r.amount),
+    paymentDate: r.payment_date,
+    paymentMode: r.payment_mode,
+    receivedIn:  r.received_in,
+    proofNote:   r.proof_note,
+    orderNumber: r.order_number ?? '',
+    salesNote:   r.sales_note  ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+
+  const set = (key: keyof typeof form) => (
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm(prev => ({ ...prev, [key]: e.target.value }))
+  )
+
+  const canSubmit = form.clientName.trim() && form.amount.trim() && form.paymentDate && form.proofNote.trim()
+
+  const handleSave = async () => {
+    if (!canSubmit) return
+    setSaving(true)
+    setError(null)
+    const { data: updated, error: dbError } = await supabase
+      .from('finance_payment_requests')
+      .update({
+        client_name:  form.clientName.trim(),
+        amount:       parseFloat(form.amount),
+        payment_date: form.paymentDate,
+        payment_mode: form.paymentMode,
+        received_in:  form.receivedIn,
+        proof_note:   form.proofNote.trim(),
+        order_number: form.orderNumber.trim() || null,
+        sales_note:   form.salesNote.trim()   || null,
+        // Resubmit for review if clarification was requested
+        ...(r.status === 'needs_clarification' ? { status: 'pending_approval' } : {}),
+        updated_at:   new Date().toISOString(),
+      })
+      .eq('id', r.id)
+      .select('id, client_name, amount, status')
+      .single()
+    setSaving(false)
+    if (dbError) { setError(dbError.message); return }
+    if (!updated) { setError('No row was updated. Check permissions or row status.'); return }
+    onSaved()
+  }
+
+  return (
+    <Modal title="Edit Payment Confirmation" onClose={onClose}>
+      {r.status === 'needs_clarification' && (
+        <div style={{ padding: '8px 12px', borderRadius: '7px', background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '12px', color: '#1E40AF' }}>
+          Saving will resubmit this request for admin review.
+        </div>
+      )}
+      <Field label="Client Name" required>
+        <input className="boe-input" value={form.clientName} onChange={set('clientName')}
+          placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
+      </Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <Field label="Amount (₹)" required>
+          <input className="boe-input" type="number" min="0" value={form.amount}
+            onChange={set('amount')} placeholder="0" style={{ width: '100%' }} />
+        </Field>
+        <Field label="Payment Date" required>
+          <input className="boe-input" type="date" value={form.paymentDate}
+            onChange={set('paymentDate')} style={{ width: '100%' }} />
+        </Field>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <Field label="Payment Mode" required>
+          <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
+            {PAYMENT_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Received In" required>
+          <select className="boe-input" value={form.receivedIn} onChange={set('receivedIn')} style={{ width: '100%' }}>
+            {RECEIVED_IN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </Field>
+      </div>
+      <Field label="Payment Proof / Reference Note" required>
+        <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
+          placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office"
+          rows={2} style={{ width: '100%', resize: 'vertical' }} />
+      </Field>
+      <Field label="Order Number (optional)">
+        <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
+          placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
+      </Field>
+      <Field label="Sales Note (optional)">
+        <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
+          placeholder="Any additional context for admin"
+          rows={2} style={{ width: '100%', resize: 'vertical' }} />
+      </Field>
+      {error && <ErrorBanner message={error} />}
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
+        <button onClick={handleSave} disabled={!canSubmit || saving}
+          className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
+          {saving ? 'Saving…' : 'Save Changes'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Admin Review modal ────────────────────────────────────────────────────────
 
 type AdminReviewModalProps = {
@@ -469,18 +586,28 @@ const TH_STYLE: React.CSSProperties = {
   background: colors.raised,
 }
 
+const EDITABLE_STATUSES = new Set(['pending_approval', 'needs_clarification'])
+
 function PaymentsTable({
   rows,
   isAdmin,
+  userId,
   onRowClick,
+  onView,
+  onEdit,
 }: {
   rows: PaymentRequest[]
   isAdmin: boolean
+  userId: string
   onRowClick: (r: PaymentRequest) => void
+  onView: (r: PaymentRequest) => void
+  onEdit: (r: PaymentRequest) => void
 }) {
+  const TD: React.CSSProperties = { padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
+
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
         <thead>
           <tr>
             <th style={TH_STYLE}>Client</th>
@@ -492,6 +619,7 @@ function PaymentsTable({
             <th style={TH_STYLE}>Submitted By</th>
             <th style={TH_STYLE}>Submitted On</th>
             <th style={TH_STYLE}>Status</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -505,6 +633,9 @@ function PaymentsTable({
               isRejected ? colors.red :
               'transparent'
 
+            const showEdit   = isAdmin || (r.submitted_by === userId && EDITABLE_STATUSES.has(r.status))
+            const showDelete = isAdmin
+
             return (
               <tr
                 key={r.id}
@@ -513,7 +644,7 @@ function PaymentsTable({
                 onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
                 onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
               >
-                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '13px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
+                <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                   {r.client_name}
                   {isAdmin && isPending && (
                     <span style={{
@@ -525,29 +656,73 @@ function PaymentsTable({
                     </span>
                   )}
                 </td>
-                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic', whiteSpace: 'nowrap' }}>
+                <td style={{ ...TD, fontSize: '12px', color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic' }}>
                   {r.order_number ?? '—'}
                 </td>
-                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right' }}>
                   {fmtAmount(r.amount)}
                 </td>
-                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {fmtDate(r.payment_date)}
                 </td>
-                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
                 </td>
-                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {RECEIVED_IN_LABEL[r.received_in] ?? r.received_in}
                 </td>
-                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {r.submitted_by_name ?? '—'}
                 </td>
-                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}`, fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                <td style={{ ...TD, fontSize: '12px', color: colors.muted }}>
                   {fmtDate(r.created_at)}
                 </td>
-                <td style={{ padding: '10px 12px', borderBottom: `1px solid ${colors.border}` }}>
+                <td style={TD}>
                   <StatusBadge status={r.status} />
+                </td>
+                <td style={{ ...TD, textAlign: 'right' }}>
+                  <div
+                    style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => onView(r)}
+                      className="boe-btn boe-btn-ghost"
+                      style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                    >
+                      View
+                    </button>
+                    {showEdit && (
+                      isAdmin ? (
+                        <button
+                          disabled
+                          className="boe-btn boe-btn-ghost"
+                          style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, opacity: 0.45, cursor: 'not-allowed' }}
+                          title="Admin edit — coming next"
+                        >
+                          Edit
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onEdit(r)}
+                          className="boe-btn boe-btn-ghost"
+                          style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                        >
+                          Edit
+                        </button>
+                      )
+                    )}
+                    {showDelete && (
+                      <button
+                        disabled
+                        className="boe-btn boe-btn-ghost"
+                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, opacity: 0.45, cursor: 'not-allowed', color: colors.red }}
+                        title="Delete — coming next"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             )
@@ -567,9 +742,10 @@ export default function FinancePage() {
   const [profile, setProfile]           = useState<UserProfile | null>(null)
   const [requests, setRequests]         = useState<PaymentRequest[]>([])
   const [listLoading, setListLoading]   = useState(false)
-  const [showForm, setShowForm]         = useState(false)
+  const [showForm, setShowForm]           = useState(false)
   const [reviewRequest, setReviewRequest] = useState<PaymentRequest | null>(null)
   const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
+  const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
   const [activeTab, setActiveTab]       = useState<FilterTab>('pending')
   const [search, setSearch]             = useState('')
 
@@ -741,7 +917,14 @@ export default function FinancePage() {
               : EMPTY_MESSAGES[activeTab]}
           </div>
         ) : (
-          <PaymentsTable rows={visible} isAdmin={isAdmin} onRowClick={handleRowClick} />
+          <PaymentsTable
+            rows={visible}
+            isAdmin={isAdmin}
+            userId={userId}
+            onRowClick={handleRowClick}
+            onView={r => setDetailRequest(r)}
+            onEdit={r => setEditRequest(r)}
+          />
         )}
 
       </div>
@@ -768,6 +951,14 @@ export default function FinancePage() {
         <DetailsModal
           request={detailRequest}
           onClose={() => setDetailRequest(null)}
+        />
+      )}
+      {editRequest && (
+        <EditPaymentModal
+          request={editRequest}
+          supabase={supabase}
+          onClose={() => setEditRequest(null)}
+          onSaved={() => { setEditRequest(null); loadRequests() }}
         />
       )}
 
