@@ -331,12 +331,13 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
 
 type EditPaymentModalProps = {
   request: PaymentRequest
+  isAdmin: boolean
   supabase: ReturnType<typeof createClient>
   onClose: () => void
   onSaved: () => void
 }
 
-function EditPaymentModal({ request: r, supabase, onClose, onSaved }: EditPaymentModalProps) {
+function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: EditPaymentModalProps) {
   const [form, setForm] = useState({
     clientName:  r.client_name,
     amount:      String(r.amount),
@@ -372,8 +373,8 @@ function EditPaymentModal({ request: r, supabase, onClose, onSaved }: EditPaymen
         proof_note:   form.proofNote.trim(),
         order_number: form.orderNumber.trim() || null,
         sales_note:   form.salesNote.trim()   || null,
-        // Resubmit for review if clarification was requested
-        ...(r.status === 'needs_clarification' ? { status: 'pending_approval' } : {}),
+        // Creator resubmits for review; admin edits never change status
+        ...(!isAdmin && r.status === 'needs_clarification' ? { status: 'pending_approval' } : {}),
         updated_at:   new Date().toISOString(),
       })
       .eq('id', r.id)
@@ -387,7 +388,7 @@ function EditPaymentModal({ request: r, supabase, onClose, onSaved }: EditPaymen
 
   return (
     <Modal title="Edit Payment Confirmation" onClose={onClose}>
-      {r.status === 'needs_clarification' && (
+      {!isAdmin && r.status === 'needs_clarification' && (
         <div style={{ padding: '8px 12px', borderRadius: '7px', background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '12px', color: '#1E40AF' }}>
           Saving will resubmit this request for admin review.
         </div>
@@ -695,10 +696,9 @@ function PaymentsTable({
                     {showEdit && (
                       isAdmin ? (
                         <button
-                          disabled
+                          onClick={() => onEdit(r)}
                           className="boe-btn boe-btn-ghost"
-                          style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, opacity: 0.45, cursor: 'not-allowed' }}
-                          title="Admin edit — coming next"
+                          style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
                         >
                           Edit
                         </button>
@@ -956,6 +956,7 @@ export default function FinancePage() {
       {editRequest && (
         <EditPaymentModal
           request={editRequest}
+          isAdmin={isAdmin}
           supabase={supabase}
           onClose={() => setEditRequest(null)}
           onSaved={() => { setEditRequest(null); loadRequests() }}
