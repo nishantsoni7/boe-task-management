@@ -1,0 +1,25 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { LoadingScreen } from '@/components/ui/atoms'
+
+export default function OrdersGuard({ children }: { children: React.ReactNode }) {
+  const [authorized, setAuthorized] = useState(false)
+  const router   = useRouter()
+  const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    const check = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.replace('/login'); return }
+      setAuthorized(true)
+    }
+    check()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  if (!authorized) return <LoadingScreen />
+  return <>{children}</>
+}

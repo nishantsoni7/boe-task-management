@@ -19,12 +19,21 @@ type PaymentRequest = {
   received_in: string
   proof_note: string
   order_number: string | null
+  order_id: string | null
   sales_note: string | null
   status: string
   submitted_by: string
   submitted_by_name?: string
   admin_note: string | null
   created_at: string
+}
+
+type OrderResult = {
+  id: string
+  display_number: string
+  client_name: string
+  total_value: number | null
+  status: string
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -50,6 +59,15 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   approved_linked:     { label: 'Received Payment',    bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
   needs_clarification: { label: 'Needs Clarification', bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
   rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
+}
+
+const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
+  requested:          { label: 'Requested',          color: '#92400E' },
+  running:            { label: 'Running',             color: '#1E40AF' },
+  on_hold:            { label: 'On Hold',             color: '#9A3412' },
+  ready_for_dispatch: { label: 'Ready for Dispatch',  color: '#5B21B6' },
+  dispatched:         { label: 'Dispatched',          color: '#166534' },
+  cancelled:          { label: 'Cancelled',           color: '#991B1B' },
 }
 
 const PAYMENT_MODE_OPTIONS = [
@@ -147,11 +165,23 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-      background: meta.bg, color: meta.color,
-      border: `1px solid ${meta.border}`,
+      background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
       fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       {meta.label}
+    </span>
+  )
+}
+
+// Shown when payment has no order_id
+function SuspenseBadge() {
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+      background: '#FFF7ED', color: '#9A3412', border: '1px solid #FED7AA',
+      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+    }}>
+      Suspense
     </span>
   )
 }
@@ -457,9 +487,9 @@ function DeleteConfirmModal({
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
         border: `1px solid ${colors.border}`,
       }}>
-        <DetailRow label="Client"       value={r.client_name} />
-        <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
-        <DetailRow label="Order No."    value={r.order_number ?? '—'} />
+        <DetailRow label="Client"    value={r.client_name} />
+        <DetailRow label="Amount"    value={fmtAmount(r.amount)} />
+        <DetailRow label="Order No." value={r.order_number ?? '—'} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</span>
           <span style={{
@@ -490,6 +520,189 @@ function DeleteConfirmModal({
   )
 }
 
+// ── Link to Order modal ───────────────────────────────────────────────────────
+
+function LinkOrderModal({
+  payment,
+  supabase,
+  onClose,
+  onLinked,
+}: {
+  payment: PaymentRequest
+  supabase: ReturnType<typeof createClient>
+  onClose: () => void
+  onLinked: () => void
+}) {
+  const [query,   setQuery]   = useState('')
+  const [results, setResults] = useState<OrderResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [selected,  setSelected]  = useState<OrderResult | null>(null)
+  const [saving,    setSaving]    = useState(false)
+  const [error,     setError]     = useState<string | null>(null)
+
+  const handleSearch = async (q: string) => {
+    setQuery(q)
+    setSelected(null)
+    const trimmed = q.trim()
+    if (!trimmed) { setResults([]); return }
+
+    setSearching(true)
+    const { data } = await supabase
+      .from('orders')
+      .select('id, display_number, client_name, total_value, status')
+      .or(`display_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
+      .not('status', 'in', '(cancelled)')
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setResults((data ?? []) as OrderResult[])
+    setSearching(false)
+  }
+
+  const handleLink = async () => {
+    if (!selected) return
+    setSaving(true)
+    setError(null)
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setError('Not authenticated.'); setSaving(false); return }
+
+    // Update payment
+    const { error: updateErr } = await supabase
+      .from('finance_payment_requests')
+      .update({
+        order_id:     selected.id,
+        order_number: selected.display_number,
+        status:       'approved_linked',
+        updated_at:   new Date().toISOString(),
+      })
+      .eq('id', payment.id)
+
+    if (updateErr) { setError(updateErr.message); setSaving(false); return }
+
+    // Activity log
+    await supabase.from('order_activity_log').insert({
+      order_id:   selected.id,
+      actor_id:   session.user.id,
+      event_type: 'payment_linked',
+      payload: {
+        payment_id:  payment.id,
+        amount:      payment.amount,
+        client_name: payment.client_name,
+      },
+    })
+
+    onLinked()
+  }
+
+  const isSuspense = !payment.order_id
+
+  return (
+    <Modal title={isSuspense ? 'Link to Order' : 'Change Linked Order'} onClose={onClose}>
+      {/* Payment summary */}
+      <div style={{
+        background: colors.raised, borderRadius: '8px', padding: '12px 14px',
+        border: `1px solid ${colors.border}`,
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
+      }}>
+        <DetailRow label="Client" value={payment.client_name} />
+        <DetailRow label="Amount" value={fmtAmount(payment.amount)} />
+        <DetailRow label="Payment Date" value={fmtDate(payment.payment_date)} />
+        <DetailRow label="Mode" value={PAYMENT_MODE_LABEL[payment.payment_mode] ?? payment.payment_mode} />
+      </div>
+
+      {/* Search */}
+      <Field label="Search Orders">
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          background: colors.raised, border: `1px solid ${colors.border}`,
+          borderRadius: '6px', padding: '6px 10px',
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            autoFocus
+            placeholder="Order number or client name…"
+            value={query}
+            onChange={e => handleSearch(e.target.value)}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '13px', color: colors.primary }}
+          />
+          {searching && <span style={{ fontSize: '11px', color: colors.muted }}>Searching…</span>}
+        </div>
+      </Field>
+
+      {/* Results */}
+      {results.length > 0 && (
+        <div style={{
+          border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
+          maxHeight: '240px', overflowY: 'auto',
+        }}>
+          {results.map((o, idx) => {
+            const isSelected = selected?.id === o.id
+            const osMeta = ORDER_STATUS_META[o.status] ?? { label: o.status, color: colors.muted }
+            return (
+              <div
+                key={o.id}
+                onClick={() => setSelected(isSelected ? null : o)}
+                style={{
+                  padding: '10px 14px',
+                  borderBottom: idx < results.length - 1 ? `1px solid ${colors.border}` : 'none',
+                  cursor: 'pointer',
+                  background: isSelected ? colors.blueTint : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                }}
+                onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = colors.raised }}
+                onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{o.display_number}</span>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: osMeta.color }}>{osMeta.label}</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {o.client_name}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+                    {o.total_value != null ? fmtAmount(o.total_value) : '—'}
+                  </div>
+                  {isSelected && (
+                    <div style={{ fontSize: '10px', color: colors.blue, fontWeight: 600, marginTop: '2px' }}>Selected</div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {query.trim() && !searching && results.length === 0 && (
+        <div style={{ fontSize: '13px', color: colors.muted, textAlign: 'center', padding: '12px 0' }}>
+          No orders found for &ldquo;{query.trim()}&rdquo;.
+        </div>
+      )}
+
+      {error && <ErrorBanner message={error} />}
+
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
+          Cancel
+        </button>
+        <button
+          onClick={handleLink}
+          disabled={!selected || saving}
+          className="boe-btn boe-btn-primary"
+          style={{ padding: '8px 18px', fontSize: '13px', opacity: (!selected || saving) ? 0.6 : 1, cursor: (!selected || saving) ? 'not-allowed' : 'pointer' }}
+        >
+          {saving ? 'Linking…' : `Link to ${selected ? selected.display_number : 'Order'}`}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Table ─────────────────────────────────────────────────────────────────────
 
 const TH_STYLE: React.CSSProperties = {
@@ -511,12 +724,16 @@ function ReceivedPaymentsTable({
   onView,
   onEdit,
   onDelete,
+  onLink,
+  onUnlink,
 }: {
   rows: PaymentRequest[]
   isAdmin: boolean
-  onView: (r: PaymentRequest) => void
-  onEdit: (r: PaymentRequest) => void
+  onView:   (r: PaymentRequest) => void
+  onEdit:   (r: PaymentRequest) => void
   onDelete: (r: PaymentRequest) => void
+  onLink:   (r: PaymentRequest) => void
+  onUnlink: (r: PaymentRequest) => void
 }) {
   const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
 
@@ -526,7 +743,7 @@ function ReceivedPaymentsTable({
         <thead>
           <tr>
             <th style={TH_STYLE}>Client</th>
-            <th style={TH_STYLE}>Order Number</th>
+            <th style={TH_STYLE}>Order</th>
             <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
             <th style={TH_STYLE}>Payment Date</th>
             <th style={TH_STYLE}>Mode</th>
@@ -538,75 +755,110 @@ function ReceivedPaymentsTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => (
-            <tr
-              key={r.id}
-              onClick={() => onView(r)}
-              style={{ cursor: 'pointer', borderLeft: `3px solid transparent` }}
-              onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
-              onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
-            >
-              <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-                {r.client_name}
-              </td>
-              <td style={{ ...TD, fontSize: '12px', color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic' }}>
-                {r.order_number ?? '—'}
-              </td>
-              <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                {fmtAmount(r.amount)}
-              </td>
-              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                {fmtDate(r.payment_date)}
-              </td>
-              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
-              </td>
-              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                {RECEIVED_IN_LABEL[r.received_in] ?? r.received_in}
-              </td>
-              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                {r.submitted_by_name ?? '—'}
-              </td>
-              <td style={{ ...TD, fontSize: '11px', color: colors.muted }}>
-                {fmtDateTime(r.created_at)}
-              </td>
-              <td style={TD}>
-                <StatusBadge status={r.status} />
-              </td>
-              <td style={{ ...TD, textAlign: 'right' }}>
-                <div
-                  style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
-                  onClick={e => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => onView(r)}
-                    className="boe-btn boe-btn-ghost"
-                    style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+          {rows.map(r => {
+            const isLinked = !!r.order_id
+            return (
+              <tr
+                key={r.id}
+                onClick={() => onView(r)}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
+                onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
+              >
+                <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+                  {r.client_name}
+                </td>
+                {/* Order column — shows linked order number or Suspense badge */}
+                <td style={TD}>
+                  {isLinked ? (
+                    <span style={{
+                      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+                      background: colors.blueTint, color: colors.blue,
+                      border: `1px solid rgba(85,133,232,0.25)`,
+                      fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
+                    }}>
+                      {r.order_number ?? r.order_id}
+                    </span>
+                  ) : (
+                    <SuspenseBadge />
+                  )}
+                </td>
+                <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                  {fmtAmount(r.amount)}
+                </td>
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                  {fmtDate(r.payment_date)}
+                </td>
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                  {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
+                </td>
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                  {RECEIVED_IN_LABEL[r.received_in] ?? r.received_in}
+                </td>
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                  {r.submitted_by_name ?? '—'}
+                </td>
+                <td style={{ ...TD, fontSize: '11px', color: colors.muted }}>
+                  {fmtDateTime(r.created_at)}
+                </td>
+                <td style={TD}>
+                  <StatusBadge status={r.status} />
+                </td>
+                <td style={{ ...TD, textAlign: 'right' }}>
+                  <div
+                    style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
+                    onClick={e => e.stopPropagation()}
                   >
-                    View
-                  </button>
-                  {isAdmin && (
                     <button
-                      onClick={() => onEdit(r)}
+                      onClick={() => onView(r)}
                       className="boe-btn boe-btn-ghost"
                       style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
                     >
-                      Edit
+                      View
                     </button>
-                  )}
-                  {isAdmin && (
-                    <button
-                      onClick={() => onDelete(r)}
-                      className="boe-btn boe-btn-ghost"
-                      style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.red }}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
+                    {isAdmin && (
+                      <>
+                        {/* Link action for suspense payments */}
+                        {!isLinked && (
+                          <button
+                            onClick={() => onLink(r)}
+                            className="boe-btn boe-btn-ghost"
+                            style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 600, color: colors.blue }}
+                          >
+                            Link
+                          </button>
+                        )}
+                        {/* Unlink action for linked payments */}
+                        {isLinked && (
+                          <button
+                            onClick={() => onUnlink(r)}
+                            className="boe-btn boe-btn-ghost"
+                            style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.muted }}
+                          >
+                            Unlink
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onEdit(r)}
+                          className="boe-btn boe-btn-ghost"
+                          style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => onDelete(r)}
+                          className="boe-btn boe-btn-ghost"
+                          style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.red }}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -616,16 +868,19 @@ function ReceivedPaymentsTable({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ReceivedPaymentsPage() {
-  const [pageLoading, setPageLoading] = useState(true)
-  const [userId, setUserId]           = useState<string>('')
-  const [isAdmin, setIsAdmin]         = useState(false)
-  const [profile, setProfile]         = useState<UserProfile | null>(null)
-  const [requests, setRequests]       = useState<PaymentRequest[]>([])
-  const [listLoading, setListLoading] = useState(false)
-  const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
-  const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
-  const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
-  const [search, setSearch]           = useState('')
+  const [pageLoading,    setPageLoading]    = useState(true)
+  const [isAdmin,        setIsAdmin]        = useState(false)
+  const [profile,        setProfile]        = useState<UserProfile | null>(null)
+  const [requests,       setRequests]       = useState<PaymentRequest[]>([])
+  const [listLoading,    setListLoading]    = useState(false)
+  const [detailRequest,  setDetailRequest]  = useState<PaymentRequest | null>(null)
+  const [editRequest,    setEditRequest]    = useState<PaymentRequest | null>(null)
+  const [deleteRequest,  setDeleteRequest]  = useState<PaymentRequest | null>(null)
+  const [linkRequest,    setLinkRequest]    = useState<PaymentRequest | null>(null)
+  const [unlinkTarget,   setUnlinkTarget]   = useState<PaymentRequest | null>(null)
+  const [unlinking,      setUnlinking]      = useState(false)
+  const [unlinkError,    setUnlinkError]    = useState<string | null>(null)
+  const [search,         setSearch]         = useState('')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -635,13 +890,10 @@ export default function ReceivedPaymentsPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const uid = session.user.id
-      setUserId(uid)
-
       const { data: me } = await supabase
         .from('users')
         .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code')
-        .eq('id', uid)
+        .eq('id', session.user.id)
         .single()
 
       setProfile(me as UserProfile)
@@ -664,11 +916,11 @@ export default function ReceivedPaymentsPage() {
       .from('finance_payment_requests')
       .select(`
         id, client_name, amount, payment_date, payment_mode,
-        received_in, proof_note, order_number, sales_note,
+        received_in, proof_note, order_number, order_id, sales_note,
         status, submitted_by, admin_note, created_at,
         submitted_by_user:users!submitted_by(full_name)
       `)
-      .eq('status', 'approved_linked')
+      .in('status', ['approved_linked', 'approved_unlinked'])
       .order('created_at', { ascending: false })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -681,6 +933,48 @@ export default function ReceivedPaymentsPage() {
     setListLoading(false)
   }
 
+  // Unlink a payment — sets order_id=null, status=approved_unlinked, logs activity
+  const handleUnlink = async () => {
+    if (!unlinkTarget) return
+    setUnlinking(true)
+    setUnlinkError(null)
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setUnlinkError('Not authenticated.'); setUnlinking(false); return }
+
+    const previousOrderId     = unlinkTarget.order_id
+    const previousOrderNumber = unlinkTarget.order_number
+
+    const { error: updateErr } = await supabase
+      .from('finance_payment_requests')
+      .update({
+        order_id:   null,
+        status:     'approved_unlinked',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', unlinkTarget.id)
+
+    if (updateErr) { setUnlinkError(updateErr.message); setUnlinking(false); return }
+
+    // Activity log on the order that was previously linked
+    if (previousOrderId) {
+      await supabase.from('order_activity_log').insert({
+        order_id:   previousOrderId,
+        actor_id:   session.user.id,
+        event_type: 'payment_unlinked',
+        payload: {
+          payment_id:            unlinkTarget.id,
+          amount:                unlinkTarget.amount,
+          previous_order_number: previousOrderNumber,
+        },
+      })
+    }
+
+    setUnlinkTarget(null)
+    setUnlinking(false)
+    loadRequests()
+  }
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return requests
@@ -690,18 +984,37 @@ export default function ReceivedPaymentsPage() {
     )
   }, [requests, search])
 
+  // Summary counts
+  const suspenseCount = requests.filter(r => !r.order_id).length
+  const linkedCount   = requests.filter(r =>  r.order_id).length
+
   if (pageLoading) return <LoadingScreen />
 
   return (
     <FinanceLayout
       profile={profile}
       title="Received Payments"
-      subtitle="Payments fully confirmed with order number assigned."
+      subtitle="Approved payments — linked to orders or in suspense."
       onSignOut={handleSignOut}
       onRefresh={loadRequests}
     >
-      <div className="boe-card" style={{ overflow: 'hidden' }}>
+      {/* Suspense summary bar — shown only when there are unlinked payments */}
+      {suspenseCount > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
+          background: '#FFF7ED', border: '1px solid #FED7AA',
+          fontSize: '13px', color: '#9A3412',
+        }}>
+          <span style={{ fontWeight: 700 }}>{suspenseCount} suspense payment{suspenseCount !== 1 ? 's' : ''}</span>
+          <span style={{ color: '#C05621' }}>pending order linkage.</span>
+          <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#92400E' }}>
+            {linkedCount} linked · {suspenseCount} unlinked
+          </span>
+        </div>
+      )}
 
+      <div className="boe-card" style={{ overflow: 'hidden' }}>
         {/* Search bar */}
         <div style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: '6px' }}>
           <div style={{
@@ -737,15 +1050,17 @@ export default function ReceivedPaymentsPage() {
           <ReceivedPaymentsTable
             rows={visible}
             isAdmin={isAdmin}
-            onView={r => setDetailRequest(r)}
-            onEdit={r => setEditRequest(r)}
+            onView={r  => setDetailRequest(r)}
+            onEdit={r  => setEditRequest(r)}
             onDelete={r => setDeleteRequest(r)}
+            onLink={r  => setLinkRequest(r)}
+            onUnlink={r => setUnlinkTarget(r)}
           />
         )}
-
       </div>
 
-      {/* Modals */}
+      {/* ── Modals ── */}
+
       {detailRequest && (
         <DetailsModal
           request={detailRequest}
@@ -755,6 +1070,7 @@ export default function ReceivedPaymentsPage() {
           onCorrected={() => { setDetailRequest(null); loadRequests() }}
         />
       )}
+
       {editRequest && (
         <EditPaymentModal
           request={editRequest}
@@ -763,6 +1079,7 @@ export default function ReceivedPaymentsPage() {
           onSaved={() => { setEditRequest(null); loadRequests() }}
         />
       )}
+
       {deleteRequest && (
         <DeleteConfirmModal
           request={deleteRequest}
@@ -770,6 +1087,63 @@ export default function ReceivedPaymentsPage() {
           onClose={() => setDeleteRequest(null)}
           onDeleted={() => { setDeleteRequest(null); loadRequests() }}
         />
+      )}
+
+      {linkRequest && (
+        <LinkOrderModal
+          payment={linkRequest}
+          supabase={supabase}
+          onClose={() => setLinkRequest(null)}
+          onLinked={() => { setLinkRequest(null); loadRequests() }}
+        />
+      )}
+
+      {/* Unlink confirmation inline */}
+      {unlinkTarget && (
+        <>
+          <div
+            onClick={() => { if (!unlinking) setUnlinkTarget(null) }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 59 }}
+          />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            width: '380px', maxWidth: 'calc(100vw - 32px)',
+            background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
+            zIndex: 60, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px',
+          }}>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Unlink Payment?</div>
+            <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6 }}>
+              This will remove the link between{' '}
+              <strong>{unlinkTarget.client_name}</strong> ({fmtAmount(unlinkTarget.amount)}) and order{' '}
+              <strong>{unlinkTarget.order_number ?? unlinkTarget.order_id}</strong>.
+              <br /><br />
+              The payment will return to suspense status.
+            </div>
+            {unlinkError && <ErrorBanner message={unlinkError} />}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setUnlinkTarget(null)}
+                disabled={unlinking}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '8px 18px', fontSize: '13px' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUnlink}
+                disabled={unlinking}
+                style={{
+                  padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
+                  border: `1px solid ${colors.border}`, background: colors.raised,
+                  color: colors.primary, cursor: unlinking ? 'not-allowed' : 'pointer',
+                  opacity: unlinking ? 0.6 : 1,
+                }}
+              >
+                {unlinking ? 'Unlinking…' : 'Yes, Unlink'}
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
     </FinanceLayout>
