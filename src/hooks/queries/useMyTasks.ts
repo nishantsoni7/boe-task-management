@@ -23,6 +23,7 @@ export function useMyTasks(userId: string | null | undefined) {
         .select(TASK_COLUMNS)
         .eq('assigned_to', userId)
         .neq('status', 'cancelled')
+        .neq('task_type', 'quotation_request')
         .order('due_date', { ascending: true, nullsFirst: false })
       return ((data ?? []) as unknown as Task[])
     },
