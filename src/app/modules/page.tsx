@@ -235,6 +235,18 @@ export default function BoeOsHomePage() {
       visibilityType: modVis['finance']?.visibility_type,
       allowedDepartment: modVis['finance']?.allowed_department,
     }] : []),
+    ...(canSeeModule('orders', modVis, effectiveProfile, isAdminFallback) ? [{
+      key: 'orders',
+      title: 'Order Management',
+      description: 'Track confirmed orders from request through production and dispatch.',
+      href: '/orders',
+      status: 'active' as ModuleStatus,
+      accent: '#DC1F2E',
+      icon: <OrdersIcon />,
+      notificationCount: null,
+      visibilityType: modVis['orders']?.visibility_type,
+      allowedDepartment: modVis['orders']?.allowed_department,
+    }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{
       key: 'control_center',
       title: 'Admin Control Center',
@@ -502,6 +514,16 @@ function FinanceIcon() {
   return (
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  )
+}
+
+function OrdersIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+      <rect x="9" y="3" width="6" height="4" rx="1" />
+      <line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="13" y2="16" />
     </svg>
   )
 }
