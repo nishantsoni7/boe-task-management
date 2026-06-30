@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -19,12 +19,22 @@ type PaymentRequest = {
   received_in: string
   proof_note: string
   order_number: string | null
+  order_id: string | null
   sales_note: string | null
+  payment_against: string
   status: string
   submitted_by: string
   submitted_by_name?: string
   admin_note: string | null
   created_at: string
+}
+
+type OrderResult = {
+  id: string
+  display_number: string
+  client_name: string
+  total_value: number | null
+  status: string
 }
 
 type AdminAction = 'approve' | 'needs_clarification' | 'reject'
@@ -33,11 +43,17 @@ type FilterTab   = 'pending' | 'order_pending' | 'clarification' | 'rejected' | 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PAYMENT_MODE_LABEL: Record<string, string> = {
+  // legacy DB payment_mode values (for existing records in the table)
   bank_transfer: 'Bank Transfer',
   cash:          'Cash',
   upi:           'UPI',
   cheque:        'Cheque',
   other:         'Other',
+  // UI-key values (received_in-based keys used as combined payment method)
+  company_account: 'Company Acc',
+  savings_account: 'Saving Acc',
+  cash_in_hand:    'Cash Handover',
+  hawala:          'Hawala',
 }
 
 const RECEIVED_IN_LABEL: Record<string, string> = {
@@ -55,13 +71,62 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
 }
 
-const PAYMENT_MODE_OPTIONS: { label: string; value: string }[] = [
-  { label: 'Bank Transfer', value: 'bank_transfer' },
-  { label: 'Cash',          value: 'cash' },
-  { label: 'UPI',           value: 'upi' },
-  { label: 'Cheque',        value: 'cheque' },
-  { label: 'Other',         value: 'other' },
+const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
+  requested:          { label: 'Requested',          color: '#92400E' },
+  running:            { label: 'Running',             color: '#1E40AF' },
+  on_hold:            { label: 'On Hold',             color: '#9A3412' },
+  ready_for_dispatch: { label: 'Ready for Dispatch',  color: '#5B21B6' },
+  dispatched:         { label: 'Dispatched',          color: '#166534' },
+  cancelled:          { label: 'Cancelled',           color: '#991B1B' },
+}
+
+const PAYMENT_AGAINST_LABEL: Record<string, string> = {
+  existing_order: 'Existing Order',
+  new_order:      'New Order',
+}
+
+const PAYMENT_AGAINST_OPTIONS: { label: string; value: string }[] = [
+  { label: 'New Order',      value: 'new_order' },
+  { label: 'Existing Order', value: 'existing_order' },
 ]
+
+// Option values are received_in-style DB keys (DB-safe for that column).
+// payment_mode is derived via PAYMENT_MODE_DB_MAP below.
+const PAYMENT_MODE_OPTIONS: { label: string; value: string }[] = [
+  { label: 'Company Acc',   value: 'company_account' },
+  { label: 'Saving Acc',    value: 'savings_account' },
+  { label: 'Cash Handover', value: 'cash_in_hand' },
+  { label: 'Hawala',        value: 'hawala' },
+]
+
+// Maps UI option value → DB-safe (payment_mode, received_in) pair.
+// DB constraints: payment_mode IN (bank_transfer|cash|upi|cheque|other)
+//                 received_in  IN (company_account|cash_in_hand|savings_account|other)
+const PAYMENT_MODE_DB_MAP: Record<string, { payment_mode: string; received_in: string }> = {
+  company_account: { payment_mode: 'bank_transfer', received_in: 'company_account' },
+  savings_account: { payment_mode: 'bank_transfer', received_in: 'savings_account' },
+  cash_in_hand:    { payment_mode: 'cash',          received_in: 'cash_in_hand'    },
+  hawala:          { payment_mode: 'other',         received_in: 'other'           },
+}
+
+// Reverse-maps existing DB column values back to a PAYMENT_MODE_OPTIONS value (for edit form init).
+function dbToUiPaymentMode(payment_mode: string, received_in: string): string {
+  for (const [key, v] of Object.entries(PAYMENT_MODE_DB_MAP)) {
+    if (v.payment_mode === payment_mode && v.received_in === received_in) return key
+  }
+  return PAYMENT_MODE_OPTIONS[0].value // fallback for legacy-only values
+}
+
+// Resolves the correct display label for a stored record's payment_mode + received_in.
+// Falls back to the legacy payment_mode label if the pair doesn't match a known UI key.
+function displayPaymentMode(payment_mode: string, received_in: string): string {
+  const uiKey = dbToUiPaymentMode(payment_mode, received_in)
+  const mapped = PAYMENT_MODE_DB_MAP[uiKey]
+  if (mapped && mapped.payment_mode === payment_mode && mapped.received_in === received_in) {
+    return PAYMENT_MODE_LABEL[uiKey] ?? uiKey
+  }
+  return PAYMENT_MODE_LABEL[payment_mode] ?? payment_mode
+}
 
 const RECEIVED_IN_OPTIONS: { label: string; value: string }[] = [
   { label: 'Company Account', value: 'company_account' },
@@ -265,9 +330,10 @@ function DetailsModal({
         <DetailRow label="Client"       value={r.client_name} />
         <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
         <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
-        <DetailRow label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
-        <DetailRow label="Received In"  value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
-        <DetailRow label="Order No."    value={r.order_number ?? '—'} />
+        <DetailRow label="Payment Mode" value={displayPaymentMode(r.payment_mode, r.received_in)} />
+        <DetailRow label="Received In"      value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
+        <DetailRow label="Order No."        value={r.order_number ?? '—'} />
+        <DetailRow label="Payment Against"  value={PAYMENT_AGAINST_LABEL[r.payment_against] ?? r.payment_against} />
         <div style={{ gridColumn: '1 / -1' }}>
           <DetailRow label="Proof / Reference" value={r.proof_note} />
         </div>
@@ -353,14 +419,15 @@ function DetailsModal({
 // ── New Payment Confirmation modal ────────────────────────────────────────────
 
 const EMPTY_FORM = {
-  clientName:  '',
-  amount:      '',
-  paymentDate: '',
-  paymentMode: PAYMENT_MODE_OPTIONS[0].value,
-  receivedIn:  RECEIVED_IN_OPTIONS[0].value,
-  proofNote:   '',
-  orderNumber: '',
-  salesNote:   '',
+  clientName:      '',
+  amount:          '',
+  paymentDate:     '',
+  paymentMode:     PAYMENT_MODE_OPTIONS[0].value,
+  receivedIn:      RECEIVED_IN_OPTIONS[0].value, // kept for DB compat; not shown in UI
+  proofNote:       '',
+  orderNumber:     '',
+  salesNote:       '',
+  paymentAgainst:  PAYMENT_AGAINST_OPTIONS[0].value,
 }
 
 type NewPaymentModalProps = {
@@ -375,87 +442,455 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
+  // Order search — only used when payment_against = 'existing_order'
+  const [orderQuery,     setOrderQuery]     = useState('')
+  const [orderResults,   setOrderResults]   = useState<OrderResult[]>([])
+  const [orderSearching, setOrderSearching] = useState(false)
+  const [selectedOrder,  setSelectedOrder]  = useState<OrderResult | null>(null)
+
   const set = (key: keyof typeof EMPTY_FORM) => (
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  const canSubmit = form.clientName.trim() && form.amount.trim() && form.paymentDate && form.proofNote.trim()
+  const handlePaymentAgainstChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setForm(prev => ({ ...prev, paymentAgainst: e.target.value }))
+    setSelectedOrder(null)
+    setOrderQuery('')
+    setOrderResults([])
+  }
+
+  const handleOrderSearch = async (q: string) => {
+    setOrderQuery(q)
+    setSelectedOrder(null)
+    const trimmed = q.trim()
+    if (!trimmed) { setOrderResults([]); return }
+    setOrderSearching(true)
+    const { data } = await supabase
+      .from('orders')
+      .select('id, display_number, client_name, total_value, status')
+      .or(`display_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
+      .not('status', 'in', '(cancelled)')
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setOrderResults((data ?? []) as OrderResult[])
+    setOrderSearching(false)
+  }
+
+  const isExistingOrder = form.paymentAgainst === 'existing_order'
+
+  const canSubmit = !!(
+    form.clientName.trim() &&
+    form.amount.trim() &&
+    form.paymentDate &&
+    form.proofNote.trim() &&
+    (!isExistingOrder || selectedOrder !== null)
+  )
 
   const handleSubmit = async () => {
     if (!canSubmit) return
     setSaving(true)
     setError(null)
-    const { error: dbError } = await supabase
+
+    // Resolve UI payment mode to DB-safe values before any DB operation
+    const dbMode = PAYMENT_MODE_DB_MAP[form.paymentMode]
+    if (!dbMode) {
+      setError('Invalid payment mode selected. Please choose a valid option.')
+      setSaving(false)
+      return
+    }
+
+    // Hawala is mapped to payment_mode='other' / received_in='other'.
+    // Record the original intent in sales_note so the admin can see it.
+    const baseNote = form.salesNote.trim()
+    const finalSalesNote = form.paymentMode === 'hawala'
+      ? [baseNote, 'Payment mode: Hawala'].filter(Boolean).join(' | ') || null
+      : baseNote || null
+
+    if (isExistingOrder) {
+      // Existing order — link directly, no order creation needed
+      const { error: dbError } = await supabase
+        .from('finance_payment_requests')
+        .insert({
+          client_name:     form.clientName.trim(),
+          amount:          parseFloat(form.amount),
+          payment_date:    form.paymentDate,
+          payment_mode:    dbMode.payment_mode,
+          received_in:     dbMode.received_in,
+          proof_note:      form.proofNote.trim(),
+          order_number:    selectedOrder?.display_number ?? null,
+          order_id:        selectedOrder?.id ?? null,
+          sales_note:      finalSalesNote,
+          payment_against: 'existing_order',
+          status:          'pending_approval',
+          submitted_by:    userId,
+        })
+      setSaving(false)
+      if (dbError) { setError(dbError.message); return }
+      onSaved()
+      return
+    }
+
+    // New Order — reserve the next order number, then create the payment request
+
+    // Step 1: compute next display number (same logic as orders/all/page.tsx)
+    const { data: allOrders } = await supabase
+      .from('orders')
+      .select('display_number')
+
+    const nums = ((allOrders ?? []) as { display_number: string }[])
+      .map(o => parseInt(o.display_number, 10))
+      .filter(n => !isNaN(n))
+    const nextDisplayNumber = String(nums.length > 0 ? Math.max(...nums) + 1 : 1)
+
+    // Step 2: collision guard — another request may have taken this number in the gap
+    const { data: taken } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('display_number', nextDisplayNumber)
+      .maybeSingle()
+
+    if (taken) {
+      setError(`Order number ${nextDisplayNumber} was just taken. Please try submitting again.`)
+      setSaving(false)
+      return
+    }
+
+    // Step 3: create the pending order record
+    const { data: newOrder, error: orderErr } = await supabase
+      .from('orders')
+      .insert({
+        display_number: nextDisplayNumber,
+        client_name:    form.clientName.trim(),
+        requested_by:   userId,
+        created_by:     userId,
+        status:         'requested',
+      })
+      .select('id, display_number')
+      .single()
+
+    if (orderErr || !newOrder) {
+      setError(orderErr?.message ?? 'Failed to reserve order number. Please try again.')
+      setSaving(false)
+      return
+    }
+
+    // Step 4: create the payment request linked to the reserved order
+    const { error: paymentErr } = await supabase
       .from('finance_payment_requests')
       .insert({
-        client_name:  form.clientName.trim(),
-        amount:       parseFloat(form.amount),
-        payment_date: form.paymentDate,
-        payment_mode: form.paymentMode,
-        received_in:  form.receivedIn,
-        proof_note:   form.proofNote.trim(),
-        order_number: form.orderNumber.trim() || null,
-        sales_note:   form.salesNote.trim()   || null,
-        status:       'pending_approval',
-        submitted_by: userId,
+        client_name:     form.clientName.trim(),
+        amount:          parseFloat(form.amount),
+        payment_date:    form.paymentDate,
+        payment_mode:    dbMode.payment_mode,
+        received_in:     dbMode.received_in,
+        proof_note:      form.proofNote.trim(),
+        order_number:    newOrder.display_number,
+        order_id:        newOrder.id,
+        sales_note:      finalSalesNote,
+        payment_against: 'new_order',
+        status:          'pending_approval',
+        submitted_by:    userId,
       })
+
     setSaving(false)
-    if (dbError) { setError(dbError.message); return }
+    if (paymentErr) {
+      // Roll back the reserved order to prevent orphaned order numbers
+      await supabase.from('orders').delete().eq('id', newOrder.id)
+      setError(`Payment request failed: ${paymentErr.message}`)
+      return
+    }
     onSaved()
   }
 
+  // Card-based toggle — reuses same reset logic as handlePaymentAgainstChange
+  const switchPaymentAgainst = (value: string) => {
+    setForm(prev => ({ ...prev, paymentAgainst: value }))
+    setSelectedOrder(null)
+    setOrderQuery('')
+    setOrderResults([])
+  }
+
+  const [attachFile, setAttachFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const isHandoverMode = form.paymentMode === 'cash_in_hand' || form.paymentMode === 'hawala'
+
+  const SECTION_LABEL: React.CSSProperties = {
+    fontSize: '10px', fontWeight: 700, color: colors.muted,
+    textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px',
+  }
+
   return (
-    <Modal title="New Payment Confirmation" onClose={onClose}>
-      <Field label="Client Name" required>
-        <input className="boe-input" value={form.clientName} onChange={set('clientName')}
-          placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
-      </Field>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <Field label="Amount (₹)" required>
-          <input className="boe-input" type="number" min="0" value={form.amount}
-            onChange={set('amount')} placeholder="0" style={{ width: '100%' }} />
-        </Field>
-        <Field label="Payment Date" required>
-          <input className="boe-input" type="date" value={form.paymentDate}
-            onChange={set('paymentDate')} style={{ width: '100%' }} />
-        </Field>
+    <>
+      {/* Full-page overlay */}
+      <div
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200 }}
+      />
+
+      {/* Modal */}
+      <div style={{
+        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        width: '660px', maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100vh - 40px)',
+        background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
+        zIndex: 201, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
+
+        {/* ── Header ── */}
+        <div style={{
+          padding: '14px 20px 12px', borderBottom: `1px solid ${colors.border}`,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0,
+        }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, marginBottom: '2px' }}>
+              New Payment Confirmation
+            </div>
+            <div style={{ fontSize: '11px', color: colors.muted }}>
+              Submit customer payment details for admin review
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '4px 10px', fontSize: '13px', flexShrink: 0 }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* ── Scrollable body ── */}
+        <div style={{
+          padding: '16px 20px', overflowY: 'auto', flex: 1,
+          display: 'flex', flexDirection: 'column', gap: '14px',
+        }}>
+
+          {/* Section: Order */}
+          <div>
+            <div style={SECTION_LABEL}>Order</div>
+
+            {/* Payment Against — two selectable cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+              {PAYMENT_AGAINST_OPTIONS.map(opt => {
+                const active = form.paymentAgainst === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => switchPaymentAgainst(opt.value)}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                      gap: '2px', padding: '8px 12px', borderRadius: '7px', cursor: 'pointer',
+                      border: active ? '1.5px solid #DC1F2E' : `1px solid ${colors.border}`,
+                      background: active ? 'rgba(220,31,46,0.04)' : colors.raised,
+                      textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: active ? '#DC1F2E' : colors.primary }}>
+                      {opt.label}
+                    </span>
+                    <span style={{ fontSize: '11px', color: colors.muted }}>
+                      {opt.value === 'new_order'
+                        ? 'Auto-reserve a new order number'
+                        : 'Link to an existing order'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* New Order — helper line */}
+            {!isExistingOrder && (
+              <div style={{ fontSize: '11px', color: colors.muted, padding: '0 2px' }}>
+                Order number will be auto-reserved after submission.
+              </div>
+            )}
+
+            {/* Existing Order — search + selection */}
+            {isExistingOrder && (
+              <Field label="Select Order" required>
+                {selectedOrder ? (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '7px 10px', borderRadius: '7px',
+                    background: colors.blueTint, border: `1px solid rgba(85,133,232,0.25)`,
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{selectedOrder.display_number}</span>
+                      <span style={{ fontSize: '12px', color: colors.secondary, marginLeft: '8px' }}>{selectedOrder.client_name}</span>
+                    </div>
+                    <button
+                      onClick={() => { setSelectedOrder(null); setOrderQuery(''); setOrderResults([]) }}
+                      className="boe-btn boe-btn-ghost"
+                      style={{ padding: '2px 8px', fontSize: '11px' }}
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      background: colors.raised, border: `1px solid ${colors.border}`,
+                      borderRadius: '6px', padding: '5px 10px',
+                    }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Search by order number or client…"
+                        value={orderQuery}
+                        onChange={e => handleOrderSearch(e.target.value)}
+                        style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary }}
+                      />
+                      {orderSearching && <span style={{ fontSize: '11px', color: colors.muted }}>Searching…</span>}
+                    </div>
+                    {orderResults.length > 0 && (
+                      <div style={{
+                        border: `1px solid ${colors.border}`, borderRadius: '7px', overflow: 'hidden',
+                        maxHeight: '180px', overflowY: 'auto', marginTop: '4px',
+                      }}>
+                        {orderResults.map((o, idx) => {
+                          const osMeta = ORDER_STATUS_META[o.status] ?? { label: o.status, color: colors.muted }
+                          return (
+                            <div
+                              key={o.id}
+                              onClick={() => { setSelectedOrder(o); setOrderResults([]) }}
+                              style={{
+                                padding: '8px 12px',
+                                borderBottom: idx < orderResults.length - 1 ? `1px solid ${colors.border}` : 'none',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                              }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = colors.raised }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{o.display_number}</span>
+                                  <span style={{ fontSize: '11px', fontWeight: 600, color: osMeta.color }}>{osMeta.label}</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {o.client_name}
+                                </div>
+                              </div>
+                              {o.total_value != null && (
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, flexShrink: 0 }}>
+                                  {fmtAmount(o.total_value)}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {orderQuery.trim() && !orderSearching && orderResults.length === 0 && (
+                      <div style={{ fontSize: '12px', color: colors.muted, padding: '6px 0' }}>
+                        No orders found for &ldquo;{orderQuery.trim()}&rdquo;.
+                      </div>
+                    )}
+                  </>
+                )}
+              </Field>
+            )}
+          </div>
+
+          {/* Section: Payment details */}
+          <div>
+            <div style={SECTION_LABEL}>Payment details</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+              {/* Row 1: Client Name + Amount */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <Field label="Client Name" required>
+                  <input className="boe-input" value={form.clientName} onChange={set('clientName')}
+                    placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
+                </Field>
+                <Field label="Amount (₹)" required>
+                  <input className="boe-input" type="number" min="0" value={form.amount}
+                    onChange={set('amount')} placeholder="0" style={{ width: '100%' }} />
+                </Field>
+              </div>
+
+              {/* Row 2: Payment Date + Payment Mode */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <Field label="Payment Date" required>
+                  <input className="boe-input" type="date" value={form.paymentDate}
+                    onChange={set('paymentDate')} style={{ width: '100%' }} />
+                </Field>
+                <Field label="Payment Mode" required>
+                  <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
+                    {PAYMENT_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+
+              {/* Conditional: Cash / handover note */}
+              {isHandoverMode && (
+                <Field label="Cash / handover note">
+                  <input
+                    className="boe-input"
+                    value={form.salesNote}
+                    onChange={set('salesNote')}
+                    placeholder="Who collected cash or handover detail"
+                    style={{ width: '100%' }}
+                  />
+                </Field>
+              )}
+
+              {/* Proof row: reference input + attachment */}
+              <Field label="Payment Proof / Reference" required>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    className="boe-input"
+                    value={form.proofNote}
+                    onChange={set('proofNote')}
+                    placeholder="UTR, cheque no., or short proof note"
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    style={{ display: 'none' }}
+                    onChange={e => setAttachFile(e.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  >
+                    {attachFile ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '') : '📎 Attach'}
+                  </button>
+                </div>
+              </Field>
+
+            </div>
+          </div>
+
+          {error && <ErrorBanner message={error} />}
+
+        </div>
+
+        {/* ── Footer ── */}
+        <div style={{
+          padding: '10px 20px', borderTop: `1px solid ${colors.border}`,
+          display: 'flex', gap: '8px', justifyContent: 'flex-end', flexShrink: 0,
+        }}>
+          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>
+            Cancel
+          </button>
+          <button onClick={handleSubmit} disabled={!canSubmit || saving}
+            className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
+            {saving ? 'Submitting…' : 'Submit Request'}
+          </button>
+        </div>
+
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <Field label="Payment Mode" required>
-          <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
-            {PAYMENT_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-        <Field label="Received In" required>
-          <select className="boe-input" value={form.receivedIn} onChange={set('receivedIn')} style={{ width: '100%' }}>
-            {RECEIVED_IN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-      </div>
-      <Field label="Payment Proof / Reference Note" required>
-        <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
-          placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office"
-          rows={2} style={{ width: '100%', resize: 'vertical' }} />
-      </Field>
-      <Field label="Order Number (optional)">
-        <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
-          placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
-      </Field>
-      <Field label="Sales Note (optional)">
-        <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
-          placeholder="Any additional context for admin"
-          rows={2} style={{ width: '100%', resize: 'vertical' }} />
-      </Field>
-      {error && <ErrorBanner message={error} />}
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
-        <button onClick={handleSubmit} disabled={!canSubmit || saving}
-          className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          {saving ? 'Submitting…' : 'Submit Request'}
-        </button>
-      </div>
-    </Modal>
+    </>
   )
 }
 
@@ -474,8 +909,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     clientName:  r.client_name,
     amount:      String(r.amount),
     paymentDate: r.payment_date,
-    paymentMode: r.payment_mode,
-    receivedIn:  r.received_in,
+    paymentMode: dbToUiPaymentMode(r.payment_mode, r.received_in),
     proofNote:   r.proof_note,
     orderNumber: r.order_number ?? '',
     salesNote:   r.sales_note  ?? '',
@@ -496,6 +930,11 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       setError('Order number is required for Received Payments.')
       return
     }
+    const editDbMode = PAYMENT_MODE_DB_MAP[form.paymentMode]
+    if (!editDbMode) {
+      setError('Invalid payment mode selected.')
+      return
+    }
     setSaving(true)
     setError(null)
     const newOrderNumber = form.orderNumber.trim() || null
@@ -506,11 +945,11 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         client_name:  form.clientName.trim(),
         amount:       parseFloat(form.amount),
         payment_date: form.paymentDate,
-        payment_mode: form.paymentMode,
-        received_in:  form.receivedIn,
+        payment_mode: editDbMode.payment_mode,
+        received_in:  editDbMode.received_in,
         proof_note:   form.proofNote.trim(),
         order_number: newOrderNumber,
-        sales_note:   form.salesNote.trim()   || null,
+        sales_note:   form.salesNote.trim() || null,
         ...(!isAdmin && r.status === 'needs_clarification' ? { status: 'pending_approval' } : {}),
         ...(autoUpgrade ? { status: 'approved_linked' } : {}),
         updated_at:   new Date().toISOString(),
@@ -556,18 +995,11 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
             onChange={set('paymentDate')} style={{ width: '100%' }} />
         </Field>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <Field label="Payment Mode" required>
-          <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
-            {PAYMENT_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-        <Field label="Received In" required>
-          <select className="boe-input" value={form.receivedIn} onChange={set('receivedIn')} style={{ width: '100%' }}>
-            {RECEIVED_IN_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-      </div>
+      <Field label="Payment Mode" required>
+        <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
+          {PAYMENT_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </Field>
       <Field label="Payment Proof / Reference Note" required>
         <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
           placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office"
@@ -659,9 +1091,10 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
         <DetailRow label="Client"       value={r.client_name} />
         <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
         <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
-        <DetailRow label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
-        <DetailRow label="Received In"  value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
-        <DetailRow label="Order No."    value={r.order_number ?? '—'} />
+        <DetailRow label="Payment Mode" value={displayPaymentMode(r.payment_mode, r.received_in)} />
+        <DetailRow label="Received In"     value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
+        <DetailRow label="Order No."       value={r.order_number ?? '—'} />
+        <DetailRow label="Payment Against" value={PAYMENT_AGAINST_LABEL[r.payment_against] ?? r.payment_against} />
         <div style={{ gridColumn: '1 / -1' }}>
           <DetailRow label="Proof / Reference" value={r.proof_note} />
         </div>
@@ -879,7 +1312,7 @@ function PaymentsTable({
                   {fmtDate(r.payment_date)}
                 </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
+                  {displayPaymentMode(r.payment_mode, r.received_in)}
                 </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {RECEIVED_IN_LABEL[r.received_in] ?? r.received_in}
@@ -1000,8 +1433,8 @@ export default function FinancePage() {
       .from('finance_payment_requests')
       .select(`
         id, client_name, amount, payment_date, payment_mode,
-        received_in, proof_note, order_number, sales_note,
-        status, submitted_by, admin_note, created_at,
+        received_in, proof_note, order_number, order_id, sales_note,
+        payment_against, status, submitted_by, admin_note, created_at,
         submitted_by_user:users!submitted_by(full_name)
       `)
       .neq('status', 'approved_linked')
