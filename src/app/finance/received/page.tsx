@@ -920,7 +920,7 @@ export default function ReceivedPaymentsPage() {
         status, submitted_by, admin_note, created_at,
         submitted_by_user:users!submitted_by(full_name)
       `)
-      .in('status', ['approved_linked', 'approved_unlinked'])
+      .eq('status', 'approved_linked')
       .order('created_at', { ascending: false })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

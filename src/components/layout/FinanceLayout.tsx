@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, Home, RefreshCw } from 'lucide-react'
+import { CheckSquare, CreditCard, Home, RefreshCw } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
@@ -58,7 +58,8 @@ export function FinanceLayout({
   }
 
   const navItems = [
-    { label: 'Payment Confirmations', path: '/finance', icon: <CheckSquare size={15} strokeWidth={1.8} /> },
+    { label: 'Payment Confirmations', path: '/finance',          icon: <CheckSquare size={15} strokeWidth={1.8} /> },
+    { label: 'Received Payments',     path: '/finance/received', icon: <CreditCard  size={15} strokeWidth={1.8} /> },
   ]
 
   return (
@@ -102,7 +103,7 @@ export function FinanceLayout({
         {/* Nav */}
         <div className="boe-sidebar-section">
           {navItems.map(item => {
-            const active = pathname === item.path || pathname.startsWith(item.path + '/')
+            const active = pathname === item.path
             return (
               <button
                 key={item.path}
