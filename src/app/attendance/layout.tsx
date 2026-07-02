@@ -21,7 +21,7 @@ export default function AttendanceGuard({ children }: { children: React.ReactNod
         .eq('id', session.user.id)
         .single()
 
-      if (!profile || profile.role !== 'admin') {
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'manager')) {
         router.replace('/coming-soon')
         return
       }

@@ -398,9 +398,10 @@ export async function POST(req: NextRequest) {
 
   const allUnchanged = pendingRows.length > 0 && newCount === 0 && modifiedCount === 0
 
-  // Check payroll period status for this month — only matters if corrections exist
+  // Check payroll period status for this month — matters whenever this import would
+  // write new or modified rows, matching the lock check enforced by /api/attendance/import.
   let payrollStatus: string | null = null
-  if (modifiedCount > 0 && reportMonth > 0 && reportYear > 0) {
+  if ((newCount > 0 || modifiedCount > 0) && reportMonth > 0 && reportYear > 0) {
     const { data: period } = await svc
       .from('payroll_periods')
       .select('status')

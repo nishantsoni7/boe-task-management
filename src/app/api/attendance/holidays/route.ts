@@ -36,8 +36,8 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error } = await db
-    .from('attendance_holidays')
-    .select('id, holiday_date, holiday_name, created_at')
+    .from('payroll_holidays')
+    .select('id, holiday_date, holiday_name:description, created_at')
     .order('holiday_date', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -60,9 +60,9 @@ export async function POST(req: NextRequest) {
   }
 
   const { data, error } = await auth.db
-    .from('attendance_holidays')
-    .insert({ holiday_date, holiday_name: holiday_name.trim() })
-    .select('id, holiday_date, holiday_name, created_at')
+    .from('payroll_holidays')
+    .insert({ holiday_date, description: holiday_name.trim() })
+    .select('id, holiday_date, holiday_name:description, created_at')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -77,7 +77,7 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
-  const { error } = await auth.db.from('attendance_holidays').delete().eq('id', id)
+  const { error } = await auth.db.from('payroll_holidays').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

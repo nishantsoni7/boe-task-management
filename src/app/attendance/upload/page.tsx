@@ -487,8 +487,8 @@ export default function AttendanceUploadPage() {
               )}
             </SectionCard>
 
-            {/* Payroll lock / generated warnings — only shown when corrections exist */}
-            {preview.modifiedCount > 0 && preview.payrollStatus === 'locked' && (
+            {/* Payroll lock / generated warnings — shown whenever this import would write to a locked/generated period */}
+            {preview.payrollStatus === 'locked' && (
               <div style={{
                 padding: '12px 16px', borderRadius: 8,
                 background: 'rgba(239,68,68,0.07)',
@@ -497,10 +497,10 @@ export default function AttendanceUploadPage() {
                 display: 'flex', alignItems: 'flex-start', gap: 10,
               }}>
                 <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>🔒</span>
-                <span><strong>Payroll is locked for this month.</strong> Attendance corrections cannot be applied.</span>
+                <span><strong>Payroll is locked for this month.</strong> Attendance cannot be imported or corrected.</span>
               </div>
             )}
-            {preview.modifiedCount > 0 && preview.payrollStatus === 'generated' && (
+            {preview.payrollStatus === 'generated' && (
               <div style={{
                 padding: '12px 16px', borderRadius: 8,
                 background: 'rgba(245,158,11,0.07)',
@@ -550,7 +550,7 @@ export default function AttendanceUploadPage() {
 
             {/* Section 4: Actions */}
             {(() => {
-              const payrollLocked   = preview.modifiedCount > 0 && preview.payrollStatus === 'locked'
+              const payrollLocked   = preview.payrollStatus === 'locked'
               const onlyCorrections = preview.newCount === 0 && preview.modifiedCount > 0
               const mixed           = preview.newCount > 0  && preview.modifiedCount > 0
               const isDisabled      = preview.allUnchanged || payrollLocked || confirming
@@ -559,7 +559,7 @@ export default function AttendanceUploadPage() {
                 : preview.allUnchanged
                   ? 'No Changes to Import'
                   : payrollLocked
-                    ? 'Corrections Blocked (Payroll Locked)'
+                    ? 'Import Blocked (Payroll Locked)'
                     : onlyCorrections
                       ? 'Apply Corrections'
                       : mixed

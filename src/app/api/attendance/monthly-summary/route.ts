@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
 
   // Fetch public holidays for the month
   const { data: holidays, error: holErr } = await svc
-    .from('attendance_holidays')
+    .from('payroll_holidays')
     .select('holiday_date')
     .gte('holiday_date', from)
     .lte('holiday_date', to)

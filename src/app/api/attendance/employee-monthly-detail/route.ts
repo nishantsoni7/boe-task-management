@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
       .gte('attendance_date', from)
       .lte('attendance_date', to),
     // Public holidays for the month
-    svc.from('attendance_holidays')
+    svc.from('payroll_holidays')
       .select('holiday_date')
       .gte('holiday_date', from)
       .lte('holiday_date', to),

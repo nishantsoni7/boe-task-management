@@ -436,8 +436,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Payroll lock check — block corrections if payroll is locked for this month
-  if (modifiedRows.length > 0 && reportMonth > 0 && reportYear > 0) {
+  // Payroll lock check — block all imports (new rows and corrections) if payroll is locked for this month
+  if ((newRows.length > 0 || modifiedRows.length > 0) && reportMonth > 0 && reportYear > 0) {
     const { data: payrollPeriod } = await svc
       .from('payroll_periods')
       .select('status')
@@ -447,7 +447,7 @@ export async function POST(req: NextRequest) {
 
     if (payrollPeriod?.status === 'locked') {
       return NextResponse.json({
-        error: 'Payroll is locked for this month. Attendance corrections cannot be applied.',
+        error: 'Payroll is locked for this month. Attendance cannot be imported or corrected.',
         payrollLocked: true,
       }, { status: 422 })
     }
