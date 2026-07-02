@@ -998,11 +998,14 @@ export default function AssignedByMePage() {
     setAllTasks(prev => [task, ...prev])
     setShowDelegateModal(false)
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
   }
 
   const handleEditSaved = (updated: Task) => {
     setAllTasks(prev => prev.map(t => t.id === updated.id ? updated : t))
     setEditingTask(null)
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', updated.assigned_to] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks'] })
   }
 
   const handleDelete = async (task: Task) => {
@@ -1018,6 +1021,8 @@ export default function AssignedByMePage() {
     setAllTasks(prev => prev.filter(t => t.id !== task.id))
     if (selectedTask?.id === task.id) setSelectedTask(null)
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
   }
 
   const buckets = useMemo(() => {

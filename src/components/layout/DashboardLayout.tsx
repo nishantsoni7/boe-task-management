@@ -37,7 +37,6 @@ export function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
   const [sidebarOpen,  setSidebarOpen]  = useState(false)
-  const [navCounts,    setNavCounts]    = useState({ myActive: 0, assignedByMeActive: 0, quotationActive: 0 })
   const [refreshing,   setRefreshing]   = useState(false)
 
   const router   = useRouter()
@@ -45,9 +44,9 @@ export function DashboardLayout({
   const supabase = useMemo(() => createClient(), [])
 
   // Notification count — TanStack Query deduplicates concurrent fetches (Strict Mode safe).
-  // Include pathname in the key so the badge refreshes after visiting /notifications.
+  // Invalidated explicitly by notification mutations (mark read/delete) in notifications/page.tsx.
   const { data: notifData } = useQuery({
-    queryKey: ['notifications', 'count', pathname],
+    queryKey: ['notifications', 'count'],
     queryFn: async () => {
       const res = await fetch('/api/notifications?count=1')
       if (!res.ok) return { unreadCount: 0 }
@@ -63,9 +62,8 @@ export function DashboardLayout({
     if (refreshing) return
     setRefreshing(true)
     triggerRefresh()
-    router.refresh()
     setTimeout(() => setRefreshing(false), 1000)
-  }, [refreshing, triggerRefresh, router])
+  }, [refreshing, triggerRefresh])
 
   // Auto-refresh when the tab/app becomes visible again
   useEffect(() => {
@@ -84,18 +82,33 @@ export function DashboardLayout({
   const isAdmin          = navProfile?.role === 'admin'
   const isAdminOrManager = isAdmin || navProfile?.role === 'manager'
 
-  // Fetch sidebar task counts for the logged-in user (or viewed user in view mode).
-  // Skip when viewAsUserId is set but is not a real UUID (e.g. seed/test placeholder).
+  // Resolve the real logged-in user's id fresh on every mount (matching the
+  // auth-check pattern used elsewhere in the app) — not cached via React Query,
+  // so a same-tab account switch can't serve a stale identity.
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
   useEffect(() => {
     supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
-      const user = data.user
-      if (!user) return
-      const uid: string = viewAsUserId ?? user.id
-      if (!isValidUUID(uid)) {
-        setNavCounts({ myActive: 0, assignedByMeActive: 0, quotationActive: 0 })
-        return
+      setAuthUserId(data.user?.id ?? null)
+    })
+  }, [supabase])
+
+  // Effective user for nav counts: the viewed user in View As mode, otherwise
+  // the real logged-in user. Used as the query key so counts are cached per
+  // effective user instead of colliding across different logged-in users.
+  const effectiveNavUserId = viewAsUserId ?? authUserId
+
+  // Sidebar task counts for the effective user. Cached by effectiveNavUserId via
+  // React Query so remounting on navigation reuses fresh-enough data instead of
+  // refetching every time. Skip when the id is not a real UUID (e.g. seed/test
+  // placeholder), and wait until an id is resolved before fetching at all.
+  const { data: navCounts = { myActive: 0, assignedByMeActive: 0, quotationActive: 0 } } = useQuery({
+    queryKey: ['nav-counts', effectiveNavUserId],
+    queryFn: async () => {
+      const uid = effectiveNavUserId
+      if (!uid || !isValidUUID(uid)) {
+        return { myActive: 0, assignedByMeActive: 0, quotationActive: 0 }
       }
-      Promise.all([
+      const [myRes, abmRes, qrRes] = await Promise.all([
         supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
@@ -116,16 +129,17 @@ export function DashboardLayout({
           .eq('task_type', 'quotation_request')
           .neq('status', 'completed')
           .neq('status', 'cancelled'),
-      ]).then(([myRes, abmRes, qrRes]) => {
-        setNavCounts({
-          myActive:           myRes.count  ?? 0,
-          assignedByMeActive: abmRes.count ?? 0,
-          quotationActive:    qrRes.count  ?? 0,
-        })
-      })
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewAsUserId])
+      ])
+      return {
+        myActive:           myRes.count  ?? 0,
+        assignedByMeActive: abmRes.count ?? 0,
+        quotationActive:    qrRes.count  ?? 0,
+      }
+    },
+    enabled: effectiveNavUserId != null,
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+  })
 
   const navTo = (path: string) => {
     router.push(path)

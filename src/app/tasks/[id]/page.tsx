@@ -115,9 +115,10 @@ export default function TaskDetailPage() {
   const supabase    = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
 
-  // After any task mutation, invalidate My Tasks cache so navigating back shows fresh data
+  // After any task mutation, invalidate My Tasks + Today's Focus caches so navigating back shows fresh data
   const invalidateTaskCache = (assignedTo: string) => {
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', assignedTo] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks'] })
   }
 
 
@@ -321,6 +322,7 @@ export default function TaskDetailPage() {
     setTask({ ...task, ...localPatch })
     setSelectedStatus(newStatus)
     invalidateTaskCache(task.assigned_to)
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
     await loadLog(task.id)
     if (newStatus === 'completed') {
       const dest = task.task_type === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'
@@ -379,6 +381,7 @@ export default function TaskDetailPage() {
       setTask({ ...task, ...localPatch })
       setSelectedStatus(selectedStatus)
       invalidateTaskCache(task.assigned_to)
+      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
       await loadLog(task.id)
     } else {
       await applyStatusChange(selectedStatus, null)
@@ -410,6 +413,7 @@ export default function TaskDetailPage() {
     setTask({ ...task, status: restored })
     setSelectedStatus(restored)
     invalidateTaskCache(task.assigned_to)
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
     await loadLog(task.id)
     setReopening(false)
   }
@@ -443,6 +447,7 @@ export default function TaskDetailPage() {
     setCancelReason('')
     setCancelOtherText('')
     invalidateTaskCache(task.assigned_to)
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
     await loadLog(task.id)
     setCancelling(false)
     setTimeout(() => router.push('/tasks/cancelled'), 600)
@@ -539,6 +544,7 @@ export default function TaskDetailPage() {
     })
     if (logErrDue) console.error('[saveDueDate] activity log insert failed:', logErrDue.message)
     setTask({ ...task, ...updates as Partial<Task> })
+    invalidateTaskCache(task.assigned_to)
     await loadLog(task.id)
     setEditingDueDate(false)
     setSavingDueDate(false)
@@ -559,6 +565,7 @@ export default function TaskDetailPage() {
     })
     if (logErrPri) console.error('[savePriority] activity log insert failed:', logErrPri.message)
     setTask({ ...task, ...updates as Partial<Task> })
+    invalidateTaskCache(task.assigned_to)
     await loadLog(task.id)
     setEditingPriority(false)
     setSavingPriority(false)
@@ -578,6 +585,7 @@ export default function TaskDetailPage() {
     })
     if (logErrTitle) console.error('[saveTitle] activity log insert failed:', logErrTitle.message)
     setTask({ ...task, title: trimmed })
+    invalidateTaskCache(task.assigned_to)
     await loadLog(task.id)
     setEditingTitle(false)
     setSavingTitle(false)
@@ -1252,6 +1260,8 @@ export default function TaskDetailPage() {
                       const restored = (restoredStatus ?? 'working') as TaskStatus
                       setTask({ ...task, status: restored, cancelled_by: null, cancelled_at: null, cancellation_reason: null })
                       setSelectedStatus(restored)
+                      invalidateTaskCache(task.assigned_to)
+                      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
                       await loadLog(task.id)
                       setReopening(false)
                     }}

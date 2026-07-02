@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react'
 import type { UserProfile } from '@/lib/types'
 
 const STORAGE_KEY = 'adminViewAs'
@@ -45,15 +45,15 @@ export function ViewAsProvider({ children }: { children: ReactNode }) {
     setState(null)
   }, [])
 
+  const value = useMemo(() => ({
+    viewAsUserId: state?.userId ?? null,
+    viewAsProfile: state?.profile ?? null,
+    enterViewMode,
+    exitViewMode,
+  }), [state, enterViewMode, exitViewMode])
+
   return (
-    <ViewAsContext.Provider
-      value={{
-        viewAsUserId: state?.userId ?? null,
-        viewAsProfile: state?.profile ?? null,
-        enterViewMode,
-        exitViewMode,
-      }}
-    >
+    <ViewAsContext.Provider value={value}>
       {children}
     </ViewAsContext.Provider>
   )

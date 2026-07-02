@@ -15,6 +15,7 @@ const TASK_COLUMNS = [
 ].join(', ')
 
 const TODAY_STR = new Date().toISOString().slice(0, 10)
+const PAGE_SIZE  = 50
 
 function formatDate(d: string | null) {
   if (!d) return '—'
@@ -43,9 +44,13 @@ function col(label: string, width?: number, align: 'left' | 'right' | 'center' =
 function ViewAllTasksContent() {
   const [profile,  setProfile]  = useState<UserProfile | null>(null)
   const [tasks,    setTasks]    = useState<Task[]>([])
+  const [total,    setTotal]    = useState(0)
+  const [unfilteredTotal, setUnfilteredTotal] = useState(0)
   const [userMap,  setUserMap]  = useState<Record<string, string>>({})
   const [loading,  setLoading]  = useState(true)
+  const [fetching, setFetching] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [page,     setPage]     = useState(1)
   const router      = useRouter()
   const searchParams = useSearchParams()
   const supabase    = useMemo(() => createClient(), [])
@@ -62,7 +67,17 @@ function ViewAllTasksContent() {
     const s = searchParams.get('status')
     return s ? s.split(',').map(v => v.trim()).filter(Boolean) : null
   }, [searchParams])
+  const filterStatusesKey = filterStatuses ? filterStatuses.join(',') : ''
+  const filterKey = `${filterAssignedTo ?? ''}|${filterStatusesKey}`
 
+  // Filters changed — jump back to page 1 (adjust during render, not in an effect)
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey)
+    setPage(1)
+  }
+
+  // Auth + role guard + user directory — runs once
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -77,39 +92,56 @@ function ViewAllTasksContent() {
         router.push('/tasks/my')
         return
       }
-      setProfile(p)
 
-      const [{ data: taskData }, { data: userData }] = await Promise.all([
-        supabase.from('tasks').select(TASK_COLUMNS).order('due_date', { ascending: true, nullsFirst: false }),
-        supabase.from('users').select('id, full_name'),
-      ])
-
-      if (taskData) {
-        const sorted = (taskData as unknown as Task[])
-          .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
-        setTasks(sorted)
-      }
+      const { data: userData } = await supabase.from('users').select('id, full_name')
       if (userData) {
         const map: Record<string, string> = {}
         for (const u of userData) map[u.id] = u.full_name
         setUserMap(map)
       }
-      setLoading(false)
+      setProfile(p)
     }
     init()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch the current page of tasks whenever the admin/manager is confirmed,
+  // the page changes, or the (server-applied) filters change.
+  useEffect(() => {
+    if (!profile) return
+    const loadTasks = async () => {
+      setFetching(true)
+      const from = (page - 1) * PAGE_SIZE
+      const to   = from + PAGE_SIZE - 1
+
+      let query = supabase
+        .from('tasks')
+        .select(TASK_COLUMNS, { count: 'exact' })
+        .order('is_urgent', { ascending: false })
+        .order('due_date', { ascending: true, nullsFirst: false })
+      if (filterAssignedTo) query = query.eq('assigned_to', filterAssignedTo)
+      if (filterStatuses)   query = query.in('status', filterStatuses)
+
+      const { data: taskData, count } = await query.range(from, to)
+      setTasks((taskData ?? []) as unknown as Task[])
+      setTotal(count ?? 0)
+
+      // Only needed for the "(filtered from N)" footer note when a filter is active
+      if (filterAssignedTo || filterStatuses) {
+        const { count: allCount } = await supabase
+          .from('tasks').select('id', { count: 'exact', head: true })
+        setUnfilteredTotal(allCount ?? 0)
+      }
+
+      setFetching(false)
+      setLoading(false)
+    }
+    loadTasks()
+  }, [profile, page, filterAssignedTo, filterStatusesKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
   }
-
-  const filteredTasks = useMemo(() => {
-    let result = tasks
-    if (filterAssignedTo) result = result.filter(t => t.assigned_to === filterAssignedTo)
-    if (filterStatuses)   result = result.filter(t => filterStatuses.includes(t.status))
-    return result
-  }, [tasks, filterAssignedTo, filterStatuses])
 
   const filterContext = useMemo(() => {
     if (!filterAssignedTo && !filterStatuses) return null
@@ -125,7 +157,7 @@ function ViewAllTasksContent() {
     <DashboardLayout
       profile={profile}
       title="View All Tasks"
-      subtitle={filterContext ?? `${tasks.length} total task${tasks.length !== 1 ? 's' : ''}`}
+      subtitle={filterContext ?? `${total} total task${total !== 1 ? 's' : ''}`}
       onSignOut={handleLogout}
       actions={filterAssignedTo || filterStatuses ? (
         <a href="/performance/team" style={{
@@ -151,7 +183,7 @@ function ViewAllTasksContent() {
       {isMobile ? (
         /* ── Mobile: card list ── */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {filteredTasks.length === 0 ? (
+          {tasks.length === 0 ? (
             <div style={{
               background: colors.base, border: `1.5px solid ${colors.border}`,
               borderRadius: '10px', padding: '52px 24px',
@@ -159,7 +191,7 @@ function ViewAllTasksContent() {
             }}>
               No tasks found.
             </div>
-          ) : filteredTasks.map(task => {
+          ) : tasks.map(task => {
             const overdue = !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed'
             const pill    = PRIORITY_PILL[task.priority] ?? PRIORITY_PILL.low
             return (
@@ -214,7 +246,7 @@ function ViewAllTasksContent() {
             )
           })}
           <div style={{ padding: '4px 2px', fontSize: '11px', color: colors.muted }}>
-            {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${tasks.length})` : ''}
+            {total} task{total !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${unfilteredTotal})` : ''}
           </div>
         </div>
       ) : (
@@ -239,12 +271,12 @@ function ViewAllTasksContent() {
             {col('Due Date', 88, 'right')}
           </div>
 
-          {filteredTasks.length === 0 ? (
+          {tasks.length === 0 ? (
             <div style={{ padding: '52px 24px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
               No tasks found.
             </div>
           ) : (
-            filteredTasks.map(task => {
+            tasks.map(task => {
               const overdue = !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed'
               const pill    = PRIORITY_PILL[task.priority] ?? PRIORITY_PILL.low
               return (
@@ -314,8 +346,41 @@ function ViewAllTasksContent() {
             padding: '9px 20px', fontSize: '11px', color: colors.muted,
             borderTop: `1px solid ${colors.border}`, background: colors.raised,
           }}>
-            {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${tasks.length})` : ''}
+            {total} task{total !== 1 ? 's' : ''}{filterContext ? ` (filtered from ${unfilteredTotal})` : ''}
           </div>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {total > PAGE_SIZE && (
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', fontSize: '13px', marginTop: '12px' }}>
+          <button
+            onClick={() => setPage(p => p - 1)}
+            disabled={page <= 1 || fetching}
+            style={{
+              padding: '6px 14px', borderRadius: '7px', fontSize: '13px',
+              border: `1px solid ${colors.border}`, background: colors.base,
+              color: page <= 1 ? colors.muted : colors.primary,
+              cursor: page <= 1 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Previous
+          </button>
+          <span style={{ color: colors.muted }}>
+            Page {page} of {Math.ceil(total / PAGE_SIZE)}
+          </span>
+          <button
+            onClick={() => setPage(p => p + 1)}
+            disabled={page >= Math.ceil(total / PAGE_SIZE) || fetching}
+            style={{
+              padding: '6px 14px', borderRadius: '7px', fontSize: '13px',
+              border: `1px solid ${colors.border}`, background: colors.base,
+              color: page >= Math.ceil(total / PAGE_SIZE) ? colors.muted : colors.primary,
+              cursor: page >= Math.ceil(total / PAGE_SIZE) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Next
+          </button>
         </div>
       )}
     </DashboardLayout>

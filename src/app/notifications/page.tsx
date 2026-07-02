@@ -126,6 +126,8 @@ export default function NotificationsPage() {
     if (!res.ok) {
       queryClient.setQueryData(['notifications'], snapshot)
       console.error('[notifications] mark all failed:', await res.json().catch(() => null))
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] })
     }
     setMarkingAll(false)
   }
@@ -138,7 +140,9 @@ export default function NotificationsPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
-    }).catch(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
+    })
+      .then(res => { if (res.ok) queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] }) })
+      .catch(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
   }
 
   const deleteSingle = (id: string) => {
@@ -146,6 +150,7 @@ export default function NotificationsPage() {
       old => (old ?? []).filter(n => n.id !== id))
     setSelected(prev => { const s = new Set(prev); s.delete(id); return s })
     fetch(`/api/notifications/${id}`, { method: 'DELETE' })
+      .then(res => { if (res.ok) queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] }) })
       .catch(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
   }
 
@@ -165,6 +170,8 @@ export default function NotificationsPage() {
     if (!res.ok) {
       queryClient.setQueryData(['notifications'], snapshot)
       console.error('[notifications] delete selected failed:', await res.json().catch(() => null))
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] })
     }
     setDeletingBulk(false)
   }
@@ -179,6 +186,8 @@ export default function NotificationsPage() {
     if (!res.ok) {
       queryClient.setQueryData(['notifications'], snapshot)
       console.error('[notifications] delete all failed:', await res.json().catch(() => null))
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] })
     }
     setDeletingAll(false)
   }

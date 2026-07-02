@@ -971,12 +971,14 @@ export default function MyTasksPage() {
     setShowCreateModal(false)
     // Invalidate so the cache refreshes in the background
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
   }
 
   const handleEditSaved = (updated: Task) => {
     setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === updated.id ? updated : t))
     setEditingTask(null)
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
   }
 
   const handleAddUpdate = async (note: string, newStatus: string, waitingOn?: { type: 'team_member' | 'external'; userId?: string; text?: string }) => {
@@ -1064,6 +1066,12 @@ export default function MyTasksPage() {
         t.id === selectedTask.id ? { ...t, last_update_at: now } : t
       ))
     }
+
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+    if (statusChanged) {
+      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+    }
   }
 
   const handleAcknowledge = async () => {
@@ -1094,6 +1102,7 @@ export default function MyTasksPage() {
     setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
     setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
   }
 
   const handleDelete = async (task: Task) => {
@@ -1119,6 +1128,8 @@ export default function MyTasksPage() {
     setTaskOverrides(prev => (prev ?? allTasksRaw).filter(t => t.id !== task.id))
     if (selectedTask?.id === task.id) setSelectedTask(null)
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
   }
 
   const handlePin = async (task: Task) => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo } from 'react'
 
 type RefreshContextValue = {
   refreshKey: number
@@ -15,8 +15,9 @@ const RefreshContext = createContext<RefreshContextValue>({
 export function RefreshProvider({ children }: { children: React.ReactNode }) {
   const [refreshKey, setRefreshKey] = useState(0)
   const triggerRefresh = useCallback(() => setRefreshKey(k => k + 1), [])
+  const value = useMemo(() => ({ refreshKey, triggerRefresh }), [refreshKey, triggerRefresh])
   return (
-    <RefreshContext.Provider value={{ refreshKey, triggerRefresh }}>
+    <RefreshContext.Provider value={value}>
       {children}
     </RefreshContext.Provider>
   )
