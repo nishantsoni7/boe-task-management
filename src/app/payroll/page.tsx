@@ -64,9 +64,20 @@ export default function PayrollPage() {
   const [createYear,   setCreateYear]   = useState(new Date().getFullYear())
   const [creating,     setCreating]     = useState(false)
   const [createError,  setCreateError]  = useState<string | null>(null)
+  const [createInfo,   setCreateInfo]   = useState<string | null>(null)
+  const [highlightedPeriodId, setHighlightedPeriodId] = useState<string | null>(null)
 
   const router  = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  // Own the highlight's lifetime here rather than in the click handler, so the
+  // timer is cleared if the id changes again (re-highlighting a different row)
+  // or the component unmounts before the 3s window elapses.
+  useEffect(() => {
+    if (!highlightedPeriodId) return
+    const timer = setTimeout(() => setHighlightedPeriodId(null), 3000)
+    return () => clearTimeout(timer)
+  }, [highlightedPeriodId])
 
   useEffect(() => {
     const init = async () => {
@@ -149,6 +160,7 @@ export default function PayrollPage() {
   const handleCreatePeriod = async () => {
     setCreating(true)
     setCreateError(null)
+    setCreateInfo(null)
     try {
       const res = await fetch('/api/payroll/periods', {
         method: 'POST',
@@ -160,6 +172,11 @@ export default function PayrollPage() {
       })
       const json = await res.json()
       if (!res.ok) { setCreateError(json.error ?? 'Failed to create period'); return }
+      if (res.status === 200) {
+        setCreateInfo(`A payroll period for ${MONTHS[createMonth - 1]} ${createYear} already exists below — use Re-generate on that row to recompute it with the latest attendance.`)
+        const existingId = json.period?.id as string | undefined
+        if (existingId) setHighlightedPeriodId(existingId)
+      }
       await loadPeriods(token)
     } finally {
       setCreating(false)
@@ -255,6 +272,15 @@ export default function PayrollPage() {
             {createError}
           </div>
         )}
+        {createInfo && (
+          <div style={{
+            marginTop: 10, padding: '7px 12px', borderRadius: 7,
+            background: 'rgba(245,158,11,0.08)', color: '#92400E',
+            border: '1px solid rgba(245,158,11,0.25)', fontSize: 12.5,
+          }}>
+            {createInfo}
+          </div>
+        )}
       </div>
 
       {/* Table card */}
@@ -293,6 +319,8 @@ export default function PayrollPage() {
                     key={p.id}
                     style={{
                       borderBottom: i < periods.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
+                      background: p.id === highlightedPeriodId ? 'rgba(232,160,48,0.14)' : 'transparent',
+                      transition: 'background 0.6s ease',
                     }}
                   >
                     <td style={{ padding: '12px 16px', fontSize: 13.5, fontWeight: 500, color: '#111318' }}>
