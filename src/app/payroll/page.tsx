@@ -93,8 +93,13 @@ export default function PayrollPage() {
         .eq('id', session.user.id)
         .single()
 
+      // This page is the admin period-management dashboard (generate/lock
+      // periods, every employee's data) — not a page any non-admin should
+      // land on, even if Payroll's Control Center visibility is 'live'.
+      // There's no employee-facing payslip view at this route yet, so
+      // Payroll's app_modules row is kept admin_only until one exists.
       if (!prof || prof.role !== 'admin') {
-        router.push('/dashboard')
+        router.push('/coming-soon')
         return
       }
 
