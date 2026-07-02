@@ -3,9 +3,10 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
+import { Check, User, CalendarDays } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
-import { isOverdue, getAssignedByDisplay, isValidUUID } from '@/lib/ui'
+import { isOverdue, getAssignedByDisplay, isValidUUID, timeAgo } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -23,6 +24,46 @@ const TASK_COLUMNS = [
   'task_type', 'customer_name', 'contact_number', 'company_name', 'city_project',
 ].join(', ')
 
+// ── Urgency scoring — used to rank Needs Acknowledgement / Quotation Requests /
+// Overdue Tasks by operational risk instead of creation time ────────────────
+function daysSince(iso: string | null): number {
+  if (!iso) return 0
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000))
+}
+
+function priorityWeight(priority: string | null): number {
+  if (priority === 'high') return 0
+  if (priority === 'medium') return 1
+  return 2
+}
+
+// Tier 0 = overdue, 1 = blocked, 2 = everything else — overdue/blocked always
+// outrank priority, since a stale low-priority task is a bigger risk than a
+// fresh high-priority one.
+function urgencyTier(task: Task): number {
+  if (isOverdue(task.due_date, task.status)) return 0
+  if (task.status === 'blocked') return 1
+  return 2
+}
+
+function compareByUrgency(a: Task, b: Task): number {
+  const tierDiff = urgencyTier(a) - urgencyTier(b)
+  if (tierDiff !== 0) return tierDiff
+  const waitDiff = daysSince(b.created_at) - daysSince(a.created_at) // longer-waiting first
+  if (waitDiff !== 0) return waitDiff
+  return priorityWeight(a.priority) - priorityWeight(b.priority)
+}
+
+// Pill colours — reused verbatim from PriorityChip/StatusChip below so the
+// row-level badges match the rest of the app's badge language exactly.
+const PRIORITY_PILL: Record<string, { color: string; bg: string }> = {
+  high:   { color: '#991B1B', bg: '#FEF2F2' },
+  medium: { color: '#92400E', bg: '#FFFBEB' },
+  low:    { color: '#374151', bg: '#F3F4F6' },
+}
+const WAITING_PILL = { color: '#92400E', bg: '#FFFBEB' }
+const BLOCKED_PILL = { color: '#991B1B', bg: '#FEF2F2' }
+
 export default function DashboardPage() {
   const [loggedInId,         setLoggedInId]         = useState('')
   const [tasks,              setTasks]              = useState<Task[]>([])
@@ -37,6 +78,7 @@ export default function DashboardPage() {
   const [previewList,        setPreviewList]        = useState<{ title: string; items: Task[] } | null>(null)
   const [escalationPreview,  setEscalationPreview]  = useState(false)
   const [assignerNames,      setAssignerNames]      = useState<Record<string, string>>({})
+  const [acknowledgingIds,   setAcknowledgingIds]   = useState<Set<string>>(new Set())
   const [completedTasksData, setCompletedTasksData] = useState<Task[]>([])
   const [assignedByMeTasksAll, setAssignedByMeTasksAll] = useState<Task[]>([])
   const [isMobile,           setIsMobile]           = useState(false)
@@ -190,33 +232,36 @@ export default function DashboardPage() {
     router.push('/login')
   }
 
-  const handleAcknowledge = async () => {
-    if (!selectedTask) return
-    if (selectedTask.assigned_to !== currentUserId) return
-    if (selectedTask.created_by === currentUserId) return
+  const handleAcknowledge = async (task: Task) => {
+    if (task.assigned_to !== currentUserId) return
+    if (task.created_by === currentUserId) return
+    if (acknowledgingIds.has(task.id)) return
+    setAcknowledgingIds(prev => new Set(prev).add(task.id))
     const now = new Date().toISOString()
-    const oldStatus = selectedTask.status
-    const { error } = await supabase.from('tasks').update({ acknowledged_at: now, status: 'working', last_update_at: now }).eq('id', selectedTask.id)
+    const oldStatus = task.status
+    const { error } = await supabase.from('tasks').update({ acknowledged_at: now, status: 'working', last_update_at: now }).eq('id', task.id)
     if (error) {
       alert('Failed to acknowledge task. Please try again.')
+      setAcknowledgingIds(prev => { const next = new Set(prev); next.delete(task.id); return next })
       return
     }
     await supabase.from('task_activity_log').insert([
-      { task_id: selectedTask.id, actor_id: currentUserId, action: 'acknowledged', note: null },
-      { task_id: selectedTask.id, actor_id: currentUserId, action: 'status_changed', from_status: oldStatus, to_status: 'working', note: null },
+      { task_id: task.id, actor_id: currentUserId, action: 'acknowledged', note: null },
+      { task_id: task.id, actor_id: currentUserId, action: 'status_changed', from_status: oldStatus, to_status: 'working', note: null },
     ])
-    if (selectedTask.created_by && selectedTask.created_by !== currentUserId) {
+    if (task.created_by && task.created_by !== currentUserId) {
       fetch('/api/notify-status-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: selectedTask.id, taskTitle: selectedTask.title, createdBy: selectedTask.created_by, action: 'acknowledged', actorName: profile?.full_name }),
+        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, action: 'acknowledged', actorName: profile?.full_name }),
       }).then(res => {
         if (!res.ok) res.json().then(d => console.error('[dashboard/acknowledge] notification failed:', d))
       }).catch(err => console.error('[dashboard/acknowledge] notification fetch error:', err))
     }
     const patch = { acknowledged_at: now, status: 'working' as const, last_update_at: now }
-    setSelectedTask(prev => prev ? { ...prev, ...patch } : prev)
-    setTasks(prev => prev.map(t => t.id === selectedTask.id ? { ...t, ...patch } : t))
+    setSelectedTask(prev => prev && prev.id === task.id ? { ...prev, ...patch } : prev)
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...patch } : t))
+    setAcknowledgingIds(prev => { const next = new Set(prev); next.delete(task.id); return next })
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', currentUserId] })
     queryClient.invalidateQueries({ queryKey: ['top-tasks', loggedInId] })
   }
@@ -229,8 +274,10 @@ export default function DashboardPage() {
   const now = new Date()
   const msPerDay = 24 * 60 * 60 * 1000
 
-  const unacknowledgedForMe = tasks.filter(t => !t.acknowledged_at && t.created_by !== currentUserId && t.task_type !== 'quotation_request')
-  const quotationTasks = tasks.filter(t => t.task_type === 'quotation_request')
+  const unacknowledgedForMe = tasks
+    .filter(t => !t.acknowledged_at && t.created_by !== currentUserId && t.task_type !== 'quotation_request')
+    .sort(compareByUrgency)
+  const quotationTasks = tasks.filter(t => t.task_type === 'quotation_request').sort(compareByUrgency)
   const mergedUserMap   = { ...assignerNames, ...userMap }
 
   const adminEscalations = useMemo(() => {
@@ -267,7 +314,7 @@ export default function DashboardPage() {
 
   if (loading) return <LoadingScreen />
 
-  const overdueTasks   = tasks.filter(t => isOverdue(t.due_date, t.status))
+  const overdueTasks   = tasks.filter(t => isOverdue(t.due_date, t.status)).sort(compareByUrgency)
   const waitingTasks   = tasks.filter(t => t.status === 'waiting')
   const isAdmin        = (viewAsProfile ?? profile)?.role === 'admin'
 
@@ -313,6 +360,9 @@ export default function DashboardPage() {
             userMap={mergedUserMap}
             now={now}
             isMobile={isMobile}
+            currentUserId={currentUserId}
+            acknowledgingIds={acknowledgingIds}
+            onAcknowledge={handleAcknowledge}
             onPreview={task => setSelectedTask(task)}
             onViewAll={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
           />
@@ -379,7 +429,7 @@ export default function DashboardPage() {
             selectedTask.assigned_to === currentUserId &&
             selectedTask.created_by !== currentUserId &&
             selectedTask.status !== 'completed'
-              ? handleAcknowledge
+              ? () => handleAcknowledge(selectedTask)
               : undefined
           }
         />
@@ -395,6 +445,46 @@ function ChevronRightIcon({ color = '#9CA3AF' }: { color?: string }) {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, flexShrink: 0 }}>
       <polyline points="9 18 15 12 9 6" />
     </svg>
+  )
+}
+
+// ── Shared row metadata line — priority/waiting/blocked render as compact
+// pills (reusing the exact StatusChip/PriorityChip colour tokens below),
+// due-date and ownership render as plain text joined by "·". Reused by both
+// Needs Acknowledgement and Quotation Requests rows so the two widgets speak
+// the same visual language ── ────────────────────────────────────────────
+
+type MetaSegment = { text: string; color: string; bg?: string; pill?: boolean; icon?: React.ReactNode }
+
+// `gap` defaults to the original 6px spacing (Quotation Requests rows rely on
+// this default and pass no icons, so their output is unchanged). Needs
+// Acknowledgement rows pass a wider gap + per-segment icons instead of the
+// "·" separator — a "·" is only ever shown between two plain segments that
+// neither carry an icon, so icon-bearing rows never render one.
+function MetaLine({ segments, gap = '6px' }: { segments: MetaSegment[]; gap?: string }) {
+  if (segments.length === 0) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: gap, rowGap: '3px', fontSize: '12.5px', fontWeight: 400, color: '#6B7280', lineHeight: 1.4 }}>
+      {segments.map((seg, i) => {
+        const needsDot = !seg.pill && !seg.icon && i > 0 && !segments[i - 1].pill && !segments[i - 1].icon
+        return seg.pill ? (
+          <span key={i} style={{
+            display: 'inline-flex', alignItems: 'center',
+            fontSize: '10.5px', fontWeight: 600, color: seg.color,
+            background: seg.bg ?? '#F3F4F6',
+            borderRadius: '5px', padding: '1.5px 6px', lineHeight: 1.5,
+          }}>
+            {seg.text}
+          </span>
+        ) : (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            {needsDot && <span style={{ color: '#D1D5DB' }}>·</span>}
+            {seg.icon}
+            <span style={{ color: seg.color }}>{seg.text}</span>
+          </span>
+        )
+      })}
+    </div>
   )
 }
 
@@ -418,45 +508,46 @@ function TodaysFocusPanel({
       background: '#F8F7F5',
       border: '1px solid rgba(0,0,0,0.06)',
       borderRadius: '16px',
-      padding: isMobile ? '12px 14px' : '14px 24px 10px',
+      padding: isMobile ? '10px 14px' : '10px 22px 8px',
       marginBottom: '20px',
       boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
     }}>
-      {/* Header */}
+      {/* Header — title, slot count and "My Tasks" all on one line */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: tasks.length === 0 ? '14px' : '10px',
+        marginBottom: '8px',
       }}>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: isMobile ? '17px' : '19px', color: '#0F172A', letterSpacing: '-0.03em', lineHeight: 1 }}>
-            Top 3 Focus
-          </div>
-          <div style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '3px', letterSpacing: '0.01em' }}>
+        <div style={{ fontWeight: 800, fontSize: isMobile ? '17px' : '19px', color: '#0F172A', letterSpacing: '-0.03em', lineHeight: 1 }}>
+          Top 3 Focus
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '12px', color: '#9CA3AF', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>
             {tasks.length === 0
               ? 'Pin up to three tasks to keep in focus.'
               : `${tasks.length} of 3 slots active`}
-          </div>
+          </span>
+          <button
+            onClick={onGoToMyTasks}
+            style={{
+              fontSize: '11px', fontWeight: 500, color: '#9CA3AF',
+              background: 'transparent', border: 'none',
+              padding: '4px 0', cursor: 'pointer',
+              letterSpacing: '0.01em', transition: 'color 0.12s',
+              whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#374151' }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#9CA3AF' }}
+          >
+            My Tasks →
+          </button>
         </div>
-        <button
-          onClick={onGoToMyTasks}
-          style={{
-            fontSize: '11px', fontWeight: 500, color: '#9CA3AF',
-            background: 'transparent', border: 'none',
-            padding: '4px 0', cursor: 'pointer',
-            letterSpacing: '0.01em', transition: 'color 0.12s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.color = '#374151' }}
-          onMouseLeave={e => { e.currentTarget.style.color = '#9CA3AF' }}
-        >
-          My Tasks →
-        </button>
       </div>
 
       {/* 3-column card grid — always rendered, all 3 slots */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-        gap: isMobile ? '8px' : '10px',
+        gap: isMobile ? '8px' : '8px',
       }}>
         {[0, 1, 2].map(idx => {
           const task = tasks[idx]
@@ -474,9 +565,9 @@ function TodaysFocusPanel({
                   background: 'rgba(255,255,255,0.5)',
                   border: '1px dashed #D4D4D4',
                   borderRadius: '12px',
-                  padding: isMobile ? '12px 14px' : '13px 16px',
+                  padding: isMobile ? '10px 9px' : '10px 11px',
                   display: 'flex', flexDirection: 'column',
-                  minHeight: isMobile ? 'auto' : '130px',
+                  minHeight: isMobile ? 'auto' : '106px',
                   cursor: 'pointer',
                   transition: 'background 0.15s, border-color 0.15s',
                 }}
@@ -489,12 +580,13 @@ function TodaysFocusPanel({
                   e.currentTarget.style.borderColor = '#D4D4D4'
                 }}
               >
-                {/* Slot number */}
-                <div style={{ fontSize: '12px', color: '#C4C9D4', marginBottom: '4px', lineHeight: 1 }}>
-                  {['①','②','③'][idx]}
-                </div>
-                <div style={{ fontSize: '13px', fontWeight: 500, color: '#A8B2BF', marginBottom: '2px', lineHeight: 1.4 }}>
-                  Focus slot available
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '2px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: '#A8B2BF', lineHeight: 1.4 }}>
+                    Focus slot available
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#C4C9D4', lineHeight: 1, flexShrink: 0 }}>
+                    {['①','②','③'][idx]}
+                  </span>
                 </div>
                 <div style={{ fontSize: '12px', color: '#C4C9D4', lineHeight: 1.3 }}>
                   Open My Tasks to add one.
@@ -504,11 +596,7 @@ function TodaysFocusPanel({
           }
 
           /* ── Filled slot ── */
-          const now = new Date()
           const dueDate = task.due_date ? new Date(task.due_date) : null
-          const isUrgentDate = dueDate
-            ? (dueDate.toDateString() === now.toDateString() || dueDate < now)
-            : false
           const dueDateStr = dueDate
             ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
             : null
@@ -543,9 +631,9 @@ function TodaysFocusPanel({
                 borderBottom: '1px solid rgba(0,0,0,0.06)',
                 borderLeft: '3px solid #B8ACA0',
                 borderRadius: '12px',
-                padding: isMobile ? '12px 14px' : '13px 16px',
+                padding: isMobile ? '8px 9px' : '8px 11px',
                 display: 'flex', flexDirection: 'column',
-                minHeight: isMobile ? 'auto' : '130px',
+                minHeight: isMobile ? 'auto' : '98px',
                 cursor: 'pointer',
                 boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                 transition: 'box-shadow 0.15s',
@@ -553,24 +641,24 @@ function TodaysFocusPanel({
               onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 3px 10px rgba(0,0,0,0.08)' }}
               onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)' }}
             >
-              {/* Zone 1 — slot number */}
-              <div style={{ fontSize: '12px', color: '#B0BAC8', marginBottom: '4px', lineHeight: 1 }}>
-                {['①','②','③'][idx]}
-              </div>
-
-              {/* Zone 2 — title + source (grows to push zone 3 to bottom) */}
-              <div style={{ flex: 1, marginBottom: '6px' }}>
-                <div style={{
-                  fontSize: isMobile ? '13px' : '14px',
-                  fontWeight: 700,
-                  color: '#0F172A',
-                  lineHeight: 1.4,
-                  letterSpacing: '-0.01em',
-                  marginBottom: '2px',
-                }}>
-                  {task.title}
+              {/* Zone — title + slot number (top-right) + source, grows to push zone below to bottom */}
+              <div style={{ flex: 1, marginBottom: '3px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
+                  <div style={{
+                    fontSize: isMobile ? '13px' : '14px',
+                    fontWeight: 700,
+                    color: '#0F172A',
+                    lineHeight: 1.3,
+                    letterSpacing: '-0.01em',
+                  }}>
+                    {task.title}
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#B0BAC8', lineHeight: 1, flexShrink: 0 }}>
+                    {['①','②','③'][idx]}
+                  </span>
                 </div>
-                <div style={{ fontSize: '12px', color: '#8A94A6', lineHeight: 1.3 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#8A94A6', lineHeight: 1.25 }}>
+                  <User size={12} strokeWidth={2} color="#B0BAC8" style={{ flexShrink: 0 }} />
                   {isSelf
                     ? 'Self Task'
                     : <span>Delegated by <span style={{ color: '#6B7280', fontWeight: 500 }}>{assignerDisplay}</span></span>
@@ -578,11 +666,22 @@ function TodaysFocusPanel({
                 </div>
               </div>
 
-              {/* Zone 3 — chips + date + chevron, anchored to bottom */}
+              {/* Zone — due date, then priority + status together, anchored to bottom */}
               <div>
-                {/* Priority + status chips */}
+                {/* Due date + chevron — subtle secondary metadata, no warning colours */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  {dueDateStr
+                    ? <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 500, color: '#6B7280' }}>
+                        <CalendarDays size={12} strokeWidth={2} color="#8A94A6" style={{ flexShrink: 0 }} />
+                        {`Due ${dueDateStr}`}
+                      </span>
+                    : <span />
+                  }
+                  <ChevronRightIcon />
+                </div>
+                {/* Priority + status chips — kept together, left-aligned */}
                 {(priorityLabel || statusLabel) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                     {priorityLabel && (
                       <span style={{
                         fontSize: '10.5px',
@@ -590,8 +689,8 @@ function TodaysFocusPanel({
                         background: '#F8F9FB',
                         border: '1px solid #E6E8EC',
                         borderRadius: '999px',
-                        padding: '2px 7px',
-                        lineHeight: 1.5,
+                        padding: '1.5px 7px',
+                        lineHeight: 1.4,
                         fontWeight: 500,
                       }}>
                         {priorityLabel}
@@ -604,26 +703,14 @@ function TodaysFocusPanel({
                         background: '#F8F9FB',
                         border: '1px solid #E6E8EC',
                         borderRadius: '999px',
-                        padding: '2px 7px',
-                        lineHeight: 1.5,
+                        padding: '1.5px 7px',
+                        lineHeight: 1.4,
                       }}>
                         {statusLabel}
                       </span>
                     )}
                   </div>
                 )}
-                {/* Due date + chevron */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  {dueDateStr
-                    ? <span style={{
-                        fontSize: '11px',
-                        fontWeight: isUrgentDate ? 600 : 500,
-                        color: isUrgentDate ? '#C0392B' : '#9CA3AF',
-                      }}>{`Due ${dueDateStr}`}</span>
-                    : <span />
-                  }
-                  <ChevronRightIcon />
-                </div>
               </div>
             </div>
           )
@@ -714,6 +801,9 @@ function UnacknowledgedPanel({
   userMap,
   now,
   isMobile,
+  currentUserId,
+  acknowledgingIds,
+  onAcknowledge,
   onPreview,
   onViewAll,
 }: {
@@ -721,6 +811,9 @@ function UnacknowledgedPanel({
   userMap: Record<string, string>
   now: Date
   isMobile: boolean
+  currentUserId?: string
+  acknowledgingIds?: Set<string>
+  onAcknowledge?: (task: Task) => void
   onPreview: (task: Task) => void
   onViewAll: () => void
 }) {
@@ -736,7 +829,7 @@ function UnacknowledgedPanel({
         onClick={() => tasks.length > 0 && onViewAll()}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '14px 16px' : '16px 20px',
+          padding: isMobile ? '12px 16px' : '12px 20px',
           borderBottom: '1px solid #F0F1F4',
           cursor: tasks.length > 0 ? 'pointer' : 'default',
           transition: 'background 0.15s',
@@ -767,7 +860,17 @@ function UnacknowledgedPanel({
           <div style={{ fontSize: '12px', color: '#C4C9D4' }}>No tasks waiting for acknowledgement</div>
         </div>
       ) : (
-        <UnacknowledgedTasksSection tasks={tasks} userMap={userMap} now={now} onPreview={onPreview} compact />
+        <UnacknowledgedTasksSection
+          tasks={tasks}
+          userMap={userMap}
+          now={now}
+          onPreview={onPreview}
+          compact
+          variant="acknowledgement"
+          currentUserId={currentUserId}
+          acknowledgingIds={acknowledgingIds}
+          onAcknowledge={onAcknowledge}
+        />
       )}
     </div>
   )
@@ -800,7 +903,7 @@ function QuotationPanel({
         onClick={() => tasks.length > 0 && onViewAll()}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '14px 16px' : '16px 20px',
+          padding: isMobile ? '12px 16px' : '12px 20px',
           borderBottom: '1px solid #F0F1F4',
           cursor: tasks.length > 0 ? 'pointer' : 'default',
           transition: 'background 0.15s',
@@ -928,18 +1031,38 @@ function QuotationRequestsSection({
         const isTomorrow    = dueDate ? dueDate >= tomorrowStart && dueDate < new Date(tomorrowStart.getTime() + 86400000) : false
         const dueDateStr    = dueDate ? dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null
 
-        // Date/created text — no priority dot in quotation rows (distinct from acknowledgement)
+        // Date/created text, with a days-remaining framing for near-term due dates
         let dateText: string | null = null
         let dateColor = '#6B7280'
         if (dueDate) {
           if (isDueOverdue)    { dateText = `Overdue · ${dueDateStr}`; dateColor = '#C0392B' }
           else if (isToday)    { dateText = 'Due today';               dateColor = '#D97706' }
           else if (isTomorrow) { dateText = 'Due tomorrow';            dateColor = '#6B7280' }
-          else                 { dateText = `Due ${dueDateStr}`;       dateColor = '#6B7280' }
+          else {
+            const daysLeft = Math.round((dueDate.getTime() - todayStart.getTime()) / 86_400_000)
+            dateText = daysLeft <= 7 ? `${daysLeft} days left` : `Due ${dueDateStr}`
+            dateColor = '#6B7280'
+          }
         } else {
           const created = new Date(task.created_at)
           if (created >= todayStart)        { dateText = 'Created today';     dateColor = '#9CA3AF' }
           else if (created >= yesterdayStart) { dateText = 'Created yesterday'; dateColor = '#9CA3AF' }
+        }
+
+        const priorityLower  = task.priority?.toLowerCase() ?? ''
+        const priorityLabel  = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : null
+        const priorityPill   = PRIORITY_PILL[priorityLower] ?? PRIORITY_PILL.low
+        const isBlocked      = task.status === 'blocked'
+
+        const metaSegments: MetaSegment[] = []
+        if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
+        if (isBlocked) metaSegments.push({ text: 'Blocked', color: BLOCKED_PILL.color, bg: BLOCKED_PILL.bg, pill: true })
+        if (dateText) metaSegments.push({ text: dateText, color: dateColor })
+        if (metaSegments.length < 2 && task.last_update_at && task.last_update_at !== task.created_at) {
+          metaSegments.push({ text: `Updated ${timeAgo(task.last_update_at)}`, color: '#9CA3AF' })
+        }
+        if (requesterName && requesterName !== 'Unknown') {
+          metaSegments.push({ text: `by ${requesterName}`, color: '#9CA3AF' })
         }
 
         return (
@@ -950,57 +1073,28 @@ function QuotationRequestsSection({
             tabIndex={0}
             onKeyDown={e => e.key === 'Enter' && onOpen(task)}
             style={{
-              display: 'flex', alignItems: 'stretch',
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '8px 16px 8px 20px',
               borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
               cursor: 'pointer',
               transition: 'background 0.12s',
-              minHeight: '76px',
+              minHeight: '52px',
             }}
             onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
             onMouseLeave={e => { e.currentTarget.style.background = '' }}
           >
-            {/* LEFT — client name + date */}
-            <div style={{
-              flex: 1, minWidth: 0,
-              display: 'flex', flexDirection: 'column', justifyContent: 'center',
-              padding: '14px 16px 14px 20px',
-            }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: '16px', fontWeight: 600, color: '#111827',
-                letterSpacing: '-0.015em', lineHeight: 1.3,
+                fontSize: '14.5px', fontWeight: 600, color: '#111827',
+                letterSpacing: '-0.01em', lineHeight: 1.3,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                marginBottom: '5px',
+                marginBottom: '3px',
               }}>
                 {task.customer_name ?? task.title}
               </div>
-              {dateText && (
-                <div style={{ fontSize: '13px', fontWeight: 400, color: dateColor, lineHeight: 1 }}>
-                  {dateText}
-                </div>
-              )}
+              <MetaLine segments={metaSegments} />
             </div>
-
-            {/* RIGHT — requested by column */}
-            <div style={{
-              width: '112px', flexShrink: 0,
-              borderLeft: '1px solid #F5F7FA',
-              display: 'flex', flexDirection: 'column', justifyContent: 'center',
-              padding: '0 14px 0 18px',
-            }}>
-              <div style={{
-                fontSize: '10px', fontWeight: 500, color: '#9CA3AF',
-                letterSpacing: '0.06em', textTransform: 'uppercase',
-                lineHeight: 1, marginBottom: '6px',
-              }}>
-                Requested by
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#111827', lineHeight: 1 }}>
-                  {requesterName.split(' ')[0]}
-                </span>
-                <ChevronRightIcon />
-              </div>
-            </div>
+            <ChevronRightIcon />
           </div>
         )
       })}
@@ -1016,12 +1110,20 @@ function UnacknowledgedTasksSection({
   now,
   onPreview,
   compact,
+  variant = 'overdue',
+  currentUserId,
+  acknowledgingIds,
+  onAcknowledge,
 }: {
   tasks: Task[]
   userMap: Record<string, string>
   now: Date
   onPreview: (task: Task) => void
   compact?: boolean
+  variant?: 'acknowledgement' | 'overdue'
+  currentUserId?: string
+  acknowledgingIds?: Set<string>
+  onAcknowledge?: (task: Task) => void
 }) {
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
 
@@ -1043,10 +1145,44 @@ function UnacknowledgedTasksSection({
 
         const priorityLower = task.priority?.toLowerCase() ?? ''
         const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : null
-        const dotColor      = priorityLower === 'high' ? '#D97706' : priorityLower === 'medium' ? '#B45309' : '#9CA3AF'
+        const priorityPill  = PRIORITY_PILL[priorityLower] ?? PRIORITY_PILL.low
+
+        const isBlocked   = task.status === 'blocked'
+        const waitingDays = variant === 'acknowledgement' ? daysSince(task.created_at) : 0
+
+        const metaSegments: MetaSegment[] = []
+        if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
+        if (variant === 'acknowledgement' && waitingDays >= 1) {
+          const w = waitingDays >= 3 ? BLOCKED_PILL : WAITING_PILL
+          metaSegments.push({ text: `Waiting ${waitingDays}d`, color: w.color, bg: w.bg, pill: true })
+        }
+        if (isBlocked) metaSegments.push({ text: 'Blocked', color: BLOCKED_PILL.color, bg: BLOCKED_PILL.bg, pill: true })
+        if (dateText) {
+          metaSegments.push({
+            text: dateText, color: dateColor,
+            icon: variant === 'acknowledgement'
+              ? <CalendarDays size={12} strokeWidth={2} color="#8A94A6" style={{ flexShrink: 0 }} />
+              : undefined,
+          })
+        }
 
         const assignedByName = getAssignedByDisplay(task, userMap)
+        if (assignedByName) {
+          metaSegments.push(
+            variant === 'acknowledgement'
+              ? {
+                  text: assignedByName === 'Self' ? 'You' : assignedByName, color: '#9CA3AF',
+                  icon: <User size={12} strokeWidth={2} color="#B0BAC8" style={{ flexShrink: 0 }} />,
+                }
+              : { text: `by ${assignedByName === 'Self' ? 'you' : assignedByName}`, color: '#9CA3AF' }
+          )
+        }
         const isLast = idx === tasks.length - 1
+
+        const canAcknowledge = variant === 'acknowledgement' &&
+          !!onAcknowledge && !task.acknowledged_at &&
+          !!currentUserId && task.created_by !== currentUserId
+        const isAcknowledging = acknowledgingIds?.has(task.id) ?? false
 
         return (
           <div
@@ -1056,63 +1192,55 @@ function UnacknowledgedTasksSection({
             tabIndex={0}
             onKeyDown={e => e.key === 'Enter' && onPreview(task)}
             style={{
-              display: 'flex', alignItems: 'stretch',
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '8px 16px 8px 20px',
               borderBottom: isLast ? 'none' : '1px solid #F0F1F4',
               cursor: 'pointer',
               transition: 'background 0.12s',
-              minHeight: '76px',
+              minHeight: '52px',
             }}
             onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
             onMouseLeave={e => { e.currentTarget.style.background = '' }}
           >
-            {/* LEFT — task title + metadata */}
-            <div style={{
-              flex: 1, minWidth: 0,
-              display: 'flex', flexDirection: 'column', justifyContent: 'center',
-              padding: '14px 16px 14px 20px',
-            }}>
+            {/* Title + compact metadata (priority/waiting/blocked pills, due date, assignee) —
+                given more visual weight than the action cluster on the right */}
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: '16px', fontWeight: 600, color: '#111827',
-                letterSpacing: '-0.015em', lineHeight: 1.3,
+                fontSize: '14.5px', fontWeight: 600, color: '#111827',
+                letterSpacing: '-0.01em', lineHeight: 1.3,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                marginBottom: '5px',
+                marginBottom: variant === 'acknowledgement' ? '8px' : '3px',
               }}>
                 {task.title}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', fontSize: '13px', fontWeight: 400, color: '#6B7280', lineHeight: 1 }}>
-                {priorityLabel && (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: dateText ? '6px' : 0 }}>
-                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
-                    {priorityLabel}
-                  </span>
-                )}
-                {priorityLabel && dateText && (
-                  <span style={{ color: '#D1D5DB', marginRight: '6px' }}>·</span>
-                )}
-                {dateText && <span style={{ color: dateColor }}>{dateText}</span>}
-              </div>
+              <MetaLine segments={metaSegments} gap={variant === 'acknowledgement' ? '10px' : '6px'} />
             </div>
 
-            {/* RIGHT — ownership column with border divider */}
-            <div style={{
-              width: '112px', flexShrink: 0,
-              borderLeft: '1px solid #F5F7FA',
-              display: 'flex', flexDirection: 'column', justifyContent: 'center',
-              padding: '0 14px 0 18px',
-            }}>
-              <div style={{
-                fontSize: '10px', fontWeight: 500, color: '#9CA3AF',
-                letterSpacing: '0.06em', textTransform: 'uppercase',
-                lineHeight: 1, marginBottom: '6px',
-              }}>
-                Assigned by
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#111827', lineHeight: 1 }}>
-                  {assignedByName === 'Self' ? 'You' : assignedByName.split(' ')[0]}
-                </span>
-                <ChevronRightIcon />
-              </div>
+            {/* Action cluster — lighter treatment than the title, tightly grouped */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+              {canAcknowledge && (
+                <button
+                  onClick={e => { e.stopPropagation(); onAcknowledge?.(task) }}
+                  disabled={isAcknowledging}
+                  aria-label={`Acknowledge: ${task.title}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    padding: '4px 8px',
+                    fontSize: '11px', fontWeight: 500,
+                    color: isAcknowledging ? '#B9BFC9' : '#4E9B72',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px', cursor: isAcknowledging ? 'default' : 'pointer',
+                    transition: 'background 0.12s',
+                  }}
+                  onMouseEnter={e => { if (!isAcknowledging) e.currentTarget.style.background = 'rgba(69,168,112,0.08)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <Check size={11} strokeWidth={2.5} />
+                  {isAcknowledging ? 'Saving…' : 'Acknowledge'}
+                </button>
+              )}
+              <ChevronRightIcon />
             </div>
           </div>
         )
