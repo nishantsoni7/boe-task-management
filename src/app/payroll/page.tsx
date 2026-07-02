@@ -18,6 +18,7 @@ type PayrollPeriodRow = {
   created_at: string
   generated_employees: number | null
   last_generated_at: string | null
+  out_of_date: boolean
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -337,6 +338,14 @@ export default function PayrollPage() {
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: 12.5, color: '#6B7280', whiteSpace: 'nowrap' }}>
                       {formatDateTime(p.last_generated_at)}
+                      {p.out_of_date && (
+                        <div style={{
+                          marginTop: 4, fontSize: 11, fontWeight: 600, color: '#B45309',
+                          whiteSpace: 'normal', maxWidth: 200,
+                        }}>
+                          ⚠ Attendance updated after payroll generation.
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <ActionButtons
@@ -372,6 +381,9 @@ function ActionButtons({ period, isBusy, onGenerate, onLock, onViewResults }: Ac
   const isLocked     = period.status === 'locked'
   const canLock      = period.status === 'generated'
   const hasResults   = period.status === 'generated' || period.status === 'locked'
+  // Draw the eye to the action that clears the staleness warning, without
+  // adding a second button — same element, just re-colored/re-labeled.
+  const needsRegen   = period.out_of_date && !isLocked
 
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -382,14 +394,14 @@ function ActionButtons({ period, isBusy, onGenerate, onLock, onViewResults }: Ac
         style={{
           padding: '5px 12px', borderRadius: 6, fontSize: 12.5, fontWeight: 600,
           cursor: isLocked || isBusy ? 'not-allowed' : 'pointer',
-          border: '1px solid rgba(0,0,0,0.12)',
-          background: isLocked || isBusy ? 'rgba(0,0,0,0.04)' : '#1A2035',
-          color: isLocked || isBusy ? '#8C94A6' : '#E8A030',
+          border: needsRegen ? '1px solid rgba(180,83,9,0.5)' : '1px solid rgba(0,0,0,0.12)',
+          background: isLocked || isBusy ? 'rgba(0,0,0,0.04)' : needsRegen ? '#B45309' : '#1A2035',
+          color: isLocked || isBusy ? '#8C94A6' : needsRegen ? '#fff' : '#E8A030',
           opacity: isLocked ? 0.5 : 1,
           whiteSpace: 'nowrap',
         }}
       >
-        {isBusy ? 'Working…' : period.status === 'draft' ? 'Generate' : 'Re-generate'}
+        {isBusy ? 'Working…' : needsRegen ? 'Re-generate Payroll' : period.status === 'draft' ? 'Generate' : 'Re-generate'}
       </button>
 
       {/* Lock */}
