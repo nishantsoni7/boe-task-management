@@ -19,6 +19,7 @@ import type {
   TotalDeductions,
   PendingAdjustmentsSummary,
 } from './types'
+import { classifyAttendanceDay } from '../attendance/classification'
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
@@ -191,36 +192,29 @@ function classifyAttendanceDays(
   return workingDays.map(date => classifySingleDay(date, byDate.get(date), rates))
 }
 
-// Returns minutes-since-midnight in IST for an ISO timestamptz string.
-function istMinutes(ts: string): number {
-  const istMs = new Date(ts).getTime() + 330 * 60 * 1000
-  const d = new Date(istMs)
-  return d.getUTCHours() * 60 + d.getUTCMinutes()
-}
-
 function classifySingleDay(
   date: string,
   record: EngineAttendanceRecord | undefined,
   rates: PayrollRates,
 ): DayResult {
-  const absent: DayResult = { date, classification: 'full_absent', effective_hours_worked: 0, deduction_lines: [] }
+  const classified = classifyAttendanceDay(record)
 
-  // No record or both punches missing → full_absent
-  if (!record || (record.check_in_at == null && record.check_out_at == null)) return absent
+  if (classified.classification === 'full_absent') {
+    return { date, classification: 'full_absent', effective_hours_worked: 0, deduction_lines: [] }
+  }
 
   // Missing punch: exactly one punch present → 2h fixed deduction.
   // When punch-out is missing but punch-in exists, also apply late arrival if applicable.
-  if (record.check_in_at == null || record.check_out_at == null) {
-    const missingType = record.check_in_at == null ? 'missing_punch_in' : 'missing_punch_out'
+  if (classified.classification === 'missing_punch') {
     const missingLines: PendingDeductionLine[] = [{
       line_date: date,
-      deduction_type: missingType,
+      deduction_type: classified.missing_punch_type!,
       hours_deducted: 2,
       amount_deducted: 2 * rates.per_hour_rate,
     }]
 
-    if (missingType === 'missing_punch_out') {
-      const inMin = istMinutes(record.check_in_at!)
+    if (classified.missing_punch_type === 'missing_punch_out') {
+      const inMin = classified.check_in_minutes!
       const SCHEDULED_IN  = 10 * 60       // 10:00 IST
       const LATE_THRESHOLD = 10 * 60 + 15 // 10:15 IST — grace period end
       if (inMin > LATE_THRESHOLD) {
@@ -244,47 +238,19 @@ function classifySingleDay(
     }
   }
 
-  const inMs  = new Date(record.check_in_at).getTime()
-  const outMs = new Date(record.check_out_at).getTime()
-
-  // Corrupt record: check_out before check_in → full_absent
-  if (outMs <= inMs) return absent
-
-  const rawHours = (outMs - inMs) / 3_600_000
-
-  // Lunch deduction: subtract 1h if check_in < 14:00 AND check_out > 13:00 (IST)
-  const inMin  = istMinutes(record.check_in_at)
-  const outMin = istMinutes(record.check_out_at)
-  const lunchDeducted = inMin < 14 * 60 && outMin > 13 * 60
-  const effectiveHours = rawHours - (lunchDeducted ? 1 : 0)
-
-  // Office-timing override: punch-in ≤ 10:15 IST and punch-out ≥ 18:30 IST → full day,
-  // even if effective hours fall slightly below 7.5 after lunch deduction.
-  const onOfficeTiming = inMin <= 10 * 60 + 15 && outMin >= 18 * 60 + 30
-
-  // Classify by effective hours (office-timing takes priority)
-  let classification: DayResult['classification']
-  if (onOfficeTiming || effectiveHours >= 7.5) {
-    classification = 'full_present'
-  } else if (effectiveHours >= 5) {
-    classification = 'present_with_shortfall'
-  } else if (effectiveHours >= 3.75) {
-    classification = 'half_day'
-  } else if (effectiveHours >= 2) {
-    classification = 'short_present'
-  } else {
-    return { ...absent }
-  }
+  const { classification, effective_hours_worked, on_office_timing, check_in_minutes, check_out_minutes } = classified
 
   // Late arrival / early departure deductions — only for near-full-day presence.
   // Skipped when the office-timing override applies, and skipped for half-day / short-present
   // classifications (those carry their own deduction via the half-day mechanism).
   const deduction_lines: PendingDeductionLine[] = []
   const isNearFullDay = classification === 'full_present' || classification === 'present_with_shortfall'
-  if (!onOfficeTiming && isNearFullDay) {
+  if (!on_office_timing && isNearFullDay) {
     const SCHEDULED_IN   = 10 * 60       // 10:00 IST — scheduled start
     const LATE_THRESHOLD = 10 * 60 + 15  // 10:15 IST — grace period end
     const SCHEDULED_OUT  = 18 * 60 + 30  // 18:30 IST — scheduled end / early-checkout boundary
+    const inMin  = check_in_minutes!
+    const outMin = check_out_minutes!
 
     if (inMin > LATE_THRESHOLD) {
       const lateHours = roundDeductionHours(inMin - SCHEDULED_IN)
@@ -311,7 +277,7 @@ function classifySingleDay(
     }
   }
 
-  return { date, classification, effective_hours_worked: effectiveHours, deduction_lines }
+  return { date, classification, effective_hours_worked, deduction_lines }
 }
 
 // ─── Step 5: Monthly aggregation ─────────────────────────────────────────────
