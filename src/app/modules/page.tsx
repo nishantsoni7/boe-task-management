@@ -8,6 +8,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
 import DailyQuoteLoader from '@/components/DailyQuoteLoader'
 import { useViewAs } from '@/hooks/useViewAs'
+import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 
 // ── Module definition ─────────────────────────────────────────────────────────
 
@@ -47,15 +48,12 @@ function canSeeModule(
   fallback: boolean,
 ): boolean {
   const mod = modVis[key]
-  if (!mod || !effectiveProfile) return fallback
-  const isAdmin = effectiveProfile.role === 'admin'
-  switch (mod.visibility_type) {
-    case 'hidden':           return false
-    case 'admin_only':       return isAdmin
-    case 'department_only':
-      return isAdmin || (effectiveProfile.team?.toLowerCase() === mod.allowed_department?.toLowerCase())
-    default:                 return true  // 'live'
-  }
+  return canAccessModule(
+    mod?.visibility_type as ModuleVisibilityType | undefined,
+    mod?.allowed_department,
+    effectiveProfile,
+    fallback,
+  )
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────

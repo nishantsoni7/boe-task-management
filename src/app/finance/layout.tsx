@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { canAccessModule } from '@/lib/moduleAccess'
 
-export default function PayrollGuard({ children }: { children: React.ReactNode }) {
+export default function FinanceGuard({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState(false)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -18,13 +18,14 @@ export default function PayrollGuard({ children }: { children: React.ReactNode }
 
       const [{ data: profile }, { data: mod }] = await Promise.all([
         supabase.from('users').select('role, team').eq('id', session.user.id).single(),
-        supabase.from('app_modules').select('visibility_type, allowed_department').eq('module_key', 'payroll').single(),
+        supabase.from('app_modules').select('visibility_type, allowed_department').eq('module_key', 'finance').single(),
       ])
 
       // Admin always has access; otherwise defer to Control Center's setting.
+      // Fallback (no app_modules row) is open, matching Finance's current default access.
       const allowed = !!profile && (
         profile.role === 'admin' ||
-        canAccessModule(mod?.visibility_type, mod?.allowed_department, profile, false)
+        canAccessModule(mod?.visibility_type, mod?.allowed_department, profile, true)
       )
 
       if (!allowed) {
