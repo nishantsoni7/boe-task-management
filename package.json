@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "permissions:sync": "tsx scripts/sync-permissions.ts",
+    "permissions:check": "tsx scripts/sync-permissions.ts --check"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
@@ -32,6 +34,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4.3.0",
+    "tsx": "^4.23.0",
     "typescript": "^5",
     "xlsx": "^0.18.5"
   }

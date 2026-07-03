@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, LayoutGrid, Building2, Users, X } from 'lucide-react'
+import { Home, LayoutGrid, Building2, Users, ShieldCheck, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -84,6 +84,12 @@ export function ControlCenterLayout({
             icon={<Users size={15} strokeWidth={1.8} />}
             active={pathname === '/admin/control-center/people'}
             onClick={() => navTo('/admin/control-center/people')}
+          />
+          <NavItem
+            label="Permissions"
+            icon={<ShieldCheck size={15} strokeWidth={1.8} />}
+            active={pathname === '/admin/control-center/permissions'}
+            onClick={() => navTo('/admin/control-center/permissions')}
           />
         </div>
 
