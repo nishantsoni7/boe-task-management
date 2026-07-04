@@ -437,11 +437,15 @@ function ChangeAccessModal({
           </AlertBanner>
         </div>
 
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>
-            Current access: {LEVEL_BADGE_META[currentLevel].label}
+        <div style={{
+          marginBottom: 18, padding: '12px 14px', border: '1px solid #E8EBF0',
+          borderRadius: 10, background: '#FAFBFC',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#4B5563' }}>Current access:</span>
+            <AccessLevelBadge level={currentLevel} />
           </div>
-          <div style={{ fontSize: 12, color: '#6B7384', marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: '#6B7384' }}>
             {sourceSummary.kind === 'single'
               ? `Source: ${sourceSummary.label}`
               : 'Some permissions are customized'}
@@ -696,18 +700,20 @@ export default function PermissionsPage() {
     <ControlCenterLayout
       profile={profile}
       title="Access Control"
-      subtitle="Manage employee access levels, module by module"
+      subtitle="Manage what each employee can access, module by module"
       onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
     >
       <div style={{ maxWidth: 760 }}>
 
         {/* ── Enforcement status ──────────────────────────────────────────── */}
-        <div style={{ marginBottom: 24 }}>
-          <AlertBanner variant="amber">
-            <strong>Sample Tracking</strong> is the only module where these permissions are actively
-            enforced. Access levels for every other module below are saved and will take effect once
-            that module is cut over — they don&apos;t change access yet.
-          </AlertBanner>
+        <div style={{
+          marginBottom: 24, fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
+          border: '1px solid #E8EBF0', borderRadius: 10, padding: '12px 16px',
+        }}>
+          <strong>Enforced</strong> modules apply the access level you set right away.{' '}
+          <strong>Prepared</strong> modules let you set access levels now, ready for when that module
+          switches over — nothing changes for people yet. Today, only{' '}
+          <strong>Sample Tracking</strong> is Enforced; every other module below is Prepared.
         </div>
 
         {/* ── Employee selector ────────────────────────────────────────────── */}
