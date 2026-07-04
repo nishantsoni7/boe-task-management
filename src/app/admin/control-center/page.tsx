@@ -7,6 +7,7 @@ import type { UserProfile } from '@/lib/types'
 import { ControlCenterLayout, type ControlCenterTab } from '@/components/layout/ControlCenterLayout'
 import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
+import { formatFullDate } from '@/lib/ui'
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -419,6 +420,12 @@ export default function ControlCenterPage() {
   const [userSaving, setUserSaving] = useState(false)
   const [userError,  setUserError]  = useState('')
 
+  // ── People search/filter ─────────────────────────────────────────────────
+  const [peopleSearch,       setPeopleSearch]       = useState('')
+  const [peopleDeptFilter,   setPeopleDeptFilter]   = useState('')
+  const [peopleRoleFilter,   setPeopleRoleFilter]   = useState('')
+  const [peopleStatusFilter, setPeopleStatusFilter] = useState('')
+
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
@@ -454,6 +461,20 @@ export default function ControlCenterPage() {
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // People tab's filtered view. Computed with useMemo (not a plain const)
+  // because it must run unconditionally every render, same as the other
+  // hooks above — it's used after the `if (loading) return` below, but its
+  // own hook call has to happen before that early return.
+  const filteredMembers = useMemo(() => {
+    const q = peopleSearch.trim().toLowerCase()
+    return members
+      .filter(m => !m.is_deleted)
+      .filter(m => !q || m.full_name?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q))
+      .filter(m => !peopleDeptFilter || m.team === peopleDeptFilter)
+      .filter(m => !peopleRoleFilter || m.role === peopleRoleFilter)
+      .filter(m => !peopleStatusFilter || (peopleStatusFilter === 'active' ? m.is_active : !m.is_active))
+  }, [members, peopleSearch, peopleDeptFilter, peopleRoleFilter, peopleStatusFilter])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -610,6 +631,8 @@ export default function ControlCenterPage() {
   const peopleInDept = (key: string) =>
     members.filter(m => m.team === key).length
 
+  const peopleRoles = Array.from(new Set(members.filter(m => !m.is_deleted).map(m => m.role))).sort()
+
   const peopleCount = members.filter(m => !m.is_deleted).length
   const enforcedCount = modules.filter(m => m.module_key === 'sample_tracking').length
 
@@ -693,43 +716,92 @@ export default function ControlCenterPage() {
           <div style={SECTION}>
             <SectionHeading
               title="People"
-              description="Everyone with a BOE OS account and their department assignment."
+              description="Manage employees, roles, departments, and account status."
             />
-            <table style={TABLE}>
-              <thead>
-                <tr>
-                  <th style={TH}>Name</th>
-                  <th style={TH}>Role</th>
-                  <th style={TH}>Department</th>
-                  <th style={TH}>Status</th>
-                  <th style={{ ...TH, width: 60 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {members.filter(m => !m.is_deleted).map(member => (
-                  <tr key={member.id}>
-                    <td style={{ ...TD, fontWeight: 600 }}>{member.full_name}</td>
-                    <td style={{ ...TD, color: '#6B7384', textTransform: 'capitalize' }}>{member.role}</td>
-                    <td style={{ ...TD, color: member.team ? '#111318' : '#B0B8C8' }}>
-                      {deptLabel(member.team)}
-                    </td>
-                    <td style={TD}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700,
-                        color: member.is_active ? '#166534' : '#4B5563',
-                        background: member.is_active ? '#F0FDF4' : '#F3F4F6',
-                        borderRadius: 5, padding: '2px 8px',
-                      }}>
-                        {member.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td style={TD}>
-                      <button style={EDIT_BTN} onClick={() => openEditUser(member)}>Edit</button>
-                    </td>
-                  </tr>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+              <input
+                style={{ ...INPUT, marginBottom: 0, maxWidth: 240 }}
+                placeholder="Search by name or email…"
+                value={peopleSearch}
+                onChange={e => setPeopleSearch(e.target.value)}
+              />
+              <select
+                style={{ ...SELECT, marginBottom: 0, width: 170 }}
+                value={peopleDeptFilter}
+                onChange={e => setPeopleDeptFilter(e.target.value)}
+              >
+                <option value="">All departments</option>
+                {depts.map(d => (
+                  <option key={d.department_key} value={d.department_key}>{d.department_name}</option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+              <select
+                style={{ ...SELECT, marginBottom: 0, width: 130 }}
+                value={peopleRoleFilter}
+                onChange={e => setPeopleRoleFilter(e.target.value)}
+              >
+                <option value="">All roles</option>
+                {peopleRoles.map(r => (
+                  <option key={r} value={r} style={{ textTransform: 'capitalize' }}>{r}</option>
+                ))}
+              </select>
+              <select
+                style={{ ...SELECT, marginBottom: 0, width: 130 }}
+                value={peopleStatusFilter}
+                onChange={e => setPeopleStatusFilter(e.target.value)}
+              >
+                <option value="">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+
+            {filteredMembers.length === 0 ? (
+              <EmptyState message="No people match these filters." />
+            ) : (
+              <table style={TABLE}>
+                <thead>
+                  <tr>
+                    <th style={TH}>Name</th>
+                    <th style={TH}>Email</th>
+                    <th style={TH}>Role</th>
+                    <th style={TH}>Department</th>
+                    <th style={TH}>Joined</th>
+                    <th style={TH}>Status</th>
+                    <th style={{ ...TH, width: 60 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredMembers.map(member => (
+                    <tr key={member.id}>
+                      <td style={{ ...TD, fontWeight: 600 }}>{member.full_name}</td>
+                      <td style={{ ...TD, color: '#6B7384' }}>{member.email}</td>
+                      <td style={{ ...TD, color: '#6B7384', textTransform: 'capitalize' }}>{member.role}</td>
+                      <td style={{ ...TD, color: member.team ? '#111318' : '#B0B8C8' }}>
+                        {deptLabel(member.team)}
+                      </td>
+                      <td style={{ ...TD, color: '#6B7384' }}>
+                        {member.created_at ? formatFullDate(member.created_at) : '—'}
+                      </td>
+                      <td style={TD}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700,
+                          color: member.is_active ? '#166534' : '#4B5563',
+                          background: member.is_active ? '#F0FDF4' : '#F3F4F6',
+                          borderRadius: 5, padding: '2px 8px',
+                        }}>
+                          {member.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td style={TD}>
+                        <button style={EDIT_BTN} onClick={() => openEditUser(member)}>Edit</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
 
