@@ -1,11 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { getEffectivePermissionsForUser } from '@/lib/permissions/resolver'
 
-// Returns active permission keys for any user_id.
+// Returns allowed Sample Tracking action keys for any user_id.
 // Requires the caller to be an admin (verified via their session token).
-// Uses service role to bypass ep_select_own RLS, which only allows users
-// to read their own permissions — admins need to read any user's permissions
-// to power Admin View Mode.
+// Uses service role to run the resolver as the DB owner — admins need to
+// read any user's effective permissions to power Admin View Mode.
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization') ?? ''
@@ -33,13 +33,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { data, error } = await serviceClient
-    .from('employee_permissions')
-    .select('permission_key')
-    .eq('user_id', userId)
-    .is('revoked_at', null)
+  try {
+    const effectiveByModule = await getEffectivePermissionsForUser(serviceClient, userId)
+    const permissions = (effectiveByModule.get('sample_tracking') ?? [])
+      .filter(p => p.allowed)
+      .map(p => p.actionKey)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  return NextResponse.json({ permissions: (data ?? []).map(r => r.permission_key) })
+    return NextResponse.json({ permissions })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 })
+  }
 }

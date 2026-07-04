@@ -16,6 +16,7 @@ import {
 import { SamplesLayout, TABS, type TabKey } from '@/components/layout/SamplesLayout'
 import { QRCodeSVG } from 'qrcode.react'
 import { useViewAs } from '@/hooks/useViewAs'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,7 +142,7 @@ export default function SamplesPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const [{ data: profileData }, { data: rows, error: rowsErr }, { data: permsData }, countRes] = await Promise.all([
+      const [{ data: profileData }, { data: rows, error: rowsErr }, myEffective, countRes] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
@@ -159,17 +160,13 @@ export default function SamplesPage() {
             lost_by_user:users!lost_by(full_name)
           `)
           .order('created_at', { ascending: false }),
-        supabase
-          .from('employee_permissions')
-          .select('permission_key')
-          .eq('user_id', session.user.id)
-          .is('revoked_at', null),
+        getEffectivePermissions(supabase, session.user.id, 'sample_tracking').catch(() => []),
         fetch('/api/samples/notifications?count=1'),
       ])
 
       if (rowsErr) console.error('[samples] init fetch failed:', rowsErr)
       setProfile(profileData as UserProfile)
-      if (permsData) setMyPermissions(new Set(permsData.map((p: { permission_key: string }) => p.permission_key)))
+      setMyPermissions(new Set(myEffective.filter(p => p.allowed).map(p => p.actionKey)))
       if (rows) setRequests(mapRows(rows))
       if (countRes.ok) {
         const { unreadCount: count } = await countRes.json()
@@ -223,14 +220,14 @@ export default function SamplesPage() {
   const effectiveIsAdmin    = inViewMode ? viewAsProfile?.role === 'admin' : isAdmin
   const effectivePerms      = inViewMode ? viewAsPermissions : myPermissions
   const effectiveUserId     = inViewMode ? (viewAsUserId ?? '') : (profile?.id ?? '')
-  const canDispatch = effectiveIsAdmin || effectivePerms.has('samples_dispatch')
-  const canReceive  = effectiveIsAdmin || effectivePerms.has('samples_receive')
-  const canLost     = effectiveIsAdmin || effectivePerms.has('samples_lost')
+  const canDispatch = effectiveIsAdmin || effectivePerms.has('dispatch')
+  const canReceive  = effectiveIsAdmin || effectivePerms.has('receive')
+  const canLost     = effectiveIsAdmin || effectivePerms.has('mark_lost')
   const effectiveHasAnySamplePermission =
-    effectivePerms.has('samples_dispatch') ||
-    effectivePerms.has('samples_receive')  ||
-    effectivePerms.has('samples_lost')     ||
-    effectivePerms.has('samples_close')
+    effectivePerms.has('dispatch')  ||
+    effectivePerms.has('receive')   ||
+    effectivePerms.has('mark_lost') ||
+    effectivePerms.has('close')
 
   // Filter rows to what the effective user is allowed to see
   const filteredRequests = useMemo(() => {

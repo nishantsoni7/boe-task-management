@@ -41,9 +41,12 @@ registerModule({
     { actionKey: 'manage', displayName: 'Manage' },
     // Custom actions added in Phase 3B to let this module's catalog fully
     // express the legacy employee_permissions keys (samples_dispatch,
-    // samples_receive, samples_lost, samples_close). Catalog-only — the
-    // legacy has_permission()/RLS path on sample_dispatches is untouched
-    // and remains the sole source of enforcement until Phase 3E.
+    // samples_receive, samples_lost, samples_close). As of Phase 3F
+    // (20260665_cutover_sample_tracking_rls_to_resolver.sql), these are the
+    // live enforcement actions — sample_dispatches RLS and the Sample
+    // Tracking app code call resolve_permission() against these keys.
+    // employee_permissions/has_permission() remain in the schema, unused,
+    // for rollback only.
     { actionKey: 'dispatch', displayName: 'Dispatch' },
     { actionKey: 'receive', displayName: 'Receive' },
     { actionKey: 'mark_lost', displayName: 'Mark Lost' },

@@ -9,6 +9,7 @@ import {
   Package, CheckCircle2, Truck, Phone, MapPin,
   AlertTriangle, ArrowLeft, Send,
 } from 'lucide-react'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
 
 type SampleStatus = 'pending_approval' | 'approved' | 'qr_submitted' | 'rejected' | 'dispatched' | 'returned' | 'lost'
 
@@ -81,12 +82,12 @@ export default function DispatchPage() {
         if (!session) { setLoading(false); router.push(`/login?redirect=${encodeURIComponent(`/samples/dispatch/${id}`)}`); return }
         setCurrentUserId(session.user.id)
 
-        const [{ data: profileRow }, { data: permsData }] = await Promise.all([
+        const [{ data: profileRow }, effective] = await Promise.all([
           supabase.from('users').select('role').eq('id', session.user.id).single(),
-          supabase.from('employee_permissions').select('permission_key').eq('user_id', session.user.id).is('revoked_at', null),
+          getEffectivePermissions(supabase, session.user.id, 'sample_tracking').catch(() => []),
         ])
         const isAdmin    = profileRow?.role === 'admin'
-        const canDispatch = isAdmin || (permsData ?? []).some((p: { permission_key: string }) => p.permission_key === 'samples_dispatch')
+        const canDispatch = isAdmin || effective.some(p => p.actionKey === 'dispatch' && p.allowed)
         if (!canDispatch) { setUnauthorized(true); setLoading(false); return }
 
         const { data } = await supabase
