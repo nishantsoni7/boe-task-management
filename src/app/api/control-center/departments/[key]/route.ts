@@ -44,3 +44,41 @@ export async function PATCH(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }
+
+// DELETE — hard-removes a department row. departments.department_key is not
+// FK-constrained to users.team (see 20260645_create_control_center_v1.sql),
+// so nothing at the DB layer stops this from orphaning assigned people —
+// this app-level check is what actually keeps that safe. RLS already allows
+// admin deletes (departments_admin_delete); no RLS/schema change needed.
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ key: string }> }
+) {
+  const svc = await adminClient(req)
+  if (!svc) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { key } = await params
+
+  const { count, error: countError } = await svc
+    .from('users')
+    .select('id', { count: 'exact', head: true })
+    .eq('team', key)
+    .or('is_deleted.eq.false,is_deleted.is.null')
+
+  if (countError) return NextResponse.json({ error: countError.message }, { status: 500 })
+
+  if ((count ?? 0) > 0) {
+    return NextResponse.json(
+      { error: 'This department has people assigned. Move them before deleting.' },
+      { status: 409 },
+    )
+  }
+
+  const { error } = await svc
+    .from('departments')
+    .delete()
+    .eq('department_key', key)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true })
+}

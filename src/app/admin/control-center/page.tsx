@@ -4,8 +4,8 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { ControlCenterLayout, type ControlCenterTab } from '@/components/layout/ControlCenterLayout'
+import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -37,13 +37,56 @@ const SECTION: React.CSSProperties = {
   marginBottom: 40,
 }
 
-const SECTION_LABEL: React.CSSProperties = {
-  fontSize: 11,
+const SECTION_HEADER: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-end',
+  justifyContent: 'space-between',
+  gap: 16,
+  marginBottom: 16,
+  flexWrap: 'wrap',
+}
+
+const SECTION_TITLE: React.CSSProperties = {
+  fontSize: 16,
   fontWeight: 700,
-  letterSpacing: '0.07em',
-  color: '#8C94A6',
-  textTransform: 'uppercase',
-  marginBottom: 12,
+  color: '#111318',
+  letterSpacing: '-0.01em',
+  marginBottom: 3,
+}
+
+const SECTION_DESCRIPTION: React.CSSProperties = {
+  fontSize: 12.5,
+  color: '#6B7384',
+}
+
+const PRIMARY_BTN: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#fff',
+  background: '#1A2035',
+  border: 'none',
+  borderRadius: 7,
+  padding: '7px 16px',
+  cursor: 'pointer',
+  flexShrink: 0,
+}
+
+function SectionHeading({
+  title, description, action,
+}: {
+  title: string
+  description: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div style={SECTION_HEADER}>
+      <div>
+        <div style={SECTION_TITLE}>{title}</div>
+        <div style={SECTION_DESCRIPTION}>{description}</div>
+      </div>
+      {action}
+    </div>
+  )
 }
 
 const TABLE: React.CSSProperties = {
@@ -78,6 +121,17 @@ const EDIT_BTN: React.CSSProperties = {
   border: 'none',
   cursor: 'pointer',
   padding: '3px 0',
+}
+
+const DELETE_BTN: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#B0364A',
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  padding: '3px 0',
+  marginLeft: 12,
 }
 
 const MODAL_OVERLAY: React.CSSProperties = {
@@ -196,6 +250,121 @@ function VisBadge({ type }: { type: VisibilityType }) {
   )
 }
 
+// ── Overview tab ─────────────────────────────────────────────────────────────
+
+const OVERVIEW_CARD: React.CSSProperties = {
+  border: '1px solid #E8EBF0',
+  borderRadius: 10,
+  padding: '16px 18px',
+  background: '#fff',
+  cursor: 'pointer',
+  textAlign: 'left',
+}
+
+const OVERVIEW_GRID: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+  gap: 12,
+  marginBottom: 28,
+}
+
+const OVERVIEW_NUMBER: React.CSSProperties = {
+  fontSize: 24,
+  fontWeight: 700,
+  color: '#111318',
+  marginBottom: 2,
+}
+
+const OVERVIEW_LABEL: React.CSSProperties = {
+  fontSize: 12.5,
+  fontWeight: 600,
+  color: '#4B5563',
+}
+
+const OVERVIEW_HINT: React.CSSProperties = {
+  fontSize: 11.5,
+  color: '#8C94A6',
+  marginTop: 4,
+}
+
+function OverviewCard({
+  number, label, hint, onClick,
+}: {
+  number: React.ReactNode
+  label: string
+  hint: string
+  onClick: () => void
+}) {
+  return (
+    <button style={OVERVIEW_CARD} onClick={onClick}>
+      <div style={OVERVIEW_NUMBER}>{number}</div>
+      <div style={OVERVIEW_LABEL}>{label}</div>
+      <div style={OVERVIEW_HINT}>{hint}</div>
+    </button>
+  )
+}
+
+function OverviewTab({
+  deptCount, activeDeptCount, peopleCount, moduleCount, enforcedCount, onNavigate, onOpenAccessControl,
+}: {
+  deptCount: number
+  activeDeptCount: number
+  peopleCount: number
+  moduleCount: number
+  enforcedCount: number
+  onNavigate: (tab: ControlCenterTab) => void
+  onOpenAccessControl: () => void
+}) {
+  return (
+    <div>
+      <SectionHeading
+        title="Overview"
+        description="A quick look at departments, people, and module access — jump into any section below."
+      />
+      <div style={OVERVIEW_GRID}>
+        <OverviewCard
+          number={activeDeptCount}
+          label="Active Departments"
+          hint={`${deptCount} total`}
+          onClick={() => onNavigate('departments')}
+        />
+        <OverviewCard
+          number={peopleCount}
+          label="People"
+          hint="View and reassign departments"
+          onClick={() => onNavigate('people')}
+        />
+        <OverviewCard
+          number={moduleCount}
+          label="Modules"
+          hint="Manage launcher visibility"
+          onClick={() => onNavigate('modules')}
+        />
+        <OverviewCard
+          number={`${enforcedCount}/${moduleCount}`}
+          label="Access Control"
+          hint="Modules with enforced permissions"
+          onClick={onOpenAccessControl}
+        />
+      </div>
+      <div style={{
+        fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
+        border: '1px solid #E8EBF0', borderRadius: 10, padding: '12px 16px',
+      }}>
+        <strong>Sample Tracking</strong> is the only module whose permissions are actively enforced today.
+        Other modules&apos; access settings are prepared but not yet enforced — see{' '}
+        <button
+          onClick={onOpenAccessControl}
+          style={{ color: '#5585E8', background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}
+        >
+          Access Control
+        </button>{' '}
+        for details.
+      </div>
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ControlCenterPage() {
@@ -209,6 +378,20 @@ export default function ControlCenterPage() {
   const [modules,  setModules]  = useState<AppModule[]>([])
   const [depts,    setDepts]    = useState<Department[]>([])
   const [members,  setMembers]  = useState<UserProfile[]>([])
+
+  // ── Active tab — read once from the URL (?tab=) so links from other pages
+  // land on the right section; kept in sync on change without useSearchParams
+  // (avoids a Suspense boundary requirement for a page this simple).
+  const [tab, setTab] = useState<ControlCenterTab>(() => {
+    if (typeof window === 'undefined') return 'overview'
+    const t = new URLSearchParams(window.location.search).get('tab')
+    return t === 'departments' || t === 'people' || t === 'modules' ? t : 'overview'
+  })
+
+  function changeTab(next: ControlCenterTab) {
+    setTab(next)
+    router.replace(`/admin/control-center?tab=${next}`)
+  }
 
   // ── Module edit modal ────────────────────────────────────────────────────
   const [editMod,       setEditMod]       = useState<AppModule | null>(null)
@@ -224,6 +407,11 @@ export default function ControlCenterPage() {
   const [deptActive, setDeptActive] = useState(true)
   const [deptSaving, setDeptSaving] = useState(false)
   const [deptError,  setDeptError]  = useState('')
+
+  // ── Department delete modal ───────────────────────────────────────────────
+  const [deleteDept,   setDeleteDept]   = useState<Department | null>(null)
+  const [deleteSaving, setDeleteSaving] = useState(false)
+  const [deleteError,  setDeleteError]  = useState('')
 
   // ── User department modal ─────────────────────────────────────────────────
   const [editUser,   setEditUser]   = useState<UserProfile | null>(null)
@@ -290,6 +478,11 @@ export default function ControlCenterPage() {
     setDeptName('')
     setDeptActive(true)
     setDeptError('')
+  }
+
+  function openDeleteDept(dept: Department) {
+    setDeleteDept(dept)
+    setDeleteError('')
   }
 
   function openEditUser(user: UserProfile) {
@@ -359,6 +552,23 @@ export default function ControlCenterPage() {
     }
   }
 
+  async function confirmDeleteDept() {
+    if (!deleteDept) return
+    setDeleteSaving(true); setDeleteError('')
+    try {
+      const res = await fetch(`/api/control-center/departments/${deleteDept.department_key}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json()
+      if (!res.ok) { setDeleteError(json.error ?? 'Delete failed'); return }
+      setDepts(prev => prev.filter(d => d.department_key !== deleteDept.department_key))
+      setDeleteDept(null)
+    } finally {
+      setDeleteSaving(false)
+    }
+  }
+
   async function saveUserDept() {
     if (!editUser) return
     setUserSaving(true); setUserError('')
@@ -394,147 +604,176 @@ export default function ControlCenterPage() {
     return depts.find(d => d.department_key === key)?.department_name ?? key
   }
 
-  const activeMembersIn = (key: string) =>
-    members.filter(m => m.team === key && m.is_active !== false).length
+  // members is already loaded pre-filtered to non-deleted users (see
+  // /api/admin-members), so this is exactly "people currently assigned to
+  // this department" — the same set that blocks a department delete.
+  const peopleInDept = (key: string) =>
+    members.filter(m => m.team === key).length
+
+  const peopleCount = members.filter(m => !m.is_deleted).length
+  const enforcedCount = modules.filter(m => m.module_key === 'sample_tracking').length
 
   return (
     <ControlCenterLayout
       profile={profile}
       title="Control Center"
-      subtitle="Module visibility · Departments · People"
+      subtitle="The admin operating panel for departments, people, module visibility, and access."
       onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
+      activeTab={tab}
+      onTabChange={changeTab}
     >
       <div style={{ maxWidth: 900 }}>
 
-        {/* ── Section 1: Modules ───────────────────────────────────────────── */}
-        <div style={SECTION}>
-          <div style={SECTION_LABEL}>Modules</div>
-          <table style={TABLE}>
-            <thead>
-              <tr>
-                <th style={TH}>Module</th>
-                <th style={TH}>Visibility</th>
-                <th style={TH}>Allowed Dept</th>
-                <th style={TH}>Route</th>
-                <th style={{ ...TH, width: 60 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {modules.map(mod => (
-                <tr key={mod.module_key}>
-                  <td style={TD}>
-                    <span style={{ fontWeight: 600 }}>{mod.module_name}</span>
-                  </td>
-                  <td style={TD}><VisBadge type={mod.visibility_type} /></td>
-                  <td style={{ ...TD, color: mod.allowed_department ? '#111318' : '#B0B8C8' }}>
-                    {mod.visibility_type === 'department_only'
-                      ? deptLabel(mod.allowed_department)
-                      : '—'}
-                  </td>
-                  <td style={{ ...TD, color: '#6B7384', fontFamily: 'monospace', fontSize: 12 }}>
-                    {mod.route_path}
-                  </td>
-                  <td style={TD}>
-                    <button style={EDIT_BTN} onClick={() => openEditMod(mod)}>Edit</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {/* ── Overview ─────────────────────────────────────────────────────── */}
+        {tab === 'overview' && (
+          <OverviewTab
+            deptCount={depts.length}
+            activeDeptCount={activeDepts.length}
+            peopleCount={peopleCount}
+            moduleCount={modules.length}
+            enforcedCount={enforcedCount}
+            onNavigate={changeTab}
+            onOpenAccessControl={() => router.push('/admin/control-center/permissions')}
+          />
+        )}
 
-        {/* ── Section 2: Departments ───────────────────────────────────────── */}
-        <div style={SECTION}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={SECTION_LABEL}>Departments</div>
-            <button
-              onClick={openAddDept}
-              style={{
-                fontSize: 12, fontWeight: 600,
-                color: '#fff', background: '#1A2035',
-                border: 'none', borderRadius: 7,
-                padding: '5px 14px', cursor: 'pointer',
-              }}
-            >
-              + Add
-            </button>
+        {/* ── Departments ──────────────────────────────────────────────────── */}
+        {tab === 'departments' && (
+          <div style={SECTION}>
+            <SectionHeading
+              title="Departments"
+              description="Manage company departments used for people assignment and access defaults."
+              action={<button style={PRIMARY_BTN} onClick={openAddDept}>Add Department</button>}
+            />
+            {depts.length === 0 ? (
+              <EmptyState message="No departments yet." hint="Add a department to start assigning people to it." />
+            ) : (
+              <table style={TABLE}>
+                <thead>
+                  <tr>
+                    <th style={TH}>Department</th>
+                    <th style={TH}>Key</th>
+                    <th style={TH}>People</th>
+                    <th style={TH}>Status</th>
+                    <th style={{ ...TH, width: 120 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {depts.map(dept => (
+                    <tr key={dept.department_key}>
+                      <td style={{ ...TD, fontWeight: 600 }}>{dept.department_name}</td>
+                      <td style={{ ...TD, color: '#6B7384', fontFamily: 'monospace', fontSize: 12 }}>
+                        {dept.department_key}
+                      </td>
+                      <td style={{ ...TD, color: '#6B7384' }}>{peopleInDept(dept.department_key)}</td>
+                      <td style={TD}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700,
+                          color: dept.is_active ? '#166534' : '#4B5563',
+                          background: dept.is_active ? '#F0FDF4' : '#F3F4F6',
+                          borderRadius: 5, padding: '2px 8px',
+                        }}>
+                          {dept.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td style={TD}>
+                        <button style={EDIT_BTN} onClick={() => openEditDept(dept)}>Edit</button>
+                        <button style={DELETE_BTN} onClick={() => openDeleteDept(dept)}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
-          <table style={TABLE}>
-            <thead>
-              <tr>
-                <th style={TH}>Department</th>
-                <th style={TH}>Key</th>
-                <th style={TH}>Active Members</th>
-                <th style={TH}>Status</th>
-                <th style={{ ...TH, width: 60 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {depts.map(dept => (
-                <tr key={dept.department_key}>
-                  <td style={{ ...TD, fontWeight: 600 }}>{dept.department_name}</td>
-                  <td style={{ ...TD, color: '#6B7384', fontFamily: 'monospace', fontSize: 12 }}>
-                    {dept.department_key}
-                  </td>
-                  <td style={{ ...TD, color: '#6B7384' }}>{activeMembersIn(dept.department_key)}</td>
-                  <td style={TD}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 700,
-                      color: dept.is_active ? '#166534' : '#4B5563',
-                      background: dept.is_active ? '#F0FDF4' : '#F3F4F6',
-                      borderRadius: 5, padding: '2px 8px',
-                    }}>
-                      {dept.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td style={TD}>
-                    <button style={EDIT_BTN} onClick={() => openEditDept(dept)}>Edit</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        )}
 
-        {/* ── Section 3: People ────────────────────────────────────────────── */}
-        <div style={SECTION}>
-          <div style={SECTION_LABEL}>People</div>
-          <table style={TABLE}>
-            <thead>
-              <tr>
-                <th style={TH}>Name</th>
-                <th style={TH}>Role</th>
-                <th style={TH}>Department</th>
-                <th style={TH}>Status</th>
-                <th style={{ ...TH, width: 60 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.filter(m => !m.is_deleted).map(member => (
-                <tr key={member.id}>
-                  <td style={{ ...TD, fontWeight: 600 }}>{member.full_name}</td>
-                  <td style={{ ...TD, color: '#6B7384', textTransform: 'capitalize' }}>{member.role}</td>
-                  <td style={{ ...TD, color: member.team ? '#111318' : '#B0B8C8' }}>
-                    {deptLabel(member.team)}
-                  </td>
-                  <td style={TD}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 700,
-                      color: member.is_active ? '#166534' : '#4B5563',
-                      background: member.is_active ? '#F0FDF4' : '#F3F4F6',
-                      borderRadius: 5, padding: '2px 8px',
-                    }}>
-                      {member.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td style={TD}>
-                    <button style={EDIT_BTN} onClick={() => openEditUser(member)}>Edit</button>
-                  </td>
+        {/* ── People ───────────────────────────────────────────────────────── */}
+        {tab === 'people' && (
+          <div style={SECTION}>
+            <SectionHeading
+              title="People"
+              description="Everyone with a BOE OS account and their department assignment."
+            />
+            <table style={TABLE}>
+              <thead>
+                <tr>
+                  <th style={TH}>Name</th>
+                  <th style={TH}>Role</th>
+                  <th style={TH}>Department</th>
+                  <th style={TH}>Status</th>
+                  <th style={{ ...TH, width: 60 }}></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {members.filter(m => !m.is_deleted).map(member => (
+                  <tr key={member.id}>
+                    <td style={{ ...TD, fontWeight: 600 }}>{member.full_name}</td>
+                    <td style={{ ...TD, color: '#6B7384', textTransform: 'capitalize' }}>{member.role}</td>
+                    <td style={{ ...TD, color: member.team ? '#111318' : '#B0B8C8' }}>
+                      {deptLabel(member.team)}
+                    </td>
+                    <td style={TD}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700,
+                        color: member.is_active ? '#166534' : '#4B5563',
+                        background: member.is_active ? '#F0FDF4' : '#F3F4F6',
+                        borderRadius: 5, padding: '2px 8px',
+                      }}>
+                        {member.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td style={TD}>
+                      <button style={EDIT_BTN} onClick={() => openEditUser(member)}>Edit</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ── Module Visibility ───────────────────────────────────────────── */}
+        {tab === 'modules' && (
+          <div style={SECTION}>
+            <SectionHeading
+              title="Module Visibility"
+              description="Control which modules appear in the app launcher, and to whom."
+            />
+            <table style={TABLE}>
+              <thead>
+                <tr>
+                  <th style={TH}>Module</th>
+                  <th style={TH}>Visibility</th>
+                  <th style={TH}>Allowed Dept</th>
+                  <th style={TH}>Route</th>
+                  <th style={{ ...TH, width: 60 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {modules.map(mod => (
+                  <tr key={mod.module_key}>
+                    <td style={TD}>
+                      <span style={{ fontWeight: 600 }}>{mod.module_name}</span>
+                    </td>
+                    <td style={TD}><VisBadge type={mod.visibility_type} /></td>
+                    <td style={{ ...TD, color: mod.allowed_department ? '#111318' : '#B0B8C8' }}>
+                      {mod.visibility_type === 'department_only'
+                        ? deptLabel(mod.allowed_department)
+                        : '—'}
+                    </td>
+                    <td style={{ ...TD, color: '#6B7384', fontFamily: 'monospace', fontSize: 12 }}>
+                      {mod.route_path}
+                    </td>
+                    <td style={TD}>
+                      <button style={EDIT_BTN} onClick={() => openEditMod(mod)}>Edit</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* ── Module edit modal ─────────────────────────────────────────────── */}
@@ -601,6 +840,12 @@ export default function ControlCenterPage() {
               placeholder="e.g. Business Development"
             />
 
+            {addingDept && (
+              <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: -12, marginBottom: 16 }}>
+                A short key is generated automatically from this name.
+              </div>
+            )}
+
             {!addingDept && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginBottom: 16 }}>
                 <input
@@ -622,6 +867,49 @@ export default function ControlCenterPage() {
                 {deptSaving ? 'Saving…' : 'Save'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Department delete modal ─────────────────────────────────────────── */}
+      {deleteDept && (
+        <div style={MODAL_OVERLAY} onClick={() => { setDeleteDept(null); setDeleteError('') }}>
+          <div style={MODAL_BOX} onClick={e => e.stopPropagation()}>
+            <div style={MODAL_TITLE}>Delete — {deleteDept.department_name}</div>
+
+            {peopleInDept(deleteDept.department_key) > 0 ? (
+              <>
+                <div style={{ fontSize: 13, color: '#111318', marginBottom: 20 }}>
+                  This department has people assigned. Move them before deleting.
+                </div>
+                <div style={BTN_ROW}>
+                  <button style={BTN_SAVE} onClick={() => { setDeleteDept(null); setDeleteError('') }}>
+                    OK
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, color: '#111318', marginBottom: 16 }}>
+                  Delete <strong>{deleteDept.department_name}</strong>? This cannot be undone.
+                </div>
+
+                {deleteError && <div style={ERROR_MSG}>{deleteError}</div>}
+
+                <div style={BTN_ROW}>
+                  <button style={BTN_CANCEL} onClick={() => { setDeleteDept(null); setDeleteError('') }}>
+                    Cancel
+                  </button>
+                  <button
+                    style={{ ...BTN_SAVE, background: '#B0364A' }}
+                    onClick={confirmDeleteDept}
+                    disabled={deleteSaving}
+                  >
+                    {deleteSaving ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
