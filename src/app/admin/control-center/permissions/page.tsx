@@ -5,8 +5,19 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
-import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
+import { LoadingScreen, EmptyState, AlertBanner } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
+
+// Modules whose permissions are actually enforced by the resolver today.
+// Everything else is prepared (overrides save, resolver computes an
+// effective value) but no app code or RLS policy checks it yet.
+// Keep in sync with src/lib/permissions/modules.ts comments as modules cut over.
+const ENFORCED_MODULE_KEYS = new Set(['sample_tracking'])
+
+const ENFORCEMENT_COPY = {
+  active: 'Permissions are enforced in this module.',
+  prepared: 'Permissions are saved but not enforced in this module yet.',
+}
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -41,6 +52,98 @@ type EmployeePermissionTree = {
 // override choice per "moduleKey:actionKey" — 'inherit' means no employee override
 type OverrideChoice = 'inherit' | 'allow' | 'deny'
 
+// Understandable access levels shown to admins. These are a UI-only layer
+// over the granular action engine — 'custom' just means "don't apply a
+// preset, let the admin set each action manually" (the old behavior).
+type AccessLevel = 'no_access' | 'viewer' | 'editor' | 'manager' | 'admin' | 'custom'
+type PresetLevel = Exclude<AccessLevel, 'custom'>
+
+const LEVELS: { key: AccessLevel; label: string; description: string }[] = [
+  { key: 'no_access', label: 'No Access', description: 'Cannot view or use this module.' },
+  { key: 'viewer',     label: 'Viewer',    description: 'Can view only.' },
+  { key: 'editor',     label: 'Editor',    description: 'Can view, create, and edit.' },
+  { key: 'manager',    label: 'Manager',   description: 'Can view, create, edit, approve, and manage.' },
+  { key: 'admin',      label: 'Admin',     description: 'Full access to every action in this module.' },
+  { key: 'custom',     label: 'Custom',    description: 'Manual action-level access.' },
+]
+
+// Local mapping from access level -> which actions should be allowed, for a
+// given module's action set. Only actions the module actually has are ever
+// touched. Manager intentionally does not grant delete/export/admin or any
+// module-specific lifecycle action (e.g. Sample Tracking's dispatch/receive/
+// mark_lost/close) — those stay reachable via Admin or Custom only.
+function presetAllowedActions(level: PresetLevel, actionKeys: string[]): Record<string, boolean> {
+  const has = (key: string) => actionKeys.includes(key)
+  const allowed: Record<string, boolean> = {}
+  for (const key of actionKeys) allowed[key] = false
+
+  if (level === 'admin') {
+    for (const key of actionKeys) allowed[key] = true
+    return allowed
+  }
+  if (level === 'no_access') return allowed
+
+  if (level === 'viewer' || level === 'editor' || level === 'manager') {
+    if (has('view')) allowed.view = true
+  }
+  if (level === 'editor' || level === 'manager') {
+    if (has('create')) allowed.create = true
+    if (has('edit')) allowed.edit = true
+  }
+  if (level === 'manager') {
+    if (has('approve')) allowed.approve = true
+    if (has('manage')) allowed.manage = true
+  }
+  return allowed
+}
+
+function overrideKey(moduleKey: string, actionKey: string) {
+  return `${moduleKey}:${actionKey}`
+}
+
+function choiceFromAction(action: ActionState): OverrideChoice {
+  if (action.source !== 'employee_override') return 'inherit'
+  return action.allowed ? 'allow' : 'deny'
+}
+
+// The effective allowed/denied state per action, folding in any pending
+// (unsaved) override choice on top of what the server resolved on load.
+function effectiveMapForModule(mod: ModuleState, overrides: Map<string, OverrideChoice>): Record<string, boolean> {
+  const map: Record<string, boolean> = {}
+  for (const action of mod.actions) {
+    const choice = overrides.get(overrideKey(mod.moduleKey, action.actionKey)) ?? 'inherit'
+    map[action.actionKey] = choice === 'inherit' ? action.allowed : choice === 'allow'
+  }
+  return map
+}
+
+// Matches the module's current effective state against each preset, in
+// increasing order of privilege, so an ambiguous match prefers the more
+// conservative label. Falls back to 'custom' when nothing matches exactly.
+function detectAccessLevel(mod: ModuleState, effective: Record<string, boolean>): AccessLevel {
+  const actionKeys = mod.actions.map(a => a.actionKey)
+  const order: PresetLevel[] = ['no_access', 'viewer', 'editor', 'manager', 'admin']
+  for (const level of order) {
+    const preset = presetAllowedActions(level, actionKeys)
+    if (actionKeys.every(key => !!preset[key] === !!effective[key])) return level
+  }
+  return 'custom'
+}
+
+function summarizeModule(mod: ModuleState, effective: Record<string, boolean>): string {
+  const allowed = mod.actions.filter(a => effective[a.actionKey])
+  if (allowed.length === 0) return 'No access granted'
+  if (allowed.length === mod.actions.length) return 'Full access — all actions allowed'
+  return allowed.map(a => a.displayName).join(', ')
+}
+
+function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>, initialOverrides: Map<string, OverrideChoice>): boolean {
+  return mod.actions.some(a => {
+    const key = overrideKey(mod.moduleKey, a.actionKey)
+    return overrides.get(key) !== initialOverrides.get(key)
+  })
+}
+
 // ── Style helpers (matches src/app/admin/control-center/page.tsx) ──────────────
 
 const SECTION_LABEL: React.CSSProperties = {
@@ -64,43 +167,143 @@ const INPUT: React.CSSProperties = {
   boxSizing: 'border-box',
 }
 
-const CARD: React.CSSProperties = {
-  border: '1px solid #E8EBF0',
-  borderRadius: 10,
-  overflow: 'hidden',
-  marginBottom: 10,
-}
-
-const MODULE_HEADER: React.CSSProperties = {
+const MODULE_ROW: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  padding: '13px 16px',
-  background: '#FAFBFC',
-  cursor: 'pointer',
-  userSelect: 'none',
+  gap: 14,
+  padding: '14px 16px',
+  border: '1px solid #E8EBF0',
+  borderRadius: 10,
+  marginBottom: 10,
+  background: '#fff',
+  flexWrap: 'wrap',
 }
 
 const ACTION_ROW: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  padding: '11px 16px',
+  padding: '11px 0',
   borderTop: '1px solid #F0F2F5',
   gap: 12,
   flexWrap: 'wrap',
 }
 
-function overrideKey(moduleKey: string, actionKey: string) {
-  return `${moduleKey}:${actionKey}`
+const CHANGE_BTN: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#fff',
+  background: '#1A2035',
+  border: 'none',
+  borderRadius: 7,
+  padding: '7px 16px',
+  cursor: 'pointer',
+  flexShrink: 0,
 }
 
-function choiceFromAction(action: ActionState): OverrideChoice {
-  if (action.source !== 'employee_override') return 'inherit'
-  return action.allowed ? 'allow' : 'deny'
+const MODAL_OVERLAY: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0,0,0,0.35)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 1000,
+  padding: 16,
+}
+
+const MODAL_BOX: React.CSSProperties = {
+  background: '#fff',
+  borderRadius: 14,
+  padding: '24px 26px',
+  width: 520,
+  maxWidth: 'calc(100vw - 32px)',
+  maxHeight: '85vh',
+  overflowY: 'auto',
+  boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+}
+
+const MODAL_TITLE: React.CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+  color: '#111318',
+  marginBottom: 14,
+}
+
+const LEVEL_GRID: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))',
+  gap: 8,
+}
+
+const LEVEL_OPTION: React.CSSProperties = {
+  textAlign: 'left',
+  border: '1.5px solid #D1D5DB',
+  borderRadius: 8,
+  padding: '10px 12px',
+  background: '#fff',
+  cursor: 'pointer',
+}
+
+const LEVEL_OPTION_ACTIVE: React.CSSProperties = {
+  border: '1.5px solid #1A2035',
+  background: '#EEF0F4',
+}
+
+const LEVEL_OPTION_LABEL: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 700,
+  color: '#111318',
+  marginBottom: 2,
+}
+
+const LEVEL_OPTION_DESC: React.CSSProperties = {
+  fontSize: 11,
+  color: '#6B7384',
+  lineHeight: 1.35,
 }
 
 // ── Badges ───────────────────────────────────────────────────────────────────
+
+function EnforcementBadge({ moduleKey }: { moduleKey: string }) {
+  const enforced = ENFORCED_MODULE_KEYS.has(moduleKey)
+  return (
+    <span
+      title={enforced ? ENFORCEMENT_COPY.active : ENFORCEMENT_COPY.prepared}
+      style={{
+        fontSize: 10, fontWeight: 700,
+        color: enforced ? '#166534' : '#8C6D1F',
+        background: enforced ? '#F0FDF4' : '#FFFBEB',
+        borderRadius: 5, padding: '2px 7px',
+      }}
+    >
+      {enforced ? 'Active' : 'Prepared'}
+    </span>
+  )
+}
+
+const LEVEL_BADGE_META: Record<AccessLevel, { label: string; color: string; bg: string }> = {
+  no_access: { label: 'No Access', color: '#4B5563', bg: '#F3F4F6' },
+  viewer:    { label: 'Viewer',    color: '#1E40AF', bg: '#EFF6FF' },
+  editor:    { label: 'Editor',    color: '#4338CA', bg: '#EEF2FF' },
+  manager:   { label: 'Manager',   color: '#0F766E', bg: '#F0FDFA' },
+  admin:     { label: 'Admin',     color: '#DC1F2E', bg: 'rgba(220,31,46,0.08)' },
+  custom:    { label: 'Custom',    color: '#8C6D1F', bg: '#FFFBEB' },
+}
+
+function AccessLevelBadge({ level }: { level: AccessLevel }) {
+  const m = LEVEL_BADGE_META[level]
+  return (
+    <span style={{
+      fontSize: 11, fontWeight: 700,
+      color: m.color, background: m.bg,
+      borderRadius: 5, padding: '2px 8px',
+    }}>
+      {m.label}
+    </span>
+  )
+}
 
 function EffectiveBadge({ choice, action }: { choice: OverrideChoice; action: ActionState }) {
   if (choice === 'inherit') {
@@ -163,6 +366,80 @@ function OverrideControl({
   )
 }
 
+// ── Change Access modal ──────────────────────────────────────────────────────
+
+function ChangeAccessModal({
+  mod, enforced, currentLevel, getChoice, onChangeAction, onApplyLevel, onClose,
+}: {
+  mod: ModuleState
+  enforced: boolean
+  currentLevel: AccessLevel
+  getChoice: (actionKey: string) => OverrideChoice
+  onChangeAction: (actionKey: string, choice: OverrideChoice) => void
+  onApplyLevel: (level: PresetLevel) => void
+  onClose: () => void
+}) {
+  const [mode, setMode] = useState<AccessLevel>(currentLevel)
+
+  function pick(level: AccessLevel) {
+    setMode(level)
+    if (level === 'custom') return
+    onApplyLevel(level)
+    onClose()
+  }
+
+  return (
+    <div style={MODAL_OVERLAY} onClick={onClose}>
+      <div style={MODAL_BOX} onClick={e => e.stopPropagation()}>
+        <div style={MODAL_TITLE}>{mod.displayName} — Change Access</div>
+
+        <div style={{ marginBottom: 16 }}>
+          <AlertBanner variant={enforced ? 'green' : 'amber'}>
+            {enforced ? ENFORCEMENT_COPY.active : ENFORCEMENT_COPY.prepared}
+          </AlertBanner>
+        </div>
+
+        <div style={LEVEL_GRID}>
+          {LEVELS.map(l => {
+            const active = mode === l.key
+            return (
+              <button
+                key={l.key}
+                onClick={() => pick(l.key)}
+                style={{ ...LEVEL_OPTION, ...(active ? LEVEL_OPTION_ACTIVE : null) }}
+              >
+                <div style={LEVEL_OPTION_LABEL}>{l.label}</div>
+                <div style={LEVEL_OPTION_DESC}>{l.description}</div>
+              </button>
+            )
+          })}
+        </div>
+
+        {mode === 'custom' && (
+          <div style={{ marginTop: 18 }}>
+            {mod.actions.map(action => {
+              const choice = getChoice(action.actionKey)
+              return (
+                <div key={action.actionKey} style={ACTION_ROW}>
+                  <div style={{ minWidth: 140 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>{action.displayName}</div>
+                    <EffectiveBadge choice={choice} action={action} />
+                  </div>
+                  <OverrideControl value={choice} onChange={v => onChangeAction(action.actionKey, v)} />
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+          <button style={CHANGE_BTN} onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PermissionsPage() {
@@ -187,7 +464,8 @@ export default function PermissionsPage() {
 
   const [overrides,      setOverrides]      = useState<Map<string, OverrideChoice>>(new Map())
   const [initialOverrides, setInitialOverrides] = useState<Map<string, OverrideChoice>>(new Map())
-  const [expanded,       setExpanded]       = useState<Set<string>>(new Set())
+
+  const [changeModalModuleKey, setChangeModalModuleKey] = useState<string | null>(null)
 
   const [saving,   setSaving]   = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -275,7 +553,7 @@ export default function PermissionsPage() {
       }
       setInitialOverrides(initial)
       setOverrides(new Map(initial))
-      setExpanded(new Set())
+      setChangeModalModuleKey(null)
     } finally {
       setTreeLoading(false)
     }
@@ -289,17 +567,30 @@ export default function PermissionsPage() {
     })
   }
 
-  function toggleModule(moduleKey: string) {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      if (next.has(moduleKey)) next.delete(moduleKey)
-      else next.add(moduleKey)
+  // Applies a preset by writing explicit overrides — except for actions that
+  // have no employee override today (source !== 'employee_override') whose
+  // inherited value already matches the preset. Those are left as 'inherit'
+  // so re-picking an already-matching level doesn't create needless
+  // employee_permission_overrides rows on save; save() already no-ops any
+  // choice that ends up equal to its initialOverrides entry.
+  function applyAccessLevel(mod: ModuleState, level: PresetLevel) {
+    const actionKeys = mod.actions.map(a => a.actionKey)
+    const preset = presetAllowedActions(level, actionKeys)
+    setOverrides(prev => {
+      const next = new Map(prev)
+      for (const action of mod.actions) {
+        const key = overrideKey(mod.moduleKey, action.actionKey)
+        const desired = preset[action.actionKey]
+        const hasExistingOverride = action.source === 'employee_override'
+        if (!hasExistingOverride && desired === action.allowed) {
+          next.set(key, 'inherit')
+        } else {
+          next.set(key, desired ? 'allow' : 'deny')
+        }
+      }
       return next
     })
   }
-
-  const overrideCount = (mod: ModuleState) =>
-    mod.actions.filter(a => overrides.get(overrideKey(mod.moduleKey, a.actionKey)) !== 'inherit').length
 
   const dirty = useMemo(() => {
     for (const [key, choice] of overrides) {
@@ -348,14 +639,27 @@ export default function PermissionsPage() {
 
   if (loading) return <LoadingScreen />
 
+  const changeModalModule = changeModalModuleKey
+    ? tree?.modules.find(m => m.moduleKey === changeModalModuleKey) ?? null
+    : null
+
   return (
     <ControlCenterLayout
       profile={profile}
-      title="Permissions"
-      subtitle="Manage employee access, module by module"
+      title="Access Control"
+      subtitle="Manage employee access levels, module by module"
       onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
     >
-      <div style={{ maxWidth: 720 }}>
+      <div style={{ maxWidth: 760 }}>
+
+        {/* ── Enforcement status ──────────────────────────────────────────── */}
+        <div style={{ marginBottom: 24 }}>
+          <AlertBanner variant="amber">
+            <strong>Sample Tracking</strong> is the only module where these permissions are actively
+            enforced. Access levels for every other module below are saved and will take effect once
+            that module is cut over — they don&apos;t change access yet.
+          </AlertBanner>
+        </div>
 
         {/* ── Employee selector ────────────────────────────────────────────── */}
         <div style={{ marginBottom: 28, position: 'relative' }}>
@@ -424,7 +728,7 @@ export default function PermissionsPage() {
           <EmptyState message="Select an employee to manage their permissions." />
         )}
 
-        {/* ── Permission tree ──────────────────────────────────────────────── */}
+        {/* ── Permission modules ───────────────────────────────────────────── */}
         {selectedEmployeeId && treeLoading && <LoadingScreen message="Loading permissions…" />}
 
         {selectedEmployeeId && !treeLoading && treeError && (
@@ -435,38 +739,26 @@ export default function PermissionsPage() {
           <>
             <div style={SECTION_LABEL}>Modules</div>
             {tree.modules.map(mod => {
-              const isOpen = expanded.has(mod.moduleKey)
-              const count = overrideCount(mod)
+              const effective = effectiveMapForModule(mod, overrides)
+              const level = detectAccessLevel(mod, effective)
+              const summary = summarizeModule(mod, effective)
+              const unsaved = moduleIsDirty(mod, overrides, initialOverrides)
               return (
-                <div key={mod.moduleKey} style={CARD}>
-                  <div style={MODULE_HEADER} onClick={() => toggleModule(mod.moduleKey)}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div key={mod.moduleKey} style={MODULE_ROW}>
+                  <div style={{ minWidth: 200, flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#111318' }}>{mod.displayName}</span>
-                      {count > 0 && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
-                          borderRadius: 5, padding: '2px 7px',
-                        }}>
-                          {count} override{count > 1 ? 's' : ''}
-                        </span>
+                      <EnforcementBadge moduleKey={mod.moduleKey} />
+                      <AccessLevelBadge level={level} />
+                      {unsaved && (
+                        <span style={{ fontSize: 11, color: '#8C94A6' }}>· Unsaved</span>
                       )}
                     </div>
-                    <span style={{ fontSize: 12, color: '#8C94A6' }}>{isOpen ? '▲' : '▼'}</span>
+                    <div style={{ fontSize: 12, color: '#6B7384' }}>{summary}</div>
                   </div>
-
-                  {isOpen && mod.actions.map(action => {
-                    const key = overrideKey(mod.moduleKey, action.actionKey)
-                    const choice = overrides.get(key) ?? 'inherit'
-                    return (
-                      <div key={action.actionKey} style={ACTION_ROW}>
-                        <div style={{ minWidth: 140 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>{action.displayName}</div>
-                          <EffectiveBadge choice={choice} action={action} />
-                        </div>
-                        <OverrideControl value={choice} onChange={v => changeOverride(mod.moduleKey, action.actionKey, v)} />
-                      </div>
-                    )
-                  })}
+                  <button style={CHANGE_BTN} onClick={() => setChangeModalModuleKey(mod.moduleKey)}>
+                    Change
+                  </button>
                 </div>
               )
             })}
@@ -492,6 +784,19 @@ export default function PermissionsPage() {
           </>
         )}
       </div>
+
+      {/* ── Change Access modal ────────────────────────────────────────────── */}
+      {changeModalModule && (
+        <ChangeAccessModal
+          mod={changeModalModule}
+          enforced={ENFORCED_MODULE_KEYS.has(changeModalModule.moduleKey)}
+          currentLevel={detectAccessLevel(changeModalModule, effectiveMapForModule(changeModalModule, overrides))}
+          getChoice={actionKey => overrides.get(overrideKey(changeModalModule.moduleKey, actionKey)) ?? 'inherit'}
+          onChangeAction={(actionKey, choice) => changeOverride(changeModalModule.moduleKey, actionKey, choice)}
+          onApplyLevel={level => applyAccessLevel(changeModalModule, level)}
+          onClose={() => setChangeModalModuleKey(null)}
+        />
+      )}
     </ControlCenterLayout>
   )
 }
