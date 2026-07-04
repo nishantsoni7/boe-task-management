@@ -144,6 +144,42 @@ function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>,
   })
 }
 
+// ── Source summary (Change Access modal header) ─────────────────────────────
+// Plain-language explanation of *where* a module's current access is coming
+// from, separate from the existing per-action source labels (EffectiveBadge)
+// which stay in place under Custom. This is a coarser, module-level rollup.
+
+const SOURCE_SUMMARY_LABEL: Record<PermissionSource, string> = {
+  employee_override: 'Employee override',
+  department: 'Department default',
+  role: 'Role default',
+  system_default: 'System default',
+}
+
+type SourceSummary = { kind: 'single'; label: string } | { kind: 'mixed' }
+
+// A pending choice of allow/deny (whether from Custom or from picking a
+// preset) always reads as an employee override, matching how EffectiveBadge
+// already treats unsaved allow/deny picks. Reverting an existing override
+// back to 'inherit' can't be resolved to a real source without a save
+// round-trip, so it's treated as 'unknown' and folds into "mixed" below —
+// same caution EffectiveBadge takes ("Will inherit (recalculated on save)").
+function effectiveSourceForAction(action: ActionState, choice: OverrideChoice): PermissionSource | 'unknown' {
+  if (choice !== 'inherit') return 'employee_override'
+  if (action.source !== 'employee_override') return action.source
+  return 'unknown'
+}
+
+function summarizeSource(mod: ModuleState, getChoice: (actionKey: string) => OverrideChoice): SourceSummary {
+  const sources = mod.actions.map(a => effectiveSourceForAction(a, getChoice(a.actionKey)))
+  const unique = new Set(sources)
+  const only = sources[0]
+  if (unique.size === 1 && only !== 'unknown') {
+    return { kind: 'single', label: SOURCE_SUMMARY_LABEL[only] }
+  }
+  return { kind: 'mixed' }
+}
+
 // ── Style helpers (matches src/app/admin/control-center/page.tsx) ──────────────
 
 const SECTION_LABEL: React.CSSProperties = {
@@ -388,6 +424,8 @@ function ChangeAccessModal({
     onClose()
   }
 
+  const sourceSummary = summarizeSource(mod, getChoice)
+
   return (
     <div style={MODAL_OVERLAY} onClick={onClose}>
       <div style={MODAL_BOX} onClick={e => e.stopPropagation()}>
@@ -397,6 +435,17 @@ function ChangeAccessModal({
           <AlertBanner variant={enforced ? 'green' : 'amber'}>
             {enforced ? ENFORCEMENT_COPY.active : ENFORCEMENT_COPY.prepared}
           </AlertBanner>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>
+            Current access: {LEVEL_BADGE_META[currentLevel].label}
+          </div>
+          <div style={{ fontSize: 12, color: '#6B7384', marginTop: 2 }}>
+            {sourceSummary.kind === 'single'
+              ? `Source: ${sourceSummary.label}`
+              : 'Some permissions are customized'}
+          </div>
         </div>
 
         <div style={LEVEL_GRID}>
