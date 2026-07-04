@@ -39,6 +39,15 @@ registerModule({
     { actionKey: 'approve', displayName: 'Approve' },
     { actionKey: 'export', displayName: 'Export' },
     { actionKey: 'manage', displayName: 'Manage' },
+    // Custom actions added in Phase 3B to let this module's catalog fully
+    // express the legacy employee_permissions keys (samples_dispatch,
+    // samples_receive, samples_lost, samples_close). Catalog-only — the
+    // legacy has_permission()/RLS path on sample_dispatches is untouched
+    // and remains the sole source of enforcement until Phase 3E.
+    { actionKey: 'dispatch', displayName: 'Dispatch' },
+    { actionKey: 'receive', displayName: 'Receive' },
+    { actionKey: 'mark_lost', displayName: 'Mark Lost' },
+    { actionKey: 'close', displayName: 'Close' },
   ],
 })
 
