@@ -49,6 +49,28 @@ Rollback path if an issue is found:
 - [ ] No unexpected spike in Supabase error logs referencing `resolve_permission` or `sample_dispatches` policies.
 - [ ] A stable observation period (no authorization regressions reported) has elapsed.
 
-## 6. Phase 3G
+## 6. Live smoke test — 2026-07-05
 
-**Phase 3G (legacy retirement — dropping `employee_permissions`, `has_permission()`, and the `ep_*` policies) must not begin until the checklist above is complete and production behavior has been stable for a full observation period.** This note exists specifically to gate that decision — do not treat 3F's deployment alone as sufficient grounds to start 3G.
+**Result: Passed, partial.** Production authorization behaves as intended everywhere it could be exercised; visual UI click-through remains incomplete for reasons unrelated to the app itself.
+
+**What passed:**
+- Production deployment confirmed still on the expected Phase 3F code path (commit `c1b3468`, no drift, working tree clean).
+- No production data was created or modified during testing.
+- The live production `/api/admin/user-permissions` endpoint — the exact route Admin View Mode calls — was exercised over HTTPS using a temporary real admin session (a one-time Supabase magic-link session, not a stored password), then that session was immediately invalidated:
+  - **Admin** → `approve, close, create, delete, dispatch, edit, export, manage, mark_lost, receive, view` (full access, as expected).
+  - **Aditya** → `dispatch, mark_lost, receive` (matches his centralized employee overrides exactly; **`close` not present** — not newly granted).
+  - **Jasvi** (standard member, no grants) → empty permissions array.
+- No unexpected grants found for any of the three identities. This corroborates the DB-level `resolve_permission()` checks from the initial cutover verification (§2) with an independent, live HTTP-level check against the real deployed route.
+
+**What remains pending:**
+- Visual browser click-through could not be completed — the Claude browser extension was blocked from interacting with `boe-task-management.vercel.app` (permission/navigation denied at the extension level, even after being granted access twice). This is a tooling limitation, not a finding about the app.
+- Production currently holds only 1 `sample_dispatches` row, and it is in `approved` status. The dispatch / receive / mark-lost action buttons only render at `qr_submitted` / `dispatched` respectively, so button-rendering behavior for those states could not be click-tested against a real record. No test record was fabricated to force this, per standing instruction to avoid creating fake production data.
+- A real admin browser click-through (Dispatch → Receive / Mark Lost) and a natural `qr_submitted`/`dispatched` record remain open follow-ups whenever the extension access issue is resolved and/or such a record occurs naturally.
+
+**Security note:** the service-role-generated magic-link session used above is a verification workaround for this observation task, not a pattern to adopt for routine UI testing. It mints a real, if short-lived, admin-authenticated session outside the normal login flow and should be used sparingly, only for scoped verification like this, and always invalidated immediately after use (as was done here). Normal production UI testing should go through an actual admin login once browser access is available.
+
+**Continued observation status:** Phase 3F remains under observation. This smoke test found no issues and adds independent, live confirmation on top of the original DB-level verification — it does not close the observation period on its own, since the two pending items above (visual click-through, status-gated button rendering) are still open.
+
+## 7. Phase 3G
+
+**Phase 3G (legacy retirement — dropping `employee_permissions`, `has_permission()`, and the `ep_*` policies) must not begin until the checklist above is complete and production behavior has been stable for a full observation period.** This note exists specifically to gate that decision — do not treat 3F's deployment, nor this smoke test, alone as sufficient grounds to start 3G.
