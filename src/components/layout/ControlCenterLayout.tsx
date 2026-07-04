@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, LayoutGrid, Building2, Users, ShieldCheck, X } from 'lucide-react'
+import { Home, LayoutGrid, Building2, Users, ShieldCheck, Layers, History, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+
+export type ControlCenterTab = 'overview' | 'departments' | 'people' | 'modules'
 
 type ControlCenterLayoutProps = {
   profile: UserProfile | null
@@ -13,10 +15,15 @@ type ControlCenterLayoutProps = {
   subtitle?: string
   onSignOut: () => void
   children: React.ReactNode
+  /** Current tab, only meaningful on the main /admin/control-center page. */
+  activeTab?: ControlCenterTab
+  /** When provided, Overview/Departments/People/Module Visibility switch tabs
+   *  in place instead of navigating — used by the main control-center page. */
+  onTabChange?: (tab: ControlCenterTab) => void
 }
 
 export function ControlCenterLayout({
-  profile, title, subtitle, onSignOut, children,
+  profile, title, subtitle, onSignOut, children, activeTab, onTabChange,
 }: ControlCenterLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
@@ -25,6 +32,18 @@ export function ControlCenterLayout({
   const navTo = (path: string) => {
     router.push(path)
     setSidebarOpen(false)
+  }
+
+  // Overview/Departments/People/Module Visibility live as tabs on the main
+  // control-center page. If we're already there (onTabChange provided),
+  // switch tabs in place; otherwise navigate to that page and land on the tab.
+  const goToTab = (tab: ControlCenterTab) => {
+    if (onTabChange) {
+      onTabChange(tab)
+      setSidebarOpen(false)
+    } else {
+      navTo(`/admin/control-center?tab=${tab}`)
+    }
   }
 
   return (
@@ -68,28 +87,41 @@ export function ControlCenterLayout({
         {/* Section 2: Control Center navigation only */}
         <div className="boe-sidebar-section">
           <NavItem
-            label="Modules"
+            label="Overview"
             icon={<LayoutGrid size={15} strokeWidth={1.8} />}
-            active={pathname === '/admin/control-center' || pathname === '/admin/control-center/modules'}
-            onClick={() => navTo('/admin/control-center')}
+            active={pathname === '/admin/control-center' && (!onTabChange || activeTab === 'overview')}
+            onClick={() => goToTab('overview')}
           />
           <NavItem
             label="Departments"
             icon={<Building2 size={15} strokeWidth={1.8} />}
-            active={pathname === '/admin/control-center/departments'}
-            onClick={() => navTo('/admin/control-center/departments')}
+            active={pathname === '/admin/control-center' && activeTab === 'departments'}
+            onClick={() => goToTab('departments')}
           />
           <NavItem
             label="People"
             icon={<Users size={15} strokeWidth={1.8} />}
-            active={pathname === '/admin/control-center/people'}
-            onClick={() => navTo('/admin/control-center/people')}
+            active={pathname === '/admin/control-center' && activeTab === 'people'}
+            onClick={() => goToTab('people')}
           />
           <NavItem
-            label="Permissions"
+            label="Access Control"
             icon={<ShieldCheck size={15} strokeWidth={1.8} />}
             active={pathname === '/admin/control-center/permissions'}
             onClick={() => navTo('/admin/control-center/permissions')}
+          />
+          <NavItem
+            label="Module Visibility"
+            icon={<Layers size={15} strokeWidth={1.8} />}
+            active={pathname === '/admin/control-center' && activeTab === 'modules'}
+            onClick={() => goToTab('modules')}
+          />
+          <NavItem
+            label="Change History"
+            icon={<History size={15} strokeWidth={1.8} />}
+            active={false}
+            disabled
+            badge="Soon"
           />
         </div>
 
@@ -149,23 +181,33 @@ export function ControlCenterLayout({
 }
 
 function NavItem({
-  label, icon, active, onClick,
+  label, icon, active, onClick, disabled, badge,
 }: {
   label: string
   icon: React.ReactNode
   active: boolean
-  onClick: () => void
+  onClick?: () => void
+  disabled?: boolean
+  badge?: string
 }) {
   return (
     <button
       className={`boe-nav-item${active ? ' active' : ''}`}
-      onClick={onClick}
-      style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      title={disabled ? 'Coming soon' : undefined}
+      style={{
+        fontWeight: active ? 600 : 400,
+        marginBottom: '2px',
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
     >
       <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
         {icon}
       </span>
       {label}
+      {badge && <span className="boe-nav-badge amber">{badge}</span>}
     </button>
   )
 }
