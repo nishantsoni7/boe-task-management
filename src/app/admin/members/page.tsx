@@ -172,12 +172,17 @@ export default function MembersPage() {
       return
     }
 
-    setFullName(''); setEmail(''); setPhone('')
-    setPassword(''); setRole('member'); setTeam('sales'); setPosition('')
-    setShowForm(false)
+    closeAddForm()
     await loadMembers()
     setSaving(false)
-    showSuccess('Member created successfully.')
+    showSuccess('Member added successfully')
+  }
+
+  const closeAddForm = () => {
+    setShowForm(false)
+    setFullName(''); setEmail(''); setPhone('')
+    setPassword(''); setRole('member'); setTeam('sales'); setPosition('')
+    setError('')
   }
 
   const handleDelete = async (member: UserProfile) => {
@@ -554,62 +559,72 @@ export default function MembersPage() {
       title="Team Members"
       subtitle="Manage active, deactivated, and deleted members."
       actions={
-        <button onClick={() => setShowForm(!showForm)} className="boe-btn boe-btn-primary">
-          {showForm ? 'Cancel' : '+ Add Member'}
+        <button onClick={() => setShowForm(true)} className="boe-btn boe-btn-primary">
+          + Add Member
         </button>
       }
       onSignOut={handleLogout}
     >
 
-      {/* ── Add Member form ─────────────────────────────────────────────── */}
+      {/* ── Add Member modal ────────────────────────────────────────────── */}
       {showForm && (
-        <div className="boe-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '560px', marginBottom: '20px' }}>
-          <p style={{ color: colors.primary, fontSize: '13px', fontWeight: 600, margin: 0 }}>New Team Member</p>
-          {error && (
-            <AlertBanner variant="red">
-              <p style={{ color: colors.red, fontSize: '12px' }}>{error}</p>
-            </AlertBanner>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            {[
-              { value: full_name, set: setFullName, placeholder: 'Full name',           type: 'text'     },
-              { value: email,     set: setEmail,     placeholder: 'Email address',       type: 'email'    },
-              { value: phone,     set: setPhone,     placeholder: 'Phone (optional)',    type: 'tel'      },
-              { value: password,  set: setPassword,  placeholder: 'Temporary password', type: 'password' },
-            ].map(({ value, set, placeholder, type }) => (
-              <input key={placeholder} value={value} onChange={e => set(e.target.value)}
-                placeholder={placeholder} type={type} className="boe-input" />
-            ))}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div>
-              <label className="boe-input-label">Role</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {ROLES.map(r => (
-                  <button key={r} onClick={() => setRole(r)}
-                    className={`boe-chip${role === r ? ' boe-chip-selected' : ''}`}
-                    style={{ flex: 1, textAlign: 'center', textTransform: 'capitalize' }}>{r}</button>
-                ))}
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="boe-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '560px', width: '90%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={{ color: colors.primary, fontSize: '13px', fontWeight: 600, margin: 0 }}>New Team Member</p>
+              <button type="button" onClick={closeAddForm} className="boe-btn boe-btn-ghost" style={{ padding: '4px 8px', fontSize: '13px', lineHeight: 1 }}>✕</button>
+            </div>
+            {error && (
+              <AlertBanner variant="red">
+                <p style={{ color: colors.red, fontSize: '12px' }}>{error}</p>
+              </AlertBanner>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {[
+                { value: full_name, set: setFullName, placeholder: 'Full name',           type: 'text'     },
+                { value: email,     set: setEmail,     placeholder: 'Email address',       type: 'email'    },
+                { value: phone,     set: setPhone,     placeholder: 'Phone (optional)',    type: 'tel'      },
+                { value: password,  set: setPassword,  placeholder: 'Temporary password', type: 'password' },
+              ].map(({ value, set, placeholder, type }) => (
+                <input key={placeholder} value={value} onChange={e => set(e.target.value)}
+                  placeholder={placeholder} type={type} className="boe-input" />
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <label className="boe-input-label">Role</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {ROLES.map(r => (
+                    <button key={r} onClick={() => setRole(r)}
+                      className={`boe-chip${role === r ? ' boe-chip-selected' : ''}`}
+                      style={{ flex: 1, textAlign: 'center', textTransform: 'capitalize' }}>{r}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="boe-input-label">Team</label>
+                <select value={team} onChange={e => setTeam(e.target.value)} className="boe-input">
+                  {activeDepts.map(d => <option key={d.department_key} value={d.department_key}>{d.department_name}</option>)}
+                </select>
               </div>
             </div>
             <div>
-              <label className="boe-input-label">Team</label>
-              <select value={team} onChange={e => setTeam(e.target.value)} className="boe-input">
-                {activeDepts.map(d => <option key={d.department_key} value={d.department_key}>{d.department_name}</option>)}
+              <label className="boe-input-label">Position</label>
+              <select value={position} onChange={e => setPosition(e.target.value)} className="boe-input">
+                <option value="">— None —</option>
+                {positions.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
               </select>
             </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={handleCreate} disabled={saving} className="boe-btn boe-btn-primary"
+                style={{ flex: 1, justifyContent: 'center', padding: '11px' }}>
+                {saving ? 'Creating...' : 'Create Member'}
+              </button>
+              <button type="button" onClick={closeAddForm} disabled={saving} className="boe-btn boe-btn-ghost" style={{ padding: '11px 18px' }}>
+                Cancel
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="boe-input-label">Position</label>
-            <select value={position} onChange={e => setPosition(e.target.value)} className="boe-input">
-              <option value="">— None —</option>
-              {positions.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-            </select>
-          </div>
-          <button onClick={handleCreate} disabled={saving} className="boe-btn boe-btn-primary"
-            style={{ justifyContent: 'center', padding: '11px' }}>
-            {saving ? 'Creating...' : 'Create Member'}
-          </button>
         </div>
       )}
 
