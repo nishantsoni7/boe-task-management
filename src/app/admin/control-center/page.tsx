@@ -135,6 +135,18 @@ const DELETE_BTN: React.CSSProperties = {
   marginLeft: 12,
 }
 
+const PEOPLE_COUNT_BTN: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+  color: '#5585E8',
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  padding: 0,
+  textDecoration: 'underline',
+  textUnderlineOffset: 2,
+}
+
 const MODAL_OVERLAY: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
@@ -414,6 +426,9 @@ export default function ControlCenterPage() {
   const [deleteSaving, setDeleteSaving] = useState(false)
   const [deleteError,  setDeleteError]  = useState('')
 
+  // ── Department people popup (read-only) ──────────────────────────────────
+  const [peopleDept, setPeopleDept] = useState<Department | null>(null)
+
   // ── User department modal ─────────────────────────────────────────────────
   const [editUser,   setEditUser]   = useState<UserProfile | null>(null)
   const [userTeam,   setUserTeam]   = useState('')
@@ -504,6 +519,10 @@ export default function ControlCenterPage() {
   function openDeleteDept(dept: Department) {
     setDeleteDept(dept)
     setDeleteError('')
+  }
+
+  function openPeopleDept(dept: Department) {
+    setPeopleDept(dept)
   }
 
   function openEditUser(user: UserProfile) {
@@ -688,7 +707,11 @@ export default function ControlCenterPage() {
                       <td style={{ ...TD, color: '#6B7384', fontFamily: 'monospace', fontSize: 12 }}>
                         {dept.department_key}
                       </td>
-                      <td style={{ ...TD, color: '#6B7384' }}>{peopleInDept(dept.department_key)}</td>
+                      <td style={TD}>
+                        <button style={PEOPLE_COUNT_BTN} onClick={() => openPeopleDept(dept)}>
+                          {peopleInDept(dept.department_key)}
+                        </button>
+                      </td>
                       <td style={TD}>
                         <span style={{
                           fontSize: 11, fontWeight: 700,
@@ -982,6 +1005,80 @@ export default function ControlCenterPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Department people popup (read-only) ───────────────────────────── */}
+      {peopleDept && (
+        <div style={MODAL_OVERLAY} onClick={() => setPeopleDept(null)}>
+          <div
+            style={{ ...MODAL_BOX, width: 800, maxWidth: 'calc(100vw - 32px)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={MODAL_TITLE}>People in {peopleDept.department_name}</div>
+
+            {(() => {
+              const people = members.filter(m => !m.is_deleted && m.team === peopleDept.department_key)
+              if (people.length === 0) {
+                return (
+                  <div style={{ fontSize: 13, color: '#6B7384', marginTop: 12, marginBottom: 4 }}>
+                    No people are assigned to this department.
+                  </div>
+                )
+              }
+              return (
+                <div style={{ marginTop: 12, overflow: 'hidden', borderRadius: 8 }}>
+                  <table style={{ ...TABLE, tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: '24%' }} />
+                      <col style={{ width: '42%' }} />
+                      <col style={{ width: '18%' }} />
+                      <col style={{ width: '16%' }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th style={TH}>Name</th>
+                        <th style={TH}>Email</th>
+                        <th style={TH}>Role</th>
+                        <th style={{ ...TH, textAlign: 'right' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {people.map(person => (
+                        <tr key={person.id}>
+                          <td style={{ ...TD, fontWeight: 600, wordBreak: 'break-word' }}>
+                            {person.full_name}
+                          </td>
+                          <td style={{
+                            ...TD, color: '#6B7384',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {person.email}
+                          </td>
+                          <td style={{ ...TD, color: '#6B7384', textTransform: 'capitalize' }}>{person.role}</td>
+                          <td style={{ ...TD, textAlign: 'right' }}>
+                            <span style={{
+                              display: 'inline-block', whiteSpace: 'nowrap',
+                              fontSize: 11, fontWeight: 700,
+                              color: person.is_active ? '#166534' : '#4B5563',
+                              background: person.is_active ? '#F0FDF4' : '#F3F4F6',
+                              borderRadius: 5, padding: '2px 8px',
+                            }}>
+                              {person.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
+
+            <div style={{ ...BTN_ROW, marginTop: 20, paddingTop: 16, borderTop: '1px solid #E8EBF0' }}>
+              <button style={BTN_CANCEL} onClick={() => setPeopleDept(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
