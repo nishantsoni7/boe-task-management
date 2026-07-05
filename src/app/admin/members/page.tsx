@@ -10,7 +10,14 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 
-const TEAMS = ['sales', 'operations', 'design', 'purchase', 'bdm', 'management']
+type Department = {
+  id: string
+  department_key: string
+  department_name: string
+  is_active: boolean
+  sort_order: number
+}
+
 const ROLES = ['member', 'manager', 'admin'] as const
 
 const AVATAR_COLORS = [
@@ -30,6 +37,7 @@ export default function MembersPage() {
   const [profile,        setProfile]        = useState<UserProfile | null>(null)
   const [members,        setMembers]        = useState<UserProfile[]>([])
   const [positions,      setPositions]      = useState<Position[]>([])
+  const [depts,          setDepts]          = useState<Department[]>([])
   const [loading,        setLoading]        = useState(true)
   const [showForm,       setShowForm]       = useState(false)
   const [selectedMember, setSelectedMember] = useState<UserProfile | null>(null)
@@ -81,7 +89,7 @@ export default function MembersPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const [{ data: p }, { data: posData }, membersRes, deletedRes] = await Promise.all([
+      const [{ data: p }, { data: posData }, membersRes, deletedRes, deptsRes] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, position, is_active, created_at')
@@ -99,6 +107,10 @@ export default function MembersPage() {
         fetch('/api/deleted-members', {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
         }).then(r => r.json()),
+        // Same source Control Center uses — departments are admin-managed, not hardcoded.
+        fetch('/api/control-center/departments', {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        }).then(r => r.json()),
       ])
 
       if (p?.role !== 'admin') { router.push('/dashboard'); return }
@@ -107,6 +119,7 @@ export default function MembersPage() {
       if (Array.isArray(membersRes?.members)) setMembers(membersRes.members as UserProfile[])
       if (posData) setPositions(posData as Position[])
       if (Array.isArray(deletedRes?.members)) setDeletedMembers(deletedRes.members as UserProfile[])
+      if (Array.isArray(deptsRes?.departments)) setDepts(deptsRes.departments as Department[])
 
       setLoading(false)
     }
@@ -417,6 +430,8 @@ export default function MembersPage() {
 
   if (loading) return <LoadingScreen />
 
+  const activeDepts = depts.filter(d => d.is_active)
+
   const activeMembers   = members.filter(m => m.is_active === true)
   const inactiveMembers = members.filter(m => m.is_active === false)
   const totalMembers    = activeMembers.length + inactiveMembers.length + deletedMembers.length
@@ -580,7 +595,7 @@ export default function MembersPage() {
             <div>
               <label className="boe-input-label">Team</label>
               <select value={team} onChange={e => setTeam(e.target.value)} className="boe-input">
-                {TEAMS.map(t => <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{t}</option>)}
+                {activeDepts.map(d => <option key={d.department_key} value={d.department_key}>{d.department_name}</option>)}
               </select>
             </div>
           </div>
@@ -933,7 +948,7 @@ export default function MembersPage() {
                       <div>
                         <label className="boe-input-label">Team</label>
                         <select value={editTeam} onChange={e => setEditTeam(e.target.value)} className="boe-input" style={{ fontSize: '12px' }}>
-                          {TEAMS.map(t => <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{t}</option>)}
+                          {activeDepts.map(d => <option key={d.department_key} value={d.department_key}>{d.department_name}</option>)}
                         </select>
                       </div>
                       <div>
