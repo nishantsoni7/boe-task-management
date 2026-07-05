@@ -433,8 +433,14 @@ function ControlCenterPageInner() {
   const [deleteSaving, setDeleteSaving] = useState(false)
   const [deleteError,  setDeleteError]  = useState('')
 
-  // ── Department people popup (read-only) ──────────────────────────────────
+  // ── Department people popup ───────────────────────────────────────────────
   const [peopleDept, setPeopleDept] = useState<Department | null>(null)
+
+  // ── Inline row edit (department popup) ────────────────────────────────────
+  const [editingPersonId,    setEditingPersonId]    = useState<string | null>(null)
+  const [editingPersonTeam,  setEditingPersonTeam]  = useState('')
+  const [editingPersonSaving,setEditingPersonSaving]= useState(false)
+  const [editingPersonError, setEditingPersonError] = useState('')
 
   // ── User department modal ─────────────────────────────────────────────────
   const [editUser,   setEditUser]   = useState<UserProfile | null>(null)
@@ -530,6 +536,25 @@ function ControlCenterPageInner() {
 
   function openPeopleDept(dept: Department) {
     setPeopleDept(dept)
+    setEditingPersonId(null)
+    setEditingPersonError('')
+  }
+
+  function closePeopleDept() {
+    setPeopleDept(null)
+    setEditingPersonId(null)
+    setEditingPersonError('')
+  }
+
+  function startEditPerson(person: UserProfile) {
+    setEditingPersonId(person.id)
+    setEditingPersonTeam(person.team ?? '')
+    setEditingPersonError('')
+  }
+
+  function cancelEditPerson() {
+    setEditingPersonId(null)
+    setEditingPersonError('')
   }
 
   function openEditUser(user: UserProfile) {
@@ -613,6 +638,33 @@ function ControlCenterPageInner() {
       setDeleteDept(null)
     } finally {
       setDeleteSaving(false)
+    }
+  }
+
+  async function saveEditPerson(person: UserProfile) {
+    setEditingPersonSaving(true); setEditingPersonError('')
+    try {
+      const res = await fetch('/api/update-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          userId:    person.id,
+          full_name: person.full_name,
+          team:      editingPersonTeam,
+          role:      person.role,
+          position:  person.position ?? null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setEditingPersonError(json.error ?? 'Save failed'); return }
+      setMembers(prev => prev.map(m =>
+        m.id === person.id ? { ...m, team: editingPersonTeam } : m
+      ))
+      setEditingPersonId(null)
+    } catch {
+      setEditingPersonError('Save failed. Check your connection and try again.')
+    } finally {
+      setEditingPersonSaving(false)
     }
   }
 
@@ -1016,11 +1068,11 @@ function ControlCenterPageInner() {
         </div>
       )}
 
-      {/* ── Department people popup (read-only) ───────────────────────────── */}
+      {/* ── Department people popup ─────────────────────────────────────────── */}
       {peopleDept && (
-        <div style={MODAL_OVERLAY} onClick={() => setPeopleDept(null)}>
+        <div style={MODAL_OVERLAY} onClick={closePeopleDept}>
           <div
-            style={{ ...MODAL_BOX, width: 800, maxWidth: 'calc(100vw - 32px)' }}
+            style={{ ...MODAL_BOX, width: 860, maxWidth: 'calc(100vw - 32px)' }}
             onClick={e => e.stopPropagation()}
           >
             <div style={MODAL_TITLE}>People in {peopleDept.department_name}</div>
@@ -1038,45 +1090,101 @@ function ControlCenterPageInner() {
                 <div style={{ marginTop: 12, overflow: 'hidden', borderRadius: 8 }}>
                   <table style={{ ...TABLE, tableLayout: 'fixed' }}>
                     <colgroup>
-                      <col style={{ width: '24%' }} />
-                      <col style={{ width: '42%' }} />
-                      <col style={{ width: '18%' }} />
-                      <col style={{ width: '16%' }} />
+                      <col style={{ width: '17%' }} />
+                      <col style={{ width: '26%' }} />
+                      <col style={{ width: '9%' }} />
+                      <col style={{ width: '22%' }} />
+                      <col style={{ width: '11%' }} />
+                      <col style={{ width: '15%' }} />
                     </colgroup>
                     <thead>
                       <tr>
                         <th style={TH}>Name</th>
                         <th style={TH}>Email</th>
                         <th style={TH}>Role</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Status</th>
+                        <th style={TH}>Department</th>
+                        <th style={TH}>Status</th>
+                        <th style={{ ...TH, textAlign: 'right' }}></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {people.map(person => (
-                        <tr key={person.id}>
-                          <td style={{ ...TD, fontWeight: 600, wordBreak: 'break-word' }}>
-                            {person.full_name}
-                          </td>
-                          <td style={{
-                            ...TD, color: '#6B7384',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {person.email}
-                          </td>
-                          <td style={{ ...TD, color: '#6B7384', textTransform: 'capitalize' }}>{person.role}</td>
-                          <td style={{ ...TD, textAlign: 'right' }}>
-                            <span style={{
-                              display: 'inline-block', whiteSpace: 'nowrap',
-                              fontSize: 11, fontWeight: 700,
-                              color: person.is_active ? '#166534' : '#4B5563',
-                              background: person.is_active ? '#F0FDF4' : '#F3F4F6',
-                              borderRadius: 5, padding: '2px 8px',
+                      {people.map(person => {
+                        const isEditing = editingPersonId === person.id
+                        return (
+                          <tr key={person.id}>
+                            <td style={{ ...TD, fontWeight: 600, wordBreak: 'break-word' }}>
+                              {person.full_name}
+                            </td>
+                            <td style={{
+                              ...TD, color: '#6B7384',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                             }}>
-                              {person.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                              {person.email}
+                            </td>
+                            <td style={{ ...TD, color: '#6B7384', textTransform: 'capitalize' }}>{person.role}</td>
+                            <td style={TD}>
+                              {isEditing ? (
+                                <>
+                                  <select
+                                    style={{ ...SELECT, marginBottom: 0, padding: '5px 8px', fontSize: 12.5 }}
+                                    value={editingPersonTeam}
+                                    onChange={e => setEditingPersonTeam(e.target.value)}
+                                    disabled={editingPersonSaving}
+                                  >
+                                    {activeDepts.map(d => (
+                                      <option key={d.department_key} value={d.department_key}>
+                                        {d.department_name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {editingPersonError && (
+                                    <div style={{ ...ERROR_MSG, marginTop: 4, marginBottom: 0 }}>
+                                      {editingPersonError}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <span style={{ color: person.team ? '#111318' : '#B0B8C8' }}>
+                                  {deptLabel(person.team)}
+                                </span>
+                              )}
+                            </td>
+                            <td style={TD}>
+                              <span style={{
+                                display: 'inline-block', whiteSpace: 'nowrap',
+                                fontSize: 11, fontWeight: 700,
+                                color: person.is_active ? '#166534' : '#4B5563',
+                                background: person.is_active ? '#F0FDF4' : '#F3F4F6',
+                                borderRadius: 5, padding: '2px 8px',
+                              }}>
+                                {person.is_active ? 'Active' : 'Inactive'}
+                              </span>
+                            </td>
+                            <td style={{ ...TD, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    style={EDIT_BTN}
+                                    onClick={() => saveEditPerson(person)}
+                                    disabled={editingPersonSaving}
+                                  >
+                                    {editingPersonSaving ? 'Saving…' : 'Save'}
+                                  </button>
+                                  <button
+                                    style={{ ...DELETE_BTN, color: '#6B7384', marginLeft: 10 }}
+                                    onClick={cancelEditPerson}
+                                    disabled={editingPersonSaving}
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <button style={EDIT_BTN} onClick={() => startEditPerson(person)}>Edit</button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1084,7 +1192,7 @@ function ControlCenterPageInner() {
             })()}
 
             <div style={{ ...BTN_ROW, marginTop: 20, paddingTop: 16, borderTop: '1px solid #E8EBF0' }}>
-              <button style={BTN_CANCEL} onClick={() => setPeopleDept(null)}>Close</button>
+              <button style={BTN_CANCEL} onClick={closePeopleDept}>Close</button>
             </div>
           </div>
         </div>
