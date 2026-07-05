@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState, useMemo } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { ControlCenterLayout, type ControlCenterTab } from '@/components/layout/ControlCenterLayout'
@@ -381,6 +381,14 @@ function OverviewTab({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ControlCenterPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <ControlCenterPageInner />
+    </Suspense>
+  )
+}
+
+function ControlCenterPageInner() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, exitViewMode } = useViewAs()
@@ -392,17 +400,16 @@ export default function ControlCenterPage() {
   const [depts,    setDepts]    = useState<Department[]>([])
   const [members,  setMembers]  = useState<UserProfile[]>([])
 
-  // ── Active tab — read once from the URL (?tab=) so links from other pages
-  // land on the right section; kept in sync on change without useSearchParams
-  // (avoids a Suspense boundary requirement for a page this simple).
-  const [tab, setTab] = useState<ControlCenterTab>(() => {
-    if (typeof window === 'undefined') return 'overview'
-    const t = new URLSearchParams(window.location.search).get('tab')
-    return t === 'departments' || t === 'people' || t === 'modules' ? t : 'overview'
-  })
+  // ── Active tab — the URL (?tab=) is the single source of truth, read
+  // reactively via useSearchParams so cross-page navigation (e.g. from Access
+  // Control, which has no in-place tab state) lands on the right section on
+  // the first render, not just after a subsequent in-place click.
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const tab: ControlCenterTab =
+    tabParam === 'departments' || tabParam === 'people' || tabParam === 'modules' ? tabParam : 'overview'
 
   function changeTab(next: ControlCenterTab) {
-    setTab(next)
     router.replace(`/admin/control-center?tab=${next}`)
   }
 
