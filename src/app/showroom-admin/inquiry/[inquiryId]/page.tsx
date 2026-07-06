@@ -9,6 +9,10 @@ import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package, Box, User, Phone, CalendarDays, Save } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
+import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+
+const teamFallback = (team?: string | null) =>
+  !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -134,16 +138,22 @@ export default function InquiryDetailPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: p } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-        .eq('id', session.user.id)
-        .single()
+      const [{ data: p }, { data: mod }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+          .eq('id', session.user.id)
+          .single(),
+        supabase
+          .from('app_modules')
+          .select('visibility_type, allowed_department')
+          .eq('module_key', 'showroom_qr')
+          .single(),
+      ])
       if (!p) { router.push('/login'); return }
       const profile = p as UserProfile
       const hasAccess = profile.role === 'admin' ||
-        profile.team?.toLowerCase().includes('sales') ||
-        profile.team?.toLowerCase().includes('showroom')
+        canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team))
       if (!hasAccess) { router.replace('/modules'); return }
 
       setProfile(profile)

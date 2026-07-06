@@ -10,11 +10,17 @@ import { QRCodeSVG } from 'qrcode.react'
 import { colors, font } from '@/lib/tokens'
 import { Printer } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
+import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+const teamFallback = (team?: string | null) =>
+  !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
 export default function MyQRPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [qrUrl,   setQrUrl]   = useState('')
   const [loading, setLoading] = useState(true)
+  const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -25,17 +31,24 @@ export default function MyQRPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: p } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-        .eq('id', session.user.id)
-        .single()
+      const [{ data: p }, { data: mod }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+          .eq('id', session.user.id)
+          .single(),
+        supabase
+          .from('app_modules')
+          .select('visibility_type, allowed_department')
+          .eq('module_key', 'showroom_qr')
+          .single(),
+      ])
 
       if (!p) { router.push('/login'); return }
       const prof = p as UserProfile
+      setShowroomMod(mod ?? null)
       const hasAccess = prof.role === 'admin' ||
-        prof.team?.toLowerCase().includes('sales') ||
-        prof.team?.toLowerCase().includes('showroom')
+        canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, prof, teamFallback(prof.team))
       if (!hasAccess) { router.replace('/modules'); return }
 
       setProfile(prof)
@@ -52,10 +65,9 @@ export default function MyQRPage() {
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
     const effectiveHasAccess = viewAsProfile.role === 'admin' ||
-      viewAsProfile.team?.toLowerCase().includes('sales') ||
-      viewAsProfile.team?.toLowerCase().includes('showroom')
+      canAccessModule(showroomMod?.visibility_type as ModuleVisibilityType | undefined, showroomMod?.allowed_department, viewAsProfile, teamFallback(viewAsProfile.team))
     if (!effectiveHasAccess) router.replace('/modules')
-  }, [profile, viewAsUserId, viewAsProfile, router])
+  }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 
   const effectiveProfile = viewAsProfile ?? profile
 

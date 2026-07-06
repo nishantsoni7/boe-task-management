@@ -8,6 +8,11 @@ import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { useViewAs } from '@/hooks/useViewAs'
+import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+const teamFallback = (team?: string | null) =>
+  !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
 type SpecRow = { attr: string; val: string }
 type DimState = { width: string; depth: string; height: string; unit: string }
@@ -97,6 +102,7 @@ export default function NewProductPage() {
   const [mrp,         setMrp]         = useState('')
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
+  const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -104,22 +110,35 @@ export default function NewProductPage() {
 
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
-    if (viewAsProfile.role !== 'admin') router.replace('/modules')
-  }, [profile, viewAsUserId, viewAsProfile, router])
+    const effectiveHasAccess = viewAsProfile.role === 'admin' ||
+      canAccessModule(showroomMod?.visibility_type as ModuleVisibilityType | undefined, showroomMod?.allowed_department, viewAsProfile, teamFallback(viewAsProfile.team))
+    if (!effectiveHasAccess) router.replace('/modules')
+  }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: p } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-        .eq('id', session.user.id)
-        .single()
+      const [{ data: p }, { data: mod }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+          .eq('id', session.user.id)
+          .single(),
+        supabase
+          .from('app_modules')
+          .select('visibility_type, allowed_department')
+          .eq('module_key', 'showroom_qr')
+          .single(),
+      ])
 
-      if (!p || p.role !== 'admin') { router.replace('/modules'); return }
-      setProfile(p as UserProfile)
+      setShowroomMod(mod ?? null)
+      const profile = p as UserProfile | null
+      const hasAccess = !!profile && (profile.role === 'admin' ||
+        canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team)))
+      if (!hasAccess) { router.replace('/modules'); return }
+      setProfile(profile)
       setLoadingAuth(false)
     }
     init()

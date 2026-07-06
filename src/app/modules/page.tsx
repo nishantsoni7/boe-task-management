@@ -26,7 +26,7 @@ type ModuleDef = {
   managerOrAdmin?: boolean
   notificationCount?: number | null  // null = no API yet → "No pending", 0 = confirmed zero, >0 = badge
   visibilityType?: string   // from app_modules — drives badge when present
-  allowedDepartment?: string | null
+  allowedDepartment?: string[] | null
 }
 
 const STATUS_LABEL: Record<ModuleStatus, { label: string; color: string; bg: string }> = {
@@ -39,7 +39,7 @@ const STATUS_LABEL: Record<ModuleStatus, { label: string; color: string; bg: str
 
 // ── Visibility resolver — used by /modules to evaluate app_modules DB rules ──
 
-type ModVisRow = { visibility_type: string; allowed_department: string | null }
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
 
 function canSeeModule(
   key: string,
@@ -299,10 +299,15 @@ export default function BoeOsHomePage() {
 
 // ── ModuleCard ────────────────────────────────────────────────────────────────
 
-const VIS_BADGE: Record<string, { color: string; bg: string; label: (dept?: string | null) => string }> = {
+const VIS_BADGE: Record<string, { color: string; bg: string; label: (dept?: string[] | null) => string }> = {
   live:            { color: '#166534', bg: '#F0FDF4', label: () => 'Live' },
   admin_only:      { color: '#1E40AF', bg: '#EFF6FF', label: () => 'Admin Only' },
-  department_only: { color: '#92400E', bg: '#FFFBEB', label: (dept) => dept ? `${dept.charAt(0).toUpperCase()}${dept.slice(1)} Only` : 'Dept Only' },
+  department_only: {
+    color: '#92400E', bg: '#FFFBEB',
+    label: (dept) => dept?.length
+      ? `${dept.map(d => `${d.charAt(0).toUpperCase()}${d.slice(1)}`).join('/')} Only`
+      : 'Dept Only',
+  },
   hidden:          { color: '#4B5563', bg: '#F3F4F6', label: () => 'Hidden' },
 }
 

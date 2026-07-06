@@ -42,9 +42,20 @@ describe('canAccessModule', () => {
     assert.equal(canAccessModule('admin_only', null, member, false), false)
   })
 
-  test('department_only allows admin and the matching department, case-insensitively', () => {
-    assert.equal(canAccessModule('department_only', 'Sales', admin, false), true)
-    assert.equal(canAccessModule('department_only', 'Sales', member, false), true)
-    assert.equal(canAccessModule('department_only', 'Sales', other, false), false)
+  test('department_only allows admin and a matching department, case-insensitively', () => {
+    assert.equal(canAccessModule('department_only', ['Sales'], admin, false), true)
+    assert.equal(canAccessModule('department_only', ['Sales'], member, false), true)
+    assert.equal(canAccessModule('department_only', ['Sales'], other, false), false)
+  })
+
+  test('department_only allows any department in a multi-department list', () => {
+    assert.equal(canAccessModule('department_only', ['sales', 'showroom'], member, false), true)
+    assert.equal(canAccessModule('department_only', ['showroom', 'operations'], other, false), true)
+    assert.equal(canAccessModule('department_only', ['showroom'], other, false), false)
+  })
+
+  test('department_only denies when no departments are configured', () => {
+    assert.equal(canAccessModule('department_only', null, member, false), false)
+    assert.equal(canAccessModule('department_only', [], member, false), false)
   })
 })

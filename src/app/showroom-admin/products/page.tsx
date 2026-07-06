@@ -11,6 +11,11 @@ import { colors, font } from '@/lib/tokens'
 import { Package, PlusCircle, Pencil, QrCode, X, Printer } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { QRCodeSVG } from 'qrcode.react'
+import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+const teamFallback = (team?: string | null) =>
+  !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
 export default function ShowroomProductsPage() {
   const [profile,   setProfile]   = useState<UserProfile | null>(null)
@@ -19,6 +24,7 @@ export default function ShowroomProductsPage() {
   const [error,     setError]     = useState('')
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [qrProduct, setQrProduct] = useState<ShowroomProduct | null>(null)
+  const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -29,14 +35,25 @@ export default function ShowroomProductsPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: p } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-        .eq('id', session.user.id)
-        .single()
+      const [{ data: p }, { data: mod }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+          .eq('id', session.user.id)
+          .single(),
+        supabase
+          .from('app_modules')
+          .select('visibility_type, allowed_department')
+          .eq('module_key', 'showroom_qr')
+          .single(),
+      ])
 
-      if (p?.role !== 'admin') { router.push('/modules'); return }
-      setProfile(p as UserProfile)
+      setShowroomMod(mod ?? null)
+      const profile = p as UserProfile | null
+      const hasAccess = !!profile && (profile.role === 'admin' ||
+        canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team)))
+      if (!hasAccess) { router.push('/modules'); return }
+      setProfile(profile)
 
       await loadProducts(session.access_token)
       setLoading(false)
@@ -45,11 +62,13 @@ export default function ShowroomProductsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Redirect when viewing as a non-admin user
+  // Redirect when viewing as a user without showroom access
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
-    if (viewAsProfile.role !== 'admin') router.replace('/modules')
-  }, [profile, viewAsUserId, viewAsProfile, router])
+    const effectiveHasAccess = viewAsProfile.role === 'admin' ||
+      canAccessModule(showroomMod?.visibility_type as ModuleVisibilityType | undefined, showroomMod?.allowed_department, viewAsProfile, teamFallback(viewAsProfile.team))
+    if (!effectiveHasAccess) router.replace('/modules')
+  }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 
   const loadProducts = async (token: string) => {
     const res = await fetch('/api/showroom/admin/products', {

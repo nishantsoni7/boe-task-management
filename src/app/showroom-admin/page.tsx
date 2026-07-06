@@ -8,6 +8,11 @@ import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { font } from '@/lib/tokens'
 import { useViewAs } from '@/hooks/useViewAs'
+import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+const teamFallback = (team?: string | null) =>
+  !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
 type InquirySummary = {
   id: string
@@ -52,6 +57,7 @@ export default function ShowroomInboxPage() {
   const [error,           setError]           = useState('')
   const [token,           setToken]           = useState('')
   const [quotationFilter, setQuotationFilter] = useState<QuotationFilter>('all')
+  const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -62,17 +68,24 @@ export default function ShowroomInboxPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: p } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-        .eq('id', session.user.id)
-        .single()
+      const [{ data: p }, { data: mod }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+          .eq('id', session.user.id)
+          .single(),
+        supabase
+          .from('app_modules')
+          .select('visibility_type, allowed_department')
+          .eq('module_key', 'showroom_qr')
+          .single(),
+      ])
 
       if (!p) { router.push('/login'); return }
       const profile = p as UserProfile
+      setShowroomMod(mod ?? null)
       const hasAccess = profile.role === 'admin' ||
-        profile.team?.toLowerCase().includes('sales') ||
-        profile.team?.toLowerCase().includes('showroom')
+        canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team))
       if (!hasAccess) { router.replace('/modules'); return }
       setProfile(profile)
       setToken(session.access_token)
@@ -100,10 +113,9 @@ export default function ShowroomInboxPage() {
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
     const effectiveHasAccess = viewAsProfile.role === 'admin' ||
-      viewAsProfile.team?.toLowerCase().includes('sales') ||
-      viewAsProfile.team?.toLowerCase().includes('showroom')
+      canAccessModule(showroomMod?.visibility_type as ModuleVisibilityType | undefined, showroomMod?.allowed_department, viewAsProfile, teamFallback(viewAsProfile.team))
     if (!effectiveHasAccess) router.replace('/modules')
-  }, [profile, viewAsUserId, viewAsProfile, router])
+  }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

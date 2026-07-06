@@ -7,7 +7,7 @@ type AccessProfile = { role: string; team?: string | null } | null
 
 export function canAccessModule(
   visibilityType: ModuleVisibilityType | undefined,
-  allowedDepartment: string | null | undefined,
+  allowedDepartments: string[] | null | undefined,
   profile: AccessProfile,
   fallback: boolean,
 ): boolean {
@@ -16,7 +16,10 @@ export function canAccessModule(
   switch (visibilityType) {
     case 'hidden':          return false
     case 'admin_only':      return isAdmin
-    case 'department_only': return isAdmin || (profile.team?.toLowerCase() === allowedDepartment?.toLowerCase())
+    case 'department_only': {
+      const team = profile.team?.toLowerCase()
+      return isAdmin || (!!team && !!allowedDepartments?.some(d => d.toLowerCase() === team))
+    }
     default:                return true // 'live'
   }
 }

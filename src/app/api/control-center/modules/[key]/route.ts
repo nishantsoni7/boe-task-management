@@ -35,11 +35,19 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid visibility_type' }, { status: 400 })
   }
 
+  const departments = Array.isArray(allowed_department)
+    ? allowed_department.filter((d): d is string => typeof d === 'string' && d.length > 0)
+    : []
+
+  if (visibility_type === 'department_only' && departments.length === 0) {
+    return NextResponse.json({ error: 'Select at least one department' }, { status: 400 })
+  }
+
   const { error } = await svc
     .from('app_modules')
     .update({
       visibility_type,
-      allowed_department: visibility_type === 'department_only' ? (allowed_department ?? null) : null,
+      allowed_department: visibility_type === 'department_only' ? departments : null,
       updated_at: new Date().toISOString(),
     })
     .eq('module_key', key)

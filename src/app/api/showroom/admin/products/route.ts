@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 
 function serviceClient() {
   return createClient(
@@ -8,7 +9,10 @@ function serviceClient() {
   )
 }
 
-async function requireAdmin(req: NextRequest) {
+// Any user allowed to see the Showroom QR module (per Control Center visibility)
+// may manage products — same source of truth as the module launcher and the
+// showroom-admin route guards.
+async function requireShowroomAccess(req: NextRequest) {
   const token = req.headers.get('authorization')?.replace('Bearer ', '').trim()
   if (!token) return null
 
@@ -16,18 +20,23 @@ async function requireAdmin(req: NextRequest) {
   const { data: { user }, error } = await client.auth.getUser(token)
   if (error || !user) return null
 
-  const { data: profile } = await client
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
+  const [{ data: profile }, { data: mod }] = await Promise.all([
+    client.from('users').select('role, team').eq('id', user.id).single(),
+    client.from('app_modules').select('visibility_type, allowed_department').eq('module_key', 'showroom_qr').single(),
+  ])
+  if (!profile) return null
 
-  return profile?.role === 'admin' ? client : null
+  const team = (profile.team as string | null)?.toLowerCase()
+  const teamFallback = !!team && (team.includes('sales') || team.includes('showroom'))
+  const allowed = profile.role === 'admin' ||
+    canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback)
+
+  return allowed ? client : null
 }
 
 // GET /api/showroom/admin/products — all products including inactive
 export async function GET(req: NextRequest) {
-  const client = await requireAdmin(req)
+  const client = await requireShowroomAccess(req)
   if (!client) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { data, error } = await client
@@ -42,7 +51,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/showroom/admin/products — create product
 export async function POST(req: NextRequest) {
-  const client = await requireAdmin(req)
+  const client = await requireShowroomAccess(req)
   if (!client) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()

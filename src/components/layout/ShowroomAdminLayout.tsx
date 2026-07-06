@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { ClipboardList, QrCode, Package, Home, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { useViewAs } from '@/hooks/useViewAs'
+import { createClient } from '@/lib/supabase/client'
+import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 
 type ShowroomAdminLayoutProps = {
   profile: UserProfile | null
@@ -16,14 +18,39 @@ type ShowroomAdminLayoutProps = {
   children: React.ReactNode
 }
 
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+const teamFallback = (team?: string | null) =>
+  !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
+
 export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, children }: ShowroomAdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
   const router   = useRouter()
   const pathname = usePathname()
+  const supabase = useMemo(() => createClient(), [])
 
   const { viewAsProfile } = useViewAs()
   const effectiveProfile = viewAsProfile ?? profile
   const isAdmin = effectiveProfile?.role === 'admin'
+
+  // Sidebar nav needs the same Control-Center-driven permission the
+  // showroom-admin route guards use, so "Product Master" isn't hidden from
+  // a department that's allowed into the module but isn't an admin.
+  useEffect(() => {
+    supabase
+      .from('app_modules')
+      .select('visibility_type, allowed_department')
+      .eq('module_key', 'showroom_qr')
+      .single()
+      .then((res: { data: ModVisRow | null }) => setShowroomMod(res.data ?? null))
+  }, [supabase])
+
+  const canManageProducts = isAdmin || canAccessModule(
+    showroomMod?.visibility_type as ModuleVisibilityType | undefined,
+    showroomMod?.allowed_department,
+    effectiveProfile ?? null,
+    teamFallback(effectiveProfile?.team),
+  )
 
   const navTo = (path: string) => {
     router.push(path)
@@ -82,7 +109,7 @@ export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, child
             active={pathname === '/showroom-admin/qr'}
             onClick={() => navTo('/showroom-admin/qr')}
           />
-          {isAdmin && (
+          {canManageProducts && (
             <NavItem
               label="Product Master"
               icon={<Package size={15} strokeWidth={1.8} />}

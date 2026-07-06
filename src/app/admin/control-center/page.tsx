@@ -20,7 +20,7 @@ type AppModule = {
   description: string | null
   route_path: string
   visibility_type: VisibilityType
-  allowed_department: string | null
+  allowed_department: string[] | null
   sort_order: number
 }
 
@@ -414,11 +414,11 @@ function ControlCenterPageInner() {
   }
 
   // ── Module edit modal ────────────────────────────────────────────────────
-  const [editMod,       setEditMod]       = useState<AppModule | null>(null)
-  const [modVisType,    setModVisType]    = useState<VisibilityType>('live')
-  const [modAllowedDept,setModAllowedDept]= useState('')
-  const [modSaving,     setModSaving]     = useState(false)
-  const [modError,      setModError]      = useState('')
+  const [editMod,        setEditMod]        = useState<AppModule | null>(null)
+  const [modVisType,     setModVisType]     = useState<VisibilityType>('live')
+  const [modAllowedDepts,setModAllowedDepts]= useState<string[]>([])
+  const [modSaving,      setModSaving]      = useState(false)
+  const [modError,       setModError]       = useState('')
 
   // ── Department modal (edit or add) ───────────────────────────────────────
   const [editDept,   setEditDept]   = useState<Department | null>(null)
@@ -511,8 +511,14 @@ function ControlCenterPageInner() {
   function openEditMod(mod: AppModule) {
     setEditMod(mod)
     setModVisType(mod.visibility_type)
-    setModAllowedDept(mod.allowed_department ?? '')
+    setModAllowedDepts(mod.allowed_department ?? [])
     setModError('')
+  }
+
+  function toggleModAllowedDept(deptKey: string) {
+    setModAllowedDepts(prev =>
+      prev.includes(deptKey) ? prev.filter(d => d !== deptKey) : [...prev, deptKey]
+    )
   }
 
   function openEditDept(dept: Department) {
@@ -567,22 +573,25 @@ function ControlCenterPageInner() {
 
   async function saveModule() {
     if (!editMod) return
-    if (modVisType === 'department_only' && !modAllowedDept) {
-      setModError('Select a department.'); return
+    if (modVisType === 'department_only' && modAllowedDepts.length === 0) {
+      setModError('Select at least one department.'); return
     }
     setModSaving(true); setModError('')
     try {
       const res = await fetch(`/api/control-center/modules/${editMod.module_key}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ visibility_type: modVisType, allowed_department: modAllowedDept || null }),
+        body: JSON.stringify({
+          visibility_type: modVisType,
+          allowed_department: modVisType === 'department_only' ? modAllowedDepts : null,
+        }),
       })
       const json = await res.json()
       if (!res.ok) { setModError(json.error ?? 'Save failed'); return }
 
       setModules(prev => prev.map(m =>
         m.module_key === editMod.module_key
-          ? { ...m, visibility_type: modVisType, allowed_department: modVisType === 'department_only' ? modAllowedDept : null }
+          ? { ...m, visibility_type: modVisType, allowed_department: modVisType === 'department_only' ? modAllowedDepts : null }
           : m
       ))
       setEditMod(null)
@@ -911,9 +920,9 @@ function ControlCenterPageInner() {
                       <span style={{ fontWeight: 600 }}>{mod.module_name}</span>
                     </td>
                     <td style={TD}><VisBadge type={mod.visibility_type} /></td>
-                    <td style={{ ...TD, color: mod.allowed_department ? '#111318' : '#B0B8C8' }}>
-                      {mod.visibility_type === 'department_only'
-                        ? deptLabel(mod.allowed_department)
+                    <td style={{ ...TD, color: mod.allowed_department?.length ? '#111318' : '#B0B8C8' }}>
+                      {mod.visibility_type === 'department_only' && mod.allowed_department?.length
+                        ? mod.allowed_department.map(deptLabel).join(', ')
                         : '—'}
                     </td>
                     <td style={{ ...TD, color: '#6B7384', fontFamily: 'monospace', fontSize: 12 }}>
@@ -950,19 +959,38 @@ function ControlCenterPageInner() {
 
             {modVisType === 'department_only' && (
               <>
-                <label style={LABEL}>Allowed Department</label>
-                <select
-                  style={SELECT}
-                  value={modAllowedDept}
-                  onChange={e => setModAllowedDept(e.target.value)}
-                >
-                  <option value="">— Select department —</option>
-                  {activeDepts.map(d => (
-                    <option key={d.department_key} value={d.department_key}>
-                      {d.department_name}
-                    </option>
-                  ))}
-                </select>
+                <label style={LABEL}>Allowed Departments</label>
+                <div style={{
+                  border: '1.5px solid #D1D5DB', borderRadius: 8,
+                  padding: '10px 12px', marginBottom: 8,
+                  maxHeight: 180, overflowY: 'auto',
+                }}>
+                  {activeDepts.length === 0 ? (
+                    <div style={{ fontSize: 12.5, color: '#8C94A6' }}>No active departments.</div>
+                  ) : (
+                    activeDepts.map(d => (
+                      <label
+                        key={d.department_key}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          fontSize: 13, cursor: 'pointer', padding: '4px 0',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={modAllowedDepts.includes(d.department_key)}
+                          onChange={() => toggleModAllowedDept(d.department_key)}
+                        />
+                        {d.department_name}
+                      </label>
+                    ))
+                  )}
+                </div>
+                <div style={{ fontSize: 11.5, color: '#8C94A6', marginBottom: 16 }}>
+                  {modAllowedDepts.length > 0
+                    ? `Selected: ${modAllowedDepts.map(deptLabel).join(', ')}`
+                    : 'No departments selected — module will be hidden from all non-admins.'}
+                </div>
               </>
             )}
 
