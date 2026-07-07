@@ -9,7 +9,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useUserNames } from '@/hooks/queries/useMyTasks'
-import { ExternalLink, Plus, Building2, Phone, MapPin, User } from 'lucide-react'
+import { ExternalLink, Plus, Building2, User } from 'lucide-react'
 
 const QTN_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type', 'task_type',
@@ -73,7 +73,7 @@ function RequestCard({
       onClick={onClick}
       style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(180px, 1.8fr) minmax(120px, 1fr) minmax(100px, 0.8fr) minmax(90px, 0.7fr) minmax(90px, 0.6fr) 40px',
+        gridTemplateColumns: 'minmax(180px, 1.6fr) minmax(100px, 0.8fr) minmax(90px, 0.6fr) minmax(220px, 2.4fr) 40px',
         columnGap: '12px',
         alignItems: 'center',
         background: hovered ? colors.raised : colors.base,
@@ -105,32 +105,6 @@ function RequestCard({
         )}
       </div>
 
-      {/* Contact + city */}
-      <div style={{ minWidth: 0, padding: '0 4px' }}>
-        {task.contact_number && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-            <Phone size={10} color={colors.muted} />
-            <span style={{ fontSize: '11px', color: colors.secondary }}>{task.contact_number}</span>
-          </div>
-        )}
-        {task.city_project && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <MapPin size={10} color={colors.muted} />
-            <span style={{ fontSize: '11px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.city_project}</span>
-          </div>
-        )}
-        {!task.contact_number && !task.city_project && (
-          <span style={{ fontSize: '11px', color: colors.muted }}>—</span>
-        )}
-      </div>
-
-      {/* Requirement snippet */}
-      <div style={{ minWidth: 0, padding: '0 4px' }}>
-        <span style={{ fontSize: '11px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-          {task.note ? task.note.slice(0, 55) + (task.note.length > 55 ? '…' : '') : '—'}
-        </span>
-      </div>
-
       {/* Assigned to / Requested by */}
       <div style={{ minWidth: 0, padding: '0 4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -151,6 +125,13 @@ function RequestCard({
         </div>
         <span style={{ fontSize: '10px', color: colors.muted }}>
           {formatDate(task.created_at) ?? ''}
+        </span>
+      </div>
+
+      {/* Notes */}
+      <div style={{ minWidth: 0, padding: '0 4px' }}>
+        <span style={{ fontSize: '11px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+          {task.note ?? '—'}
         </span>
       </div>
 
@@ -305,7 +286,7 @@ export default function QuotationRequestsPage() {
           {/* Header */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(180px, 1.8fr) minmax(120px, 1fr) minmax(100px, 0.8fr) minmax(90px, 0.7fr) minmax(90px, 0.6fr) 40px',
+            gridTemplateColumns: 'minmax(180px, 1.6fr) minmax(100px, 0.8fr) minmax(90px, 0.6fr) minmax(220px, 2.4fr) 40px',
             columnGap: '12px',
             padding: '8px 4px',
             background: 'rgba(248,250,252,0.9)',
@@ -314,10 +295,9 @@ export default function QuotationRequestsPage() {
             letterSpacing: '0.07em', color: colors.muted,
           }}>
             <div style={{ paddingLeft: '6px' }}>Customer</div>
-            <div style={{ paddingLeft: '4px' }}>Contact</div>
-            <div style={{ paddingLeft: '4px' }}>Notes</div>
             <div style={{ paddingLeft: '4px' }}>Assigned / From</div>
             <div style={{ paddingLeft: '4px' }}>Status</div>
+            <div style={{ paddingLeft: '4px' }}>Notes</div>
             <div />
           </div>
 
