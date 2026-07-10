@@ -281,19 +281,72 @@ function ProductTable({
         {label} · {products.length}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {products.map(product => (
-          <ProductRow
-            key={product.id}
-            product={product}
-            toggling={togglingId === product.id}
-            onEdit={() => onEdit(product.product_code)}
-            onToggle={() => onToggle(product)}
-            onPrintQr={() => onPrintQr(product)}
-            onDelete={() => onDelete(product)}
-          />
-        ))}
+      <div style={{
+        background: colors.base,
+        border: `1.5px solid ${colors.border}`,
+        borderRadius: '10px',
+        overflow: 'hidden',
+      }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                {['Image', 'Product Code', 'Product Name', 'Category', 'MRP', 'Status', 'Actions'].map(h => (
+                  <th key={h} style={{
+                    padding: '8px 16px', textAlign: h === 'MRP' ? 'right' : 'left',
+                    fontSize: '10px', fontWeight: 600, color: colors.muted,
+                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                    whiteSpace: 'nowrap',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {products.map(product => (
+                <ProductRow
+                  key={product.id}
+                  product={product}
+                  toggling={togglingId === product.id}
+                  onEdit={() => onEdit(product.product_code)}
+                  onToggle={() => onToggle(product)}
+                  onPrintQr={() => onPrintQr(product)}
+                  onDelete={() => onDelete(product)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
+    </div>
+  )
+}
+
+// Thumbnail with a safe fallback: hides the broken-image icon and shows a
+// neutral placeholder box if the URL is missing or fails to load.
+function ProductThumb({ src, alt }: { src: string | null; alt: string }) {
+  const [errored, setErrored] = useState(false)
+
+  const showImage = !!src && !errored
+
+  return (
+    <div style={{
+      width: 56, height: 56, borderRadius: '8px', flexShrink: 0,
+      background: colors.raised,
+      border: `1px solid ${colors.border}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      overflow: 'hidden',
+    }}>
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={alt}
+          onError={() => setErrored(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      ) : (
+        <Package size={20} color={colors.muted} strokeWidth={1.5} />
+      )}
     </div>
   )
 }
@@ -309,145 +362,117 @@ function ProductRow({
   onDelete: () => void
 }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '14px',
-      background: colors.base,
-      border: `1.5px solid ${colors.border}`,
-      borderRadius: '10px',
-      padding: '12px 16px',
+    <tr style={{
+      borderBottom: `1px solid ${colors.border}`,
       opacity: product.is_active ? 1 : 0.6,
     }}>
+      {/* Image */}
+      <td style={{ padding: '10px 16px', verticalAlign: 'middle' }}>
+        <ProductThumb src={product.images?.[0] ?? product.image_url ?? null} alt={product.name} />
+      </td>
 
-      {/* Image or placeholder */}
-      <div style={{
-        width: 44, height: 44, borderRadius: '8px', flexShrink: 0,
-        background: colors.raised,
-        border: `1px solid ${colors.border}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-        {(product.images?.[0] ?? product.image_url) ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={product.images?.[0] ?? product.image_url!}
-            alt={product.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : (
-          <Package size={18} color={colors.muted} strokeWidth={1.5} />
-        )}
-      </div>
-
-      {/* Code + name + category */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{
-            fontFamily: font.mono, fontSize: '11px', fontWeight: 600,
-            color: '#1A2035',
-            background: 'rgba(26,32,53,0.07)',
-            borderRadius: '4px', padding: '1px 6px',
-            whiteSpace: 'nowrap',
-          }}>
-            {product.product_code}
-          </span>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-            {product.name}
-          </span>
-        </div>
-        <div style={{ fontSize: '11px', color: colors.tertiary, marginTop: '2px' }}>
-          {product.category}
-        </div>
-      </div>
-
-      {/* MRP */}
-      <div style={{
-        fontSize: '13px', fontWeight: 600, color: colors.primary,
-        whiteSpace: 'nowrap', flexShrink: 0,
-        fontFamily: font.mono,
-      }}>
-        ₹{Number(product.mrp).toLocaleString('en-IN')}
-      </div>
-
-      {/* Print QR button */}
-      <button
-        onClick={onPrintQr}
-        title="Print QR label"
-        style={{
-          display: 'flex', alignItems: 'center', gap: '5px',
-          fontSize: '12px', fontWeight: 500,
+      {/* Product Code */}
+      <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+        <span style={{
+          fontSize: '12px', fontWeight: 600,
           color: '#1A2035',
           background: 'rgba(26,32,53,0.06)',
-          border: `1px solid rgba(26,32,53,0.15)`,
-          borderRadius: '6px',
-          padding: '6px 10px',
-          cursor: 'pointer',
-          flexShrink: 0,
-        }}
-      >
-        <QrCode size={13} strokeWidth={1.8} />
-        Print QR
-      </button>
-
-      {/* Edit button */}
-      <button
-        onClick={onEdit}
-        title="Edit product"
-        style={{
-          display: 'flex', alignItems: 'center', gap: '5px',
-          fontSize: '12px', fontWeight: 500,
-          color: colors.secondary,
-          background: colors.float,
-          border: `1px solid ${colors.border}`,
-          borderRadius: '6px',
-          padding: '6px 10px',
-          cursor: 'pointer',
-          flexShrink: 0,
-        }}
-      >
-        <Pencil size={13} strokeWidth={1.8} />
-        Edit
-      </button>
-
-      {/* Delete button */}
-      <button
-        onClick={onDelete}
-        title="Delete product"
-        style={{
-          display: 'flex', alignItems: 'center', gap: '5px',
-          fontSize: '12px', fontWeight: 500,
-          color: colors.red,
-          background: colors.redTint,
-          border: `1px solid rgba(217,79,79,0.2)`,
-          borderRadius: '6px',
-          padding: '6px 10px',
-          cursor: 'pointer',
-          flexShrink: 0,
-        }}
-      >
-        <Trash2 size={13} strokeWidth={1.8} />
-        Delete
-      </button>
-
-      {/* Active toggle */}
-      <button
-        onClick={onToggle}
-        disabled={toggling}
-        style={{
-          fontSize: '11px', fontWeight: 600,
-          color: product.is_active ? '#166534' : colors.muted,
-          background: product.is_active ? '#F0FDF4' : colors.float,
-          border: `1px solid ${product.is_active ? '#BBF7D0' : colors.border}`,
-          borderRadius: '6px',
-          padding: '5px 10px',
-          cursor: toggling ? 'default' : 'pointer',
-          opacity: toggling ? 0.6 : 1,
-          flexShrink: 0,
+          borderRadius: '5px', padding: '4px 9px',
           whiteSpace: 'nowrap',
-        }}
-      >
-        {toggling ? '...' : product.is_active ? 'Active' : 'Inactive'}
-      </button>
-    </div>
+        }}>
+          {product.product_code}
+        </span>
+      </td>
+
+      {/* Product Name */}
+      <td style={{ padding: '10px 16px', verticalAlign: 'middle', minWidth: '160px' }}>
+        <span style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary }}>
+          {product.name}
+        </span>
+      </td>
+
+      {/* Category */}
+      <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', color: colors.tertiary }}>
+          {product.category}
+        </span>
+      </td>
+
+      {/* MRP */}
+      <td style={{ padding: '10px 16px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary, fontFamily: font.body }}>
+          ₹{Number(product.mrp).toLocaleString('en-IN')}
+        </span>
+      </td>
+
+      {/* Status */}
+      <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+        <button
+          onClick={onToggle}
+          disabled={toggling}
+          style={{
+            fontSize: '11px', fontWeight: 600,
+            color: product.is_active ? '#166534' : colors.muted,
+            background: product.is_active ? '#F0FDF4' : colors.float,
+            border: `1px solid ${product.is_active ? '#BBF7D0' : colors.border}`,
+            borderRadius: '999px',
+            padding: '4px 12px',
+            cursor: toggling ? 'default' : 'pointer',
+            opacity: toggling ? 0.6 : 1,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {toggling ? '…' : product.is_active ? 'Active' : 'Inactive'}
+        </button>
+      </td>
+
+      {/* Actions */}
+      <td style={{ padding: '10px 16px', verticalAlign: 'middle' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <IconButton onClick={onPrintQr} title="Print QR label" variant="neutral">
+            <QrCode size={14} strokeWidth={1.8} />
+          </IconButton>
+          <IconButton onClick={onEdit} title="Edit product" variant="neutral">
+            <Pencil size={14} strokeWidth={1.8} />
+          </IconButton>
+          <IconButton onClick={onDelete} title="Delete product" variant="red">
+            <Trash2 size={14} strokeWidth={1.8} />
+          </IconButton>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function IconButton({
+  onClick, title, variant, children,
+}: {
+  onClick: () => void
+  title: string
+  variant: 'neutral' | 'red'
+  children: React.ReactNode
+}) {
+  const palette = variant === 'red'
+    ? { color: colors.red, background: colors.redTint, border: 'rgba(217,79,79,0.2)' }
+    : { color: colors.secondary, background: colors.float, border: colors.border }
+
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 28, height: 28, flexShrink: 0,
+        color: palette.color,
+        background: palette.background,
+        border: `1px solid ${palette.border}`,
+        borderRadius: '6px',
+        cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
   )
 }
 
