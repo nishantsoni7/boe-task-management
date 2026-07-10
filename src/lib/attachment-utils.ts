@@ -24,6 +24,32 @@ export function getFileTypeLabel(urlOrName: string): string {
   return 'File'
 }
 
+export const ACCEPTED_ATTACHMENT_TYPES = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain', 'text/csv',
+] as const
+
+// Browsers sometimes leave `file.type` blank (e.g. some CSV/text sources on Windows) — fall back to extension.
+export function isAcceptedAttachmentType(file: File): boolean {
+  if ((ACCEPTED_ATTACHMENT_TYPES as readonly string[]).includes(file.type)) return true
+  if (file.type) return false
+  return ['jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'].includes(getExt(file.name))
+}
+
+// Splits files into accepted/rejected by MIME type. Used by browse, drag-and-drop, and paste
+// so the same validation applies no matter how a file enters the upload flow.
+export function filterAcceptedFiles(files: File[]): { accepted: File[]; rejectedNames: string[] } {
+  const accepted: File[] = []
+  const rejectedNames: string[] = []
+  for (const f of files) {
+    if (isAcceptedAttachmentType(f)) accepted.push(f)
+    else rejectedNames.push(f.name)
+  }
+  return { accepted, rejectedNames }
+}
+
 const SIZE_LIMIT = 10 * 1024 * 1024 // 10 MB
 
 // Compress all eligible files then validate total size ≤ 10 MB.

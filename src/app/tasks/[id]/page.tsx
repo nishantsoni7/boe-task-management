@@ -13,7 +13,7 @@ import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
-import { getFileTypeLabel, prepareFiles } from '@/lib/attachment-utils'
+import { getFileTypeLabel, prepareFiles, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { CircleCheckBig, UserCheck, UserRound } from 'lucide-react'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -85,6 +85,7 @@ export default function TaskDetailPage() {
   const [commentFiles,       setCommentFiles]       = useState<File[]>([])
   const [commentSaving,      setCommentSaving]      = useState(false)
   const [commentUploadError, setCommentUploadError] = useState<string | null>(null)
+  const [commentDropActive,  setCommentDropActive]  = useState(false)
 
   const [editingActivityId,  setEditingActivityId]  = useState<string | null>(null)
   const [editActivityNote,   setEditActivityNote]   = useState('')
@@ -451,6 +452,58 @@ export default function TaskDetailPage() {
     await loadLog(task.id)
     setCancelling(false)
     setTimeout(() => router.push('/tasks/cancelled'), 600)
+  }
+
+  // Shared entry point for browse, drag-and-drop, and paste — keeps validation/behavior identical
+  // no matter how a file gets into the upload flow.
+  const addCommentFiles = (incoming: File[]) => {
+    if (incoming.length === 0) return
+    const { accepted, rejectedNames } = filterAcceptedFiles(incoming)
+    if (accepted.length > 0) setCommentFiles(prev => [...prev, ...accepted])
+    setCommentUploadError(
+      rejectedNames.length > 0 ? `Unsupported file type: ${rejectedNames.join(', ')}` : null,
+    )
+  }
+
+  const handleCommentDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleCommentDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer.types.includes('Files')) setCommentDropActive(true)
+  }
+
+  const handleCommentDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    setCommentDropActive(false)
+  }
+
+  const handleCommentDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCommentDropActive(false)
+    addCommentFiles(Array.from(e.dataTransfer.files ?? []))
+  }
+
+  const handleCommentPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items
+    const pastedFiles: File[] = []
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file') {
+          const file = items[i].getAsFile()
+          if (file) pastedFiles.push(file)
+        }
+      }
+    }
+    if (pastedFiles.length === 0) return
+    e.preventDefault() // don't let the browser also paste a filename/placeholder as text
+    addCommentFiles(pastedFiles)
   }
 
   const saveComment = async () => {
@@ -1416,20 +1469,40 @@ export default function TaskDetailPage() {
                   Updates
                 </span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ position: 'relative' }}>
+                  <div
+                    style={{ position: 'relative' }}
+                    onDragOver={handleCommentDragOver}
+                    onDragEnter={handleCommentDragEnter}
+                    onDragLeave={handleCommentDragLeave}
+                    onDrop={handleCommentDrop}
+                  >
                     <textarea
                       value={commentNote}
                       onChange={e => setCommentNote(e.target.value)}
+                      onPaste={handleCommentPaste}
                       placeholder={isQuotation ? 'Add an update...' : 'Add a comment or share details…'}
                       className="boe-input"
                       style={{
                         resize: 'none', height: '98px', paddingBottom: '36px',
                         width: '100%', boxSizing: 'border-box',
-                        border: `1.5px solid ${colors.border}`,
-                        background: '#F0F2F5', borderRadius: '8px',
+                        border: `1.5px dashed ${commentDropActive ? colors.blue : colors.border}`,
+                        background: commentDropActive ? colors.blueTint : '#F0F2F5',
+                        borderRadius: '8px',
                         fontSize: '12.5px', lineHeight: 1.5,
+                        transition: 'border-color 0.15s, background 0.15s',
                       }}
                     />
+                    {commentDropActive && (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        pointerEvents: 'none',
+                        fontSize: '12px', fontWeight: 600, color: colors.blue,
+                        background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
+                      }}>
+                        Drop files to attach
+                      </div>
+                    )}
                     <label
                       title="Add attachments"
                       style={{
@@ -1446,17 +1519,18 @@ export default function TaskDetailPage() {
                       <input
                         type="file"
                         multiple
-                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv"
+                        accept={ACCEPTED_ATTACHMENT_TYPES.join(',')}
                         onChange={e => {
-                          const picked = Array.from(e.target.files ?? [])
-                          setCommentFiles(prev => [...prev, ...picked])
-                          setCommentUploadError(null)
+                          addCommentFiles(Array.from(e.target.files ?? []))
                           e.target.value = ''
                         }}
                         style={{ display: 'none' }}
                       />
                     </label>
                   </div>
+                  <p style={{ fontSize: '10px', color: colors.muted, margin: 0 }}>
+                    Drop files here, paste copied files, or browse
+                  </p>
                   {/* Selected files list */}
                   {commentFiles.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
