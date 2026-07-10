@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { ClipboardList, QrCode, Package, Home, X } from 'lucide-react'
+import { ClipboardList, QrCode, Package, Tag, Home, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -115,6 +115,14 @@ export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, child
               icon={<Package size={15} strokeWidth={1.8} />}
               active={pathname.startsWith('/showroom-admin/products')}
               onClick={() => navTo('/showroom-admin/products')}
+            />
+          )}
+          {canManageProducts && (
+            <NavItem
+              label="Categories"
+              icon={<Tag size={15} strokeWidth={1.8} />}
+              active={pathname.startsWith('/showroom-admin/categories')}
+              onClick={() => navTo('/showroom-admin/categories')}
             />
           )}
         </div>

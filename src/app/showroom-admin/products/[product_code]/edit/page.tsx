@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile, ShowroomProduct } from '@/lib/types'
+import type { UserProfile, ShowroomProduct, ShowroomCategory } from '@/lib/types'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
@@ -16,16 +16,6 @@ const teamFallback = (team?: string | null) =>
 
 type SpecRow = { attr: string; val: string }
 type DimState = { width: string; depth: string; height: string; unit: string }
-
-const CATEGORIES = [
-  'Dining Chairs',
-  'Bar Chairs',
-  'Tables',
-  'Sofas',
-  'Outdoor',
-  'Conference',
-  'Other',
-]
 
 const FORM_CSS = `
 .form-card {
@@ -108,6 +98,8 @@ export default function EditProductPage() {
   const [error,       setError]       = useState('')
   const [success,     setSuccess]     = useState('')
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
+  const [categories,      setCategories]      = useState<ShowroomCategory[]>([])
+  const [categoriesError, setCategoriesError]  = useState('')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -145,14 +137,33 @@ export default function EditProductPage() {
       if (!hasAccess) { router.replace('/modules'); return }
       setProfile(profile)
 
-      const res = await fetch('/api/showroom/admin/products', {
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
-      })
+      const [res, catRes] = await Promise.all([
+        fetch('/api/showroom/admin/products', {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        }),
+        fetch('/api/showroom/admin/categories', {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        }),
+      ])
       const data = await res.json()
       const found = (data.products as ShowroomProduct[])?.find(
         pr => pr.product_code === productCode
       )
       if (!found) { setError('Product not found'); setLoading(false); return }
+
+      if (catRes.ok) {
+        const catData = await catRes.json()
+        const loadedCategories: ShowroomCategory[] = Array.isArray(catData?.categories) ? catData.categories : []
+        // A product may carry a category that's been renamed/deactivated since —
+        // keep it selectable in the dropdown so the form doesn't silently blank it out.
+        const hasCurrent = loadedCategories.some(c => c.name === found.category)
+        setCategories(hasCurrent || !found.category ? loadedCategories : [
+          { id: `current-${found.category}`, name: found.category, slug: found.category, is_active: true, created_at: '' },
+          ...loadedCategories,
+        ])
+      } else {
+        setCategoriesError('Failed to load categories')
+      }
 
       setProduct(found)
       setCode(found.product_code)
@@ -264,6 +275,11 @@ export default function EditProductPage() {
               <AlertBanner variant="green">{success}</AlertBanner>
             </div>
           )}
+          {categoriesError && (
+            <div style={{ marginBottom: '20px' }}>
+              <AlertBanner variant="red">{categoriesError}</AlertBanner>
+            </div>
+          )}
 
           {product && (
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
@@ -298,8 +314,8 @@ export default function EditProductPage() {
                       style={inputStyle}
                     >
                       <option value="">Select category</option>
-                      {CATEGORIES.map(c => (
-                        <option key={c} value={c}>{c}</option>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
                     </select>
                   </Field>

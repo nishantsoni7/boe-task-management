@@ -402,6 +402,14 @@ export type ShowroomDimensions = {
   unit:   string
 }
 
+export type ShowroomCategory = {
+  id: string
+  name: string
+  slug: string
+  is_active: boolean
+  created_at: string
+}
+
 export type ShowroomProduct = {
   id: string
   product_code: string

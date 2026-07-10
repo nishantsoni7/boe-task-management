@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile } from '@/lib/types'
+import type { UserProfile, ShowroomCategory } from '@/lib/types'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
@@ -16,16 +16,6 @@ const teamFallback = (team?: string | null) =>
 
 type SpecRow = { attr: string; val: string }
 type DimState = { width: string; depth: string; height: string; unit: string }
-
-const CATEGORIES = [
-  'Dining Chairs',
-  'Bar Chairs',
-  'Tables',
-  'Sofas',
-  'Outdoor',
-  'Conference',
-  'Other',
-]
 
 const FORM_CSS = `
 .form-card {
@@ -103,6 +93,8 @@ export default function NewProductPage() {
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
+  const [categories,     setCategories]     = useState<ShowroomCategory[]>([])
+  const [categoriesError, setCategoriesError] = useState('')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -139,6 +131,17 @@ export default function NewProductPage() {
         canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team)))
       if (!hasAccess) { router.replace('/modules'); return }
       setProfile(profile)
+
+      const catRes = await fetch('/api/showroom/admin/categories', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
+      if (catRes.ok) {
+        const catData = await catRes.json()
+        setCategories(Array.isArray(catData?.categories) ? catData.categories : [])
+      } else {
+        setCategoriesError('Failed to load categories')
+      }
+
       setLoadingAuth(false)
     }
     init()
@@ -224,6 +227,11 @@ export default function NewProductPage() {
               <AlertBanner variant="red">{error}</AlertBanner>
             </div>
           )}
+          {categoriesError && (
+            <div style={{ marginBottom: '24px' }}>
+              <AlertBanner variant="red">{categoriesError}</AlertBanner>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
 
@@ -257,8 +265,8 @@ export default function NewProductPage() {
                     style={inputStyle}
                   >
                     <option value="">Select category</option>
-                    {CATEGORIES.map(c => (
-                      <option key={c} value={c}>{c}</option>
+                    {categories.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
                     ))}
                   </select>
                 </Field>
