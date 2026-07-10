@@ -95,6 +95,7 @@ export default function EditProductPage() {
 
   const [profile,     setProfile]     = useState<UserProfile | null>(null)
   const [product,     setProduct]     = useState<ShowroomProduct | null>(null)
+  const [code,        setCode]        = useState('')
   const [name,        setName]        = useState('')
   const [category,    setCategory]    = useState('')
   const [description, setDescription] = useState('')
@@ -154,6 +155,7 @@ export default function EditProductPage() {
       if (!found) { setError('Product not found'); setLoading(false); return }
 
       setProduct(found)
+      setCode(found.product_code)
       setName(found.name)
       setCategory(found.category)
       setDescription(found.description ?? '')
@@ -186,8 +188,8 @@ export default function EditProductPage() {
     setError('')
     setSuccess('')
 
-    if (!name.trim() || !category.trim() || !mrp.trim()) {
-      setError('Name, category and MRP are required')
+    if (!code.trim() || !name.trim() || !category.trim() || !mrp.trim()) {
+      setError('Product code, name, category and MRP are required')
       return
     }
     if (isNaN(parseFloat(mrp)) || parseFloat(mrp) <= 0) {
@@ -196,6 +198,7 @@ export default function EditProductPage() {
     }
 
     const specsObj = specsToJson(specs)
+    const newCode = code.trim().toUpperCase()
 
     setSaving(true)
     const { data: { session } } = await supabase.auth.getSession()
@@ -208,6 +211,7 @@ export default function EditProductPage() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        product_code: newCode,
         name: name.trim(),
         category: category.trim(),
         description: description.trim() || null,
@@ -221,11 +225,15 @@ export default function EditProductPage() {
     const data = await res.json()
     if (!res.ok) {
       setError(data.error ?? 'Failed to update product')
+      setSaving(false)
+    } else if (data.product.product_code !== productCode) {
+      // Code changed — move to the new URL so further edits/refreshes target the right record.
+      router.replace(`/showroom-admin/products/${encodeURIComponent(data.product.product_code)}/edit`)
     } else {
       setSuccess('Product updated')
       setProduct(data.product)
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   if (loading) return <LoadingScreen />
@@ -246,20 +254,6 @@ export default function EditProductPage() {
 
         <div className="form-card">
 
-          {/* Product code badge */}
-          <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{
-              fontFamily: font.mono, fontSize: '11px', fontWeight: 600,
-              color: '#1A2035', background: 'rgba(26,32,53,0.07)',
-              borderRadius: '4px', padding: '2px 8px',
-            }}>
-              {productCode}
-            </span>
-            <span style={{ fontSize: '11px', color: colors.muted }}>
-              Product code cannot be changed after creation
-            </span>
-          </div>
-
           {error && (
             <div style={{ marginBottom: '20px' }}>
               <AlertBanner variant="red">{error}</AlertBanner>
@@ -279,6 +273,15 @@ export default function EditProductPage() {
                 <p className="section-label">Basic information</p>
 
                 <div className="product-field-grid">
+                  <Field label="Product Code *" hint="Used in the product's QR URL — changing it will invalidate previously printed QR codes for this product.">
+                    <input
+                      value={code}
+                      onChange={e => setCode(e.target.value.toUpperCase())}
+                      placeholder="BOE-DC-101"
+                      style={inputStyle}
+                    />
+                  </Field>
+
                   <Field label="Name *">
                     <input
                       value={name}

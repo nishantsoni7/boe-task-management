@@ -66,7 +66,11 @@ export async function PATCH(
 
   // Normalise product_code if being changed
   if (typeof updates.product_code === 'string') {
-    updates.product_code = updates.product_code.trim().toUpperCase()
+    const trimmed = updates.product_code.trim().toUpperCase()
+    if (!trimmed) {
+      return NextResponse.json({ error: 'Product code cannot be empty' }, { status: 400 })
+    }
+    updates.product_code = trimmed
   }
 
   // Normalise images: filter empty strings, keep primary image_url in sync
@@ -93,7 +97,7 @@ export async function PATCH(
 
   if (error) {
     if (error.code === '23505') {
-      return NextResponse.json({ error: 'Product code already exists' }, { status: 409 })
+      return NextResponse.json({ error: 'This product code already exists. Please use a different code.' }, { status: 409 })
     }
     if (error.code === 'PGRST116') {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 })
@@ -102,4 +106,56 @@ export async function PATCH(
   }
 
   return NextResponse.json({ product: data })
+}
+
+// DELETE /api/showroom/admin/products/[product_code] — hard delete if never used in an
+// inquiry, otherwise deactivate to avoid breaking historical inquiries/quotations.
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ product_code: string }> }
+) {
+  const client = await requireShowroomAccess(req)
+  if (!client) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { product_code } = await params
+
+  const { data: product, error: findError } = await client
+    .from('showroom_products')
+    .select('id')
+    .eq('product_code', product_code.toUpperCase())
+    .single()
+
+  if (findError || !product) {
+    return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+  }
+
+  const { count, error: countError } = await client
+    .from('showroom_inquiry_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('product_id', product.id)
+
+  if (countError) return NextResponse.json({ error: countError.message }, { status: 500 })
+
+  if (count && count > 0) {
+    const { error: deactivateError } = await client
+      .from('showroom_products')
+      .update({ is_active: false })
+      .eq('id', product.id)
+
+    if (deactivateError) return NextResponse.json({ error: deactivateError.message }, { status: 500 })
+
+    return NextResponse.json({
+      deactivated: true,
+      message: 'This product is already used in inquiry history, so it has been deactivated instead of permanently deleted.',
+    })
+  }
+
+  const { error: deleteError } = await client
+    .from('showroom_products')
+    .delete()
+    .eq('id', product.id)
+
+  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })
+
+  return NextResponse.json({ deleted: true })
 }

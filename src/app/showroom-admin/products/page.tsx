@@ -8,7 +8,7 @@ import type { ShowroomProduct } from '@/lib/types'
 import { LoadingScreen, AlertBanner, EmptyState } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { Package, PlusCircle, Pencil, QrCode, X, Printer } from 'lucide-react'
+import { Package, PlusCircle, Pencil, QrCode, X, Printer, Trash2 } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { QRCodeSVG } from 'qrcode.react'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
@@ -16,6 +16,28 @@ import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
+
+// Natural sort so "001" < "002" < "010" and mixed alphanumeric codes (e.g. "BOE-DC-9"
+// vs "BOE-DC-101") order by numeric value within each segment, not lexicographically.
+function naturalCompare(a: string, b: string): number {
+  const split = (s: string) => s.match(/\d+|\D+/g) ?? []
+  const ax = split(a)
+  const bx = split(b)
+  const len = Math.min(ax.length, bx.length)
+  for (let i = 0; i < len; i++) {
+    const an = ax[i], bn = bx[i]
+    const bothNumeric = /^\d+$/.test(an) && /^\d+$/.test(bn)
+    if (bothNumeric) {
+      const diff = parseInt(an, 10) - parseInt(bn, 10)
+      if (diff !== 0) return diff
+    } else if (an !== bn) {
+      return an < bn ? -1 : 1
+    }
+  }
+  return ax.length - bx.length
+}
+
+const byProductCode = (a: ShowroomProduct, b: ShowroomProduct) => naturalCompare(a.product_code, b.product_code)
 
 export default function ShowroomProductsPage() {
   const [profile,   setProfile]   = useState<UserProfile | null>(null)
@@ -25,6 +47,10 @@ export default function ShowroomProductsPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [qrProduct, setQrProduct] = useState<ShowroomProduct | null>(null)
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ShowroomProduct | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [notice, setNotice] = useState<{ text: string; variant: 'green' | 'amber' } | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -108,11 +134,39 @@ export default function ShowroomProductsPage() {
     setTogglingId(null)
   }
 
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
+    setDeleteError('')
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return }
+
+    const res = await fetch(`/api/showroom/admin/products/${deleteTarget.product_code}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    })
+    const data = await res.json()
+
+    if (!res.ok) {
+      setDeleteError(data.error ?? 'Failed to delete product')
+      setDeleteBusy(false)
+      return
+    }
+
+    setDeleteTarget(null)
+    setDeleteBusy(false)
+    setNotice(data.deactivated
+      ? { text: data.message, variant: 'amber' }
+      : { text: 'Product deleted.', variant: 'green' })
+    await loadProducts(session.access_token)
+  }
+
   if (loading) return <LoadingScreen />
 
-  // Group by active / inactive for clarity
-  const active   = products.filter(p => p.is_active)
-  const inactive = products.filter(p => !p.is_active)
+  // Group by active / inactive for clarity, sorted by product_code ascending
+  const active   = products.filter(p => p.is_active).sort(byProductCode)
+  const inactive = products.filter(p => !p.is_active).sort(byProductCode)
 
   return (
     <ShowroomAdminLayout
@@ -123,6 +177,15 @@ export default function ShowroomProductsPage() {
     >
       {qrProduct && (
         <QrPrintModal product={qrProduct} onClose={() => setQrProduct(null)} />
+      )}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          product={deleteTarget}
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={() => { setDeleteTarget(null); setDeleteError('') }}
+          onConfirm={handleDelete}
+        />
       )}
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
@@ -152,6 +215,12 @@ export default function ShowroomProductsPage() {
         </div>
       )}
 
+      {notice && (
+        <div style={{ marginBottom: '16px' }}>
+          <AlertBanner variant={notice.variant}>{notice.text}</AlertBanner>
+        </div>
+      )}
+
       {products.length === 0 ? (
         <EmptyState
           message="No products yet"
@@ -166,6 +235,7 @@ export default function ShowroomProductsPage() {
             onEdit={code => router.push(`/showroom-admin/products/${code}/edit`)}
             onToggle={handleToggleActive}
             onPrintQr={setQrProduct}
+            onDelete={setDeleteTarget}
           />
           {inactive.length > 0 && (
             <div style={{ marginTop: '32px' }}>
@@ -176,6 +246,7 @@ export default function ShowroomProductsPage() {
                 onEdit={code => router.push(`/showroom-admin/products/${code}/edit`)}
                 onToggle={handleToggleActive}
                 onPrintQr={setQrProduct}
+                onDelete={setDeleteTarget}
               />
             </div>
           )}
@@ -188,7 +259,7 @@ export default function ShowroomProductsPage() {
 // ── Product table ─────────────────────────────────────────────────────────────
 
 function ProductTable({
-  products, label, togglingId, onEdit, onToggle, onPrintQr,
+  products, label, togglingId, onEdit, onToggle, onPrintQr, onDelete,
 }: {
   products: ShowroomProduct[]
   label: string
@@ -196,6 +267,7 @@ function ProductTable({
   onEdit: (code: string) => void
   onToggle: (p: ShowroomProduct) => void
   onPrintQr: (p: ShowroomProduct) => void
+  onDelete: (p: ShowroomProduct) => void
 }) {
   if (products.length === 0) return null
 
@@ -218,6 +290,7 @@ function ProductTable({
             onEdit={() => onEdit(product.product_code)}
             onToggle={() => onToggle(product)}
             onPrintQr={() => onPrintQr(product)}
+            onDelete={() => onDelete(product)}
           />
         ))}
       </div>
@@ -226,13 +299,14 @@ function ProductTable({
 }
 
 function ProductRow({
-  product, toggling, onEdit, onToggle, onPrintQr,
+  product, toggling, onEdit, onToggle, onPrintQr, onDelete,
 }: {
   product: ShowroomProduct
   toggling: boolean
   onEdit: () => void
   onToggle: () => void
   onPrintQr: () => void
+  onDelete: () => void
 }) {
   return (
     <div style={{
@@ -334,6 +408,26 @@ function ProductRow({
         Edit
       </button>
 
+      {/* Delete button */}
+      <button
+        onClick={onDelete}
+        title="Delete product"
+        style={{
+          display: 'flex', alignItems: 'center', gap: '5px',
+          fontSize: '12px', fontWeight: 500,
+          color: colors.red,
+          background: colors.redTint,
+          border: `1px solid rgba(217,79,79,0.2)`,
+          borderRadius: '6px',
+          padding: '6px 10px',
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        <Trash2 size={13} strokeWidth={1.8} />
+        Delete
+      </button>
+
       {/* Active toggle */}
       <button
         onClick={onToggle}
@@ -353,6 +447,57 @@ function ProductRow({
       >
         {toggling ? '...' : product.is_active ? 'Active' : 'Inactive'}
       </button>
+    </div>
+  )
+}
+
+// ── Delete Confirm Modal ──────────────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  product, busy, error, onCancel, onConfirm,
+}: {
+  product: ShowroomProduct
+  busy: boolean
+  error: string
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '20px',
+      }}
+    >
+      <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: 400, padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+          <div style={{ width: 36, height: 36, borderRadius: '9px', background: colors.redTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Trash2 size={16} strokeWidth={2.2} color={colors.red} />
+          </div>
+          <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Delete Product</span>
+        </div>
+        <p style={{ fontSize: '13.5px', color: colors.secondary, marginBottom: '20px', lineHeight: 1.55 }}>
+          Are you sure you want to delete <strong style={{ color: colors.primary }}>{product.name}</strong> ({product.product_code})?
+          This action cannot be undone.
+        </p>
+        {error && (
+          <div style={{ fontSize: '13px', color: colors.red, background: colors.redTint, padding: '8px 12px', borderRadius: '7px', marginBottom: '14px' }}>{error}</div>
+        )}
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} disabled={busy}
+            style={{ background: colors.float, color: colors.secondary, border: `1.5px solid ${colors.border}`, borderRadius: '8px', padding: '9px 18px', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={busy}
+            style={{ background: colors.red, color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 18px', fontSize: '13.5px', fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Trash2 size={13} strokeWidth={2.5} />
+            {busy ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

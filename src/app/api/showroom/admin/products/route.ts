@@ -42,8 +42,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await client
     .from('showroom_products')
     .select('*')
-    .order('category')
-    .order('name')
+    .order('product_code', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ products: data ?? [] })
@@ -99,7 +98,7 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     if (error.code === '23505') {
-      return NextResponse.json({ error: 'Product code already exists' }, { status: 409 })
+      return NextResponse.json({ error: 'This product code already exists. Please use a different code.' }, { status: 409 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
