@@ -110,6 +110,16 @@ function fmtDateTime(iso: string) {
   return `${date}, ${time}`
 }
 
+// Maps the approved_linked-requires-order_id CHECK constraint violation to a
+// clear message instead of surfacing the raw Postgres error.
+function friendlyDbErrorMessage(dbError: { code?: string; message: string } | null): string {
+  if (!dbError) return ''
+  if (dbError.code === '23514' || dbError.message?.includes('finance_payment_requests_approved_linked_requires_order_id')) {
+    return 'Select a valid order before marking this payment as linked.'
+  }
+  return dbError.message
+}
+
 // ── Shared UI atoms ───────────────────────────────────────────────────────────
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -209,7 +219,7 @@ function DetailsModal({
   const [correctionError, setCorrectionError] = useState<string | null>(null)
 
   const noteRequiredForCorrection = newStatus === 'needs_clarification' || newStatus === 'rejected'
-  const linkedRequiresOrderNo = newStatus === 'approved_linked' && !r.order_number?.trim()
+  const linkedRequiresOrderNo = newStatus === 'approved_linked' && !r.order_id
   const statusChanged = newStatus !== r.status
   const canCorrect = statusChanged && (!noteRequiredForCorrection || correctionNote.trim()) && !linkedRequiresOrderNo
 
@@ -226,7 +236,7 @@ function DetailsModal({
       })
       .eq('id', r.id)
     setCorrecting(false)
-    if (dbError) { setCorrectionError(dbError.message); return }
+    if (dbError) { setCorrectionError(friendlyDbErrorMessage(dbError)); return }
     onCorrected()
   }
 
@@ -283,7 +293,7 @@ function DetailsModal({
             ))}
           </select>
           {linkedRequiresOrderNo && (
-            <ErrorBanner message="Order number is required before moving to Received Payments." />
+            <ErrorBanner message="Select a valid order before marking this payment as linked." />
           )}
           {statusChanged && noteRequiredForCorrection && (
             <textarea
@@ -365,12 +375,10 @@ function EditPaymentModal({
 
   const handleSave = async () => {
     if (!canSubmit) return
-    if (r.status === 'approved_linked' && !form.orderNumber.trim()) {
-      setError('Order number is required for Received Payments.')
-      return
-    }
     setSaving(true)
     setError(null)
+    // order_number is display/reference text only — editing it here never
+    // changes order_id, so it can never make or break the payment's link.
     const { data: updated, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
@@ -388,7 +396,7 @@ function EditPaymentModal({
       .select('id')
       .single()
     setSaving(false)
-    if (dbError) { setError(dbError.message); return }
+    if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
     if (!updated) { setError('No row was updated. Check permissions.'); return }
     onSaved()
   }
@@ -577,7 +585,7 @@ function LinkOrderModal({
       })
       .eq('id', payment.id)
 
-    if (updateErr) { setError(updateErr.message); setSaving(false); return }
+    if (updateErr) { setError(friendlyDbErrorMessage(updateErr)); setSaving(false); return }
 
     // Activity log
     await supabase.from('order_activity_log').insert({

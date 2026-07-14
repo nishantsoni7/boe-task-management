@@ -168,6 +168,16 @@ function fmtDateTime(iso: string) {
   return `${date}, ${time}`
 }
 
+// Maps the approved_linked-requires-order_id CHECK constraint violation to a
+// clear message instead of surfacing the raw Postgres error.
+function friendlyDbErrorMessage(dbError: { code?: string; message: string } | null): string {
+  if (!dbError) return ''
+  if (dbError.code === '23514' || dbError.message?.includes('finance_payment_requests_approved_linked_requires_order_id')) {
+    return 'Select a valid order before marking this payment as linked.'
+  }
+  return dbError.message
+}
+
 function matchesTab(r: PaymentRequest, tab: FilterTab): boolean {
   switch (tab) {
     case 'pending':       return r.status === 'pending_approval'
@@ -277,7 +287,7 @@ function DetailsModal({
   const [correctionError, setCorrectionError] = useState<string | null>(null)
 
   const noteRequiredForCorrection = newStatus === 'needs_clarification' || newStatus === 'rejected'
-  const linkedRequiresOrderNo = newStatus === 'approved_linked' && !r.order_number?.trim()
+  const linkedRequiresOrderNo = newStatus === 'approved_linked' && !r.order_id
   const statusChanged = newStatus !== r.status
   const canCorrect = statusChanged && (!noteRequiredForCorrection || correctionNote.trim()) && !linkedRequiresOrderNo
 
@@ -294,7 +304,7 @@ function DetailsModal({
       })
       .eq('id', r.id)
     setCorrecting(false)
-    if (dbError) { setCorrectionError(dbError.message); return }
+    if (dbError) { setCorrectionError(friendlyDbErrorMessage(dbError)); return }
     onCorrected()
   }
 
@@ -389,7 +399,7 @@ function DetailsModal({
             />
           )}
           {linkedRequiresOrderNo && (
-            <ErrorBanner message="Order number is required before moving to Received Payments." />
+            <ErrorBanner message="Select a valid order before marking this payment as linked." />
           )}
           {correctionError && <ErrorBanner message={correctionError} />}
           {statusChanged && (
@@ -926,10 +936,6 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
 
   const handleSave = async () => {
     if (!canSubmit) return
-    if (r.status === 'approved_linked' && !form.orderNumber.trim()) {
-      setError('Order number is required for Received Payments.')
-      return
-    }
     const editDbMode = PAYMENT_MODE_DB_MAP[form.paymentMode]
     if (!editDbMode) {
       setError('Invalid payment mode selected.')
@@ -937,8 +943,9 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     }
     setSaving(true)
     setError(null)
+    // order_number is display/reference text only — editing it here never
+    // changes order_id, so it can never make or keep a payment linked.
     const newOrderNumber = form.orderNumber.trim() || null
-    const autoUpgrade = isAdmin && r.status === 'approved_unlinked' && !!newOrderNumber
     const { data: updated, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
@@ -951,14 +958,13 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         order_number: newOrderNumber,
         sales_note:   form.salesNote.trim() || null,
         ...(!isAdmin && r.status === 'needs_clarification' ? { status: 'pending_approval' } : {}),
-        ...(autoUpgrade ? { status: 'approved_linked' } : {}),
         updated_at:   new Date().toISOString(),
       })
       .eq('id', r.id)
       .select('id, client_name, amount, status')
       .single()
     setSaving(false)
-    if (dbError) { setError(dbError.message); return }
+    if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
     if (!updated) { setError('No row was updated. Check permissions or row status.'); return }
     onSaved()
   }
@@ -1055,7 +1061,7 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
       updated_at: new Date().toISOString(),
     }
     if (action === 'approve') {
-      updates.status      = r.order_number?.trim() ? 'approved_linked' : 'approved_unlinked'
+      updates.status      = r.order_id ? 'approved_linked' : 'approved_unlinked'
       updates.approved_by = adminUserId
       updates.approved_at = new Date().toISOString()
     } else {
@@ -1066,7 +1072,7 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
       .update(updates)
       .eq('id', r.id)
     setSaving(false)
-    if (dbError) { setError(dbError.message); return }
+    if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
     onActioned()
   }
 
