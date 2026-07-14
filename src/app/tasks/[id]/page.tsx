@@ -1691,7 +1691,6 @@ export default function TaskDetailPage() {
                     const isStatus    = entry.action === 'status_changed' &&
                       !!entry.from_status && !!entry.to_status && entry.from_status !== entry.to_status
                     const showDiff    = isFieldChange(entry.action) || isStatus
-                    const pillFont    = entry.action === 'title_changed' ? font.body : font.mono
 
                     const oldDisplay = isDate
                       ? (entry.old_val ? formatFullDate(entry.old_val) : 'No date')
@@ -1787,19 +1786,19 @@ export default function TaskDetailPage() {
                               {showDiff && (
                                 <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                   <span style={{
-                                    fontSize: '12px', fontWeight: 400, color: '#8B93A1',
+                                    fontSize: '12.5px', fontWeight: 400, color: '#8B93A1',
                                     background: '#F4F5F7', border: '1px solid #E4E7EC',
                                     padding: '1.5px 7px', borderRadius: '4px',
-                                    textDecoration: 'line-through', fontFamily: pillFont,
+                                    textDecoration: 'line-through',
                                     maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   }} title={oldDisplay}>
                                     {oldDisplay}
                                   </span>
-                                  <span style={{ fontSize: '10px', color: '#98A2B3', flexShrink: 0 }}>→</span>
+                                  <span style={{ fontSize: '12.5px', fontWeight: 400, color: '#98A2B3', flexShrink: 0 }}>→</span>
                                   <span style={{
-                                    fontSize: '12px', fontWeight: 500, color: '#344054',
+                                    fontSize: '12.5px', fontWeight: 500, color: '#344054',
                                     background: '#F8F9FB', border: '1px solid #DDE1E7',
-                                    padding: '1.5px 7px', borderRadius: '4px', fontFamily: pillFont,
+                                    padding: '1.5px 7px', borderRadius: '4px',
                                     maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   }} title={newDisplay}>
                                     {newDisplay}

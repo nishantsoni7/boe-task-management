@@ -132,7 +132,7 @@ body {
 
 .boe-task-2col {
   display: grid;
-  grid-template-columns: 40fr 60fr;
+  grid-template-columns: 45fr 55fr;
   gap: 24px;
   align-items: start;
   margin: 0;
@@ -168,6 +168,19 @@ body {
     min-height: 0;
   }
 }
+
+/* ── Activity feed — quiet scrollbar + text-action hovers ── */
+.boe-activity-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #C7CDD6 #F4F5F7;
+}
+.boe-activity-scroll::-webkit-scrollbar { width: 8px; }
+.boe-activity-scroll::-webkit-scrollbar-track { background: #F4F5F7; border-radius: 8px; }
+.boe-activity-scroll::-webkit-scrollbar-thumb { background: #C7CDD6; border-radius: 8px; }
+.boe-activity-scroll::-webkit-scrollbar-thumb:hover { background: #B0B8C4; }
+
+.boe-activity-action:hover { color: #4A5261 !important; text-decoration: underline; }
+.boe-activity-action-danger:hover { color: #D94F4F !important; }
 
 /* ─────────────────────────────────────────────────────
    CARDS
