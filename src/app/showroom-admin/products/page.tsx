@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import type { ShowroomProduct } from '@/lib/types'
-import { LoadingScreen, AlertBanner, EmptyState } from '@/components/ui/atoms'
+import { AlertBanner, EmptyState } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { Package, PlusCircle, Pencil, QrCode, X, Printer, Trash2 } from 'lucide-react'
@@ -162,7 +162,13 @@ export default function ShowroomProductsPage() {
     await loadProducts(session.access_token)
   }
 
-  if (loading) return <LoadingScreen />
+  if (loading) {
+    return (
+      <ShowroomAdminLayout profile={profile} title="Showroom Products" onSignOut={handleSignOut}>
+        <TableSkeleton />
+      </ShowroomAdminLayout>
+    )
+  }
 
   // Group by active / inactive for clarity, sorted by product_code ascending
   const active   = products.filter(p => p.is_active).sort(byProductCode)
@@ -256,6 +262,36 @@ export default function ShowroomProductsPage() {
   )
 }
 
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+
+function TableSkeleton() {
+  return (
+    <div style={{
+      background: colors.base,
+      border: `1.5px solid ${colors.border}`,
+      borderRadius: '10px',
+      overflow: 'hidden',
+    }}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '16px',
+            padding: '10px 16px',
+            borderBottom: i < 5 ? `1px solid ${colors.border}` : 'none',
+          }}
+        >
+          <div style={{ width: 56, height: 56, borderRadius: '8px', background: colors.raised, flexShrink: 0 }} />
+          <div style={{ width: 90, height: 14, borderRadius: '4px', background: colors.raised }} />
+          <div style={{ width: 160, height: 14, borderRadius: '4px', background: colors.raised }} />
+          <div style={{ width: 100, height: 14, borderRadius: '4px', background: colors.raised }} />
+          <div style={{ width: 70, height: 14, borderRadius: '4px', background: colors.raised, marginLeft: 'auto' }} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Product table ─────────────────────────────────────────────────────────────
 
 function ProductTable({
@@ -341,6 +377,8 @@ function ProductThumb({ src, alt }: { src: string | null; alt: string }) {
         <img
           src={src}
           alt={alt}
+          loading="lazy"
+          decoding="async"
           onError={() => setErrored(true)}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />

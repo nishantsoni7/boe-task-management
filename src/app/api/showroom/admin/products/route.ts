@@ -39,9 +39,11 @@ export async function GET(req: NextRequest) {
   const client = await requireShowroomAccess(req)
   if (!client) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // List view only needs enough to render the table — full specifications/
+  // dimensions/description are fetched separately on the edit page.
   const { data, error } = await client
     .from('showroom_products')
-    .select('*')
+    .select('id, product_code, name, category, mrp, is_active, image_url, images, created_at')
     .order('product_code', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

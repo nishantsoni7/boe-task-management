@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, ShowroomCategory, ShowroomProduct } from '@/lib/types'
-import { LoadingScreen, AlertBanner, EmptyState } from '@/components/ui/atoms'
+import { AlertBanner, EmptyState } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { Tag, PlusCircle, Pencil, Trash2, Check, X } from 'lucide-react'
@@ -185,7 +185,18 @@ export default function ShowroomCategoriesPage() {
     await loadData(session.access_token)
   }
 
-  if (loading) return <LoadingScreen />
+  if (loading) {
+    return (
+      <ShowroomAdminLayout
+        profile={profile}
+        title="Categories"
+        subtitle="Manage product categories used in Product Master."
+        onSignOut={handleSignOut}
+      >
+        <CategoriesSkeleton />
+      </ShowroomAdminLayout>
+    )
+  }
 
   return (
     <ShowroomAdminLayout
@@ -342,6 +353,28 @@ export default function ShowroomCategoriesPage() {
         </div>
       )}
     </ShowroomAdminLayout>
+  )
+}
+
+function CategoriesSkeleton() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '14px',
+            background: colors.base,
+            border: `1.5px solid ${colors.border}`,
+            borderRadius: '10px',
+            padding: '12px 16px',
+          }}
+        >
+          <div style={{ width: 32, height: 32, borderRadius: '8px', background: colors.raised, flexShrink: 0 }} />
+          <div style={{ width: 160, height: 14, borderRadius: '4px', background: colors.raised }} />
+        </div>
+      ))}
+    </div>
   )
 }
 

@@ -34,6 +34,26 @@ async function requireShowroomAccess(req: NextRequest) {
   return allowed ? client : null
 }
 
+// GET /api/showroom/admin/products/[product_code] — single product, full fields (edit form)
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ product_code: string }> }
+) {
+  const client = await requireShowroomAccess(req)
+  if (!client) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { product_code } = await params
+
+  const { data, error } = await client
+    .from('showroom_products')
+    .select('*')
+    .eq('product_code', decodeURIComponent(product_code).toUpperCase())
+    .single()
+
+  if (error || !data) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+  return NextResponse.json({ product: data })
+}
+
 // PATCH /api/showroom/admin/products/[product_code] — edit product or toggle is_active
 export async function PATCH(
   req: NextRequest,

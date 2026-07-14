@@ -164,6 +164,13 @@ export default function InquiryDetailPage() {
         inqUrl.searchParams.set('viewAs', viewAsUserId)
       }
 
+      // Salesperson name only depends on inquiry.salesperson_id, which we don't have
+      // yet — but non-admin callers are always looking at their own inquiry, so we
+      // can resolve it from the session profile without waiting on the inquiry fetch.
+      const salespersonPromise = profile.role === 'admin'
+        ? null
+        : supabase.from('users').select('full_name').eq('id', session.user.id).single()
+
       const [inqRes, prodRes] = await Promise.all([
         fetch(inqUrl.toString(), {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -184,12 +191,19 @@ export default function InquiryDetailPage() {
       setNotes(inq.notes ?? '')
       setItemEdits(initItemEdits(inq.showroom_inquiry_items, {}))
 
-      const { data: sp } = await supabase
-        .from('users')
-        .select('full_name')
-        .eq('id', inq.salesperson_id)
-        .single()
-      setSalespersonName((sp as { full_name: string } | null)?.full_name ?? '—')
+      if (salespersonPromise) {
+        // Non-admin: already resolved above in parallel with the inquiry fetch.
+        const sp = (await salespersonPromise).data as { full_name: string } | null
+        setSalespersonName(sp?.full_name ?? '—')
+      } else {
+        // Admin viewing someone else's inquiry — salesperson_id only known now.
+        const { data: sp } = await supabase
+          .from('users')
+          .select('full_name')
+          .eq('id', inq.salesperson_id)
+          .single()
+        setSalespersonName((sp as { full_name: string } | null)?.full_name ?? '—')
+      }
 
       if (prodRes.ok) {
         const prodData = await prodRes.json()
@@ -655,6 +669,8 @@ export default function InquiryDetailPage() {
                             <img
                               src={primaryImg}
                               alt={prod?.name ?? ''}
+                              loading="lazy"
+                              decoding="async"
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
                           ) : (

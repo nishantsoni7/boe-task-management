@@ -138,17 +138,16 @@ export default function EditProductPage() {
       setProfile(profile)
 
       const [res, catRes] = await Promise.all([
-        fetch('/api/showroom/admin/products', {
+        fetch(`/api/showroom/admin/products/${encodeURIComponent(productCode)}`, {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
         }),
         fetch('/api/showroom/admin/categories', {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
         }),
       ])
+      if (!res.ok) { setError('Product not found'); setLoading(false); return }
       const data = await res.json()
-      const found = (data.products as ShowroomProduct[])?.find(
-        pr => pr.product_code === productCode
-      )
+      const found = data.product as ShowroomProduct | undefined
       if (!found) { setError('Product not found'); setLoading(false); return }
 
       if (catRes.ok) {
