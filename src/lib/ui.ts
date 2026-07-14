@@ -58,6 +58,19 @@ export function formatDateTime(iso: string): string {
   })
 }
 
+// "13 Jul 2026, 6:21 PM" — used for activity feed timestamps
+export function formatActivityTimestamp(iso: string): string {
+  const formatted = new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+  return formatted.replace(/\b(am|pm)\b/i, m => m.toUpperCase())
+}
+
 export function timeAgo(iso: string): string {
   const diff  = Date.now() - new Date(iso).getTime()
   const hours = Math.floor(diff / 3_600_000)
