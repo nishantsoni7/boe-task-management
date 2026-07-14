@@ -464,13 +464,13 @@ type MetaSegment = { text: string; color: string; bg?: string; pill?: boolean; i
 function MetaLine({ segments, gap = '6px' }: { segments: MetaSegment[]; gap?: string }) {
   if (segments.length === 0) return null
   return (
-    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: gap, rowGap: '3px', fontSize: '12.5px', fontWeight: 400, color: '#6B7280', lineHeight: 1.4 }}>
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: gap, rowGap: '3px', fontSize: '12px', fontWeight: 400, color: '#6B7280', lineHeight: 1.4 }}>
       {segments.map((seg, i) => {
         const needsDot = !seg.pill && !seg.icon && i > 0 && !segments[i - 1].pill && !segments[i - 1].icon
         return seg.pill ? (
           <span key={i} style={{
             display: 'inline-flex', alignItems: 'center',
-            fontSize: '10.5px', fontWeight: 600, color: seg.color,
+            fontSize: '11px', fontWeight: 500, color: seg.color,
             background: seg.bg ?? '#F3F4F6',
             borderRadius: '5px', padding: '1.5px 6px', lineHeight: 1.5,
           }}>
@@ -1085,8 +1085,8 @@ function QuotationRequestsSection({
           >
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: '14.5px', fontWeight: 600, color: '#111827',
-                letterSpacing: '-0.01em', lineHeight: 1.3,
+                fontSize: '14px', fontWeight: 600, color: '#111827',
+                letterSpacing: '-0.01em', lineHeight: 1.35,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 marginBottom: '3px',
               }}>
@@ -1206,8 +1206,8 @@ function UnacknowledgedTasksSection({
                 given more visual weight than the action cluster on the right */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: '14.5px', fontWeight: 600, color: '#111827',
-                letterSpacing: '-0.01em', lineHeight: 1.3,
+                fontSize: '14px', fontWeight: 600, color: '#111827',
+                letterSpacing: '-0.01em', lineHeight: 1.35,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 marginBottom: variant === 'acknowledgement' ? '8px' : '3px',
               }}>
@@ -1226,7 +1226,7 @@ function UnacknowledgedTasksSection({
                   style={{
                     display: 'flex', alignItems: 'center', gap: '4px',
                     padding: '4px 8px',
-                    fontSize: '11px', fontWeight: 500,
+                    fontSize: '12px', fontWeight: 500,
                     color: isAcknowledging ? '#B9BFC9' : '#4E9B72',
                     background: 'transparent',
                     border: 'none',
