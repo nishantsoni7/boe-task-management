@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Check, User, CalendarDays } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
-import { isOverdue, getAssignedByDisplay, isValidUUID, timeAgo } from '@/lib/ui'
+import { isOverdue, getAssignedByDisplay, isValidUUID } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -61,7 +61,6 @@ const PRIORITY_PILL: Record<string, { color: string; bg: string }> = {
   medium: { color: '#92400E', bg: '#FFFBEB' },
   low:    { color: '#374151', bg: '#F3F4F6' },
 }
-const WAITING_PILL = { color: '#92400E', bg: '#FFFBEB' }
 const BLOCKED_PILL = { color: '#991B1B', bg: '#FEF2F2' }
 
 export default function DashboardPage() {
@@ -1052,18 +1051,14 @@ function QuotationRequestsSection({
         const priorityLower  = task.priority?.toLowerCase() ?? ''
         const priorityLabel  = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : null
         const priorityPill   = PRIORITY_PILL[priorityLower] ?? PRIORITY_PILL.low
-        const isBlocked      = task.status === 'blocked'
 
+        // Creator/assigner → Due/Overdue → Priority — only these three metadata items
         const metaSegments: MetaSegment[] = []
-        if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
-        if (isBlocked) metaSegments.push({ text: 'Blocked', color: BLOCKED_PILL.color, bg: BLOCKED_PILL.bg, pill: true })
-        if (dateText) metaSegments.push({ text: dateText, color: dateColor })
-        if (metaSegments.length < 2 && task.last_update_at && task.last_update_at !== task.created_at) {
-          metaSegments.push({ text: `Updated ${timeAgo(task.last_update_at)}`, color: '#9CA3AF' })
-        }
         if (requesterName && requesterName !== 'Unknown') {
-          metaSegments.push({ text: `by ${requesterName}`, color: '#9CA3AF' })
+          metaSegments.push({ text: requesterName, color: '#9CA3AF' })
         }
+        if (dateText) metaSegments.push({ text: dateText, color: dateColor })
+        if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
 
         return (
           <div
@@ -1147,35 +1142,33 @@ function UnacknowledgedTasksSection({
         const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : null
         const priorityPill  = PRIORITY_PILL[priorityLower] ?? PRIORITY_PILL.low
 
-        const isBlocked   = task.status === 'blocked'
-        const waitingDays = variant === 'acknowledgement' ? daysSince(task.created_at) : 0
-
-        const metaSegments: MetaSegment[] = []
-        if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
-        if (variant === 'acknowledgement' && waitingDays >= 1) {
-          const w = waitingDays >= 3 ? BLOCKED_PILL : WAITING_PILL
-          metaSegments.push({ text: `Waiting ${waitingDays}d`, color: w.color, bg: w.bg, pill: true })
-        }
-        if (isBlocked) metaSegments.push({ text: 'Blocked', color: BLOCKED_PILL.color, bg: BLOCKED_PILL.bg, pill: true })
-        if (dateText) {
-          metaSegments.push({
-            text: dateText, color: dateColor,
-            icon: variant === 'acknowledgement'
-              ? <CalendarDays size={12} strokeWidth={2} color="#8A94A6" style={{ flexShrink: 0 }} />
-              : undefined,
-          })
-        }
+        const isBlocked = task.status === 'blocked'
 
         const assignedByName = getAssignedByDisplay(task, userMap)
-        if (assignedByName) {
-          metaSegments.push(
-            variant === 'acknowledgement'
-              ? {
-                  text: assignedByName === 'Self' ? 'You' : assignedByName, color: '#9CA3AF',
-                  icon: <User size={12} strokeWidth={2} color="#B0BAC8" style={{ flexShrink: 0 }} />,
-                }
-              : { text: `by ${assignedByName === 'Self' ? 'you' : assignedByName}`, color: '#9CA3AF' }
-          )
+
+        const metaSegments: MetaSegment[] = []
+        if (variant === 'acknowledgement') {
+          // Assigner → Due/Overdue → Priority — only these three metadata items on the compact dashboard row
+          if (assignedByName) {
+            metaSegments.push({
+              text: assignedByName === 'Self' ? 'You' : assignedByName, color: '#9CA3AF',
+              icon: <User size={12} strokeWidth={2} color="#B0BAC8" style={{ flexShrink: 0 }} />,
+            })
+          }
+          if (dateText) {
+            metaSegments.push({
+              text: dateText, color: dateColor,
+              icon: <CalendarDays size={12} strokeWidth={2} color="#8A94A6" style={{ flexShrink: 0 }} />,
+            })
+          }
+          if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
+        } else {
+          if (priorityLabel) metaSegments.push({ text: priorityLabel, color: priorityPill.color, bg: priorityPill.bg, pill: true })
+          if (isBlocked) metaSegments.push({ text: 'Blocked', color: BLOCKED_PILL.color, bg: BLOCKED_PILL.bg, pill: true })
+          if (dateText) metaSegments.push({ text: dateText, color: dateColor })
+          if (assignedByName) {
+            metaSegments.push({ text: `by ${assignedByName === 'Self' ? 'you' : assignedByName}`, color: '#9CA3AF' })
+          }
         }
         const isLast = idx === tasks.length - 1
 
