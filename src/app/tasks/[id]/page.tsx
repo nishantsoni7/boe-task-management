@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, LogEntry, TaskStatus, UserProfile, TaskAttachment } from '@/lib/types'
 import {
-  isOverdue, formatFullDate, formatDateTime,
+  isOverdue, formatFullDate, formatDateTime, formatActivityTimestamp,
   formatLogAction, timeAgo, getTaskAging,
 } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
@@ -1591,21 +1591,25 @@ export default function TaskDetailPage() {
 
 
           {/* Activity */}
-          <div className="boe-card boe-activity-card" style={{ padding: '0', display: 'flex', flexDirection: 'column' }}>
+          <div className="boe-card boe-activity-card" style={{
+            padding: '0', display: 'flex', flexDirection: 'column',
+            background: '#ffffff', border: '1px solid #E1E5EA',
+            borderRadius: '10px', boxShadow: 'none',
+          }}>
             {/* Header */}
             <div style={{
               padding: '12px 16px 11px',
-              borderBottom: `1px solid ${colors.border}`,
+              borderBottom: '1px solid #E9ECF1',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary, letterSpacing: '-0.01em' }}>
-                {isQuotation ? 'Quotation History' : 'Activity Timeline'}
+              <span style={{ fontSize: '15px', fontWeight: 600, color: '#20242D', letterSpacing: '-0.01em' }}>
+                {isQuotation ? 'Quotation History' : 'Activity'}
               </span>
               {log.length > 0 && (
                 <span style={{
-                  fontSize: '10px', fontWeight: 700, color: colors.muted,
-                  background: colors.float, border: `1px solid ${colors.border}`,
-                  padding: '2px 7px', borderRadius: '20px', letterSpacing: '0.02em',
+                  fontSize: '11px', fontWeight: 500, color: '#7C8595',
+                  background: '#F4F6F8', border: '1px solid #E3E7EC',
+                  padding: '2px 7px', borderRadius: '20px', letterSpacing: '0.02em', lineHeight: 1.4,
                 }}>
                   {log.length} {log.length === 1 ? 'event' : 'events'}
                 </span>
@@ -1619,7 +1623,7 @@ export default function TaskDetailPage() {
                 </p>
               </div>
             ) : (
-              <div style={{ overflowY: 'auto', maxHeight: '520px' }}>
+              <div className="boe-activity-scroll" style={{ overflowY: 'auto', maxHeight: '520px' }}>
                 {(() => {
                   const newestEntry = log[0]
                   const canEditDelete = (entry: LogEntry) =>
@@ -1631,62 +1635,113 @@ export default function TaskDetailPage() {
                     action === 'title_changed' || action === 'due_date_changed' ||
                     action === 'deadline_changed' || action === 'priority_changed'
 
+                  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+                  // Complete-sentence heading for each activity entry, split into the actor
+                  // name (styled slightly stronger) and the action text that follows it.
+                  const getHeadingRest = (entry: LogEntry): string => {
+                    const { action, from_status: f, to_status: t } = entry
+
+                    if (isQuotation) {
+                      if (action === 'created')        return 'submitted the quotation request'
+                      if (action === 'note_added')      return 'commented'
+                      if (action === 'status_changed') {
+                        if (t === 'completed')          return 'marked the quotation completed'
+                        if (f === 'completed')          return 'reopened the quotation'
+                        if (f === 'cancelled')          return 'restored the quotation'
+                        if (t === 'cancelled')          return 'cancelled the quotation'
+                        return 'changed the status'
+                      }
+                      if (action === 'stale_flagged')  return 'flagged the quotation as stale'
+                      if (action === 'escalated')      return 'escalated the quotation'
+                      return formatLogAction(action, f, t).toLowerCase()
+                    }
+
+                    switch (action) {
+                      case 'note_added':      return 'commented'
+                      case 'status_changed':  return f && t && f === t
+                        ? 'posted a progress update'
+                        : 'changed the status'
+                      case 'acknowledged':    return 'acknowledged the task'
+                      case 'due_date_changed':
+                      case 'deadline_changed': return 'changed the due date'
+                      case 'priority_changed': return 'changed the priority'
+                      case 'title_changed':   return 'changed the title'
+                      case 'created':         return isSelfTask
+                        ? 'created the task'
+                        : `assigned the task to ${assigneeName}`
+                      case 'delegated':       return 'delegated the task'
+                      case 'escalated':       return 'escalated the task'
+                      case 'stale_flagged':   return 'flagged the task as stale'
+                      default:                return action.replace(/_/g, ' ')
+                    }
+                  }
+
                   return log.map((entry, i) => {
                     const dotColor =
                       entry.action === 'acknowledged'     ? colors.green
                       : entry.action === 'status_changed' && entry.to_status
-                        ? (STATUS_COLORS[entry.to_status] ?? colors.muted)
-                      : colors.muted
+                        ? (STATUS_COLORS[entry.to_status] ?? '#B8C0CC')
+                      : '#B8C0CC'
+                    const isComment   = entry.action === 'note_added'
                     const isEditing   = editingActivityId === entry.id
                     const isDeleting  = deletingActivityId === entry.id
                     const showActions = canEditDelete(entry)
                     const isDate      = entry.action === 'due_date_changed' || entry.action === 'deadline_changed'
+                    const isStatus    = entry.action === 'status_changed' &&
+                      !!entry.from_status && !!entry.to_status && entry.from_status !== entry.to_status
+                    const showDiff    = isFieldChange(entry.action) || isStatus
                     const pillFont    = entry.action === 'title_changed' ? font.body : font.mono
 
                     const oldDisplay = isDate
                       ? (entry.old_val ? formatFullDate(entry.old_val) : 'No date')
-                      : (entry.old_val ?? '—')
+                      : isStatus
+                        ? capitalize(entry.from_status ?? '—')
+                        : (entry.old_val ?? '—')
                     const newDisplay = isDate
                       ? (entry.new_val ? formatFullDate(entry.new_val) : 'Cleared')
-                      : (entry.new_val ?? '—')
+                      : isStatus
+                        ? capitalize(entry.to_status ?? '—')
+                        : (entry.new_val ?? '—')
 
                     return (
                       <div
                         key={entry.id}
                         style={{
                           display: 'flex', alignItems: 'flex-start', gap: '12px',
-                          padding: '14px 16px',
-                          borderBottom: i < log.length - 1 ? `1px solid ${colors.border}` : 'none',
+                          padding: '16px 20px',
+                          borderBottom: i < log.length - 1 ? '1px solid #E9ECF1' : 'none',
                         }}
                       >
                         {/* Dot */}
-                        <div style={{ paddingTop: '4px', flexShrink: 0 }}>
+                        <div style={{ paddingTop: '5px', flexShrink: 0 }}>
                           <div style={{
-                            width: '7px', height: '7px', borderRadius: '50%',
-                            background: dotColor, opacity: 0.75,
+                            width: '8px', height: '8px', borderRadius: '9999px',
+                            background: dotColor,
                           }} />
                         </div>
 
                         {/* Main content */}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ margin: 0, fontSize: '12.5px', fontWeight: 600, color: colors.primary, lineHeight: 1.35 }}>
-                            {isQuotation
-                              ? (() => {
-                                  const { action, from_status: f, to_status: t } = entry
-                                  if (action === 'created')     return 'Quotation request created'
-                                  if (action === 'status_changed') {
-                                    if (t === 'completed')      return 'Quotation marked completed'
-                                    if (f === 'completed')      return 'Quotation reopened'
-                                    if (f === 'cancelled')      return 'Quotation restored'
-                                    if (t === 'cancelled')      return 'Quotation cancelled'
-                                    return formatLogAction(action, f, t)
-                                  }
-                                  if (action === 'note_added')  return 'Update added'
-                                  return formatLogAction(action, f, t)
-                                })()
-                              : formatLogAction(entry.action, entry.from_status, entry.to_status)
-                            }
-                          </p>
+                          {/* Heading row: activity sentence (left) + timestamp (top-right) */}
+                          <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                            gap: '8px', flexWrap: 'wrap',
+                          }}>
+                            <p style={{
+                              margin: 0, fontSize: '12.5px', fontWeight: 500,
+                              lineHeight: 1.4, flex: '1 1 auto', minWidth: '140px',
+                            }}>
+                              <span style={{ fontWeight: 500, color: '#2F3440' }}>{entry.actor_name ?? 'Someone'}</span>
+                              <span style={{ fontWeight: 400, color: colors.secondary }}> {getHeadingRest(entry)}</span>
+                            </p>
+                            <span style={{
+                              fontSize: '12px', fontWeight: 400, color: '#98A1B2',
+                              lineHeight: 1.4, whiteSpace: 'nowrap', flexShrink: 0, paddingTop: '1px',
+                            }}>
+                              {formatActivityTimestamp(entry.created_at)}
+                            </span>
+                          </div>
 
                           {isEditing ? (
                             <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1729,22 +1784,22 @@ export default function TaskDetailPage() {
                           ) : (
                             <>
                               {/* Diff pills: old → new */}
-                              {isFieldChange(entry.action) && (
-                                <div style={{ marginTop: '7px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              {showDiff && (
+                                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                   <span style={{
-                                    fontSize: '11px', color: colors.muted,
-                                    background: colors.float, border: `1px solid ${colors.border}`,
-                                    padding: '2px 8px', borderRadius: '5px',
+                                    fontSize: '12px', fontWeight: 400, color: '#8B93A1',
+                                    background: '#F4F5F7', border: '1px solid #E4E7EC',
+                                    padding: '1.5px 7px', borderRadius: '4px',
                                     textDecoration: 'line-through', fontFamily: pillFont,
                                     maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   }} title={oldDisplay}>
                                     {oldDisplay}
                                   </span>
-                                  <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>→</span>
+                                  <span style={{ fontSize: '10px', color: '#98A2B3', flexShrink: 0 }}>→</span>
                                   <span style={{
-                                    fontSize: '11px', fontWeight: 600, color: colors.primary,
-                                    background: colors.float, border: `1px solid ${colors.border}`,
-                                    padding: '2px 8px', borderRadius: '5px', fontFamily: pillFont,
+                                    fontSize: '12px', fontWeight: 500, color: '#344054',
+                                    background: '#F8F9FB', border: '1px solid #DDE1E7',
+                                    padding: '1.5px 7px', borderRadius: '4px', fontFamily: pillFont,
                                     maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   }} title={newDisplay}>
                                     {newDisplay}
@@ -1752,9 +1807,15 @@ export default function TaskDetailPage() {
                                 </div>
                               )}
 
-                              {/* Note text */}
+                              {/* Note text — comments read conversationally, system notes stay compact */}
                               {entry.note && (
-                                <p style={{ margin: '5px 0 0', color: colors.secondary, fontSize: '12px', lineHeight: 1.55 }}>
+                                <p style={{
+                                  margin: isComment ? '6px 0 0' : '8px 0 0',
+                                  color: isComment ? '#596273' : '#667085',
+                                  fontSize: isComment ? '12.5px' : '11.5px',
+                                  fontWeight: 400,
+                                  lineHeight: isComment ? 1.55 : 1.5,
+                                }}>
                                   {entry.note}
                                 </p>
                               )}
@@ -1806,34 +1867,17 @@ export default function TaskDetailPage() {
                               </span>
                             </div>
                           ))}
-                        </div>
 
-                        {/* Meta column: actor + timestamp, right-aligned */}
-                        <div style={{
-                          flexShrink: 0, textAlign: 'right',
-                          display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px',
-                          paddingTop: '1px', maxWidth: '112px',
-                        }}>
-                          {entry.actor_name && (
-                            <span style={{
-                              fontSize: '11px', fontWeight: 500, color: colors.secondary,
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                              maxWidth: '112px',
-                            }}>
-                              {entry.actor_name}
-                            </span>
-                          )}
-                          <span style={{ fontSize: '10px', color: colors.muted, fontFamily: font.mono, whiteSpace: 'nowrap' }}>
-                            {formatDateTime(entry.created_at)}
-                          </span>
+                          {/* Edit / Delete — own newest comment only */}
                           {showActions && !isEditing && (
-                            <div style={{ display: 'flex', gap: '6px', marginTop: '3px' }}>
+                            <div style={{ display: 'flex', gap: '12px', marginTop: '7px' }}>
                               <button
                                 onClick={() => { setEditActivityNote(entry.note ?? ''); setEditingActivityId(entry.id) }}
+                                className="boe-activity-action"
                                 style={{
-                                  fontSize: '10.5px', fontWeight: 600, color: colors.blue,
+                                  fontSize: '12px', fontWeight: 500, color: colors.muted,
                                   background: 'none', border: 'none', cursor: 'pointer',
-                                  padding: '0', fontFamily: font.body, textDecoration: 'underline',
+                                  padding: '0', fontFamily: font.body, textDecoration: 'none',
                                 }}
                               >
                                 Edit
@@ -1841,10 +1885,11 @@ export default function TaskDetailPage() {
                               <button
                                 onClick={() => deleteActivity(entry.id)}
                                 disabled={isDeleting}
+                                className="boe-activity-action boe-activity-action-danger"
                                 style={{
-                                  fontSize: '10.5px', fontWeight: 600, color: colors.red,
+                                  fontSize: '12px', fontWeight: 500, color: colors.muted,
                                   background: 'none', border: 'none', cursor: isDeleting ? 'not-allowed' : 'pointer',
-                                  padding: '0', fontFamily: font.body, textDecoration: 'underline',
+                                  padding: '0', fontFamily: font.body, textDecoration: 'none',
                                   opacity: isDeleting ? 0.5 : 1,
                                 }}
                               >
