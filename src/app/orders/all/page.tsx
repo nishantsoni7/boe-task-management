@@ -125,31 +125,10 @@ function NewOrderModal({
   onClose: () => void
   onCreated: (id: string) => void
 }) {
-  const [form,          setForm]          = useState<NewOrderForm>(EMPTY_FORM)
-  const [nextNumber,    setNextNumber]    = useState<string | null>(null)
-  const [numberLoading, setNumberLoading] = useState(true)
-  const [saving,        setSaving]        = useState(false)
-  const [error,         setError]         = useState<string | null>(null)
+  const [form,    setForm]    = useState<NewOrderForm>(EMPTY_FORM)
+  const [saving,  setSaving]  = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
-
-  // Auto-generate the next order number on mount
-  useEffect(() => {
-    const fetchNext = async () => {
-      const { data } = await supabase
-        .from('orders')
-        .select('display_number')
-
-      const nums = ((data ?? []) as { display_number: string }[])
-        .map(o => parseInt(o.display_number, 10))
-        .filter(n => !isNaN(n))
-
-      const next = nums.length > 0 ? Math.max(...nums) + 1 : 1
-      setNextNumber(String(next))
-      setNumberLoading(false)
-    }
-    fetchNext()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const set = (k: keyof NewOrderForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -158,22 +137,17 @@ function NewOrderModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.client_name.trim()) { setError('Client name is required.'); return }
-    if (!nextNumber) { setError('Order number not ready yet.'); return }
     setSaving(true)
     setError(null)
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setError('Not authenticated.'); setSaving(false); return }
 
-    // Check uniqueness right before insert (guard against race)
-    const { data: existing } = await supabase
-      .from('orders')
-      .select('id')
-      .eq('display_number', nextNumber)
-      .maybeSingle()
-
-    if (existing) {
-      setError(`Order number ${nextNumber} was just taken. Please close and reopen to get the next number.`)
+    // Allocate the order number from the monotonic DB sequence only now,
+    // at the moment of actual creation — never on mount/preview/cancel.
+    const { data: nextNumber, error: numberErr } = await supabase.rpc('next_order_display_number')
+    if (numberErr || !nextNumber) {
+      setError('Failed to reserve order number. Please try again.')
       setSaving(false)
       return
     }
@@ -253,9 +227,7 @@ function NewOrderModal({
           <div>
             <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>New Order Request</div>
             <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-              {numberLoading
-                ? 'Generating order number…'
-                : `Order number will be: ${nextNumber}`}
+              Order number will be assigned after creation
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, display: 'flex' }}>
@@ -335,11 +307,11 @@ function NewOrderModal({
             }}>
               Cancel
             </button>
-            <button type="submit" disabled={saving || numberLoading} style={{
+            <button type="submit" disabled={saving} style={{
               padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
               background: '#DC1F2E', border: 'none', color: '#fff',
-              cursor: (saving || numberLoading) ? 'not-allowed' : 'pointer',
-              opacity: (saving || numberLoading) ? 0.7 : 1,
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.7 : 1,
             }}>
               {saving ? 'Creating…' : 'Create Order'}
             </button>
@@ -361,6 +333,7 @@ export default function AllOrdersPage() {
   const [search,       setSearch]       = useState('')
   const [statusTab,    setStatusTab]    = useState<StatusFilter>('all')
   const [showNewModal, setShowNewModal] = useState(false)
+  const [deletedBanner, setDeletedBanner] = useState(false)
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -409,6 +382,11 @@ export default function AllOrdersPage() {
         setStatusTab(paramStatus)
       }
 
+      if (searchParams.get('deleted') === '1') {
+        setDeletedBanner(true)
+        router.replace('/orders/all')
+      }
+
       const { data: usersData } = await supabase
         .from('users')
         .select('id, full_name')
@@ -451,6 +429,23 @@ export default function AllOrdersPage() {
       onSignOut={handleSignOut}
       onRefresh={loadOrders}
     >
+      {deletedBanner && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
+          background: '#F0FDF4', border: '1px solid #BBF7D0',
+          fontSize: '13px', color: '#166534',
+        }}>
+          <span>Request deleted successfully.</span>
+          <button
+            onClick={() => setDeletedBanner(false)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ── Search + tabs + new button ── */}
       <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

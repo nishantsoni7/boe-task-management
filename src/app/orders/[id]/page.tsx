@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
+import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
 
@@ -268,6 +269,108 @@ function CancelConfirmDialog({
   )
 }
 
+// ── Delete Confirmation Dialog ────────────────────────────────────────────────
+
+function DeleteConfirmDialog({
+  order,
+  onDeleted,
+  onDismiss,
+}: {
+  order: Order
+  onDeleted: () => void
+  onDismiss: () => void
+}) {
+  const [deleting, setDeleting] = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+  const supabase = useMemo(() => createClient(), [])
+
+  const handleDelete = async () => {
+    if (deleting) return
+    setDeleting(true)
+    setError(null)
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setError('Not authenticated.'); setDeleting(false); return }
+
+    try {
+      const res = await fetch(`/api/orders/${order.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(body.error ?? 'Failed to delete this order. Please try again.')
+        setDeleting(false)
+        return
+      }
+      onDeleted()
+    } catch {
+      setError('Failed to delete this order. Please try again.')
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget && !deleting) onDismiss() }}
+    >
+      <div style={{
+        background: colors.base, border: `1px solid ${colors.border}`,
+        borderRadius: '12px', width: '100%', maxWidth: '400px',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)', padding: '24px',
+      }}>
+        <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, marginBottom: '10px' }}>
+          Delete request {order.display_number}?
+        </div>
+        <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6, marginBottom: '18px' }}>
+          {order.client_name}
+          <br /><br />
+          This will permanently delete this request and its related data. This action cannot be undone.
+        </div>
+        {error && (
+          <div style={{
+            padding: '10px 12px', borderRadius: '8px', marginBottom: '14px',
+            background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
+          }}>
+            {error}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onDismiss}
+            disabled={deleting}
+            style={{
+              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: 'transparent', border: `1px solid ${colors.border}`,
+              color: colors.secondary, cursor: deleting ? 'not-allowed' : 'pointer',
+              opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{
+              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: colors.red, border: 'none', color: '#fff',
+              cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1,
+            }}
+          >
+            {deleting ? 'Deleting…' : 'Delete Request'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Status Dropdown ───────────────────────────────────────────────────────────
 
 function StatusControl({
@@ -390,17 +493,19 @@ function StatusControl({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function OrderDetailPage() {
-  const [pageLoading, setPageLoading] = useState(true)
-  const [profile,     setProfile]     = useState<UserProfile | null>(null)
-  const [order,       setOrder]       = useState<Order | null>(null)
-  const [payments,    setPayments]    = useState<LinkedPayment[]>([])
-  const [activity,    setActivity]    = useState<ActivityEntry[]>([])
-  const [notFound,    setNotFound]    = useState(false)
+  const [pageLoading,   setPageLoading]   = useState(true)
+  const [profile,       setProfile]       = useState<UserProfile | null>(null)
+  const [order,         setOrder]         = useState<Order | null>(null)
+  const [payments,      setPayments]      = useState<LinkedPayment[]>([])
+  const [activity,      setActivity]      = useState<ActivityEntry[]>([])
+  const [notFound,      setNotFound]      = useState(false)
+  const [pendingDelete, setPendingDelete] = useState(false)
 
-  const router   = useRouter()
-  const params   = useParams()
-  const id       = params.id as string
-  const supabase = useMemo(() => createClient(), [])
+  const router     = useRouter()
+  const params     = useParams()
+  const id         = params.id as string
+  const supabase   = useMemo(() => createClient(), [])
+  const { viewAsUserId } = useViewAs()
 
   const loadOrder = async () => {
     const { data: o } = await supabase
@@ -541,16 +646,30 @@ export default function OrderDetailPage() {
               {order.client_name}
             </div>
           </div>
-          {profile && (
-            <StatusControl
-              order={order}
-              profile={profile}
-              onStatusChanged={newStatus => {
-                setOrder(o => o ? { ...o, status: newStatus } : o)
-                loadOrder()
-              }}
-            />
-          )}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {profile && (
+              <StatusControl
+                order={order}
+                profile={profile}
+                onStatusChanged={newStatus => {
+                  setOrder(o => o ? { ...o, status: newStatus } : o)
+                  loadOrder()
+                }}
+              />
+            )}
+            {profile?.role === 'admin' && !viewAsUserId && (
+              <button
+                onClick={() => setPendingDelete(true)}
+                style={{
+                  padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: 600,
+                  background: 'transparent', border: `1px solid ${colors.red}`,
+                  color: colors.red, cursor: 'pointer',
+                }}
+              >
+                Delete
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── Summary strip ── */}
@@ -713,6 +832,14 @@ export default function OrderDetailPage() {
         </SectionCard>
 
       </div>
+
+      {pendingDelete && (
+        <DeleteConfirmDialog
+          order={order}
+          onDeleted={() => router.push('/orders/all?deleted=1')}
+          onDismiss={() => setPendingDelete(false)}
+        />
+      )}
     </OrdersLayout>
   )
 }

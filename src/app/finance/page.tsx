@@ -543,30 +543,16 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
 
     // New Order — reserve the next order number, then create the payment request
 
-    // Step 1: compute next display number (same logic as orders/all/page.tsx)
-    const { data: allOrders } = await supabase
-      .from('orders')
-      .select('display_number')
-
-    const nums = ((allOrders ?? []) as { display_number: string }[])
-      .map(o => parseInt(o.display_number, 10))
-      .filter(n => !isNaN(n))
-    const nextDisplayNumber = String(nums.length > 0 ? Math.max(...nums) + 1 : 1)
-
-    // Step 2: collision guard — another request may have taken this number in the gap
-    const { data: taken } = await supabase
-      .from('orders')
-      .select('id')
-      .eq('display_number', nextDisplayNumber)
-      .maybeSingle()
-
-    if (taken) {
-      setError(`Order number ${nextDisplayNumber} was just taken. Please try submitting again.`)
+    // Step 1: get the next display number from the monotonic DB sequence
+    // (same RPC used by orders/all/page.tsx — never reuses a deleted order's number)
+    const { data: nextDisplayNumber, error: numberErr } = await supabase.rpc('next_order_display_number')
+    if (numberErr || !nextDisplayNumber) {
+      setError('Failed to reserve order number. Please try again.')
       setSaving(false)
       return
     }
 
-    // Step 3: create the pending order record
+    // Step 2: create the pending order record
     const { data: newOrder, error: orderErr } = await supabase
       .from('orders')
       .insert({
@@ -585,7 +571,7 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
       return
     }
 
-    // Step 4: create the payment request linked to the reserved order
+    // Step 3: create the payment request linked to the reserved order
     const { error: paymentErr } = await supabase
       .from('finance_payment_requests')
       .insert({
