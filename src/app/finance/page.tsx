@@ -32,6 +32,9 @@ type PaymentRequest = {
   submitted_by_name?: string
   admin_note: string | null
   created_at: string
+  updated_at: string
+  rejected_at: string | null
+  clarification_requested_at: string | null
 }
 
 type OrderResult = {
@@ -43,7 +46,7 @@ type OrderResult = {
 }
 
 type AdminAction = 'approve' | 'needs_clarification' | 'reject'
-type FilterTab   = 'pending' | 'order_pending' | 'clarification' | 'rejected' | 'all'
+type FilterTab   = 'pending' | 'order_pending' | 'clarification' | 'rejected' | 'archive' | 'all'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -145,6 +148,7 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: 'order_pending', label: 'Order No. Pending' },
   { key: 'clarification', label: 'Needs Clarification' },
   { key: 'rejected',      label: 'Rejected' },
+  { key: 'archive',       label: 'Archive' },
   { key: 'all',           label: 'All' },
 ]
 
@@ -153,6 +157,7 @@ const EMPTY_MESSAGES: Record<FilterTab, string> = {
   order_pending: 'No payments with order number pending.',
   clarification: 'No payments awaiting clarification.',
   rejected:      'No rejected payments.',
+  archive:       'No archived rejected requests.',
   all:           'No payment confirmations here.',
 }
 
@@ -183,13 +188,49 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
   return dbError.message
 }
 
-function matchesTab(r: PaymentRequest, tab: FilterTab): boolean {
+// ── Age-based partitioning (Phase 2C) ─────────────────────────────────────────
+// Rejected requests move from the active Rejected tab into Archive once they are
+// at least 30 days old; needs_clarification requests older than 30 days show a
+// (display-only) Stale badge. Age is measured from the DB-managed status-entry
+// timestamps (rejected_at / clarification_requested_at). updated_at is only a
+// defensive fallback for rows written before those columns existed (the
+// migration backfills all current matching rows, so it should rarely apply).
+//
+// Boundary: archived/stale when the timestamp is at or before the cutoff
+// (age >= 30d); active/normal when it is strictly after the cutoff (age < 30d).
+// Null-safe: a row with no known timestamp is treated as active/not-stale so it
+// can never silently vanish from the active view.
+
+const ARCHIVE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+
+function archiveCutoff(): number {
+  return Date.now() - ARCHIVE_WINDOW_MS
+}
+
+function isArchivedRejected(r: PaymentRequest, cutoff: number): boolean {
+  if (r.status !== 'rejected') return false
+  const ts = r.rejected_at ?? r.updated_at ?? null
+  if (!ts) return false
+  return new Date(ts).getTime() <= cutoff
+}
+
+function isStaleClarification(r: PaymentRequest, cutoff: number): boolean {
+  if (r.status !== 'needs_clarification') return false
+  const ts = r.clarification_requested_at ?? r.updated_at ?? null
+  if (!ts) return false
+  return new Date(ts).getTime() <= cutoff
+}
+
+function matchesTab(r: PaymentRequest, tab: FilterTab, cutoff: number): boolean {
   switch (tab) {
     case 'pending':       return r.status === 'pending_approval'
     case 'order_pending': return r.status === 'approved_unlinked'
     case 'clarification': return r.status === 'needs_clarification'
-    case 'rejected':      return r.status === 'rejected'
-    default:              return r.status !== 'approved_linked'
+    case 'rejected':      return r.status === 'rejected' && !isArchivedRejected(r, cutoff)
+    case 'archive':       return isArchivedRejected(r, cutoff)
+    // 'all' shows active requests only: excludes approved_linked (the Received
+    // Payments view) and excludes archived rejected, but keeps stale clarification.
+    default:              return r.status !== 'approved_linked' && !isArchivedRejected(r, cutoff)
   }
 }
 
@@ -255,6 +296,20 @@ function StatusBadge({ status }: { status: string }) {
       fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
     }}>
       {meta.label}
+    </span>
+  )
+}
+
+// Display-only indicator for a needs_clarification request that has been waiting
+// at least 30 days. Purely visual — it never changes the request's status.
+function StaleBadge() {
+  return (
+    <span style={{
+      display: 'inline-block', marginLeft: '6px', padding: '2px 8px', borderRadius: '5px',
+      background: '#FFF7ED', color: '#9A3412', border: '1px solid #FED7AA',
+      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+    }}>
+      Stale
     </span>
   )
 }
@@ -1358,6 +1413,7 @@ function PaymentsTable({
   rows,
   isAdmin,
   userId,
+  cutoff,
   onRowClick,
   onView,
   onEdit,
@@ -1366,6 +1422,7 @@ function PaymentsTable({
   rows: PaymentRequest[]
   isAdmin: boolean
   userId: string
+  cutoff: number
   onRowClick: (r: PaymentRequest) => void
   onView: (r: PaymentRequest) => void
   onEdit: (r: PaymentRequest) => void
@@ -1451,6 +1508,7 @@ function PaymentsTable({
                 </td>
                 <td style={TD}>
                   <StatusBadge status={r.status} />
+                  {isStaleClarification(r, cutoff) && <StaleBadge />}
                 </td>
                 <td style={{ ...TD, textAlign: 'right' }}>
                   <div
@@ -1561,6 +1619,7 @@ export default function FinancePage() {
         id, request_number, client_name, amount, payment_date, payment_mode,
         received_in, proof_note, order_number, order_id, sales_note,
         payment_against, status, submitted_by, admin_note, created_at,
+        updated_at, rejected_at, clarification_requested_at,
         submitted_by_user:users!submitted_by(full_name)
       `)
       .neq('status', 'approved_linked')
@@ -1578,7 +1637,8 @@ export default function FinancePage() {
 
   // ── Filtered + searched list (client-side, newest-first already from DB) ─────
   const visible = useMemo(() => {
-    let list = requests.filter(r => matchesTab(r, activeTab))
+    const cutoff = archiveCutoff()
+    let list = requests.filter(r => matchesTab(r, activeTab, cutoff))
     const q = search.trim().toLowerCase()
     if (q) {
       list = list.filter(r =>
@@ -1590,19 +1650,24 @@ export default function FinancePage() {
   }, [requests, activeTab, search])
 
   // ── Status counts (across all unfiltered) ────────────────────────────────────
-  const counts = useMemo(() => ({
-    pending:       requests.filter(r => r.status === 'pending_approval').length,
-    order_pending: requests.filter(r => r.status === 'approved_unlinked').length,
-    clarification: requests.filter(r => r.status === 'needs_clarification').length,
-    rejected:      requests.filter(r => r.status === 'rejected').length,
-    all:           requests.filter(r => r.status !== 'approved_linked').length,
-  }), [requests])
+  const counts = useMemo(() => {
+    const cutoff = archiveCutoff()
+    return {
+      pending:       requests.filter(r => r.status === 'pending_approval').length,
+      order_pending: requests.filter(r => r.status === 'approved_unlinked').length,
+      clarification: requests.filter(r => r.status === 'needs_clarification').length,
+      rejected:      requests.filter(r => r.status === 'rejected' && !isArchivedRejected(r, cutoff)).length,
+      archive:       requests.filter(r => isArchivedRejected(r, cutoff)).length,
+      all:           requests.filter(r => r.status !== 'approved_linked' && !isArchivedRejected(r, cutoff)).length,
+    }
+  }, [requests])
 
   const tabCount: Record<FilterTab, number> = {
     pending:       counts.pending,
     order_pending: counts.order_pending,
     clarification: counts.clarification,
     rejected:      counts.rejected,
+    archive:       counts.archive,
     all:           counts.all,
   }
 
@@ -1693,6 +1758,7 @@ export default function FinancePage() {
             rows={visible}
             isAdmin={isAdmin}
             userId={userId}
+            cutoff={archiveCutoff()}
             onRowClick={handleRowClick}
             onView={r => setDetailRequest(r)}
             onEdit={r => setEditRequest(r)}
