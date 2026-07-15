@@ -1,0 +1,552 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { LoadingScreen } from '@/components/ui/atoms'
+import { colors } from '@/lib/tokens'
+import { OrdersLayout } from '@/components/layout/OrdersLayout'
+import type { UserProfile } from '@/lib/types'
+import { X, CheckCircle2 } from 'lucide-react'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type OrderRequest = {
+  id: string
+  request_number: string
+  client_name: string
+  requested_by: string | null
+  requested_by_name?: string
+  assigned_to: string | null
+  assigned_to_name?: string
+  confirm_date: string | null
+  due_date: string | null
+  total_value: number | null
+  status: string
+  created_at: string
+}
+
+type UserOption = { id: string; full_name: string }
+
+type StatusFilter = 'active' | 'needs_clarification' | 'rejected' | 'converted' | 'all'
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  submitted:           { label: 'Submitted',           bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
+  needs_clarification: { label: 'Needs Clarification',  bg: '#FFF7ED', color: '#9A3412', border: '#FED7AA' },
+  rejected:            { label: 'Rejected',             bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
+  converted:           { label: 'Converted',            bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
+}
+
+// Phase 1: "Active" means submitted (awaiting review).
+const STATUS_TABS: { key: StatusFilter; label: string; match: (s: string) => boolean }[] = [
+  { key: 'active',              label: 'Active',              match: s => s === 'submitted' },
+  { key: 'needs_clarification', label: 'Needs Clarification', match: s => s === 'needs_clarification' },
+  { key: 'rejected',            label: 'Rejected',            match: s => s === 'rejected' },
+  { key: 'converted',           label: 'Converted',           match: s => s === 'converted' },
+  { key: 'all',                 label: 'All',                 match: () => true },
+]
+
+const LEAD_SOURCE_OPTIONS = [
+  { value: 'reference',       label: 'Reference' },
+  { value: 'repeat_customer', label: 'Repeat Customer' },
+  { value: 'whatsapp',        label: 'WhatsApp' },
+  { value: 'instagram',       label: 'Instagram' },
+  { value: 'website',         label: 'Website' },
+]
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmtAmount(n: number | null) {
+  if (n == null) return '—'
+  return '₹' + n.toLocaleString('en-IN')
+}
+
+function fmtDate(iso: string | null) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: string }) {
+  const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+      background: meta.bg, color: meta.color,
+      border: `1px solid ${meta.border}`,
+      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+    }}>
+      {meta.label}
+    </span>
+  )
+}
+
+// ── Submit Order Request modal ────────────────────────────────────────────────
+
+type RequestForm = {
+  client_name: string
+  requested_by: string
+  assigned_to: string
+  confirm_date: string
+  due_date: string
+  total_value: string
+  lead_source: string
+  notes: string
+}
+
+const EMPTY_FORM: RequestForm = {
+  client_name: '',
+  requested_by: '',
+  assigned_to: '',
+  confirm_date: '',
+  due_date: '',
+  total_value: '',
+  lead_source: '',
+  notes: '',
+}
+
+function SubmitRequestModal({
+  users,
+  currentUserId,
+  onClose,
+  onSubmitted,
+}: {
+  users: UserOption[]
+  currentUserId: string
+  onClose: () => void
+  onSubmitted: (requestNumber: string) => void
+}) {
+  // Default "Requested By" to the current user — the common case is submitting
+  // one's own request. It stays a required, editable selection.
+  const [form,   setForm]   = useState<RequestForm>({ ...EMPTY_FORM, requested_by: currentUserId })
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState<string | null>(null)
+  const supabase = useMemo(() => createClient(), [])
+
+  const set = (k: keyof RequestForm) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.client_name.trim()) { setError('Client name is required.'); return }
+    if (!form.requested_by)       { setError('Requested By is required.'); return }
+    setSaving(true)
+    setError(null)
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setError('Not authenticated.'); setSaving(false); return }
+
+    // No order number, no display_number: this only creates an order_requests
+    // row. request_number (ORD-REQ-YYYY-NNNN) is assigned by the database.
+    const payload = {
+      client_name:  form.client_name.trim(),
+      requested_by: form.requested_by,
+      assigned_to:  form.assigned_to  || null,
+      confirm_date: form.confirm_date || null,
+      due_date:     form.due_date     || null,
+      total_value:  form.total_value  ? parseFloat(form.total_value) : null,
+      lead_source:  form.lead_source  || null,
+      notes:        form.notes.trim() || null,
+      created_by:   session.user.id,
+    }
+
+    const { data: created, error: insertErr } = await supabase
+      .from('order_requests')
+      .insert(payload)
+      .select('request_number')
+      .single()
+
+    if (insertErr || !created) {
+      setError(insertErr?.message ?? 'Failed to submit order request.')
+      setSaving(false)
+      return
+    }
+
+    onSubmitted(created.request_number)
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: 'flex', flexDirection: 'column', gap: '4px',
+    fontSize: '11px', fontWeight: 600, color: colors.muted,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+  }
+  const inputStyle: React.CSSProperties = {
+    padding: '7px 10px', borderRadius: '6px',
+    border: `1px solid ${colors.border}`,
+    background: colors.raised, color: colors.primary,
+    fontSize: '13px', width: '100%', boxSizing: 'border-box',
+    outline: 'none',
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{
+        background: colors.base,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '12px',
+        width: '100%', maxWidth: '540px',
+        maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
+        }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Submit Order Request</div>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+              A request number is assigned on submission. No order is created yet.
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, display: 'flex' }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <label style={labelStyle}>
+            Client Name *
+            <input style={inputStyle} value={form.client_name} onChange={set('client_name')} placeholder="Client name" required />
+          </label>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <label style={labelStyle}>
+              Requested By *
+              <select style={inputStyle} value={form.requested_by} onChange={set('requested_by')} required>
+                <option value="">— Select —</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Assigned To
+              <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
+                <option value="">— Select —</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <label style={labelStyle}>
+              Expected Confirmation
+              <input type="date" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
+            </label>
+            <label style={labelStyle}>
+              Expected Due Date
+              <input type="date" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
+            </label>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <label style={labelStyle}>
+              Approx. Value (₹)
+              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} placeholder="0" />
+            </label>
+            <label style={labelStyle}>
+              Lead Source
+              <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
+                <option value="">— Select —</option>
+                {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <label style={labelStyle}>
+            Notes
+            <textarea
+              style={{ ...inputStyle, minHeight: '72px', resize: 'vertical', fontFamily: 'inherit' }}
+              value={form.notes}
+              onChange={set('notes')}
+              placeholder="Any additional notes…"
+            />
+          </label>
+
+          {error && (
+            <div style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px' }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+            <button type="button" onClick={onClose} style={{
+              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer',
+            }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} style={{
+              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: '#DC1F2E', border: 'none', color: '#fff',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.7 : 1,
+            }}>
+              {saving ? 'Submitting…' : 'Submit Request'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function OrderRequestsPage() {
+  const [pageLoading,   setPageLoading]   = useState(true)
+  const [profile,       setProfile]       = useState<UserProfile | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string>('')
+  const [requests,      setRequests]      = useState<OrderRequest[]>([])
+  const [users,         setUsers]         = useState<UserOption[]>([])
+  const [listLoading,   setListLoading]   = useState(false)
+  const [search,        setSearch]        = useState('')
+  const [statusTab,     setStatusTab]     = useState<StatusFilter>('active')
+  const [showModal,     setShowModal]     = useState(false)
+  const [successNumber, setSuccessNumber] = useState<string | null>(null)
+
+  const router   = useRouter()
+  const supabase = useMemo(() => createClient(), [])
+
+  const loadRequests = async () => {
+    setListLoading(true)
+    const { data } = await supabase
+      .from('order_requests')
+      .select(`
+        id, request_number, client_name,
+        requested_by, assigned_to,
+        confirm_date, due_date, total_value, status, created_at,
+        requested_by_user:users!requested_by(full_name),
+        assigned_to_user:users!assigned_to(full_name)
+      `)
+      .order('created_at', { ascending: false })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mapped: OrderRequest[] = ((data ?? []) as any[]).map(r => ({
+      ...r,
+      requested_by_name: r.requested_by_user?.full_name ?? undefined,
+      assigned_to_name:  r.assigned_to_user?.full_name  ?? undefined,
+      requested_by_user: undefined,
+      assigned_to_user:  undefined,
+    }))
+    setRequests(mapped)
+    setListLoading(false)
+  }
+
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+      setCurrentUserId(session.user.id)
+
+      const { data: me } = await supabase
+        .from('users')
+        .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code')
+        .eq('id', session.user.id)
+        .single()
+      setProfile(me as UserProfile)
+
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, full_name')
+        .eq('is_active', true)
+        .order('full_name')
+      setUsers((usersData ?? []) as UserOption[])
+
+      await loadRequests()
+      setPageLoading(false)
+    }
+    init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
+
+  const visible = useMemo(() => {
+    const tab = STATUS_TABS.find(t => t.key === statusTab) ?? STATUS_TABS[0]
+    let list = requests.filter(r => tab.match(r.status))
+    const q = search.trim().toLowerCase()
+    if (!q) return list
+    return list.filter(r =>
+      r.request_number.toLowerCase().includes(q) ||
+      r.client_name.toLowerCase().includes(q)
+    )
+  }, [requests, statusTab, search])
+
+  if (pageLoading) return <LoadingScreen />
+
+  return (
+    <OrdersLayout
+      profile={profile}
+      title="Order Requests"
+      subtitle="Submit and track order requests before they become official orders."
+      onSignOut={handleSignOut}
+      onRefresh={loadRequests}
+    >
+      {successNumber && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
+          background: '#F0FDF4', border: '1px solid #BBF7D0',
+          fontSize: '13px', color: '#166534',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle2 size={15} />
+            Request submitted — <strong>{successNumber}</strong>. No order has been created yet.
+          </span>
+          <button
+            onClick={() => setSuccessNumber(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* ── Search + tabs + submit button ── */}
+      <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <input
+            className="boe-input"
+            placeholder="Search by request number or client…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ maxWidth: '320px', flex: 1, minWidth: '180px' }}
+          />
+          <button
+            onClick={() => setShowModal(true)}
+            style={{
+              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: '#DC1F2E', border: 'none', color: '#fff', cursor: 'pointer',
+              whiteSpace: 'nowrap', flexShrink: 0,
+            }}
+          >
+            + New Order Request
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {STATUS_TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setStatusTab(tab.key)}
+              style={{
+                padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                cursor: 'pointer', border: '1px solid',
+                borderColor: statusTab === tab.key ? '#DC1F2E' : colors.border,
+                background:   statusTab === tab.key ? 'rgba(220,31,46,0.07)' : 'transparent',
+                color:        statusTab === tab.key ? '#DC1F2E' : colors.secondary,
+                transition: 'all 0.1s',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Table ── */}
+      <div style={{
+        background: colors.base,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '10px',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
+          fontSize: '12px', color: colors.muted,
+        }}>
+          {listLoading ? 'Loading…' : `${visible.length} request${visible.length !== 1 ? 's' : ''}`}
+        </div>
+
+        {listLoading ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
+        ) : visible.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
+            No order requests found.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  {['Request #', 'Client', 'Requested By', 'Assigned To', 'Expected Confirmation', 'Expected Due Date', 'Approx. Value', 'Status', 'Submitted On', 'Action'].map(h => (
+                    <th key={h} style={{
+                      padding: '8px 16px', textAlign: 'left',
+                      fontSize: '10px', fontWeight: 600, color: colors.muted,
+                      textTransform: 'uppercase', letterSpacing: '0.05em',
+                      whiteSpace: 'nowrap',
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map(r => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                    <td style={{ padding: '11px 16px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
+                      {r.request_number}
+                    </td>
+                    <td style={{ padding: '11px 16px', color: colors.primary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.client_name}
+                    </td>
+                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                      {r.requested_by_name ?? '—'}
+                    </td>
+                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                      {r.assigned_to_name ?? '—'}
+                    </td>
+                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                      {fmtDate(r.confirm_date)}
+                    </td>
+                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                      {fmtDate(r.due_date)}
+                    </td>
+                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                      {fmtAmount(r.total_value)}
+                    </td>
+                    <td style={{ padding: '11px 16px' }}>
+                      <StatusBadge status={r.status} />
+                    </td>
+                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                      {fmtDate(r.created_at)}
+                    </td>
+                    <td style={{ padding: '11px 16px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                      —
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <SubmitRequestModal
+          users={users}
+          currentUserId={currentUserId}
+          onClose={() => setShowModal(false)}
+          onSubmitted={requestNumber => {
+            setShowModal(false)
+            setSuccessNumber(requestNumber)
+            loadRequests()
+          }}
+        />
+      )}
+    </OrdersLayout>
+  )
+}

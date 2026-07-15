@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, List, Home, RefreshCw } from 'lucide-react'
+import { LayoutDashboard, List, ClipboardList, Home, RefreshCw } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
@@ -58,8 +58,9 @@ export function OrdersLayout({
   }
 
   const navItems = [
-    { label: 'Dashboard',   path: '/orders',     icon: <LayoutDashboard size={15} strokeWidth={1.8} />, exact: true },
-    { label: 'All Orders',  path: '/orders/all', icon: <List            size={15} strokeWidth={1.8} />, exact: false },
+    { label: 'Dashboard',       path: '/orders',          icon: <LayoutDashboard size={15} strokeWidth={1.8} />, exact: true },
+    { label: 'All Orders',      path: '/orders/all',      icon: <List            size={15} strokeWidth={1.8} />, exact: false },
+    { label: 'Order Requests',  path: '/orders/requests', icon: <ClipboardList   size={15} strokeWidth={1.8} />, exact: false },
   ]
 
   return (

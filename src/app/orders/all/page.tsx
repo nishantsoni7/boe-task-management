@@ -7,7 +7,6 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
-import { X } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -24,8 +23,6 @@ type Order = {
   total_value: number | null
   status: string
 }
-
-type UserOption = { id: string; full_name: string }
 
 type StatusFilter = 'all' | 'requested' | 'running' | 'on_hold' | 'ready_for_dispatch' | 'dispatched' | 'cancelled'
 
@@ -48,14 +45,6 @@ const STATUS_TABS: { key: StatusFilter; label: string }[] = [
   { key: 'ready_for_dispatch',label: 'Ready to Dispatch' },
   { key: 'dispatched',        label: 'Dispatched' },
   { key: 'cancelled',         label: 'Cancelled' },
-]
-
-const LEAD_SOURCE_OPTIONS = [
-  { value: 'reference',       label: 'Reference' },
-  { value: 'repeat_customer', label: 'Repeat Customer' },
-  { value: 'whatsapp',        label: 'WhatsApp' },
-  { value: 'instagram',       label: 'Instagram' },
-  { value: 'website',         label: 'Website' },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -92,247 +81,15 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-// ── New Order Modal ───────────────────────────────────────────────────────────
-
-type NewOrderForm = {
-  client_name: string
-  requested_by: string
-  assigned_to: string
-  confirm_date: string
-  due_date: string
-  total_value: string
-  lead_source: string
-  notes: string
-}
-
-const EMPTY_FORM: NewOrderForm = {
-  client_name: '',
-  requested_by: '',
-  assigned_to: '',
-  confirm_date: '',
-  due_date: '',
-  total_value: '',
-  lead_source: '',
-  notes: '',
-}
-
-function NewOrderModal({
-  users,
-  onClose,
-  onCreated,
-}: {
-  users: UserOption[]
-  onClose: () => void
-  onCreated: (id: string) => void
-}) {
-  const [form,    setForm]    = useState<NewOrderForm>(EMPTY_FORM)
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
-  const supabase = useMemo(() => createClient(), [])
-
-  const set = (k: keyof NewOrderForm) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-      setForm(f => ({ ...f, [k]: e.target.value }))
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.client_name.trim()) { setError('Client name is required.'); return }
-    setSaving(true)
-    setError(null)
-
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { setError('Not authenticated.'); setSaving(false); return }
-
-    // Allocate the order number from the monotonic DB sequence only now,
-    // at the moment of actual creation — never on mount/preview/cancel.
-    const { data: nextNumber, error: numberErr } = await supabase.rpc('next_order_display_number')
-    if (numberErr || !nextNumber) {
-      setError('Failed to reserve order number. Please try again.')
-      setSaving(false)
-      return
-    }
-
-    const payload = {
-      display_number: nextNumber,
-      client_name:    form.client_name.trim(),
-      requested_by:   form.requested_by || null,
-      assigned_to:    form.assigned_to  || null,
-      confirm_date:   form.confirm_date || null,
-      due_date:       form.due_date     || null,
-      total_value:    form.total_value  ? parseFloat(form.total_value) : null,
-      lead_source:    form.lead_source  || null,
-      notes:          form.notes.trim() || null,
-      status:         'requested',
-      created_by:     session.user.id,
-    }
-
-    const { data: newOrder, error: insertErr } = await supabase
-      .from('orders')
-      .insert(payload)
-      .select('id')
-      .single()
-
-    if (insertErr || !newOrder) {
-      setError(insertErr?.message ?? 'Failed to create order.')
-      setSaving(false)
-      return
-    }
-
-    await supabase.from('order_activity_log').insert({
-      order_id:   newOrder.id,
-      actor_id:   session.user.id,
-      event_type: 'created',
-      payload:    {},
-    })
-
-    onCreated(newOrder.id)
-  }
-
-  const labelStyle: React.CSSProperties = {
-    display: 'flex', flexDirection: 'column', gap: '4px',
-    fontSize: '11px', fontWeight: 600, color: colors.muted,
-    textTransform: 'uppercase', letterSpacing: '0.05em',
-  }
-  const inputStyle: React.CSSProperties = {
-    padding: '7px 10px', borderRadius: '6px',
-    border: `1px solid ${colors.border}`,
-    background: colors.raised, color: colors.primary,
-    fontSize: '13px', width: '100%', boxSizing: 'border-box',
-    outline: 'none',
-  }
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '16px',
-      }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div style={{
-        background: colors.base,
-        border: `1px solid ${colors.border}`,
-        borderRadius: '12px',
-        width: '100%', maxWidth: '540px',
-        maxHeight: '90vh', overflowY: 'auto',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-      }}>
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
-        }}>
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>New Order Request</div>
-            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-              Order number will be assigned after creation
-            </div>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, display: 'flex' }}>
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <label style={labelStyle}>
-            Client Name *
-            <input style={inputStyle} value={form.client_name} onChange={set('client_name')} placeholder="Client name" required />
-          </label>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <label style={labelStyle}>
-              Requested By
-              <select style={inputStyle} value={form.requested_by} onChange={set('requested_by')}>
-                <option value="">— Select —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
-            </label>
-            <label style={labelStyle}>
-              Assigned To
-              <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
-                <option value="">— Select —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <label style={labelStyle}>
-              Confirm Date
-              <input type="date" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
-            </label>
-            <label style={labelStyle}>
-              Due Date
-              <input type="date" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
-            </label>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <label style={labelStyle}>
-              Total Value (₹)
-              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} placeholder="0" />
-            </label>
-            <label style={labelStyle}>
-              Lead Source
-              <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
-                <option value="">— Select —</option>
-                {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <label style={labelStyle}>
-            Notes
-            <textarea
-              style={{ ...inputStyle, minHeight: '72px', resize: 'vertical', fontFamily: 'inherit' }}
-              value={form.notes}
-              onChange={set('notes')}
-              placeholder="Any additional notes…"
-            />
-          </label>
-
-          {error && (
-            <div style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px' }}>
-              {error}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-            <button type="button" onClick={onClose} style={{
-              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer',
-            }}>
-              Cancel
-            </button>
-            <button type="submit" disabled={saving} style={{
-              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: '#DC1F2E', border: 'none', color: '#fff',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              opacity: saving ? 0.7 : 1,
-            }}>
-              {saving ? 'Creating…' : 'Create Order'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AllOrdersPage() {
   const [pageLoading,  setPageLoading]  = useState(true)
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [orders,       setOrders]       = useState<Order[]>([])
-  const [users,        setUsers]        = useState<UserOption[]>([])
   const [listLoading,  setListLoading]  = useState(false)
   const [search,       setSearch]       = useState('')
   const [statusTab,    setStatusTab]    = useState<StatusFilter>('all')
-  const [showNewModal, setShowNewModal] = useState(false)
   const [deletedBanner, setDeletedBanner] = useState(false)
 
   const router       = useRouter()
@@ -387,13 +144,6 @@ export default function AllOrdersPage() {
         router.replace('/orders/all')
       }
 
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('id, full_name')
-        .eq('is_active', true)
-        .order('full_name')
-      setUsers((usersData ?? []) as UserOption[])
-
       await loadOrders()
       setPageLoading(false)
     }
@@ -416,8 +166,6 @@ export default function AllOrdersPage() {
       o.client_name.toLowerCase().includes(q)
     )
   }, [orders, statusTab, search])
-
-  const isAdmin = profile?.role === 'admin'
 
   if (pageLoading) return <LoadingScreen />
 
@@ -456,18 +204,16 @@ export default function AllOrdersPage() {
             onChange={e => setSearch(e.target.value)}
             style={{ maxWidth: '320px', flex: 1, minWidth: '180px' }}
           />
-          {isAdmin && (
-            <button
-              onClick={() => setShowNewModal(true)}
-              style={{
-                padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-                background: '#DC1F2E', border: 'none', color: '#fff', cursor: 'pointer',
-                whiteSpace: 'nowrap', flexShrink: 0,
-              }}
-            >
-              + New Order Request
-            </button>
-          )}
+          <button
+            onClick={() => router.push('/orders/requests')}
+            style={{
+              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: '#DC1F2E', border: 'none', color: '#fff', cursor: 'pointer',
+              whiteSpace: 'nowrap', flexShrink: 0,
+            }}
+          >
+            + New Order Request
+          </button>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {STATUS_TABS.map(tab => (
@@ -571,17 +317,6 @@ export default function AllOrdersPage() {
           </div>
         )}
       </div>
-
-      {showNewModal && (
-        <NewOrderModal
-          users={users}
-          onClose={() => setShowNewModal(false)}
-          onCreated={id => {
-            setShowNewModal(false)
-            router.push(`/orders/${id}`)
-          }}
-        />
-      )}
     </OrdersLayout>
   )
 }
