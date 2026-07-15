@@ -13,6 +13,7 @@ import { PaymentProofView } from '@/components/PaymentProofView'
 
 type PaymentRequest = {
   id: string
+  request_number: string
   client_name: string
   amount: number
   payment_date: string
@@ -256,6 +257,7 @@ function DetailsModal({
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
         border: `1px solid ${colors.border}`,
       }}>
+        <DetailRow label="Request No." value={r.request_number} />
         <DetailRow label="Client"       value={r.client_name} />
         <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
         <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
@@ -926,7 +928,7 @@ export default function ReceivedPaymentsPage() {
     const { data } = await supabase
       .from('finance_payment_requests')
       .select(`
-        id, client_name, amount, payment_date, payment_mode,
+        id, request_number, client_name, amount, payment_date, payment_mode,
         received_in, proof_note, order_number, order_id, sales_note,
         status, submitted_by, admin_note, created_at,
         submitted_by_user:users!submitted_by(full_name)

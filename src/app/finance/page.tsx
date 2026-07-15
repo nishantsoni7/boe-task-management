@@ -15,6 +15,7 @@ import { PaymentProofView } from '@/components/PaymentProofView'
 
 type PaymentRequest = {
   id: string
+  request_number: string
   client_name: string
   amount: number
   payment_date: string
@@ -340,6 +341,7 @@ function DetailsModal({
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
         border: `1px solid ${colors.border}`,
       }}>
+        <DetailRow label="Request No."  value={r.request_number} />
         <DetailRow label="Client"       value={r.client_name} />
         <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
         <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
@@ -1202,6 +1204,7 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
         border: `1px solid ${colors.border}`,
       }}>
+        <DetailRow label="Request No." value={r.request_number} />
         <DetailRow label="Client"       value={r.client_name} />
         <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
         <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
@@ -1372,6 +1375,7 @@ function PaymentsTable({
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
         <thead>
           <tr>
+            <th style={TH_STYLE}>Request No.</th>
             <th style={TH_STYLE}>Client</th>
             <th style={TH_STYLE}>Order No.</th>
             <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
@@ -1406,6 +1410,9 @@ function PaymentsTable({
                 onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
                 onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
               >
+                <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
+                  {r.request_number}
+                </td>
                 <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                   {r.client_name}
                   {isAdmin && isPending && (
@@ -1548,7 +1555,7 @@ export default function FinancePage() {
     const { data } = await supabase
       .from('finance_payment_requests')
       .select(`
-        id, client_name, amount, payment_date, payment_mode,
+        id, request_number, client_name, amount, payment_date, payment_mode,
         received_in, proof_note, order_number, order_id, sales_note,
         payment_against, status, submitted_by, admin_note, created_at,
         submitted_by_user:users!submitted_by(full_name)
