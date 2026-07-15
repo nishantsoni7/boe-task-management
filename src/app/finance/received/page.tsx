@@ -7,6 +7,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
+import { PaymentProofView } from '@/components/PaymentProofView'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -272,6 +273,8 @@ function DetailsModal({
         <DetailRow label="Submitted" value={fmtDate(r.created_at)} />
         {r.submitted_by_name && <DetailRow label="Submitted By" value={r.submitted_by_name} />}
       </div>
+
+      {supabase && <PaymentProofView supabase={supabase} paymentRequestId={r.id} />}
 
       {isAdmin && supabase && onCorrected && (
         <div style={{

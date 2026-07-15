@@ -7,6 +7,9 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
+import { compressImageFile } from '@/lib/attachment-utils'
+import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
+import { PaymentProofView } from '@/components/PaymentProofView'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -356,6 +359,8 @@ function DetailsModal({
         {r.submitted_by_name && <DetailRow label="Submitted By" value={r.submitted_by_name} />}
       </div>
 
+      {supabase && <PaymentProofView supabase={supabase} paymentRequestId={r.id} />}
+
       {/* Admin-only status correction */}
       {isAdmin && supabase && onCorrected && (
         <div style={{
@@ -452,6 +457,11 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
+  // Optional payment-proof attachment (uploaded to the private payment-proofs bucket)
+  const [attachFile,  setAttachFile]  = useState<File | null>(null)
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   // Order search — only used when payment_against = 'existing_order'
   const [orderQuery,     setOrderQuery]     = useState('')
   const [orderResults,   setOrderResults]   = useState<OrderResult[]>([])
@@ -494,8 +504,51 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
     form.amount.trim() &&
     form.paymentDate &&
     form.proofNote.trim() &&
+    !attachError &&
     (!isExistingOrder || selectedOrder !== null)
   )
+
+  // Uploads the selected proof to the private bucket and records its metadata.
+  // Returns null on success, or an error string. On any failure it removes a
+  // partially-uploaded object so no orphaned file remains; the CALLER is then
+  // responsible for removing the payment request (and reserved order) it made,
+  // so the user is never told success when the proof was not persisted.
+  const persistProof = async (paymentRequestId: string): Promise<string | null> => {
+    if (!attachFile) return null
+    // Compression can change size/type, so re-validate the prepared file.
+    const prepared = await compressImageFile(attachFile)
+    const vErr = validateProofFile(prepared)
+    if (vErr) return vErr
+
+    // Upload under the type the bucket will actually accept. validateProofFile
+    // guarantees this resolves, but fail closed rather than upload as octet-stream.
+    const contentType = proofContentType(prepared)
+    if (!contentType) return 'Only images (JPG, PNG, WEBP, GIF) or PDF files are allowed.'
+
+    const path = buildProofPath(paymentRequestId, prepared.name)
+    const { error: upErr } = await supabase.storage
+      .from(PROOF_BUCKET)
+      .upload(path, prepared, { upsert: false, contentType })
+    if (upErr) return 'Could not upload the payment proof. Please try again.'
+
+    const { error: metaErr } = await supabase
+      .from('payment_proof_attachments')
+      .insert({
+        payment_request_id: paymentRequestId,
+        storage_path:       path,
+        file_name:          attachFile.name,
+        file_type:          contentType,
+        file_size:          prepared.size,
+        created_by:         userId,
+      })
+    if (metaErr) {
+      // Object uploaded but metadata failed — remove the object. The payment
+      // request still exists here, so the storage delete policy authorizes this.
+      await supabase.storage.from(PROOF_BUCKET).remove([path])
+      return 'Could not save the payment proof. Please try again.'
+    }
+    return null
+  }
 
   const handleSubmit = async () => {
     if (!canSubmit) return
@@ -519,7 +572,7 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
 
     if (isExistingOrder) {
       // Existing order — link directly, no order creation needed
-      const { error: dbError } = await supabase
+      const { data: created, error: dbError } = await supabase
         .from('finance_payment_requests')
         .insert({
           client_name:     form.clientName.trim(),
@@ -535,8 +588,25 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
           status:          'pending_approval',
           submitted_by:    userId,
         })
+        .select('id')
+        .single()
+      if (dbError || !created) { setError(dbError?.message ?? 'Failed to submit request.'); setSaving(false); return }
+
+      const proofErr = await persistProof(created.id)
+      if (proofErr) {
+        // Compensation: don't leave a request claiming a proof that wasn't saved.
+        const { error: delErr, count } = await supabase
+          .from('finance_payment_requests')
+          .delete({ count: 'exact' })
+          .eq('id', created.id)
+        const cleaned = !delErr && count !== 0
+        setError(cleaned
+          ? proofErr
+          : `${proofErr} The draft request could not be cleaned up automatically — please ask an admin to remove the duplicate for ${form.clientName.trim()}.`)
+        setSaving(false)
+        return
+      }
       setSaving(false)
-      if (dbError) { setError(dbError.message); return }
       onSaved()
       return
     }
@@ -572,7 +642,7 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
     }
 
     // Step 3: create the payment request linked to the reserved order
-    const { error: paymentErr } = await supabase
+    const { data: createdPayment, error: paymentErr } = await supabase
       .from('finance_payment_requests')
       .insert({
         client_name:     form.clientName.trim(),
@@ -588,14 +658,49 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
         status:          'pending_approval',
         submitted_by:    userId,
       })
+      .select('id')
+      .single()
 
-    setSaving(false)
-    if (paymentErr) {
+    if (paymentErr || !createdPayment) {
       // Roll back the reserved order to prevent orphaned order numbers
       await supabase.from('orders').delete().eq('id', newOrder.id)
-      setError(`Payment request failed: ${paymentErr.message}`)
+      setError(`Payment request failed: ${paymentErr?.message ?? 'unknown error'}`)
+      setSaving(false)
       return
     }
+
+    const proofErr = await persistProof(createdPayment.id)
+    if (proofErr) {
+      // Compensation: remove the proof-less request AND the reserved order, so
+      // the user is never told the proof saved when it did not.
+      //
+      // Both deletes are checked, because neither is guaranteed to succeed:
+      // orders DELETE is admin-only under the existing orders RLS, so for a
+      // Sales submitter the order delete silently removes zero rows and the
+      // reserved order survives. We report exactly what was left behind — and
+      // name the order number — instead of implying the state is clean.
+      const { error: reqErr, count: reqCount } = await supabase
+        .from('finance_payment_requests')
+        .delete({ count: 'exact' })
+        .eq('id', createdPayment.id)
+      const { error: ordErr, count: ordCount } = await supabase
+        .from('orders')
+        .delete({ count: 'exact' })
+        .eq('id', newOrder.id)
+
+      const leftovers = [
+        (reqErr || reqCount === 0) && 'the payment request',
+        (ordErr || ordCount === 0) && `the reserved order ${newOrder.display_number}`,
+      ].filter((s): s is string => Boolean(s))
+
+      setError(leftovers.length === 0
+        ? proofErr
+        : `${proofErr} Note: ${leftovers.join(' and ')} for ${form.clientName.trim()} could not be removed automatically — please ask an admin to delete it.`)
+      setSaving(false)
+      return
+    }
+
+    setSaving(false)
     onSaved()
   }
 
@@ -606,9 +711,6 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
     setOrderQuery('')
     setOrderResults([])
   }
-
-  const [attachFile, setAttachFile] = useState<File | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isHandoverMode = form.paymentMode === 'cash_in_hand' || form.paymentMode === 'hawala'
 
@@ -851,7 +953,19 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
                     type="file"
                     accept="image/*,.pdf"
                     style={{ display: 'none' }}
-                    onChange={e => setAttachFile(e.target.files?.[0] ?? null)}
+                    onChange={e => {
+                      const f = e.target.files?.[0] ?? null
+                      if (!f) { setAttachFile(null); setAttachError(null); return }
+                      const vErr = validateProofFile(f)
+                      if (vErr) {
+                        setAttachFile(null)
+                        setAttachError(vErr)
+                        if (fileInputRef.current) fileInputRef.current.value = ''
+                        return
+                      }
+                      setAttachError(null)
+                      setAttachFile(f)
+                    }}
                   />
                   <button
                     type="button"
@@ -862,6 +976,14 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
                     {attachFile ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '') : '📎 Attach'}
                   </button>
                 </div>
+                {attachError && (
+                  <span style={{ fontSize: '11px', color: colors.red, marginTop: '2px' }}>{attachError}</span>
+                )}
+                {attachFile && !attachError && (
+                  <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                    Attached: {attachFile.name} — proof is optional and stored privately.
+                  </span>
+                )}
               </Field>
 
             </div>
@@ -1101,6 +1223,8 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
           </div>
         )}
       </div>
+
+      <PaymentProofView supabase={supabase} paymentRequestId={r.id} />
 
       {/* Action selector */}
       <div>
