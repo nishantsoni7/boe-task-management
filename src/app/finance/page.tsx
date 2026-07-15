@@ -10,6 +10,7 @@ import type { UserProfile } from '@/lib/types'
 import { compressImageFile } from '@/lib/attachment-utils'
 import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
 import { PaymentProofView } from '@/components/PaymentProofView'
+import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -362,6 +363,7 @@ function DetailsModal({
       </div>
 
       {supabase && <PaymentProofView supabase={supabase} paymentRequestId={r.id} />}
+      {supabase && <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />}
 
       {/* Admin-only status correction */}
       {isAdmin && supabase && onCorrected && (
@@ -1228,6 +1230,7 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
       </div>
 
       <PaymentProofView supabase={supabase} paymentRequestId={r.id} />
+      <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
 
       {/* Action selector */}
       <div>

@@ -8,6 +8,7 @@ import { colors } from '@/lib/tokens'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
+import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -277,6 +278,7 @@ function DetailsModal({
       </div>
 
       {supabase && <PaymentProofView supabase={supabase} paymentRequestId={r.id} />}
+      {supabase && <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />}
 
       {isAdmin && supabase && onCorrected && (
         <div style={{
