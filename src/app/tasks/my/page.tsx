@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -17,9 +17,12 @@ import { useMyTasks, useUserNames } from '@/hooks/queries/useMyTasks'
 import {
   CheckCircle2, Star, AlertCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus, Pin,
+  Paperclip, X,
 } from 'lucide-react'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
 import { useToast, Toast } from '@/components/ui/toast'
+import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
+import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 
 
 function localDateStr(offsetDays = 0): string {
@@ -404,10 +407,12 @@ function CreateSelfTaskModal({
   profile,
   onClose,
   onCreated,
+  onError,
 }: {
   profile: UserProfile
   onClose: () => void
   onCreated: (task: Task) => void
+  onError: (msg: string) => void
 }) {
   const [title,         setTitle]         = useState('')
   const [description,   setDescription]   = useState('')
@@ -419,9 +424,33 @@ function CreateSelfTaskModal({
   const [priorityDirty, setPriorityDirty] = useState(false)
   const [saving,        setSaving]        = useState(false)
   const [saveError,     setSaveError]     = useState<string | null>(null)
+  const [attachFiles,   setAttachFiles]   = useState<File[]>([])
+  const [attachError,   setAttachError]   = useState<string | null>(null)
+  const attachInputRef = useRef<HTMLInputElement>(null)
   const supabase = useMemo(() => createClient(), [])
 
   const canSave = !saving && title.trim().length > 0 && dueDate !== '' && priority !== ''
+
+  // Shared entry point for browse, drag-and-drop, and paste — keeps validation/behavior
+  // identical no matter how a file gets into the upload flow.
+  const addFiles = async (incoming: File[]) => {
+    if (incoming.length === 0) return
+    const { accepted, rejectedNames } = filterAcceptedFiles(incoming)
+    const rejectMsg = rejectedNames.length > 0 ? `Unsupported file type: ${rejectedNames.join(', ')}` : null
+    if (accepted.length === 0) { setAttachError(rejectMsg); return }
+    const merged = [...attachFiles, ...accepted]
+    const { ready, error } = await prepareFiles(merged)
+    setAttachError(error ?? rejectMsg)
+    if (!error) setAttachFiles(ready)
+  }
+
+  const handleAttachChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? [])
+    await addFiles(selected)
+    if (attachInputRef.current) attachInputRef.current.value = ''
+  }
+
+  const { dropActive: attachDropActive, onDragOver, onDragEnter, onDragLeave, onDrop, onPaste } = useDragAndPaste(addFiles)
 
   const handleSubmit = async () => {
     setTitleDirty(true)
@@ -449,6 +478,16 @@ function CreateSelfTaskModal({
       if (!ok) { setSaving(false); return }
     }
 
+    // Validate attachments before creating the task
+    if (attachFiles.length) {
+      const { error: prepErr } = await prepareFiles(attachFiles)
+      if (prepErr) {
+        setAttachError(prepErr)
+        setSaving(false)
+        return
+      }
+    }
+
     const now = new Date().toISOString()
     const { data: task, error } = await supabase
       .from('tasks')
@@ -473,7 +512,31 @@ function CreateSelfTaskModal({
         task_id: task.id, actor_id: session.user.id,
         action: 'created', note: 'Task created for self',
       })
+
+      // Upload attachments and link to the new task
+      let attachUploadFailed = false
+      if (attachFiles.length) {
+        const { ready } = await prepareFiles(attachFiles)
+        for (const file of ready) {
+          const ext  = getExt(file.name)
+          const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+          const { error: upErr } = await supabase.storage
+            .from('task-attachments')
+            .upload(path, file, { upsert: false })
+          if (upErr) { console.error('[attach upload]', upErr); attachUploadFailed = true; continue }
+          const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
+          await supabase.from('task_attachments').insert({
+            task_id:    task.id,
+            url:        urlData.publicUrl,
+            file_name:  file.name,
+            file_type:  getFileTypeLabel(file.name),
+            created_by: session.user.id,
+          })
+        }
+      }
+
       onCreated(task as unknown as Task)
+      if (attachUploadFailed) onError('Task created, but some attachments failed to upload.')
     } else {
       setSaveError('Failed to create task. Please try again.')
     }
@@ -586,11 +649,81 @@ function CreateSelfTaskModal({
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value)}
+            onPaste={onPaste}
             placeholder="Context or notes for this task…"
             rows={2}
             className="boe-input"
             style={{ resize: 'none', width: '100%', boxSizing: 'border-box' }}
           />
+        </div>
+
+        {/* Attachments */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: colors.muted, display: 'block', marginBottom: '5px' }}>
+            Attachments <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
+          </label>
+          <input
+            ref={attachInputRef}
+            type="file"
+            multiple
+            onChange={handleAttachChange}
+            style={{ display: 'none' }}
+            accept={ACCEPTED_ATTACHMENT_TYPES.join(',')}
+          />
+          {attachFiles.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
+              {attachFiles.map((f, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '6px', background: colors.raised, border: `1px solid ${colors.border}` }}>
+                  <Paperclip size={11} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: '11px', color: colors.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                  <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
+                  <button
+                    onClick={() => { setAttachFiles(prev => prev.filter((_, j) => j !== i)); setAttachError(null) }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                  >
+                    <X size={11} color={colors.muted} strokeWidth={2} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div
+            style={{ position: 'relative' }}
+            onDragOver={onDragOver}
+            onDragEnter={onDragEnter}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+          >
+            <button
+              onClick={() => attachInputRef.current?.click()}
+              style={{
+                width: '100%', padding: '7px 0', borderRadius: '7px',
+                border: `1.5px dashed ${attachDropActive ? colors.blue : colors.border}`,
+                background: attachDropActive ? colors.blueTint : colors.raised,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} />
+              <span style={{ fontSize: '11px', color: colors.secondary }}>Add files</span>
+              <span style={{ fontSize: '10px', color: colors.muted }}>— 10 MB total</span>
+            </button>
+            {attachDropActive && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                pointerEvents: 'none',
+                fontSize: '11px', fontWeight: 600, color: colors.blue,
+                background: 'rgba(255,255,255,0.6)', borderRadius: '7px',
+              }}>
+                Drop files to attach
+              </div>
+            )}
+          </div>
+          <p style={{ fontSize: '10px', color: colors.muted, marginTop: '4px' }}>
+            Drop files here, paste copied files into the note, or browse
+          </p>
+          {attachError && <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
         </div>
 
         {/* Important toggle */}
@@ -649,7 +782,7 @@ function CreateSelfTaskModal({
               transition: 'background 0.12s',
             }}
           >
-            {saving ? 'Creating…' : 'Create Task'}
+            {saving ? (attachFiles.length ? 'Uploading & Saving…' : 'Creating…') : 'Create Task'}
           </button>
         </div>
       </div>
@@ -1627,6 +1760,7 @@ export default function MyTasksPage() {
           profile={profile}
           onClose={() => setShowCreateModal(false)}
           onCreated={handleTaskCreated}
+          onError={msg => showToast(msg, 'error')}
         />
       )}
       <Toast toast={toast} onDismiss={dismissToast} />

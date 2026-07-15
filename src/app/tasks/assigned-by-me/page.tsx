@@ -18,7 +18,8 @@ import {
   List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert,
   Search, Pencil, Trash2, Plus, Paperclip, X,
 } from 'lucide-react'
-import { prepareFiles, getExt, getFileTypeLabel } from '@/lib/attachment-utils'
+import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
+import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const TASK_COLUMNS = [
@@ -415,15 +416,26 @@ function DelegateTaskModal({
 
   const canSave = !saving && title.trim().length > 0 && assigneeId !== '' && dueDate !== '' && priority !== ''
 
+  // Shared entry point for browse, drag-and-drop, and paste — keeps validation/behavior
+  // identical no matter how a file gets into the upload flow.
+  const addFiles = async (incoming: File[]) => {
+    if (incoming.length === 0) return
+    const { accepted, rejectedNames } = filterAcceptedFiles(incoming)
+    const rejectMsg = rejectedNames.length > 0 ? `Unsupported file type: ${rejectedNames.join(', ')}` : null
+    if (accepted.length === 0) { setAttachError(rejectMsg); return }
+    const merged = [...attachFiles, ...accepted]
+    const { ready, error } = await prepareFiles(merged)
+    setAttachError(error ?? rejectMsg)
+    if (!error) setAttachFiles(ready)
+  }
+
   const handleAttachChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files ?? [])
-    if (!selected.length) return
-    const merged = [...attachFiles, ...selected]
-    const { ready, error } = await prepareFiles(merged)
-    setAttachError(error)
-    if (!error) setAttachFiles(ready)
+    await addFiles(selected)
     if (attachInputRef.current) attachInputRef.current.value = ''
   }
+
+  const { dropActive: attachDropActive, onDragOver, onDragEnter, onDragLeave, onDrop, onPaste } = useDragAndPaste(addFiles)
 
   const handleSubmit = async () => {
     setTitleDirty(true)
@@ -652,6 +664,7 @@ function DelegateTaskModal({
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value)}
+            onPaste={onPaste}
             placeholder="Context or instructions for the assignee…"
             rows={2}
             className="boe-input"
@@ -668,7 +681,7 @@ function DelegateTaskModal({
             multiple
             onChange={handleAttachChange}
             style={{ display: 'none' }}
-            accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+            accept={ACCEPTED_ATTACHMENT_TYPES.join(',')}
           />
           {attachFiles.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
@@ -687,18 +700,42 @@ function DelegateTaskModal({
               ))}
             </div>
           )}
-          <button
-            onClick={() => attachInputRef.current?.click()}
-            style={{
-              width: '100%', padding: '7px 0', borderRadius: '7px',
-              border: `1.5px dashed ${colors.border}`, background: colors.raised,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-            }}
+          <div
+            style={{ position: 'relative' }}
+            onDragOver={onDragOver}
+            onDragEnter={onDragEnter}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
           >
-            <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} />
-            <span style={{ fontSize: '11px', color: colors.secondary }}>Add files</span>
-            <span style={{ fontSize: '10px', color: colors.muted }}>— 10 MB total</span>
-          </button>
+            <button
+              onClick={() => attachInputRef.current?.click()}
+              style={{
+                width: '100%', padding: '7px 0', borderRadius: '7px',
+                border: `1.5px dashed ${attachDropActive ? colors.blue : colors.border}`,
+                background: attachDropActive ? colors.blueTint : colors.raised,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} />
+              <span style={{ fontSize: '11px', color: colors.secondary }}>Add files</span>
+              <span style={{ fontSize: '10px', color: colors.muted }}>— 10 MB total</span>
+            </button>
+            {attachDropActive && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                pointerEvents: 'none',
+                fontSize: '11px', fontWeight: 600, color: colors.blue,
+                background: 'rgba(255,255,255,0.6)', borderRadius: '7px',
+              }}>
+                Drop files to attach
+              </div>
+            )}
+          </div>
+          <p style={{ fontSize: '10px', color: colors.muted, marginTop: '4px' }}>
+            Drop files here, paste copied files into the description, or browse
+          </p>
           {attachError && <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>{attachError}</p>}
         </div>
 

@@ -7,8 +7,9 @@ import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { prepareFiles, getExt, getFileTypeLabel } from '@/lib/attachment-utils'
+import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { Paperclip, X, Info } from 'lucide-react'
+import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 
 // Every quotation request is assigned to this user (resolved by email at init).
 const DEFAULT_QUOTATION_OWNER = 'admin@bestofexports.com'
@@ -70,15 +71,27 @@ export default function NewQuotationRequestPage() {
     router.push('/login')
   }
 
+  // Shared entry point for browse, drag-and-drop, and paste — keeps validation/behavior
+  // identical no matter how a file gets into the upload flow.
+  const addFiles = async (incoming: File[]) => {
+    if (incoming.length === 0) return
+    setAttachDirty(true)
+    const { accepted, rejectedNames } = filterAcceptedFiles(incoming)
+    const rejectMsg = rejectedNames.length > 0 ? `Unsupported file type: ${rejectedNames.join(', ')}` : null
+    if (accepted.length === 0) { setAttachError(rejectMsg); return }
+    const merged = [...attachFiles, ...accepted]
+    const { ready, error } = await prepareFiles(merged)
+    setAttachError(error ?? rejectMsg)
+    if (!error) setAttachFiles(ready)
+  }
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files ?? [])
-    if (!selected.length) return
-    const merged = [...attachFiles, ...selected]
-    const { ready, error } = await prepareFiles(merged)
-    setAttachError(error)
-    if (!error) { setAttachFiles(ready); setAttachDirty(true) }
+    await addFiles(selected)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
+
+  const { dropActive: attachDropActive, onDragOver, onDragEnter, onDragLeave, onDrop, onPaste } = useDragAndPaste(addFiles)
 
   const handleSubmit = async () => {
     setNameDirty(true)
@@ -316,7 +329,7 @@ export default function NewQuotationRequestPage() {
               multiple
               onChange={handleFileChange}
               style={{ display: 'none' }}
-              accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+              accept={ACCEPTED_ATTACHMENT_TYPES.join(',')}
             />
             {attachFiles.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
@@ -339,19 +352,42 @@ export default function NewQuotationRequestPage() {
                 ))}
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                width: '100%', height: '42px', boxSizing: 'border-box',
-                borderRadius: '8px', border: `1.5px dashed rgba(155,111,212,0.30)`,
-                background: 'rgba(155,111,212,0.03)', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-              }}
+            <div
+              style={{ position: 'relative' }}
+              onDragOver={onDragOver}
+              onDragEnter={onDragEnter}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
             >
-              <Paperclip size={13} color="#6B4FA0" strokeWidth={1.8} />
-              <span style={{ fontSize: '12px', color: '#6B4FA0' }}>Add drawings, photos or spec sheet</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  width: '100%', height: '42px', boxSizing: 'border-box',
+                  borderRadius: '8px', border: `1.5px dashed ${attachDropActive ? '#6B4FA0' : 'rgba(155,111,212,0.30)'}`,
+                  background: attachDropActive ? 'rgba(155,111,212,0.08)' : 'rgba(155,111,212,0.03)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  transition: 'border-color 0.15s, background 0.15s',
+                }}
+              >
+                <Paperclip size={13} color="#6B4FA0" strokeWidth={1.8} />
+                <span style={{ fontSize: '12px', color: '#6B4FA0' }}>Add drawings, photos or spec sheet</span>
+              </button>
+              {attachDropActive && (
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  pointerEvents: 'none',
+                  fontSize: '12px', fontWeight: 600, color: '#6B4FA0',
+                  background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
+                }}>
+                  Drop files to attach
+                </div>
+              )}
+            </div>
+            <p style={{ fontSize: '10px', color: colors.muted, marginTop: '4px' }}>
+              Drop files here, paste copied files into the notes, or browse
+            </p>
             {attachDirty && attachFiles.length === 0 && !attachError && (
               <p style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>
                 Please attach at least one file for the quotation request.
@@ -368,6 +404,7 @@ export default function NewQuotationRequestPage() {
             <textarea
               value={requirement}
               onChange={e => setRequirement(e.target.value)}
+              onPaste={onPaste}
               placeholder="Product type, quantity, finish, special requirements, budget range…"
               rows={3}
               className="boe-input"
