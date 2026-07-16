@@ -22,8 +22,21 @@ type OrderRequest = {
   confirm_date: string | null
   due_date: string | null
   total_value: number | null
+  lead_source: string | null
+  notes: string | null
   status: string
   created_at: string
+  converted_order_id: string | null
+  converted_order_number?: string
+}
+
+// Structured result returned by convert_order_request_to_order().
+type ConvertResult = {
+  order_request_id: string
+  request_number: string
+  order_id: string
+  order_display_number: string
+  converted_at: string
 }
 
 type UserOption = { id: string; full_name: string }
@@ -303,6 +316,151 @@ function SubmitRequestModal({
   )
 }
 
+// ── Convert to Order modal (admin only) ───────────────────────────────────────
+// Confirmation only: every value that ends up on the official Order is derived
+// server-side by convert_order_request_to_order(). There is deliberately no
+// Order-number input and no editing of request fields here.
+
+function ConvertModal({
+  request,
+  onClose,
+  onConverted,
+}: {
+  request: OrderRequest
+  onClose: () => void
+  onConverted: (result: ConvertResult) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState<string | null>(null)
+  const supabase = useMemo(() => createClient(), [])
+
+  const handleConvert = async () => {
+    if (saving) return  // guards against double-clicks; the RPC is the real guard
+    setSaving(true)
+    setError(null)
+
+    const { data, error: rpcErr } = await supabase.rpc('convert_order_request_to_order', {
+      p_order_request_id: request.id,
+    })
+
+    if (rpcErr || !data) {
+      setError(rpcErr?.message ?? 'Conversion failed.')
+      setSaving(false)
+      return
+    }
+
+    onConverted(data as ConvertResult)
+  }
+
+  const rowStyle: React.CSSProperties = {
+    display: 'flex', justifyContent: 'space-between', gap: '16px',
+    padding: '7px 0', borderBottom: `1px solid ${colors.border}`, fontSize: '13px',
+  }
+  const keyStyle: React.CSSProperties = {
+    color: colors.muted, fontSize: '11px', fontWeight: 600,
+    textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
+  }
+  const valStyle: React.CSSProperties = { color: colors.primary, textAlign: 'right' }
+
+  const carried: { label: string; value: string }[] = [
+    { label: 'Client',                 value: request.client_name },
+    { label: 'Requested By',           value: request.requested_by_name ?? '—' },
+    { label: 'Assigned To',            value: request.assigned_to_name ?? '—' },
+    { label: 'Expected Confirmation',  value: fmtDate(request.confirm_date) },
+    { label: 'Expected Due Date',      value: fmtDate(request.due_date) },
+    { label: 'Approx. Value',          value: fmtAmount(request.total_value) },
+    { label: 'Lead Source',            value: LEAD_SOURCE_OPTIONS.find(o => o.value === request.lead_source)?.label ?? '—' },
+    { label: 'Notes',                  value: request.notes?.trim() || '—' },
+  ]
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget && !saving) onClose() }}
+    >
+      <div style={{
+        background: colors.base,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '12px',
+        width: '100%', maxWidth: '520px',
+        maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
+        }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Convert to Official Order</div>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+              {request.request_number}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{ background: 'none', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', color: colors.muted, display: 'flex' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{
+            fontSize: '12px', color: '#92400E',
+            background: '#FFFBEB', border: '1px solid #FDE68A',
+            borderRadius: '6px', padding: '9px 12px', lineHeight: 1.5,
+          }}>
+            An official Order number will be allocated automatically when you confirm.
+            This cannot be undone — the request will be permanently marked Converted
+            and linked to the new Order.
+          </div>
+
+          <div>
+            <div style={{ ...keyStyle, marginBottom: '4px' }}>Carried into the official Order</div>
+            {carried.map(f => (
+              <div key={f.label} style={rowStyle}>
+                <span style={keyStyle}>{f.label}</span>
+                <span style={valStyle}>{f.value}</span>
+              </div>
+            ))}
+          </div>
+
+          {error && (
+            <div style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px' }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+            <button type="button" onClick={onClose} disabled={saving} style={{
+              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
+              cursor: saving ? 'not-allowed' : 'pointer',
+            }}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleConvert} disabled={saving} style={{
+              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: '#DC1F2E', border: 'none', color: '#fff',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.7 : 1,
+            }}>
+              {saving ? 'Converting…' : 'Confirm & Convert'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function OrderRequestsPage() {
@@ -316,6 +474,8 @@ export default function OrderRequestsPage() {
   const [statusTab,     setStatusTab]     = useState<StatusFilter>('active')
   const [showModal,     setShowModal]     = useState(false)
   const [successNumber, setSuccessNumber] = useState<string | null>(null)
+  const [convertTarget, setConvertTarget] = useState<OrderRequest | null>(null)
+  const [converted,     setConverted]     = useState<ConvertResult | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -327,19 +487,23 @@ export default function OrderRequestsPage() {
       .select(`
         id, request_number, client_name,
         requested_by, assigned_to,
-        confirm_date, due_date, total_value, status, created_at,
+        confirm_date, due_date, total_value, lead_source, notes,
+        status, created_at, converted_order_id,
         requested_by_user:users!requested_by(full_name),
-        assigned_to_user:users!assigned_to(full_name)
+        assigned_to_user:users!assigned_to(full_name),
+        converted_order:orders!converted_order_id(display_number)
       `)
       .order('created_at', { ascending: false })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapped: OrderRequest[] = ((data ?? []) as any[]).map(r => ({
       ...r,
-      requested_by_name: r.requested_by_user?.full_name ?? undefined,
-      assigned_to_name:  r.assigned_to_user?.full_name  ?? undefined,
+      requested_by_name:      r.requested_by_user?.full_name ?? undefined,
+      assigned_to_name:       r.assigned_to_user?.full_name  ?? undefined,
+      converted_order_number: r.converted_order?.display_number ?? undefined,
       requested_by_user: undefined,
       assigned_to_user:  undefined,
+      converted_order:   undefined,
     }))
     setRequests(mapped)
     setListLoading(false)
@@ -388,6 +552,8 @@ export default function OrderRequestsPage() {
     )
   }, [requests, statusTab, search])
 
+  const isAdmin = profile?.role === 'admin'
+
   if (pageLoading) return <LoadingScreen />
 
   return (
@@ -415,6 +581,39 @@ export default function OrderRequestsPage() {
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {converted && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '12px', flexWrap: 'wrap',
+          padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
+          background: '#F0FDF4', border: '1px solid #BBF7D0',
+          fontSize: '13px', color: '#166534',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle2 size={15} />
+            {converted.request_number} converted — official Order{' '}
+            <strong>{converted.order_display_number}</strong> created.
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => router.push(`/orders/${converted.order_id}`)}
+              style={{
+                padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                background: '#166534', border: 'none', color: '#fff', cursor: 'pointer',
+              }}
+            >
+              Open Order
+            </button>
+            <button
+              onClick={() => setConverted(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
+            >
+              ✕
+            </button>
+          </span>
         </div>
       )}
 
@@ -499,6 +698,11 @@ export default function OrderRequestsPage() {
                   <tr key={r.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                     <td style={{ padding: '11px 16px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
                       {r.request_number}
+                      {r.status === 'converted' && r.converted_order_number && (
+                        <div style={{ fontSize: '11px', fontWeight: 500, color: colors.muted, marginTop: '2px' }}>
+                          → Order {r.converted_order_number}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '11px 16px', color: colors.primary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.client_name}
@@ -524,8 +728,31 @@ export default function OrderRequestsPage() {
                     <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
                       {fmtDate(r.created_at)}
                     </td>
-                    <td style={{ padding: '11px 16px', color: colors.muted, whiteSpace: 'nowrap' }}>
-                      —
+                    <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
+                      {isAdmin && r.status === 'submitted' ? (
+                        <button
+                          onClick={() => setConvertTarget(r)}
+                          style={{
+                            padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                            background: '#DC1F2E', border: 'none', color: '#fff', cursor: 'pointer',
+                          }}
+                        >
+                          Convert
+                        </button>
+                      ) : r.status === 'converted' && r.converted_order_id ? (
+                        <button
+                          onClick={() => router.push(`/orders/${r.converted_order_id}`)}
+                          style={{
+                            padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                            background: 'transparent', border: `1px solid ${colors.border}`,
+                            color: colors.secondary, cursor: 'pointer',
+                          }}
+                        >
+                          Open Order
+                        </button>
+                      ) : (
+                        <span style={{ color: colors.muted }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -543,6 +770,19 @@ export default function OrderRequestsPage() {
           onSubmitted={requestNumber => {
             setShowModal(false)
             setSuccessNumber(requestNumber)
+            loadRequests()
+          }}
+        />
+      )}
+
+      {convertTarget && (
+        <ConvertModal
+          request={convertTarget}
+          onClose={() => setConvertTarget(null)}
+          onConverted={result => {
+            setConvertTarget(null)
+            setSuccessNumber(null)
+            setConverted(result)
             loadRequests()
           }}
         />
