@@ -1,16 +1,23 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
-import { QRCodeSVG } from 'qrcode.react'
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import { colors, font } from '@/lib/tokens'
-import { Printer } from 'lucide-react'
+import { Printer, Download } from 'lucide-react'
+import { useToast, Toast } from '@/components/ui/toast'
 import { useViewAs } from '@/hooks/useViewAs'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import {
+  downloadQrCanvasAsPng,
+  qrFileNameFor,
+  QR_EXPORT_SIZE,
+  QR_EXPORT_MARGIN_MODULES,
+} from '@/lib/qrExport'
 
 type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
 const teamFallback = (team?: string | null) =>
@@ -22,9 +29,13 @@ export default function MyQRPage() {
   const [loading, setLoading] = useState(true)
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
 
+  const [downloading, setDownloading] = useState(false)
+
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
+  const { toast, show: showToast, dismiss: dismissToast } = useToast()
+  const exportCanvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -74,6 +85,21 @@ export default function MyQRPage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
+  }
+
+  const handleDownloadPng = async () => {
+    if (downloading) return
+    setDownloading(true)
+    try {
+      const source = exportCanvasRef.current
+      if (!source) throw new Error('QR export canvas is not mounted')
+      await downloadQrCanvasAsPng(source, qrFileNameFor(effectiveProfile?.full_name))
+    } catch (err) {
+      console.error('[showroom-qr] PNG download failed', err)
+      showToast('Unable to download the QR image. Please try again.', 'error')
+    } finally {
+      setDownloading(false)
+    }
   }
 
   if (loading) return <LoadingScreen />
@@ -167,26 +193,67 @@ export default function MyQRPage() {
             {qrUrl}
           </div>
 
-          <button
-            className="no-print"
-            onClick={() => window.print()}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '7px',
-              fontSize: '13px', fontWeight: 600,
-              color: '#fff',
-              background: '#1A2035',
-              border: 'none', borderRadius: '8px',
-              padding: '10px 22px',
-              cursor: 'pointer',
-              fontFamily: font.body,
-            }}
-          >
-            <Printer size={15} strokeWidth={2} />
-            Print QR
-          </button>
+          <div className="no-print" style={{
+            display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '10px',
+          }}>
+            <button
+              onClick={handleDownloadPng}
+              disabled={downloading || !qrUrl}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '7px',
+                fontSize: '13px', fontWeight: 600,
+                color: '#fff',
+                background: '#1A2035',
+                border: 'none', borderRadius: '8px',
+                padding: '10px 22px',
+                cursor: downloading ? 'wait' : 'pointer',
+                opacity: downloading ? 0.7 : 1,
+                fontFamily: font.body,
+              }}
+            >
+              <Download size={15} strokeWidth={2} />
+              {downloading ? 'Downloading…' : 'Download PNG'}
+            </button>
+
+            <button
+              onClick={() => window.print()}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '7px',
+                fontSize: '13px', fontWeight: 600,
+                color: colors.secondary,
+                background: colors.raised,
+                border: `1.5px solid ${colors.border}`, borderRadius: '8px',
+                padding: '10px 22px',
+                cursor: 'pointer',
+                fontFamily: font.body,
+              }}
+            >
+              <Printer size={15} strokeWidth={2} />
+              Print QR
+            </button>
+          </div>
         </div>
 
+        {/* Off-screen high-resolution source for the PNG export. Same qrUrl as the
+            displayed QR above, so both always encode an identical destination. */}
+        {qrUrl && (
+          <div className="no-print" aria-hidden="true" style={{
+            position: 'absolute', left: '-9999px', top: 0, pointerEvents: 'none',
+          }}>
+            <QRCodeCanvas
+              ref={exportCanvasRef}
+              value={qrUrl}
+              size={QR_EXPORT_SIZE}
+              level="M"
+              marginSize={QR_EXPORT_MARGIN_MODULES}
+              fgColor="#111318"
+              bgColor="#ffffff"
+            />
+          </div>
+        )}
+
       </div>
+      <Toast toast={toast} onDismiss={dismissToast} />
     </ShowroomAdminLayout>
   )
 }
