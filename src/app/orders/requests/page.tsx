@@ -25,9 +25,18 @@ type OrderRequest = {
   lead_source: string | null
   notes: string | null
   status: string
+  created_by: string | null
+  clarification_note: string | null
   created_at: string
   converted_order_id: string | null
   converted_order_number?: string
+}
+
+// The project's existing requester rule (order_requests_requester_select /
+// _insert, and resubmit_order_request): the requester is created_by OR
+// requested_by. assigned_to is deliberately NOT an owner.
+function isPermittedRequester(r: OrderRequest, userId: string): boolean {
+  return r.created_by === userId || r.requested_by === userId
 }
 
 // Structured result returned by convert_order_request_to_order().
@@ -617,6 +626,358 @@ function ConvertModal({
   )
 }
 
+// ── Request Clarification modal (admin only) ──────────────────────────────────
+// Deliberately separate from ConvertModal: asking a question and creating an
+// official Order are different decisions and must not share a confirmation.
+
+function ClarifyModal({
+  request,
+  onClose,
+  onRequested,
+}: {
+  request: OrderRequest
+  onClose: () => void
+  onRequested: (requestNumber: string) => void
+}) {
+  const [note,   setNote]   = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState<string | null>(null)
+  const supabase = useMemo(() => createClient(), [])
+
+  const noteValid = note.trim().length > 0
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (saving || !noteValid) return
+    setSaving(true)
+    setError(null)
+
+    const { error: rpcErr } = await supabase.rpc('request_order_request_clarification', {
+      p_order_request_id:   request.id,
+      p_clarification_note: note,
+    })
+
+    if (rpcErr) {
+      // Modal stays open so the admin can retry or copy their note out.
+      setError('Could not request clarification. The request may have already changed. Please refresh and try again.')
+      setSaving(false)
+      return
+    }
+
+    onRequested(request.request_number)
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: 'flex', flexDirection: 'column', gap: '4px',
+    fontSize: '11px', fontWeight: 600, color: colors.muted,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget && !saving) onClose() }}
+    >
+      <div style={{
+        background: colors.base,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '12px',
+        width: '100%', maxWidth: '460px',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
+        }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Request Clarification</div>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+              {request.request_number} · {request.client_name}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{ background: 'none', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', color: colors.muted, display: 'flex' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+            The request goes back to the requester, who can update it and resubmit
+            it for review. It cannot be converted until then.
+          </div>
+
+          <label style={labelStyle}>
+            What needs clarifying? *
+            <textarea
+              autoFocus
+              style={{
+                padding: '7px 10px', borderRadius: '6px',
+                border: `1px solid ${colors.border}`,
+                background: colors.raised, color: colors.primary,
+                fontSize: '13px', width: '100%', boxSizing: 'border-box',
+                outline: 'none', minHeight: '80px', resize: 'vertical',
+                fontFamily: 'inherit',
+              }}
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Ask the requester what to correct or add…"
+            />
+          </label>
+
+          {error && (
+            <div style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px' }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+            <button type="button" onClick={onClose} disabled={saving} style={{
+              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
+              cursor: saving ? 'not-allowed' : 'pointer',
+            }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving || !noteValid} style={{
+              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: '#DC1F2E', border: 'none', color: '#fff',
+              cursor: (saving || !noteValid) ? 'not-allowed' : 'pointer',
+              opacity: (saving || !noteValid) ? 0.5 : 1,
+            }}>
+              {saving ? 'Sending…' : 'Request Clarification'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Update and Resubmit modal (permitted requester only) ──────────────────────
+// One action: edit the permitted business fields and hand the request back for
+// review. No draft, no separate reply — the edit IS the response.
+
+function ResubmitModal({
+  request,
+  users,
+  onClose,
+  onResubmitted,
+}: {
+  request: OrderRequest
+  users: UserOption[]
+  onClose: () => void
+  onResubmitted: (requestNumber: string) => void
+}) {
+  const [form, setForm] = useState<RequestForm>({
+    client_name:  request.client_name,
+    requested_by: request.requested_by ?? '',
+    assigned_to:  request.assigned_to ?? '',
+    confirm_date: request.confirm_date ?? '',
+    due_date:     request.due_date ?? '',
+    total_value:  request.total_value != null ? String(request.total_value) : '',
+    lead_source:  request.lead_source ?? '',
+    notes:        request.notes ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState<string | null>(null)
+  const supabase = useMemo(() => createClient(), [])
+
+  const set = (k: keyof RequestForm) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (saving) return
+    if (!form.client_name.trim()) { setError('Client name is required.'); return }
+    if (!form.requested_by)       { setError('Requested By is required.'); return }
+    setSaving(true)
+    setError(null)
+
+    const { error: rpcErr } = await supabase.rpc('resubmit_order_request', {
+      p_order_request_id: request.id,
+      p_client_name:      form.client_name,
+      p_requested_by:     form.requested_by,
+      p_assigned_to:      form.assigned_to  || null,
+      p_confirm_date:     form.confirm_date || null,
+      p_due_date:         form.due_date     || null,
+      p_total_value:      form.total_value  ? parseFloat(form.total_value) : null,
+      p_lead_source:      form.lead_source  || null,
+      p_notes:            form.notes,
+    })
+
+    if (rpcErr) {
+      setError('Could not resubmit this request. It may have already changed. Please refresh and try again.')
+      setSaving(false)
+      return
+    }
+
+    onResubmitted(request.request_number)
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: 'flex', flexDirection: 'column', gap: '4px',
+    fontSize: '11px', fontWeight: 600, color: colors.muted,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+  }
+  const inputStyle: React.CSSProperties = {
+    padding: '7px 10px', borderRadius: '6px',
+    border: `1px solid ${colors.border}`,
+    background: colors.raised, color: colors.primary,
+    fontSize: '13px', width: '100%', boxSizing: 'border-box',
+    outline: 'none',
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget && !saving) onClose() }}
+    >
+      <div style={{
+        background: colors.base,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '12px',
+        width: '100%', maxWidth: '540px',
+        maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
+        }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Update and Resubmit</div>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+              {request.request_number} · {request.client_name}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{ background: 'none', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', color: colors.muted, display: 'flex' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* The question being answered — shown prominently, above the fields. */}
+          {request.clarification_note && (
+            <div style={{
+              background: '#EFF6FF', border: '1px solid #BFDBFE',
+              borderRadius: '6px', padding: '10px 12px',
+            }}>
+              <div style={{
+                fontSize: '10px', fontWeight: 700, color: '#1E40AF',
+                textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px',
+              }}>
+                Clarification requested
+              </div>
+              <div style={{ fontSize: '13px', color: '#1E3A8A', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                {request.clarification_note}
+              </div>
+            </div>
+          )}
+
+          <label style={labelStyle}>
+            Client Name *
+            <input style={inputStyle} value={form.client_name} onChange={set('client_name')} required />
+          </label>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <label style={labelStyle}>
+              Requested By *
+              <select style={inputStyle} value={form.requested_by} onChange={set('requested_by')} required>
+                <option value="">— Select —</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Assigned To
+              <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
+                <option value="">— Select —</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <label style={labelStyle}>
+              Expected Confirmation
+              <input type="date" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
+            </label>
+            <label style={labelStyle}>
+              Expected Due Date
+              <input type="date" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
+            </label>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <label style={labelStyle}>
+              Approx. Value (₹)
+              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} />
+            </label>
+            <label style={labelStyle}>
+              Lead Source
+              <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
+                <option value="">— Select —</option>
+                {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <label style={labelStyle}>
+            Notes
+            <textarea
+              style={{ ...inputStyle, minHeight: '72px', resize: 'vertical', fontFamily: 'inherit' }}
+              value={form.notes}
+              onChange={set('notes')}
+            />
+          </label>
+
+          {error && (
+            <div style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px' }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+            <button type="button" onClick={onClose} disabled={saving} style={{
+              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
+              cursor: saving ? 'not-allowed' : 'pointer',
+            }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} style={{
+              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: '#DC1F2E', border: 'none', color: '#fff',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.7 : 1,
+            }}>
+              {saving ? 'Resubmitting…' : 'Update and Resubmit'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function OrderRequestsPage() {
@@ -632,6 +993,9 @@ export default function OrderRequestsPage() {
   const [successNumber, setSuccessNumber] = useState<string | null>(null)
   const [convertTarget, setConvertTarget] = useState<OrderRequest | null>(null)
   const [converted,     setConverted]     = useState<ConvertResult | null>(null)
+  const [clarifyTarget,  setClarifyTarget]  = useState<OrderRequest | null>(null)
+  const [resubmitTarget, setResubmitTarget] = useState<OrderRequest | null>(null)
+  const [actionMessage,  setActionMessage]  = useState<string | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -644,7 +1008,7 @@ export default function OrderRequestsPage() {
         id, request_number, client_name,
         requested_by, assigned_to,
         confirm_date, due_date, total_value, lead_source, notes,
-        status, created_at, converted_order_id,
+        status, created_by, clarification_note, created_at, converted_order_id,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
         converted_order:orders!converted_order_id(display_number)
@@ -733,6 +1097,26 @@ export default function OrderRequestsPage() {
           </span>
           <button
             onClick={() => setSuccessNumber(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {actionMessage && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 14px', borderRadius: '8px', marginBottom: '12px',
+          background: '#F0FDF4', border: '1px solid #BBF7D0',
+          fontSize: '13px', color: '#166534',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle2 size={15} />
+            {actionMessage}
+          </span>
+          <button
+            onClick={() => setActionMessage(null)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
           >
             ✕
@@ -862,6 +1246,17 @@ export default function OrderRequestsPage() {
                           → Order {r.converted_order_number}
                         </div>
                       )}
+                      {r.status === 'needs_clarification' && r.clarification_note && (
+                        <div
+                          title={r.clarification_note}
+                          style={{
+                            fontSize: '11px', fontWeight: 500, color: '#1E40AF', marginTop: '2px',
+                            maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          ? {r.clarification_note}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '11px 16px', color: colors.primary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.client_name}
@@ -889,14 +1284,36 @@ export default function OrderRequestsPage() {
                     </td>
                     <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
                       {isAdmin && r.status === 'submitted' ? (
+                        <span style={{ display: 'inline-flex', gap: '6px' }}>
+                          <button
+                            onClick={() => setConvertTarget(r)}
+                            style={{
+                              padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                              background: '#DC1F2E', border: 'none', color: '#fff', cursor: 'pointer',
+                            }}
+                          >
+                            Convert
+                          </button>
+                          <button
+                            onClick={() => setClarifyTarget(r)}
+                            style={{
+                              padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                              background: 'transparent', border: `1px solid ${colors.border}`,
+                              color: colors.secondary, cursor: 'pointer',
+                            }}
+                          >
+                            Request Clarification
+                          </button>
+                        </span>
+                      ) : r.status === 'needs_clarification' && isPermittedRequester(r, currentUserId) ? (
                         <button
-                          onClick={() => setConvertTarget(r)}
+                          onClick={() => setResubmitTarget(r)}
                           style={{
                             padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                            background: '#DC1F2E', border: 'none', color: '#fff', cursor: 'pointer',
+                            background: '#1E40AF', border: 'none', color: '#fff', cursor: 'pointer',
                           }}
                         >
-                          Convert
+                          Update and Resubmit
                         </button>
                       ) : r.status === 'converted' && r.converted_order_id ? (
                         <button
@@ -941,7 +1358,37 @@ export default function OrderRequestsPage() {
           onConverted={result => {
             setConvertTarget(null)
             setSuccessNumber(null)
+            setActionMessage(null)
             setConverted(result)
+            loadRequests()
+          }}
+        />
+      )}
+
+      {clarifyTarget && (
+        <ClarifyModal
+          request={clarifyTarget}
+          onClose={() => setClarifyTarget(null)}
+          onRequested={requestNumber => {
+            setClarifyTarget(null)
+            setSuccessNumber(null)
+            setConverted(null)
+            setActionMessage(`Clarification requested on ${requestNumber}. It now sits under Needs Clarification.`)
+            loadRequests()
+          }}
+        />
+      )}
+
+      {resubmitTarget && (
+        <ResubmitModal
+          request={resubmitTarget}
+          users={users}
+          onClose={() => setResubmitTarget(null)}
+          onResubmitted={requestNumber => {
+            setResubmitTarget(null)
+            setSuccessNumber(null)
+            setConverted(null)
+            setActionMessage(`${requestNumber} updated and resubmitted. It is back under Active for review.`)
             loadRequests()
           }}
         />
