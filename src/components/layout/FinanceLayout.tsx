@@ -58,7 +58,7 @@ export function FinanceLayout({
   }
 
   const navItems = [
-    { label: 'Payment Confirmations', path: '/finance',          icon: <CheckSquare size={15} strokeWidth={1.8} /> },
+    { label: 'Payment Requests',      path: '/finance',          icon: <CheckSquare size={15} strokeWidth={1.8} /> },
     { label: 'Received Payments',     path: '/finance/received', icon: <CreditCard  size={15} strokeWidth={1.8} /> },
   ]
 

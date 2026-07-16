@@ -11,6 +11,7 @@ import { compressImageFile } from '@/lib/attachment-utils'
 import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
+import { formatINR, groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ type PaymentRequest = {
   payment_date: string
   payment_mode: string
   received_in: string
-  proof_note: string
+  proof_note: string | null
   order_number: string | null
   order_id: string | null
   sales_note: string | null
@@ -153,12 +154,12 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
 ]
 
 const EMPTY_MESSAGES: Record<FilterTab, string> = {
-  pending:       'No pending payment confirmations.',
+  pending:       'No pending payment requests.',
   order_pending: 'No payments with order number pending.',
   clarification: 'No payments awaiting clarification.',
   rejected:      'No rejected payments.',
   archive:       'No archived rejected requests.',
-  all:           'No payment confirmations here.',
+  all:           'No payment requests here.',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -168,7 +169,17 @@ function fmtDate(iso: string) {
 }
 
 function fmtAmount(n: number) {
-  return '₹' + n.toLocaleString('en-IN')
+  return formatINR(n)
+}
+
+// Order No. display for both employee and admin views: shows the real number
+// once one exists, otherwise a concise pending-allocation state for a
+// new_order request (allocation happens only on admin approval — see
+// approve_finance_payment_request in 20260688000000).
+function orderNoDisplay(r: PaymentRequest): string {
+  if (r.order_number) return r.order_number
+  if (r.payment_against === 'new_order') return 'New Order — Pending order allocation'
+  return '—'
 }
 
 function fmtDateTime(iso: string) {
@@ -275,6 +286,27 @@ function ErrorBanner({ message }: { message: string }) {
   )
 }
 
+// Indian-grouped amount input. While focused it shows the raw, comma-free
+// value for easy editing; on blur it displays Indian digit grouping. The
+// canonical value passed to onChange is always comma-free numeric text.
+function AmountInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [focused, setFocused] = useState(false)
+  const display = focused ? value : (value ? groupIndianDigits(value) : '')
+  return (
+    <input
+      className="boe-input"
+      type="text"
+      inputMode="decimal"
+      value={display}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={e => onChange(sanitizeAmountInput(e.target.value))}
+      placeholder="0"
+      style={{ width: '100%' }}
+    />
+  )
+}
+
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -369,7 +401,7 @@ function DetailsModal({
   }
 
   return (
-    <Modal title="Payment Confirmation Details" onClose={onClose}>
+    <Modal title="Payment Request Details" onClose={onClose}>
       {/* Status banner */}
       <div style={{
         padding: '10px 14px', borderRadius: '8px',
@@ -403,10 +435,10 @@ function DetailsModal({
         <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
         <DetailRow label="Payment Mode" value={displayPaymentMode(r.payment_mode, r.received_in)} />
         <DetailRow label="Received In"      value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
-        <DetailRow label="Order No."        value={r.order_number ?? '—'} />
+        <DetailRow label="Order No."        value={orderNoDisplay(r)} />
         <DetailRow label="Payment Against"  value={PAYMENT_AGAINST_LABEL[r.payment_against] ?? r.payment_against} />
         <div style={{ gridColumn: '1 / -1' }}>
-          <DetailRow label="Proof / Reference" value={r.proof_note} />
+          <DetailRow label="Proof / Reference" value={r.proof_note ?? '—'} />
         </div>
         {r.sales_note && (
           <div style={{ gridColumn: '1 / -1' }}>
@@ -532,8 +564,16 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
+  // Order changed (selected, changed, or cleared) — Client Name always follows
+  // the order for an existing-order request; no stale value survives a change.
+  const selectOrder = (o: OrderResult | null) => {
+    setSelectedOrder(o)
+    setOrderResults([])
+    setForm(prev => ({ ...prev, clientName: o?.client_name ?? '' }))
+  }
+
   const handlePaymentAgainstChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setForm(prev => ({ ...prev, paymentAgainst: e.target.value }))
+    setForm(prev => ({ ...prev, paymentAgainst: e.target.value, clientName: '' }))
     setSelectedOrder(null)
     setOrderQuery('')
     setOrderResults([])
@@ -541,7 +581,7 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
 
   const handleOrderSearch = async (q: string) => {
     setOrderQuery(q)
-    setSelectedOrder(null)
+    selectOrder(null)
     const trimmed = q.trim()
     if (!trimmed) { setOrderResults([]); return }
     setOrderSearching(true)
@@ -557,12 +597,12 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
   }
 
   const isExistingOrder = form.paymentAgainst === 'existing_order'
+  const existingOrderClientName = selectedOrder?.client_name?.trim() ?? ''
 
   const canSubmit = !!(
-    form.clientName.trim() &&
-    form.amount.trim() &&
+    (isExistingOrder ? existingOrderClientName : form.clientName.trim()) &&
+    isValidAmount(form.amount) &&
     form.paymentDate &&
-    form.proofNote.trim() &&
     !attachError &&
     (!isExistingOrder || selectedOrder !== null)
   )
@@ -629,143 +669,57 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
       ? [baseNote, 'Payment mode: Hawala'].filter(Boolean).join(' | ') || null
       : baseNote || null
 
-    if (isExistingOrder) {
-      // Existing order — link directly, no order creation needed
-      const { data: created, error: dbError } = await supabase
-        .from('finance_payment_requests')
-        .insert({
-          client_name:     form.clientName.trim(),
-          amount:          parseFloat(form.amount),
-          payment_date:    form.paymentDate,
-          payment_mode:    dbMode.payment_mode,
-          received_in:     dbMode.received_in,
-          proof_note:      form.proofNote.trim(),
-          order_number:    selectedOrder?.display_number ?? null,
-          order_id:        selectedOrder?.id ?? null,
-          sales_note:      finalSalesNote,
-          payment_against: 'existing_order',
-          status:          'pending_approval',
-          submitted_by:    userId,
-        })
-        .select('id')
-        .single()
-      if (dbError || !created) { setError(dbError?.message ?? 'Failed to submit request.'); setSaving(false); return }
-
-      const proofErr = await persistProof(created.id)
-      if (proofErr) {
-        // Compensation: don't leave a request claiming a proof that wasn't saved.
-        const { error: delErr, count } = await supabase
-          .from('finance_payment_requests')
-          .delete({ count: 'exact' })
-          .eq('id', created.id)
-        const cleaned = !delErr && count !== 0
-        setError(cleaned
-          ? proofErr
-          : `${proofErr} The draft request could not be cleaned up automatically — please ask an admin to remove the duplicate for ${form.clientName.trim()}.`)
-        setSaving(false)
-        return
-      }
-      setSaving(false)
-      onSaved()
-      return
-    }
-
-    // New Order — reserve the next order number, then create the payment request
-
-    // Step 1: get the next display number from the monotonic DB sequence
-    // (same RPC used by orders/all/page.tsx — never reuses a deleted order's number)
-    const { data: nextDisplayNumber, error: numberErr } = await supabase.rpc('next_order_display_number')
-    if (numberErr || !nextDisplayNumber) {
-      setError('Failed to reserve order number. Please try again.')
-      setSaving(false)
-      return
-    }
-
-    // Step 2: create the pending order record
-    const { data: newOrder, error: orderErr } = await supabase
-      .from('orders')
-      .insert({
-        display_number: nextDisplayNumber,
-        client_name:    form.clientName.trim(),
-        requested_by:   userId,
-        created_by:     userId,
-        status:         'requested',
-      })
-      .select('id, display_number')
-      .single()
-
-    if (orderErr || !newOrder) {
-      setError(orderErr?.message ?? 'Failed to reserve order number. Please try again.')
-      setSaving(false)
-      return
-    }
-
-    // Step 3: create the payment request linked to the reserved order
-    const { data: createdPayment, error: paymentErr } = await supabase
+    // Existing order: client_name is the order's authoritative name, never the
+    // (possibly stale/edited) form field — the DB trigger re-derives it from
+    // order_id anyway, but sending the right value directly avoids relying on
+    // that as anything but a backstop.
+    //
+    // New order: no order number is reserved or allocated here. The request is
+    // saved with order_id/order_number = null; allocation happens only when an
+    // admin approves it, via approve_finance_payment_request (20260688000000).
+    const { data: created, error: dbError } = await supabase
       .from('finance_payment_requests')
       .insert({
-        client_name:     form.clientName.trim(),
-        amount:          parseFloat(form.amount),
+        client_name:     isExistingOrder ? existingOrderClientName : form.clientName.trim(),
+        amount:          Number(form.amount),
         payment_date:    form.paymentDate,
         payment_mode:    dbMode.payment_mode,
         received_in:     dbMode.received_in,
-        proof_note:      form.proofNote.trim(),
-        order_number:    newOrder.display_number,
-        order_id:        newOrder.id,
+        proof_note:      form.proofNote.trim() || null,
+        order_number:    isExistingOrder ? (selectedOrder?.display_number ?? null) : null,
+        order_id:        isExistingOrder ? (selectedOrder?.id ?? null) : null,
         sales_note:      finalSalesNote,
-        payment_against: 'new_order',
+        payment_against: form.paymentAgainst,
         status:          'pending_approval',
         submitted_by:    userId,
       })
       .select('id')
       .single()
+    if (dbError || !created) { setError(dbError?.message ?? 'Failed to submit request.'); setSaving(false); return }
 
-    if (paymentErr || !createdPayment) {
-      // Roll back the reserved order to prevent orphaned order numbers
-      await supabase.from('orders').delete().eq('id', newOrder.id)
-      setError(`Payment request failed: ${paymentErr?.message ?? 'unknown error'}`)
-      setSaving(false)
-      return
-    }
-
-    const proofErr = await persistProof(createdPayment.id)
+    const proofErr = await persistProof(created.id)
     if (proofErr) {
-      // Compensation: remove the proof-less request AND the reserved order, so
-      // the user is never told the proof saved when it did not.
-      //
-      // Both deletes are checked, because neither is guaranteed to succeed:
-      // orders DELETE is admin-only under the existing orders RLS, so for a
-      // Sales submitter the order delete silently removes zero rows and the
-      // reserved order survives. We report exactly what was left behind — and
-      // name the order number — instead of implying the state is clean.
-      const { error: reqErr, count: reqCount } = await supabase
+      // Compensation: don't leave a request claiming a proof that wasn't saved.
+      // No order is ever created at submission time, so there is nothing else
+      // to roll back here.
+      const { error: delErr, count } = await supabase
         .from('finance_payment_requests')
         .delete({ count: 'exact' })
-        .eq('id', createdPayment.id)
-      const { error: ordErr, count: ordCount } = await supabase
-        .from('orders')
-        .delete({ count: 'exact' })
-        .eq('id', newOrder.id)
-
-      const leftovers = [
-        (reqErr || reqCount === 0) && 'the payment request',
-        (ordErr || ordCount === 0) && `the reserved order ${newOrder.display_number}`,
-      ].filter((s): s is string => Boolean(s))
-
-      setError(leftovers.length === 0
+        .eq('id', created.id)
+      const cleaned = !delErr && count !== 0
+      setError(cleaned
         ? proofErr
-        : `${proofErr} Note: ${leftovers.join(' and ')} for ${form.clientName.trim()} could not be removed automatically — please ask an admin to delete it.`)
+        : `${proofErr} The draft request could not be cleaned up automatically — please ask an admin to remove the duplicate.`)
       setSaving(false)
       return
     }
-
     setSaving(false)
     onSaved()
   }
 
   // Card-based toggle — reuses same reset logic as handlePaymentAgainstChange
   const switchPaymentAgainst = (value: string) => {
-    setForm(prev => ({ ...prev, paymentAgainst: value }))
+    setForm(prev => ({ ...prev, paymentAgainst: value, clientName: '' }))
     setSelectedOrder(null)
     setOrderQuery('')
     setOrderResults([])
@@ -801,10 +755,10 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
         }}>
           <div>
             <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, marginBottom: '2px' }}>
-              New Payment Confirmation
+              Send Payment Request
             </div>
             <div style={{ fontSize: '11px', color: colors.muted }}>
-              Submit customer payment details for admin review
+              Send customer payment details for admin review
             </div>
           </div>
           <button
@@ -848,7 +802,7 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
                     </span>
                     <span style={{ fontSize: '11px', color: colors.muted }}>
                       {opt.value === 'new_order'
-                        ? 'Auto-reserve a new order number'
+                        ? 'Order number allocated after admin approval'
                         : 'Link to an existing order'}
                     </span>
                   </button>
@@ -859,7 +813,7 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
             {/* New Order — helper line */}
             {!isExistingOrder && (
               <div style={{ fontSize: '11px', color: colors.muted, padding: '0 2px' }}>
-                Order number will be auto-reserved after submission.
+                Pending order allocation — the order number is assigned once an admin approves this request.
               </div>
             )}
 
@@ -877,14 +831,18 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
                       <span style={{ fontSize: '12px', color: colors.secondary, marginLeft: '8px' }}>{selectedOrder.client_name}</span>
                     </div>
                     <button
-                      onClick={() => { setSelectedOrder(null); setOrderQuery(''); setOrderResults([]) }}
+                      onClick={() => { selectOrder(null); setOrderQuery('') }}
                       className="boe-btn boe-btn-ghost"
                       style={{ padding: '2px 8px', fontSize: '11px' }}
                     >
                       Change
                     </button>
                   </div>
-                ) : (
+                ) : null}
+                {selectedOrder && !existingOrderClientName && (
+                  <ErrorBanner message="This order has no client name on file. Correct it on the Order Details page before submitting a payment request." />
+                )}
+                {!selectedOrder && (
                   <>
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: '6px',
@@ -914,7 +872,7 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
                           return (
                             <div
                               key={o.id}
-                              onClick={() => { setSelectedOrder(o); setOrderResults([]) }}
+                              onClick={() => selectOrder(o)}
                               style={{
                                 padding: '8px 12px',
                                 borderBottom: idx < orderResults.length - 1 ? `1px solid ${colors.border}` : 'none',
@@ -962,12 +920,21 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
               {/* Row 1: Client Name + Amount */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <Field label="Client Name" required>
-                  <input className="boe-input" value={form.clientName} onChange={set('clientName')}
-                    placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
+                  {isExistingOrder ? (
+                    <>
+                      <input className="boe-input" value={existingOrderClientName} readOnly disabled
+                        placeholder="Select an order first" style={{ width: '100%' }} />
+                      <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                        Client name is taken from the selected order.
+                      </span>
+                    </>
+                  ) : (
+                    <input className="boe-input" value={form.clientName} onChange={set('clientName')}
+                      placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
+                  )}
                 </Field>
                 <Field label="Amount (₹)" required>
-                  <input className="boe-input" type="number" min="0" value={form.amount}
-                    onChange={set('amount')} placeholder="0" style={{ width: '100%' }} />
+                  <AmountInput value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
                 </Field>
               </div>
 
@@ -997,14 +964,14 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
                 </Field>
               )}
 
-              {/* Proof row: reference input + attachment */}
-              <Field label="Payment Proof / Reference" required>
+              {/* Proof row: reference input + attachment (optional) */}
+              <Field label="Payment Proof / Reference">
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <input
                     className="boe-input"
                     value={form.proofNote}
                     onChange={set('proofNote')}
-                    placeholder="UTR, cheque no., or short proof note"
+                    placeholder="UTR, cheque no., or short proof note (optional)"
                     style={{ flex: 1, minWidth: 0 }}
                   />
                   <input
@@ -1087,19 +1054,21 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     amount:      String(r.amount),
     paymentDate: r.payment_date,
     paymentMode: dbToUiPaymentMode(r.payment_mode, r.received_in),
-    proofNote:   r.proof_note,
+    proofNote:   r.proof_note ?? '',
     orderNumber: r.order_number ?? '',
     salesNote:   r.sales_note  ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
+  const isExistingOrder = r.payment_against === 'existing_order'
+
   const set = (key: keyof typeof form) => (
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  const canSubmit = form.clientName.trim() && form.amount.trim() && form.paymentDate && form.proofNote.trim()
+  const canSubmit = form.clientName.trim() && isValidAmount(form.amount) && form.paymentDate
 
   const handleSave = async () => {
     if (!canSubmit) return
@@ -1117,11 +1086,11 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       .from('finance_payment_requests')
       .update({
         client_name:  form.clientName.trim(),
-        amount:       parseFloat(form.amount),
+        amount:       Number(form.amount),
         payment_date: form.paymentDate,
         payment_mode: editDbMode.payment_mode,
         received_in:  editDbMode.received_in,
-        proof_note:   form.proofNote.trim(),
+        proof_note:   form.proofNote.trim() || null,
         order_number: newOrderNumber,
         sales_note:   form.salesNote.trim() || null,
         ...(!isAdmin && r.status === 'needs_clarification' ? { status: 'pending_approval' } : {}),
@@ -1137,7 +1106,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   }
 
   return (
-    <Modal title="Edit Payment Confirmation" onClose={onClose}>
+    <Modal title="Edit Payment Request" onClose={onClose}>
       {!isAdmin && r.status === 'needs_clarification' && (
         <div style={{
           padding: '12px 14px', borderRadius: '8px',
@@ -1155,13 +1124,21 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         </div>
       )}
       <Field label="Client Name" required>
-        <input className="boe-input" value={form.clientName} onChange={set('clientName')}
-          placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
+        {isExistingOrder ? (
+          <>
+            <input className="boe-input" value={form.clientName} readOnly disabled style={{ width: '100%' }} />
+            <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+              Client name is taken from the selected order.
+            </span>
+          </>
+        ) : (
+          <input className="boe-input" value={form.clientName} onChange={set('clientName')}
+            placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
+        )}
       </Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Field label="Amount (₹)" required>
-          <input className="boe-input" type="number" min="0" value={form.amount}
-            onChange={set('amount')} placeholder="0" style={{ width: '100%' }} />
+          <AmountInput value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
         </Field>
         <Field label="Payment Date" required>
           <input className="boe-input" type="date" value={form.paymentDate}
@@ -1173,9 +1150,9 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           {PAYMENT_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </Field>
-      <Field label="Payment Proof / Reference Note" required>
+      <Field label="Payment Proof / Reference Note">
         <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
-          placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office"
+          placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
           rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
       <Field label="Order Number (optional)">
@@ -1203,13 +1180,12 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
 
 type AdminReviewModalProps = {
   request: PaymentRequest
-  adminUserId: string
   supabase: ReturnType<typeof createClient>
   onClose: () => void
   onActioned: () => void
 }
 
-function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onActioned }: AdminReviewModalProps) {
+function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminReviewModalProps) {
   const [action,    setAction]    = useState<AdminAction | null>(null)
   const [adminNote, setAdminNote] = useState('')
   const [saving,    setSaving]    = useState(false)
@@ -1222,21 +1198,29 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
     if (!action) return
     setSaving(true)
     setError(null)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updates: Record<string, any> = {
-      admin_note: adminNote.trim() || null,
-      updated_at: new Date().toISOString(),
-    }
+
     if (action === 'approve') {
-      updates.status      = r.order_id ? 'approved_linked' : 'approved_unlinked'
-      updates.approved_by = adminUserId
-      updates.approved_at = new Date().toISOString()
-    } else {
-      updates.status = action === 'needs_clarification' ? 'needs_clarification' : 'rejected'
+      // Order-number allocation for a new_order request happens only inside
+      // this RPC, atomically with the approval itself — see
+      // approve_finance_payment_request in 20260688000000. The client never
+      // allocates or chooses an order number.
+      const { error: rpcError } = await supabase.rpc('approve_finance_payment_request', {
+        p_request_id: r.id,
+        p_admin_note: adminNote.trim() || null,
+      })
+      setSaving(false)
+      if (rpcError) { setError(friendlyDbErrorMessage(rpcError)); return }
+      onActioned()
+      return
     }
+
     const { error: dbError } = await supabase
       .from('finance_payment_requests')
-      .update(updates)
+      .update({
+        admin_note: adminNote.trim() || null,
+        status:     action === 'needs_clarification' ? 'needs_clarification' : 'rejected',
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', r.id)
     setSaving(false)
     if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
@@ -1254,7 +1238,7 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
   }
 
   return (
-    <Modal title="Review Payment Confirmation" onClose={onClose}>
+    <Modal title="Review Payment Request" onClose={onClose}>
       {/* Summary */}
       <div style={{
         background: colors.raised, borderRadius: '8px', padding: '14px 16px',
@@ -1267,10 +1251,10 @@ function AdminReviewModal({ request: r, adminUserId, supabase, onClose, onAction
         <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
         <DetailRow label="Payment Mode" value={displayPaymentMode(r.payment_mode, r.received_in)} />
         <DetailRow label="Received In"     value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
-        <DetailRow label="Order No."       value={r.order_number ?? '—'} />
+        <DetailRow label="Order No."       value={orderNoDisplay(r)} />
         <DetailRow label="Payment Against" value={PAYMENT_AGAINST_LABEL[r.payment_against] ?? r.payment_against} />
         <div style={{ gridColumn: '1 / -1' }}>
-          <DetailRow label="Proof / Reference" value={r.proof_note} />
+          <DetailRow label="Proof / Reference" value={r.proof_note ?? '—'} />
         </div>
         {r.sales_note && (
           <div style={{ gridColumn: '1 / -1' }}>
@@ -1350,9 +1334,9 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
   }
 
   return (
-    <Modal title="Delete Payment Confirmation" onClose={onClose}>
+    <Modal title="Delete Payment Request" onClose={onClose}>
       <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7 }}>
-        Delete this payment confirmation? This cannot be undone.
+        Delete this payment request? This cannot be undone.
       </div>
       <div style={{
         background: colors.raised, borderRadius: '8px', padding: '12px 14px',
@@ -1486,7 +1470,7 @@ function PaymentsTable({
                   )}
                 </td>
                 <td style={{ ...TD, fontSize: '12px', color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic' }}>
-                  {r.order_number ?? '—'}
+                  {orderNoDisplay(r)}
                 </td>
                 <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                   {fmtAmount(r.amount)}
@@ -1581,6 +1565,31 @@ export default function FinancePage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
+  // ── Fetch — join submitted_by_name via users ─────────────────────────────────
+  const loadRequests = async () => {
+    setListLoading(true)
+    const { data } = await supabase
+      .from('finance_payment_requests')
+      .select(`
+        id, request_number, client_name, amount, payment_date, payment_mode,
+        received_in, proof_note, order_number, order_id, sales_note,
+        payment_against, status, submitted_by, admin_note, created_at,
+        updated_at, rejected_at, clarification_requested_at,
+        submitted_by_user:users!submitted_by(full_name)
+      `)
+      .neq('status', 'approved_linked')
+      .order('created_at', { ascending: false })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
+      ...r,
+      submitted_by_name: r.submitted_by_user?.full_name ?? undefined,
+      submitted_by_user: undefined,
+    }))
+    setRequests(mapped)
+    setListLoading(false)
+  }
+
   // ── Auth + profile ───────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
@@ -1608,31 +1617,6 @@ export default function FinancePage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
-  }
-
-  // ── Fetch — join submitted_by_name via users ─────────────────────────────────
-  const loadRequests = async () => {
-    setListLoading(true)
-    const { data } = await supabase
-      .from('finance_payment_requests')
-      .select(`
-        id, request_number, client_name, amount, payment_date, payment_mode,
-        received_in, proof_note, order_number, order_id, sales_note,
-        payment_against, status, submitted_by, admin_note, created_at,
-        updated_at, rejected_at, clarification_requested_at,
-        submitted_by_user:users!submitted_by(full_name)
-      `)
-      .neq('status', 'approved_linked')
-      .order('created_at', { ascending: false })
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
-      ...r,
-      submitted_by_name: r.submitted_by_user?.full_name ?? undefined,
-      submitted_by_user: undefined,
-    }))
-    setRequests(mapped)
-    setListLoading(false)
   }
 
   // ── Filtered + searched list (client-side, newest-first already from DB) ─────
@@ -1685,8 +1669,8 @@ export default function FinancePage() {
   return (
     <FinanceLayout
       profile={profile}
-      title="Payment Confirmations"
-      subtitle="Sales can submit customer payment details here for admin confirmation."
+      title="Payment Requests"
+      subtitle="Sales can submit customer payment details here for admin approval."
       onSignOut={handleSignOut}
       onRefresh={loadRequests}
       actions={
@@ -1780,7 +1764,6 @@ export default function FinancePage() {
       {reviewRequest && (
         <AdminReviewModal
           request={reviewRequest}
-          adminUserId={userId}
           supabase={supabase}
           onClose={() => setReviewRequest(null)}
           onActioned={() => { setReviewRequest(null); loadRequests() }}

@@ -9,6 +9,7 @@ import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
+import { formatINR, isValidAmount } from '@/lib/currency'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ type PaymentRequest = {
   payment_date: string
   payment_mode: string
   received_in: string
-  proof_note: string
+  proof_note: string | null
   order_number: string | null
   order_id: string | null
   sales_note: string | null
@@ -103,7 +104,7 @@ function fmtDate(iso: string) {
 }
 
 function fmtAmount(n: number) {
-  return '₹' + n.toLocaleString('en-IN')
+  return formatINR(n)
 }
 
 function fmtDateTime(iso: string) {
@@ -266,7 +267,7 @@ function DetailsModal({
         <DetailRow label="Received In"  value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
         <DetailRow label="Order No."    value={r.order_number ?? '—'} />
         <div style={{ gridColumn: '1 / -1' }}>
-          <DetailRow label="Proof / Reference" value={r.proof_note} />
+          <DetailRow label="Proof / Reference" value={r.proof_note ?? '—'} />
         </div>
         {r.sales_note && (
           <div style={{ gridColumn: '1 / -1' }}>
@@ -366,7 +367,7 @@ function EditPaymentModal({
     paymentDate: r.payment_date,
     paymentMode: r.payment_mode,
     receivedIn:  r.received_in,
-    proofNote:   r.proof_note,
+    proofNote:   r.proof_note ?? '',
     orderNumber: r.order_number ?? '',
     salesNote:   r.sales_note  ?? '',
   })
@@ -378,7 +379,7 @@ function EditPaymentModal({
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  const canSubmit = form.clientName.trim() && form.amount.trim() && form.paymentDate && form.proofNote.trim()
+  const canSubmit = form.clientName.trim() && isValidAmount(form.amount) && form.paymentDate
 
   const handleSave = async () => {
     if (!canSubmit) return
@@ -390,11 +391,11 @@ function EditPaymentModal({
       .from('finance_payment_requests')
       .update({
         client_name:  form.clientName.trim(),
-        amount:       parseFloat(form.amount),
+        amount:       Number(form.amount),
         payment_date: form.paymentDate,
         payment_mode: form.paymentMode,
         received_in:  form.receivedIn,
-        proof_note:   form.proofNote.trim(),
+        proof_note:   form.proofNote.trim() || null,
         order_number: form.orderNumber.trim() || null,
         sales_note:   form.salesNote.trim()   || null,
         updated_at:   new Date().toISOString(),
@@ -436,9 +437,9 @@ function EditPaymentModal({
           </select>
         </Field>
       </div>
-      <Field label="Payment Proof / Reference Note" required>
+      <Field label="Payment Proof / Reference Note">
         <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
-          placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office"
+          placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
           rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
       <Field label="Order Number">
@@ -900,6 +901,29 @@ export default function ReceivedPaymentsPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
+  const loadRequests = async () => {
+    setListLoading(true)
+    const { data } = await supabase
+      .from('finance_payment_requests')
+      .select(`
+        id, request_number, client_name, amount, payment_date, payment_mode,
+        received_in, proof_note, order_number, order_id, sales_note,
+        status, submitted_by, admin_note, created_at,
+        submitted_by_user:users!submitted_by(full_name)
+      `)
+      .eq('status', 'approved_linked')
+      .order('created_at', { ascending: false })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
+      ...r,
+      submitted_by_name: r.submitted_by_user?.full_name ?? undefined,
+      submitted_by_user: undefined,
+    }))
+    setRequests(mapped)
+    setListLoading(false)
+  }
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -923,29 +947,6 @@ export default function ReceivedPaymentsPage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
-  }
-
-  const loadRequests = async () => {
-    setListLoading(true)
-    const { data } = await supabase
-      .from('finance_payment_requests')
-      .select(`
-        id, request_number, client_name, amount, payment_date, payment_mode,
-        received_in, proof_note, order_number, order_id, sales_note,
-        status, submitted_by, admin_note, created_at,
-        submitted_by_user:users!submitted_by(full_name)
-      `)
-      .eq('status', 'approved_linked')
-      .order('created_at', { ascending: false })
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
-      ...r,
-      submitted_by_name: r.submitted_by_user?.full_name ?? undefined,
-      submitted_by_user: undefined,
-    }))
-    setRequests(mapped)
-    setListLoading(false)
   }
 
   // Unlink a payment — sets order_id=null, status=approved_unlinked, logs activity
