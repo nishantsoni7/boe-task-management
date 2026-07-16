@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useMemo, useRef, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import type { ShowroomProduct } from '@/lib/types'
-import { AlertBanner, EmptyState } from '@/components/ui/atoms'
+import { AlertBanner, EmptyState, LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { Package, PlusCircle, Pencil, QrCode, X, Printer, Trash2, Download } from 'lucide-react'
@@ -13,6 +13,17 @@ import { useViewAs } from '@/hooks/useViewAs'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 import { useToast, Toast } from '@/components/ui/toast'
+import {
+  CategoryChips,
+  ProductToolbar,
+  ProductPagination,
+  PRODUCTS_PER_PAGE,
+  SORT_OPTIONS,
+  STATUS_OPTIONS,
+  type CategoryCount,
+  type SortValue,
+  type StatusValue,
+} from '@/components/ui/ProductCatalogControls'
 import {
   downloadPlainQrImage,
   productQrFileNameFor,
@@ -25,32 +36,33 @@ type ModVisRow = { visibility_type: string; allowed_department: string[] | null 
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
-// Natural sort so "001" < "002" < "010" and mixed alphanumeric codes (e.g. "BOE-DC-9"
-// vs "BOE-DC-101") order by numeric value within each segment, not lexicographically.
-function naturalCompare(a: string, b: string): number {
-  const split = (s: string) => s.match(/\d+|\D+/g) ?? []
-  const ax = split(a)
-  const bx = split(b)
-  const len = Math.min(ax.length, bx.length)
-  for (let i = 0; i < len; i++) {
-    const an = ax[i], bn = bx[i]
-    const bothNumeric = /^\d+$/.test(an) && /^\d+$/.test(bn)
-    if (bothNumeric) {
-      const diff = parseInt(an, 10) - parseInt(bn, 10)
-      if (diff !== 0) return diff
-    } else if (an !== bn) {
-      return an < bn ? -1 : 1
-    }
-  }
-  return ax.length - bx.length
+const LIST_PATH = '/showroom-admin/products'
+const DEFAULT_SORT: SortValue = 'code_asc'
+const SEARCH_DEBOUNCE_MS = 300
+
+const isSort   = (v: string | null): v is SortValue   => SORT_OPTIONS.some(o => o.value === v)
+const isStatus = (v: string | null): v is StatusValue => STATUS_OPTIONS.some(o => o.value === v)
+
+// useSearchParams opts the tree into client-side rendering, so the catalog lives
+// below a Suspense boundary (same pattern as /tasks/all).
+export default function ShowroomProductsPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <ShowroomProductsContent />
+    </Suspense>
+  )
 }
 
-const byProductCode = (a: ShowroomProduct, b: ShowroomProduct) => naturalCompare(a.product_code, b.product_code)
-
-export default function ShowroomProductsPage() {
+function ShowroomProductsContent() {
   const [profile,   setProfile]   = useState<UserProfile | null>(null)
   const [products,  setProducts]  = useState<ShowroomProduct[]>([])
+  const [total,         setTotal]         = useState(0)
+  const [allCount,      setAllCount]      = useState(0)
+  const [catalogTotal,  setCatalogTotal]  = useState(0)
+  const [inactiveTotal, setInactiveTotal] = useState(0)
+  const [categories,    setCategories]    = useState<CategoryCount[]>([])
   const [loading,   setLoading]   = useState(true)
+  const [fetching,  setFetching]  = useState(false)
   const [error,     setError]     = useState('')
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [qrProduct, setQrProduct] = useState<ShowroomProduct | null>(null)
@@ -59,10 +71,59 @@ export default function ShowroomProductsPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [notice, setNotice] = useState<{ text: string; variant: 'green' | 'amber' } | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const supabase     = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
+
+  const resultsRef = useRef<HTMLDivElement>(null)
+  const reqSeq     = useRef(0)
+
+  // ── Catalog state lives in the URL, so refresh, back/forward and returning
+  // from the edit page all restore the same view. ──
+  const rawSort   = searchParams.get('sort')
+  const rawStatus = searchParams.get('status')
+  const q        = searchParams.get('q') ?? ''
+  const category = searchParams.get('category') ?? ''
+  const sort     = isSort(rawSort) ? rawSort : DEFAULT_SORT
+  const status   = isStatus(rawStatus) ? rawStatus : 'all'
+  const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1)
+
+  const [searchInput, setSearchInput] = useState(q)
+
+  // Keep the input in step when `q` changes from outside typing (back/forward,
+  // Clear filters) — adjust during render rather than in an effect.
+  const [prevQ, setPrevQ] = useState(q)
+  if (q !== prevQ) {
+    setPrevQ(q)
+    setSearchInput(q)
+  }
+
+  const updateParams = useCallback((
+    patch: Record<string, string | null>,
+    history: 'push' | 'replace' = 'push',
+  ) => {
+    const next = new URLSearchParams(searchParams.toString())
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === '') next.delete(key)
+      else next.set(key, value)
+    }
+    const qs = next.toString()
+    // scroll:false keeps the viewport where it is; the results panel handles its
+    // own scrolling on page change.
+    router[history](qs ? `${LIST_PATH}?${qs}` : LIST_PATH, { scroll: false })
+  }, [router, searchParams])
+
+  // Debounce typing into `q`, and replace (not push) so each keystroke pause
+  // doesn't add a history entry.
+  useEffect(() => {
+    const trimmed = searchInput.trim()
+    if (trimmed === q) return
+    const timer = setTimeout(() => updateParams({ q: trimmed || null, page: null }, 'replace'), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [searchInput, q, updateParams])
 
   useEffect(() => {
     const init = async () => {
@@ -88,9 +149,6 @@ export default function ShowroomProductsPage() {
         canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team)))
       if (!hasAccess) { router.push('/modules'); return }
       setProfile(profile)
-
-      await loadProducts(session.access_token)
-      setLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -104,18 +162,74 @@ export default function ShowroomProductsPage() {
     if (!effectiveHasAccess) router.replace('/modules')
   }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 
-  const loadProducts = async (token: string) => {
-    const res = await fetch('/api/showroom/admin/products', {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-    const data = await res.json()
-    if (Array.isArray(data?.products)) setProducts(data.products as ShowroomProduct[])
-  }
+  // Fetch the current page whenever the profile is confirmed or any catalog
+  // control changes. A sequence guard plus abort means a slow earlier response
+  // can never overwrite a newer one.
+  useEffect(() => {
+    if (!profile) return
+    const seq = ++reqSeq.current
+    const controller = new AbortController()
+
+    const run = async () => {
+      setFetching(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+
+      const params = new URLSearchParams({ page: String(page), sort })
+      if (q)                params.set('q', q)
+      if (category)         params.set('category', category)
+      if (status !== 'all') params.set('status', status)
+
+      try {
+        const res = await fetch(`/api/showroom/admin/products?${params.toString()}`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+          signal: controller.signal,
+        })
+        const data = await res.json()
+        if (seq !== reqSeq.current) return
+
+        if (!res.ok) {
+          setError(data.error ?? 'Failed to load products')
+        } else {
+          setProducts(Array.isArray(data.products) ? data.products as ShowroomProduct[] : [])
+          setTotal(data.total ?? 0)
+          setAllCount(data.allCount ?? 0)
+          setCatalogTotal(data.catalogTotal ?? 0)
+          setInactiveTotal(data.inactiveTotal ?? 0)
+          setCategories(Array.isArray(data.categories) ? data.categories as CategoryCount[] : [])
+          setError('')
+        }
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return
+        if (seq === reqSeq.current) setError('Failed to load products')
+      } finally {
+        if (seq === reqSeq.current) {
+          setFetching(false)
+          setLoading(false)
+        }
+      }
+    }
+
+    run()
+    return () => controller.abort()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, q, category, status, sort, page, refreshKey])
+
+  const lastPage = Math.max(1, Math.ceil(total / PRODUCTS_PER_PAGE))
+
+  // A deletion (or a narrower filter) can strand the user past the last page —
+  // fall back to the last valid one instead of showing an empty table.
+  useEffect(() => {
+    if (loading || fetching) return
+    if (page > lastPage) updateParams({ page: lastPage > 1 ? String(lastPage) : null }, 'replace')
+  }, [page, lastPage, loading, fetching, updateParams])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
   }
+
+  const reload = () => setRefreshKey(k => k + 1)
 
   const handleToggleActive = async (product: ShowroomProduct) => {
     setTogglingId(product.id)
@@ -137,7 +251,7 @@ export default function ShowroomProductsPage() {
       const d = await res.json()
       setError(d.error ?? 'Failed to update product')
     } else {
-      await loadProducts(session.access_token)
+      reload()
     }
     setTogglingId(null)
   }
@@ -167,8 +281,18 @@ export default function ShowroomProductsPage() {
     setNotice(data.deactivated
       ? { text: data.message, variant: 'amber' }
       : { text: 'Product deleted.', variant: 'green' })
-    await loadProducts(session.access_token)
+    reload()
   }
+
+  const goToPage = (next: number) => {
+    updateParams({ page: next > 1 ? String(next) : null })
+    // Only pull the results back into view when they've scrolled off the top;
+    // otherwise leave the viewport untouched.
+    const top = resultsRef.current?.getBoundingClientRect().top ?? 0
+    if (top < 0) resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const filtersActive = !!q || !!category || status !== 'all' || sort !== DEFAULT_SORT
 
   if (loading) {
     return (
@@ -178,15 +302,15 @@ export default function ShowroomProductsPage() {
     )
   }
 
-  // Group by active / inactive for clarity, sorted by product_code ascending
-  const active   = products.filter(p => p.is_active).sort(byProductCode)
-  const inactive = products.filter(p => !p.is_active).sort(byProductCode)
+  const firstRow = total === 0 ? 0 : (page - 1) * PRODUCTS_PER_PAGE + 1
+  const lastRow  = Math.min(page * PRODUCTS_PER_PAGE, total)
+  const emptyCatalog = catalogTotal === 0
 
   return (
     <ShowroomAdminLayout
       profile={profile}
       title="Showroom Products"
-      subtitle={`${active.length} active · ${inactive.length} inactive`}
+      subtitle={`${catalogTotal - inactiveTotal} active · ${inactiveTotal} inactive`}
       onSignOut={handleSignOut}
     >
       {qrProduct && (
@@ -202,7 +326,7 @@ export default function ShowroomProductsPage() {
         />
       )}
       {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ fontSize: '13px', color: colors.tertiary }}>
           All products — including inactive. Use the toggle to deactivate instead of deleting.
         </div>
@@ -235,35 +359,72 @@ export default function ShowroomProductsPage() {
         </div>
       )}
 
-      {products.length === 0 ? (
+      {emptyCatalog ? (
         <EmptyState
           message="No products yet"
           hint="Click Create Product to add your first showroom product."
         />
       ) : (
         <>
-          <ProductTable
-            products={active}
-            label="Active"
-            togglingId={togglingId}
-            onEdit={code => router.push(`/showroom-admin/products/${code}/edit`)}
-            onToggle={handleToggleActive}
-            onPrintQr={setQrProduct}
-            onDelete={setDeleteTarget}
+          <CategoryChips
+            categories={categories}
+            selected={category}
+            allCount={allCount}
+            disabled={fetching}
+            onSelect={next => updateParams({ category: next || null, page: null })}
           />
-          {inactive.length > 0 && (
-            <div style={{ marginTop: '32px' }}>
-              <ProductTable
-                products={inactive}
-                label="Inactive"
-                togglingId={togglingId}
-                onEdit={code => router.push(`/showroom-admin/products/${code}/edit`)}
-                onToggle={handleToggleActive}
-                onPrintQr={setQrProduct}
-                onDelete={setDeleteTarget}
+
+          <ProductToolbar
+            searchInput={searchInput}
+            status={status}
+            sort={sort}
+            filtersActive={filtersActive}
+            disabled={fetching}
+            onSearchChange={setSearchInput}
+            onStatusChange={next => updateParams({ status: next === 'all' ? null : next, page: null })}
+            onSortChange={next => updateParams({ sort: next === DEFAULT_SORT ? null : next, page: null })}
+            onClear={() => updateParams({ q: null, category: null, status: null, sort: null, page: null })}
+          />
+
+          <div ref={resultsRef} style={{ scrollMarginTop: '16px' }}>
+            {total === 0 ? (
+              <EmptyState
+                message="No products match your filters"
+                hint="Try a different search term, category or status — or clear the filters."
               />
-            </div>
-          )}
+            ) : (
+              <>
+                <ProductTable
+                  products={products}
+                  fetching={fetching}
+                  togglingId={togglingId}
+                  onEdit={code => router.push(`/showroom-admin/products/${code}/edit`)}
+                  onToggle={handleToggleActive}
+                  onPrintQr={setQrProduct}
+                  onDelete={setDeleteTarget}
+                />
+
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  flexWrap: 'wrap', gap: '8px', marginTop: '12px',
+                }}>
+                  <div style={{ fontSize: '12px', color: colors.tertiary }}>
+                    Showing {firstRow}–{lastRow} of {total} product{total === 1 ? '' : 's'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: colors.muted }}>
+                    Page {page} of {lastPage}
+                  </div>
+                </div>
+
+                <ProductPagination
+                  page={page}
+                  lastPage={lastPage}
+                  busy={fetching}
+                  onPageChange={goToPage}
+                />
+              </>
+            )}
+          </div>
         </>
       )}
     </ShowroomAdminLayout>
@@ -303,10 +464,10 @@ function TableSkeleton() {
 // ── Product table ─────────────────────────────────────────────────────────────
 
 function ProductTable({
-  products, label, togglingId, onEdit, onToggle, onPrintQr, onDelete,
+  products, fetching, togglingId, onEdit, onToggle, onPrintQr, onDelete,
 }: {
   products: ShowroomProduct[]
-  label: string
+  fetching: boolean
   togglingId: string | null
   onEdit: (code: string) => void
   onToggle: (p: ShowroomProduct) => void
@@ -317,19 +478,16 @@ function ProductTable({
 
   return (
     <div>
-      {/* Section label */}
-      <div style={{
-        fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em',
-        textTransform: 'uppercase', color: colors.muted, marginBottom: '10px',
-      }}>
-        {label} · {products.length}
-      </div>
-
+      {/* The previous rows stay on screen while the next page loads — dimmed and
+          inert rather than replaced by a skeleton, so the table never blanks. */}
       <div style={{
         background: colors.base,
         border: `1.5px solid ${colors.border}`,
         borderRadius: '10px',
         overflow: 'hidden',
+        opacity: fetching ? 0.55 : 1,
+        pointerEvents: fetching ? 'none' : undefined,
+        transition: 'opacity 120ms ease',
       }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
