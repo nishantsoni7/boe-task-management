@@ -27,6 +27,7 @@ type OrderRequest = {
   status: string
   created_by: string | null
   clarification_note: string | null
+  rejection_reason: string | null
   created_at: string
   converted_order_id: string | null
   converted_order_number?: string
@@ -762,6 +763,162 @@ function ClarifyModal({
   )
 }
 
+// ── Reject Request modal (admin only) ──────────────────────────────────────────
+// Deliberately separate from ConvertModal and ClarifyModal: rejecting is a
+// terminal decision distinct from asking a question or creating an Order, and
+// must not share a confirmation with either.
+
+function RejectModal({
+  request,
+  onClose,
+  onRejected,
+}: {
+  request: OrderRequest
+  onClose: () => void
+  onRejected: (requestNumber: string) => void
+}) {
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState<string | null>(null)
+  const supabase = useMemo(() => createClient(), [])
+
+  const reasonValid = reason.trim().length > 0
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (saving || !reasonValid) return
+    setSaving(true)
+    setError(null)
+
+    const { error: rpcErr } = await supabase.rpc('reject_order_request', {
+      p_order_request_id: request.id,
+      p_rejection_reason: reason,
+    })
+
+    if (rpcErr) {
+      // Modal stays open so the admin can retry or copy their reason out.
+      setError('Could not reject this request. It may have already changed. Please refresh and try again.')
+      setSaving(false)
+      return
+    }
+
+    onRejected(request.request_number)
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: 'flex', flexDirection: 'column', gap: '4px',
+    fontSize: '11px', fontWeight: 600, color: colors.muted,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+  }
+  const keyStyle: React.CSSProperties = {
+    color: colors.muted, fontSize: '11px', fontWeight: 600,
+    textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget && !saving) onClose() }}
+    >
+      <div style={{
+        background: colors.base,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '12px',
+        width: '100%', maxWidth: '460px',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
+        }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Reject Request</div>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+              {request.request_number} · {request.client_name}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{ background: 'none', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', color: colors.muted, display: 'flex' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{
+            fontSize: '12px', color: '#991B1B',
+            background: '#FEF2F2', border: '1px solid #FECACA',
+            borderRadius: '6px', padding: '9px 12px', lineHeight: 1.5,
+          }}>
+            This cannot be undone. The request will be permanently marked Rejected
+            and cannot be converted or resubmitted.
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+              <span style={keyStyle}>Request Number</span>
+              <span style={{ color: colors.primary, fontWeight: 600 }}>{request.request_number}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+              <span style={keyStyle}>Client</span>
+              <span style={{ color: colors.primary }}>{request.client_name}</span>
+            </div>
+          </div>
+
+          <label style={labelStyle}>
+            Rejection Reason *
+            <textarea
+              autoFocus
+              style={{
+                padding: '7px 10px', borderRadius: '6px',
+                border: `1px solid ${colors.border}`,
+                background: colors.raised, color: colors.primary,
+                fontSize: '13px', width: '100%', boxSizing: 'border-box',
+                outline: 'none', minHeight: '80px', resize: 'vertical',
+                fontFamily: 'inherit',
+              }}
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Explain why this request is being rejected…"
+            />
+          </label>
+
+          {error && (
+            <div style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px' }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+            <button type="button" onClick={onClose} disabled={saving} style={{
+              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
+              cursor: saving ? 'not-allowed' : 'pointer',
+            }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving || !reasonValid} style={{
+              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: '#991B1B', border: 'none', color: '#fff',
+              cursor: (saving || !reasonValid) ? 'not-allowed' : 'pointer',
+              opacity: (saving || !reasonValid) ? 0.5 : 1,
+            }}>
+              {saving ? 'Rejecting…' : 'Reject Request'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── Update and Resubmit modal (permitted requester only) ──────────────────────
 // One action: edit the permitted business fields and hand the request back for
 // review. No draft, no separate reply — the edit IS the response.
@@ -995,6 +1152,7 @@ export default function OrderRequestsPage() {
   const [converted,     setConverted]     = useState<ConvertResult | null>(null)
   const [clarifyTarget,  setClarifyTarget]  = useState<OrderRequest | null>(null)
   const [resubmitTarget, setResubmitTarget] = useState<OrderRequest | null>(null)
+  const [rejectTarget,   setRejectTarget]   = useState<OrderRequest | null>(null)
   const [actionMessage,  setActionMessage]  = useState<string | null>(null)
 
   const router   = useRouter()
@@ -1008,7 +1166,7 @@ export default function OrderRequestsPage() {
         id, request_number, client_name,
         requested_by, assigned_to,
         confirm_date, due_date, total_value, lead_source, notes,
-        status, created_by, clarification_note, created_at, converted_order_id,
+        status, created_by, clarification_note, rejection_reason, created_at, converted_order_id,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
         converted_order:orders!converted_order_id(display_number)
@@ -1257,6 +1415,17 @@ export default function OrderRequestsPage() {
                           ? {r.clarification_note}
                         </div>
                       )}
+                      {r.status === 'rejected' && r.rejection_reason && (
+                        <div
+                          title={r.rejection_reason}
+                          style={{
+                            fontSize: '11px', fontWeight: 500, color: '#991B1B', marginTop: '2px',
+                            maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          ✕ {r.rejection_reason}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '11px 16px', color: colors.primary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.client_name}
@@ -1303,6 +1472,16 @@ export default function OrderRequestsPage() {
                             }}
                           >
                             Request Clarification
+                          </button>
+                          <button
+                            onClick={() => setRejectTarget(r)}
+                            style={{
+                              padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                              background: 'transparent', border: '1px solid #FECACA',
+                              color: '#991B1B', cursor: 'pointer',
+                            }}
+                          >
+                            Reject Request
                           </button>
                         </span>
                       ) : r.status === 'needs_clarification' && isPermittedRequester(r, currentUserId) ? (
@@ -1389,6 +1568,20 @@ export default function OrderRequestsPage() {
             setSuccessNumber(null)
             setConverted(null)
             setActionMessage(`${requestNumber} updated and resubmitted. It is back under Active for review.`)
+            loadRequests()
+          }}
+        />
+      )}
+
+      {rejectTarget && (
+        <RejectModal
+          request={rejectTarget}
+          onClose={() => setRejectTarget(null)}
+          onRejected={requestNumber => {
+            setRejectTarget(null)
+            setSuccessNumber(null)
+            setConverted(null)
+            setActionMessage(`${requestNumber} has been rejected.`)
             loadRequests()
           }}
         />
