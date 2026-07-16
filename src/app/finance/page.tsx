@@ -572,13 +572,6 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
     setForm(prev => ({ ...prev, clientName: o?.client_name ?? '' }))
   }
 
-  const handlePaymentAgainstChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setForm(prev => ({ ...prev, paymentAgainst: e.target.value, clientName: '' }))
-    setSelectedOrder(null)
-    setOrderQuery('')
-    setOrderResults([])
-  }
-
   const handleOrderSearch = async (q: string) => {
     setOrderQuery(q)
     selectOrder(null)
@@ -717,7 +710,6 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
     onSaved()
   }
 
-  // Card-based toggle — reuses same reset logic as handlePaymentAgainstChange
   const switchPaymentAgainst = (value: string) => {
     setForm(prev => ({ ...prev, paymentAgainst: value, clientName: '' }))
     setSelectedOrder(null)
@@ -754,11 +746,8 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
           display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexShrink: 0,
         }}>
           <div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, marginBottom: '2px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
               Send Payment Request
-            </div>
-            <div style={{ fontSize: '11px', color: colors.muted }}>
-              Send customer payment details for admin review
             </div>
           </div>
           <button
@@ -800,22 +789,10 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
                     <span style={{ fontSize: '12px', fontWeight: 600, color: active ? '#DC1F2E' : colors.primary }}>
                       {opt.label}
                     </span>
-                    <span style={{ fontSize: '11px', color: colors.muted }}>
-                      {opt.value === 'new_order'
-                        ? 'Order number allocated after admin approval'
-                        : 'Link to an existing order'}
-                    </span>
                   </button>
                 )
               })}
             </div>
-
-            {/* New Order — helper line */}
-            {!isExistingOrder && (
-              <div style={{ fontSize: '11px', color: colors.muted, padding: '0 2px' }}>
-                Pending order allocation — the order number is assigned once an admin approves this request.
-              </div>
-            )}
 
             {/* Existing Order — search + selection */}
             {isExistingOrder && (
@@ -912,12 +889,9 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
             )}
           </div>
 
-          {/* Section: Payment details */}
-          <div>
-            <div style={SECTION_LABEL}>Payment details</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
-              {/* Row 1: Client Name + Amount */}
+            {/* Row 1: Client Name + Amount */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <Field label="Client Name" required>
                   {isExistingOrder ? (
@@ -1012,7 +986,6 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
                 )}
               </Field>
 
-            </div>
           </div>
 
           {error && <ErrorBanner message={error} />}
