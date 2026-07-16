@@ -125,10 +125,14 @@ export async function GET(req: NextRequest) {
   const sortKey = isSortKey(sp.get('sort')) ? (sp.get('sort') as SortKey) : DEFAULT_SORT
   const sort    = SORT_MAP[sortKey]
   const rawStatus = sp.get('status')
+  // Product Master defaults to Active — no/invalid `status` means Active, not
+  // All. Only an explicit `status=all` shows both; `status=inactive` shows only
+  // inactive. The legacy no-`page` branch above (used by the Categories page)
+  // never reaches this and is unaffected.
   const filters: Filters = {
     search:   (sp.get('q') ?? '').trim(),
     category: (sp.get('category') ?? '').trim(),
-    status:   rawStatus === 'active' || rawStatus === 'inactive' ? rawStatus : 'all',
+    status:   rawStatus === 'all' ? 'all' : rawStatus === 'inactive' ? 'inactive' : 'active',
   }
 
   const from = (page - 1) * PRODUCTS_PER_PAGE
@@ -152,23 +156,43 @@ export async function GET(req: NextRequest) {
     return query
   }
 
-  // Chip names come from the categories table (the same source the create/edit
-  // forms use); each count reflects the active search + status so the chips
-  // agree with the list. Category count is small and admin-managed, so one count
-  // per category stays cheap.
-  const { data: categoryRows } = await client
-    .from('showroom_categories')
-    .select('name')
-    .order('name', { ascending: true })
-  const categoryNames = (categoryRows ?? []).map(r => r.name as string)
+  // Category chips, the "All Products" count and the catalog-wide active/inactive
+  // split depend only on `search` + `status` — never on which category tab is
+  // selected, the sort order, or the page number. The client tracks that scope
+  // and only asks for this block again when search or status actually changed
+  // (or a mutation bumped its refresh key); `meta=0` means "nothing in that
+  // scope moved, skip the aggregate queries and keep what I already have."
+  const skipMeta = sp.get('meta') === '0'
 
-  const [pageRes, filteredRes, allRes, catalogRes, inactiveRes, ...categoryCounts] = await Promise.all([
+  const loadMeta = async () => {
+    // Chip names come from the categories table (the same source the create/edit
+    // forms use); each count reflects the active search + status so the chips
+    // agree with the list. Category count is small and admin-managed, so one
+    // count per category stays cheap.
+    const { data: categoryRows } = await client
+      .from('showroom_categories')
+      .select('name')
+      .order('name', { ascending: true })
+    const categoryNames = (categoryRows ?? []).map(r => r.name as string)
+
+    const [allRes, catalogRes, inactiveRes, ...categoryCounts] = await Promise.all([
+      countQuery({ ...filters, category: '' }),
+      client.from('showroom_products').select('id', { count: 'exact', head: true }),
+      client.from('showroom_products').select('id', { count: 'exact', head: true }).eq('is_active', false),
+      ...categoryNames.map(name => countQuery({ ...filters, category: name })),
+    ])
+
+    return {
+      allCount:      allRes.count ?? 0,
+      catalogTotal:  catalogRes.count ?? 0,
+      inactiveTotal: inactiveRes.count ?? 0,
+      categories:    categoryNames.map((name, i) => ({ name, count: categoryCounts[i]?.count ?? 0 })),
+    }
+  }
+
+  const [pageRes, meta] = await Promise.all([
     sortedQuery.range(from, to),
-    countQuery(filters),
-    countQuery({ ...filters, category: '' }),
-    client.from('showroom_products').select('id', { count: 'exact', head: true }),
-    client.from('showroom_products').select('id', { count: 'exact', head: true }).eq('is_active', false),
-    ...categoryNames.map(name => countQuery({ ...filters, category: name })),
+    skipMeta ? Promise.resolve(null) : loadMeta(),
   ])
 
   // Asking for a page past the end (a stale `?page=` after deleting rows, or a
@@ -182,15 +206,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: pageRes.error.message }, { status: 500 })
   }
 
+  // `count: 'exact'` on the page query already returns the total matching the
+  // filters (not just this page's rows), so a second count query for the same
+  // filters would be redundant — except in the unsatisfiable-range case above,
+  // where PostgREST's error response carries no count and a dedicated query is
+  // the only way to recover the real total.
+  const total = rangeUnsatisfiable ? (await countQuery(filters)).count ?? 0 : pageRes.count ?? 0
+
   return NextResponse.json({
-    products:      pageRes.data ?? [],
-    total:         filteredRes.count ?? 0,
+    products: pageRes.data ?? [],
+    total,
     page,
-    pageSize:      PRODUCTS_PER_PAGE,
-    allCount:      allRes.count ?? 0,
-    catalogTotal:  catalogRes.count ?? 0,
-    inactiveTotal: inactiveRes.count ?? 0,
-    categories:    categoryNames.map((name, i) => ({ name, count: categoryCounts[i]?.count ?? 0 })),
+    pageSize: PRODUCTS_PER_PAGE,
+    ...(meta ?? {}),
   })
 }
 

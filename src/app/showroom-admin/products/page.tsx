@@ -38,7 +38,7 @@ const teamFallback = (team?: string | null) =>
 
 const LIST_PATH = '/showroom-admin/products'
 const DEFAULT_SORT: SortValue = 'code_asc'
-const SEARCH_DEBOUNCE_MS = 300
+const SEARCH_DEBOUNCE_MS = 220
 
 const isSort   = (v: string | null): v is SortValue   => SORT_OPTIONS.some(o => o.value === v)
 const isStatus = (v: string | null): v is StatusValue => STATUS_OPTIONS.some(o => o.value === v)
@@ -88,7 +88,9 @@ function ShowroomProductsContent() {
   const q        = searchParams.get('q') ?? ''
   const category = searchParams.get('category') ?? ''
   const sort     = isSort(rawSort) ? rawSort : DEFAULT_SORT
-  const status   = isStatus(rawStatus) ? rawStatus : 'all'
+  // No `status` param (the clean Product Master URL) means Active — inactive
+  // products are opt-in via the dropdown, not shown by default.
+  const status   = isStatus(rawStatus) ? rawStatus : 'active'
   const page     = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1)
 
   const [searchInput, setSearchInput] = useState(q)
@@ -117,10 +119,16 @@ function ShowroomProductsContent() {
   }, [router, searchParams])
 
   // Debounce typing into `q`, and replace (not push) so each keystroke pause
-  // doesn't add a history entry.
+  // doesn't add a history entry. Clearing to empty (the X button, or
+  // backspacing to nothing) skips the debounce — there's nothing left to
+  // wait out, so it should feel instant.
   useEffect(() => {
     const trimmed = searchInput.trim()
     if (trimmed === q) return
+    if (trimmed === '') {
+      updateParams({ q: null, page: null }, 'replace')
+      return
+    }
     const timer = setTimeout(() => updateParams({ q: trimmed || null, page: null }, 'replace'), SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [searchInput, q, updateParams])
@@ -162,6 +170,14 @@ function ShowroomProductsContent() {
     if (!effectiveHasAccess) router.replace('/modules')
   }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 
+  // Category chips, the "All Products" count and the active/inactive split
+  // depend only on search + status (never on which category tab, sort order,
+  // or page is selected) and change again after a mutation (reload()). So a
+  // request that only changes category/sort/page tells the API to skip
+  // recomputing that block (`meta=0`) and this component just keeps the
+  // values it already has, instead of paying for it on every request.
+  const metaKeyRef = useRef<string | null>(null)
+
   // Fetch the current page whenever the profile is confirmed or any catalog
   // control changes. A sequence guard plus abort means a slow earlier response
   // can never overwrite a newer one.
@@ -169,6 +185,8 @@ function ShowroomProductsContent() {
     if (!profile) return
     const seq = ++reqSeq.current
     const controller = new AbortController()
+    const metaKey = `${q}|${status}|${refreshKey}`
+    const skipMeta = metaKeyRef.current === metaKey
 
     const run = async () => {
       setFetching(true)
@@ -176,9 +194,10 @@ function ShowroomProductsContent() {
       if (!session) { router.push('/login'); return }
 
       const params = new URLSearchParams({ page: String(page), sort })
-      if (q)                params.set('q', q)
-      if (category)         params.set('category', category)
-      if (status !== 'all') params.set('status', status)
+      if (q)                   params.set('q', q)
+      if (category)            params.set('category', category)
+      if (status !== 'active') params.set('status', status)
+      if (skipMeta)            params.set('meta', '0')
 
       try {
         const res = await fetch(`/api/showroom/admin/products?${params.toString()}`, {
@@ -193,10 +212,15 @@ function ShowroomProductsContent() {
         } else {
           setProducts(Array.isArray(data.products) ? data.products as ShowroomProduct[] : [])
           setTotal(data.total ?? 0)
-          setAllCount(data.allCount ?? 0)
-          setCatalogTotal(data.catalogTotal ?? 0)
-          setInactiveTotal(data.inactiveTotal ?? 0)
-          setCategories(Array.isArray(data.categories) ? data.categories as CategoryCount[] : [])
+          // Omitted (meta was skipped) means the previous values still hold —
+          // only overwrite when the server actually recomputed this block.
+          if (Array.isArray(data.categories)) {
+            setAllCount(data.allCount ?? 0)
+            setCatalogTotal(data.catalogTotal ?? 0)
+            setInactiveTotal(data.inactiveTotal ?? 0)
+            setCategories(data.categories as CategoryCount[])
+            metaKeyRef.current = metaKey
+          }
           setError('')
         }
       } catch (err) {
@@ -292,11 +316,11 @@ function ShowroomProductsContent() {
     if (top < 0) resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const filtersActive = !!q || !!category || status !== 'all' || sort !== DEFAULT_SORT
+  const filtersActive = !!q || !!category || status !== 'active' || sort !== DEFAULT_SORT
 
   if (loading) {
     return (
-      <ShowroomAdminLayout profile={profile} title="Showroom Products" onSignOut={handleSignOut}>
+      <ShowroomAdminLayout profile={profile} title="Product Master" onSignOut={handleSignOut}>
         <TableSkeleton />
       </ShowroomAdminLayout>
     )
@@ -309,7 +333,7 @@ function ShowroomProductsContent() {
   return (
     <ShowroomAdminLayout
       profile={profile}
-      title="Showroom Products"
+      title="Product Master"
       subtitle={`${catalogTotal - inactiveTotal} active · ${inactiveTotal} inactive`}
       onSignOut={handleSignOut}
     >
@@ -325,25 +349,17 @@ function ShowroomProductsContent() {
           onConfirm={handleDelete}
         />
       )}
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ fontSize: '13px', color: colors.tertiary }}>
-          All products — including inactive. Use the toggle to deactivate instead of deleting.
-        </div>
+      {/* Header row — title/subtitle already sit above in ShowroomAdminLayout's
+          sticky header, so this row is just the primary action, right-aligned.
+          Kept tight to the category tabs below it — this row's own height
+          already reads as the section break; it doesn't need extra margin too. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '6px' }}>
         <button
           onClick={() => router.push('/showroom-admin/products/new')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '7px',
-            fontSize: '13px', fontWeight: 600,
-            color: '#fff',
-            background: '#1A2035',
-            border: 'none', borderRadius: '8px',
-            padding: '9px 16px',
-            cursor: 'pointer',
-          }}
+          className="boe-btn boe-btn-primary"
         >
           <PlusCircle size={15} strokeWidth={2} />
-          Create Product
+          Add Product
         </button>
       </div>
 
@@ -362,7 +378,7 @@ function ShowroomProductsContent() {
       {emptyCatalog ? (
         <EmptyState
           message="No products yet"
-          hint="Click Create Product to add your first showroom product."
+          hint="Click Add Product to add your first showroom product."
         />
       ) : (
         <>
@@ -381,7 +397,7 @@ function ShowroomProductsContent() {
             filtersActive={filtersActive}
             disabled={fetching}
             onSearchChange={setSearchInput}
-            onStatusChange={next => updateParams({ status: next === 'all' ? null : next, page: null })}
+            onStatusChange={next => updateParams({ status: next === 'active' ? null : next, page: null })}
             onSortChange={next => updateParams({ sort: next === DEFAULT_SORT ? null : next, page: null })}
             onClear={() => updateParams({ q: null, category: null, status: null, sort: null, page: null })}
           />

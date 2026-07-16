@@ -57,7 +57,7 @@ export function CategoryChips({
     ...categories.map(c => ({ name: c.name, label: c.name, count: c.count }))]
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
       {chips.map(chip => {
         const active = chip.name === selected
         return (
@@ -110,12 +110,10 @@ export function ProductToolbar({
   onClear: () => void
 }) {
   return (
-    <div style={{
-      display: 'flex', flexWrap: 'wrap', gap: '8px',
-      alignItems: 'center', marginBottom: '16px',
-    }}>
-      {/* Search */}
-      <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 0 }}>
+    <div className="product-toolbar-grid" style={{ marginBottom: '12px' }}>
+      {/* Search — narrower than status/sort so the full option text elsewhere
+          has room to breathe; ~30-35% of the row on desktop (see globals.css). */}
+      <div className="product-toolbar-search" style={{ position: 'relative', minWidth: 0 }}>
         <Search
           size={14}
           strokeWidth={2}
@@ -157,19 +155,19 @@ export function ProductToolbar({
         onChange={e => onStatusChange(e.target.value as StatusValue)}
         disabled={disabled}
         aria-label="Filter by status"
-        style={{ ...controlStyle, flex: '0 0 auto' }}
+        style={{ ...controlStyle, width: '100%' }}
       >
         {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '0 0 auto' }}>
-        <SlidersHorizontal size={13} strokeWidth={1.8} color={colors.muted} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%' }}>
+        <SlidersHorizontal size={13} strokeWidth={1.8} color={colors.muted} style={{ flexShrink: 0 }} />
         <select
           value={sort}
           onChange={e => onSortChange(e.target.value as SortValue)}
           disabled={disabled}
           aria-label="Sort products"
-          style={controlStyle}
+          style={{ ...controlStyle, flex: 1, minWidth: 0 }}
         >
           {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -177,15 +175,15 @@ export function ProductToolbar({
 
       {filtersActive && (
         <button
+          className="product-toolbar-clear"
           onClick={onClear}
           style={{
             ...controlStyle,
-            display: 'flex', alignItems: 'center', gap: '5px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
             fontSize: '12.5px', fontWeight: 500,
             color: colors.secondary,
             background: colors.float,
             border: `1.5px solid ${colors.border}`,
-            flex: '0 0 auto',
           }}
         >
           <X size={13} strokeWidth={2} />

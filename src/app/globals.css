@@ -1166,6 +1166,16 @@ body {
   }
 }
 
+/* ── Showroom product catalog toolbar: search/status/sort/clear ──
+   Desktop proportions ≈ 35% / 25% / 40% search/status/sort so full sort
+   labels ("Product code A–Z", "MRP high to low") never truncate. */
+.product-toolbar-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(150px, 0.72fr) minmax(230px, 1.15fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
 /* ── Task detail: main + log sidebar ── */
 .boe-detail-layout {
   display: grid;
@@ -1492,6 +1502,14 @@ body {
   .boe-kpi-grid          { grid-template-columns: repeat(2, 1fr); }
   .boe-manager-layout    { grid-template-columns: 1fr; }
   .boe-detail-layout     { grid-template-columns: 1fr; }
+
+  /* Tablet: search takes its own full-width row, status/sort/clear wrap below. */
+  .product-toolbar-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .product-toolbar-grid .product-toolbar-search {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 767px) {
@@ -1606,6 +1624,15 @@ body {
   .boe-dashboard-grid    { grid-template-columns: 1fr; }
   .boe-two-col-section   { grid-template-columns: 1fr; }
   .boe-kpi-grid          { grid-template-columns: repeat(2, 1fr); }
+
+  /* Mobile: search full width, status/sort as two equal columns, clear below. */
+  .product-toolbar-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .product-toolbar-grid .product-toolbar-search,
+  .product-toolbar-grid .product-toolbar-clear {
+    grid-column: 1 / -1;
+  }
 }
 
 /* ── Mobile bottom navigation — hidden on desktop, shown on mobile ── */
