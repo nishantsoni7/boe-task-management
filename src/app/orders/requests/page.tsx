@@ -1135,6 +1135,224 @@ function ResubmitModal({
   )
 }
 
+// ── Update and Reapply modal (permitted requester only) ────────────────────────
+// One action: edit the permitted business fields and hand a rejected request
+// back for review. Mirrors ResubmitModal exactly, but shows the rejection
+// reason (not a clarification note) and calls reapply_order_request.
+
+function ReapplyModal({
+  request,
+  users,
+  onClose,
+  onReapplied,
+}: {
+  request: OrderRequest
+  users: UserOption[]
+  onClose: () => void
+  onReapplied: (requestNumber: string) => void
+}) {
+  const [form, setForm] = useState<RequestForm>({
+    client_name:  request.client_name,
+    requested_by: request.requested_by ?? '',
+    assigned_to:  request.assigned_to ?? '',
+    confirm_date: request.confirm_date ?? '',
+    due_date:     request.due_date ?? '',
+    total_value:  request.total_value != null ? String(request.total_value) : '',
+    lead_source:  request.lead_source ?? '',
+    notes:        request.notes ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState<string | null>(null)
+  const supabase = useMemo(() => createClient(), [])
+
+  const set = (k: keyof RequestForm) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (saving) return
+    if (!form.client_name.trim()) { setError('Client name is required.'); return }
+    if (!form.requested_by)       { setError('Requested By is required.'); return }
+    setSaving(true)
+    setError(null)
+
+    const { error: rpcErr } = await supabase.rpc('reapply_order_request', {
+      p_order_request_id: request.id,
+      p_client_name:      form.client_name,
+      p_requested_by:     form.requested_by,
+      p_assigned_to:      form.assigned_to  || null,
+      p_confirm_date:     form.confirm_date || null,
+      p_due_date:         form.due_date     || null,
+      p_total_value:      form.total_value  ? parseFloat(form.total_value) : null,
+      p_lead_source:      form.lead_source  || null,
+      p_notes:            form.notes,
+    })
+
+    if (rpcErr) {
+      setError('Could not reapply this request. It may have already changed. Please refresh and try again.')
+      setSaving(false)
+      return
+    }
+
+    onReapplied(request.request_number)
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: 'flex', flexDirection: 'column', gap: '4px',
+    fontSize: '11px', fontWeight: 600, color: colors.muted,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+  }
+  const inputStyle: React.CSSProperties = {
+    padding: '7px 10px', borderRadius: '6px',
+    border: `1px solid ${colors.border}`,
+    background: colors.raised, color: colors.primary,
+    fontSize: '13px', width: '100%', boxSizing: 'border-box',
+    outline: 'none',
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px',
+      }}
+      onClick={e => { if (e.target === e.currentTarget && !saving) onClose() }}
+    >
+      <div style={{
+        background: colors.base,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '12px',
+        width: '100%', maxWidth: '540px',
+        maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
+        }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Update and Reapply</div>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+              {request.request_number} · {request.client_name}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{ background: 'none', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', color: colors.muted, display: 'flex' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* The reason being addressed — shown prominently, above the fields,
+              and kept visible for the whole edit until reapplication succeeds. */}
+          {request.rejection_reason && (
+            <div style={{
+              background: '#FEF2F2', border: '1px solid #FECACA',
+              borderRadius: '6px', padding: '10px 12px',
+            }}>
+              <div style={{
+                fontSize: '10px', fontWeight: 700, color: '#991B1B',
+                textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px',
+              }}>
+                Rejection reason
+              </div>
+              <div style={{ fontSize: '13px', color: '#7F1D1D', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                {request.rejection_reason}
+              </div>
+            </div>
+          )}
+
+          <label style={labelStyle}>
+            Client Name *
+            <input style={inputStyle} value={form.client_name} onChange={set('client_name')} required />
+          </label>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <label style={labelStyle}>
+              Requested By *
+              <select style={inputStyle} value={form.requested_by} onChange={set('requested_by')} required>
+                <option value="">— Select —</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Assigned To
+              <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
+                <option value="">— Select —</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <label style={labelStyle}>
+              Expected Confirmation
+              <input type="date" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
+            </label>
+            <label style={labelStyle}>
+              Expected Due Date
+              <input type="date" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
+            </label>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <label style={labelStyle}>
+              Approx. Value (₹)
+              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} />
+            </label>
+            <label style={labelStyle}>
+              Lead Source
+              <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
+                <option value="">— Select —</option>
+                {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <label style={labelStyle}>
+            Notes
+            <textarea
+              style={{ ...inputStyle, minHeight: '72px', resize: 'vertical', fontFamily: 'inherit' }}
+              value={form.notes}
+              onChange={set('notes')}
+            />
+          </label>
+
+          {error && (
+            <div style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px' }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+            <button type="button" onClick={onClose} disabled={saving} style={{
+              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
+              cursor: saving ? 'not-allowed' : 'pointer',
+            }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} style={{
+              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+              background: '#DC1F2E', border: 'none', color: '#fff',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.7 : 1,
+            }}>
+              {saving ? 'Reapplying…' : 'Update and Reapply'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function OrderRequestsPage() {
@@ -1153,6 +1371,7 @@ export default function OrderRequestsPage() {
   const [clarifyTarget,  setClarifyTarget]  = useState<OrderRequest | null>(null)
   const [resubmitTarget, setResubmitTarget] = useState<OrderRequest | null>(null)
   const [rejectTarget,   setRejectTarget]   = useState<OrderRequest | null>(null)
+  const [reapplyTarget,  setReapplyTarget]  = useState<OrderRequest | null>(null)
   const [actionMessage,  setActionMessage]  = useState<string | null>(null)
 
   const router   = useRouter()
@@ -1221,7 +1440,7 @@ export default function OrderRequestsPage() {
 
   const visible = useMemo(() => {
     const tab = STATUS_TABS.find(t => t.key === statusTab) ?? STATUS_TABS[0]
-    let list = requests.filter(r => tab.match(r.status))
+    const list = requests.filter(r => tab.match(r.status))
     const q = search.trim().toLowerCase()
     if (!q) return list
     return list.filter(r =>
@@ -1494,6 +1713,16 @@ export default function OrderRequestsPage() {
                         >
                           Update and Resubmit
                         </button>
+                      ) : r.status === 'rejected' && isPermittedRequester(r, currentUserId) ? (
+                        <button
+                          onClick={() => setReapplyTarget(r)}
+                          style={{
+                            padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                            background: '#1E40AF', border: 'none', color: '#fff', cursor: 'pointer',
+                          }}
+                        >
+                          Update and Reapply
+                        </button>
                       ) : r.status === 'converted' && r.converted_order_id ? (
                         <button
                           onClick={() => router.push(`/orders/${r.converted_order_id}`)}
@@ -1582,6 +1811,21 @@ export default function OrderRequestsPage() {
             setSuccessNumber(null)
             setConverted(null)
             setActionMessage(`${requestNumber} has been rejected.`)
+            loadRequests()
+          }}
+        />
+      )}
+
+      {reapplyTarget && (
+        <ReapplyModal
+          request={reapplyTarget}
+          users={users}
+          onClose={() => setReapplyTarget(null)}
+          onReapplied={requestNumber => {
+            setReapplyTarget(null)
+            setSuccessNumber(null)
+            setConverted(null)
+            setActionMessage(`${requestNumber} updated and reapplied. It is back under Active for review.`)
             loadRequests()
           }}
         />
