@@ -150,3 +150,21 @@ registerModule({
     { actionKey: 'manage', displayName: 'Manage' },
   ],
 })
+
+// Order Requests (/orders/requests) is not a separate module — it lives
+// under the same /orders route tree and inherits this module's 'view'
+// permission via the shared src/app/orders/layout.tsx guard.
+registerModule({
+  moduleKey: 'orders',
+  displayName: 'Order Management',
+  description: 'Track confirmed orders from request through production and dispatch.',
+  actions: [
+    { actionKey: 'view', displayName: 'View' },
+    { actionKey: 'create', displayName: 'Create' },
+    { actionKey: 'edit', displayName: 'Edit' },
+    { actionKey: 'delete', displayName: 'Delete' },
+    { actionKey: 'approve', displayName: 'Approve' },
+    { actionKey: 'export', displayName: 'Export' },
+    { actionKey: 'manage', displayName: 'Manage' },
+  ],
+})

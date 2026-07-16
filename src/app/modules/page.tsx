@@ -9,6 +9,7 @@ import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
 import DailyQuoteLoader from '@/components/DailyQuoteLoader'
 import { useViewAs } from '@/hooks/useViewAs'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { hasPermission } from '@/lib/permissions/resolver'
 
 // ── Module definition ─────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ export default function BoeOsHomePage() {
   const [taskNotif,   setTaskNotif]   = useState<number | null>(null)
   const [sampleNotif, setSampleNotif] = useState<number | null>(null)
   const [modVis,      setModVis]      = useState<Record<string, ModVisRow>>({})
+  const [ordersAllowed, setOrdersAllowed] = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -82,6 +84,7 @@ export default function BoeOsHomePage() {
         { data: appModulesData },
         taskNotifsRes,
         sampleNotifsRes,
+        ordersAllowedRes,
       ] = await Promise.all([
         supabase
           .from('users')
@@ -100,6 +103,9 @@ export default function BoeOsHomePage() {
         fetch('/api/samples/notifications?count=1')
           .then(r => r.ok ? r.json() : null)
           .catch(() => null),
+        // Order Management: gated by the permission engine (Control Center →
+        // Access Control), not app_modules — see src/app/orders/layout.tsx.
+        hasPermission(supabase, uid, 'orders', 'view').catch(() => false),
       ])
 
       if (profileData) setProfile(profileData as UserProfile)
@@ -113,6 +119,7 @@ export default function BoeOsHomePage() {
       // Keep null if the API failed so the card shows "No pending" rather than a wrong number
       setTaskNotif(taskNotifsRes != null ? (taskNotifsRes.unreadCount ?? 0) : null)
       setSampleNotif(sampleNotifsRes != null ? (sampleNotifsRes.unreadCount ?? 0) : null)
+      setOrdersAllowed(ordersAllowedRes === true)
       setLoading(false)
     }
     init()
@@ -233,7 +240,7 @@ export default function BoeOsHomePage() {
       visibilityType: modVis['finance']?.visibility_type,
       allowedDepartment: modVis['finance']?.allowed_department,
     }] : []),
-    ...(canSeeModule('orders', modVis, effectiveProfile, isAdminFallback) ? [{
+    ...((isAdminFallback || ordersAllowed) ? [{
       key: 'orders',
       title: 'Order Management',
       description: 'Track confirmed orders from request through production and dispatch.',

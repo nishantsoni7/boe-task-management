@@ -12,7 +12,16 @@ import { useViewAs } from '@/hooks/useViewAs'
 // Everything else is prepared (overrides save, resolver computes an
 // effective value) but no app code or RLS policy checks it yet.
 // Keep in sync with src/lib/permissions/modules.ts comments as modules cut over.
-const ENFORCED_MODULE_KEYS = new Set(['sample_tracking'])
+//
+// 'orders': the 'view' action gates the module — src/app/orders/layout.tsx
+// and the /modules launcher card both call resolve_permission('orders','view')
+// before letting a non-admin in. Other orders actions (create/edit/delete/
+// approve/export/manage) are registered for the Access Control UI's presets
+// but aren't independently checked anywhere yet — orders RLS still governs
+// row-level access by team/ownership, unchanged. Same partial-enforcement
+// shape as 'sample_tracking' above (view-adjacent actions enforced, the
+// rest prepared).
+const ENFORCED_MODULE_KEYS = new Set(['sample_tracking', 'orders'])
 
 const ENFORCEMENT_COPY = {
   active: 'Permissions are enforced in this module.',
@@ -712,8 +721,9 @@ export default function PermissionsPage() {
         }}>
           <strong>Enforced</strong> modules apply the access level you set right away.{' '}
           <strong>Prepared</strong> modules let you set access levels now, ready for when that module
-          switches over — nothing changes for people yet. Today, only{' '}
-          <strong>Sample Tracking</strong> is Enforced; every other module below is Prepared.
+          switches over — nothing changes for people yet. Today,{' '}
+          <strong>Sample Tracking</strong> and <strong>Order Management</strong> are Enforced;
+          every other module below is Prepared.
         </div>
 
         {/* ── Employee selector ────────────────────────────────────────────── */}
