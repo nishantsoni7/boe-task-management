@@ -213,6 +213,13 @@ export default function OrdersDashboardPage() {
     ? '₹' + (stats.runningValue / 100000).toFixed(1) + 'L'
     : fmtAmount(stats.runningValue)
 
+  // finance_payment_requests RLS only returns rows to admins (or the
+  // submitter, which isn't meaningful for an org-wide count) — for anyone
+  // else the query already silently returns 0. Neutralize the card instead
+  // of showing a "0" that reads as "nothing unlinked" when it actually
+  // means "you can't see Finance data."
+  const canSeeFinance = profile?.role === 'admin'
+
   return (
     <OrdersLayout
       profile={profile}
@@ -248,10 +255,10 @@ export default function OrdersDashboardPage() {
         />
         <StatCard
           label="Unlinked Payments"
-          value={stats.unlinkedPayments}
-          sub="Payments without an order"
-          accent={stats.unlinkedPayments > 0 ? colors.amber : colors.muted}
-          onClick={() => router.push('/finance/received')}
+          value={canSeeFinance ? stats.unlinkedPayments : '—'}
+          sub={canSeeFinance ? 'Payments without an order' : 'Finance only'}
+          accent={canSeeFinance && stats.unlinkedPayments > 0 ? colors.amber : colors.muted}
+          onClick={canSeeFinance ? () => router.push('/finance/received') : undefined}
         />
         <StatCard
           label="Overdue"
