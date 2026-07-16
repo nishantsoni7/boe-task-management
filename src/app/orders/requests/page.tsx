@@ -37,6 +37,20 @@ type ConvertResult = {
   order_id: string
   order_display_number: string
   converted_at: string
+  linked_payment_count: number
+  linked_payment_request_ids: string[]
+}
+
+// An approved Finance payment with no Order link yet — the only kind that may
+// be linked during conversion. Identifying fields only: no proof attachments,
+// no storage paths.
+type EligiblePayment = {
+  id: string
+  request_number: string
+  amount: number
+  payment_date: string
+  proof_note: string | null
+  submitted_by_name?: string
 }
 
 type UserOption = { id: string; full_name: string }
@@ -330,9 +344,56 @@ function ConvertModal({
   onClose: () => void
   onConverted: (result: ConvertResult) => void
 }) {
-  const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState<string | null>(null)
+  const [saving,   setSaving]   = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+  const [payments, setPayments] = useState<EligiblePayment[]>([])
+  const [loadingPayments, setLoadingPayments] = useState(true)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const supabase = useMemo(() => createClient(), [])
+
+  // Eligible = approved but not yet attached to any Order. Admin-only data:
+  // this relies on the existing finance_payment_requests admin SELECT policy,
+  // so no Finance visibility is widened for anyone else.
+  const loadEligiblePayments = async () => {
+    setLoadingPayments(true)
+    const { data } = await supabase
+      .from('finance_payment_requests')
+      .select('id, request_number, amount, payment_date, proof_note, submitted_by_user:users!submitted_by(full_name)')
+      .eq('status', 'approved_unlinked')
+      .is('order_id', null)
+      .order('payment_date', { ascending: false })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mapped: EligiblePayment[] = ((data ?? []) as any[]).map(p => ({
+      id: p.id,
+      request_number: p.request_number,
+      amount: p.amount,
+      payment_date: p.payment_date,
+      proof_note: p.proof_note ?? null,
+      submitted_by_name: p.submitted_by_user?.full_name ?? undefined,
+    }))
+    setPayments(mapped)
+    setLoadingPayments(false)
+    return mapped
+  }
+
+  // Refresh eligibility whenever the modal opens.
+  useEffect(() => {
+    loadEligiblePayments()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const toggle = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectedList  = payments.filter(p => selected.has(p.id))
+  const selectedTotal = selectedList.reduce((sum, p) => sum + Number(p.amount), 0)
 
   const handleConvert = async () => {
     if (saving) return  // guards against double-clicks; the RPC is the real guard
@@ -340,11 +401,22 @@ function ConvertModal({
     setError(null)
 
     const { data, error: rpcErr } = await supabase.rpc('convert_order_request_to_order', {
-      p_order_request_id: request.id,
+      p_order_request_id:    request.id,
+      p_payment_request_ids: Array.from(selected),
     })
 
     if (rpcErr || !data) {
-      setError(rpcErr?.message ?? 'Conversion failed.')
+      // A payment we offered was linked by someone else in the meantime: re-read
+      // eligibility, drop what is gone from the selection, and keep the modal
+      // open. Nothing was created — the RPC rolled the whole conversion back.
+      if (rpcErr?.message?.includes('STALE_PAYMENTS')) {
+        const fresh = await loadEligiblePayments()
+        const stillEligible = new Set(fresh.map(p => p.id))
+        setSelected(prev => new Set(Array.from(prev).filter(id => stillEligible.has(id))))
+        setError('One or more selected payments are no longer available. The list has been refreshed.')
+      } else {
+        setError('Could not convert this request. Please refresh and try again.')
+      }
       setSaving(false)
       return
     }
@@ -430,6 +502,90 @@ function ConvertModal({
                 <span style={valStyle}>{f.value}</span>
               </div>
             ))}
+          </div>
+
+          {/* ── Optional: link approved payments ── */}
+          <div>
+            <div style={{ ...keyStyle, marginBottom: '6px' }}>
+              Approved Payments Available to Link{' '}
+              <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>(optional)</span>
+            </div>
+
+            {loadingPayments ? (
+              <div style={{ fontSize: '12px', color: colors.muted, padding: '10px 0' }}>Loading payments…</div>
+            ) : payments.length === 0 ? (
+              <div style={{
+                fontSize: '12px', color: colors.muted,
+                border: `1px dashed ${colors.border}`, borderRadius: '6px',
+                padding: '12px', textAlign: 'center',
+              }}>
+                No approved payments are waiting to be linked.
+              </div>
+            ) : (
+              <>
+                <div style={{
+                  border: `1px solid ${colors.border}`, borderRadius: '6px',
+                  maxHeight: '190px', overflowY: 'auto',
+                }}>
+                  {payments.map(p => {
+                    const on = selected.has(p.id)
+                    return (
+                      <label
+                        key={p.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          padding: '8px 10px', cursor: 'pointer',
+                          borderBottom: `1px solid ${colors.border}`,
+                          background: on ? 'rgba(220,31,46,0.04)' : 'transparent',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => toggle(p.id)}
+                          disabled={saving}
+                          style={{ cursor: 'pointer', flexShrink: 0 }}
+                        />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                              {p.request_number}
+                            </span>
+                            <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
+                              {fmtAmount(p.amount)}
+                            </span>
+                          </span>
+                          <span style={{
+                            display: 'block', fontSize: '11px', color: colors.muted,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {fmtDate(p.payment_date)}
+                            {p.submitted_by_name ? ` · ${p.submitted_by_name}` : ''}
+                            {p.proof_note ? ` · ${p.proof_note}` : ''}
+                          </span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  fontSize: '12px', paddingTop: '8px',
+                  color: selected.size > 0 ? colors.primary : colors.muted,
+                }}>
+                  <span>{selected.size} payment{selected.size !== 1 ? 's' : ''} selected</span>
+                  <span style={{ fontWeight: selected.size > 0 ? 700 : 400 }}>{fmtAmount(selectedTotal)}</span>
+                </div>
+
+                {selected.size > 0 && (
+                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
+                    The selected payment{selected.size !== 1 ? 's' : ''} will be linked to the new official
+                    Order and marked as received.
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {error && (
@@ -595,7 +751,10 @@ export default function OrderRequestsPage() {
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <CheckCircle2 size={15} />
             {converted.request_number} converted — official Order{' '}
-            <strong>{converted.order_display_number}</strong> created.
+            <strong>{converted.order_display_number}</strong> created
+            {converted.linked_payment_count > 0
+              ? `, ${converted.linked_payment_count} payment${converted.linked_payment_count !== 1 ? 's' : ''} linked.`
+              : '.'}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
