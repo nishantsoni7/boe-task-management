@@ -8,10 +8,18 @@ import type { ShowroomProduct } from '@/lib/types'
 import { AlertBanner, EmptyState } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { Package, PlusCircle, Pencil, QrCode, X, Printer, Trash2 } from 'lucide-react'
+import { Package, PlusCircle, Pencil, QrCode, X, Printer, Trash2, Download } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
-import { QRCodeSVG } from 'qrcode.react'
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { useToast, Toast } from '@/components/ui/toast'
+import {
+  downloadPlainQrImage,
+  productQrFileNameFor,
+  QR_EXPORT_MARGIN_MODULES,
+  QR_PLAIN_CODE_SIZE,
+  type QrImageFormat,
+} from '@/lib/qrExport'
 
 type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
 const teamFallback = (team?: string | null) =>
@@ -567,9 +575,30 @@ function DeleteConfirmModal({
 
 // ── QR Print Modal ────────────────────────────────────────────────────────────
 
+const QR_LABEL_BRAND = 'BOE · Showroom'
+
 function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose: () => void }) {
   const printRef = useRef<HTMLDivElement>(null)
+  const exportCanvasRef = useRef<HTMLCanvasElement>(null)
+  const [downloadingFormat, setDownloadingFormat] = useState<QrImageFormat | null>(null)
+  const { toast, show: showToast, dismiss: dismissToast } = useToast()
   const qrUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/showroom/product/${product.product_code}`
+  const mrpText = `₹${Number(product.mrp).toLocaleString('en-IN')}`
+
+  const handleDownload = async (format: QrImageFormat) => {
+    if (downloadingFormat) return
+    setDownloadingFormat(format)
+    try {
+      const source = exportCanvasRef.current
+      if (!source) throw new Error('QR export canvas is not mounted')
+      await downloadPlainQrImage(source, productQrFileNameFor(product.product_code, format), format)
+    } catch (err) {
+      console.error(`[showroom-product-qr] ${format.toUpperCase()} download failed`, err)
+      showToast('Unable to download the QR image. Please try again.', 'error')
+    } finally {
+      setDownloadingFormat(null)
+    }
+  }
 
   const handlePrint = () => {
     const content = printRef.current
@@ -596,6 +625,7 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
   }
 
   return (
+    <>
     <div
       onClick={onClose}
       style={{
@@ -631,7 +661,7 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
         {/* Label preview */}
         <div ref={printRef} className="label" style={{ textAlign: 'center' }}>
           <div className="brand" style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#6b7280', marginBottom: '4px' }}>
-            BOE · Showroom
+            {QR_LABEL_BRAND}
           </div>
           <QRCodeSVG value={qrUrl} size={160} style={{ display: 'block', margin: '0 auto' }} />
           <div className="name" style={{ fontSize: '17px', fontWeight: 700, color: '#111827', margin: '12px 0 2px' }}>
@@ -641,29 +671,68 @@ function QrPrintModal({ product, onClose }: { product: ShowroomProduct; onClose:
             {product.product_code}
           </div>
           <div className="mrp" style={{ fontSize: '20px', fontWeight: 700, color: '#111827', marginTop: '4px' }}>
-            ₹{Number(product.mrp).toLocaleString('en-IN')}
+            {mrpText}
           </div>
         </div>
 
-        {/* Print button */}
-        <button
-          onClick={handlePrint}
-          style={{
-            marginTop: '20px',
-            width: '100%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-            fontSize: '14px', fontWeight: 600,
-            color: '#fff',
-            background: '#1A2035',
-            border: 'none', borderRadius: '8px',
-            padding: '11px 0',
-            cursor: 'pointer',
-          }}
-        >
-          <Printer size={15} strokeWidth={2} />
-          Print QR Label
-        </button>
+        {/* Off-screen high-resolution QR for the image exports. Same qrUrl as the
+            preview above, so both always encode an identical destination. The
+            transparent bgColor is what lets the PNG export keep real alpha. */}
+        <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', top: 0, pointerEvents: 'none' }}>
+          <QRCodeCanvas
+            ref={exportCanvasRef}
+            value={qrUrl}
+            size={QR_PLAIN_CODE_SIZE}
+            marginSize={QR_EXPORT_MARGIN_MODULES}
+            fgColor="#000000"
+            bgColor="transparent"
+          />
+        </div>
+
+        {/* Actions */}
+        <div style={{ marginTop: '20px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+          {(['jpg', 'png'] as const).map(format => (
+            <button
+              key={format}
+              onClick={() => handleDownload(format)}
+              disabled={!!downloadingFormat}
+              style={{
+                flex: '1 1 120px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                fontSize: '14px', fontWeight: 600,
+                color: '#fff',
+                background: '#1A2035',
+                border: 'none', borderRadius: '8px',
+                padding: '11px 0',
+                cursor: downloadingFormat ? 'wait' : 'pointer',
+                opacity: downloadingFormat && downloadingFormat !== format ? 0.7 : 1,
+              }}
+            >
+              <Download size={15} strokeWidth={2} />
+              {downloadingFormat === format ? 'Downloading…' : `Download ${format.toUpperCase()}`}
+            </button>
+          ))}
+
+          <button
+            onClick={handlePrint}
+            style={{
+              flex: '1 1 120px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              fontSize: '14px', fontWeight: 600,
+              color: colors.secondary,
+              background: colors.raised,
+              border: `1.5px solid ${colors.border}`, borderRadius: '8px',
+              padding: '11px 0',
+              cursor: 'pointer',
+            }}
+          >
+            <Printer size={15} strokeWidth={2} />
+            Print QR Label
+          </button>
+        </div>
       </div>
     </div>
+    <Toast toast={toast} onDismiss={dismissToast} />
+    </>
   )
 }
