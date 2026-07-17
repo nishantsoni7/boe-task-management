@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, LayoutGrid, Building2, Users, ShieldCheck, Layers, History, X } from 'lucide-react'
+import { Home, LayoutGrid, Building2, Users, ShieldCheck, Layers, History, X, ClipboardList } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -109,6 +109,12 @@ export function ControlCenterLayout({
             icon={<ShieldCheck size={15} strokeWidth={1.8} />}
             active={pathname === '/admin/control-center/permissions'}
             onClick={() => navTo('/admin/control-center/permissions')}
+          />
+          <NavItem
+            label="Action Queue"
+            icon={<ClipboardList size={15} strokeWidth={1.8} />}
+            active={pathname === '/admin/control-center/action-queue'}
+            onClick={() => navTo('/admin/control-center/action-queue')}
           />
           <NavItem
             label="Module Visibility"
