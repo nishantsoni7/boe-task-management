@@ -251,7 +251,7 @@ export default function AssignedByMeCancelledPage() {
       setLoading(false)
     }
     init()
-  }, [viewAsUserId])
+  }, [viewAsUserId, router, supabase])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

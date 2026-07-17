@@ -38,18 +38,21 @@ export default function SharePage() {
   const [notFound, setNotFound] = useState(false)
 
   useEffect(() => {
-    if (!token) { setNotFound(true); setLoading(false); return }
+    const loadShare = () => {
+      if (!token) { setNotFound(true); setLoading(false); return }
 
-    fetch(`/api/showroom/share/${encodeURIComponent(token)}`)
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then((data: { inquiry: ShareInquiry }) => {
-        setInquiry(data.inquiry)
-        setLoading(false)
-      })
-      .catch(() => {
-        setNotFound(true)
-        setLoading(false)
-      })
+      fetch(`/api/showroom/share/${encodeURIComponent(token)}`)
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then((data: { inquiry: ShareInquiry }) => {
+          setInquiry(data.inquiry)
+          setLoading(false)
+        })
+        .catch(() => {
+          setNotFound(true)
+          setLoading(false)
+        })
+    }
+    loadShare()
   }, [token])
 
   if (loading) {

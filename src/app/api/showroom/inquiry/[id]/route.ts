@@ -75,7 +75,7 @@ export async function GET(
   // Use wildcard (*) so new columns (images, dimensions) are included if present,
   // without failing if the migration hasn't been applied yet.
   const productIds = [...new Set((items ?? []).map(i => i.product_id).filter(Boolean))]
-  let productsById: Record<string, Record<string, unknown>> = {}
+  const productsById: Record<string, Record<string, unknown>> = {}
 
   if (productIds.length > 0) {
     const { data: products, error: prodErr } = await caller.client

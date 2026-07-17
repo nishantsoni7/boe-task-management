@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useViewAs } from '@/hooks/useViewAs'
-import type { UserProfile, MemberPerfEntry, TrendClassification, StuckTask, TaskDetailData } from '@/lib/types'
+import type { UserProfile, MemberPerfEntry, TrendClassification, StuckTask } from '@/lib/types'
 
 // ─── Progress loader ──────────────────────────────────────────────────────────
 function TeamProgressLoader({ progress }: { progress: number }) {
@@ -611,246 +611,6 @@ function MemberTable({ members, onViewProfile }: {
   )
 }
 
-// ─── Task Detail Modal ────────────────────────────────────────────────────────
-function TaskDetailModal({ task, assigneeName, token, onClose }: {
-  task: StuckTask
-  assigneeName: string
-  token: string
-  onClose: () => void
-}) {
-  const [detail, setDetail]   = useState<TaskDetailData | null>(null)
-  const [fetching, setFetching] = useState(true)
-  const [fetchErr, setFetchErr] = useState(false)
-
-  useEffect(() => {
-    setFetching(true)
-    setFetchErr(false)
-    fetch(`/api/task-detail?taskId=${task.id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(d => setDetail(d))
-      .catch(() => setFetchErr(true))
-      .finally(() => setFetching(false))
-  }, [task.id, token])
-
-  const formatDate = (iso: string | null) => {
-    if (!iso) return '—'
-    try { return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) }
-    catch { return '—' }
-  }
-  const formatRelative = (iso: string | null) => {
-    if (!iso) return '—'
-    try {
-      const h = Math.floor((Date.now() - new Date(iso).getTime()) / 3600000)
-      if (h < 1)  return 'Just now'
-      if (h < 24) return `${h}h ago`
-      const d = Math.floor(h / 24)
-      return `${d}d ago`
-    } catch { return '—' }
-  }
-  const formatDateTime = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleString('en-IN', {
-        day: 'numeric', month: 'short',
-        hour: '2-digit', minute: '2-digit', hour12: true,
-      })
-    } catch { return '—' }
-  }
-  const formatAction = (action: string, from: string | null, to: string | null) => {
-    if (action === 'status_changed') {
-      if (from && to && from === to) return 'Progress update'
-      return `Status: ${from ?? '?'} → ${to ?? '?'}`
-    }
-    if (action === 'acknowledged')     return 'Task acknowledged'
-    if (action === 'delegated')        return 'Task delegated'
-    if (action === 'created')          return 'Task created'
-    if (action === 'deadline_changed') return 'Deadline updated'
-    if (action === 'priority_changed') return 'Priority updated'
-    if (action === 'escalated')        return 'Escalated'
-    if (action === 'progress_update')  return 'Progress update'
-    return action.replace(/_/g, ' ')
-  }
-
-  const statusColor = task.status === 'waiting' ? '#E8A030' : '#D94F4F'
-  const statusBg    = task.status === 'waiting' ? '#E8A03014' : '#D94F4F14'
-  const priorityColor = task.priority === 'high' ? '#D94F4F' : task.priority === 'medium' ? '#E8A030' : '#8C94A6'
-  const priorityBg    = task.priority === 'high' ? '#D94F4F12' : task.priority === 'medium' ? '#E8A03012' : 'rgba(0,0,0,0.04)'
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const isOverdue = !!task.due_date && task.due_date < todayStr
-
-  const row = (label: string, value: React.ReactNode) => (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: 12 }}>
-      <div style={{ width: 110, flexShrink: 0, color: '#8C94A6', fontWeight: 500, paddingTop: 1 }}>{label}</div>
-      <div style={{ flex: 1, color: '#111318', lineHeight: 1.5 }}>{value}</div>
-    </div>
-  )
-
-  const waitingOnDisplay = () => {
-    if (!task.waiting_on_type) return <span style={{ color: '#BCC3D0' }}>—</span>
-    if (task.waiting_on_type === 'team_member') return task.waiting_on_name ?? 'Team member'
-    return task.waiting_on_text?.trim() ? `External — ${task.waiting_on_text.trim()}` : 'External'
-  }
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1010,
-        background: 'rgba(0,0,0,0.40)', backdropFilter: 'blur(2px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#fff', borderRadius: 14,
-          width: '100%', maxWidth: 560, maxHeight: '88vh',
-          display: 'flex', flexDirection: 'column',
-          boxShadow: '0 12px 48px rgba(0,0,0,0.20)',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header */}
-        <div style={{
-          padding: '16px 20px', borderBottom: '1px solid #EEF0F4', flexShrink: 0,
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
-        }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontSize: 14, fontWeight: 700, color: '#111318',
-              lineHeight: 1.4, marginBottom: 7,
-            }}>{task.title}</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{
-                fontSize: 10, fontWeight: 600, color: statusColor, background: statusBg,
-                padding: '2px 8px', borderRadius: 999, textTransform: 'capitalize',
-              }}>{task.status}</span>
-              <span style={{
-                fontSize: 10, fontWeight: 600, color: priorityColor, background: priorityBg,
-                padding: '2px 8px', borderRadius: 999, textTransform: 'capitalize',
-              }}>{task.priority} priority</span>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: '#F4F5F7', border: 'none', borderRadius: 7,
-              width: 30, height: 30, cursor: 'pointer', fontSize: 14, color: '#6B7384',
-              flexShrink: 0,
-            }}
-          >✕</button>
-        </div>
-
-        {/* Scrollable body */}
-        <div style={{ overflowY: 'auto', flex: 1, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Key info grid */}
-          <div style={{
-            background: '#F8F9FB', border: '1px solid #EEF0F4', borderRadius: 10,
-            padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 9,
-          }}>
-            {row('Assigned to', <span style={{ fontWeight: 600 }}>{assigneeName}</span>)}
-            {row('Created by', fetching
-              ? <span style={{ color: '#BCC3D0' }}>…</span>
-              : (detail?.created_by_name ?? <span style={{ color: '#BCC3D0' }}>—</span>)
-            )}
-            {row('Due date',
-              task.due_date
-                ? <span style={{ fontWeight: isOverdue ? 600 : 400, color: isOverdue ? '#D94F4F' : '#111318' }}>
-                    {formatDate(task.due_date)}{isOverdue ? ' — overdue' : ''}
-                  </span>
-                : <span style={{ color: '#BCC3D0' }}>No due date</span>
-            )}
-            {row('Last updated', formatRelative(task.last_update_at))}
-          </div>
-
-          {/* Stuck reason */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Why it&apos;s stuck
-            </div>
-            <div style={{
-              background: '#FFF6F6', border: '1px solid #D94F4F20',
-              borderRadius: 9, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8,
-            }}>
-              {row('Waiting on', waitingOnDisplay())}
-              {row('Blocker note',
-                task.blocker_reason?.trim()
-                  ? task.blocker_reason.trim()
-                  : <span style={{ color: '#BCC3D0', fontStyle: 'italic' }}>No blocker note added</span>
-              )}
-            </div>
-          </div>
-
-          {/* Task note */}
-          {task.note?.trim() && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Task note
-              </div>
-              <div style={{
-                background: '#FAFBFC', border: '1px solid #EEF0F4',
-                borderRadius: 9, padding: '10px 14px',
-                fontSize: 12.5, color: '#3D4455', lineHeight: 1.55,
-              }}>{task.note.trim()}</div>
-            </div>
-          )}
-
-          {/* Recent activity */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Recent activity
-            </div>
-            {fetching ? (
-              <div style={{ fontSize: 12, color: '#BCC3D0', padding: '10px 0' }}>Loading…</div>
-            ) : fetchErr ? (
-              <div style={{ fontSize: 12, color: '#D94F4F' }}>Could not load activity.</div>
-            ) : !detail?.activity.length ? (
-              <div style={{ fontSize: 12, color: '#BCC3D0', fontStyle: 'italic' }}>No activity recorded.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                {detail.activity.map((a, i) => (
-                  <div key={i} style={{
-                    display: 'flex', gap: 10, padding: '9px 0',
-                    borderBottom: i < detail.activity.length - 1 ? '1px solid #F0F1F3' : 'none',
-                    alignItems: 'flex-start',
-                  }}>
-                    <div style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: '#5585E8', flexShrink: 0, marginTop: 5,
-                    }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#111318' }}>
-                          {formatAction(a.action, a.from_status, a.to_status)}
-                        </span>
-                        <span style={{ fontSize: 10, color: '#A0A8B8', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                          {formatDateTime(a.created_at)}
-                        </span>
-                      </div>
-                      {a.actor_name && (
-                        <div style={{ fontSize: 11, color: '#8C94A6', marginTop: 1 }}>by {a.actor_name}</div>
-                      )}
-                      {a.note?.trim() && (
-                        <div style={{
-                          fontSize: 12, color: '#4A5261', marginTop: 4,
-                          background: '#F4F5F7', borderRadius: 6,
-                          padding: '5px 9px', lineHeight: 1.5,
-                        }}>{a.note.trim()}</div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ─── Stuck Tasks Modal ────────────────────────────────────────────────────────
 function stuckReason(t: StuckTask): { text: string; faint: boolean } {
   // Priority: blocker_reason → waiting_on_text (external) → note → fallback
@@ -874,6 +634,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
   onClose: () => void
 }) {
   const router = useRouter()
+  const [nowMs] = useState(() => Date.now())
   const formatDate = (iso: string | null) => {
     if (!iso) return '—'
     try { return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) }
@@ -882,7 +643,7 @@ function StuckTasksModal({ memberName, tasks, onClose }: {
   const formatRelative = (iso: string | null) => {
     if (!iso) return '—'
     try {
-      const hours = Math.floor((Date.now() - new Date(iso).getTime()) / 3600000)
+      const hours = Math.floor((nowMs - new Date(iso).getTime()) / 3600000)
       if (hours < 24) return `${hours}h ago`
       const days = Math.floor(hours / 24)
       return `${days}d ago`
@@ -1065,7 +826,7 @@ function BlockersAndWaiting({ members, onViewStuckTasks }: {
         <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>Blockers & Waiting</div>
         <div style={{ fontSize: 11, color: '#8C94A6', marginTop: 2 }}>
           Members with stuck work — stale blocked (&gt;2 days no update) or tasks waiting on someone.
-          Per-task detail is in each member's Full Report.
+          Per-task detail is in each member&apos;s Full Report.
         </div>
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -1183,7 +944,10 @@ function EodUpdatesTable({ token }: { token: string }) {
     }
   }, [token, mode, singleDate, fromDate, toDate, rangeError])
 
-  useEffect(() => { fetchLogs() }, [fetchLogs])
+  useEffect(() => {
+    const onFiltersChange = () => { fetchLogs() }
+    onFiltersChange()
+  }, [fetchLogs])
 
   const formatTime = (iso: string) => {
     try {
@@ -1369,7 +1133,8 @@ export default function TeamPerformancePage() {
   useEffect(() => {
     if (!showLoader) return
     if (!loading) {
-      setProgress(100)
+      const finishProgress = () => { setProgress(100) }
+      finishProgress()
       const t = setTimeout(() => setShowLoader(false), 650)
       return () => clearTimeout(t)
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
@@ -175,9 +176,9 @@ function ViewAllTasksContent() {
           <span style={{ fontSize: 12, color: '#5585E8', fontWeight: 500 }}>
             Filtered — {filterContext}
           </span>
-          <a href="/tasks/all" style={{ fontSize: 11, color: '#8C94A6', textDecoration: 'none', fontWeight: 500 }}>
+          <Link href="/tasks/all" style={{ fontSize: 11, color: '#8C94A6', textDecoration: 'none', fontWeight: 500 }}>
             Clear filter ✕
-          </a>
+          </Link>
         </div>
       )}
       {isMobile ? (

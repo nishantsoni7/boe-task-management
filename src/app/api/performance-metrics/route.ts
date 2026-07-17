@@ -21,9 +21,14 @@
  * TrendAnalysis classifies trajectory and gives week-over-week delta.
  */
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import type { DayInputs } from '@/lib/types'
+
+// No generated Database type in this project — matches the untyped-client
+// pattern used elsewhere (e.g. lib/payroll/store.ts).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Svc = SupabaseClient<any, any, any>
 import {
   computeBreakdown, scoreRating, analyzeTrend, trendDayFromInputs,
 } from '@/lib/performance'
@@ -112,8 +117,7 @@ async function fetchCurrentTaskSnapshot(client: any, userId: string): Promise<Cu
 }
 
 // ─── Single-day data fetching ─────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchDayInputs(client: any, userId: string, date: string, snapshot: CurrentTaskSnapshot): Promise<{ inputs: DayInputs; eodLog: null | Record<string, unknown> }> {
+async function fetchDayInputs(client: Svc, userId: string, date: string, snapshot: CurrentTaskSnapshot): Promise<{ inputs: DayInputs; eodLog: null | Record<string, unknown> }> {
   const dayStart = `${date}T00:00:00.000Z`
   const dayEnd   = `${date}T23:59:59.999Z`
 
@@ -214,9 +218,8 @@ async function fetchDayInputs(client: any, userId: string, date: string, snapsho
 // ─── Batched range fetch for 7-day trend (period=daily) ──────────────────────
 // Replaces 7 × fetchDayInputs (28 queries) with 4 range queries + 1 optional
 // task-creation lookup, then groups results by date in memory.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchRangeInputs(
-  client: any,
+  client: Svc,
   userId: string,
   dateList: string[],
   snapshot: CurrentTaskSnapshot,

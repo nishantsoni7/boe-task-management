@@ -4,8 +4,8 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
-import { isOverdue, isUpdatedToday, isOldEnoughToFlag, escalationLevel, initials, timeAgo } from '@/lib/ui'
-import { colors, font } from '@/lib/tokens'
+import { isOverdue, isUpdatedToday, isOldEnoughToFlag, escalationLevel } from '@/lib/ui'
+import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { KpiGrid, KpiCard } from '@/components/ui/KpiCard'
 import { TaskCard } from '@/components/ui/TaskCard'
@@ -13,6 +13,10 @@ import { Avatar, LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 
 type FilterKey = 'all' | 'no_update' | 'overdue' | 'escalated' | 'stale' | 'blocked'
+
+// Snapshot at module load — day/hour-granularity "overdue"/"silent" displays
+// don't need per-render precision. Same pattern as tasks/my/page.tsx.
+const NOW_MS = Date.now()
 
 export default function ManagerPage() {
   const { viewAsUserId } = useViewAs()
@@ -48,17 +52,16 @@ export default function ManagerPage() {
     if (memberData) setMembers(memberData)
 
     if (taskData) {
-      const enriched: Task[] = (taskData as any[]).map(t => ({
+      type TaskRow = Task & { assignee: { full_name: string; team: string } | null }
+      const enriched: Task[] = (taskData as unknown as TaskRow[]).map(t => ({
         ...t,
         assignee_name: t.assignee?.full_name ?? 'Unknown',
         assignee_team: t.assignee?.team      ?? '',
       }))
       setTasks(enriched)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
       // getSession() reads from localStorage — zero network cost.
@@ -85,7 +88,7 @@ export default function ManagerPage() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [loadData, router, supabase, viewAsUserId])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -217,7 +220,7 @@ export default function ManagerPage() {
                 </div>
               ) : overdueTasks.slice(0, 5).map(t => {
                 const daysOver = t.due_date
-                  ? Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86_400_000)
+                  ? Math.floor((NOW_MS - new Date(t.due_date).getTime()) / 86_400_000)
                   : null
                 return (
                   <div
@@ -260,7 +263,7 @@ export default function ManagerPage() {
                 </div>
               ) : silentTasks.slice(0, 5).map(t => {
                 const h = t.last_update_at
-                  ? Math.floor((Date.now() - new Date(t.last_update_at).getTime()) / 3_600_000)
+                  ? Math.floor((NOW_MS - new Date(t.last_update_at).getTime()) / 3_600_000)
                   : null
                 return (
                   <div
@@ -340,7 +343,7 @@ export default function ManagerPage() {
               ) : noUpdateMembers.map(m => {
                 const latestTask = noUpdateToday.find(t => t.assigned_to === m.id)
                 const h = latestTask?.last_update_at
-                  ? Math.floor((Date.now() - new Date(latestTask.last_update_at).getTime()) / 3_600_000)
+                  ? Math.floor((NOW_MS - new Date(latestTask.last_update_at).getTime()) / 3_600_000)
                   : null
                 return (
                   <div key={m.id} className="boe-no-update-row">

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check, User, CalendarDays } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, UserProfile } from '@/lib/types'
+import type { Task } from '@/lib/types'
 import { isOverdue, getAssignedByDisplay, isValidUUID } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -64,22 +64,17 @@ const PRIORITY_PILL: Record<string, { color: string; bg: string }> = {
 const BLOCKED_PILL = { color: '#991B1B', bg: '#FEF2F2' }
 
 export default function DashboardPage() {
+  const [escalationsNowMs]   = useState(() => Date.now())
   const [loggedInId,         setLoggedInId]         = useState('')
   const [tasks,              setTasks]              = useState<Task[]>([])
   const [loading,            setLoading]            = useState(true)
   const [currentUserId,      setCurrentUserId]      = useState('')
   const [selectedTask,       setSelectedTask]       = useState<Task | null>(null)
   const [escalationTasks,    setEscalationTasks]    = useState<Task[]>([])
-  const [myCompletedCount,   setMyCompletedCount]   = useState(0)
-  const [assignedByMeInProg, setAssignedByMeInProg] = useState(0)
-  const [assignedByMeComp,   setAssignedByMeComp]   = useState(0)
-  const [blockedCount,       setBlockedCount]       = useState(0)
   const [previewList,        setPreviewList]        = useState<{ title: string; items: Task[] } | null>(null)
   const [escalationPreview,  setEscalationPreview]  = useState(false)
   const [assignerNames,      setAssignerNames]      = useState<Record<string, string>>({})
   const [acknowledgingIds,   setAcknowledgingIds]   = useState<Set<string>>(new Set())
-  const [completedTasksData, setCompletedTasksData] = useState<Task[]>([])
-  const [assignedByMeTasksAll, setAssignedByMeTasksAll] = useState<Task[]>([])
   const [isMobile,           setIsMobile]           = useState(false)
 
   const router      = useRouter()
@@ -113,59 +108,16 @@ export default function DashboardPage() {
       if (!isValidUUID(uid)) { setLoading(false); return }
       setCurrentUserId(uid)
 
-      const monthStart = new Date()
-      monthStart.setDate(1)
-      monthStart.setHours(0, 0, 0, 0)
-      const monthStartISO = monthStart.toISOString()
-
-      // Batch 1: task queries in parallel (profile is now handled by useProfile hook)
-      const [
-        { data: taskData },
-        { data: completedData },
-        { data: abmTasks },
-        { count: abmCompCount },
-      ] = await Promise.all([
-        supabase
-          .from('tasks')
-          .select(TASK_COLUMNS)
-          .eq('assigned_to', uid)
-          .not('status', 'eq', 'completed')
-          .neq('status', 'cancelled')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('tasks')
-          .select(TASK_COLUMNS)
-          .eq('assigned_to', uid)
-          .eq('status', 'completed')
-          .gte('last_update_at', monthStartISO)
-          .order('last_update_at', { ascending: false }),
-        supabase
-          .from('tasks')
-          .select(TASK_COLUMNS)
-          .eq('created_by', uid)
-          .neq('assigned_to', uid)
-          .not('status', 'eq', 'completed'),
-        supabase
-          .from('tasks')
-          .select('id', { count: 'exact', head: true })
-          .eq('created_by', uid)
-          .neq('assigned_to', uid)
-          .eq('status', 'completed')
-          .gte('last_update_at', monthStartISO),
-      ])
+      // Batch 1: my active tasks (profile is now handled by useProfile hook)
+      const { data: taskData } = await supabase
+        .from('tasks')
+        .select(TASK_COLUMNS)
+        .eq('assigned_to', uid)
+        .not('status', 'eq', 'completed')
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: false })
 
       if (taskData) setTasks(taskData as unknown as Task[])
-      if (completedData) {
-        const completed = completedData as unknown as Task[]
-        setMyCompletedCount(completed.length)
-        setCompletedTasksData(completed)
-      }
-      if (abmTasks) {
-        const abm = abmTasks as unknown as Task[]
-        setAssignedByMeInProg(abm.length)
-        setAssignedByMeTasksAll(abm)
-        setAssignedByMeComp(abmCompCount ?? 0)
-      }
 
       // Batch 2: role-specific queries + creator names — all in parallel
       const creatorIds = [...new Set(
@@ -188,23 +140,11 @@ export default function DashboardPage() {
         )
       }
 
-      type CountResult = { count: number | null }
-
       const viewedRole = viewAsProfile?.role ?? profile?.role
       if (viewedRole === 'admin') {
         batch2.push(
           supabase.from('tasks').select(TASK_COLUMNS).not('status', 'eq', 'completed').then(({ data: eTasks }: { data: unknown[] | null }) => {
-            if (eTasks) {
-              const all = eTasks as unknown as Task[]
-              setEscalationTasks(all)
-              setBlockedCount(all.filter(t => t.status === 'blocked').length)
-            }
-          }),
-        )
-      } else {
-        batch2.push(
-          supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('assigned_to', uid).eq('status', 'blocked').then(({ count: bCount }: CountResult) => {
-            if (bCount != null) setBlockedCount(bCount)
+            if (eTasks) setEscalationTasks(eTasks as unknown as Task[])
           }),
         )
       }
@@ -215,8 +155,7 @@ export default function DashboardPage() {
       router.prefetch('/notifications')
     }
     init()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewAsUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewAsUserId, profile?.role, viewAsProfile?.role, router, supabase])
 
   // Guard view-as against non-admins
   useEffect(() => {
@@ -271,7 +210,6 @@ export default function DashboardPage() {
   )
 
   const now = new Date()
-  const msPerDay = 24 * 60 * 60 * 1000
 
   const unacknowledgedForMe = tasks
     .filter(t => !t.acknowledged_at && t.created_by !== currentUserId && t.task_type !== 'quotation_request')
@@ -282,7 +220,9 @@ export default function DashboardPage() {
   const adminEscalations = useMemo(() => {
     if ((viewAsProfile ?? profile)?.role !== 'admin') return []
     const result: { task: Task; owner: string; days: number; reason: string }[] = []
-    const nowMs = Date.now()
+    // Day-granularity thresholds (>5/>7 days) — a mount-frozen snapshot is
+    // indistinguishable from live and keeps this memo from recomputing every render.
+    const nowMs = escalationsNowMs
     const ms = 24 * 60 * 60 * 1000
     for (const t of escalationTasks) {
       const ref  = new Date(t.last_update_at ?? t.created_at)
@@ -298,17 +238,20 @@ export default function DashboardPage() {
     }
     result.sort((a, b) => b.days - a.days)
     return result
-  }, [escalationTasks, userMap, profile, viewAsProfile])
+  }, [escalationTasks, userMap, profile, viewAsProfile, escalationsNowMs])
 
   useEffect(() => {
-    if (!selectedTask) return
-    const inTasks = tasks.find(t => t.id === selectedTask.id)
-    if (inTasks) {
-      if (inTasks !== selectedTask) setSelectedTask(inTasks)
-      return
+    const syncSelectedTask = () => {
+      if (!selectedTask) return
+      const inTasks = tasks.find(t => t.id === selectedTask.id)
+      if (inTasks) {
+        if (inTasks !== selectedTask) setSelectedTask(inTasks)
+        return
+      }
+      const inEscalations = escalationTasks.find(t => t.id === selectedTask.id)
+      if (!inEscalations) setSelectedTask(null)
     }
-    const inEscalations = escalationTasks.find(t => t.id === selectedTask.id)
-    if (!inEscalations) setSelectedTask(null)
+    syncSelectedTask()
   }, [tasks, escalationTasks, selectedTask])
 
   if (loading) return <LoadingScreen />
@@ -318,7 +261,6 @@ export default function DashboardPage() {
   const isAdmin        = (viewAsProfile ?? profile)?.role === 'admin'
 
   const todayStart     = new Date(now); todayStart.setHours(0, 0, 0, 0)
-  const tomorrowStart  = new Date(todayStart.getTime() + msPerDay)
   const dueTodayTasks  = tasks.filter(t => {
     if (!t.due_date) return false
     const d = new Date(t.due_date); d.setHours(0, 0, 0, 0)

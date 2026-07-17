@@ -39,6 +39,17 @@ export default function ShowroomCategoriesPage() {
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
 
+  const loadData = async (token: string) => {
+    const [catRes, prodRes] = await Promise.all([
+      fetch('/api/showroom/admin/categories?all=1', { headers: { 'Authorization': `Bearer ${token}` } }),
+      fetch('/api/showroom/admin/products', { headers: { 'Authorization': `Bearer ${token}` } }),
+    ])
+    const catData = await catRes.json()
+    const prodData = await prodRes.json()
+    if (Array.isArray(catData?.categories)) setCategories(catData.categories as ShowroomCategory[])
+    if (Array.isArray(prodData?.products)) setProducts(prodData.products as ShowroomProduct[])
+  }
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -77,17 +88,6 @@ export default function ShowroomCategoriesPage() {
       canAccessModule(showroomMod?.visibility_type as ModuleVisibilityType | undefined, showroomMod?.allowed_department, viewAsProfile, teamFallback(viewAsProfile.team))
     if (!effectiveHasAccess) router.replace('/modules')
   }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
-
-  const loadData = async (token: string) => {
-    const [catRes, prodRes] = await Promise.all([
-      fetch('/api/showroom/admin/categories?all=1', { headers: { 'Authorization': `Bearer ${token}` } }),
-      fetch('/api/showroom/admin/products', { headers: { 'Authorization': `Bearer ${token}` } }),
-    ])
-    const catData = await catRes.json()
-    const prodData = await prodRes.json()
-    if (Array.isArray(catData?.categories)) setCategories(catData.categories as ShowroomCategory[])
-    if (Array.isArray(prodData?.products)) setProducts(prodData.products as ShowroomProduct[])
-  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

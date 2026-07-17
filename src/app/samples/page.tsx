@@ -175,27 +175,29 @@ export default function SamplesPage() {
       setLoading(false)
     }
     init()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshKey, router, supabase])
 
   useEffect(() => {
-    if (!viewAsUserId) { setViewAsPermissions(new Set()); return }
-    // ep_select_own RLS only allows users to read their own permission rows.
-    // When the admin is viewing as another user, auth.uid() is the admin's ID,
-    // so a direct client query returns [] for the viewed user.
-    // We call a server-side route that uses the service role key to bypass RLS.
-    supabase.auth.getSession().then(({ data }: { data: { session: { access_token: string } | null } }) => {
-      const session = data.session
-      if (!session) return
-      fetch(`/api/admin/user-permissions?userId=${viewAsUserId}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
-        .then((r: Response) => r.json())
-        .then(({ permissions }: { permissions: string[] }) => {
-          setViewAsPermissions(new Set(permissions ?? []))
+    const loadViewAsPermissions = () => {
+      if (!viewAsUserId) { setViewAsPermissions(new Set()); return }
+      // ep_select_own RLS only allows users to read their own permission rows.
+      // When the admin is viewing as another user, auth.uid() is the admin's ID,
+      // so a direct client query returns [] for the viewed user.
+      // We call a server-side route that uses the service role key to bypass RLS.
+      supabase.auth.getSession().then(({ data }: { data: { session: { access_token: string } | null } }) => {
+        const session = data.session
+        if (!session) return
+        fetch(`/api/admin/user-permissions?userId=${viewAsUserId}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
         })
-        .catch(() => setViewAsPermissions(new Set()))
-    })
+          .then((r: Response) => r.json())
+          .then(({ permissions }: { permissions: string[] }) => {
+            setViewAsPermissions(new Set(permissions ?? []))
+          })
+          .catch(() => setViewAsPermissions(new Set()))
+      })
+    }
+    loadViewAsPermissions()
   }, [viewAsUserId, supabase])
 
   const refresh = async () => {
@@ -445,11 +447,6 @@ function RequestCard({
 
   const handleQRSubmit = async () => {
     if (await act('qr_submit', { status: 'qr_submitted' })) notifySample('sample_qr_submitted')
-  }
-
-  const handleDispatched = async () => {
-    if (await act('dispatch', { status: 'dispatched', dispatched_at: new Date().toISOString() }))
-      notifySample('sample_dispatched')
   }
 
   const handleDispatchWithDetails = async () => {

@@ -80,6 +80,15 @@ export default function PayrollPage() {
     return () => clearTimeout(timer)
   }, [highlightedPeriodId])
 
+  const loadPeriods = async (accessToken: string) => {
+    const res = await fetch('/api/payroll/periods', {
+      headers: { authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) { setError('Failed to load payroll periods'); return }
+    const json = await res.json()
+    setPeriods(json.periods ?? [])
+  }
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -110,15 +119,6 @@ export default function PayrollPage() {
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const loadPeriods = async (accessToken: string) => {
-    const res = await fetch('/api/payroll/periods', {
-      headers: { authorization: `Bearer ${accessToken}` },
-    })
-    if (!res.ok) { setError('Failed to load payroll periods'); return }
-    const json = await res.json()
-    setPeriods(json.periods ?? [])
-  }
 
   const handleGenerate = async (period: PayrollPeriodRow) => {
     if (busy[period.id]) return

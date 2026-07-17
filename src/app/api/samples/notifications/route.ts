@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 }
 
 // PATCH /api/samples/notifications — mark all read for current user
-export async function PATCH(req: NextRequest) {
+export async function PATCH(_req: NextRequest) {
   const authClient = await createClient()
   const { data: { user } } = await authClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

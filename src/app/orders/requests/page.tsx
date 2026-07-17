@@ -389,7 +389,8 @@ function ConvertModal({
 
   // Refresh eligibility whenever the modal opens.
   useEffect(() => {
-    loadEligiblePayments()
+    const onMount = () => { loadEligiblePayments() }
+    onMount()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

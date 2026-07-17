@@ -375,7 +375,7 @@ export default function CompletedTasksPage() {
       setLoading(false)
     }
     init()
-  }, [viewAsUserId])
+  }, [viewAsUserId, router, supabase])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

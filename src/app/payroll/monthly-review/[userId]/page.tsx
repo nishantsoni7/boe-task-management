@@ -100,10 +100,6 @@ function fmtDate(s: string): string {
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
-function fmtDateTime(s: string): string {
-  return new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-}
-
 const DEDUCTION_LABELS: Record<string, string> = {
   late_arrival:       'Late Arrival',
   early_checkout:     'Early Checkout',

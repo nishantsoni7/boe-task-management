@@ -30,14 +30,11 @@ export default function ViewUserPage() {
   const [loading,             setLoading]             = useState(true)
   const [selectedTask,        setSelectedTask]        = useState<Task | null>(null)
   const [teamUsers,           setTeamUsers]           = useState<{ id: string; full_name: string }[]>([])
-  const [escalationTasks,     setEscalationTasks]     = useState<Task[]>([])
   const [myCompletedCount,    setMyCompletedCount]    = useState(0)
-  const [assignedByMeInProg,  setAssignedByMeInProg]  = useState(0)
   const [blockedCount,        setBlockedCount]        = useState(0)
   const [previewList,         setPreviewList]         = useState<{ title: string; items: Task[] } | null>(null)
   const [assignerNames,       setAssignerNames]       = useState<Record<string, string>>({})
   const [completedTasksData,  setCompletedTasksData]  = useState<Task[]>([])
-  const [assignedByMeTasksAll, setAssignedByMeTasksAll] = useState<Task[]>([])
   const [isMobile,            setIsMobile]            = useState(false)
 
   useEffect(() => {
@@ -110,7 +107,7 @@ export default function ViewUserPage() {
       monthStart.setHours(0, 0, 0, 0)
       const monthStartISO = monthStart.toISOString()
 
-      const [{ data: completedData }, { data: abmTasks }, { count: bCount }] = await Promise.all([
+      const [{ data: completedData }, { count: bCount }] = await Promise.all([
         supabase
           .from('tasks')
           .select(TASK_COLUMNS)
@@ -118,13 +115,6 @@ export default function ViewUserPage() {
           .eq('status', 'completed')
           .gte('last_update_at', monthStartISO)
           .order('last_update_at', { ascending: false }),
-        supabase
-          .from('tasks')
-          .select(TASK_COLUMNS)
-          .eq('created_by', userId)
-          .neq('assigned_to', userId)
-          .not('status', 'eq', 'completed')
-          .neq('status', 'cancelled'),
         supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
@@ -136,11 +126,6 @@ export default function ViewUserPage() {
         const completed = completedData as unknown as Task[]
         setMyCompletedCount(completed.length)
         setCompletedTasksData(completed)
-      }
-      if (abmTasks) {
-        const abm = abmTasks as unknown as Task[]
-        setAssignedByMeInProg(abm.length)
-        setAssignedByMeTasksAll(abm)
       }
       if (bCount != null) setBlockedCount(bCount)
 
@@ -169,7 +154,6 @@ export default function ViewUserPage() {
   const msPerDay  = 24 * 60 * 60 * 1000
 
   const unacknowledgedForMe = tasks.filter(t => !t.acknowledged_at && t.created_by !== userId)
-  const allOverdueTasks     = tasks.filter(t => isOverdue(t.due_date, t.status) && t.acknowledged_at)
   const totalOverdue        = tasks.filter(t => isOverdue(t.due_date, t.status)).length
   const waitingTasks        = tasks.filter(t => t.status === 'waiting')
 
@@ -182,10 +166,13 @@ export default function ViewUserPage() {
   const activeProjectsTasks = tasks.filter(t => ['working', 'started', 'pending'].includes(t.status))
 
   useEffect(() => {
-    if (!selectedTask) return
-    const inTasks = tasks.find(t => t.id === selectedTask.id)
-    if (inTasks) { if (inTasks !== selectedTask) setSelectedTask(inTasks); return }
-    setSelectedTask(null)
+    const syncSelectedTask = () => {
+      if (!selectedTask) return
+      const inTasks = tasks.find(t => t.id === selectedTask.id)
+      if (inTasks) { if (inTasks !== selectedTask) setSelectedTask(inTasks); return }
+      setSelectedTask(null)
+    }
+    syncSelectedTask()
   }, [tasks, selectedTask])
 
   if (loading) return <LoadingScreen />

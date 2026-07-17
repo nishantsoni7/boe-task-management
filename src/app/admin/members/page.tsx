@@ -30,10 +30,21 @@ function avatarColor(name: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length]
 }
 
-const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, position, is_active, created_at, is_deleted, deleted_at, deletion_scheduled_at'
+// ── Shared pill for section counts ──────────────────────────────────────────
+function CountPill({ n, color }: { n: number; color?: string }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      minWidth: '20px', height: '18px', padding: '0 6px',
+      background: color ?? colors.float, borderRadius: '9px',
+      fontSize: '10px', fontWeight: 600, color: color ? '#fff' : colors.secondary,
+    }}>{n}</span>
+  )
+}
 
 export default function MembersPage() {
   const { viewAsUserId, exitViewMode } = useViewAs()
+  const [nowMs] = useState(() => Date.now())
   const [profile,        setProfile]        = useState<UserProfile | null>(null)
   const [members,        setMembers]        = useState<UserProfile[]>([])
   const [positions,      setPositions]      = useState<Position[]>([])
@@ -50,7 +61,6 @@ export default function MembersPage() {
   const [showCannotDelete, setShowCannotDelete] = useState(false)
   const [deletedMembers, setDeletedMembers] = useState<UserProfile[]>([])
   const [restoringId,    setRestoringId]    = useState<string | null>(null)
-  const [showDeleted,         setShowDeleted]         = useState(false)
   const [confirmPermDelete,   setConfirmPermDelete]   = useState<UserProfile | null>(null)
   const [permDeletingId,      setPermDeletingId]      = useState<string | null>(null)
   const [permDeleteError,     setPermDeleteError]     = useState('')
@@ -81,7 +91,6 @@ export default function MembersPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
       // getSession() reads from localStorage — zero network cost.
@@ -124,7 +133,7 @@ export default function MembersPage() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [viewAsUserId, exitViewMode, router, supabase])
 
   const loadMembers = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -212,6 +221,9 @@ export default function MembersPage() {
     }
 
     const now = new Date().toISOString()
+    // Inside an async click handler (post-fetch), not the render path — the
+    // purity rule can't see that this closure only runs after a user action.
+    // eslint-disable-next-line react-hooks/purity
     const scheduled = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     const softDeleted: UserProfile = { ...member, is_deleted: true, deleted_at: now, deletion_scheduled_at: scheduled }
     setMembers(prev => prev.filter(m => m.id !== member.id))
@@ -418,7 +430,12 @@ export default function MembersPage() {
       .order('reset_at', { ascending: false })
       .limit(5)
     if (data) {
-      setResetHistory((data as any[]).map(e => ({
+      type ResetLogRow = {
+        id: string; target_id: string; actor_id: string | null
+        reset_at: string; ip_address: string | null
+        users: { full_name: string } | null
+      }
+      setResetHistory((data as unknown as ResetLogRow[]).map(e => ({
         ...e,
         actor_name: e.users?.full_name ?? null,
       })))
@@ -426,10 +443,13 @@ export default function MembersPage() {
   }
 
   useEffect(() => {
-    closeResetForm()
-    closeEditForm()
-    setResetHistory([])
-    if (selectedMember) loadResetHistory(selectedMember.id)
+    const onSelectedMemberChange = () => {
+      closeResetForm()
+      closeEditForm()
+      setResetHistory([])
+      if (selectedMember) loadResetHistory(selectedMember.id)
+    }
+    onSelectedMemberChange()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMember?.id])
 
@@ -440,16 +460,6 @@ export default function MembersPage() {
   const activeMembers   = members.filter(m => m.is_active === true)
   const inactiveMembers = members.filter(m => m.is_active === false)
   const totalMembers    = activeMembers.length + inactiveMembers.length + deletedMembers.length
-
-  // ── Shared pill for section counts ──────────────────────────────────────────
-  const CountPill = ({ n, color }: { n: number; color?: string }) => (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      minWidth: '20px', height: '18px', padding: '0 6px',
-      background: color ?? colors.float, borderRadius: '9px',
-      fontSize: '10px', fontWeight: 600, color: color ? '#fff' : colors.secondary,
-    }}>{n}</span>
-  )
 
   // ── Active member card (left column, primary view) ───────────────────────────
   const renderActiveCard = (member: UserProfile) => (
@@ -798,7 +808,7 @@ export default function MembersPage() {
                 <div>
                   {deletedMembers.map(member => {
                     const daysLeft = member.deletion_scheduled_at
-                      ? Math.max(0, Math.ceil((new Date(member.deletion_scheduled_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+                      ? Math.max(0, Math.ceil((new Date(member.deletion_scheduled_at).getTime() - nowMs) / (1000 * 60 * 60 * 24)))
                       : null
                     const deletedOn = member.deleted_at
                       ? new Date(member.deleted_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })

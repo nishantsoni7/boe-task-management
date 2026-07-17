@@ -159,7 +159,10 @@ export default function EmployeeDetailPage() {
   }, [records, fromDate, toDate])
 
   // Reset to page 1 when filter changes
-  useEffect(() => { setPage(1) }, [fromDate, toDate])
+  useEffect(() => {
+    const onFilterChange = () => { setPage(1) }
+    onFilterChange()
+  }, [fromDate, toDate])
 
   // ── Summary cards ──
   const summary = useMemo(() => {

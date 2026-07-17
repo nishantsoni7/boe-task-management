@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, Position } from '@/lib/types'
@@ -22,6 +22,14 @@ export default function PositionsPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
+  const loadPositions = useCallback(async () => {
+    const { data } = await supabase
+      .from('positions')
+      .select('id, name, created_at')
+      .order('name', { ascending: true })
+    setPositions((data as Position[]) ?? [])
+  }, [supabase])
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -38,15 +46,7 @@ export default function PositionsPage() {
       setLoading(false)
     }
     init()
-  }, [])
-
-  const loadPositions = async () => {
-    const { data } = await supabase
-      .from('positions')
-      .select('id, name, created_at')
-      .order('name', { ascending: true })
-    setPositions((data as Position[]) ?? [])
-  }
+  }, [viewAsUserId, exitViewMode, router, supabase, loadPositions])
 
   const handleAdd = async () => {
     const name = newName.trim()

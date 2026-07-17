@@ -66,13 +66,6 @@ type ProductOption = {
   mrp: number
 }
 
-const STATUSES: { value: InquiryStatus; label: string }[] = [
-  { value: 'new',            label: 'New' },
-  { value: 'in_discussion',  label: 'In Discussion' },
-  { value: 'quotation_sent', label: 'Quotation Sent' },
-  { value: 'closed',         label: 'Closed' },
-]
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function initItemEdits(
@@ -102,7 +95,6 @@ export default function InquiryDetailPage() {
   const [forbidden, setForbidden] = useState(false)
   const [saveError, setSaveError]   = useState('')
   const [saveOk,    setSaveOk]      = useState(false)
-  const [saving,    setSaving]      = useState(false)
   const [pdfError,  setPdfError]    = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
   const [copied,          setCopied]          = useState(false)
@@ -117,7 +109,6 @@ export default function InquiryDetailPage() {
   const [removingId,   setRemovingId]   = useState<string | null>(null)
 
   const [itemEdits,    setItemEdits]    = useState<Record<string, { rate: string; note: string }>>({})
-  const [savingEdits,  setSavingEdits]  = useState(false)
   const [saveEditsOk,  setSaveEditsOk]  = useState(false)
   const [saveEditsErr, setSaveEditsErr] = useState('')
 
@@ -236,7 +227,6 @@ export default function InquiryDetailPage() {
   // ── Save status / discount / notes ────────────────────────────────────────────
 
   const handleSave = async () => {
-    setSaving(true)
     setSaveError('')
     setSaveOk(false)
 
@@ -254,13 +244,11 @@ export default function InquiryDetailPage() {
       await reloadInquiry()
       setTimeout(() => setSaveOk(false), 2500)
     }
-    setSaving(false)
   }
 
   // ── Save per-item quotation edits ─────────────────────────────────────────────
 
   const handleSaveItemEdits = async (): Promise<boolean> => {
-    setSavingEdits(true)
     setSaveEditsErr('')
     setSaveEditsOk(false)
     const currentItems = inquiry?.showroom_inquiry_items ?? []
@@ -277,7 +265,6 @@ export default function InquiryDetailPage() {
       })
       return res.ok
     }))
-    setSavingEdits(false)
     if (results.every(Boolean)) {
       setSaveEditsOk(true)
       await reloadInquiry()
@@ -379,38 +366,6 @@ export default function InquiryDetailPage() {
     setPdfLoading(false)
     await reloadInquiry()
     setStatus(s => s === 'new' || s === 'in_discussion' ? 'quotation_sent' : s)
-  }
-
-  // ── Mark converted / lost ─────────────────────────────────────────────────────
-
-  const [outcomeLoading, setOutcomeLoading] = useState<'converted' | 'lost' | null>(null)
-  const [outcomeError,   setOutcomeError]   = useState('')
-
-  const handleMarkOutcome = async (outcome: 'converted' | 'lost') => {
-    const label = outcome === 'converted' ? 'converted' : 'lost'
-    if (!window.confirm(`Mark this quotation as ${label}?`)) return
-
-    setOutcomeLoading(outcome)
-    setOutcomeError('')
-
-    const body = outcome === 'converted'
-      ? { quotation_status: 'converted', converted_at: new Date().toISOString() }
-      : { quotation_status: 'lost',      lost_at:      new Date().toISOString() }
-
-    const res = await fetch(`/api/showroom/inquiry/${inquiryId}`, {
-      method: 'PATCH',
-      headers: authHeader,
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setOutcomeError(d.error ?? 'Failed to update. Please try again.')
-    } else {
-      await reloadInquiry()
-    }
-
-    setOutcomeLoading(null)
   }
 
   // ── Combined Save Quotation ───────────────────────────────────────────────────
@@ -1338,24 +1293,4 @@ function TimelineRow({
       </div>
     </div>
   )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-      <label style={{ fontSize: '11px', fontWeight: 700, color: '#6B7384', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
-      {children}
-    </div>
-  )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '9px 11px',
-  fontSize: '13px', color: '#0F1117',
-  background: '#fff',
-  border: '1px solid #E5E7EB',
-  borderRadius: '8px', outline: 'none',
-  boxSizing: 'border-box',
-  fontFamily: 'var(--font-body, DM Sans, sans-serif)',
 }

@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, ShowroomCategory } from '@/lib/types'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
-import { colors, font } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { useViewAs } from '@/hooks/useViewAs'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 
@@ -215,10 +215,9 @@ export default function NewProductPage() {
       <style>{FORM_CSS}</style>
       <div style={{
         maxWidth: '780px',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ['--fc-base' as any]: colors.base,
-        ['--fc-border' as any]: colors.border,
-      }}>
+        '--fc-base': colors.base,
+        '--fc-border': colors.border,
+      } as React.CSSProperties & Record<'--fc-base' | '--fc-border', string>}>
 
         <div className="form-card">
 

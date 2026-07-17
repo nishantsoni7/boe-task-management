@@ -58,7 +58,7 @@ export default function CreateSelfTaskPage() {
       }
     }
     init()
-  }, [])
+  }, [viewAsUserId, router, supabase])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

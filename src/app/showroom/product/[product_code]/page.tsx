@@ -30,25 +30,28 @@ export default function ProductPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Check localStorage for salesperson + customer before fetching product
-    const sp       = localStorage.getItem('boe_sp')
-    const customer = localStorage.getItem('boe_customer')
-    if (!sp || !customer) {
-      setNoSession(true)
-      setLoading(false)
-      return
-    }
+    const loadProduct = () => {
+      // Check localStorage for salesperson + customer before fetching product
+      const sp       = localStorage.getItem('boe_sp')
+      const customer = localStorage.getItem('boe_customer')
+      if (!sp || !customer) {
+        setNoSession(true)
+        setLoading(false)
+        return
+      }
 
-    fetch(`/api/showroom/products/by-code/${encodeURIComponent(productCode)}`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then((data: { product: ShowroomProduct }) => {
-        setProduct(data.product)
-        setLoading(false)
-      })
-      .catch(() => {
-        setNotFound(true)
-        setLoading(false)
-      })
+      fetch(`/api/showroom/products/by-code/${encodeURIComponent(productCode)}`)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then((data: { product: ShowroomProduct }) => {
+          setProduct(data.product)
+          setLoading(false)
+        })
+        .catch(() => {
+          setNotFound(true)
+          setLoading(false)
+        })
+    }
+    loadProduct()
   }, [productCode])
 
   const handleAdd = () => {

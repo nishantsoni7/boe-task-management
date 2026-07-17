@@ -79,12 +79,13 @@ export default function DailyQuoteLoader({ children }: { children: React.ReactNo
 
   useEffect(() => {
     const key = getTodayKey()
+    const setPhaseNow = (p: 'check' | 'quote' | 'done') => { setPhase(p) }
     if (localStorage.getItem(key)) {
-      setPhase('done')
+      setPhaseNow('done')
       return
     }
 
-    setPhase('quote')
+    setPhaseNow('quote')
     // Fade in
     const fadeIn = setTimeout(() => setVisible(true), 30)
     // Start fade out at 2.1s, then mark done at 2.5s and persist

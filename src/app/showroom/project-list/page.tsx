@@ -35,25 +35,28 @@ export default function ProjectListPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const sp  = localStorage.getItem('boe_sp')
-    const raw = localStorage.getItem('boe_customer')
+    const loadFromStorage = () => {
+      const sp  = localStorage.getItem('boe_sp')
+      const raw = localStorage.getItem('boe_customer')
 
-    if (!sp || !raw) { setNoSession(true); setReady(true); return }
+      if (!sp || !raw) { setNoSession(true); setReady(true); return }
 
-    try {
-      setCustomer(JSON.parse(raw) as CustomerDetails)
-    } catch {
-      setNoSession(true); setReady(true); return
+      try {
+        setCustomer(JSON.parse(raw) as CustomerDetails)
+      } catch {
+        setNoSession(true); setReady(true); return
+      }
+
+      setSalespersonId(sp)
+
+      const cartRaw = localStorage.getItem('boe_cart')
+      if (cartRaw) {
+        try { setCart(JSON.parse(cartRaw) as CartItem[]) } catch { /* ignore bad cart */ }
+      }
+
+      setReady(true)
     }
-
-    setSalespersonId(sp)
-
-    const cartRaw = localStorage.getItem('boe_cart')
-    if (cartRaw) {
-      try { setCart(JSON.parse(cartRaw) as CartItem[]) } catch { /* ignore bad cart */ }
-    }
-
-    setReady(true)
+    loadFromStorage()
   }, [])
 
   // Persist cart changes back to sessionStorage whenever cart state changes

@@ -51,10 +51,10 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
   useEffect(() => {
     if (!isCsv) return
     let cancelled = false
-    setSheetState({ status: 'loading' })
 
     ;(async () => {
       try {
+        setSheetState({ status: 'loading' })
         const XLSX = await import('xlsx')
         const res = await fetch(url)
         if (!res.ok) throw new Error('Failed to fetch file')
@@ -291,6 +291,11 @@ export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
             </div>
           )}
           {isImage && (
+            // next/image needs known dimensions or a sized relative parent, plus
+            // remotePatterns config for the storage domain — this previews
+            // arbitrary user-uploaded attachments (payment proofs, task files)
+            // at unknown dimensions inside a contain-fit modal.
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={url}
               alt={name}

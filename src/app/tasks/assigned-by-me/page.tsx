@@ -968,7 +968,7 @@ export default function AssignedByMePage() {
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
-  const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
+  const { viewAsUserId, exitViewMode } = useViewAs()
 
   // Cached queries — profile and active users shared across pages
   const { data: profile = null } = useProfile(loggedInId)

@@ -290,7 +290,7 @@ export default function AssignedByMeCompletedPage() {
       setLoading(false)
     }
     init()
-  }, [viewAsUserId])
+  }, [viewAsUserId, router, supabase])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

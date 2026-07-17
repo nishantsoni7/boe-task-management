@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     ...(taskRow?.created_by ? [taskRow.created_by] : []),
   ])]
 
-  let nameMap: Record<string, string> = {}
+  const nameMap: Record<string, string> = {}
   if (actorIds.length > 0) {
     const { data: users } = await client
       .from('users').select('id, full_name').in('id', actorIds)

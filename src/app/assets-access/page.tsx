@@ -170,7 +170,8 @@ function MyAssets({ userId, supabase, isMobile }: { userId: string; supabase: Su
   }
 
   useEffect(() => {
-    load()
+    const onUserIdChange = () => { load() }
+    onUserIdChange()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
@@ -360,7 +361,8 @@ function AssetInventory({ employees, supabase, isMobile }: { employees: Employee
   }
 
   useEffect(() => {
-    load()
+    const onMount = () => { load() }
+    onMount()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -699,7 +701,8 @@ function AccessRegister({ employees, supabase, isMobile }: { employees: Employee
   }
 
   useEffect(() => {
-    load()
+    const onMount = () => { load() }
+    onMount()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

@@ -68,8 +68,8 @@ export function PaymentRequestActivity({
 
   useEffect(() => {
     let active = true
-    setLoading(true)
     ;(async () => {
+      setLoading(true)
       const { data } = await supabase
         .from('finance_payment_request_activity_log')
         .select('id, event_type, payload, created_at, actor:users!actor_id(full_name)')

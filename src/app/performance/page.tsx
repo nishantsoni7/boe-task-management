@@ -7,7 +7,6 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useViewAs } from '@/hooks/useViewAs'
 import type {
   UserProfile, PerformanceData, PerformanceAudit, TrendDay,
-  TrendClassification,
 } from '@/lib/types'
 
 // ─── Progress loader ──────────────────────────────────────────────────────────
@@ -94,40 +93,6 @@ function ScoreRing({ score, rating }: { score: number; rating: string }) {
       }}>{label}</span>
     </div>
   )
-}
-
-// ─── Metric card ──────────────────────────────────────────────────────────────
-function MetricCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
-  return (
-    <div style={{
-      background: '#fff', border: '1px solid #EEF0F4',
-      borderRadius: 10, padding: '14px 16px',
-      display: 'flex', flexDirection: 'column', gap: 4,
-    }}>
-      <div style={{ fontSize: 11, color: '#8C94A6', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 700, color: accent ?? '#111318', lineHeight: 1.1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#8C94A6' }}>{sub}</div>}
-    </div>
-  )
-}
-
-// ─── Trend classification ─────────────────────────────────────────────────────
-const TREND_COLORS: Record<TrendClassification, string> = {
-  improving:         '#45A870',
-  declining:         '#D94F4F',
-  volatile:          '#E8A030',
-  consistent:        '#5585E8',
-  stagnant:          '#8C94A6',
-  insufficient_data: '#8C94A6',
-}
-
-const TREND_ICONS: Record<TrendClassification, string> = {
-  improving:         '↑',
-  declining:         '↓',
-  volatile:          '~',
-  consistent:        '→',
-  stagnant:          '—',
-  insufficient_data: '?',
 }
 
 // ─── AI Audit panel ───────────────────────────────────────────────────────────
@@ -745,16 +710,19 @@ function MonthlyView({ token, which, perfData, viewAsUserId }: {
   }, [perfData])
 
   useEffect(() => {
-    if (!token || range.noData) { setFetching(false); return }
-    setFetching(true)
-    const qs = new URLSearchParams({ from: range.from, to: range.to })
-    if (viewAsUserId) qs.set('userId', viewAsUserId)
-    fetch(`/api/daily-log?${qs.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(d => setLogs(d.logs ?? []))
-      .finally(() => setFetching(false))
+    const loadDailyLog = () => {
+      if (!token || range.noData) { setFetching(false); return }
+      setFetching(true)
+      const qs = new URLSearchParams({ from: range.from, to: range.to })
+      if (viewAsUserId) qs.set('userId', viewAsUserId)
+      fetch(`/api/daily-log?${qs.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then(d => setLogs(d.logs ?? []))
+        .finally(() => setFetching(false))
+    }
+    loadDailyLog()
   }, [token, range, viewAsUserId])
 
   const days = useMemo(
@@ -1035,7 +1003,6 @@ export default function PerformancePage() {
     } finally {
       setPerfTodayLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewAsUserId])
 
   useEffect(() => {
@@ -1117,7 +1084,8 @@ export default function PerformancePage() {
   useEffect(() => {
     if (!showLoader) return
     if (dataReady) {
-      setProgress(100)
+      const finishProgress = () => { setProgress(100) }
+      finishProgress()
       const t = setTimeout(() => setShowLoader(false), 650)
       return () => clearTimeout(t)
     }

@@ -699,7 +699,6 @@ async function testOwnerManagerOverview() {
 
   const session = await loginAs('uat.nishant@boe-test.com', 'Nishant (Manager Overview)')
   if (!session) return
-  const { client: sb, userId } = session
 
   // Can owner see all tasks? (Manager/Admin should see all via manager route)
   const { data: allTasks, error } = await admin.from('tasks').select('id, status, priority, assigned_to, is_urgent, due_date')

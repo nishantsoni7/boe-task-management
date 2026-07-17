@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, UserProfile } from '@/lib/types'
+import type { Task } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -19,8 +19,6 @@ const QTN_COLUMNS = [
   'assigned_to', 'created_by', 'delegated_by', 'team',
   'customer_name', 'contact_number', 'company_name', 'city_project',
 ].join(', ')
-
-const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
 
 function PriorityBadge({ priority }: { priority: string }) {
   const cfg = priority === 'high'
@@ -41,14 +39,6 @@ function PriorityBadge({ priority }: { priority: string }) {
 function formatDate(d: string | null): string | null {
   if (!d) return null
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
-}
-
-function statusBadgeStyle(status: string): React.CSSProperties {
-  return {
-    display: 'inline-block',
-    fontSize: '10px', fontWeight: 600, padding: '2px 8px',
-    borderRadius: '20px', textTransform: 'capitalize' as const,
-  }
 }
 
 function RequestCard({

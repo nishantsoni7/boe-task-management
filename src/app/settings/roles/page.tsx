@@ -52,7 +52,7 @@ export default function RolesPage() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [viewAsUserId, exitViewMode, router, supabase])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

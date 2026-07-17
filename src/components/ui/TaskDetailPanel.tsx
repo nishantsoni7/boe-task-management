@@ -67,20 +67,23 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
 
   // Reload log when a different task is opened
   useEffect(() => {
-    setActivityLog([])
-    setLogLoading(true)
+    const loadLog = () => {
+      setActivityLog([])
+      setLogLoading(true)
 
-    supabase
-      .from('task_activity_log')
-      .select('id, action, note, from_status, to_status, created_at, actor_id')
-      .eq('task_id', task.id)
-      .order('created_at', { ascending: false })
-      .limit(20)
-      .then(({ data }: { data: LogEntry[] | null }) => {
-        if (data) setActivityLog(data)
-        setLogLoading(false)
-      })
-  }, [task.id, task.status])
+      supabase
+        .from('task_activity_log')
+        .select('id, action, note, from_status, to_status, created_at, actor_id')
+        .eq('task_id', task.id)
+        .order('created_at', { ascending: false })
+        .limit(20)
+        .then(({ data }: { data: LogEntry[] | null }) => {
+          if (data) setActivityLog(data)
+          setLogLoading(false)
+        })
+    }
+    loadLog()
+  }, [task.id, task.status, supabase])
 
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {

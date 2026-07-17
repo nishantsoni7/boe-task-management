@@ -52,7 +52,7 @@ export default function SettingsPage() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [viewAsUserId, exitViewMode, router, supabase])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

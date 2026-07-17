@@ -6,7 +6,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { getTaskAging } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -47,7 +46,6 @@ function normalizeDueDate(raw: string | null | undefined): string | null {
   return `${yyyy}-${mm}-${dd}`
 }
 const TODAY_STR    = localDateStr(0)
-const TOMORROW_STR = localDateStr(1)
 const NOW_MS    = Date.now()
 const H48       = 48 * 60 * 60 * 1000
 
@@ -106,7 +104,7 @@ const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
-  task, accentColor, userId, userMap, onClick, onEdit, onDelete, isMobile,
+  task, accentColor: _accentColor, userId, userMap, onClick, onEdit, onDelete, isMobile,
   isPinned, onPin, onUnpin,
 }: {
   task: Task
@@ -175,7 +173,7 @@ function TaskCard({
           <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
             {(onPin || onUnpin) && (
               <button
-                onClick={e => { e.stopPropagation(); isPinned ? onUnpin?.() : onPin?.() }}
+                onClick={e => { e.stopPropagation(); if (isPinned) onUnpin?.(); else onPin?.() }}
                 title={isPinned ? 'Remove from Focus' : 'Add to Today\'s Focus'}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: isPinned ? 'rgba(196,154,40,0.10)' : 'transparent', border: `1px solid ${isPinned ? 'rgba(196,154,40,0.3)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: isPinned ? '#C49A28' : colors.muted }}
               >
@@ -336,7 +334,7 @@ function TaskCard({
         {/* Pin to Top 3 */}
         {(onPin || onUnpin) && (
           <button
-            onClick={e => { e.stopPropagation(); isPinned ? onUnpin?.() : onPin?.() }}
+            onClick={e => { e.stopPropagation(); if (isPinned) onUnpin?.(); else onPin?.() }}
             onMouseEnter={() => setHoveredPin(true)}
             onMouseLeave={() => setHoveredPin(false)}
             title={isPinned ? 'Remove from Focus' : 'Add to Today\'s Focus'}
@@ -1026,7 +1024,7 @@ export default function MyTasksPage() {
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
-  const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
+  const { viewAsUserId, exitViewMode } = useViewAs()
   const { refreshKey } = useRefresh()
 
   // Resolve the effective user ID — view-as overrides the logged-in user
@@ -1057,7 +1055,8 @@ export default function MyTasksPage() {
 
   // Reset local overrides when fresh data arrives from the server
   useEffect(() => {
-    setTaskOverrides(null)
+    const resetOverrides = () => { setTaskOverrides(null) }
+    resetOverrides()
   }, [allTasksRaw])
 
   // Prefetch task detail pages for the first 15 visible tasks
@@ -1112,99 +1111,6 @@ export default function MyTasksPage() {
     setEditingTask(null)
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
     queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
-  }
-
-  const handleAddUpdate = async (note: string, newStatus: string, waitingOn?: { type: 'team_member' | 'external'; userId?: string; text?: string }) => {
-    if (!selectedTask) return
-    const now = new Date().toISOString()
-    const statusChanged = newStatus !== selectedTask.status
-    const trimmedNote = note.trim() || null
-
-    if (statusChanged) {
-      const needsBlockerReason = newStatus === 'blocked'
-      const clearBlockerReason = selectedTask.status === 'blocked'
-      const clearWaiting = selectedTask.status === 'waiting' && newStatus !== 'waiting'
-      const taskUpdates: Record<string, unknown> = { status: newStatus, last_update_at: now }
-      if (needsBlockerReason) taskUpdates.blocker_reason = trimmedNote
-      else if (clearBlockerReason) taskUpdates.blocker_reason = null
-      if (newStatus === 'waiting' && waitingOn) {
-        taskUpdates.waiting_on_type    = waitingOn.type
-        taskUpdates.waiting_on_user_id = waitingOn.type === 'team_member' ? (waitingOn.userId ?? null) : null
-        taskUpdates.waiting_on_text    = waitingOn.type === 'external'    ? (waitingOn.text    ?? null) : null
-      } else if (clearWaiting) {
-        taskUpdates.waiting_on_type    = null
-        taskUpdates.waiting_on_user_id = null
-        taskUpdates.waiting_on_text    = null
-      }
-      const { error: taskErr } = await supabase
-        .from('tasks').update(taskUpdates).eq('id', selectedTask.id)
-      if (taskErr) {
-        console.error('[addUpdate] tasks update failed:', taskErr.message)
-        throw taskErr
-      }
-
-      const { error: logErr } = await supabase
-        .from('task_activity_log')
-        .insert({
-          task_id:     selectedTask.id,
-          actor_id:    userId,
-          action:      'status_changed',
-          from_status: selectedTask.status,
-          to_status:   newStatus,
-          note:        trimmedNote,
-        })
-      if (logErr) {
-        console.error('[addUpdate] activity log insert failed:', logErr.message)
-        throw logErr
-      }
-
-      const localPatch: Partial<Task> = { status: newStatus as Task['status'], last_update_at: now }
-      if (needsBlockerReason) localPatch.blocker_reason = trimmedNote
-      else if (clearBlockerReason) localPatch.blocker_reason = null
-      if (newStatus === 'waiting' && waitingOn) {
-        localPatch.waiting_on_type    = waitingOn.type
-        localPatch.waiting_on_user_id = waitingOn.type === 'team_member' ? (waitingOn.userId ?? null) : null
-        localPatch.waiting_on_text    = waitingOn.type === 'external'    ? (waitingOn.text    ?? null) : null
-      } else if (clearWaiting) {
-        localPatch.waiting_on_type    = null
-        localPatch.waiting_on_user_id = null
-        localPatch.waiting_on_text    = null
-      }
-      setSelectedTask(prev => prev ? { ...prev, ...localPatch } : prev)
-      setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === selectedTask.id ? { ...t, ...localPatch } : t))
-    } else if (trimmedNote) {
-      const { error: taskErr } = await supabase
-        .from('tasks').update({ last_update_at: now }).eq('id', selectedTask.id)
-      if (taskErr) {
-        console.error('[addUpdate] tasks update failed:', taskErr.message)
-        throw taskErr
-      }
-
-      const { error: logErr } = await supabase
-        .from('task_activity_log')
-        .insert({
-          task_id:     selectedTask.id,
-          actor_id:    userId,
-          action:      'status_changed',
-          from_status: selectedTask.status,
-          to_status:   selectedTask.status,
-          note:        trimmedNote,
-        })
-      if (logErr) {
-        console.error('[addUpdate] activity log insert failed:', logErr.message)
-        throw logErr
-      }
-
-      setTaskOverrides(prev => (prev ?? allTasksRaw).map(t =>
-        t.id === selectedTask.id ? { ...t, last_update_at: now } : t
-      ))
-    }
-
-    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
-    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
-    if (statusChanged) {
-      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
-    }
   }
 
   const handleAcknowledge = async () => {

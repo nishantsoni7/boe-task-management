@@ -48,7 +48,6 @@ export default function CreateTaskPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
       try {
@@ -73,7 +72,7 @@ export default function CreateTaskPage() {
       }
     }
     init()
-  }, [])
+  }, [viewAsUserId, router, supabase])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

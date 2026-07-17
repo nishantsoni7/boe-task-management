@@ -27,18 +27,21 @@ function JoinForm() {
 
   // Validate the salesperson ID on mount
   useEffect(() => {
-    if (!salespersonId) { setInvalid(true); setValidating(false); return }
+    const validateSalesperson = () => {
+      if (!salespersonId) { setInvalid(true); setValidating(false); return }
 
-    fetch(`/api/showroom/salesperson/${encodeURIComponent(salespersonId)}`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then((data: { full_name: string }) => {
-        setSalespersonName(data.full_name)
-        setValidating(false)
-      })
-      .catch(() => {
-        setInvalid(true)
-        setValidating(false)
-      })
+      fetch(`/api/showroom/salesperson/${encodeURIComponent(salespersonId)}`)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then((data: { full_name: string }) => {
+          setSalespersonName(data.full_name)
+          setValidating(false)
+        })
+        .catch(() => {
+          setInvalid(true)
+          setValidating(false)
+        })
+    }
+    validateSalesperson()
   }, [salespersonId])
 
   const handleSubmit = (e: React.FormEvent) => {

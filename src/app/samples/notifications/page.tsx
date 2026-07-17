@@ -111,7 +111,7 @@ export default function SampleNotificationsPage() {
       unreadCount={unreadCount}
       title="Notifications"
       subtitle={unreadCount > 0 ? `${unreadCount} unread` : undefined}
-      onTabSelect={(tab: TabKey) => router.push('/samples')}
+      onTabSelect={(_tab: TabKey) => router.push('/samples')}
       onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
       actions={
         unreadCount > 0 ? (

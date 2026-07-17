@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
     periodKeys.add(`${d.getFullYear()}-${d.getMonth() + 1}`)
   }
 
-  let payrollMap: Record<string, string> = {}
+  const payrollMap: Record<string, string> = {}
   if (periodKeys.size > 0) {
     const { data: periods } = await svc
       .from('payroll_periods')

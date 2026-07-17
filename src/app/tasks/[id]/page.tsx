@@ -18,8 +18,6 @@ import { CircleCheckBig, UserCheck, UserRound } from 'lucide-react'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
-const PROGRESS_STATUSES: TaskStatus[] = ['waiting', 'blocked']
-
 const STATUS_COLORS: Record<string, string> = {
   pending:   colors.muted,
   started:   colors.secondary,
@@ -65,7 +63,7 @@ export default function TaskDetailPage() {
   const [currentUserId,   setCurrentUserId]   = useState('')
   const [loading,         setLoading]         = useState(true)
 
-  const [selectedStatus,   setSelectedStatus]  = useState<string>('')
+  const [_selectedStatus,   setSelectedStatus]  = useState<string>('')
   const [waitingOnType,    setWaitingOnType]   = useState<'team_member' | 'external'>('team_member')
   const [waitingOnUserId,  setWaitingOnUserId] = useState('')
   const [waitingOnText,    setWaitingOnText]   = useState('')
@@ -123,7 +121,6 @@ export default function TaskDetailPage() {
   }
 
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -197,7 +194,7 @@ export default function TaskDetailPage() {
       setLoading(false)
     }
     init()
-  }, [])
+  }, [params.id, router, supabase])
 
   const loadLog = async (taskId: string) => {
     // Fetch activity log and all task attachments in parallel
@@ -329,66 +326,6 @@ export default function TaskDetailPage() {
       const dest = task.task_type === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'
       setTimeout(() => router.push(dest), 800)
     }
-  }
-
-  const saveStatus = async () => {
-    if (!task) return
-    if (selectedStatus === task.status) return
-    if (selectedStatus === 'waiting') {
-      const filled = waitingOnType === 'team_member' ? !!waitingOnUserId : !!waitingOnText.trim()
-      if (!filled) { setWaitingOnError(true); return }
-    }
-    setWaitingOnError(false)
-    setSaving(true)
-
-    if (selectedStatus === 'waiting') {
-      const now = new Date().toISOString()
-      const updates: Record<string, unknown> = {
-        status:             selectedStatus,
-        last_update_at:     now,
-        waiting_on_type:    waitingOnType,
-        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
-        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
-      }
-      if (task.status === 'blocked') updates.blocker_reason = null
-      const { error: taskErr } = await supabase.from('tasks').update(updates).eq('id', task.id)
-      if (taskErr) {
-        console.error('[saveStatus/waiting] tasks update failed:', taskErr.message)
-        window.alert('Failed to save status. Please try again.')
-        setSaving(false)
-        return
-      }
-      await supabase.from('task_activity_log').insert({
-        task_id: task.id, actor_id: currentUserId,
-        action: 'status_changed', from_status: task.status, to_status: selectedStatus,
-        note: null,
-      })
-      const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
-      if (recipient && recipient !== currentUserId) {
-        fetch('/api/notify-status-update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'waiting', actorName: profile?.full_name }),
-        }).catch(err => console.error('[saveStatus/waiting] notification fetch error:', err))
-      }
-      const localPatch: Partial<Task> = {
-        status:             selectedStatus as TaskStatus,
-        last_update_at:     now,
-        waiting_on_type:    waitingOnType,
-        waiting_on_user_id: waitingOnType === 'team_member' ? (waitingOnUserId || null) : null,
-        waiting_on_text:    waitingOnType === 'external' ? (waitingOnText.trim() || null) : null,
-      }
-      if (task.status === 'blocked') localPatch.blocker_reason = null
-      setTask({ ...task, ...localPatch })
-      setSelectedStatus(selectedStatus)
-      invalidateTaskCache(task.assigned_to)
-      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
-      await loadLog(task.id)
-    } else {
-      await applyStatusChange(selectedStatus, null)
-    }
-
-    setSaving(false)
   }
 
   const handleReopen = async () => {
