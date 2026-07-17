@@ -26,6 +26,7 @@ type PaymentRequest = {
   order_id: string | null
   sales_note: string | null
   status: string
+  payment_against: string
   submitted_by: string
   submitted_by_name?: string
   admin_note: string | null
@@ -89,11 +90,13 @@ const RECEIVED_IN_OPTIONS = [
   { label: 'Other',           value: 'other' },
 ]
 
+// approved_unlinked and approved_linked are deliberately excluded — see
+// isLinkageStatus below and 20260691000000: those two states may only be
+// reached through approve_finance_payment_request, link_finance_payment_to_order,
+// or unlink_finance_payment_from_order.
 const STATUS_CORRECTION_OPTIONS = [
   { value: 'pending_approval',    label: 'Pending' },
   { value: 'needs_clarification', label: 'Needs Clarification' },
-  { value: 'approved_unlinked',   label: 'Order No. Pending' },
-  { value: 'approved_linked',     label: 'Received Payment' },
   { value: 'rejected',            label: 'Rejected' },
 ]
 
@@ -217,15 +220,21 @@ function DetailsModal({
 }) {
   const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
 
+  // Every row on this page is approved_linked or approved_unlinked (the page
+  // query is scoped to exactly those two statuses), so this is always true
+  // here — the generic correction control below never renders on this page.
+  // Kept as an explicit, named check (rather than deleting the block) so the
+  // same guard reads identically to finance/page.tsx.
+  const isLinkageStatus = r.status === 'approved_unlinked' || r.status === 'approved_linked'
+
   const [newStatus,       setNewStatus]       = useState(r.status)
   const [correctionNote,  setCorrectionNote]  = useState('')
   const [correcting,      setCorrecting]      = useState(false)
   const [correctionError, setCorrectionError] = useState<string | null>(null)
 
   const noteRequiredForCorrection = newStatus === 'needs_clarification' || newStatus === 'rejected'
-  const linkedRequiresOrderNo = newStatus === 'approved_linked' && !r.order_id
   const statusChanged = newStatus !== r.status
-  const canCorrect = statusChanged && (!noteRequiredForCorrection || correctionNote.trim()) && !linkedRequiresOrderNo
+  const canCorrect = statusChanged && (!noteRequiredForCorrection || correctionNote.trim())
 
   const handleCorrect = async () => {
     if (!canCorrect || !supabase || !onCorrected) return
@@ -281,7 +290,7 @@ function DetailsModal({
       {supabase && <PaymentProofView supabase={supabase} paymentRequestId={r.id} />}
       {supabase && <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />}
 
-      {isAdmin && supabase && onCorrected && (
+      {isAdmin && supabase && onCorrected && !isLinkageStatus && (
         <div style={{
           borderTop: `1px solid ${colors.border}`,
           paddingTop: '14px',
@@ -300,9 +309,6 @@ function DetailsModal({
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
-          {linkedRequiresOrderNo && (
-            <ErrorBanner message="Select a valid order before marking this payment as linked." />
-          )}
           {statusChanged && noteRequiredForCorrection && (
             <textarea
               className="boe-input"
@@ -336,6 +342,14 @@ function DetailsModal({
               </button>
             </div>
           )}
+        </div>
+      )}
+      {isAdmin && isLinkageStatus && (
+        <div style={{
+          borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
+          fontSize: '12px', color: colors.muted, lineHeight: 1.5,
+        }}>
+          Order linkage is managed with Link / Unlink, not here.
         </div>
       )}
 
@@ -374,6 +388,12 @@ function EditPaymentModal({
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
+  // Every row on this page is approved_unlinked or approved_linked (see the
+  // page-level query), so this is always true here — order_number for those
+  // states is owned exclusively by link_finance_payment_to_order /
+  // unlink_finance_payment_from_order (20260691000000), never by this form.
+  const isLinkageStatus = r.status === 'approved_unlinked' || r.status === 'approved_linked'
+
   const set = (key: keyof typeof form) => (
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
@@ -385,8 +405,6 @@ function EditPaymentModal({
     if (!canSubmit) return
     setSaving(true)
     setError(null)
-    // order_number is display/reference text only — editing it here never
-    // changes order_id, so it can never make or break the payment's link.
     const { data: updated, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
@@ -396,7 +414,7 @@ function EditPaymentModal({
         payment_mode: form.paymentMode,
         received_in:  form.receivedIn,
         proof_note:   form.proofNote.trim() || null,
-        order_number: form.orderNumber.trim() || null,
+        ...(isLinkageStatus ? {} : { order_number: form.orderNumber.trim() || null }),
         sales_note:   form.salesNote.trim()   || null,
         updated_at:   new Date().toISOString(),
       })
@@ -444,7 +462,13 @@ function EditPaymentModal({
       </Field>
       <Field label="Order Number">
         <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
-          placeholder="Order number" style={{ width: '100%' }} />
+          placeholder="Order number" style={{ width: '100%' }}
+          readOnly={isLinkageStatus} disabled={isLinkageStatus} />
+        {isLinkageStatus && (
+          <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+            Managed by Link / Unlink.
+          </span>
+        )}
       </Field>
       <Field label="Sales Note (optional)">
         <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
@@ -574,38 +598,22 @@ function LinkOrderModal({
     setSearching(false)
   }
 
+  // Routed entirely through the guarded RPC (link_finance_payment_to_order,
+  // 20260691000000): it locks the payment and order rows, revalidates
+  // eligibility, and writes the order activity row itself. No client-side
+  // .update() of finance_payment_requests or order_activity_log remains.
   const handleLink = async () => {
     if (!selected) return
     setSaving(true)
     setError(null)
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { setError('Not authenticated.'); setSaving(false); return }
-
-    // Update payment
-    const { error: updateErr } = await supabase
-      .from('finance_payment_requests')
-      .update({
-        order_id:     selected.id,
-        order_number: selected.display_number,
-        status:       'approved_linked',
-        updated_at:   new Date().toISOString(),
-      })
-      .eq('id', payment.id)
-
-    if (updateErr) { setError(friendlyDbErrorMessage(updateErr)); setSaving(false); return }
-
-    // Activity log
-    await supabase.from('order_activity_log').insert({
-      order_id:   selected.id,
-      actor_id:   session.user.id,
-      event_type: 'payment_linked',
-      payload: {
-        payment_id:  payment.id,
-        amount:      payment.amount,
-        client_name: payment.client_name,
-      },
+    const { error: rpcError } = await supabase.rpc('link_finance_payment_to_order', {
+      p_payment_request_id: payment.id,
+      p_order_id:           selected.id,
     })
+
+    setSaving(false)
+    if (rpcError) { setError(friendlyDbErrorMessage(rpcError)); return }
 
     onLinked()
   }
@@ -844,8 +852,12 @@ function ReceivedPaymentsTable({
                             Link
                           </button>
                         )}
-                        {/* Unlink action for linked payments */}
-                        {isLinked && (
+                        {/* Unlink action — only for payments that originated as a new
+                            order. An existing_order payment was validated against a
+                            real order at submission and unlink_finance_payment_from_order
+                            (20260691000000) rejects it outright, so the option is not
+                            offered here at all. */}
+                        {isLinked && r.payment_against === 'new_order' && (
                           <button
                             onClick={() => onUnlink(r)}
                             className="boe-btn boe-btn-ghost"
@@ -894,6 +906,7 @@ export default function ReceivedPaymentsPage() {
   const [deleteRequest,  setDeleteRequest]  = useState<PaymentRequest | null>(null)
   const [linkRequest,    setLinkRequest]    = useState<PaymentRequest | null>(null)
   const [unlinkTarget,   setUnlinkTarget]   = useState<PaymentRequest | null>(null)
+  const [unlinkReason,   setUnlinkReason]   = useState('')
   const [unlinking,      setUnlinking]      = useState(false)
   const [unlinkError,    setUnlinkError]    = useState<string | null>(null)
   const [search,         setSearch]         = useState('')
@@ -908,10 +921,10 @@ export default function ReceivedPaymentsPage() {
       .select(`
         id, request_number, client_name, amount, payment_date, payment_mode,
         received_in, proof_note, order_number, order_id, sales_note,
-        status, submitted_by, admin_note, created_at,
+        status, payment_against, submitted_by, admin_note, created_at,
         submitted_by_user:users!submitted_by(full_name)
       `)
-      .eq('status', 'approved_linked')
+      .in('status', ['approved_linked', 'approved_unlinked'])
       .order('created_at', { ascending: false })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -949,45 +962,29 @@ export default function ReceivedPaymentsPage() {
     router.replace('/login')
   }
 
-  // Unlink a payment — sets order_id=null, status=approved_unlinked, logs activity
+  // Unlink a payment — routed entirely through the guarded RPC
+  // (unlink_finance_payment_from_order, 20260691000000): it locks the
+  // payment row, requires a non-empty reason, enforces that only a
+  // new_order-origin payment can be unlinked here, and records the activity
+  // row itself. No client-side .update() of finance_payment_requests or
+  // order_activity_log remains.
   const handleUnlink = async () => {
     if (!unlinkTarget) return
+    const reason = unlinkReason.trim()
+    if (!reason) { setUnlinkError('A reason is required to unlink this payment.'); return }
     setUnlinking(true)
     setUnlinkError(null)
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { setUnlinkError('Not authenticated.'); setUnlinking(false); return }
+    const { error: rpcError } = await supabase.rpc('unlink_finance_payment_from_order', {
+      p_payment_request_id: unlinkTarget.id,
+      p_reason:             reason,
+    })
 
-    const previousOrderId     = unlinkTarget.order_id
-    const previousOrderNumber = unlinkTarget.order_number
-
-    const { error: updateErr } = await supabase
-      .from('finance_payment_requests')
-      .update({
-        order_id:   null,
-        status:     'approved_unlinked',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', unlinkTarget.id)
-
-    if (updateErr) { setUnlinkError(updateErr.message); setUnlinking(false); return }
-
-    // Activity log on the order that was previously linked
-    if (previousOrderId) {
-      await supabase.from('order_activity_log').insert({
-        order_id:   previousOrderId,
-        actor_id:   session.user.id,
-        event_type: 'payment_unlinked',
-        payload: {
-          payment_id:            unlinkTarget.id,
-          amount:                unlinkTarget.amount,
-          previous_order_number: previousOrderNumber,
-        },
-      })
-    }
+    setUnlinking(false)
+    if (rpcError) { setUnlinkError(friendlyDbErrorMessage(rpcError)); return }
 
     setUnlinkTarget(null)
-    setUnlinking(false)
+    setUnlinkReason('')
     loadRequests()
   }
 
@@ -1070,7 +1067,7 @@ export default function ReceivedPaymentsPage() {
             onEdit={r  => setEditRequest(r)}
             onDelete={r => setDeleteRequest(r)}
             onLink={r  => setLinkRequest(r)}
-            onUnlink={r => setUnlinkTarget(r)}
+            onUnlink={r => { setUnlinkTarget(r); setUnlinkReason(''); setUnlinkError(null) }}
           />
         )}
       </div>
@@ -1118,7 +1115,7 @@ export default function ReceivedPaymentsPage() {
       {unlinkTarget && (
         <>
           <div
-            onClick={() => { if (!unlinking) setUnlinkTarget(null) }}
+            onClick={() => { if (!unlinking) { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) } }}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 59 }}
           />
           <div style={{
@@ -1135,10 +1132,21 @@ export default function ReceivedPaymentsPage() {
               <br /><br />
               The payment will return to suspense status.
             </div>
+            <Field label="Reason" required>
+              <textarea
+                className="boe-input"
+                value={unlinkReason}
+                onChange={e => { setUnlinkReason(e.target.value); setUnlinkError(null) }}
+                placeholder="Why is this payment being unlinked? (required)"
+                rows={2}
+                disabled={unlinking}
+                style={{ width: '100%', resize: 'vertical' }}
+              />
+            </Field>
             {unlinkError && <ErrorBanner message={unlinkError} />}
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button
-                onClick={() => setUnlinkTarget(null)}
+                onClick={() => { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) }}
                 disabled={unlinking}
                 className="boe-btn boe-btn-ghost"
                 style={{ padding: '8px 18px', fontSize: '13px' }}
@@ -1147,12 +1155,13 @@ export default function ReceivedPaymentsPage() {
               </button>
               <button
                 onClick={handleUnlink}
-                disabled={unlinking}
+                disabled={unlinking || !unlinkReason.trim()}
                 style={{
                   padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
                   border: `1px solid ${colors.border}`, background: colors.raised,
-                  color: colors.primary, cursor: unlinking ? 'not-allowed' : 'pointer',
-                  opacity: unlinking ? 0.6 : 1,
+                  color: colors.primary,
+                  cursor: (unlinking || !unlinkReason.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (unlinking || !unlinkReason.trim()) ? 0.6 : 1,
                 }}
               >
                 {unlinking ? 'Unlinking…' : 'Yes, Unlink'}

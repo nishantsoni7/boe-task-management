@@ -173,12 +173,18 @@ function fmtAmount(n: number) {
 }
 
 // Order No. display for both employee and admin views: shows the real number
-// once one exists, otherwise a concise pending-allocation state for a
-// new_order request (allocation happens only on admin approval — see
-// approve_finance_payment_request in 20260688000000).
+// once one exists, otherwise a concise state describing why not. A new_order
+// request never allocates a number through approval (20260690000000) — it
+// only reaches one when it is later attached to a real Order (Order Request
+// conversion, or the Finance linking RPC), so approved_unlinked and
+// pending/in-review new_order requests need distinct copy.
 function orderNoDisplay(r: PaymentRequest): string {
   if (r.order_number) return r.order_number
-  if (r.payment_against === 'new_order') return 'New Order — Pending order allocation'
+  if (r.payment_against === 'new_order') {
+    return r.status === 'approved_unlinked'
+      ? 'Received — awaiting order creation'
+      : 'New Order — no order created yet'
+  }
   return '—'
 }
 
@@ -347,12 +353,17 @@ function StaleBadge() {
 }
 
 // ── Status correction options (admin) ────────────────────────────────────────
+// approved_unlinked and approved_linked are deliberately excluded: those two
+// states are order-linkage states, not review states, and must only be
+// reached through approve_finance_payment_request, link_finance_payment_to_order,
+// or unlink_finance_payment_from_order (20260690000000 / 20260691000000) — each
+// locks the row and keeps status/order_id/order_number in lock-step. A generic
+// correction here would let status diverge from order_id/order_number without
+// any of those guarantees.
 
 const STATUS_CORRECTION_OPTIONS: { value: string; label: string }[] = [
   { value: 'pending_approval',    label: 'Pending Review' },
   { value: 'needs_clarification', label: 'Needs Clarification' },
-  { value: 'approved_unlinked',   label: 'Received – Order No. Pending' },
-  { value: 'approved_linked',     label: 'Received – Order No. Added' },
   { value: 'rejected',            label: 'Rejected' },
 ]
 
@@ -373,15 +384,20 @@ function DetailsModal({
 }) {
   const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
 
+  // Order-linkage states are out of this control's jurisdiction entirely —
+  // neither entering nor leaving approved_unlinked/approved_linked may happen
+  // here, since either direction would move status without the RPCs' row
+  // locking, eligibility checks, and order_id/order_number bookkeeping.
+  const isLinkageStatus = r.status === 'approved_unlinked' || r.status === 'approved_linked'
+
   const [newStatus,       setNewStatus]       = useState(r.status)
   const [correctionNote,  setCorrectionNote]  = useState('')
   const [correcting,      setCorrecting]      = useState(false)
   const [correctionError, setCorrectionError] = useState<string | null>(null)
 
   const noteRequiredForCorrection = newStatus === 'needs_clarification' || newStatus === 'rejected'
-  const linkedRequiresOrderNo = newStatus === 'approved_linked' && !r.order_id
   const statusChanged = newStatus !== r.status
-  const canCorrect = statusChanged && (!noteRequiredForCorrection || correctionNote.trim()) && !linkedRequiresOrderNo
+  const canCorrect = statusChanged && (!noteRequiredForCorrection || correctionNote.trim())
 
   const handleCorrect = async () => {
     if (!canCorrect || !supabase || !onCorrected) return
@@ -452,8 +468,10 @@ function DetailsModal({
       {supabase && <PaymentProofView supabase={supabase} paymentRequestId={r.id} />}
       {supabase && <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />}
 
-      {/* Admin-only status correction */}
-      {isAdmin && supabase && onCorrected && (
+      {/* Admin-only status correction — never shown for approved_unlinked/
+          approved_linked rows; those are managed only via Mark Payment
+          Received, Link, and Unlink. */}
+      {isAdmin && supabase && onCorrected && !isLinkageStatus && (
         <div style={{
           borderTop: `1px solid ${colors.border}`,
           paddingTop: '14px',
@@ -494,9 +512,6 @@ function DetailsModal({
               style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
             />
           )}
-          {linkedRequiresOrderNo && (
-            <ErrorBanner message="Select a valid order before marking this payment as linked." />
-          )}
           {correctionError && <ErrorBanner message={correctionError} />}
           {statusChanged && (
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -510,6 +525,14 @@ function DetailsModal({
               </button>
             </div>
           )}
+        </div>
+      )}
+      {isAdmin && isLinkageStatus && (
+        <div style={{
+          borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
+          fontSize: '12px', color: colors.muted, lineHeight: 1.5,
+        }}>
+          Order linkage is managed from the Received Payments page (Link / Unlink), not here.
         </div>
       )}
 
@@ -1036,6 +1059,13 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
 
   const isExistingOrder = r.payment_against === 'existing_order'
 
+  // order_number is locked in step with status/order_id for these two states
+  // (link_finance_payment_to_order / unlink_finance_payment_from_order own
+  // that field exclusively once a payment has been approved). Editing it
+  // freely here would risk exactly the status/order_id/order_number mismatch
+  // the new invariant exists to prevent.
+  const isLinkageStatus = r.status === 'approved_unlinked' || r.status === 'approved_linked'
+
   const set = (key: keyof typeof form) => (
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
@@ -1052,9 +1082,11 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     }
     setSaving(true)
     setError(null)
-    // order_number is display/reference text only — editing it here never
-    // changes order_id, so it can never make or keep a payment linked.
-    const newOrderNumber = form.orderNumber.trim() || null
+    // order_number is display/reference text only, and editing it here never
+    // touches order_id — but once a payment is approved_unlinked/
+    // approved_linked, order_number itself is owned by the link/unlink RPCs,
+    // so it is left out of this payload entirely for those two statuses
+    // rather than resent unchanged.
     const { data: updated, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
@@ -1064,7 +1096,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         payment_mode: editDbMode.payment_mode,
         received_in:  editDbMode.received_in,
         proof_note:   form.proofNote.trim() || null,
-        order_number: newOrderNumber,
+        ...(isLinkageStatus ? {} : { order_number: form.orderNumber.trim() || null }),
         sales_note:   form.salesNote.trim() || null,
         ...(!isAdmin && r.status === 'needs_clarification' ? { status: 'pending_approval' } : {}),
         updated_at:   new Date().toISOString(),
@@ -1130,7 +1162,13 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       </Field>
       <Field label="Order Number (optional)">
         <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
-          placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
+          placeholder="Leave blank if order not yet created" style={{ width: '100%' }}
+          readOnly={isLinkageStatus} disabled={isLinkageStatus} />
+        {isLinkageStatus && (
+          <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+            Managed by Link / Unlink on the Received Payments page.
+          </span>
+        )}
       </Field>
       <Field label="Sales Note (optional)">
         <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
@@ -1173,10 +1211,12 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
     setError(null)
 
     if (action === 'approve') {
-      // Order-number allocation for a new_order request happens only inside
-      // this RPC, atomically with the approval itself — see
-      // approve_finance_payment_request in 20260688000000. The client never
-      // allocates or chooses an order number.
+      // Confirming receipt never creates an order — see
+      // approve_finance_payment_request in 20260690000000. A new_order
+      // request always lands in approved_unlinked (Suspense) with order_id
+      // left null; an existing_order request links straight to the order it
+      // already carries. The client never allocates or chooses an order
+      // number either way.
       const { error: rpcError } = await supabase.rpc('approve_finance_payment_request', {
         p_request_id: r.id,
         p_admin_note: adminNote.trim() || null,
@@ -1253,6 +1293,20 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
           <button style={actionBtn('reject',             'Reject',             colors.red,   colors.redTint)}   onClick={() => setAction('reject')}>Reject</button>
         </div>
       </div>
+
+      {action === 'approve' && (
+        <div style={{
+          padding: '10px 12px', borderRadius: '8px',
+          background: r.payment_against === 'new_order' ? '#FFF7ED' : '#F0FDF4',
+          border: `1px solid ${r.payment_against === 'new_order' ? '#FED7AA' : '#BBF7D0'}`,
+          fontSize: '12px', color: r.payment_against === 'new_order' ? '#9A3412' : '#166534',
+          lineHeight: 1.5,
+        }}>
+          {r.payment_against === 'new_order'
+            ? 'This payment will be recorded as received and moved to Suspense. No order or order number is created here — attach it to an order later from Order Requests or the Suspense list.'
+            : `This payment will be linked directly to order ${r.order_number ?? orderNoDisplay(r)}.`}
+        </div>
+      )}
 
       {action && (
         <Field label={`Admin Note${noteRequired ? '' : ' (optional)'}`} required={noteRequired}>

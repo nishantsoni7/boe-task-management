@@ -57,6 +57,7 @@ type ConvertResult = {
 type EligiblePayment = {
   id: string
   request_number: string
+  client_name: string
   amount: number
   payment_date: string
   proof_note: string | null
@@ -103,6 +104,19 @@ function fmtAmount(n: number | null) {
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// There is no stable shared client ID between finance_payment_requests and
+// order_requests (both carry only a free-text client_name) — this is
+// deterministic normalized-text comparison only, used for sorting and the
+// mismatch warning below. It is display guidance, never a hard filter: a
+// mismatched payment stays fully selectable, and the RPC does not validate
+// client match at all.
+function normalizeClientName(value: string): string {
+  return value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/\s+/g, ' ')
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -363,12 +377,16 @@ function ConvertModal({
 
   // Eligible = approved but not yet attached to any Order. Admin-only data:
   // this relies on the existing finance_payment_requests admin SELECT policy,
-  // so no Finance visibility is widened for anyone else.
+  // so no Finance visibility is widened for anyone else. The DB order
+  // (payment_date desc) is the newest-first tie-break preserved within each
+  // client-match group by the stable sort in `sortedPayments` below — the
+  // match/mismatch grouping itself has no column to sort by server-side,
+  // since it depends on comparing against this specific request's client_name.
   const loadEligiblePayments = async () => {
     setLoadingPayments(true)
     const { data } = await supabase
       .from('finance_payment_requests')
-      .select('id, request_number, amount, payment_date, proof_note, submitted_by_user:users!submitted_by(full_name)')
+      .select('id, request_number, client_name, amount, payment_date, proof_note, submitted_by_user:users!submitted_by(full_name)')
       .eq('status', 'approved_unlinked')
       .is('order_id', null)
       .order('payment_date', { ascending: false })
@@ -377,6 +395,7 @@ function ConvertModal({
     const mapped: EligiblePayment[] = ((data ?? []) as any[]).map(p => ({
       id: p.id,
       request_number: p.request_number,
+      client_name: p.client_name,
       amount: p.amount,
       payment_date: p.payment_date,
       proof_note: p.proof_note ?? null,
@@ -394,6 +413,19 @@ function ConvertModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Matching-client-first, newest-first within each group. Array.prototype.sort
+  // is a stable sort (guaranteed by spec since ES2019), so a comparator that
+  // only looks at the match/mismatch boolean preserves the payment_date-desc
+  // order the query already returned within each group — no secondary sort
+  // key needed here.
+  const requestClientNorm = useMemo(() => normalizeClientName(request.client_name), [request.client_name])
+  const isClientMatch = (p: EligiblePayment) => normalizeClientName(p.client_name) === requestClientNorm
+  const sortedPayments = useMemo(
+    () => payments.slice().sort((a, b) => Number(isClientMatch(b)) - Number(isClientMatch(a))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [payments, requestClientNorm]
+  )
+
   const toggle = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev)
@@ -405,6 +437,10 @@ function ConvertModal({
 
   const selectedList  = payments.filter(p => selected.has(p.id))
   const selectedTotal = selectedList.reduce((sum, p) => sum + Number(p.amount), 0)
+  // Display/warning only — never blocks selection or conversion. Recomputed
+  // from the live selection, so it appears and disappears exactly with
+  // deselection, no separate state to keep in sync.
+  const mismatchedSelected = selectedList.filter(p => !isClientMatch(p))
 
   const handleConvert = async () => {
     if (saving) return  // guards against double-clicks; the RPC is the real guard
@@ -536,46 +572,72 @@ function ConvertModal({
               <>
                 <div style={{
                   border: `1px solid ${colors.border}`, borderRadius: '6px',
-                  maxHeight: '190px', overflowY: 'auto',
+                  maxHeight: '220px', overflowY: 'auto',
                 }}>
-                  {payments.map(p => {
+                  {sortedPayments.map((p, idx) => {
                     const on = selected.has(p.id)
+                    const matches = isClientMatch(p)
+                    // A subtle divider where the matching group ends and the
+                    // non-matching group begins — display only, never hides
+                    // mismatched payments.
+                    const prevMatches = idx > 0 ? isClientMatch(sortedPayments[idx - 1]) : matches
+                    const showDivider = idx > 0 && prevMatches && !matches
                     return (
-                      <label
-                        key={p.id}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '10px',
-                          padding: '8px 10px', cursor: 'pointer',
-                          borderBottom: `1px solid ${colors.border}`,
-                          background: on ? 'rgba(220,31,46,0.04)' : 'transparent',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          onChange={() => toggle(p.id)}
-                          disabled={saving}
-                          style={{ cursor: 'pointer', flexShrink: 0 }}
-                        />
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                            <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
-                              {p.request_number}
-                            </span>
-                            <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
-                              {fmtAmount(p.amount)}
-                            </span>
-                          </span>
-                          <span style={{
-                            display: 'block', fontSize: '11px', color: colors.muted,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      <div key={p.id}>
+                        {showDivider && (
+                          <div style={{
+                            padding: '4px 10px', fontSize: '10px', fontWeight: 700,
+                            color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
+                            background: colors.raised, borderBottom: `1px solid ${colors.border}`,
                           }}>
-                            {fmtDate(p.payment_date)}
-                            {p.submitted_by_name ? ` · ${p.submitted_by_name}` : ''}
-                            {p.proof_note ? ` · ${p.proof_note}` : ''}
+                            Other clients
+                          </div>
+                        )}
+                        <label
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: '8px 10px', cursor: 'pointer',
+                            borderBottom: `1px solid ${colors.border}`,
+                            background: on ? 'rgba(220,31,46,0.04)' : 'transparent',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() => toggle(p.id)}
+                            disabled={saving}
+                            style={{ cursor: 'pointer', flexShrink: 0 }}
+                          />
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                              <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {p.request_number}
+                                <span style={{ fontWeight: 500, color: colors.secondary }}> · {p.client_name}</span>
+                                {!matches && (
+                                  <span style={{
+                                    marginLeft: '6px', fontSize: '10px', fontWeight: 600,
+                                    color: '#9A3412', background: '#FFF7ED', border: '1px solid #FED7AA',
+                                    borderRadius: '4px', padding: '1px 5px',
+                                  }}>
+                                    Different client
+                                  </span>
+                                )}
+                              </span>
+                              <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                {fmtAmount(p.amount)}
+                              </span>
+                            </span>
+                            <span style={{
+                              display: 'block', fontSize: '11px', color: colors.muted,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                              {fmtDate(p.payment_date)}
+                              {p.submitted_by_name ? ` · ${p.submitted_by_name}` : ''}
+                              {p.proof_note ? ` · ${p.proof_note}` : ''}
+                            </span>
                           </span>
-                        </span>
-                      </label>
+                        </label>
+                      </div>
                     )
                   })}
                 </div>
@@ -593,6 +655,26 @@ function ConvertModal({
                   <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
                     The selected payment{selected.size !== 1 ? 's' : ''} will be linked to the new official
                     Order and marked as received.
+                  </div>
+                )}
+
+                {mismatchedSelected.length > 0 && (
+                  <div style={{
+                    fontSize: '11px', color: '#9A3412', background: '#FFF7ED',
+                    border: '1px solid #FED7AA', borderRadius: '6px',
+                    padding: '8px 10px', marginTop: '8px', lineHeight: 1.5,
+                  }}>
+                    <div>
+                      The recorded client on this payment does not match the client on this order request.
+                      Confirm that this is the correct payment before creating the order.
+                    </div>
+                    <ul style={{ margin: '6px 0 0', paddingLeft: '16px' }}>
+                      {mismatchedSelected.map(p => (
+                        <li key={p.id}>
+                          {p.request_number} — payment client &ldquo;{p.client_name}&rdquo;, order request client &ldquo;{request.client_name}&rdquo;
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </>
