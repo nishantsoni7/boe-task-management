@@ -1,12 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import {
+  Search, CheckCircle2, Circle, LayoutGrid,
+  ListChecks, Package, Laptop2, CalendarCheck, Wallet, QrCode, Users, TrendingUp, Landmark, Truck,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
-import { LoadingScreen, EmptyState, AlertBanner } from '@/components/ui/atoms'
+import { LoadingScreen, EmptyState, AlertBanner, Avatar } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
+import styles from './permissions.module.css'
 
 // Modules whose permissions are actually enforced by the resolver today.
 // Everything else is prepared (overrides save, resolver computes an
@@ -139,18 +144,23 @@ function detectAccessLevel(mod: ModuleState, effective: Record<string, boolean>)
   return 'custom'
 }
 
-function summarizeModule(mod: ModuleState, effective: Record<string, boolean>): string {
-  const allowed = mod.actions.filter(a => effective[a.actionKey])
-  if (allowed.length === 0) return 'No access granted'
-  if (allowed.length === mod.actions.length) return 'Full access — all actions allowed'
-  return allowed.map(a => a.displayName).join(', ')
-}
-
 function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>, initialOverrides: Map<string, OverrideChoice>): boolean {
   return mod.actions.some(a => {
     const key = overrideKey(mod.moduleKey, a.actionKey)
     return overrides.get(key) !== initialOverrides.get(key)
   })
+}
+
+// A module counts as "accessible" for the employee-list/workspace counters
+// whenever at least one of its actions is allowed — same notion of access
+// summarizeModule already uses for the "No access granted" line.
+type ModuleCount = { allowed: number; total: number }
+
+function accessibleModuleCount(modules: ModuleState[]): ModuleCount {
+  return {
+    allowed: modules.filter(mod => mod.actions.some(a => a.allowed)).length,
+    total: modules.length,
+  }
 }
 
 // ── Source summary (Change Access modal header) ─────────────────────────────
@@ -210,19 +220,6 @@ const INPUT: React.CSSProperties = {
   color: '#111318',
   outline: 'none',
   boxSizing: 'border-box',
-}
-
-const MODULE_ROW: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 14,
-  padding: '14px 16px',
-  border: '1px solid #E8EBF0',
-  borderRadius: 10,
-  marginBottom: 10,
-  background: '#fff',
-  flexWrap: 'wrap',
 }
 
 const ACTION_ROW: React.CSSProperties = {
@@ -307,6 +304,28 @@ const LEVEL_OPTION_DESC: React.CSSProperties = {
   fontSize: 11,
   color: '#6B7384',
   lineHeight: 1.35,
+}
+
+// ── Module icons ─────────────────────────────────────────────────────────────
+// Purely decorative, per-module glyphs for the card grid — matches the icon
+// language already used for these same module_key values on /modules.
+
+const MODULE_ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>> = {
+  task_management:  ListChecks,
+  sample_tracking:  Package,
+  assets_access:    Laptop2,
+  attendance:       CalendarCheck,
+  payroll:          Wallet,
+  showroom_qr:      QrCode,
+  employee_records: Users,
+  performance:      TrendingUp,
+  finance:          Landmark,
+  orders:           Truck,
+}
+
+function ModuleIcon({ moduleKey, color }: { moduleKey: string; color: string }) {
+  const Icon = MODULE_ICONS[moduleKey] ?? LayoutGrid
+  return <Icon size={24} strokeWidth={1.75} color={color} />
 }
 
 // ── Badges ───────────────────────────────────────────────────────────────────
@@ -502,6 +521,167 @@ function ChangeAccessModal({
   )
 }
 
+// ── Employee panel (left column) ────────────────────────────────────────────
+
+function EmployeePanel({
+  search, onSearchChange, results, selectedEmployeeId, onSelect, moduleCounts, deptLabel,
+}: {
+  search: string
+  onSearchChange: (v: string) => void
+  results: UserProfile[]
+  selectedEmployeeId: string | null
+  onSelect: (id: string) => void
+  moduleCounts: Map<string, ModuleCount>
+  deptLabel: (key: string | null | undefined) => string
+}) {
+  return (
+    <div className={styles.employeePanel}>
+      <div style={SECTION_LABEL}>Employees</div>
+
+      <div style={{ position: 'relative' }}>
+        <Search
+          size={14} strokeWidth={2}
+          style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#8C94A6', pointerEvents: 'none' }}
+        />
+        <input
+          style={{ ...INPUT, paddingLeft: 30 }}
+          placeholder="Search by name, department, or role…"
+          aria-label="Search employees"
+          value={search}
+          onChange={e => onSearchChange(e.target.value)}
+        />
+      </div>
+
+      <div className={styles.employeeList}>
+        {results.length === 0 && (
+          <div style={{ padding: '14px 4px', fontSize: 13, color: '#8C94A6' }}>No matches.</div>
+        )}
+        {results.map(m => {
+          const selected = m.id === selectedEmployeeId
+          const count = moduleCounts.get(m.id)
+          return (
+            <button
+              key={m.id}
+              type="button"
+              className={`${styles.empRow}${selected ? ` ${styles.selected}` : ''}`}
+              aria-pressed={selected}
+              onClick={() => onSelect(m.id)}
+            >
+              <Avatar name={m.full_name} size={32} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{
+                  fontSize: 13, fontWeight: 600, color: '#111318',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {m.full_name}
+                </div>
+                <div style={{
+                  fontSize: 11.5, color: '#8C94A6',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {deptLabel(m.team)} · <span style={{ textTransform: 'capitalize' }}>{m.role}</span>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: '#8C94A6', fontWeight: 600, flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {count ? `${count.allowed} of ${count.total}` : '···'}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Workspace header (selected employee summary) ────────────────────────────
+
+function WorkspaceHeader({ tree, overrides }: { tree: EmployeePermissionTree; overrides: Map<string, OverrideChoice> }) {
+  const total = tree.modules.length
+  const accessible = tree.modules.filter(mod => {
+    const effective = effectiveMapForModule(mod, overrides)
+    return mod.actions.some(a => effective[a.actionKey])
+  }).length
+  const noAccess = total - accessible
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E8EBF0', borderRadius: 14, padding: '16px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Avatar name={tree.employee.name} size={40} />
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#111318' }}>{tree.employee.name}</div>
+            <div style={{ fontSize: 12, color: '#6B7384', marginTop: 2 }}>
+              {tree.employee.department ?? '—'} · <span style={{ textTransform: 'capitalize' }}>{tree.employee.role}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 20 }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#166534' }}>{accessible}</div>
+            <div style={{ fontSize: 10.5, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Accessible</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#4B5563' }}>{noAccess}</div>
+            <div style={{ fontSize: 10.5, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>No Access</div>
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: 12, fontSize: 12, color: '#6B7384' }}>
+        Green modules are accessible. White modules are not accessible.
+      </div>
+    </div>
+  )
+}
+
+// ── Module card ──────────────────────────────────────────────────────────────
+
+function ModuleCard({
+  mod, level, accessible, unsaved, open, onOpen,
+}: {
+  mod: ModuleState
+  level: AccessLevel
+  accessible: boolean
+  unsaved: boolean
+  open: boolean
+  onOpen: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={`${styles.moduleCard}${accessible ? ` ${styles.granted}` : ''}${open ? ` ${styles.open}` : ''}`}
+      onClick={onOpen}
+      aria-haspopup="dialog"
+      aria-label={`${mod.displayName} — ${accessible ? 'Access enabled' : 'No access'}. Click to change.`}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <ModuleIcon moduleKey={mod.moduleKey} color={accessible ? '#166534' : '#8C94A6'} />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+          <EnforcementBadge moduleKey={mod.moduleKey} />
+          {unsaved && (
+            <span style={{ fontSize: 9.5, fontWeight: 700, color: '#8C6D1F', letterSpacing: '0.03em' }}>UNSAVED</span>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318', marginBottom: level !== 'no_access' ? 6 : 0 }}>
+          {mod.displayName}
+        </div>
+        {level !== 'no_access' && <AccessLevelBadge level={level} />}
+      </div>
+
+      <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        {accessible
+          ? <CheckCircle2 size={15} strokeWidth={2} color="#166534" />
+          : <Circle size={15} strokeWidth={2} color="#B7BEC9" />}
+        <span style={{ fontSize: 12, fontWeight: 600, color: accessible ? '#166534' : '#6B7384' }}>
+          {accessible ? 'Access enabled' : 'No access'}
+        </span>
+      </div>
+    </button>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PermissionsPage() {
@@ -517,7 +697,6 @@ export default function PermissionsPage() {
   const [depts,   setDepts]   = useState<Department[]>([])
 
   const [search,             setSearch]             = useState('')
-  const [selectorOpen,       setSelectorOpen]       = useState(false)
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
 
   const [tree,        setTree]        = useState<EmployeePermissionTree | null>(null)
@@ -531,6 +710,18 @@ export default function PermissionsPage() {
 
   const [saving,   setSaving]   = useState(false)
   const [saveError, setSaveError] = useState('')
+
+  // Per-employee "X of Y modules" counters shown in the employee list.
+  // Lazily filled in by re-using the same per-employee tree endpoint the
+  // workspace already calls on selection — no new API, just more reads of
+  // the existing one, bounded to whatever's currently visible in the list.
+  const [moduleCounts, setModuleCounts] = useState<Map<string, ModuleCount>>(new Map())
+
+  // Every employee id ever requested (by either the list effect below or
+  // loadTree), regardless of outcome. Never cleared, so each employee is
+  // asked for at most once per page session — a failed request is not
+  // retried just because the same row scrolls back into a search result.
+  const requestedCountIds = useRef<Set<string>>(new Set())
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -588,13 +779,14 @@ export default function PermissionsPage() {
   // ── Load an employee's permission tree ──────────────────────────────────
   async function selectEmployee(id: string) {
     setSelectedEmployeeId(id)
-    setSelectorOpen(false)
-    setSearch('')
     setSaveError('')
     await loadTree(id)
   }
 
   async function loadTree(id: string) {
+    // Marked up front so the list-count effect below never issues a
+    // redundant request for an employee whose tree we're already fetching.
+    requestedCountIds.current.add(id)
     setTreeLoading(true)
     setTreeError('')
     try {
@@ -606,6 +798,11 @@ export default function PermissionsPage() {
 
       const data = json as EmployeePermissionTree
       setTree(data)
+      setModuleCounts(prev => {
+        const next = new Map(prev)
+        next.set(id, accessibleModuleCount(data.modules))
+        return next
+      })
 
       const initial = new Map<string, OverrideChoice>()
       for (const mod of data.modules) {
@@ -620,6 +817,47 @@ export default function PermissionsPage() {
       setTreeLoading(false)
     }
   }
+
+  // ── Employee-list access counters ───────────────────────────────────────
+  // Fetches counts only for employees currently visible in the (already
+  // 20-capped) search results. requestedCountIds gates this to at most one
+  // request per employee per page session — search/clear-search only ever
+  // re-derives the same searchResults membership, never re-requests an id
+  // already marked (whether it succeeded or failed), so there's no loop.
+  useEffect(() => {
+    if (!token) return
+    const toFetch = searchResults.filter(m => !requestedCountIds.current.has(m.id))
+    if (toFetch.length === 0) return
+
+    // No mount-cancellation guard here: requestedCountIds already makes
+    // this idempotent (each id is marked, and thus fetched, at most once
+    // for the life of the page), and React 19 safely no-ops a setState
+    // from a component that's since unmounted. A cancellation flag tied to
+    // this effect's own cleanup would instead get flipped by React's
+    // dev-mode Strict Mode double-invoke before these fetches resolve,
+    // silently discarding every result — that bug is why this is written
+    // without one.
+    toFetch.forEach(m => requestedCountIds.current.add(m.id))
+
+    toFetch.forEach(async m => {
+      try {
+        const res = await fetch(`/api/control-center/permissions/employees/${m.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) return
+        const data = await res.json() as EmployeePermissionTree
+        setModuleCounts(prev => {
+          const next = new Map(prev)
+          next.set(m.id, accessibleModuleCount(data.modules))
+          return next
+        })
+      } catch {
+        // Network error — this employee's row just keeps showing the
+        // "···" placeholder; already marked in requestedCountIds so it
+        // won't be retried this session, and the row stays fully usable.
+      }
+    })
+  }, [searchResults, token])
 
   function changeOverride(moduleKey: string, actionKey: string, choice: OverrideChoice) {
     setOverrides(prev => {
@@ -712,142 +950,74 @@ export default function PermissionsPage() {
       subtitle="Manage what each employee can access, module by module"
       onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
     >
-      <div style={{ maxWidth: 760 }}>
+      <div className={styles.layout}>
 
-        {/* ── Enforcement status ──────────────────────────────────────────── */}
-        <div style={{
-          marginBottom: 24, fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
-          border: '1px solid #E8EBF0', borderRadius: 10, padding: '12px 16px',
-        }}>
-          <strong>Enforced</strong> modules apply the access level you set right away.{' '}
-          <strong>Prepared</strong> modules let you set access levels now, ready for when that module
-          switches over — nothing changes for people yet. Today,{' '}
-          <strong>Sample Tracking</strong> and <strong>Order Management</strong> are Enforced;
-          every other module below is Prepared.
-        </div>
+        <EmployeePanel
+          search={search}
+          onSearchChange={setSearch}
+          results={searchResults}
+          selectedEmployeeId={selectedEmployeeId}
+          onSelect={selectEmployee}
+          moduleCounts={moduleCounts}
+          deptLabel={deptLabel}
+        />
 
-        {/* ── Employee selector ────────────────────────────────────────────── */}
-        <div style={{ marginBottom: 28, position: 'relative' }}>
-          <div style={SECTION_LABEL}>Employee</div>
-          {tree && !selectorOpen ? (
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '12px 14px', border: '1.5px solid #E8EBF0', borderRadius: 10, background: '#fff',
-            }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#111318' }}>{tree.employee.name}</div>
-                <div style={{ fontSize: 12, color: '#6B7384', marginTop: 2 }}>
-                  {tree.employee.department ?? '—'} · <span style={{ textTransform: 'capitalize' }}>{tree.employee.role}</span>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectorOpen(true)}
-                style={{ fontSize: 12, fontWeight: 600, color: '#5585E8', background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                Change
-              </button>
-            </div>
-          ) : (
+        <div className={styles.workspace}>
+          {!selectedEmployeeId && (
+            <EmptyState message="Select an employee to manage their permissions." />
+          )}
+
+          {selectedEmployeeId && treeLoading && <LoadingScreen message="Loading permissions…" />}
+
+          {selectedEmployeeId && !treeLoading && treeError && (
+            <div style={{ fontSize: 13, color: '#B0364A' }}>{treeError}</div>
+          )}
+
+          {selectedEmployeeId && !treeLoading && tree && (
             <>
-              <input
-                style={INPUT}
-                placeholder="Search by name, department, or role…"
-                value={search}
-                onFocus={() => setSelectorOpen(true)}
-                onChange={e => { setSearch(e.target.value); setSelectorOpen(true) }}
-              />
-              {selectorOpen && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
-                  marginTop: 4, background: '#fff', border: '1.5px solid #E8EBF0', borderRadius: 10,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.10)', maxHeight: 320, overflowY: 'auto',
-                }}>
-                  {searchResults.length === 0 && (
-                    <div style={{ padding: '14px', fontSize: 13, color: '#8C94A6' }}>No matches.</div>
-                  )}
-                  {searchResults.map(m => (
-                    <div
-                      key={m.id}
-                      onClick={() => selectEmployee(m.id)}
-                      style={{
-                        padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #F0F2F5',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#FAFBFC' }}
-                      onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
-                    >
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>{m.full_name}</span>
-                      <span style={{ fontSize: 12, color: '#8C94A6' }}>
-                        {deptLabel(m.team)} · <span style={{ textTransform: 'capitalize' }}>{m.role}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <WorkspaceHeader tree={tree} overrides={overrides} />
+
+              <div className={styles.moduleGrid} style={{ marginTop: 16 }}>
+                {tree.modules.map(mod => {
+                  const effective = effectiveMapForModule(mod, overrides)
+                  const level = detectAccessLevel(mod, effective)
+                  const accessible = mod.actions.some(a => effective[a.actionKey])
+                  const unsaved = moduleIsDirty(mod, overrides, initialOverrides)
+                  return (
+                    <ModuleCard
+                      key={mod.moduleKey}
+                      mod={mod}
+                      level={level}
+                      accessible={accessible}
+                      unsaved={unsaved}
+                      open={changeModalModuleKey === mod.moduleKey}
+                      onOpen={() => setChangeModalModuleKey(mod.moduleKey)}
+                    />
+                  )
+                })}
+              </div>
+
+              {/* ── Save bar ──────────────────────────────────────────────── */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 20 }}>
+                <button
+                  onClick={save}
+                  disabled={!dirty || saving}
+                  style={{
+                    padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#fff',
+                    background: dirty ? '#1A2035' : '#C7CBD4',
+                    border: 'none', borderRadius: 8, cursor: dirty ? 'pointer' : 'default',
+                  }}
+                >
+                  {saving ? 'Saving…' : 'Save Changes'}
+                </button>
+                {dirty && !saving && (
+                  <span style={{ fontSize: 12, color: '#8C94A6' }}>Unsaved changes</span>
+                )}
+                {saveError && <span style={{ fontSize: 12, color: '#B0364A' }}>{saveError}</span>}
+              </div>
             </>
           )}
         </div>
-
-        {/* ── Empty state ──────────────────────────────────────────────────── */}
-        {!selectedEmployeeId && (
-          <EmptyState message="Select an employee to manage their permissions." />
-        )}
-
-        {/* ── Permission modules ───────────────────────────────────────────── */}
-        {selectedEmployeeId && treeLoading && <LoadingScreen message="Loading permissions…" />}
-
-        {selectedEmployeeId && !treeLoading && treeError && (
-          <div style={{ fontSize: 13, color: '#B0364A' }}>{treeError}</div>
-        )}
-
-        {selectedEmployeeId && !treeLoading && tree && (
-          <>
-            <div style={SECTION_LABEL}>Modules</div>
-            {tree.modules.map(mod => {
-              const effective = effectiveMapForModule(mod, overrides)
-              const level = detectAccessLevel(mod, effective)
-              const summary = summarizeModule(mod, effective)
-              const unsaved = moduleIsDirty(mod, overrides, initialOverrides)
-              return (
-                <div key={mod.moduleKey} style={MODULE_ROW}>
-                  <div style={{ minWidth: 200, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#111318' }}>{mod.displayName}</span>
-                      <EnforcementBadge moduleKey={mod.moduleKey} />
-                      <AccessLevelBadge level={level} />
-                      {unsaved && (
-                        <span style={{ fontSize: 11, color: '#8C94A6' }}>· Unsaved</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#6B7384' }}>{summary}</div>
-                  </div>
-                  <button style={CHANGE_BTN} onClick={() => setChangeModalModuleKey(mod.moduleKey)}>
-                    Change
-                  </button>
-                </div>
-              )
-            })}
-
-            {/* ── Save bar ──────────────────────────────────────────────────── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 20 }}>
-              <button
-                onClick={save}
-                disabled={!dirty || saving}
-                style={{
-                  padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#fff',
-                  background: dirty ? '#1A2035' : '#C7CBD4',
-                  border: 'none', borderRadius: 8, cursor: dirty ? 'pointer' : 'default',
-                }}
-              >
-                {saving ? 'Saving…' : 'Save Changes'}
-              </button>
-              {dirty && !saving && (
-                <span style={{ fontSize: 12, color: '#8C94A6' }}>Unsaved changes</span>
-              )}
-              {saveError && <span style={{ fontSize: 12, color: '#B0364A' }}>{saveError}</span>}
-            </div>
-          </>
-        )}
       </div>
 
       {/* ── Change Access modal ────────────────────────────────────────────── */}

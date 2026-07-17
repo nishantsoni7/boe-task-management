@@ -1,0 +1,124 @@
+/* ── Access Control (permissions): two-panel layout ──
+   280px employee panel + module workspace on desktop, stacked on tablet/mobile. */
+.layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.workspace {
+  min-width: 0;
+}
+
+.employeePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #E8EBF0;
+  border-radius: 14px;
+  padding: 14px;
+  position: sticky;
+  top: 78px;
+  max-height: calc(100vh - 96px);
+}
+
+.employeeList {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.empRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px 8px 13px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.empRow:hover {
+  background: rgba(0,0,0,0.045);
+}
+
+.empRow.selected {
+  background: rgba(220,31,46,0.07);
+}
+
+.empRow.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: #DC1F2E;
+}
+
+/* ── Access Control: module card grid ── */
+.moduleGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 640px) {
+  .moduleGrid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1024px) {
+  .moduleGrid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (min-width: 1440px) {
+  .moduleGrid { grid-template-columns: repeat(4, 1fr); }
+}
+
+.moduleCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  border: 1.5px solid #E8EBF0;
+  border-radius: 14px;
+  background: #fff;
+  padding: 16px;
+  cursor: pointer;
+  min-height: 132px;
+}
+
+.moduleCard:hover {
+  border-color: #C7CBD4;
+  box-shadow: 0 2px 10px rgba(17,19,24,0.06);
+}
+
+.moduleCard.granted {
+  background: #F3FBF5;
+  border-color: #BFE8C9;
+}
+
+.moduleCard.open {
+  border-color: #DC1F2E;
+  box-shadow: 0 0 0 1px rgba(220,31,46,0.25);
+}
+
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .employeePanel {
+    position: static;
+    max-height: 320px;
+  }
+}
