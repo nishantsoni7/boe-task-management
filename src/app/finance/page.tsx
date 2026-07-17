@@ -1686,6 +1686,7 @@ function FinancePageInner() {
         if (match) {
           setHighlightId(match.id)
           setTimeout(() => setHighlightId(null), 3000)
+          document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
           if (isAdmin && match.status === 'pending_approval') {
             setReviewRequest(match)
           } else {

@@ -992,6 +992,7 @@ function ReceivedPaymentsPageInner() {
         if (match) {
           setHighlightId(match.id)
           setTimeout(() => setHighlightId(null), 3000)
+          document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
           if (isAdmin && action === 'link' && !match.order_id) {
             setLinkRequest(match)
           }

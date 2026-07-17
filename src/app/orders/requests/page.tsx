@@ -1559,6 +1559,7 @@ function OrderRequestsPageInner() {
         if (match) {
           setHighlightId(match.id)
           setTimeout(() => setHighlightId(null), 3000)
+          document.getElementById(`order-request-row-${match.id}`)?.scrollIntoView({ block: 'center' })
           if (profile?.role === 'admin' && action === 'convert' && match.status === 'submitted') {
             setConvertTarget(match)
           }
