@@ -30,11 +30,22 @@ type ActionQueueItem = {
   href: string
 }
 
-const CATEGORY_META: Record<QueueCategory, { label: string; actionLabel: string; href: string }> = {
-  finance_pending_approval:    { label: 'Payment approval',    actionLabel: 'Approve payment',          href: '/finance' },
-  finance_needs_clarification: { label: 'Needs clarification', actionLabel: 'Review clarification',     href: '/finance' },
-  finance_suspense:            { label: 'Suspense payment',    actionLabel: 'Link suspense payment',    href: '/finance/received' },
-  order_request_conversion:    { label: 'Order Request',       actionLabel: 'Convert Order Request',    href: '/orders/requests' },
+const CATEGORY_META: Record<QueueCategory, { label: string; actionLabel: string }> = {
+  finance_pending_approval:    { label: 'Payment approval',    actionLabel: 'Approve payment' },
+  finance_needs_clarification: { label: 'Needs clarification', actionLabel: 'Review clarification' },
+  finance_suspense:            { label: 'Suspense payment',    actionLabel: 'Link suspense payment' },
+  order_request_conversion:    { label: 'Order Request',       actionLabel: 'Convert Order Request' },
+}
+
+// Deep-links into the destination page's existing tab/record/modal query-param
+// handling (added alongside this queue) — never a new route or page.
+function buildHref(category: QueueCategory, id: string): string {
+  switch (category) {
+    case 'finance_pending_approval':    return `/finance?tab=pending&request=${id}`
+    case 'finance_needs_clarification': return `/finance?tab=clarification&request=${id}`
+    case 'finance_suspense':            return `/finance/received?payment=${id}&action=link`
+    case 'order_request_conversion':    return `/orders/requests?tab=active&request=${id}&action=convert`
+  }
 }
 
 // ── Pending-age label ─────────────────────────────────────────────────────────
@@ -128,7 +139,7 @@ export default function ActionQueuePage() {
         module: 'Finance',
         amount: r.amount,
         pendingSince: r.created_at,
-        href: CATEGORY_META.finance_pending_approval.href,
+        href: buildHref('finance_pending_approval', r.id),
       })
     }
 
@@ -142,7 +153,7 @@ export default function ActionQueuePage() {
         module: 'Finance',
         amount: r.amount,
         pendingSince: r.clarification_requested_at ?? r.updated_at,
-        href: CATEGORY_META.finance_needs_clarification.href,
+        href: buildHref('finance_needs_clarification', r.id),
       })
     }
 
@@ -156,7 +167,7 @@ export default function ActionQueuePage() {
         module: 'Finance',
         amount: r.amount,
         pendingSince: r.approved_at ?? r.created_at,
-        href: CATEGORY_META.finance_suspense.href,
+        href: buildHref('finance_suspense', r.id),
       })
     }
 
@@ -171,7 +182,7 @@ export default function ActionQueuePage() {
         module: 'Orders',
         amount: r.total_value,
         pendingSince: r.created_at,
-        href: CATEGORY_META.order_request_conversion.href,
+        href: buildHref('order_request_conversion', r.id),
       })
     }
 

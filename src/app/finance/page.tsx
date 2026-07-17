@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -163,6 +163,14 @@ const EMPTY_MESSAGES: Record<FilterTab, string> = {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Maps an incoming ?tab= value (e.g. from the Admin Action Queue) to a known
+// FilterTab, defaulting to 'pending' for anything missing or unrecognized —
+// never throws on an invalid/stale deep link.
+const FILTER_TAB_KEYS: FilterTab[] = ['pending', 'order_pending', 'clarification', 'rejected', 'archive', 'all']
+function parseFilterTab(value: string | null): FilterTab {
+  return (FILTER_TAB_KEYS as string[]).includes(value ?? '') ? (value as FilterTab) : 'pending'
+}
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -1425,6 +1433,7 @@ function PaymentsTable({
   isAdmin,
   userId,
   cutoff,
+  highlightId,
   onRowClick,
   onView,
   onEdit,
@@ -1434,6 +1443,7 @@ function PaymentsTable({
   isAdmin: boolean
   userId: string
   cutoff: number
+  highlightId?: string | null
   onRowClick: (r: PaymentRequest) => void
   onView: (r: PaymentRequest) => void
   onEdit: (r: PaymentRequest) => void
@@ -1472,14 +1482,16 @@ function PaymentsTable({
 
             const showEdit   = isAdmin || (r.submitted_by === userId && EDITABLE_STATUSES.has(r.status))
             const showDelete = isAdmin
+            const isHighlighted = r.id === highlightId
 
             return (
               <tr
                 key={r.id}
+                id={`payment-row-${r.id}`}
                 onClick={() => onRowClick(r)}
-                style={{ cursor: 'pointer', borderLeft: `3px solid ${accentColor}` }}
+                style={{ cursor: 'pointer', borderLeft: `3px solid ${accentColor}`, background: isHighlighted ? colors.amberTint : undefined }}
                 onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
-                onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
               >
                 <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
                   {r.request_number}
@@ -1575,6 +1587,14 @@ function PaymentsTable({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function FinancePage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <FinancePageInner />
+    </Suspense>
+  )
+}
+
+function FinancePageInner() {
   const [pageLoading, setPageLoading]   = useState(true)
   const [userId, setUserId]             = useState<string>('')
   const [isAdmin, setIsAdmin]           = useState(false)
@@ -1586,11 +1606,21 @@ export default function FinancePage() {
   const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
   const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
   const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
-  const [activeTab, setActiveTab]       = useState<FilterTab>('pending')
   const [search, setSearch]             = useState('')
+  const [highlightId, setHighlightId]   = useState<string | null>(null)
 
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router       = useRouter()
+  const supabase     = useMemo(() => createClient(), [])
+  const searchParams = useSearchParams()
+
+  // ?tab= from the Admin Action Queue selects the initial tab; manual tab
+  // clicks below still just call setActiveTab and are otherwise untouched.
+  const [activeTab, setActiveTab] = useState<FilterTab>(() => parseFilterTab(searchParams.get('tab')))
+
+  // Guards the one-time ?request= deep-link resolution below so it can never
+  // re-fire (StrictMode double-invoke, unrelated rerenders) and reopen a
+  // modal the admin already closed.
+  const deepLinkHandled = useRef(false)
 
   // ── Fetch — join submitted_by_name via users ─────────────────────────────────
   const loadRequests = async () => {
@@ -1640,6 +1670,36 @@ export default function FinancePage() {
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Deep-link resolution (Admin Action Queue → ?tab=&request=) ───────────────
+  // Runs exactly once, once `requests` is loaded. A missing, invalid, or
+  // no-longer-pending id is a silent no-op — the normal tab still renders,
+  // no fatal error, no claim that the action is still available.
+  useEffect(() => {
+    const resolveDeepLink = () => {
+      if (pageLoading || deepLinkHandled.current) return
+      deepLinkHandled.current = true
+
+      const requestId = searchParams.get('request')
+      if (requestId) {
+        const match = requests.find(r => r.id === requestId)
+        if (match) {
+          setHighlightId(match.id)
+          setTimeout(() => setHighlightId(null), 3000)
+          if (isAdmin && match.status === 'pending_approval') {
+            setReviewRequest(match)
+          } else {
+            setDetailRequest(match)
+          }
+        }
+        // Drop the record param so a refresh or back-navigation can't reopen
+        // the modal; keep the tab so the deep link still lands correctly.
+        router.replace(`/finance?tab=${activeTab}`)
+      }
+    }
+    resolveDeepLink()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageLoading])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -1770,6 +1830,7 @@ export default function FinancePage() {
             isAdmin={isAdmin}
             userId={userId}
             cutoff={archiveCutoff()}
+            highlightId={highlightId}
             onRowClick={handleRowClick}
             onView={r => setDetailRequest(r)}
             onEdit={r => setEditRequest(r)}

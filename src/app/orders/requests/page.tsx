@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -95,6 +95,14 @@ const LEAD_SOURCE_OPTIONS = [
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Maps an incoming ?tab= value (e.g. from the Admin Action Queue) to a known
+// StatusFilter, defaulting to 'active' for anything missing or unrecognized —
+// never throws on an invalid/stale deep link.
+const STATUS_FILTER_KEYS: StatusFilter[] = ['active', 'needs_clarification', 'rejected', 'converted', 'all']
+function parseStatusFilter(value: string | null): StatusFilter {
+  return (STATUS_FILTER_KEYS as string[]).includes(value ?? '') ? (value as StatusFilter) : 'active'
+}
 
 function fmtAmount(n: number | null) {
   if (n == null) return '—'
@@ -1439,6 +1447,14 @@ function ReapplyModal({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function OrderRequestsPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <OrderRequestsPageInner />
+    </Suspense>
+  )
+}
+
+function OrderRequestsPageInner() {
   const [pageLoading,   setPageLoading]   = useState(true)
   const [profile,       setProfile]       = useState<UserProfile | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string>('')
@@ -1446,7 +1462,6 @@ export default function OrderRequestsPage() {
   const [users,         setUsers]         = useState<UserOption[]>([])
   const [listLoading,   setListLoading]   = useState(false)
   const [search,        setSearch]        = useState('')
-  const [statusTab,     setStatusTab]     = useState<StatusFilter>('active')
   const [showModal,     setShowModal]     = useState(false)
   const [successNumber, setSuccessNumber] = useState<string | null>(null)
   const [convertTarget, setConvertTarget] = useState<OrderRequest | null>(null)
@@ -1456,8 +1471,18 @@ export default function OrderRequestsPage() {
   const [rejectTarget,   setRejectTarget]   = useState<OrderRequest | null>(null)
   const [reapplyTarget,  setReapplyTarget]  = useState<OrderRequest | null>(null)
   const [actionMessage,  setActionMessage]  = useState<string | null>(null)
+  const [highlightId,    setHighlightId]    = useState<string | null>(null)
 
-  const router   = useRouter()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+
+  // ?tab= from the Admin Action Queue selects the initial tab; manual tab
+  // clicks below still just call setStatusTab and are otherwise untouched.
+  const [statusTab, setStatusTab] = useState<StatusFilter>(() => parseStatusFilter(searchParams.get('tab')))
+
+  // Guards the one-time ?request= deep-link resolution below so it can never
+  // re-fire and reopen a modal the admin already closed.
+  const deepLinkHandled = useRef(false)
   const supabase = useMemo(() => createClient(), [])
 
   const loadRequests = async () => {
@@ -1515,6 +1540,38 @@ export default function OrderRequestsPage() {
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Deep-link resolution (Admin Action Queue → ?tab=&request=&action=convert) ─
+  // Runs exactly once, once `requests` is loaded. Auto-opens the existing
+  // Convert modal only when the loaded request is still in the same
+  // convertible state the manual "Convert" button already requires (admin,
+  // status still 'submitted') — a stale or already-converted request just
+  // gets highlighted, never a fatal error.
+  useEffect(() => {
+    const resolveDeepLink = () => {
+      if (pageLoading || deepLinkHandled.current) return
+      deepLinkHandled.current = true
+
+      const requestId = searchParams.get('request')
+      const action    = searchParams.get('action')
+      if (requestId) {
+        const match = requests.find(r => r.id === requestId)
+        if (match) {
+          setHighlightId(match.id)
+          setTimeout(() => setHighlightId(null), 3000)
+          if (profile?.role === 'admin' && action === 'convert' && match.status === 'submitted') {
+            setConvertTarget(match)
+          }
+        }
+        // Drop the record/action params so a refresh or back-navigation
+        // can't reopen the modal; keep the tab so the deep link still lands
+        // correctly.
+        router.replace(`/orders/requests?tab=${statusTab}`)
+      }
+    }
+    resolveDeepLink()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageLoading])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -1698,7 +1755,14 @@ export default function OrderRequestsPage() {
               </thead>
               <tbody>
                 {visible.map(r => (
-                  <tr key={r.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  <tr
+                    key={r.id}
+                    id={`order-request-row-${r.id}`}
+                    style={{
+                      borderBottom: `1px solid ${colors.border}`,
+                      background: r.id === highlightId ? colors.amberTint : undefined,
+                    }}
+                  >
                     <td style={{ padding: '11px 16px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
                       {r.request_number}
                       {r.status === 'converted' && r.converted_order_number && (

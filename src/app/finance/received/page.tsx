@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -745,6 +745,7 @@ const TH_STYLE: React.CSSProperties = {
 function ReceivedPaymentsTable({
   rows,
   isAdmin,
+  highlightId,
   onView,
   onEdit,
   onDelete,
@@ -753,6 +754,7 @@ function ReceivedPaymentsTable({
 }: {
   rows: PaymentRequest[]
   isAdmin: boolean
+  highlightId?: string | null
   onView:   (r: PaymentRequest) => void
   onEdit:   (r: PaymentRequest) => void
   onDelete: (r: PaymentRequest) => void
@@ -781,13 +783,15 @@ function ReceivedPaymentsTable({
         <tbody>
           {rows.map(r => {
             const isLinked = !!r.order_id
+            const isHighlighted = r.id === highlightId
             return (
               <tr
                 key={r.id}
+                id={`payment-row-${r.id}`}
                 onClick={() => onView(r)}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: 'pointer', background: isHighlighted ? colors.amberTint : undefined }}
                 onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
-                onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
               >
                 <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                   {r.client_name}
@@ -896,6 +900,14 @@ function ReceivedPaymentsTable({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ReceivedPaymentsPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <ReceivedPaymentsPageInner />
+    </Suspense>
+  )
+}
+
+function ReceivedPaymentsPageInner() {
   const [pageLoading,    setPageLoading]    = useState(true)
   const [isAdmin,        setIsAdmin]        = useState(false)
   const [profile,        setProfile]        = useState<UserProfile | null>(null)
@@ -910,9 +922,15 @@ export default function ReceivedPaymentsPage() {
   const [unlinking,      setUnlinking]      = useState(false)
   const [unlinkError,    setUnlinkError]    = useState<string | null>(null)
   const [search,         setSearch]         = useState('')
+  const [highlightId,    setHighlightId]    = useState<string | null>(null)
 
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router       = useRouter()
+  const supabase     = useMemo(() => createClient(), [])
+  const searchParams = useSearchParams()
+
+  // Guards the one-time ?payment= deep-link resolution below (see effect near
+  // the bottom of init) so it can never re-fire and reopen a closed modal.
+  const deepLinkHandled = useRef(false)
 
   const loadRequests = async () => {
     setListLoading(true)
@@ -956,6 +974,36 @@ export default function ReceivedPaymentsPage() {
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Deep-link resolution (Admin Action Queue → ?payment=&action=link) ────────
+  // Runs exactly once, once `requests` is loaded. Auto-opens the existing Link
+  // modal only when the loaded payment is still eligible under the same rule
+  // the manual "Link" button already uses (admin, currently unlinked) — a
+  // stale or already-linked payment just gets highlighted, never a fatal error.
+  useEffect(() => {
+    const resolveDeepLink = () => {
+      if (pageLoading || deepLinkHandled.current) return
+      deepLinkHandled.current = true
+
+      const paymentId = searchParams.get('payment')
+      const action     = searchParams.get('action')
+      if (paymentId) {
+        const match = requests.find(r => r.id === paymentId)
+        if (match) {
+          setHighlightId(match.id)
+          setTimeout(() => setHighlightId(null), 3000)
+          if (isAdmin && action === 'link' && !match.order_id) {
+            setLinkRequest(match)
+          }
+        }
+        // Drop the deep-link params so a refresh or back-navigation can't
+        // reopen the modal.
+        router.replace('/finance/received')
+      }
+    }
+    resolveDeepLink()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageLoading])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -1063,6 +1111,7 @@ export default function ReceivedPaymentsPage() {
           <ReceivedPaymentsTable
             rows={visible}
             isAdmin={isAdmin}
+            highlightId={highlightId}
             onView={r  => setDetailRequest(r)}
             onEdit={r  => setEditRequest(r)}
             onDelete={r => setDeleteRequest(r)}
