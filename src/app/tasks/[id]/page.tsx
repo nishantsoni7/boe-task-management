@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -84,6 +84,7 @@ export default function TaskDetailPage() {
   const [commentNote,        setCommentNote]        = useState('')
   const [commentFiles,       setCommentFiles]       = useState<File[]>([])
   const [commentSaving,      setCommentSaving]      = useState(false)
+  const commentSavingRef = useRef(false)  // synchronous re-entry guard (double-click protection)
   const [commentUploadError, setCommentUploadError] = useState<string | null>(null)
   const [commentDropActive,  setCommentDropActive]  = useState(false)
 
@@ -460,39 +461,57 @@ export default function TaskDetailPage() {
   }
 
   const saveComment = async () => {
-    if (!task) return
+    if (!task || commentSavingRef.current) return   // synchronous guard blocks double-submit
     const hasNote = !!commentNote.trim()
-    if (!hasNote && commentFiles.length === 0) { setCommentSaving(false); return }
+    if (!hasNote && commentFiles.length === 0) return
 
-    // Compress images + validate total size before any upload
-    let readyFiles: File[] = []
-    if (commentFiles.length > 0) {
-      const { ready, error: sizeError } = await prepareFiles(commentFiles)
-      if (sizeError) { setCommentUploadError(sizeError); setCommentSaving(false); return }
-      readyFiles = ready
-    }
-
+    commentSavingRef.current = true
     setCommentSaving(true)
-    const now = new Date().toISOString()
-    const { error: taskErr } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
-    if (taskErr) console.error('[saveComment] tasks timestamp update failed:', taskErr.message)
+    setCommentUploadError(null)
 
-    const { data: logData, error: logErr } = await supabase
-      .from('task_activity_log')
-      .insert({
-        task_id:        task.id,
-        actor_id:       currentUserId,
-        action:         'note_added',
-        note:           commentNote.trim() || null,
-        attachment_url: null, // multi-file goes into task_attachments
-      })
-      .select('id')
-      .single()
-    if (logErr) console.error('[saveComment] activity log insert failed:', logErr.message)
+    try {
+      // Compress images + validate total size before any upload (skipped entirely for text-only)
+      let readyFiles: File[] = []
+      if (commentFiles.length > 0) {
+        const { ready, error: sizeError } = await prepareFiles(commentFiles)
+        if (sizeError) {
+          setCommentUploadError(sizeError)   // text + files preserved; finally releases the button
+          return
+        }
+        readyFiles = ready
+      }
 
-    // Upload each file and insert task_attachments rows
-    const uploadErrors: string[] = []
-    if (logData?.id && readyFiles.length > 0) {
+      const now = new Date().toISOString()
+
+      // Insert the comment and read back the full row, so we can append it to local state
+      // instead of re-fetching the whole activity log.
+      const { data: logRow, error: logErr } = await supabase
+        .from('task_activity_log')
+        .insert({
+          task_id:        task.id,
+          actor_id:       currentUserId,
+          action:         'note_added',
+          note:           commentNote.trim() || null,
+          attachment_url: null, // multi-file goes into task_attachments
+        })
+        .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url')
+        .single()
+
+      if (logErr || !logRow) {
+        // Nothing was cleared — keep the typed text and selected files, surface an error.
+        console.error('[saveComment] activity log insert failed:', logErr?.message)
+        setCommentUploadError('Could not post your update. Please try again.')
+        return
+      }
+
+      // Upload each file and capture its row so the new entry renders its attachments locally.
+      // Partial-failure note: a file whose storage upload succeeds but whose metadata insert
+      // fails leaves an orphaned storage object. This is pre-existing behaviour — the project
+      // never deletes task-attachment storage objects (public bucket, shared URLs, no GC), so
+      // we do not add a delete here. We report the failure and keep/render only attachments
+      // whose rows are confirmed, so the UI stays accurate.
+      const newAttachments: TaskAttachment[] = []
+      const uploadErrors: string[] = []
       for (const file of readyFiles) {
         const ext  = file.name.split('.').pop() ?? 'bin'
         const path = `updates/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
@@ -504,35 +523,75 @@ export default function TaskDetailPage() {
           continue
         }
         const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
-        const { error: attErr } = await supabase.from('task_attachments').insert({
-          activity_log_id: logData.id,
+        const { data: attRow, error: attErr } = await supabase.from('task_attachments').insert({
+          activity_log_id: logRow.id,
           task_id:         task.id,
           url:             urlData.publicUrl,
           file_name:       file.name,
           file_type:       getFileTypeLabel(file.name),
           created_by:      currentUserId,
         })
-        if (attErr) uploadErrors.push(`${file.name}: metadata save failed`)
+          .select('id, task_id, activity_log_id, url, file_name, file_type, created_by, created_at')
+          .single()
+        if (attErr || !attRow) { uploadErrors.push(`${file.name}: metadata save failed`); continue }
+        newAttachments.push(attRow as TaskAttachment)
       }
-    }
 
-    const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
-    if (recipient && recipient !== currentUserId) {
-      fetch('/api/notify-status-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'comment_added', actorName: profile?.full_name }),
-      }).then(res => {
-        if (!res.ok) res.json().then(d => console.error('[saveComment] notification failed:', d))
-      }).catch(err => console.error('[saveComment] notification fetch error:', err))
-    }
+      // Append the confirmed comment to the activity feed (newest-first, so prepend).
+      // Actor is the current user; timestamp comes from the DB row — no re-fetch needed.
+      const newEntry: LogEntry = {
+        ...(logRow as unknown as LogEntry),
+        actor_name:     profile?.full_name,
+        attachment_url: logRow.attachment_url ?? null,
+        attachments:    newAttachments,
+      }
+      setLog(prev => [newEntry, ...prev])
 
-    setTask({ ...task, last_update_at: now })
-    await loadLog(task.id)
-    setCommentNote('')
-    setCommentFiles([])
-    setCommentUploadError(uploadErrors.length > 0 ? uploadErrors.join(' · ') : null)
-    setCommentSaving(false)
+      // The comment (the required record) is confirmed — clear the inputs now. Per-file
+      // attachment failures are surfaced but do not roll back or block the posted comment.
+      setCommentNote('')
+      setCommentFiles([])
+      setCommentUploadError(uploadErrors.length > 0 ? uploadErrors.join(' · ') : null)
+
+      // Non-urgent side effects, off the interaction's critical path. Each is fire-and-forget
+      // but fully caught, so a rejection can never surface as an unhandled promise rejection.
+      setTask(t => (t ? { ...t, last_update_at: now } : t))
+      void (async () => {
+        // last_update_at only feeds staleness/ordering/freshness display — log on failure,
+        // no user-facing error or retry, since the comment itself already succeeded.
+        try {
+          const { error } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
+          if (error) console.error('[saveComment] last_update_at bump failed (freshness only):', error.message)
+        } catch (e) {
+          console.error('[saveComment] last_update_at bump threw (freshness only):', e)
+        }
+      })()
+
+      const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
+      if (recipient && recipient !== currentUserId) {
+        void (async () => {
+          try {
+            const res = await fetch('/api/notify-status-update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'comment_added', actorName: profile?.full_name }),
+            })
+            if (!res.ok) console.error('[saveComment] notification failed:', await res.text().catch(() => `status ${res.status}`))
+          } catch (err) {
+            console.error('[saveComment] notification fetch error:', err)
+          }
+        })()
+      }
+    } catch (err) {
+      // Any thrown Supabase/upload/runtime error. Text + files are untouched (cleared only on
+      // the success path above), so the user can retry without re-typing.
+      console.error('[saveComment] unexpected error:', err)
+      setCommentUploadError('Could not post your update. Please try again.')
+    } finally {
+      // Always release Send Update — no failure path leaves it disabled until remount.
+      setCommentSaving(false)
+      commentSavingRef.current = false
+    }
   }
 
   const saveDueDate = async () => {
@@ -1603,7 +1662,7 @@ export default function TaskDetailPage() {
                     <span style={{ flex: 1 }} />
                     <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{commentNote.length}/1000</span>
                     <button
-                      onClick={async () => { setCommentSaving(true); await saveComment() }}
+                      onClick={saveComment}
                       disabled={commentSaving}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: '5px',
