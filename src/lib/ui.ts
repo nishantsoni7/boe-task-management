@@ -211,5 +211,6 @@ export function formatLogAction(
   if (action === 'priority_changed') return 'Priority changed'
   if (action === 'escalated')        return 'Escalated'
   if (action === 'progress_update')  return 'Progress update'
+  if (action === 'task_copied')      return 'Task copied'
   return action.replace(/_/g, ' ')
 }

@@ -13,6 +13,8 @@ import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
+import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
+import { useToast, Toast } from '@/components/ui/toast'
 import { getFileTypeLabel, prepareFiles, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { CircleCheckBig, UserCheck, UserRound } from 'lucide-react'
 
@@ -92,6 +94,20 @@ export default function TaskDetailPage() {
 
   const [taskLevelAttachments, setTaskLevelAttachments] = useState<TaskAttachment[]>([])
   const [previewAttachment,    setPreviewAttachment]    = useState<{ url: string; fileName?: string } | null>(null)
+
+  // Copy & Assign (admin-only). The modal owns its field state; the page owns the submit.
+  const [copyModalOpen,  setCopyModalOpen]  = useState(false)
+  const [copySubmitting, setCopySubmitting] = useState(false)
+  const [copyError,      setCopyError]      = useState<string | null>(null)
+  const [lastCopied,     setLastCopied]     = useState<{ id: string; name: string } | null>(null)
+  const { toast, show: showToast, dismiss: dismissToast } = useToast()
+
+  // The "View new task" chip is a convenience, not a banner — auto-clear it after a short while.
+  useEffect(() => {
+    if (!lastCopied) return
+    const t = setTimeout(() => setLastCopied(null), 10000)
+    return () => clearTimeout(t)
+  }, [lastCopied])
 
   const [editingDueDate,      setEditingDueDate]      = useState(false)
   const [editingPriority,     setEditingPriority]     = useState(false)
@@ -644,6 +660,41 @@ export default function TaskDetailPage() {
     setDeletingActivityId(null)
   }
 
+  const openCopyModal = () => {
+    setCopyError(null)
+    setCopyModalOpen(true)
+  }
+
+  // Copy & Assign: the actual copy (create task + copy attachments + cross-reference +
+  // notify, with rollback on failure) runs server-side in /api/tasks/[id]/copy, which also
+  // enforces admin authorization. Here we just submit and reflect the result.
+  const handleCopySubmit = async (args: { assigneeId: string; dueDate: string; priority: 'high' | 'medium' | 'low' }) => {
+    if (!task || copySubmitting) return
+    setCopySubmitting(true)
+    setCopyError(null)
+
+    const res = await fetch(`/api/tasks/${task.id}/copy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+    }).catch(() => null)
+
+    if (!res || !res.ok) {
+      const { error } = (await res?.json().catch(() => null)) ?? {}
+      setCopyError(error ?? 'Could not copy the task. Please try again.')
+      setCopySubmitting(false)
+      return
+    }
+
+    const { taskId, assigneeName } = await res.json()
+    const name = assigneeName ?? teamMembers.find(m => m.id === args.assigneeId)?.full_name ?? 'the assignee'
+    setCopyModalOpen(false)
+    setCopySubmitting(false)
+    setLastCopied({ id: taskId, name })
+    showToast(`Task assigned to ${name}`, 'success')
+    await loadLog(task.id)   // show the new cross-reference entry on the source task
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
@@ -665,6 +716,7 @@ export default function TaskDetailPage() {
   const isAdmin          = profile?.role === 'admin'
   const showCancelButton = (isCreator || isAdmin) && task.status !== 'completed' && task.status !== 'cancelled'
   const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at && task.status !== 'cancelled' && task.task_type !== 'quotation_request'
+  const isActiveTask     = task.status !== 'completed' && task.status !== 'cancelled'
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
     : isAssignee                    ? 'Assigned To Me'
@@ -688,7 +740,8 @@ export default function TaskDetailPage() {
   // Newest status_changed entry drives the card; fall back to creation entry only
   // when no status change has happened yet (brand-new task).
   const latestStatusChange = log.find(e => e.action === 'status_changed') ?? null
-  const createdEntry       = log.find(e => e.note) ?? null
+  // task_copied is a neutral system event — never let it stand in as the status-card note.
+  const createdEntry       = log.find(e => e.note && e.action !== 'task_copied') ?? null
   const latestNoteEntry    = latestStatusChange ?? createdEntry
   const currentStatusNote  = latestStatusChange
     ? (latestStatusChange.note ?? STATUS_CARD_DEFAULTS[task.status] ?? null)
@@ -702,6 +755,12 @@ export default function TaskDetailPage() {
   const agingColor = aging ? (aging.severity === 'danger' ? colors.red : colors.amber) : colors.muted
 
   const isQuotation = task.task_type === 'quotation_request'
+  const canCopyAssign = isAdmin && !isQuotation   // admin-only; the API enforces this too
+
+  // Attachment count shown in the Copy & Assign modal (task-level rows + a distinct legacy URL)
+  const copyAttachmentCount = taskLevelAttachments.length +
+    (task.attachment_url && !taskLevelAttachments.some(a => a.url === task.attachment_url) ? 1 : 0)
+
   const quotationCompletedAt = isQuotation
     ? (log.find(e => e.action === 'status_changed' && e.to_status === 'completed')?.created_at ?? null)
     : null
@@ -1142,16 +1201,20 @@ export default function TaskDetailPage() {
                 </div>
               )}
 
-              {/* Active task: Mark Complete + Cancel Task */}
-              {task.status !== 'completed' && task.status !== 'cancelled' && !isUnacknowledged && (isAssignee || showCancelButton) && (
-                <div style={{
-                  marginTop: '14px', paddingTop: '12px',
-                  borderTop: `1px solid ${colors.border}`,
-                  display: 'flex', gap: '8px', flexWrap: 'wrap',
-                  justifyContent: isQuotation ? 'center' : 'flex-start',
-                }}>
-                  {isAssignee && (
+              {/* Active task action row: Mark Complete + Cancel + (admin) Copy & Assign.
+                  One compact, aligned row on desktop; Mark Complete leads full-width on mobile. */}
+              {isActiveTask && (isAssignee || showCancelButton || canCopyAssign) && (
+                <div
+                  className="boe-task-actions"
+                  style={{
+                    marginTop: '14px', paddingTop: '12px',
+                    borderTop: `1px solid ${colors.border}`,
+                    justifyContent: isQuotation ? 'center' : 'flex-start',
+                  }}
+                >
+                  {isAssignee && !isUnacknowledged && (
                     <button
+                      className={isQuotation ? undefined : 'boe-task-action-primary'}
                       onClick={async () => {
                         const confirmed = window.confirm(
                           isQuotation
@@ -1165,9 +1228,7 @@ export default function TaskDetailPage() {
                       }}
                       disabled={saving || markingComplete}
                       style={{
-                        ...(isQuotation
-                          ? { width: '240px' }
-                          : { flex: 1 }),
+                        ...(isQuotation ? { width: '240px' } : {}),
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                         padding: '9px 14px', borderRadius: '8px',
                         border: `1.5px solid ${colors.green}`,
@@ -1184,8 +1245,9 @@ export default function TaskDetailPage() {
                       {markingComplete ? 'Marking…' : (isQuotation ? 'Mark Quotation Complete' : 'Mark Complete')}
                     </button>
                   )}
-                  {showCancelButton && !isQuotation && (
+                  {showCancelButton && !isQuotation && !isUnacknowledged && (
                     <button
+                      className="boe-task-action-secondary"
                       onClick={() => { setCancelReason(''); setCancelOtherText(''); setCancelModalOpen(true) }}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
@@ -1200,6 +1262,26 @@ export default function TaskDetailPage() {
                       onMouseLeave={e => { e.currentTarget.style.background = '#F5F5F4' }}
                     >
                       🚫 Cancel
+                    </button>
+                  )}
+                  {canCopyAssign && (
+                    <button
+                      className="boe-task-action-secondary"
+                      onClick={openCopyModal}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                        padding: '9px 12px', borderRadius: '8px',
+                        border: `1.5px solid ${colors.blue}55`,
+                        background: '#ffffff', color: colors.blue,
+                        fontSize: '12px', fontWeight: 600,
+                        cursor: 'pointer', fontFamily: font.body,
+                        whiteSpace: 'nowrap', transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = colors.blueTint }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
+                    >
+                      <UserCheck size={14} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                      Copy &amp; Assign
                     </button>
                   )}
                 </div>
@@ -1267,6 +1349,29 @@ export default function TaskDetailPage() {
                     }}
                   >
                     {reopening ? 'Restoring…' : 'Restore Task'}
+                  </button>
+                </div>
+              )}
+
+              {/* Admin: Copy & Assign for completed/cancelled tasks — active tasks show it inline
+                  in the action row above, so this compact row only covers the closed states. */}
+              {canCopyAssign && !isActiveTask && (
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}`, display: 'flex' }}>
+                  <button
+                    onClick={openCopyModal}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                      padding: '8px 14px', borderRadius: '8px',
+                      border: `1.5px solid ${colors.blue}55`,
+                      background: '#ffffff', color: colors.blue,
+                      fontSize: '12px', fontWeight: 600,
+                      cursor: 'pointer', fontFamily: font.body,
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = colors.blueTint }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
+                  >
+                    <UserCheck size={14} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                    Copy &amp; Assign
                   </button>
                 </div>
               )}
@@ -1562,7 +1667,9 @@ export default function TaskDetailPage() {
             ) : (
               <div className="boe-activity-scroll" style={{ overflowY: 'auto', maxHeight: '520px' }}>
                 {(() => {
-                  const newestEntry = log[0]
+                  // Note edit/delete stays tied to the newest *real* entry; task_copied is a
+                  // system event and must not steal edit/delete eligibility from a user's comment.
+                  const newestEntry = log.find(e => e.action !== 'task_copied') ?? log[0]
                   const canEditDelete = (entry: LogEntry) =>
                     entry.action === 'note_added' &&
                     entry.id === newestEntry?.id &&
@@ -1610,6 +1717,7 @@ export default function TaskDetailPage() {
                       case 'delegated':       return 'delegated the task'
                       case 'escalated':       return 'escalated the task'
                       case 'stale_flagged':   return 'flagged the task as stale'
+                      case 'task_copied':     return entry.note ?? 'copied this task'
                       default:                return action.replace(/_/g, ' ')
                     }
                   }
@@ -1743,8 +1851,9 @@ export default function TaskDetailPage() {
                                 </div>
                               )}
 
-                              {/* Note text — comments read conversationally, system notes stay compact */}
-                              {entry.note && (
+                              {/* Note text — comments read conversationally, system notes stay compact.
+                                  task_copied carries its text in the heading, so skip it here. */}
+                              {entry.note && entry.action !== 'task_copied' && (
                                 <p style={{
                                   margin: isComment ? '6px 0 0' : '8px 0 0',
                                   color: isComment ? '#596273' : '#667085',
@@ -2187,6 +2296,53 @@ export default function TaskDetailPage() {
           </div>
         </div>
       )}
+
+      {copyModalOpen && (
+        <CopyAssignModal
+          sourceTitle={task.title}
+          attachmentCount={copyAttachmentCount}
+          initialPriority={task.priority}
+          members={teamMembers}
+          excludeUserId={currentUserId}
+          submitting={copySubmitting}
+          error={copyError}
+          onClose={() => { if (!copySubmitting) setCopyModalOpen(false) }}
+          onSubmit={handleCopySubmit}
+        />
+      )}
+
+      {/* Success action chip — persists after the toast fades so the new task stays reachable */}
+      {lastCopied && (
+        <div style={{
+          position: 'fixed', bottom: '70px', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9998, display: 'flex', alignItems: 'center', gap: '10px',
+          background: '#ffffff', border: `1px solid ${colors.border}`,
+          borderRadius: '8px', padding: '8px 12px',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+        }}>
+          <span style={{ fontSize: '12px', color: colors.secondary }}>
+            New task created for <strong>{lastCopied.name}</strong>
+          </span>
+          <button
+            onClick={() => router.push(`/tasks/${lastCopied.id}`)}
+            style={{
+              fontSize: '12px', fontWeight: 600, color: colors.blue,
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: font.body,
+            }}
+          >
+            View new task →
+          </button>
+          <button
+            onClick={() => setLastCopied(null)}
+            aria-label="Dismiss"
+            style={{ fontSize: '14px', color: colors.muted, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      <Toast toast={toast} onDismiss={dismissToast} />
     </DashboardLayout>
   )
 }

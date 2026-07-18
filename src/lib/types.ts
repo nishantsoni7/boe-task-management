@@ -34,6 +34,7 @@ export type Task = {
   assigned_to: string
   created_by: string
   delegated_by: string | null
+  copied_from_task_id: string | null
   blocker_reason: string | null
   waiting_on_type: 'team_member' | 'external' | null
   waiting_on_user_id: string | null

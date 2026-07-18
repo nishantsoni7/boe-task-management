@@ -169,6 +169,31 @@ body {
   }
 }
 
+/* ── Task detail action row ── */
+/* Desktop/tablet: one compact row that never wraps. Mark Complete flexes to fill; min-width:0
+   lets it shrink so the row can't overflow, keeping Cancel + Copy on the same line at their
+   label width. (flex-wrap here caused the secondaries to stack in a narrow card.) */
+.boe-task-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  width: 100%;
+  gap: 8px;
+}
+.boe-task-actions .boe-task-action-primary   { flex: 1 1 auto; min-width: 0; }
+.boe-task-actions .boe-task-action-secondary { flex: 0 0 auto; white-space: nowrap; }
+/* Mobile: Mark Complete full-width on row 1; the two secondaries share row 2. */
+@media (max-width: 600px) {
+  .boe-task-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .boe-task-actions .boe-task-action-primary   { grid-column: 1 / -1; }
+  .boe-task-actions .boe-task-action-secondary { width: 100%; }
+  /* A lone unclassed button (quotation "Mark Complete") should span and stay centered. */
+  .boe-task-actions > button:only-child:not(.boe-task-action-primary):not(.boe-task-action-secondary) {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+}
+
 /* ── Activity feed — quiet scrollbar + text-action hovers ── */
 .boe-activity-scroll {
   scrollbar-width: thin;
