@@ -727,7 +727,7 @@ export default function TaskDetailPage() {
   // Copy & Assign: the actual copy (create task + copy attachments + cross-reference +
   // notify, with rollback on failure) runs server-side in /api/tasks/[id]/copy, which also
   // enforces admin authorization. Here we just submit and reflect the result.
-  const handleCopySubmit = async (args: { assigneeId: string; dueDate: string; priority: 'high' | 'medium' | 'low' }) => {
+  const handleCopySubmit = async (args: { assigneeId: string; dueDate: string; priority: 'high' | 'medium' | 'low'; description: string }) => {
     if (!task || copySubmitting) return
     setCopySubmitting(true)
     setCopyError(null)
@@ -2359,6 +2359,7 @@ export default function TaskDetailPage() {
       {copyModalOpen && (
         <CopyAssignModal
           sourceTitle={task.title}
+          initialDescription={task.note ?? ''}
           attachmentCount={copyAttachmentCount}
           initialPriority={task.priority}
           members={teamMembers}

@@ -31,8 +31,8 @@ export async function POST(
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
-  const { assigneeId, dueDate, priority } = body as {
-    assigneeId?: string; dueDate?: string; priority?: string
+  const { assigneeId, dueDate, priority, description } = body as {
+    assigneeId?: string; dueDate?: string; priority?: string; description?: unknown
   }
 
   const supabase = createServiceClient(
@@ -60,6 +60,11 @@ export async function POST(
   }
   if (!priority || !(VALID_PRIORITIES as readonly string[]).includes(priority)) {
     return NextResponse.json({ error: 'Please choose a valid priority.' }, { status: 400 })
+  }
+  // description is optional, but when present it must be a plain string — reject arrays,
+  // objects, numbers, or null so the client can't smuggle unexpected shapes into the note.
+  if (description !== undefined && typeof description !== 'string') {
+    return NextResponse.json({ error: 'Invalid description.' }, { status: 400 })
   }
 
   // 4. Source task must exist. Quotation requests are not copyable.
@@ -100,12 +105,17 @@ export async function POST(
   const legacyAttachmentUrl =
     source.attachment_url && !attUrls.has(source.attachment_url) ? source.attachment_url : null
 
+  // Description saved on the copy: the admin's edited value when supplied (trimmed; empty → null,
+  // matching normal task creation), otherwise the source's description. Stored only on the new
+  // task — the source is never updated.
+  const note = typeof description === 'string' ? (description.trim() || null) : source.note
+
   // 7. Create the copy in the standard delegated-task shape: pending + unacknowledged.
   const { data: newTask, error: taskErr } = await supabase
     .from('tasks')
     .insert({
       title:               source.title,
-      note:                source.note,
+      note,
       priority,
       type:                source.type,              // structural field; preserved for a valid task
       is_urgent:           false,

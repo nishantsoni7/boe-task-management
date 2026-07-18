@@ -14,15 +14,16 @@ const PRIORITY_STYLE: Record<Priority, { fg: string; bg: string }> = {
 }
 
 export type CopyAssignModalProps = {
-  sourceTitle:     string
-  attachmentCount: number
-  initialPriority: Priority
-  members:         Member[]
-  excludeUserId:   string
-  submitting:      boolean
-  error:           string | null
-  onClose:         () => void
-  onSubmit:        (args: { assigneeId: string; dueDate: string; priority: Priority }) => void
+  sourceTitle:        string
+  initialDescription: string
+  attachmentCount:    number
+  initialPriority:    Priority
+  members:            Member[]
+  excludeUserId:      string
+  submitting:         boolean
+  error:              string | null
+  onClose:            () => void
+  onSubmit:           (args: { assigneeId: string; dueDate: string; priority: Priority; description: string }) => void
 }
 
 /**
@@ -31,12 +32,13 @@ export type CopyAssignModalProps = {
  * The parent mounts this only while open, so each open starts with fresh fields.
  */
 export function CopyAssignModal({
-  sourceTitle, attachmentCount, initialPriority, members, excludeUserId,
+  sourceTitle, initialDescription, attachmentCount, initialPriority, members, excludeUserId,
   submitting, error, onClose, onSubmit,
 }: CopyAssignModalProps) {
-  const [assigneeId, setAssigneeId] = useState('')
-  const [dueDate,    setDueDate]    = useState('')
-  const [priority,   setPriority]   = useState<Priority>(initialPriority)
+  const [assigneeId,  setAssigneeId]  = useState('')
+  const [dueDate,     setDueDate]     = useState('')
+  const [priority,    setPriority]    = useState<Priority>(initialPriority)
+  const [description, setDescription] = useState(initialDescription)
 
   // Escape closes the modal, but not while the critical submit is in flight.
   useEffect(() => {
@@ -68,6 +70,8 @@ export function CopyAssignModal({
           width: '100%', maxWidth: '420px',
           padding: '24px',
           display: 'flex', flexDirection: 'column', gap: '14px',
+          // Keep the (now taller) modal and its footer reachable on short/mobile viewports.
+          maxHeight: 'calc(100vh - 32px)', overflowY: 'auto',
         }}
       >
         {/* Header */}
@@ -102,7 +106,7 @@ export function CopyAssignModal({
           </span>
         </div>
         <p style={{ fontSize: '11.5px', color: colors.muted, margin: '-4px 0 0' }}>
-          Title, description and attachments are copied. Choose a new assignee and due date.
+          Title and attachments are copied. Review the assignee, due date, priority and description below.
         </p>
 
         {/* Assign to */}
@@ -169,6 +173,26 @@ export function CopyAssignModal({
           </div>
         </div>
 
+        {/* Description — prefilled from the source task, fully editable. Saved only on the
+            copy; the source is never changed. Empty is allowed (same as normal task creation). */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+          <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: colors.secondary }}>
+            Description
+          </label>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            className="boe-input"
+            rows={5}
+            placeholder="Add a description for the new task…"
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              resize: 'vertical', minHeight: '96px', maxHeight: '240px',
+              fontFamily: font.body, fontSize: '12.5px', lineHeight: 1.5,
+            }}
+          />
+        </div>
+
         {error && <p style={{ fontSize: '11.5px', color: colors.red, margin: 0 }}>{error}</p>}
 
         {/* Footer */}
@@ -187,7 +211,7 @@ export function CopyAssignModal({
             Cancel
           </button>
           <button
-            onClick={() => onSubmit({ assigneeId, dueDate, priority })}
+            onClick={() => onSubmit({ assigneeId, dueDate, priority, description })}
             disabled={!canSubmit}
             style={{
               padding: '8px 18px', borderRadius: '7px',
