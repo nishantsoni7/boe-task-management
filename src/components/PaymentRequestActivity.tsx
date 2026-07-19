@@ -56,6 +56,20 @@ function eventLabel(row: ActivityRow): string {
   }
 }
 
+// Subtle timeline marker colour derived from the event — informative, not
+// decorative. Purely visual; never changes the event data or ordering.
+function markerColor(row: ActivityRow): string {
+  if (row.event_type === 'status_changed') {
+    const to = row.payload?.to_status
+    if (to === 'rejected')            return colors.red
+    if (to === 'needs_clarification') return colors.blue
+    if (to === 'approved_unlinked' || to === 'approved_linked') return colors.green
+  }
+  if (row.event_type === 'order_linked')   return colors.green
+  if (row.event_type === 'order_unlinked') return colors.amber
+  return colors.muted
+}
+
 export function PaymentRequestActivity({
   supabase,
   paymentRequestId,
@@ -85,26 +99,36 @@ export function PaymentRequestActivity({
   if (loading || rows.length === 0) return null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         Activity
       </div>
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: '10px',
-        background: colors.raised, border: `1px solid ${colors.border}`,
-        borderRadius: '8px', padding: '12px 14px', maxHeight: '220px', overflowY: 'auto',
-      }}>
-        {rows.map(row => (
-          <div key={row.id} style={{ fontSize: '12.5px', lineHeight: 1.5 }}>
-            <div style={{ color: colors.primary, fontWeight: 600 }}>{eventLabel(row)}</div>
-            <div style={{ color: colors.muted, fontSize: '11.5px' }}>
-              {actorName(row.actor)} · {fmtDateTime(row.created_at)}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {rows.map((row, idx) => {
+          const isLast = idx === rows.length - 1
+          const note = typeof row.payload?.note === 'string' ? row.payload.note : ''
+          return (
+            <div key={row.id} style={{ display: 'flex', gap: '12px' }}>
+              {/* Marker + connector */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: markerColor(row), marginTop: '4px' }} />
+                {!isLast && <span style={{ width: '1px', flex: 1, background: colors.border, marginTop: '3px' }} />}
+              </div>
+              {/* Content */}
+              <div style={{ minWidth: 0, paddingBottom: isLast ? 0 : '16px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, lineHeight: 1.4 }}>{eventLabel(row)}</div>
+                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+                  {actorName(row.actor)} · {fmtDateTime(row.created_at)}
+                </div>
+                {note && (
+                  <div style={{ fontSize: '13px', color: colors.secondary, marginTop: '4px', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {note}
+                  </div>
+                )}
+              </div>
             </div>
-            {typeof row.payload?.note === 'string' && row.payload.note && (
-              <div style={{ color: colors.secondary, marginTop: '2px' }}>{row.payload.note}</div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

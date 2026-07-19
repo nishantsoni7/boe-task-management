@@ -21,9 +21,19 @@ type ProofRow = {
 export function PaymentProofView({
   supabase,
   paymentRequestId,
+  renderEmpty = false,
+  inline = false,
 }: {
   supabase: ReturnType<typeof createClient>
   paymentRequestId: string
+  // When true, renders a compact muted empty state instead of nothing once it
+  // is known the request has no proof. Default false preserves the original
+  // "render nothing when empty" contract used by the admin review modal.
+  renderEmpty?: boolean
+  // When true, renders without the raised card chrome (no background/border/
+  // padding) so it can sit as a plain row inside a host container. Default
+  // false preserves the standalone card used by the admin review modal.
+  inline?: boolean
 }) {
   const [proof,   setProof]   = useState<ProofRow | null>(null)
   const [loading, setLoading] = useState(true)
@@ -61,18 +71,28 @@ export function PaymentProofView({
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
 
-  if (loading || !proof) return null
+  // While loading, render nothing regardless of renderEmpty (avoids a flash of
+  // the empty state before the query resolves).
+  if (loading) return null
+
+  if (!proof) {
+    if (!renderEmpty) return null
+    return <div style={{ fontSize: '13px', color: colors.muted }}>{inline ? 'Not attached' : 'No proof attached'}</div>
+  }
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-      padding: '8px 12px', borderRadius: '8px',
-      background: colors.raised, border: `1px solid ${colors.border}`,
-    }}>
-      <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        Payment Proof
-      </span>
-      <span style={{ fontSize: '12px', color: colors.secondary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+    <div style={inline
+      ? { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }
+      : {
+          display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+          padding: '10px 12px', borderRadius: '8px',
+          background: colors.raised, border: `1px solid ${colors.border}`,
+        }
+    }>
+      <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+      </svg>
+      <span style={{ fontSize: '13px', color: colors.secondary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {proof.file_name}
       </span>
       <button

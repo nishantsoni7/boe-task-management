@@ -196,13 +196,6 @@ function orderNoDisplay(r: PaymentRequest): string {
   return '—'
 }
 
-function fmtDateTime(iso: string) {
-  const d = new Date(iso)
-  const date = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-  return `${date}, ${time}`
-}
-
 // Maps the approved_linked-requires-order_id CHECK constraint violation to a
 // clear message instead of surfacing the raw Postgres error.
 function friendlyDbErrorMessage(dbError: { code?: string; message: string } | null): string {
@@ -330,6 +323,25 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   )
 }
 
+// Compact uppercase section label used throughout the details modal.
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      {children}
+    </div>
+  )
+}
+
+// Label-over-value metadata item; muted styling for empty/placeholder values.
+function MetaItem({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
+      <span style={{ fontSize: '14px', color: muted ? colors.muted : colors.primary, wordBreak: 'break-word', lineHeight: 1.4 }}>{value}</span>
+    </div>
+  )
+}
+
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
@@ -390,8 +402,6 @@ function DetailsModal({
   supabase?: ReturnType<typeof createClient>
   onCorrected?: () => void
 }) {
-  const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
-
   // Order-linkage states are out of this control's jurisdiction entirely —
   // neither entering nor leaving approved_unlinked/approved_linked may happen
   // here, since either direction would move status without the RPCs' row
@@ -406,6 +416,16 @@ function DetailsModal({
   const noteRequiredForCorrection = newStatus === 'needs_clarification' || newStatus === 'rejected'
   const statusChanged = newStatus !== r.status
   const canCorrect = statusChanged && (!noteRequiredForCorrection || correctionNote.trim())
+
+  // Escape-to-close + initial focus, without disturbing the existing modal DOM
+  // of the other dialogs (which reuse the shared <Modal> shell).
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    dialogRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   const handleCorrect = async () => {
     if (!canCorrect || !supabase || !onCorrected) return
@@ -424,132 +444,253 @@ function DetailsModal({
     onCorrected()
   }
 
+  // Status-specific decision/clarification block. Shown only when a stored
+  // admin_note exists; tinted with the request's own status colours.
+  const decision = r.admin_note
+    ? (() => {
+        const m = STATUS_META[r.status] ?? { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+        const title =
+          r.status === 'rejected'            ? 'Rejection reason' :
+          r.status === 'needs_clarification' ? 'Clarification required' :
+          (isLinkageStatus)                  ? 'Approval note' :
+                                               'Admin note'
+        return { title, bg: m.bg, border: m.border, color: m.color, note: r.admin_note }
+      })()
+    : null
+
+  const submittedLine = r.submitted_by_name
+    ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
+    : `Submitted ${fmtDate(r.created_at)}`
+
+  // Single "Payment Against" value for this modal only — deliberately not the
+  // shared orderNoDisplay (that helper is also used by the Payments table and
+  // the review modal). Collapses the old Payment Against + Order pair into one:
+  // an existing/linked order shows its real number; a new-order request with
+  // nothing created/linked yet shows a plain "New Order"; anything else falls
+  // back to the existing safe helper for legacy/anomalous data.
+  const paymentAgainstDisplay = r.order_number
+    ? r.order_number
+    : r.payment_against === 'new_order'
+      ? 'New Order'
+      : orderNoDisplay(r)
+
   return (
-    <Modal title="Payment Request Details" onClose={onClose}>
-      {/* Status banner */}
-      <div style={{
-        padding: '10px 14px', borderRadius: '8px',
-        background: meta.bg, border: `1px solid ${meta.border}`,
-        fontSize: '12px', fontWeight: 600, color: meta.color,
-      }}>
-        {meta.label}
-      </div>
+    <>
+      {/* Overlay */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200 }} />
 
-      {/* Clarification note from admin */}
-      {r.status === 'needs_clarification' && r.admin_note && (
+      {/* Dialog */}
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Payment request ${r.request_number}`}
+        tabIndex={-1}
+        style={{
+          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          width: '880px', maxWidth: 'calc(100vw - 24px)', maxHeight: '88vh',
+          background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
+          boxShadow: '0 12px 40px rgba(0,0,0,0.16)',
+          zIndex: 201, display: 'flex', flexDirection: 'column', overflow: 'hidden', outline: 'none',
+        }}
+      >
+        {/* ── Sticky header — request number is the primary identifier ── */}
         <div style={{
-          padding: '12px 14px', borderRadius: '8px',
-          background: '#EFF6FF', border: '1px solid #BFDBFE',
+          padding: '15px 20px', borderBottom: `1px solid ${colors.border}`,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexShrink: 0,
         }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#1E40AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
-            Clarification Required
-          </div>
-          <div style={{ fontSize: '13px', color: '#1E3A8A', lineHeight: 1.6 }}>{r.admin_note}</div>
-        </div>
-      )}
-
-      <div style={{
-        background: colors.raised, borderRadius: '8px', padding: '14px 16px',
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
-        border: `1px solid ${colors.border}`,
-      }}>
-        <DetailRow label="Request No."  value={r.request_number} />
-        <DetailRow label="Client"       value={r.client_name} />
-        <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
-        <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
-        <DetailRow label="Payment Mode" value={displayPaymentMode(r.payment_mode, r.received_in)} />
-        <DetailRow label="Received In"      value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
-        <DetailRow label="Order No."        value={orderNoDisplay(r)} />
-        <DetailRow label="Payment Against"  value={PAYMENT_AGAINST_LABEL[r.payment_against] ?? r.payment_against} />
-        <div style={{ gridColumn: '1 / -1' }}>
-          <DetailRow label="Proof / Reference" value={r.proof_note ?? '—'} />
-        </div>
-        {r.sales_note && (
-          <div style={{ gridColumn: '1 / -1' }}>
-            <DetailRow label="Sales Note" value={r.sales_note} />
-          </div>
-        )}
-        <DetailRow label="Submitted"    value={fmtDate(r.created_at)} />
-        {r.submitted_by_name && <DetailRow label="Submitted By" value={r.submitted_by_name} />}
-      </div>
-
-      {supabase && <PaymentProofView supabase={supabase} paymentRequestId={r.id} />}
-      {supabase && <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />}
-
-      {/* Admin-only status correction — never shown for approved_unlinked/
-          approved_linked rows; those are managed only via Mark Payment
-          Received, Link, and Unlink. */}
-      {isAdmin && supabase && onCorrected && !isLinkageStatus && (
-        <div style={{
-          borderTop: `1px solid ${colors.border}`,
-          paddingTop: '14px',
-          display: 'flex', flexDirection: 'column', gap: '10px',
-        }}>
-          <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Admin — Correct Status
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <select
-              className="boe-input"
-              value={newStatus}
-              onChange={e => { setNewStatus(e.target.value); setCorrectionNote(''); setCorrectionError(null) }}
-              style={{ fontSize: '12px', flex: '1 1 180px' }}
-            >
-              {STATUS_CORRECTION_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          {statusChanged && noteRequiredForCorrection && (
-            <textarea
-              className="boe-input"
-              value={correctionNote}
-              onChange={e => setCorrectionNote(e.target.value)}
-              placeholder={newStatus === 'needs_clarification' ? 'Clarification note (required)' : 'Rejection reason (required)'}
-              rows={2}
-              style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
-            />
-          )}
-          {statusChanged && !noteRequiredForCorrection && (
-            <textarea
-              className="boe-input"
-              value={correctionNote}
-              onChange={e => setCorrectionNote(e.target.value)}
-              placeholder="Admin note (optional)"
-              rows={2}
-              style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
-            />
-          )}
-          {correctionError && <ErrorBanner message={correctionError} />}
-          {statusChanged && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={handleCorrect}
-                disabled={!canCorrect || correcting}
-                className="boe-btn boe-btn-primary"
-                style={{ padding: '7px 16px', fontSize: '12px' }}
-              >
-                {correcting ? 'Saving…' : 'Save Correction'}
-              </button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '19px', fontWeight: 700, color: colors.primary, wordBreak: 'break-word', lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
+              {r.request_number}
             </div>
-          )}
+            <div style={{ fontSize: '12.5px', color: colors.tertiary, marginTop: '4px', wordBreak: 'break-word' }}>
+              {submittedLine}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+            <StatusBadge status={r.status} />
+            <button onClick={onClose} aria-label="Close" className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '13px' }}>✕</button>
+          </div>
         </div>
-      )}
-      {isAdmin && isLinkageStatus && (
-        <div style={{
-          borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
-          fontSize: '12px', color: colors.muted, lineHeight: 1.5,
-        }}>
-          Order linkage is managed from the Received Payments page (Link / Unlink), not here.
-        </div>
-      )}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          Close
-        </button>
+        {/* ── Scrollable body — single scroll container holding a two-zone workspace.
+            On desktop the two zones sit side by side (left ≈56%, right ≈44%); when
+            the modal is too narrow they wrap and stack in DOM order: summary,
+            decision, proof/reference, notes, activity, admin controls. ── */}
+        <div style={{ padding: '18px 20px', overflowY: 'auto', overflowX: 'hidden', flex: 1 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
+
+            {/* ── LEFT ZONE: request summary and decision information ── */}
+            <div style={{ flex: '56 1 360px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+              {/* A. Primary summary card — amount + client lead, payment details below */}
+              <div style={{
+                border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
+                display: 'flex', flexDirection: 'column', gap: '14px',
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Amount</div>
+                    <div style={{ fontSize: '28px', fontWeight: 700, color: colors.primary, lineHeight: 1.1, marginTop: '4px', fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word' }}>
+                      {fmtAmount(r.amount)}
+                    </div>
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
+                    <div style={{ fontSize: '18px', fontWeight: 600, color: colors.primary, lineHeight: 1.3, marginTop: '4px', wordBreak: 'break-word' }}>
+                      {r.client_name}
+                    </div>
+                  </div>
+                </div>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px',
+                  borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
+                }}>
+                  <MetaItem label="Payment Date"    value={fmtDate(r.payment_date)} />
+                  <MetaItem label="Payment Against" value={paymentAgainstDisplay} muted={!r.order_number} />
+                  <MetaItem label="Payment Mode"    value={displayPaymentMode(r.payment_mode, r.received_in)} />
+                  <MetaItem label="Received In"     value={RECEIVED_IN_LABEL[r.received_in] ?? r.received_in} />
+                </div>
+              </div>
+
+              {/* B. Decision block — compact status-tinted note, only when one exists */}
+              {decision && (
+                <div style={{ padding: '12px 14px', borderRadius: '10px', background: decision.bg, border: `1px solid ${decision.border}` }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: decision.color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px' }}>
+                    {decision.title}
+                  </div>
+                  <div style={{ fontSize: '13.5px', color: decision.color, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {decision.note}
+                  </div>
+                </div>
+              )}
+
+              {/* C. Proof and reference — one compact bordered block with two
+                  aligned rows. Proof uses the existing PaymentProofView (inline
+                  variant, so no nested card); reference shows the proof note or a
+                  muted placeholder. No large proof section, no duplication. */}
+              <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0 }}>Proof</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {supabase
+                      ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline />
+                      : <span style={{ fontSize: '13px', color: colors.muted }}>Not attached</span>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
+                  <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
+                    {r.proof_note || 'Not provided'}
+                  </span>
+                </div>
+              </div>
+
+              {/* D. Notes — only when a sales note exists */}
+              {r.sales_note && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <SectionHeader>Notes</SectionHeader>
+                  <div style={{ fontSize: '13.5px', color: colors.secondary, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {r.sales_note}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── RIGHT ZONE: activity and admin actions ── */}
+            <div style={{ flex: '44 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+              {/* E. Activity panel — subtle bordered panel; the timeline keeps its
+                  own "Activity" heading, query, ordering, and event text. */}
+              {supabase && (
+                <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
+                  <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
+                </div>
+              )}
+
+              {/* F. Admin controls — compact action panel. Never for
+                  approved_unlinked/approved_linked rows; those are managed only via
+                  Mark Payment Received, Link, and Unlink. */}
+              {isAdmin && supabase && onCorrected && !isLinkageStatus && (
+                <div style={{
+                  border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
+                  display: 'flex', flexDirection: 'column', gap: '12px',
+                }}>
+                  <div>
+                    <SectionHeader>Admin controls</SectionHeader>
+                    <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
+                      Administrative correction. This action will be recorded in activity history.
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <select
+                      className="boe-input"
+                      aria-label="Correct status"
+                      value={newStatus}
+                      onChange={e => { setNewStatus(e.target.value); setCorrectionNote(''); setCorrectionError(null) }}
+                      style={{ fontSize: '13px', maxWidth: '260px' }}
+                    >
+                      {STATUS_CORRECTION_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                    {!statusChanged && (
+                      <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+                        Select a different status to make a correction.
+                      </div>
+                    )}
+                    {statusChanged && noteRequiredForCorrection && (
+                      <textarea
+                        className="boe-input"
+                        aria-label={newStatus === 'needs_clarification' ? 'Clarification note' : 'Rejection reason'}
+                        value={correctionNote}
+                        onChange={e => setCorrectionNote(e.target.value)}
+                        placeholder={newStatus === 'needs_clarification' ? 'Clarification note (required)' : 'Rejection reason (required)'}
+                        rows={2}
+                        style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
+                      />
+                    )}
+                    {statusChanged && !noteRequiredForCorrection && (
+                      <textarea
+                        className="boe-input"
+                        aria-label="Admin note"
+                        value={correctionNote}
+                        onChange={e => setCorrectionNote(e.target.value)}
+                        placeholder="Admin note (optional)"
+                        rows={2}
+                        style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
+                      />
+                    )}
+                    {correctionError && <ErrorBanner message={correctionError} />}
+                    {statusChanged && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={handleCorrect}
+                          disabled={!canCorrect || correcting}
+                          className="boe-btn boe-btn-primary"
+                          style={{ padding: '7px 16px', fontSize: '13px' }}
+                        >
+                          {correcting ? 'Saving…' : 'Save Correction'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {isAdmin && isLinkageStatus && (
+                <div style={{
+                  border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
+                  fontSize: '12px', color: colors.muted, lineHeight: 1.5,
+                }}>
+                  Order linkage is managed from the Received Payments page (Link / Unlink), not here.
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
       </div>
-    </Modal>
+    </>
   )
 }
 
@@ -1452,21 +1593,20 @@ function PaymentsTable({
   const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
 
   return (
+    // overflowX:auto is retained only as a narrow-mobile fallback; at desktop
+    // width the compact 8-column set fits without scrolling (no forced minWidth).
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th style={TH_STYLE}>Request No.</th>
+            <th style={TH_STYLE}>Request</th>
             <th style={TH_STYLE}>Client</th>
-            <th style={TH_STYLE}>Order No.</th>
             <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
             <th style={TH_STYLE}>Payment Date</th>
-            <th style={TH_STYLE}>Mode</th>
-            <th style={TH_STYLE}>Received In</th>
-            <th style={TH_STYLE}>Submitted By</th>
-            <th style={TH_STYLE}>Submitted On</th>
+            <th style={TH_STYLE}>Against</th>
             <th style={TH_STYLE}>Status</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Actions</th>
+            <th style={TH_STYLE}>Requested By</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -1496,20 +1636,25 @@ function PaymentsTable({
                 <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
                   {r.request_number}
                 </td>
-                <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-                  {r.client_name}
-                  {isAdmin && isPending && (
-                    <span style={{
-                      marginLeft: '6px', fontSize: '10px', fontWeight: 600,
-                      color: '#92400E', background: '#FEF3C7',
-                      padding: '1px 5px', borderRadius: '4px',
-                    }}>
-                      Review
+                <td style={TD}>
+                  {/* Client truncates instead of widening the table; full name via title. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '220px' }}>
+                    <span
+                      title={r.client_name}
+                      style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: 600, color: colors.primary }}
+                    >
+                      {r.client_name}
                     </span>
-                  )}
-                </td>
-                <td style={{ ...TD, fontSize: '12px', color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic' }}>
-                  {orderNoDisplay(r)}
+                    {isAdmin && isPending && (
+                      <span style={{
+                        flexShrink: 0, fontSize: '10px', fontWeight: 600,
+                        color: '#92400E', background: '#FEF3C7',
+                        padding: '1px 5px', borderRadius: '4px',
+                      }}>
+                        Review
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                   {fmtAmount(r.amount)}
@@ -1517,21 +1662,27 @@ function PaymentsTable({
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {fmtDate(r.payment_date)}
                 </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {displayPaymentMode(r.payment_mode, r.received_in)}
-                </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {RECEIVED_IN_LABEL[r.received_in] ?? r.received_in}
-                </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {r.submitted_by_name ?? '—'}
-                </td>
-                <td style={{ ...TD, fontSize: '11px', color: colors.muted }}>
-                  {fmtDateTime(r.created_at)}
+                <td style={TD}>
+                  {/* Order number when present, else the existing new-order/suspense
+                      wording (orderNoDisplay) — truncated with full text via title. */}
+                  <div
+                    title={orderNoDisplay(r)}
+                    style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic' }}
+                  >
+                    {orderNoDisplay(r)}
+                  </div>
                 </td>
                 <td style={TD}>
                   <StatusBadge status={r.status} />
                   {isStaleClarification(r, cutoff) && <StaleBadge />}
+                </td>
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                  <div
+                    title={r.submitted_by_name ?? undefined}
+                    style={{ maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {r.submitted_by_name ?? '—'}
+                  </div>
                 </td>
                 <td style={{ ...TD, textAlign: 'right' }}>
                   <div
