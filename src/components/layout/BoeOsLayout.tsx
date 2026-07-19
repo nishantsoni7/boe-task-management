@@ -6,7 +6,6 @@ import { Home, Settings, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeSidebarSection } from './AdminViewModeControls'
-import { NotificationsNavItem } from './NotificationsNavItem'
 
 type BoeOsLayoutProps = {
   profile: UserProfile | null
@@ -61,9 +60,6 @@ export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: B
             active={pathname === '/account'}
             onClick={() => navTo('/account?returnTo=/modules')}
           />
-
-          {/* Permanent Notifications entry — always visible, badge only when unread */}
-          <NotificationsNavItem onNavigate={() => setSidebarOpen(false)} />
         </div>
 
         {/* Bottom: profile + account settings + view as + sign out */}
