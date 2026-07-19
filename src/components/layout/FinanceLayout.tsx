@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { CheckSquare, CreditCard, Home, RefreshCw } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
+import { ModuleSwitchButton } from './ModuleSwitchButton'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 
@@ -145,7 +146,11 @@ export function FinanceLayout({
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
-          <div className="boe-header-actions">
+          {/* flexWrap + flexShrink let the wider action row (switch + primary +
+              refresh) wrap cleanly on narrow screens instead of being clipped
+              by .boe-main-content's overflow-x: hidden. Desktop is unaffected. */}
+          <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
+            <ModuleSwitchButton target="orders" profile={profile} />
             {actions}
             <button
               onClick={handleRefresh}
