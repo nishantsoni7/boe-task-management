@@ -11,6 +11,7 @@ import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { formatINR, isValidAmount } from '@/lib/currency'
 import { notifyFinance } from '@/lib/notify'
+import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,10 +54,10 @@ const PAYMENT_MODE_LABEL: Record<string, string> = {
 }
 
 const RECEIVED_IN_LABEL: Record<string, string> = {
-  company_account: 'Company Account',
-  cash_in_hand:    'Cash in Hand',
-  savings_account: 'Savings Account',
-  other:           'Other',
+  company_account: 'HDFC',
+  cash_in_hand:    'Paytm',
+  savings_account: 'Canara',
+  other:           'PNB',
 }
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
@@ -85,10 +86,10 @@ const PAYMENT_MODE_OPTIONS = [
 ]
 
 const RECEIVED_IN_OPTIONS = [
-  { label: 'Company Account', value: 'company_account' },
-  { label: 'Cash in Hand',    value: 'cash_in_hand' },
-  { label: 'Savings Account', value: 'savings_account' },
-  { label: 'Other',           value: 'other' },
+  { label: 'HDFC',   value: 'company_account' },
+  { label: 'PNB',    value: 'other' },
+  { label: 'Paytm',  value: 'cash_in_hand' },
+  { label: 'Canara', value: 'savings_account' },
 ]
 
 // approved_unlinked and approved_linked are deliberately excluded — see
@@ -129,26 +130,10 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
 }
 
 // ── Shared UI atoms ───────────────────────────────────────────────────────────
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 59 }} />
-      <div style={{
-        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-        width: '480px', maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
-        background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
-        zIndex: 60, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>{title}</div>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '13px' }}>✕</button>
-        </div>
-        {children}
-      </div>
-    </>
-  )
-}
+// FinanceModal and RequestModalShell (the shared Finance modal layering
+// system) live in src/app/finance/components/FinanceModalShell.tsx — shared
+// with the Payment Requests page so both use one consistent set of overlay/
+// dialog z-index values instead of each page picking its own.
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
@@ -174,6 +159,26 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
       <span style={{ fontSize: '13px', color: colors.primary }}>{value}</span>
+    </div>
+  )
+}
+
+// Compact uppercase section label used inside RequestModalShell cards —
+// matches the Payment Requests page's DetailsModal styling exactly.
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      {children}
+    </div>
+  )
+}
+
+// Label-over-value metadata item; muted styling for empty/placeholder values.
+function MetaItem({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
+      <span style={{ fontSize: '14px', color: muted ? colors.muted : colors.primary, wordBreak: 'break-word', lineHeight: 1.4 }}>{value}</span>
     </div>
   )
 }
@@ -219,8 +224,6 @@ function DetailsModal({
   supabase?: ReturnType<typeof createClient>
   onCorrected?: () => void
 }) {
-  const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
-
   // Every row on this page is approved_linked or approved_unlinked (the page
   // query is scoped to exactly those two statuses), so this is always true
   // here — the generic correction control below never renders on this page.
@@ -254,112 +257,173 @@ function DetailsModal({
     onCorrected()
   }
 
-  return (
-    <Modal title="Payment Details" onClose={onClose}>
-      <div style={{
-        padding: '10px 14px', borderRadius: '8px',
-        background: meta.bg, border: `1px solid ${meta.border}`,
-        fontSize: '12px', fontWeight: 600, color: meta.color,
-      }}>
-        {meta.label}
-      </div>
+  const submittedLine = r.submitted_by_name
+    ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
+    : `Submitted ${fmtDate(r.created_at)}`
 
+  const left = (
+    <>
+      {/* Primary summary card — amount + client lead, payment details below.
+          Same shell as the Payment Requests page's detail modal. */}
       <div style={{
-        background: colors.raised, borderRadius: '8px', padding: '14px 16px',
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
-        border: `1px solid ${colors.border}`,
+        border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
+        display: 'flex', flexDirection: 'column', gap: '14px',
       }}>
-        <DetailRow label="Request No." value={r.request_number} />
-        <DetailRow label="Client"       value={r.client_name} />
-        <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
-        <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
-        <DetailRow label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
-        <DetailRow label="Received In"  value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
-        <DetailRow label="Order No."    value={r.order_number ?? '—'} />
-        <div style={{ gridColumn: '1 / -1' }}>
-          <DetailRow label="Proof / Reference" value={r.proof_note ?? '—'} />
-        </div>
-        {r.sales_note && (
-          <div style={{ gridColumn: '1 / -1' }}>
-            <DetailRow label="Sales Note" value={r.sales_note} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Amount</div>
+            <div style={{ fontSize: '28px', fontWeight: 700, color: colors.primary, lineHeight: 1.1, marginTop: '4px', fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word' }}>
+              {fmtAmount(r.amount)}
+            </div>
           </div>
-        )}
-        <DetailRow label="Submitted" value={fmtDate(r.created_at)} />
-        {r.submitted_by_name && <DetailRow label="Submitted By" value={r.submitted_by_name} />}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
+            <div style={{ fontSize: '18px', fontWeight: 600, color: colors.primary, lineHeight: 1.3, marginTop: '4px', wordBreak: 'break-word' }}>
+              {r.client_name}
+            </div>
+          </div>
+        </div>
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px',
+          borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
+        }}>
+          <MetaItem label="Payment Date" value={fmtDate(r.payment_date)} />
+          <MetaItem label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
+          <MetaItem label="Received In"  value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
+          <MetaItem label="Order Number" value={r.order_number ?? '—'} muted={!r.order_number} />
+        </div>
       </div>
 
-      {supabase && <PaymentProofView supabase={supabase} paymentRequestId={r.id} />}
-      {supabase && <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />}
+      {/* Proof and reference — same compact bordered block as the Payment
+          Requests page's detail modal. */}
+      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0 }}>Proof</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {supabase
+              ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline />
+              : <span style={{ fontSize: '13px', color: colors.muted }}>Not attached</span>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
+          <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
+            {r.proof_note || 'Not provided'}
+          </span>
+        </div>
+      </div>
 
+      {/* Notes — only when a sales note exists */}
+      {r.sales_note && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <SectionHeader>Notes</SectionHeader>
+          <div style={{ fontSize: '13.5px', color: colors.secondary, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {r.sales_note}
+          </div>
+        </div>
+      )}
+    </>
+  )
+
+  const right = (
+    <>
+      {/* Activity panel — same bordered shell as the Payment Requests page's
+          detail modal. */}
+      {supabase && (
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
+          <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
+        </div>
+      )}
+
+      {/* Admin controls — never renders on this page in practice (every row
+          here is approved_unlinked/approved_linked), kept for parity with the
+          Payment Requests page's guard structure. */}
       {isAdmin && supabase && onCorrected && !isLinkageStatus && (
         <div style={{
-          borderTop: `1px solid ${colors.border}`,
-          paddingTop: '14px',
-          display: 'flex', flexDirection: 'column', gap: '10px',
+          border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
+          display: 'flex', flexDirection: 'column', gap: '12px',
         }}>
-          <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Admin — Correct Status
-          </div>
-          <select
-            className="boe-input"
-            value={newStatus}
-            onChange={e => { setNewStatus(e.target.value); setCorrectionNote(''); setCorrectionError(null) }}
-            style={{ fontSize: '12px' }}
-          >
-            {STATUS_CORRECTION_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-          {statusChanged && noteRequiredForCorrection && (
-            <textarea
-              className="boe-input"
-              value={correctionNote}
-              onChange={e => setCorrectionNote(e.target.value)}
-              placeholder={newStatus === 'needs_clarification' ? 'Clarification note (required)' : 'Rejection reason (required)'}
-              rows={2}
-              style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
-            />
-          )}
-          {statusChanged && !noteRequiredForCorrection && (
-            <textarea
-              className="boe-input"
-              value={correctionNote}
-              onChange={e => setCorrectionNote(e.target.value)}
-              placeholder="Admin note (optional)"
-              rows={2}
-              style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
-            />
-          )}
-          {correctionError && <ErrorBanner message={correctionError} />}
-          {statusChanged && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={handleCorrect}
-                disabled={!canCorrect || correcting}
-                className="boe-btn boe-btn-primary"
-                style={{ padding: '7px 16px', fontSize: '12px' }}
-              >
-                {correcting ? 'Saving…' : 'Save Correction'}
-              </button>
+          <div>
+            <SectionHeader>Admin controls</SectionHeader>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
+              Administrative correction. This action will be recorded in activity history.
             </div>
-          )}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <select
+              className="boe-input"
+              aria-label="Correct status"
+              value={newStatus}
+              onChange={e => { setNewStatus(e.target.value); setCorrectionNote(''); setCorrectionError(null) }}
+              style={{ fontSize: '13px', maxWidth: '260px' }}
+            >
+              {STATUS_CORRECTION_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {!statusChanged && (
+              <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
+                Select a different status to make a correction.
+              </div>
+            )}
+            {statusChanged && noteRequiredForCorrection && (
+              <textarea
+                className="boe-input"
+                aria-label={newStatus === 'needs_clarification' ? 'Clarification note' : 'Rejection reason'}
+                value={correctionNote}
+                onChange={e => setCorrectionNote(e.target.value)}
+                placeholder={newStatus === 'needs_clarification' ? 'Clarification note (required)' : 'Rejection reason (required)'}
+                rows={2}
+                style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
+              />
+            )}
+            {statusChanged && !noteRequiredForCorrection && (
+              <textarea
+                className="boe-input"
+                aria-label="Admin note"
+                value={correctionNote}
+                onChange={e => setCorrectionNote(e.target.value)}
+                placeholder="Admin note (optional)"
+                rows={2}
+                style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
+              />
+            )}
+            {correctionError && <ErrorBanner message={correctionError} />}
+            {statusChanged && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={handleCorrect}
+                  disabled={!canCorrect || correcting}
+                  className="boe-btn boe-btn-primary"
+                  style={{ padding: '7px 16px', fontSize: '13px' }}
+                >
+                  {correcting ? 'Saving…' : 'Save Correction'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
       {isAdmin && isLinkageStatus && (
         <div style={{
-          borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
+          border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           fontSize: '12px', color: colors.muted, lineHeight: 1.5,
         }}>
           Order linkage is managed with Link / Unlink, not here.
         </div>
       )}
+    </>
+  )
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          Close
-        </button>
-      </div>
-    </Modal>
+  return (
+    <RequestModalShell
+      requestNumber={r.request_number}
+      submittedLine={submittedLine}
+      statusBadge={<StatusBadge status={r.status} />}
+      onClose={onClose}
+      left={left}
+      right={right}
+    />
   )
 }
 
@@ -429,7 +493,7 @@ function EditPaymentModal({
   }
 
   return (
-    <Modal title="Edit Received Payment" onClose={onClose}>
+    <FinanceModal title="Edit Received Payment" onClose={onClose}>
       <Field label="Client Name" required>
         <input className="boe-input" value={form.clientName} onChange={set('clientName')}
           placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
@@ -484,7 +548,7 @@ function EditPaymentModal({
           {saving ? 'Saving…' : 'Save Changes'}
         </button>
       </div>
-    </Modal>
+    </FinanceModal>
   )
 }
 
@@ -519,7 +583,7 @@ function DeleteConfirmModal({
   }
 
   return (
-    <Modal title="Delete Received Payment" onClose={onClose}>
+    <FinanceModal title="Delete Received Payment" onClose={onClose}>
       <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7 }}>
         Delete this received payment? This cannot be undone.
       </div>
@@ -557,7 +621,7 @@ function DeleteConfirmModal({
           {deleting ? 'Deleting…' : 'Delete'}
         </button>
       </div>
-    </Modal>
+    </FinanceModal>
   )
 }
 
@@ -632,7 +696,7 @@ function LinkOrderModal({
   const isSuspense = !payment.order_id
 
   return (
-    <Modal title={isSuspense ? 'Link to Order' : 'Change Linked Order'} onClose={onClose}>
+    <FinanceModal title={isSuspense ? 'Link to Order' : 'Change Linked Order'} onClose={onClose}>
       {/* Payment summary */}
       <div style={{
         background: colors.raised, borderRadius: '8px', padding: '12px 14px',
@@ -734,7 +798,7 @@ function LinkOrderModal({
           {saving ? 'Linking…' : `Link to ${selected ? selected.display_number : 'Order'}`}
         </button>
       </div>
-    </Modal>
+    </FinanceModal>
   )
 }
 
@@ -1172,64 +1236,58 @@ function ReceivedPaymentsPageInner() {
         />
       )}
 
-      {/* Unlink confirmation inline */}
+      {/* Unlink confirmation — same shared modal shell as every other Finance
+          dialog; closing (backdrop, header ✕, or Escape) is guarded exactly
+          as before so it can't be dismissed mid-request. */}
       {unlinkTarget && (
-        <>
-          <div
-            onClick={() => { if (!unlinking) { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) } }}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 59 }}
-          />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-            width: '380px', maxWidth: 'calc(100vw - 32px)',
-            background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
-            zIndex: 60, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px',
-          }}>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Unlink Payment?</div>
-            <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6 }}>
-              This will remove the link between{' '}
-              <strong>{unlinkTarget.client_name}</strong> ({fmtAmount(unlinkTarget.amount)}) and order{' '}
-              <strong>{unlinkTarget.order_number ?? unlinkTarget.order_id}</strong>.
-              <br /><br />
-              The payment will return to suspense status.
-            </div>
-            <Field label="Reason" required>
-              <textarea
-                className="boe-input"
-                value={unlinkReason}
-                onChange={e => { setUnlinkReason(e.target.value); setUnlinkError(null) }}
-                placeholder="Why is this payment being unlinked? (required)"
-                rows={2}
-                disabled={unlinking}
-                style={{ width: '100%', resize: 'vertical' }}
-              />
-            </Field>
-            {unlinkError && <ErrorBanner message={unlinkError} />}
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) }}
-                disabled={unlinking}
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '8px 18px', fontSize: '13px' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUnlink}
-                disabled={unlinking || !unlinkReason.trim()}
-                style={{
-                  padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
-                  border: `1px solid ${colors.border}`, background: colors.raised,
-                  color: colors.primary,
-                  cursor: (unlinking || !unlinkReason.trim()) ? 'not-allowed' : 'pointer',
-                  opacity: (unlinking || !unlinkReason.trim()) ? 0.6 : 1,
-                }}
-              >
-                {unlinking ? 'Unlinking…' : 'Yes, Unlink'}
-              </button>
-            </div>
+        <FinanceModal
+          title="Unlink Payment?"
+          width="380px"
+          onClose={() => { if (!unlinking) { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) } }}
+        >
+          <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6 }}>
+            This will remove the link between{' '}
+            <strong>{unlinkTarget.client_name}</strong> ({fmtAmount(unlinkTarget.amount)}) and order{' '}
+            <strong>{unlinkTarget.order_number ?? unlinkTarget.order_id}</strong>.
+            <br /><br />
+            The payment will return to suspense status.
           </div>
-        </>
+          <Field label="Reason" required>
+            <textarea
+              className="boe-input"
+              value={unlinkReason}
+              onChange={e => { setUnlinkReason(e.target.value); setUnlinkError(null) }}
+              placeholder="Why is this payment being unlinked? (required)"
+              rows={2}
+              disabled={unlinking}
+              style={{ width: '100%', resize: 'vertical' }}
+            />
+          </Field>
+          {unlinkError && <ErrorBanner message={unlinkError} />}
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) }}
+              disabled={unlinking}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '8px 18px', fontSize: '13px' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleUnlink}
+              disabled={unlinking || !unlinkReason.trim()}
+              style={{
+                padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
+                border: `1px solid ${colors.border}`, background: colors.raised,
+                color: colors.primary,
+                cursor: (unlinking || !unlinkReason.trim()) ? 'not-allowed' : 'pointer',
+                opacity: (unlinking || !unlinkReason.trim()) ? 0.6 : 1,
+              }}
+            >
+              {unlinking ? 'Unlinking…' : 'Yes, Unlink'}
+            </button>
+          </div>
+        </FinanceModal>
       )}
 
     </FinanceLayout>
