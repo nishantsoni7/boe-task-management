@@ -66,7 +66,10 @@ type EligiblePayment = {
   submitted_by_name?: string
 }
 
-type UserOption = { id: string; full_name: string }
+// Returned by the list_eligible_order_assignees() RPC: active Sales-team
+// members plus anyone explicitly authorised via the permission engine
+// (orders.can_be_order_assignee), already deduplicated and grouped server-side.
+type AssigneeOption = { id: string; full_name: string; source: 'sales' | 'override' }
 
 type StatusFilter = 'active' | 'needs_clarification' | 'rejected' | 'converted' | 'all'
 
@@ -179,15 +182,25 @@ function validateAmount(label: string, raw: string): string | null {
 }
 
 function SubmitRequestModal({
-  users,
+  salesAssignees,
+  overrideAssignees,
+  currentUserId,
   onClose,
   onSubmitted,
 }: {
-  users: UserOption[]
+  salesAssignees: AssigneeOption[]
+  overrideAssignees: AssigneeOption[]
+  currentUserId: string
   onClose: () => void
   onSubmitted: (requestNumber: string) => void
 }) {
-  const [form,   setForm]   = useState<RequestForm>({ ...EMPTY_FORM })
+  // Default to the current user only when they're actually eligible — never
+  // the first eligible user in the list.
+  const [form,   setForm]   = useState<RequestForm>(() => {
+    const isSelfEligible = salesAssignees.some(u => u.id === currentUserId)
+      || overrideAssignees.some(u => u.id === currentUserId)
+    return { ...EMPTY_FORM, assigned_to: isSelfEligible ? currentUserId : '' }
+  })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
@@ -233,7 +246,9 @@ function SubmitRequestModal({
       .single()
 
     if (insertErr || !created) {
-      setError(insertErr?.message ?? 'Failed to submit order request.')
+      setError(insertErr?.message?.includes('Assignee must be')
+        ? insertErr.message
+        : (insertErr?.message ?? 'Failed to submit order request.'))
       setSaving(false)
       return
     }
@@ -309,7 +324,16 @@ function SubmitRequestModal({
               Assignee
               <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
                 <option value="">— Select —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                {salesAssignees.length > 0 && (
+                  <optgroup label="Sales Team">
+                    {salesAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </optgroup>
+                )}
+                {overrideAssignees.length > 0 && (
+                  <optgroup label="Authorised Assignees">
+                    {overrideAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </optgroup>
+                )}
               </select>
             </label>
           </div>
@@ -1069,15 +1093,23 @@ function RejectModal({
 
 function ResubmitModal({
   request,
-  users,
+  salesAssignees,
+  overrideAssignees,
   onClose,
   onResubmitted,
 }: {
   request: OrderRequest
-  users: UserOption[]
+  salesAssignees: AssigneeOption[]
+  overrideAssignees: AssigneeOption[]
   onClose: () => void
   onResubmitted: (requestNumber: string) => void
 }) {
+  // A legacy assignee that no longer qualifies (inactive, or neither Sales
+  // nor authorised) stays visible and selected — never silently dropped.
+  const isLegacyAssigneeOutOfList = !!request.assigned_to
+    && !salesAssignees.some(u => u.id === request.assigned_to)
+    && !overrideAssignees.some(u => u.id === request.assigned_to)
+
   const [form, setForm] = useState<RequestForm>({
     client_name:          request.client_name,
     assigned_to:          request.assigned_to ?? '',
@@ -1120,7 +1152,9 @@ function ResubmitModal({
     })
 
     if (rpcErr) {
-      setError('Could not resubmit this request. It may have already changed. Please refresh and try again.')
+      setError(rpcErr.message?.includes('Assignee must be')
+        ? rpcErr.message
+        : 'Could not resubmit this request. It may have already changed. Please refresh and try again.')
       setSaving(false)
       return
     }
@@ -1214,7 +1248,21 @@ function ResubmitModal({
               Assignee
               <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
                 <option value="">— Select —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                {isLegacyAssigneeOutOfList && (
+                  <optgroup label="Current Assignee">
+                    <option value={request.assigned_to ?? ''}>{request.assigned_to_name ?? 'Unknown user'}</option>
+                  </optgroup>
+                )}
+                {salesAssignees.length > 0 && (
+                  <optgroup label="Sales Team">
+                    {salesAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </optgroup>
+                )}
+                {overrideAssignees.length > 0 && (
+                  <optgroup label="Authorised Assignees">
+                    {overrideAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </optgroup>
+                )}
               </select>
             </label>
           </div>
@@ -1294,15 +1342,23 @@ function ResubmitModal({
 
 function ReapplyModal({
   request,
-  users,
+  salesAssignees,
+  overrideAssignees,
   onClose,
   onReapplied,
 }: {
   request: OrderRequest
-  users: UserOption[]
+  salesAssignees: AssigneeOption[]
+  overrideAssignees: AssigneeOption[]
   onClose: () => void
   onReapplied: (requestNumber: string) => void
 }) {
+  // A legacy assignee that no longer qualifies (inactive, or neither Sales
+  // nor authorised) stays visible and selected — never silently dropped.
+  const isLegacyAssigneeOutOfList = !!request.assigned_to
+    && !salesAssignees.some(u => u.id === request.assigned_to)
+    && !overrideAssignees.some(u => u.id === request.assigned_to)
+
   const [form, setForm] = useState<RequestForm>({
     client_name:          request.client_name,
     assigned_to:          request.assigned_to ?? '',
@@ -1345,7 +1401,9 @@ function ReapplyModal({
     })
 
     if (rpcErr) {
-      setError('Could not reapply this request. It may have already changed. Please refresh and try again.')
+      setError(rpcErr.message?.includes('Assignee must be')
+        ? rpcErr.message
+        : 'Could not reapply this request. It may have already changed. Please refresh and try again.')
       setSaving(false)
       return
     }
@@ -1440,7 +1498,21 @@ function ReapplyModal({
               Assignee
               <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
                 <option value="">— Select —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                {isLegacyAssigneeOutOfList && (
+                  <optgroup label="Current Assignee">
+                    <option value={request.assigned_to ?? ''}>{request.assigned_to_name ?? 'Unknown user'}</option>
+                  </optgroup>
+                )}
+                {salesAssignees.length > 0 && (
+                  <optgroup label="Sales Team">
+                    {salesAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </optgroup>
+                )}
+                {overrideAssignees.length > 0 && (
+                  <optgroup label="Authorised Assignees">
+                    {overrideAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </optgroup>
+                )}
               </select>
             </label>
           </div>
@@ -1528,7 +1600,7 @@ function OrderRequestsPageInner() {
   const [profile,       setProfile]       = useState<UserProfile | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [requests,      setRequests]      = useState<OrderRequest[]>([])
-  const [users,         setUsers]         = useState<UserOption[]>([])
+  const [assigneeOptions, setAssigneeOptions] = useState<AssigneeOption[]>([])
   const [listLoading,   setListLoading]   = useState(false)
   const [search,        setSearch]        = useState('')
   const [showModal,     setShowModal]     = useState(false)
@@ -1596,12 +1668,12 @@ function OrderRequestsPageInner() {
         .single()
       setProfile(me as UserProfile)
 
-      const { data: usersData } = await supabase
-        .from('users')
-        .select('id, full_name')
-        .eq('is_active', true)
-        .order('full_name')
-      setUsers((usersData ?? []) as UserOption[])
+      // Sales team + explicitly authorised Order Assignees only — never every
+      // active user. resolve_permission-backed, so overrides never need to be
+      // read directly by a non-admin client (employee_permission_overrides
+      // RLS only allows a user to read their own row).
+      const { data: assigneesData } = await supabase.rpc('list_eligible_order_assignees')
+      setAssigneeOptions((assigneesData ?? []) as AssigneeOption[])
 
       await loadRequests()
       setPageLoading(false)
@@ -1647,6 +1719,17 @@ function OrderRequestsPageInner() {
     await supabase.auth.signOut()
     router.replace('/login')
   }
+
+  // Grouped for the Assignee dropdowns' optgroups; sorted defensively even
+  // though list_eligible_order_assignees() already orders by (source, name).
+  const salesAssignees = useMemo(
+    () => assigneeOptions.filter(u => u.source === 'sales').sort((a, b) => a.full_name.localeCompare(b.full_name)),
+    [assigneeOptions]
+  )
+  const overrideAssignees = useMemo(
+    () => assigneeOptions.filter(u => u.source === 'override').sort((a, b) => a.full_name.localeCompare(b.full_name)),
+    [assigneeOptions]
+  )
 
   const visible = useMemo(() => {
     const tab = STATUS_TABS.find(t => t.key === statusTab) ?? STATUS_TABS[0]
@@ -1965,7 +2048,9 @@ function OrderRequestsPageInner() {
 
       {showModal && (
         <SubmitRequestModal
-          users={users}
+          salesAssignees={salesAssignees}
+          overrideAssignees={overrideAssignees}
+          currentUserId={currentUserId}
           onClose={() => setShowModal(false)}
           onSubmitted={requestNumber => {
             setShowModal(false)
@@ -2006,7 +2091,8 @@ function OrderRequestsPageInner() {
       {resubmitTarget && (
         <ResubmitModal
           request={resubmitTarget}
-          users={users}
+          salesAssignees={salesAssignees}
+          overrideAssignees={overrideAssignees}
           onClose={() => setResubmitTarget(null)}
           onResubmitted={requestNumber => {
             setResubmitTarget(null)
@@ -2035,7 +2121,8 @@ function OrderRequestsPageInner() {
       {reapplyTarget && (
         <ReapplyModal
           request={reapplyTarget}
-          users={users}
+          salesAssignees={salesAssignees}
+          overrideAssignees={overrideAssignees}
           onClose={() => setReapplyTarget(null)}
           onReapplied={requestNumber => {
             setReapplyTarget(null)

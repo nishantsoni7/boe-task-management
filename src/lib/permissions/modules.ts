@@ -166,5 +166,11 @@ registerModule({
     { actionKey: 'approve', displayName: 'Approve' },
     { actionKey: 'export', displayName: 'Export' },
     { actionKey: 'manage', displayName: 'Manage' },
+    // Custom action: eligible to be selected as an Order Request Assignee,
+    // independent of the Sales team (20260697000000_order_request_assignee_eligibility.sql).
+    // Granted only via employee_permission_overrides for named exceptions —
+    // never via role_permissions — so it never broadens to every admin/
+    // manager/operations/bdm employee.
+    { actionKey: 'can_be_order_assignee', displayName: 'Can Be Order Assignee' },
   ],
 })
