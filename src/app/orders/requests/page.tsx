@@ -23,6 +23,7 @@ type OrderRequest = {
   confirm_date: string | null
   due_date: string | null
   total_value: number | null
+  total_product_value: number | null
   lead_source: string | null
   notes: string | null
   status: string
@@ -148,10 +149,10 @@ function StatusBadge({ status }: { status: string }) {
 
 type RequestForm = {
   client_name: string
-  requested_by: string
   assigned_to: string
   confirm_date: string
   due_date: string
+  total_product_value: string
   total_value: string
   lead_source: string
   notes: string
@@ -159,29 +160,34 @@ type RequestForm = {
 
 const EMPTY_FORM: RequestForm = {
   client_name: '',
-  requested_by: '',
   assigned_to: '',
   confirm_date: '',
   due_date: '',
+  total_product_value: '',
   total_value: '',
   lead_source: '',
   notes: '',
 }
 
+// Non-negative, tolerating an empty string (the field is optional). Returns
+// an error message, or null when the value is acceptable.
+function validateAmount(label: string, raw: string): string | null {
+  if (raw === '') return null
+  const n = parseFloat(raw)
+  if (Number.isNaN(n) || n < 0) return `${label} must be a valid non-negative amount.`
+  return null
+}
+
 function SubmitRequestModal({
   users,
-  currentUserId,
   onClose,
   onSubmitted,
 }: {
   users: UserOption[]
-  currentUserId: string
   onClose: () => void
   onSubmitted: (requestNumber: string) => void
 }) {
-  // Default "Requested By" to the current user — the common case is submitting
-  // one's own request. It stays a required, editable selection.
-  const [form,   setForm]   = useState<RequestForm>({ ...EMPTY_FORM, requested_by: currentUserId })
+  const [form,   setForm]   = useState<RequestForm>({ ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
@@ -193,7 +199,10 @@ function SubmitRequestModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.client_name.trim()) { setError('Client name is required.'); return }
-    if (!form.requested_by)       { setError('Requested By is required.'); return }
+    const productValueError = validateAmount('Total Product Value', form.total_product_value)
+    if (productValueError) { setError(productValueError); return }
+    const orderValueError = validateAmount('Total Order Value', form.total_value)
+    if (orderValueError) { setError(orderValueError); return }
     setSaving(true)
     setError(null)
 
@@ -202,16 +211,19 @@ function SubmitRequestModal({
 
     // No order number, no display_number: this only creates an order_requests
     // row. request_number (ORD-REQ-YYYY-NNNN) is assigned by the database.
+    // requested_by is not a form field: the authenticated user submitting the
+    // request is saved automatically, mirroring created_by.
     const payload = {
-      client_name:  form.client_name.trim(),
-      requested_by: form.requested_by,
-      assigned_to:  form.assigned_to  || null,
-      confirm_date: form.confirm_date || null,
-      due_date:     form.due_date     || null,
-      total_value:  form.total_value  ? parseFloat(form.total_value) : null,
-      lead_source:  form.lead_source  || null,
-      notes:        form.notes.trim() || null,
-      created_by:   session.user.id,
+      client_name:          form.client_name.trim(),
+      requested_by:         session.user.id,
+      assigned_to:          form.assigned_to || null,
+      confirm_date:         form.confirm_date || null,
+      due_date:             form.due_date     || null,
+      total_product_value:  form.total_product_value ? parseFloat(form.total_product_value) : null,
+      total_value:          form.total_value  ? parseFloat(form.total_value) : null,
+      lead_source:          form.lead_source  || null,
+      notes:                form.notes.trim() || null,
+      created_by:           session.user.id,
     }
 
     const { data: created, error: insertErr } = await supabase
@@ -232,7 +244,7 @@ function SubmitRequestModal({
       requestNumber: created.request_number,
       entityId: created.id,
       clientName: form.client_name.trim(),
-      creatorId: form.requested_by,
+      creatorId: session.user.id,
       assignedTo: form.assigned_to || null,
     })
 
@@ -288,21 +300,13 @@ function SubmitRequestModal({
 
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <label style={labelStyle}>
-            Client Name *
-            <input style={inputStyle} value={form.client_name} onChange={set('client_name')} placeholder="Client name" required />
-          </label>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <label style={labelStyle}>
-              Requested By *
-              <select style={inputStyle} value={form.requested_by} onChange={set('requested_by')} required>
-                <option value="">— Select —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
+              Client Name *
+              <input style={inputStyle} value={form.client_name} onChange={set('client_name')} placeholder="Client name" required />
             </label>
             <label style={labelStyle}>
-              Assigned To
+              Assignee
               <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
                 <option value="">— Select —</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -312,28 +316,33 @@ function SubmitRequestModal({
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <label style={labelStyle}>
-              Expected Confirmation
+              Confirmation Date
               <input type="date" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
             </label>
             <label style={labelStyle}>
-              Expected Due Date
+              Due Date
               <input type="date" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
             </label>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <label style={labelStyle}>
-              Approx. Value (₹)
-              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} placeholder="0" />
+              Total Product Value (₹)
+              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_product_value} onChange={set('total_product_value')} placeholder="0" />
             </label>
             <label style={labelStyle}>
-              Lead Source
-              <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
-                <option value="">— Select —</option>
-                {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              Total Order Value (₹)
+              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} placeholder="0" />
             </label>
           </div>
+
+          <label style={labelStyle}>
+            Lead Source
+            <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
+              <option value="">— Select —</option>
+              {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
 
           <label style={labelStyle}>
             Notes
@@ -517,10 +526,11 @@ function ConvertModal({
   const carried: { label: string; value: string }[] = [
     { label: 'Client',                 value: request.client_name },
     { label: 'Requested By',           value: request.requested_by_name ?? '—' },
-    { label: 'Assigned To',            value: request.assigned_to_name ?? '—' },
-    { label: 'Expected Confirmation',  value: fmtDate(request.confirm_date) },
-    { label: 'Expected Due Date',      value: fmtDate(request.due_date) },
-    { label: 'Approx. Value',          value: fmtAmount(request.total_value) },
+    { label: 'Assignee',               value: request.assigned_to_name ?? '—' },
+    { label: 'Confirmation Date',      value: fmtDate(request.confirm_date) },
+    { label: 'Due Date',               value: fmtDate(request.due_date) },
+    { label: 'Total Product Value',    value: fmtAmount(request.total_product_value) },
+    { label: 'Total Order Value',      value: fmtAmount(request.total_value) },
     { label: 'Lead Source',            value: LEAD_SOURCE_OPTIONS.find(o => o.value === request.lead_source)?.label ?? '—' },
     { label: 'Notes',                  value: request.notes?.trim() || '—' },
   ]
@@ -1069,14 +1079,14 @@ function ResubmitModal({
   onResubmitted: (requestNumber: string) => void
 }) {
   const [form, setForm] = useState<RequestForm>({
-    client_name:  request.client_name,
-    requested_by: request.requested_by ?? '',
-    assigned_to:  request.assigned_to ?? '',
-    confirm_date: request.confirm_date ?? '',
-    due_date:     request.due_date ?? '',
-    total_value:  request.total_value != null ? String(request.total_value) : '',
-    lead_source:  request.lead_source ?? '',
-    notes:        request.notes ?? '',
+    client_name:          request.client_name,
+    assigned_to:          request.assigned_to ?? '',
+    confirm_date:         request.confirm_date ?? '',
+    due_date:             request.due_date ?? '',
+    total_product_value: request.total_product_value != null ? String(request.total_product_value) : '',
+    total_value:          request.total_value != null ? String(request.total_value) : '',
+    lead_source:          request.lead_source ?? '',
+    notes:                request.notes ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
@@ -1090,20 +1100,23 @@ function ResubmitModal({
     e.preventDefault()
     if (saving) return
     if (!form.client_name.trim()) { setError('Client name is required.'); return }
-    if (!form.requested_by)       { setError('Requested By is required.'); return }
+    const productValueError = validateAmount('Total Product Value', form.total_product_value)
+    if (productValueError) { setError(productValueError); return }
+    const orderValueError = validateAmount('Total Order Value', form.total_value)
+    if (orderValueError) { setError(orderValueError); return }
     setSaving(true)
     setError(null)
 
     const { error: rpcErr } = await supabase.rpc('resubmit_order_request', {
-      p_order_request_id: request.id,
-      p_client_name:      form.client_name,
-      p_requested_by:     form.requested_by,
-      p_assigned_to:      form.assigned_to  || null,
-      p_confirm_date:     form.confirm_date || null,
-      p_due_date:         form.due_date     || null,
-      p_total_value:      form.total_value  ? parseFloat(form.total_value) : null,
-      p_lead_source:      form.lead_source  || null,
-      p_notes:            form.notes,
+      p_order_request_id:    request.id,
+      p_client_name:         form.client_name,
+      p_assigned_to:         form.assigned_to  || null,
+      p_confirm_date:        form.confirm_date || null,
+      p_due_date:            form.due_date     || null,
+      p_total_value:         form.total_value  ? parseFloat(form.total_value) : null,
+      p_total_product_value: form.total_product_value ? parseFloat(form.total_product_value) : null,
+      p_lead_source:         form.lead_source  || null,
+      p_notes:               form.notes,
     })
 
     if (rpcErr) {
@@ -1192,21 +1205,13 @@ function ResubmitModal({
             </div>
           )}
 
-          <label style={labelStyle}>
-            Client Name *
-            <input style={inputStyle} value={form.client_name} onChange={set('client_name')} required />
-          </label>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <label style={labelStyle}>
-              Requested By *
-              <select style={inputStyle} value={form.requested_by} onChange={set('requested_by')} required>
-                <option value="">— Select —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
+              Client Name *
+              <input style={inputStyle} value={form.client_name} onChange={set('client_name')} required />
             </label>
             <label style={labelStyle}>
-              Assigned To
+              Assignee
               <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
                 <option value="">— Select —</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -1216,28 +1221,33 @@ function ResubmitModal({
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <label style={labelStyle}>
-              Expected Confirmation
+              Confirmation Date
               <input type="date" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
             </label>
             <label style={labelStyle}>
-              Expected Due Date
+              Due Date
               <input type="date" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
             </label>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <label style={labelStyle}>
-              Approx. Value (₹)
-              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} />
+              Total Product Value (₹)
+              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_product_value} onChange={set('total_product_value')} />
             </label>
             <label style={labelStyle}>
-              Lead Source
-              <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
-                <option value="">— Select —</option>
-                {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              Total Order Value (₹)
+              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} />
             </label>
           </div>
+
+          <label style={labelStyle}>
+            Lead Source
+            <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
+              <option value="">— Select —</option>
+              {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
 
           <label style={labelStyle}>
             Notes
@@ -1294,14 +1304,14 @@ function ReapplyModal({
   onReapplied: (requestNumber: string) => void
 }) {
   const [form, setForm] = useState<RequestForm>({
-    client_name:  request.client_name,
-    requested_by: request.requested_by ?? '',
-    assigned_to:  request.assigned_to ?? '',
-    confirm_date: request.confirm_date ?? '',
-    due_date:     request.due_date ?? '',
-    total_value:  request.total_value != null ? String(request.total_value) : '',
-    lead_source:  request.lead_source ?? '',
-    notes:        request.notes ?? '',
+    client_name:          request.client_name,
+    assigned_to:          request.assigned_to ?? '',
+    confirm_date:         request.confirm_date ?? '',
+    due_date:             request.due_date ?? '',
+    total_product_value: request.total_product_value != null ? String(request.total_product_value) : '',
+    total_value:          request.total_value != null ? String(request.total_value) : '',
+    lead_source:          request.lead_source ?? '',
+    notes:                request.notes ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
@@ -1315,20 +1325,23 @@ function ReapplyModal({
     e.preventDefault()
     if (saving) return
     if (!form.client_name.trim()) { setError('Client name is required.'); return }
-    if (!form.requested_by)       { setError('Requested By is required.'); return }
+    const productValueError = validateAmount('Total Product Value', form.total_product_value)
+    if (productValueError) { setError(productValueError); return }
+    const orderValueError = validateAmount('Total Order Value', form.total_value)
+    if (orderValueError) { setError(orderValueError); return }
     setSaving(true)
     setError(null)
 
     const { error: rpcErr } = await supabase.rpc('reapply_order_request', {
-      p_order_request_id: request.id,
-      p_client_name:      form.client_name,
-      p_requested_by:     form.requested_by,
-      p_assigned_to:      form.assigned_to  || null,
-      p_confirm_date:     form.confirm_date || null,
-      p_due_date:         form.due_date     || null,
-      p_total_value:      form.total_value  ? parseFloat(form.total_value) : null,
-      p_lead_source:      form.lead_source  || null,
-      p_notes:            form.notes,
+      p_order_request_id:    request.id,
+      p_client_name:         form.client_name,
+      p_assigned_to:         form.assigned_to  || null,
+      p_confirm_date:        form.confirm_date || null,
+      p_due_date:            form.due_date     || null,
+      p_total_value:         form.total_value  ? parseFloat(form.total_value) : null,
+      p_total_product_value: form.total_product_value ? parseFloat(form.total_product_value) : null,
+      p_lead_source:         form.lead_source  || null,
+      p_notes:               form.notes,
     })
 
     if (rpcErr) {
@@ -1418,21 +1431,13 @@ function ReapplyModal({
             </div>
           )}
 
-          <label style={labelStyle}>
-            Client Name *
-            <input style={inputStyle} value={form.client_name} onChange={set('client_name')} required />
-          </label>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <label style={labelStyle}>
-              Requested By *
-              <select style={inputStyle} value={form.requested_by} onChange={set('requested_by')} required>
-                <option value="">— Select —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
+              Client Name *
+              <input style={inputStyle} value={form.client_name} onChange={set('client_name')} required />
             </label>
             <label style={labelStyle}>
-              Assigned To
+              Assignee
               <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
                 <option value="">— Select —</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -1442,28 +1447,33 @@ function ReapplyModal({
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <label style={labelStyle}>
-              Expected Confirmation
+              Confirmation Date
               <input type="date" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
             </label>
             <label style={labelStyle}>
-              Expected Due Date
+              Due Date
               <input type="date" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
             </label>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <label style={labelStyle}>
-              Approx. Value (₹)
-              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} />
+              Total Product Value (₹)
+              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_product_value} onChange={set('total_product_value')} />
             </label>
             <label style={labelStyle}>
-              Lead Source
-              <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
-                <option value="">— Select —</option>
-                {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              Total Order Value (₹)
+              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} />
             </label>
           </div>
+
+          <label style={labelStyle}>
+            Lead Source
+            <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
+              <option value="">— Select —</option>
+              {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
 
           <label style={labelStyle}>
             Notes
@@ -1551,7 +1561,7 @@ function OrderRequestsPageInner() {
       .select(`
         id, request_number, client_name,
         requested_by, assigned_to,
-        confirm_date, due_date, total_value, lead_source, notes,
+        confirm_date, due_date, total_value, total_product_value, lead_source, notes,
         status, created_by, clarification_note, rejection_reason, created_at, converted_order_id,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
@@ -1803,7 +1813,7 @@ function OrderRequestsPageInner() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  {['Request #', 'Client', 'Requested By', 'Assigned To', 'Expected Confirmation', 'Expected Due Date', 'Approx. Value', 'Status', 'Submitted On', 'Action'].map(h => (
+                  {['Request #', 'Client', 'Requested By', 'Assignee', 'Confirmation Date', 'Due Date', 'Total Order Value', 'Status', 'Submitted On', 'Action'].map(h => (
                     <th key={h} style={{
                       padding: '8px 16px', textAlign: 'left',
                       fontSize: '10px', fontWeight: 600, color: colors.muted,
@@ -1956,7 +1966,6 @@ function OrderRequestsPageInner() {
       {showModal && (
         <SubmitRequestModal
           users={users}
-          currentUserId={currentUserId}
           onClose={() => setShowModal(false)}
           onSubmitted={requestNumber => {
             setShowModal(false)

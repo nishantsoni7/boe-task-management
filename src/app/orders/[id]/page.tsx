@@ -25,6 +25,7 @@ type Order = {
   confirm_date: string | null
   due_date: string | null
   total_value: number | null
+  total_product_value: number | null
   lead_source: string | null
   status: string
   notes: string | null
@@ -513,7 +514,7 @@ export default function OrderDetailPage() {
       .select(`
         id, display_number, client_name,
         requested_by, assigned_to, created_by,
-        confirm_date, due_date, total_value,
+        confirm_date, due_date, total_value, total_product_value,
         lead_source, status, notes, created_at, updated_at,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
@@ -682,7 +683,7 @@ export default function OrderDetailPage() {
           gap: '16px 24px',
         }}>
           <MetaField label="Requested By" value={order.requested_by_name} />
-          <MetaField label="Assigned To"  value={order.assigned_to_name} />
+          <MetaField label="Assignee"     value={order.assigned_to_name} />
           <MetaField
             label="Confirm Date"
             value={fmtDate(order.confirm_date)}
@@ -700,7 +701,8 @@ export default function OrderDetailPage() {
             label="Lead Source"
             value={order.lead_source ? LEAD_SOURCE_LABEL[order.lead_source] ?? order.lead_source : undefined}
           />
-          <MetaField label="Order Value"   value={fmtAmount(order.total_value)} />
+          <MetaField label="Total Product Value" value={fmtAmount(order.total_product_value)} />
+          <MetaField label="Total Order Value"   value={fmtAmount(order.total_value)} />
           <MetaField label="Created"       value={fmtDate(order.created_at)} />
           <MetaField label="Last Updated"  value={fmtDate(order.updated_at)} />
         </div>
