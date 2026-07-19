@@ -12,6 +12,7 @@ import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } fro
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { formatINR, groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
+import { notifyFinance } from '@/lib/notify'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -441,6 +442,17 @@ function DetailsModal({
       .eq('id', r.id)
     setCorrecting(false)
     if (dbError) { setCorrectionError(friendlyDbErrorMessage(dbError)); return }
+
+    // The status genuinely changed (canCorrect requires it) — tell the creator.
+    void notifyFinance({
+      event: 'finance_status_corrected',
+      requestNumber: r.request_number,
+      entityId: r.id,
+      creatorId: r.submitted_by,
+      clientName: r.client_name,
+      statusLabel: STATUS_META[newStatus]?.label ?? newStatus,
+    })
+
     onCorrected()
   }
 
@@ -858,7 +870,7 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
         status:          'pending_approval',
         submitted_by:    userId,
       })
-      .select('id')
+      .select('id, request_number')
       .single()
     if (dbError || !created) { setError(dbError?.message ?? 'Failed to submit request.'); setSaving(false); return }
 
@@ -879,6 +891,15 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
       return
     }
     setSaving(false)
+
+    // Notify approvers that a new request is waiting (non-blocking).
+    void notifyFinance({
+      event: 'finance_submitted',
+      requestNumber: created.request_number,
+      entityId: created.id,
+      clientName: isExistingOrder ? existingOrderClientName : form.clientName.trim(),
+    })
+
     onSaved()
   }
 
@@ -1372,6 +1393,15 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
       })
       setSaving(false)
       if (rpcError) { setError(friendlyDbErrorMessage(rpcError)); return }
+
+      // A new_order request lands in Suspense; an existing_order request links
+      // straight to its order — notify the creator with the matching wording.
+      void notifyFinance(
+        r.payment_against === 'new_order'
+          ? { event: 'finance_approved_suspense', requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name }
+          : { event: 'finance_approved_linked',   requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name, orderNumber: r.order_number },
+      )
+
       onActioned()
       return
     }
@@ -1386,6 +1416,16 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
       .eq('id', r.id)
     setSaving(false)
     if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
+
+    // Notify the creator of the outcome (non-blocking).
+    void notifyFinance({
+      event: action === 'needs_clarification' ? 'finance_clarification' : 'finance_rejected',
+      requestNumber: r.request_number,
+      entityId: r.id,
+      creatorId: r.submitted_by,
+      clientName: r.client_name,
+    })
+
     onActioned()
   }
 

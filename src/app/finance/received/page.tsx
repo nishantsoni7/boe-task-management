@@ -10,6 +10,7 @@ import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { formatINR, isValidAmount } from '@/lib/currency'
+import { notifyFinance } from '@/lib/notify'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -614,6 +615,16 @@ function LinkOrderModal({
 
     setSaving(false)
     if (rpcError) { setError(friendlyDbErrorMessage(rpcError)); return }
+
+    // Tell the request creator their payment is now attached to an order.
+    void notifyFinance({
+      event: 'finance_linked',
+      requestNumber: payment.request_number,
+      entityId: payment.id,
+      creatorId: payment.submitted_by,
+      clientName: payment.client_name,
+      orderNumber: selected.display_number,
+    })
 
     onLinked()
   }

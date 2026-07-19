@@ -8,6 +8,7 @@ import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
 import { X, CheckCircle2 } from 'lucide-react'
+import { notifyOrders } from '@/lib/notify'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -216,7 +217,7 @@ function SubmitRequestModal({
     const { data: created, error: insertErr } = await supabase
       .from('order_requests')
       .insert(payload)
-      .select('request_number')
+      .select('id, request_number')
       .single()
 
     if (insertErr || !created) {
@@ -224,6 +225,16 @@ function SubmitRequestModal({
       setSaving(false)
       return
     }
+
+    // Notify reviewers, and the assigned user when one is set (non-blocking).
+    void notifyOrders({
+      event: 'order_submitted',
+      requestNumber: created.request_number,
+      entityId: created.id,
+      clientName: form.client_name.trim(),
+      creatorId: form.requested_by,
+      assignedTo: form.assigned_to || null,
+    })
 
     onSubmitted(created.request_number)
   }
@@ -476,7 +487,21 @@ function ConvertModal({
       return
     }
 
-    onConverted(data as ConvertResult)
+    const result = data as ConvertResult
+
+    // Notify the creator and the assigned user of the conversion. Any payments
+    // linked during conversion are covered by this single notification.
+    void notifyOrders({
+      event: 'order_converted',
+      requestNumber: request.request_number,
+      entityId: request.id,
+      clientName: request.client_name,
+      creatorId: request.requested_by,
+      assignedTo: request.assigned_to,
+      orderNumber: result.order_display_number,
+    })
+
+    onConverted(result)
   }
 
   const rowStyle: React.CSSProperties = {
@@ -756,6 +781,15 @@ function ClarifyModal({
       return
     }
 
+    // Tell the creator their request needs clarification.
+    void notifyOrders({
+      event: 'order_clarification',
+      requestNumber: request.request_number,
+      entityId: request.id,
+      clientName: request.client_name,
+      creatorId: request.requested_by,
+    })
+
     onRequested(request.request_number)
   }
 
@@ -892,6 +926,15 @@ function RejectModal({
       setSaving(false)
       return
     }
+
+    // Tell the creator their request was rejected.
+    void notifyOrders({
+      event: 'order_rejected',
+      requestNumber: request.request_number,
+      entityId: request.id,
+      clientName: request.client_name,
+      creatorId: request.requested_by,
+    })
 
     onRejected(request.request_number)
   }
@@ -1068,6 +1111,14 @@ function ResubmitModal({
       setSaving(false)
       return
     }
+
+    // Back to the reviewers' queue — notify approvers it was resubmitted.
+    void notifyOrders({
+      event: 'order_resubmitted',
+      requestNumber: request.request_number,
+      entityId: request.id,
+      clientName: form.client_name.trim(),
+    })
 
     onResubmitted(request.request_number)
   }
@@ -1285,6 +1336,14 @@ function ReapplyModal({
       setSaving(false)
       return
     }
+
+    // Back to the reviewers' queue after a rejection — notify approvers.
+    void notifyOrders({
+      event: 'order_resubmitted',
+      requestNumber: request.request_number,
+      entityId: request.id,
+      clientName: form.client_name.trim(),
+    })
 
     onReapplied(request.request_number)
   }

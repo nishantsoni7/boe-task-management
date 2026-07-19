@@ -8,6 +8,8 @@ import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import { useUnreadOrderNotifications } from '@/hooks/queries/useUnreadNotifications'
 
 type OrdersLayoutProps = {
   profile: UserProfile | null
@@ -33,6 +35,10 @@ export function OrdersLayout({
   const router   = useRouter()
   const pathname = usePathname()
   const { triggerRefresh } = useRefresh()
+
+  // Orders-only unread count — drives both the sidebar "Notifications" badge
+  // and this layout's link, scoped to Orders' own notification types.
+  const unreadOrders = useUnreadOrderNotifications()
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
@@ -120,6 +126,15 @@ export function OrdersLayout({
               </button>
             )
           })}
+
+          {/* Permanent Notifications entry — always visible, badge only when
+              unread. Scoped to Orders' own notification types, and routes to
+              Orders' own notifications page (not the global one). */}
+          <NotificationsNavItem
+            onNavigate={() => setSidebarOpen(false)}
+            count={unreadOrders}
+            href="/orders/notifications"
+          />
         </div>
 
         {/* Bottom profile section */}

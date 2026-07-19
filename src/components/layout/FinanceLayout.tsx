@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, CreditCard, Home, RefreshCw } from 'lucide-react'
+import { CheckSquare, CreditCard, Home, RefreshCw, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import { useUnreadFinanceNotifications } from '@/hooks/queries/useUnreadNotifications'
 
 type FinanceLayoutProps = {
   profile: UserProfile | null
@@ -33,6 +35,11 @@ export function FinanceLayout({
   const router   = useRouter()
   const pathname = usePathname()
   const { triggerRefresh } = useRefresh()
+
+  // Finance-only unread count — drives both the sidebar "Notifications" badge and
+  // the pulsing alert block below. Shares the notifications query cache, so
+  // marking read anywhere clears it via the existing invalidation.
+  const unreadFinance = useUnreadFinanceNotifications()
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
@@ -119,7 +126,45 @@ export function FinanceLayout({
               </button>
             )
           })}
+
+          {/* Permanent Notifications entry — always visible, badge only when
+              unread. Scoped to Finance's own notification types, and routes to
+              Finance's own notifications page (not the global one). */}
+          <NotificationsNavItem
+            onNavigate={() => setSidebarOpen(false)}
+            count={unreadFinance}
+            href="/finance/notifications"
+          />
         </div>
+
+        {/* ── Notification alert block — same pulsing indicator as Task Management,
+            shown only when Finance has unread notifications. ── */}
+        {unreadFinance > 0 && (
+          <div style={{ padding: '0 10px 14px' }}>
+            <button
+              onClick={() => navTo('/finance/notifications')}
+              className="boe-notif-alert"
+            >
+              <div className="boe-notif-alert-bell">
+                <Bell size={24} strokeWidth={1.8} color="#DC1F2E" />
+              </div>
+              <div style={{
+                fontSize: '28px', fontWeight: 800, color: '#111318', lineHeight: 1,
+              }}>
+                {unreadFinance > 99 ? '99+' : unreadFinance}
+              </div>
+              <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#3D4455' }}>
+                unread {unreadFinance === 1 ? 'notification' : 'notifications'}
+              </div>
+              <div style={{
+                fontSize: '10px', fontWeight: 600, color: '#DC1F2E',
+                letterSpacing: '0.05em', textTransform: 'uppercase',
+              }}>
+                Tap to review →
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* Bottom profile section */}
         <ViewModeSidebarSection

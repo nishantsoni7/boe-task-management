@@ -16,6 +16,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from './AdminViewModeControls'
 import { MobileBottomNav } from './MobileBottomNav'
+import { NotificationsNavItem } from './NotificationsNavItem'
+import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
 
@@ -43,18 +45,11 @@ export function DashboardLayout({
   const pathname = usePathname()
   const supabase = useMemo(() => createClient(), [])
 
-  // Notification count — TanStack Query deduplicates concurrent fetches (Strict Mode safe).
-  // Invalidated explicitly by notification mutations (mark read/delete) in notifications/page.tsx.
-  const { data: notifData } = useQuery({
-    queryKey: ['notifications', 'count'],
-    queryFn: async () => {
-      const res = await fetch('/api/notifications?count=1')
-      if (!res.ok) return { unreadCount: 0 }
-      return res.json() as Promise<{ unreadCount: number }>
-    },
-    staleTime: 30 * 1000,
-  })
-  const unreadNotifs = notifData?.unreadCount ?? 0
+  // Notification count — shared hook so every module reads one source of truth
+  // (query key ['notifications', 'count']). TanStack Query deduplicates concurrent
+  // fetches (Strict Mode safe); notification mutations (mark read/delete) in
+  // notifications/page.tsx invalidate the same key.
+  const unreadNotifs = useUnreadNotifications()
 
   const { triggerRefresh } = useRefresh()
 
@@ -341,6 +336,9 @@ export function DashboardLayout({
               />
             </>
           )}
+
+          {/* Permanent Notifications entry — always visible, badge only when unread */}
+          <NotificationsNavItem onNavigate={() => setSidebarOpen(false)} />
         </div>
 
         {/* ── Notification alert block ── */}
@@ -436,6 +434,8 @@ export function DashboardLayout({
       {/* Mobile-only bottom navigation — hidden on desktop via CSS */}
       <MobileBottomNav
         profile={profile}
+        showNotifications
+        notificationsHref="/notifications"
         unreadNotifs={unreadNotifs}
         navCounts={navCounts}
         onSignOut={onSignOut}

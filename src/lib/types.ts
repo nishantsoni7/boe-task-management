@@ -372,6 +372,9 @@ export type Notification = {
   id: string
   user_id: string
   task_id: string | null
+  /** Generic deep-link target for non-task notifications (e.g. a payment or
+   *  order request UUID). Null for task rows, which use `task_id`. */
+  entity_id: string | null
   type: string
   title: string
   body: string | null

@@ -65,6 +65,8 @@ export default function BoeOsHomePage() {
   // null = count unavailable (no API), number = real count from module's own API
   const [taskNotif,   setTaskNotif]   = useState<number | null>(null)
   const [sampleNotif, setSampleNotif] = useState<number | null>(null)
+  const [financeNotif, setFinanceNotif] = useState<number | null>(null)
+  const [orderNotif, setOrderNotif] = useState<number | null>(null)
   const [modVis,      setModVis]      = useState<Record<string, ModVisRow>>({})
   const [ordersAllowed, setOrdersAllowed] = useState(false)
 
@@ -84,6 +86,8 @@ export default function BoeOsHomePage() {
         { data: appModulesData },
         taskNotifsRes,
         sampleNotifsRes,
+        financeNotifsRes,
+        orderNotifsRes,
         ordersAllowedRes,
       ] = await Promise.all([
         supabase
@@ -96,11 +100,19 @@ export default function BoeOsHomePage() {
           .select('module_key, visibility_type, allowed_department')
           .order('sort_order'),
         // Task Management: same unread count the /notifications page shows
-        fetch('/api/notifications?count=1')
+        fetch('/api/notifications?count=1&category=task')
           .then(r => r.ok ? r.json() : null)
           .catch(() => null),
         // Sample Tracking: unread sample notification count
         fetch('/api/samples/notifications?count=1')
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null),
+        // Finance: unread count scoped to Finance events (type finance_%)
+        fetch('/api/notifications?count=1&category=finance')
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null),
+        // Orders: unread count scoped to Order Management events (type order_%)
+        fetch('/api/notifications?count=1&category=order')
           .then(r => r.ok ? r.json() : null)
           .catch(() => null),
         // Order Management: gated by the permission engine (Control Center →
@@ -119,6 +131,8 @@ export default function BoeOsHomePage() {
       // Keep null if the API failed so the card shows "No pending" rather than a wrong number
       setTaskNotif(taskNotifsRes != null ? (taskNotifsRes.unreadCount ?? 0) : null)
       setSampleNotif(sampleNotifsRes != null ? (sampleNotifsRes.unreadCount ?? 0) : null)
+      setFinanceNotif(financeNotifsRes != null ? (financeNotifsRes.unreadCount ?? 0) : null)
+      setOrderNotif(orderNotifsRes != null ? (orderNotifsRes.unreadCount ?? 0) : null)
       setOrdersAllowed(ordersAllowedRes === true)
       setLoading(false)
     }
@@ -236,7 +250,7 @@ export default function BoeOsHomePage() {
       status: 'foundation' as ModuleStatus,
       accent: '#065F46',
       icon: <FinanceIcon />,
-      notificationCount: null,
+      notificationCount: financeNotif,
       visibilityType: modVis['finance']?.visibility_type,
       allowedDepartment: modVis['finance']?.allowed_department,
     }] : []),
@@ -248,7 +262,7 @@ export default function BoeOsHomePage() {
       status: 'active' as ModuleStatus,
       accent: '#DC1F2E',
       icon: <OrdersIcon />,
-      notificationCount: null,
+      notificationCount: orderNotif,
       visibilityType: modVis['orders']?.visibility_type,
       allowedDepartment: modVis['orders']?.allowed_department,
     }] : []),

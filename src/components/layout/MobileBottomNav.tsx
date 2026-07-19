@@ -13,6 +13,13 @@ type NavCounts = { myActive: number; assignedByMeActive: number }
 
 type Props = {
   profile:      UserProfile | null
+  /** Opt-in: renders the "Notifs" tab. Defaults to false so a module with no
+   *  notification system of its own (e.g. Assets & Access, which reuses this
+   *  bottom nav) never shows a Task Management notifications tab. */
+  showNotifications?: boolean
+  /** Where the "Notifs" tab navigates. Only meaningful when
+   *  `showNotifications` is true. Defaults to Task Management's own page. */
+  notificationsHref?: string
   unreadNotifs?: number
   navCounts?:   NavCounts
   onSignOut:    () => void
@@ -115,7 +122,10 @@ function MoreItem({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function MobileBottomNav({ profile, unreadNotifs = 0, navCounts, onSignOut }: Props) {
+export function MobileBottomNav({
+  profile, showNotifications = false, notificationsHref = '/notifications',
+  unreadNotifs = 0, navCounts, onSignOut,
+}: Props) {
   const [moreOpen, setMoreOpen] = useState(false)
 
   const router   = useRouter()
@@ -137,7 +147,7 @@ export function MobileBottomNav({ profile, unreadNotifs = 0, navCounts, onSignOu
   }
 
   const myTasksActive   = pathname.startsWith('/tasks/my') || pathname.startsWith('/tasks/cancelled')
-  const notifsActive    = pathname.startsWith('/notifications')
+  const notifsActive    = showNotifications && pathname.startsWith(notificationsHref)
   const perfActive      = pathname.startsWith('/performance')
   const homeActive      = pathname === '/dashboard'
   const moreActive      = !homeActive && !myTasksActive && !notifsActive && !perfActive
@@ -222,7 +232,9 @@ export function MobileBottomNav({ profile, unreadNotifs = 0, navCounts, onSignOu
       >
         <BottomNavItem label="Home"        icon={Home}          active={homeActive}    onClick={() => go('/dashboard')} />
         <BottomNavItem label="My Tasks"    icon={ClipboardList} active={myTasksActive} badge={myBadge}    onClick={() => go('/tasks/my')} />
-        <BottomNavItem label="Notifs"      icon={Bell}          active={notifsActive}  badge={notifBadge} onClick={() => go('/notifications')} />
+        {showNotifications && (
+          <BottomNavItem label="Notifs"    icon={Bell}          active={notifsActive}  badge={notifBadge} onClick={() => go(notificationsHref)} />
+        )}
         <BottomNavItem label="Performance" icon={TrendingUp}    active={perfActive}    onClick={() => go('/performance')} />
         <BottomNavItem
           label="More"
