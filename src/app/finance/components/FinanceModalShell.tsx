@@ -80,13 +80,29 @@ export function RequestModalShell({
   onClose,
   left,
   right,
+  ariaLabel,
+  top,
+  bottom,
+  footer,
+  width = '880px',
 }: {
   requestNumber: string
-  submittedLine: string
+  submittedLine: React.ReactNode
   statusBadge: React.ReactNode
   onClose: () => void
   left: React.ReactNode
   right: React.ReactNode
+  ariaLabel?: string
+  // Optional full-width zones rendered inside the same scroll container:
+  // `top` above the two columns (summary strips), `bottom` below them
+  // (context/history blocks that must span both columns).
+  top?: React.ReactNode
+  bottom?: React.ReactNode
+  // Optional non-scrolling action bar pinned below the body. Callers that
+  // don't pass it get the exact previous layout.
+  footer?: React.ReactNode
+  // Dialog width. Defaults to the Finance modals' original 880px.
+  width?: string
 }) {
   useModalScrollLockAndEscape(onClose)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -102,11 +118,11 @@ export function RequestModalShell({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Payment request ${requestNumber}`}
+        aria-label={ariaLabel ?? `Payment request ${requestNumber}`}
         tabIndex={-1}
         style={{
           position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-          width: '880px', maxWidth: 'calc(100vw - 24px)', maxHeight: '88vh',
+          width, maxWidth: 'calc(100vw - 24px)', maxHeight: '88vh',
           background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
           boxShadow: '0 12px 40px rgba(0,0,0,0.16)',
           zIndex: FINANCE_MODAL_DIALOG_Z, display: 'flex', flexDirection: 'column', overflow: 'hidden', outline: 'none',
@@ -134,7 +150,8 @@ export function RequestModalShell({
         {/* ── Scrollable body — single scroll container holding a two-zone workspace.
             On desktop the two zones sit side by side (left ≈56%, right ≈44%); when
             the modal is too narrow they wrap and stack in DOM order. ── */}
-        <div style={{ padding: '18px 20px', overflowY: 'auto', overflowX: 'hidden', flex: 1 }}>
+        <div style={{ padding: '18px 20px', overflowY: 'auto', overflowX: 'hidden', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {top}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
             <div style={{ flex: '56 1 360px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {left}
@@ -143,7 +160,15 @@ export function RequestModalShell({
               {right}
             </div>
           </div>
+          {bottom}
         </div>
+
+        {/* ── Optional pinned action bar — always reachable while the body scrolls ── */}
+        {footer && (
+          <div style={{ padding: '12px 20px', borderTop: `1px solid ${colors.border}`, flexShrink: 0, background: colors.base }}>
+            {footer}
+          </div>
+        )}
       </div>
     </>
   )

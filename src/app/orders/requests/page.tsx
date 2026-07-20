@@ -9,6 +9,8 @@ import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
 import { X, CheckCircle2 } from 'lucide-react'
 import { notifyOrders } from '@/lib/notify'
+import { formatINR } from '@/lib/currency'
+import { RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,6 +35,7 @@ type OrderRequest = {
   created_at: string
   converted_order_id: string | null
   converted_order_number?: string
+  converted_order_total_value?: number | string | null
 }
 
 // The project's existing requester rule (order_requests_requester_select /
@@ -109,14 +112,82 @@ function parseStatusFilter(value: string | null): StatusFilter {
   return (STATUS_FILTER_KEYS as string[]).includes(value ?? '') ? (value as StatusFilter) : 'active'
 }
 
-function fmtAmount(n: number | null) {
-  if (n == null) return '—'
-  return '₹' + n.toLocaleString('en-IN')
+// Numeric columns can surface as strings depending on the driver; coerce
+// defensively so a stored value never renders as "₹NaN". Genuine zero renders
+// as ₹0; only null/undefined/empty/unparseable become "—".
+function fmtAmount(n: number | string | null | undefined) {
+  if (n == null || n === '') return '—'
+  const num = typeof n === 'number' ? n : Number(n)
+  if (!Number.isFinite(num)) return '—'
+  return formatINR(num)
 }
 
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// ── Advance-received derivation ───────────────────────────────────────────────
+// The only reliable payment linkage in the system is
+// finance_payment_requests.order_id -> orders.id (enforced by the
+// finance_payment_requests_status_order_invariant CHECK: approved_linked rows
+// always carry an order_id, approved_unlinked rows never do). A request reaches
+// that linkage only through converted_order_id, so:
+//   - unconverted requests have NO trustworthy payment reference (client_name
+//     matching is display-only guidance elsewhere in this file, never a
+//     financial rule) and are reported as "not linked" — never a confirmed ₹0;
+//   - finance_payment_requests SELECT RLS is admin-only (plus own submissions),
+//     so non-admin viewers are reported as "restricted" — never a false ₹0
+//     summed from a partial view (same gating as the Orders dashboard);
+//   - for converted requests seen by an admin, received = SUM(amount) of
+//     approved_linked payments on the converted order, and the percentage uses
+//     the converted order's total_value as denominator — the exact formula the
+//     Order detail page already uses, so both surfaces always agree.
+type AdvanceInfo =
+  | { kind: 'not_linked' }
+  | { kind: 'restricted' }
+  | { kind: 'known'; received: number; denominator: number | null; pct: number | null; pending: number | null }
+
+function getAdvanceInfo(r: OrderRequest, advanceByOrder: Record<string, number> | null): AdvanceInfo {
+  if (!r.converted_order_id) return { kind: 'not_linked' }
+  if (advanceByOrder == null) return { kind: 'restricted' }
+  const received = advanceByOrder[r.converted_order_id] ?? 0
+  const rawDenom = r.converted_order_total_value
+  const denomNum = rawDenom == null || rawDenom === '' ? NaN : Number(rawDenom)
+  // A null or zero order value cannot anchor a percentage — report it as
+  // unavailable rather than showing a false 0% (and never divide by zero).
+  const denominator = Number.isFinite(denomNum) && denomNum > 0 ? denomNum : null
+  const pct = denominator != null ? Math.round((received / denominator) * 100) : null
+  const pending = denominator != null ? Math.max(0, denominator - received) : null
+  return { kind: 'known', received, denominator, pct, pending }
+}
+
+// Compact two-line advance indicator for the table. The bar is visually capped
+// at 100% but the printed percentage stays real (e.g. 105% on overpayment).
+function AdvanceCell({ info }: { info: AdvanceInfo }) {
+  if (info.kind === 'not_linked') {
+    return <span style={{ fontSize: '12px', color: colors.muted }}>Not linked</span>
+  }
+  if (info.kind === 'restricted') {
+    return <span style={{ color: colors.muted }}>—</span>
+  }
+  const { received, pct } = info
+  const tone = pct == null || pct <= 0 ? colors.muted : pct >= 100 ? colors.green : colors.blue
+  return (
+    <div>
+      <div style={{ fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+        {formatINR(received)}
+      </div>
+      <div style={{ fontSize: '11px', color: tone, marginTop: '2px' }}>
+        {pct == null ? 'Percentage unavailable' : `${pct}% received`}
+      </div>
+      {pct != null && (
+        <div style={{ width: '72px', height: '3px', borderRadius: '2px', background: colors.float, marginTop: '4px', overflow: 'hidden' }}>
+          <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: tone }} />
+        </div>
+      )}
+    </div>
+  )
 }
 
 // There is no stable shared client ID between finance_payment_requests and
@@ -145,6 +216,302 @@ function StatusBadge({ status }: { status: string }) {
     }}>
       {meta.label}
     </span>
+  )
+}
+
+// ── Request details modal ─────────────────────────────────────────────────────
+// Same visual system as the Finance DetailsModal: the shared RequestModalShell
+// (sticky header with request number / client / submitted line / status badge)
+// plus a full-width commercial summary strip and a pinned action bar. Every
+// workflow action (Convert, Clarify, Reject, Resubmit, Reapply, Open Order)
+// lives here now — the table has no action buttons. Visibility conditions are
+// identical to the ones the table buttons used; the handlers and confirmation
+// modals are the existing ones, invoked via callbacks.
+
+// Compact horizontal label–value row for the details panels: muted uppercase
+// label on the left, darker value on the right, hairline separator between
+// rows (suppressed on the last row so panel height tracks content exactly).
+function DetailRow({ label, value, muted, last }: { label: string; value: string; muted?: boolean; last?: boolean }) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px',
+      padding: '9px 0', borderBottom: last ? 'none' : `1px solid ${colors.border}`,
+    }}>
+      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', flexShrink: 0 }}>
+        {label}
+      </span>
+      <span style={{ fontSize: '14px', color: muted ? colors.muted : colors.primary, textAlign: 'right', wordBreak: 'break-word', minWidth: 0, lineHeight: 1.4 }}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+// Compact uppercase section label, as used in the Finance details modal.
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      {children}
+    </div>
+  )
+}
+
+// One metric group inside the commercial summary panel. Groups are separated
+// by the panel's 1px divider grid, not by per-group borders — the four figures
+// read as a single surface. Unavailable states ("Not linked", "—") render at
+// body weight in muted text so they never masquerade as financial figures.
+function MetricGroup({ label, value, note, valueMuted, bar }: {
+  label: string
+  value: string
+  note?: string
+  valueMuted?: boolean
+  bar?: { pct: number; tone: string }
+}) {
+  return (
+    <div style={{
+      background: colors.base, padding: '14px 16px', minWidth: 0,
+      display: 'flex', flexDirection: 'column', gap: '5px',
+    }}>
+      <span style={{ fontSize: '10.5px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {label}
+      </span>
+      <span style={{
+        fontSize: valueMuted ? '14px' : '21px',
+        fontWeight: valueMuted ? 500 : 700,
+        lineHeight: valueMuted ? '25px' : 1.2,
+        color: valueMuted ? colors.muted : colors.primary,
+        fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word',
+      }}>
+        {value}
+      </span>
+      {bar && (
+        <div aria-hidden="true" style={{ height: '4px', borderRadius: '2px', background: colors.float, overflow: 'hidden', maxWidth: '160px' }}>
+          <div style={{ width: `${Math.min(bar.pct, 100)}%`, height: '100%', background: bar.tone }} />
+        </div>
+      )}
+      {note && <span style={{ fontSize: '11.5px', color: colors.muted }}>{note}</span>}
+    </div>
+  )
+}
+
+function RequestDetailsModal({
+  request: r,
+  advance,
+  isAdmin,
+  currentUserId,
+  onClose,
+  onConvert,
+  onClarify,
+  onReject,
+  onResubmit,
+  onReapply,
+  onOpenOrder,
+}: {
+  request: OrderRequest
+  advance: AdvanceInfo
+  isAdmin: boolean
+  currentUserId: string
+  onClose: () => void
+  onConvert: () => void
+  onClarify: () => void
+  onReject: () => void
+  onResubmit: () => void
+  onReapply: () => void
+  onOpenOrder: () => void
+}) {
+  // Header support area: client name clearly visible but secondary to the
+  // request number, with the requester/date line muted beneath it.
+  const submittedLine = (
+    <>
+      <span style={{ display: 'block', fontSize: '15.5px', fontWeight: 500, color: colors.primary, wordBreak: 'break-word', lineHeight: 1.3 }}>
+        {r.client_name}
+      </span>
+      <span style={{ display: 'block', marginTop: '3px' }}>
+        {r.requested_by_name ? `Requested by ${r.requested_by_name} · ` : ''}Submitted {fmtDate(r.created_at)}
+      </span>
+    </>
+  )
+
+  // Status-specific decision block, tinted with the request's status colours —
+  // shown whenever the stored note exists (clarification_note is cleared on
+  // resubmit and rejection_reason on reapply, so presence tracks status).
+  const decision = r.clarification_note
+    ? { title: 'Clarification requested', bg: '#EFF6FF', border: '#BFDBFE', color: '#1E3A8A', note: r.clarification_note }
+    : r.rejection_reason
+      ? { title: 'Rejection reason', bg: '#FEF2F2', border: '#FECACA', color: '#7F1D1D', note: r.rejection_reason }
+      : null
+
+  // Both details panels share this frame: the section label carries the top
+  // padding, the rows carry their own vertical rhythm, and no fixed heights —
+  // the two columns start level and each ends where its content ends.
+  const panelStyle: React.CSSProperties = {
+    border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '14px 16px 5px',
+  }
+
+  // ── Commercial summary — one full-width panel, four aligned metric groups
+  // separated by the 1px divider grid (the border-coloured grid gap), so the
+  // figures read as a single surface and the dividers reflow correctly when
+  // the groups wrap to 2×2 or a single column on narrow viewports. ──
+  const advanceTone = advance.kind === 'known' && advance.pct != null
+    ? (advance.pct <= 0 ? colors.muted : advance.pct >= 100 ? colors.green : colors.blue)
+    : colors.muted
+  const top = (
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1px', background: colors.border }}>
+        <MetricGroup label="Total Order Value"   value={fmtAmount(r.total_value)}         valueMuted={r.total_value == null} />
+        <MetricGroup label="Total Product Value" value={fmtAmount(r.total_product_value)} valueMuted={r.total_product_value == null} />
+        {advance.kind === 'known' ? (
+          <>
+            <MetricGroup
+              label="Advance Received"
+              value={formatINR(advance.received)}
+              note={advance.pending != null ? `Pending ${formatINR(advance.pending)}` : undefined}
+            />
+            <MetricGroup
+              label="Payment Position"
+              value={advance.pct != null ? `${advance.pct}%` : '—'}
+              valueMuted={advance.pct == null}
+              note={advance.pct != null ? 'received' : 'Percentage unavailable'}
+              bar={advance.pct != null ? { pct: advance.pct, tone: advanceTone } : undefined}
+            />
+          </>
+        ) : advance.kind === 'not_linked' ? (
+          <>
+            <MetricGroup label="Advance Received" value="Not linked" valueMuted note="Payments link after conversion" />
+            <MetricGroup label="Payment Position" value="—" valueMuted note="Available after conversion" />
+          </>
+        ) : (
+          <>
+            <MetricGroup label="Advance Received" value="—" valueMuted note="Finance access required" />
+            <MetricGroup label="Payment Position" value="—" valueMuted />
+          </>
+        )}
+      </div>
+    </div>
+  )
+
+  // ── Main details — two level columns of compact rows ──
+  const left = (
+    <div style={panelStyle}>
+      <SectionHeader>Request Details</SectionHeader>
+      <div style={{ marginTop: '3px' }}>
+        <DetailRow label="Client" value={r.client_name} />
+        <DetailRow
+          label="Lead Source"
+          value={LEAD_SOURCE_OPTIONS.find(o => o.value === r.lead_source)?.label ?? '—'}
+          muted={!r.lead_source}
+        />
+        <DetailRow label="Confirmation Date" value={fmtDate(r.confirm_date)} muted={!r.confirm_date} />
+        <DetailRow label="Due Date"          value={fmtDate(r.due_date)}     muted={!r.due_date} last />
+      </div>
+    </div>
+  )
+
+  const right = (
+    <div style={panelStyle}>
+      <SectionHeader>Ownership &amp; Timeline</SectionHeader>
+      <div style={{ marginTop: '3px' }}>
+        <DetailRow label="Requested By" value={r.requested_by_name ?? '—'} muted={!r.requested_by_name} />
+        <DetailRow label="Assignee"     value={r.assigned_to_name  ?? '—'} muted={!r.assigned_to_name} />
+        <DetailRow label="Submitted On" value={fmtDate(r.created_at)} last />
+      </div>
+    </div>
+  )
+
+  // ── Context and decision history — full-width blocks, only when data exists ──
+  const contextLabelStyle = (color: string): React.CSSProperties => ({
+    fontSize: '11px', fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '5px',
+  })
+  const contextBodyStyle = (color: string): React.CSSProperties => ({
+    fontSize: '13.5px', color, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+  })
+  const bottom = (
+    <>
+      {r.notes?.trim() && (
+        <div style={{ padding: '12px 16px', borderRadius: '10px', background: colors.raised, border: `1px solid ${colors.border}` }}>
+          <div style={contextLabelStyle(colors.muted)}>Notes</div>
+          <div style={contextBodyStyle(colors.secondary)}>{r.notes}</div>
+        </div>
+      )}
+
+      {decision && (
+        <div style={{ padding: '12px 16px', borderRadius: '10px', background: decision.bg, border: `1px solid ${decision.border}` }}>
+          <div style={contextLabelStyle(decision.color)}>{decision.title}</div>
+          <div style={contextBodyStyle(decision.color)}>{decision.note}</div>
+        </div>
+      )}
+
+      {r.status === 'converted' && r.converted_order_number && (
+        <div style={{ padding: '12px 16px', borderRadius: '10px', background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+          <div style={contextLabelStyle('#166534')}>Converted</div>
+          <div style={{ ...contextBodyStyle('#166534'), whiteSpace: 'normal' }}>
+            Official Order {r.converted_order_number} was created from this request.
+          </div>
+        </div>
+      )}
+    </>
+  )
+
+  // ── Actions — identical visibility rules to the former table buttons ──
+  const canReview    = isAdmin && r.status === 'submitted'
+  const canResubmit  = r.status === 'needs_clarification' && isPermittedRequester(r, currentUserId)
+  const canReapply   = r.status === 'rejected' && isPermittedRequester(r, currentUserId)
+  const canOpenOrder = r.status === 'converted' && !!r.converted_order_id
+
+  const actionBtn: React.CSSProperties = {
+    padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+  }
+  const footer = (canReview || canResubmit || canReapply || canOpenOrder) ? (
+    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Destructive action stays visually separated on the far left */}
+      {canReview && (
+        <button onClick={onReject} style={{ ...actionBtn, background: 'transparent', border: '1px solid #FECACA', color: '#991B1B' }}>
+          Reject Request
+        </button>
+      )}
+      <div style={{ flex: 1 }} />
+      {canReview && (
+        <button onClick={onClarify} style={{ ...actionBtn, background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary }}>
+          Request Clarification
+        </button>
+      )}
+      {canReview && (
+        <button onClick={onConvert} style={{ ...actionBtn, background: '#DC1F2E', border: 'none', color: '#fff' }}>
+          Convert
+        </button>
+      )}
+      {canResubmit && (
+        <button onClick={onResubmit} style={{ ...actionBtn, background: '#1E40AF', border: 'none', color: '#fff' }}>
+          Update and Resubmit
+        </button>
+      )}
+      {canReapply && (
+        <button onClick={onReapply} style={{ ...actionBtn, background: '#1E40AF', border: 'none', color: '#fff' }}>
+          Update and Reapply
+        </button>
+      )}
+      {canOpenOrder && (
+        <button onClick={onOpenOrder} style={{ ...actionBtn, background: '#DC1F2E', border: 'none', color: '#fff' }}>
+          Open Order
+        </button>
+      )}
+    </div>
+  ) : undefined
+
+  return (
+    <RequestModalShell
+      requestNumber={r.request_number}
+      submittedLine={submittedLine}
+      statusBadge={<StatusBadge status={r.status} />}
+      onClose={onClose}
+      top={top}
+      left={left}
+      right={right}
+      bottom={bottom}
+      footer={footer}
+      width="980px"
+      ariaLabel={`Order request ${r.request_number}`}
+    />
   )
 }
 
@@ -1611,8 +1978,13 @@ function OrderRequestsPageInner() {
   const [resubmitTarget, setResubmitTarget] = useState<OrderRequest | null>(null)
   const [rejectTarget,   setRejectTarget]   = useState<OrderRequest | null>(null)
   const [reapplyTarget,  setReapplyTarget]  = useState<OrderRequest | null>(null)
+  const [detailsTarget,  setDetailsTarget]  = useState<OrderRequest | null>(null)
   const [actionMessage,  setActionMessage]  = useState<string | null>(null)
   const [highlightId,    setHighlightId]    = useState<string | null>(null)
+  // Sum of approved_linked payment amounts per converted order id. null means
+  // the viewer cannot read Finance data (non-admin RLS) — rendered as "—",
+  // never as a false ₹0.
+  const [advanceByOrder, setAdvanceByOrder] = useState<Record<string, number> | null>(null)
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -1626,7 +1998,7 @@ function OrderRequestsPageInner() {
   const deepLinkHandled = useRef(false)
   const supabase = useMemo(() => createClient(), [])
 
-  const loadRequests = async () => {
+  const loadRequests = async (roleOverride?: string) => {
     setListLoading(true)
     const { data } = await supabase
       .from('order_requests')
@@ -1637,21 +2009,50 @@ function OrderRequestsPageInner() {
         status, created_by, clarification_note, rejection_reason, created_at, converted_order_id,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
-        converted_order:orders!converted_order_id(display_number)
+        converted_order:orders!converted_order_id(display_number, total_value)
       `)
       .order('created_at', { ascending: false })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapped: OrderRequest[] = ((data ?? []) as any[]).map(r => ({
       ...r,
-      requested_by_name:      r.requested_by_user?.full_name ?? undefined,
-      assigned_to_name:       r.assigned_to_user?.full_name  ?? undefined,
-      converted_order_number: r.converted_order?.display_number ?? undefined,
+      requested_by_name:            r.requested_by_user?.full_name ?? undefined,
+      assigned_to_name:             r.assigned_to_user?.full_name  ?? undefined,
+      converted_order_number:       r.converted_order?.display_number ?? undefined,
+      converted_order_total_value:  r.converted_order?.total_value ?? null,
       requested_by_user: undefined,
       assigned_to_user:  undefined,
       converted_order:   undefined,
     }))
     setRequests(mapped)
+
+    // Advance-received aggregation: one batched query for every converted
+    // order on the page (no per-row N+1). Admin only — finance_payment_requests
+    // SELECT RLS returns all rows only to admins; anyone else would get a
+    // partial (own-submissions) view that must not be presented as a total.
+    // Only approved_linked rows count: that is the exact rule the Order detail
+    // page already uses, and the status<->order_id CHECK invariant guarantees
+    // pending/clarification/rejected/unlinked rows carry no order_id anyway.
+    const role = roleOverride ?? profile?.role
+    const convertedOrderIds = mapped.filter(r => r.converted_order_id).map(r => r.converted_order_id as string)
+    if (role === 'admin' && convertedOrderIds.length > 0) {
+      const { data: payData } = await supabase
+        .from('finance_payment_requests')
+        .select('order_id, amount')
+        .eq('status', 'approved_linked')
+        .in('order_id', convertedOrderIds)
+      const sums: Record<string, number> = {}
+      for (const p of (payData ?? []) as { order_id: string | null; amount: number | string }[]) {
+        const amt = Number(p.amount)
+        if (p.order_id && Number.isFinite(amt)) sums[p.order_id] = (sums[p.order_id] ?? 0) + amt
+      }
+      setAdvanceByOrder(sums)
+    } else if (role === 'admin') {
+      setAdvanceByOrder({})
+    } else {
+      setAdvanceByOrder(null)
+    }
+
     setListLoading(false)
   }
 
@@ -1675,7 +2076,8 @@ function OrderRequestsPageInner() {
       const { data: assigneesData } = await supabase.rpc('list_eligible_order_assignees')
       setAssigneeOptions((assigneesData ?? []) as AssigneeOption[])
 
-      await loadRequests()
+      // profile state isn't visible to this closure yet — pass the role in.
+      await loadRequests((me as UserProfile | null)?.role)
       setPageLoading(false)
     }
     init()
@@ -1896,7 +2298,7 @@ function OrderRequestsPageInner() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  {['Request #', 'Client', 'Requested By', 'Assignee', 'Confirmation Date', 'Due Date', 'Total Order Value', 'Status', 'Submitted On', 'Action'].map(h => (
+                  {['Request #', 'Client', 'Assignee', 'Confirmation Date', 'Due Date', 'Value', 'Advance Received', 'Status'].map(h => (
                     <th key={h} style={{
                       padding: '8px 16px', textAlign: 'left',
                       fontSize: '10px', fontWeight: 600, color: colors.muted,
@@ -1911,13 +2313,34 @@ function OrderRequestsPageInner() {
                   <tr
                     key={r.id}
                     id={`order-request-row-${r.id}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open order request ${r.request_number}`}
+                    onClick={() => setDetailsTarget(r)}
+                    onKeyDown={e => {
+                      if (e.target !== e.currentTarget) return
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailsTarget(r) }
+                    }}
                     style={{
+                      cursor: 'pointer',
                       borderBottom: `1px solid ${colors.border}`,
                       background: r.id === highlightId ? colors.amberTint : undefined,
                     }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = r.id === highlightId ? colors.amberTint : 'transparent' }}
                   >
-                    <td style={{ padding: '11px 16px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
-                      {r.request_number}
+                    <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
+                      <button
+                        onClick={e => { e.stopPropagation(); setDetailsTarget(r) }}
+                        style={{
+                          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                          font: 'inherit', fontWeight: 600, color: colors.primary,
+                          textDecoration: 'underline', textUnderlineOffset: '3px',
+                          textDecorationColor: colors.borderMed,
+                        }}
+                      >
+                        {r.request_number}
+                      </button>
                       {r.status === 'converted' && r.converted_order_number && (
                         <div style={{ fontSize: '11px', fontWeight: 500, color: colors.muted, marginTop: '2px' }}>
                           → Order {r.converted_order_number}
@@ -1946,13 +2369,10 @@ function OrderRequestsPageInner() {
                         </div>
                       )}
                     </td>
-                    <td style={{ padding: '11px 16px', color: colors.primary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '11px 16px', color: colors.primary, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.client_name}>
                       {r.client_name}
                     </td>
-                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                      {r.requested_by_name ?? '—'}
-                    </td>
-                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '11px 16px', color: colors.secondary, maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.assigned_to_name ?? undefined}>
                       {r.assigned_to_name ?? '—'}
                     </td>
                     <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
@@ -1961,82 +2381,19 @@ function OrderRequestsPageInner() {
                     <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
                       {fmtDate(r.due_date)}
                     </td>
-                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                      {fmtAmount(r.total_value)}
+                    <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtAmount(r.total_value)}
+                      </div>
+                      <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
+                        Products: {fmtAmount(r.total_product_value)}
+                      </div>
+                    </td>
+                    <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
+                      <AdvanceCell info={getAdvanceInfo(r, advanceByOrder)} />
                     </td>
                     <td style={{ padding: '11px 16px' }}>
                       <StatusBadge status={r.status} />
-                    </td>
-                    <td style={{ padding: '11px 16px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                      {fmtDate(r.created_at)}
-                    </td>
-                    <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
-                      {isAdmin && r.status === 'submitted' ? (
-                        <span style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button
-                            onClick={() => setConvertTarget(r)}
-                            style={{
-                              padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                              background: '#DC1F2E', border: 'none', color: '#fff', cursor: 'pointer',
-                            }}
-                          >
-                            Convert
-                          </button>
-                          <button
-                            onClick={() => setClarifyTarget(r)}
-                            style={{
-                              padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                              background: 'transparent', border: `1px solid ${colors.border}`,
-                              color: colors.secondary, cursor: 'pointer',
-                            }}
-                          >
-                            Request Clarification
-                          </button>
-                          <button
-                            onClick={() => setRejectTarget(r)}
-                            style={{
-                              padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                              background: 'transparent', border: '1px solid #FECACA',
-                              color: '#991B1B', cursor: 'pointer',
-                            }}
-                          >
-                            Reject Request
-                          </button>
-                        </span>
-                      ) : r.status === 'needs_clarification' && isPermittedRequester(r, currentUserId) ? (
-                        <button
-                          onClick={() => setResubmitTarget(r)}
-                          style={{
-                            padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                            background: '#1E40AF', border: 'none', color: '#fff', cursor: 'pointer',
-                          }}
-                        >
-                          Update and Resubmit
-                        </button>
-                      ) : r.status === 'rejected' && isPermittedRequester(r, currentUserId) ? (
-                        <button
-                          onClick={() => setReapplyTarget(r)}
-                          style={{
-                            padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                            background: '#1E40AF', border: 'none', color: '#fff', cursor: 'pointer',
-                          }}
-                        >
-                          Update and Reapply
-                        </button>
-                      ) : r.status === 'converted' && r.converted_order_id ? (
-                        <button
-                          onClick={() => router.push(`/orders/${r.converted_order_id}`)}
-                          style={{
-                            padding: '4px 11px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                            background: 'transparent', border: `1px solid ${colors.border}`,
-                            color: colors.secondary, cursor: 'pointer',
-                          }}
-                        >
-                          Open Order
-                        </button>
-                      ) : (
-                        <span style={{ color: colors.muted }}>—</span>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -2045,6 +2402,29 @@ function OrderRequestsPageInner() {
           </div>
         )}
       </div>
+
+      {detailsTarget && (
+        <RequestDetailsModal
+          request={detailsTarget}
+          advance={getAdvanceInfo(detailsTarget, advanceByOrder)}
+          isAdmin={isAdmin}
+          currentUserId={currentUserId}
+          // While an action modal is layered above, the shell's Escape/overlay
+          // close must not tear down the details view underneath it.
+          onClose={() => {
+            if (convertTarget || clarifyTarget || rejectTarget || resubmitTarget || reapplyTarget) return
+            setDetailsTarget(null)
+          }}
+          onConvert={()  => setConvertTarget(detailsTarget)}
+          onClarify={()  => setClarifyTarget(detailsTarget)}
+          onReject={()   => setRejectTarget(detailsTarget)}
+          onResubmit={() => setResubmitTarget(detailsTarget)}
+          onReapply={()  => setReapplyTarget(detailsTarget)}
+          onOpenOrder={() => {
+            if (detailsTarget.converted_order_id) router.push(`/orders/${detailsTarget.converted_order_id}`)
+          }}
+        />
+      )}
 
       {showModal && (
         <SubmitRequestModal
@@ -2066,6 +2446,7 @@ function OrderRequestsPageInner() {
           onClose={() => setConvertTarget(null)}
           onConverted={result => {
             setConvertTarget(null)
+            setDetailsTarget(null)
             setSuccessNumber(null)
             setActionMessage(null)
             setConverted(result)
@@ -2080,6 +2461,7 @@ function OrderRequestsPageInner() {
           onClose={() => setClarifyTarget(null)}
           onRequested={requestNumber => {
             setClarifyTarget(null)
+            setDetailsTarget(null)
             setSuccessNumber(null)
             setConverted(null)
             setActionMessage(`Clarification requested on ${requestNumber}. It now sits under Needs Clarification.`)
@@ -2096,6 +2478,7 @@ function OrderRequestsPageInner() {
           onClose={() => setResubmitTarget(null)}
           onResubmitted={requestNumber => {
             setResubmitTarget(null)
+            setDetailsTarget(null)
             setSuccessNumber(null)
             setConverted(null)
             setActionMessage(`${requestNumber} updated and resubmitted. It is back under Active for review.`)
@@ -2110,6 +2493,7 @@ function OrderRequestsPageInner() {
           onClose={() => setRejectTarget(null)}
           onRejected={requestNumber => {
             setRejectTarget(null)
+            setDetailsTarget(null)
             setSuccessNumber(null)
             setConverted(null)
             setActionMessage(`${requestNumber} has been rejected.`)
@@ -2126,6 +2510,7 @@ function OrderRequestsPageInner() {
           onClose={() => setReapplyTarget(null)}
           onReapplied={requestNumber => {
             setReapplyTarget(null)
+            setDetailsTarget(null)
             setSuccessNumber(null)
             setConverted(null)
             setActionMessage(`${requestNumber} updated and reapplied. It is back under Active for review.`)
