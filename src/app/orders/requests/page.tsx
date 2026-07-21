@@ -8,7 +8,8 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
-import { X, CheckCircle2 } from 'lucide-react'
+import { X, CheckCircle2, Clock, Layers, MessageCircleQuestion, CircleX, type LucideIcon } from 'lucide-react'
+import { StatusTabs, accentFromBadge, BRAND_TAB_ACCENT, type TabAccent } from '@/components/ui/StatusTabs'
 import { notifyOrders } from '@/lib/notify'
 import { formatINR } from '@/lib/currency'
 import { orderNumberErrorMessage } from '@/lib/orderNumbering'
@@ -164,11 +165,15 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
 // "Pending" is the submitted-and-awaiting-review tab. Its key is 'pending' —
 // label and key say the same thing, and LEGACY_TAB_KEYS below normalizes the
 // old 'active' spelling so no second permanent key survives.
-const STATUS_TABS: { key: StatusFilter; label: string; match: (s: string) => boolean }[] = [
-  { key: 'pending',             label: 'Pending',             match: s => s === 'submitted' },
-  { key: 'needs_clarification', label: 'Needs Clarification', match: s => s === 'needs_clarification' },
-  { key: 'rejected',            label: 'Rejected',            match: s => s === 'rejected' },
-  { key: 'all',                 label: 'All',                 match: () => true },
+//
+// Each tab's accent comes from the STATUS_META badge its rows already wear, so a
+// request reads the same colour in the strip, the table, and the detail modal.
+// 'all' is the only tab with no row equivalent; it takes the BOE brand accent.
+const STATUS_TABS: { key: StatusFilter; label: string; match: (s: string) => boolean; Icon: LucideIcon; accent: TabAccent }[] = [
+  { key: 'pending',             label: 'Pending',             match: s => s === 'submitted',           Icon: Clock,                 accent: accentFromBadge(STATUS_META.submitted) },
+  { key: 'needs_clarification', label: 'Needs Clarification', match: s => s === 'needs_clarification', Icon: MessageCircleQuestion, accent: accentFromBadge(STATUS_META.needs_clarification) },
+  { key: 'rejected',            label: 'Rejected',            match: s => s === 'rejected',            Icon: CircleX,               accent: accentFromBadge(STATUS_META.rejected) },
+  { key: 'all',                 label: 'All',                 match: () => true,                       Icon: Layers,                accent: BRAND_TAB_ACCENT },
 ]
 
 const LEAD_SOURCE_OPTIONS = [
@@ -3558,60 +3563,52 @@ function OrderRequestsPageInner() {
         </div>
       )}
 
-      {/* ── Search + tabs + submit button ── */}
-      <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <input
-            className="boe-input"
-            placeholder="Search by request number or client…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ maxWidth: '320px', flex: 1, minWidth: '180px' }}
-          />
-          <button
-            onClick={() => setShowModal(true)}
-            style={{
-              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: '#DC1F2E', border: 'none', color: '#fff', cursor: 'pointer',
-              whiteSpace: 'nowrap', flexShrink: 0,
-            }}
-          >
-            + New Order Request
-          </button>
-        </div>
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {STATUS_TABS.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setStatusTab(tab.key)}
-              style={{
-                padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                cursor: 'pointer', border: '1px solid',
-                borderColor: statusTab === tab.key ? '#DC1F2E' : colors.border,
-                background:   statusTab === tab.key ? 'rgba(220,31,46,0.07)' : 'transparent',
-                color:        statusTab === tab.key ? '#DC1F2E' : colors.secondary,
-                transition: 'all 0.1s',
-              }}
-            >
-              {tab.label} ({tabCounts[tab.key]})
-            </button>
-          ))}
-        </div>
+      {/* ── Search + submit toolbar ── form controls only; the status
+          navigation lives on the table card below so the two never read as the
+          same kind of control. Creating a request belongs here, on the module
+          that owns Order Requests. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
+        marginBottom: '10px',
+      }}>
+        <input
+          className="boe-input"
+          placeholder="Search by request number or client…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ flex: 1, minWidth: '180px', maxWidth: '320px', padding: '6px 10px', fontSize: '12px' }}
+        />
+        <button
+          onClick={() => setShowModal(true)}
+          style={{
+            padding: '7px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+            background: '#DC1F2E', border: 'none', color: '#fff', cursor: 'pointer',
+            whiteSpace: 'nowrap', flexShrink: 0,
+          }}
+        >
+          + New Order Request
+        </button>
       </div>
 
-      {/* ── Table ── */}
+      {/* ── Table, with the status strip as its own header ── */}
       <div style={{
         background: colors.base,
         border: `1px solid ${colors.border}`,
         borderRadius: '10px',
         overflow: 'hidden',
       }}>
-        <div style={{
-          padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
-          fontSize: '12px', color: colors.muted,
-        }}>
-          {listLoading ? 'Loading…' : `${visible.length} request${visible.length !== 1 ? 's' : ''}`}
-        </div>
+        <StatusTabs
+          tabs={STATUS_TABS.map(t => ({ key: t.key, label: t.label, Icon: t.Icon, accent: t.accent, count: tabCounts[t.key] }))}
+          active={statusTab}
+          onSelect={setStatusTab}
+          summary={
+            listLoading
+              ? 'Loading…'
+              : search.trim()
+                ? `${visible.length} of ${tabCounts[statusTab]} visible`
+                : `${visible.length} request${visible.length !== 1 ? 's' : ''}`
+          }
+        />
 
         {listLoading ? (
           <div style={{ padding: '40px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>

@@ -20,6 +20,13 @@ import {
   FINANCE_MODAL_OVERLAY_Z,
   FINANCE_MODAL_DIALOG_Z,
 } from '@/app/finance/components/FinanceModalShell'
+import {
+  StatusTabs,
+  accentFromBadge,
+  BRAND_TAB_ACCENT,
+  type TabAccent,
+} from '@/components/ui/StatusTabs'
+import { Archive, CircleX, Clock, Layers, MessageCircleQuestion, Unlink, type LucideIcon } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -153,13 +160,28 @@ const RECEIVED_IN_OPTIONS: { label: string; value: string }[] = [
   { label: 'Other',           value: 'other' },
 ]
 
-const FILTER_TABS: { key: FilterTab; label: string }[] = [
-  { key: 'pending',       label: 'Pending' },
-  { key: 'order_pending', label: 'Order No. Pending' },
-  { key: 'clarification', label: 'Needs Clarification' },
-  { key: 'rejected',      label: 'Rejected' },
-  { key: 'archive',       label: 'Archive' },
-  { key: 'all',           label: 'All' },
+// Tab accents come from the STATUS_META row badges above, so a status wears one
+// colour in the strip, the row, and the modal. Two exceptions, both deliberate:
+//   • order_pending — its badge shares #92400E with pending_approval, which
+//     would make the two tabs indistinguishable. It takes the violet already
+//     used for "Awaiting Order Confirmation" on Received Payments: the same
+//     waiting-on-an-order-number meaning. The row badge is left untouched.
+//   • archive — a derived view, not a DB status, so it has no badge. It uses
+//     the neutral palette STATUS_META already falls back to for unknowns.
+const ORDER_PENDING_TAB_ACCENT: TabAccent = {
+  color: '#5B21B6', tint: '#F5F3FF', badge: '#F5F3FF', badgeActive: '#DDD6FE',
+}
+const ARCHIVE_TAB_ACCENT: TabAccent = {
+  color: '#4B5563', tint: '#F3F4F6', badge: '#F3F4F6', badgeActive: '#E5E7EB',
+}
+
+const FILTER_TABS: { key: FilterTab; label: string; Icon: LucideIcon; accent: TabAccent }[] = [
+  { key: 'pending',       label: 'Pending',             Icon: Clock,                  accent: accentFromBadge(STATUS_META.pending_approval) },
+  { key: 'order_pending', label: 'Order No. Pending',   Icon: Unlink,                 accent: ORDER_PENDING_TAB_ACCENT },
+  { key: 'clarification', label: 'Needs Clarification', Icon: MessageCircleQuestion,  accent: accentFromBadge(STATUS_META.needs_clarification) },
+  { key: 'rejected',      label: 'Rejected',            Icon: CircleX,                accent: accentFromBadge(STATUS_META.rejected) },
+  { key: 'archive',       label: 'Archive',             Icon: Archive,                accent: ARCHIVE_TAB_ACCENT },
+  { key: 'all',           label: 'All',                 Icon: Layers,                 accent: BRAND_TAB_ACCENT },
 ]
 
 const EMPTY_MESSAGES: Record<FilterTab, string> = {
@@ -2179,53 +2201,49 @@ function FinancePageInner() {
         </button>
       }
     >
+      {/* ── Search toolbar ── sits above the card so the form control and the
+          status navigation below never read as the same kind of control. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
+        marginBottom: '10px',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          background: colors.raised, border: `1px solid ${colors.border}`,
+          borderRadius: '8px', padding: '6px 10px',
+          flex: 1, minWidth: '180px', maxWidth: '320px',
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Client or order…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
+          />
+          {search && (
+            <button onClick={() => setSearch('')} aria-label="Clear search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
+          )}
+        </div>
+      </div>
+
       <div className="boe-card" style={{ overflow: 'hidden' }}>
 
-        {/* ── Filter tabs + search ── */}
-        <div style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          {FILTER_TABS.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => { setActiveTab(tab.key); setSearch('') }}
-              className={`boe-filter-tab${activeTab === tab.key ? ' boe-filter-tab-active' : ''}`}
-            >
-              {tab.label}
-              {tabCount[tab.key] > 0 && (
-                <span style={{
-                  marginLeft: '5px',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  minWidth: '16px', height: '16px', borderRadius: '4px',
-                  background: activeTab === tab.key ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.08)',
-                  fontSize: '10px', fontWeight: 700,
-                }}>
-                  {tabCount[tab.key]}
-                </span>
-              )}
-            </button>
-          ))}
-
-          {/* Search — right-aligned */}
-          <div style={{
-            marginLeft: 'auto',
-            display: 'flex', alignItems: 'center', gap: '6px',
-            background: colors.raised, border: `1px solid ${colors.border}`,
-            borderRadius: '6px', padding: '5px 10px', minWidth: '160px',
-          }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Client or order…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
-            />
-            {search && (
-              <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
-            )}
-          </div>
-        </div>
+        {/* ── Status navigation ── */}
+        <StatusTabs
+          tabs={FILTER_TABS.map(t => ({ ...t, count: tabCount[t.key] }))}
+          active={activeTab}
+          onSelect={key => { setActiveTab(key); setSearch('') }}
+          summary={
+            listLoading
+              ? 'Loading…'
+              : search.trim()
+                ? `${visible.length} of ${tabCount[activeTab]} visible`
+                : `${visible.length} request${visible.length !== 1 ? 's' : ''}`
+          }
+        />
 
         {/* ── Table ── */}
         {listLoading ? (

@@ -75,8 +75,11 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
 const NEUTRAL_BADGE = { label: 'Activity', color: colors.muted, bg: colors.float }
 
 // Finance destinations follow where the record actually lives:
-//   * /finance/received loads only approved rows (status approved_linked /
+//   * /finance/received covers approved rows (status approved_linked /
 //     approved_unlinked), so approval/link events point there (`?payment=`).
+//     That route is now a resolver: it reads the payment's linkage and forwards
+//     to Linked or Non-Linked Payments, so this stays one stable href even
+//     though a payment moves between the two pages over its life.
 //   * /finance loads every other status (pending, needs_clarification,
 //     rejected, suspense), so all remaining events point there (`?request=`).
 // Both reuse each page's existing deep-link handling.

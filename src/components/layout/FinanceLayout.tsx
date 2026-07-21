@@ -67,7 +67,15 @@ export function FinanceLayout({
 
   const navItems = [
     { label: 'Payment Requests',      path: '/finance',          icon: <CheckSquare size={15} strokeWidth={1.8} /> },
-    { label: 'Received Payments',     path: '/finance/received', icon: <CreditCard  size={15} strokeWidth={1.8} /> },
+  ]
+
+  // Received Payments is a section, not a destination: the two pages below are
+  // the only list routes, and /finance/received itself only redirects to the
+  // first of them. The heading is deliberately inert so the section can never
+  // open a third list of its own.
+  const receivedSubItems = [
+    { label: 'Linked Payments',     path: '/finance/received/linked' },
+    { label: 'Non-Linked Payments', path: '/finance/received/unlinked' },
   ]
 
   return (
@@ -126,6 +134,49 @@ export function FinanceLayout({
               </button>
             )
           })}
+
+          {/* ── Received Payments ── inert section heading + its two pages.
+              Same .boe-nav-item metrics as a real item so the row heights line
+              up, but rendered as a div with no hover/press affordance. */}
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: '9px',
+              padding: '7px 10px', marginBottom: '2px',
+              fontSize: '13px', fontWeight: 500, color: '#6B7384',
+              lineHeight: 1.3, userSelect: 'none',
+            }}
+          >
+            <span style={{ color: '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+              <CreditCard size={15} strokeWidth={1.8} />
+            </span>
+            Received Payments
+          </div>
+          <div
+            role="group"
+            aria-label="Received Payments"
+            style={{
+              marginLeft: '17px', paddingLeft: '10px',
+              borderLeft: '1px solid rgba(0,0,0,0.09)',
+            }}
+          >
+            {receivedSubItems.map(item => {
+              const active = pathname === item.path
+              return (
+                <button
+                  key={item.path}
+                  className={`boe-nav-item${active ? ' active' : ''}`}
+                  onClick={() => navTo(item.path)}
+                  style={{ fontWeight: active ? 600 : 400, marginBottom: '2px', fontSize: '12.5px' }}
+                >
+                  <span
+                    className="boe-nav-dot"
+                    style={{ background: active ? '#DC1F2E' : '#A0A9BE' }}
+                  />
+                  {item.label}
+                </button>
+              )
+            })}
+          </div>
 
           {/* Permanent Notifications entry — always visible, badge only when
               unread. Scoped to Finance's own notification types, and routes to

@@ -260,7 +260,9 @@ export default function OrdersDashboardPage() {
           value={canSeeFinance ? stats.unlinkedPayments : '—'}
           sub={canSeeFinance ? 'Payments without an order' : 'Finance only'}
           accent={canSeeFinance && stats.unlinkedPayments > 0 ? colors.amber : colors.muted}
-          onClick={canSeeFinance ? () => router.push('/finance/received') : undefined}
+          // Counted with the exact predicate Non-Linked Payments uses, so the
+          // card lands on the page that holds these rows, not on Linked.
+          onClick={canSeeFinance ? () => router.push('/finance/received/unlinked') : undefined}
         />
         <StatCard
           label="Overdue"
