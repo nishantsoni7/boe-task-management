@@ -24,12 +24,11 @@ type Order = {
   status: string
 }
 
-type StatusFilter = 'all' | 'requested' | 'running' | 'on_hold' | 'ready_for_dispatch' | 'dispatched' | 'cancelled'
+type StatusFilter = 'all' | 'running' | 'on_hold' | 'ready_for_dispatch' | 'dispatched' | 'cancelled'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  requested:          { label: 'Requested',          bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
   running:            { label: 'Running',             bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
   on_hold:            { label: 'On Hold',             bg: '#FFF7ED', color: '#9A3412', border: '#FED7AA' },
   ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' },
@@ -37,14 +36,18 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   cancelled:          { label: 'Cancelled',           bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
 }
 
+// 'requested' is gone (20260702000000): an Order exists only after its Order
+// Request was reviewed and converted, so every Confirmed Order starts at
+// 'running' and no pre-approval state remains to filter by. The database CHECK
+// no longer permits the value, so this list is the complete status domain, not
+// a subset of it.
 const STATUS_TABS: { key: StatusFilter; label: string }[] = [
-  { key: 'all',               label: 'All' },
-  { key: 'requested',         label: 'Requested' },
+  { key: 'all',               label: 'Total Order List' },
   { key: 'running',           label: 'Running' },
   { key: 'on_hold',           label: 'On Hold' },
   { key: 'ready_for_dispatch',label: 'Ready to Dispatch' },
-  { key: 'dispatched',        label: 'Dispatched' },
   { key: 'cancelled',         label: 'Cancelled' },
+  { key: 'dispatched',        label: 'Dispatched' },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -172,7 +175,7 @@ export default function AllOrdersPage() {
   return (
     <OrdersLayout
       profile={profile}
-      title="All Orders"
+      title="Confirmed Orders"
       subtitle="Complete order list across all statuses."
       onSignOut={handleSignOut}
       onRefresh={loadOrders}

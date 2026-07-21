@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, List, ClipboardList, Home, RefreshCw } from 'lucide-react'
+import { LayoutDashboard, List, ClipboardList, Home, RefreshCw, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -10,6 +10,7 @@ import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
 import { useUnreadOrderNotifications } from '@/hooks/queries/useUnreadNotifications'
+import { useOrderRequestsCount } from '@/hooks/queries/useOrderRequestsCount'
 
 type OrdersLayoutProps = {
   profile: UserProfile | null
@@ -40,6 +41,13 @@ export function OrdersLayout({
   // and this layout's link, scoped to Orders' own notification types.
   const unreadOrders = useUnreadOrderNotifications()
 
+  // Neutral TOTAL count of Order Requests — the same scope as the Order
+  // Requests page's "All" tab (every status). Drives the "Order Requests" nav
+  // badge below. Unlike unreadOrders this is never an unread/alert count, so
+  // reading a request or a notification never changes it, and it never affects
+  // the bell block or the Notifications entry's badge styling.
+  const orderRequestsCount = useOrderRequestsCount()
+
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
     setRefreshing(true)
@@ -64,10 +72,12 @@ export function OrdersLayout({
     setSidebarOpen(false)
   }
 
-  const navItems = [
+  const navItems: { label: string; path: string; icon: React.ReactNode; exact: boolean; badge?: number }[] = [
     { label: 'Dashboard',       path: '/orders',          icon: <LayoutDashboard size={15} strokeWidth={1.8} />, exact: true },
-    { label: 'All Orders',      path: '/orders/all',      icon: <List            size={15} strokeWidth={1.8} />, exact: false },
-    { label: 'Order Requests',  path: '/orders/requests', icon: <ClipboardList   size={15} strokeWidth={1.8} />, exact: false },
+    { label: 'Confirmed Orders', path: '/orders/all',     icon: <List            size={15} strokeWidth={1.8} />, exact: false },
+    // badge stays undefined only while the count query is still loading; a real
+    // 0 is passed through and rendered.
+    { label: 'Order Requests',  path: '/orders/requests', icon: <ClipboardList   size={15} strokeWidth={1.8} />, exact: false, badge: orderRequestsCount },
   ]
 
   return (
@@ -123,6 +133,19 @@ export function OrdersLayout({
                   {item.icon}
                 </span>
                 {item.label}
+                {/* Neutral volume badge — rendered for any resolved count,
+                    including 0 (only a still-loading undefined hides it). Grey
+                    on grey, never the red unread-alert styling. */}
+                {typeof item.badge === 'number' && (
+                  <span style={{
+                    marginLeft: 'auto', flexShrink: 0,
+                    fontSize: '10px', fontWeight: 700, color: '#3D4455',
+                    background: 'rgba(0,0,0,0.08)', borderRadius: '999px',
+                    padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
+                  }}>
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -136,6 +159,38 @@ export function OrdersLayout({
             href="/orders/notifications"
           />
         </div>
+
+        {/* ── Notification alert block — same pulsing indicator as Task
+            Management and Finance, shown only when Orders has unread
+            notifications. Was previously missing from this layout, which is
+            why the bell never appeared for Order Request notifications even
+            though the sidebar "Notifications" badge above already worked. ── */}
+        {unreadOrders > 0 && (
+          <div style={{ padding: '0 10px 14px' }}>
+            <button
+              onClick={() => navTo('/orders/notifications')}
+              className="boe-notif-alert"
+            >
+              <div className="boe-notif-alert-bell">
+                <Bell size={24} strokeWidth={1.8} color="#DC1F2E" />
+              </div>
+              <div style={{
+                fontSize: '28px', fontWeight: 800, color: '#111318', lineHeight: 1,
+              }}>
+                {unreadOrders > 99 ? '99+' : unreadOrders}
+              </div>
+              <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#3D4455' }}>
+                unread {unreadOrders === 1 ? 'notification' : 'notifications'}
+              </div>
+              <div style={{
+                fontSize: '10px', fontWeight: 600, color: '#DC1F2E',
+                letterSpacing: '0.05em', textTransform: 'uppercase',
+              }}>
+                Tap to review →
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* Bottom profile section */}
         <ViewModeSidebarSection

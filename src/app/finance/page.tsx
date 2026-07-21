@@ -91,7 +91,6 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
 }
 
 const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
-  requested:          { label: 'Requested',          color: '#92400E' },
   running:            { label: 'Running',             color: '#1E40AF' },
   on_hold:            { label: 'On Hold',             color: '#9A3412' },
   ready_for_dispatch: { label: 'Ready for Dispatch',  color: '#5B21B6' },
@@ -214,6 +213,39 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
     return 'Select a valid order before marking this payment as linked.'
   }
   return dbError.message
+}
+
+// ── Approval lock ─────────────────────────────────────────────────────────────
+// Approval is the single hard locking point for this page. The two approved_*
+// statuses are the Received Payments workflow's territory: approved_linked is
+// already excluded from this page's query, and approved_unlinked still appears
+// here (Order No. Pending tab) purely as history — view-only for everyone,
+// including admins, who correct it from Received Payments instead.
+//
+// UNAPPROVED_STATUSES is also sent as a filter on every update/delete issued by
+// this page, so the same rule is re-evaluated server-side against the committed
+// row at mutation time (see the race note on APPROVED_RACE_MESSAGE).
+
+const UNAPPROVED_STATUSES = ['pending_approval', 'needs_clarification', 'rejected'] as const
+
+function isApproved(status: string): boolean {
+  return status === 'approved_unlinked' || status === 'approved_linked'
+}
+
+// Shown when an update or delete matched zero rows because the request was
+// approved after the modal was opened. The mutation is filtered on status
+// server-side, so the approved record is never touched — the stale UI is.
+const APPROVED_RACE_MESSAGE =
+  'This request has already been approved and can no longer be changed here.'
+
+const APPROVED_LOCK_NOTE =
+  'This request has been approved and is now managed under Received Payments.'
+
+// Who may act on a request from this page. Ownership and role are re-checked by
+// RLS (finance_payment_requests_own_update / own_delete / admin_*) and by the
+// approval guard triggers — this only decides which controls are worth showing.
+function canManageRequest(r: PaymentRequest, isAdmin: boolean, userId: string): boolean {
+  return !isApproved(r.status) && (isAdmin || r.submitted_by === userId)
 }
 
 // ── Age-based partitioning (Phase 2C) ─────────────────────────────────────────
@@ -386,20 +418,30 @@ function DetailsModal({
   request: r,
   onClose,
   isAdmin,
+  userId,
   supabase,
   onCorrected,
+  onEdit,
+  onDelete,
 }: {
   request: PaymentRequest
   onClose: () => void
   isAdmin?: boolean
+  userId?: string
   supabase?: ReturnType<typeof createClient>
   onCorrected?: () => void
+  onEdit?: (r: PaymentRequest) => void
+  onDelete?: (r: PaymentRequest) => void
 }) {
   // Order-linkage states are out of this control's jurisdiction entirely —
   // neither entering nor leaving approved_unlinked/approved_linked may happen
   // here, since either direction would move status without the RPCs' row
   // locking, eligibility checks, and order_id/order_number bookkeeping.
-  const isLinkageStatus = r.status === 'approved_unlinked' || r.status === 'approved_linked'
+  const isLinkageStatus = isApproved(r.status)
+
+  // Same rule the table's action buttons use, so the two surfaces can never
+  // disagree about whether a request is still manageable from this page.
+  const canManage = canManageRequest(r, !!isAdmin, userId ?? '')
 
   const [newStatus,       setNewStatus]       = useState(r.status)
   const [correctionNote,  setCorrectionNote]  = useState('')
@@ -624,16 +666,44 @@ function DetailsModal({
           </div>
         </div>
       )}
-      {isAdmin && isLinkageStatus && (
+      {/* Approved requests are view-only on this page for every role. The note
+          says where the record now lives instead of offering a disabled
+          control; the admin-only linkage sentence is kept alongside it. */}
+      {isLinkageStatus && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           fontSize: '12px', color: colors.muted, lineHeight: 1.5,
         }}>
-          Order linkage is managed from the Received Payments page (Link / Unlink), not here.
+          {APPROVED_LOCK_NOTE}
+          {isAdmin && ' Order linkage is managed there (Link / Unlink), not here.'}
         </div>
       )}
     </>
   )
+
+  // Actions live in the shell's pinned footer so they stay reachable while the
+  // body scrolls. Rendered only for a request this user may still act on — an
+  // approved one gets the note above and no controls at all.
+  const footer = canManage && (onEdit || onDelete) ? (
+    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+      {onDelete && (
+        <button
+          onClick={() => onDelete(r)}
+          style={{
+            padding: '7px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
+            border: `1px solid ${colors.red}`, background: colors.redTint, color: colors.red, cursor: 'pointer',
+          }}
+        >
+          Delete
+        </button>
+      )}
+      {onEdit && (
+        <button onClick={() => onEdit(r)} className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
+          {!isAdmin && r.status === 'rejected' ? 'Reapply' : 'Edit'}
+        </button>
+      )}
+    </div>
+  ) : undefined
 
   return (
     <RequestModalShell
@@ -643,6 +713,7 @@ function DetailsModal({
       onClose={onClose}
       left={left}
       right={right}
+      footer={footer}
     />
   )
 }
@@ -666,11 +737,25 @@ type NewPaymentModalProps = {
   supabase: ReturnType<typeof createClient>
   onClose: () => void
   onSaved: () => void
+  // Optional prefill, used when the form is opened from an Order Request so
+  // the salesperson does not retype what that request already knows. Both are
+  // ordinary editable field values — never a hidden linkage: a submitted
+  // payment still has to be approved before it can be attached to anything.
+  initialClientName?: string
+  initialSalesNote?: string
+  contextLabel?: string
 }
 
-function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: NewPaymentModalProps) {
+function NewPaymentConfirmationModal({
+  userId, supabase, onClose, onSaved,
+  initialClientName, initialSalesNote, contextLabel,
+}: NewPaymentModalProps) {
   useModalScrollLockAndEscape(onClose)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState(() => ({
+    ...EMPTY_FORM,
+    clientName: initialClientName ?? EMPTY_FORM.clientName,
+    salesNote:  initialSalesNote  ?? EMPTY_FORM.salesNote,
+  }))
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
@@ -884,6 +969,11 @@ function NewPaymentConfirmationModal({ userId, supabase, onClose, onSaved }: New
             <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
               Send Payment Request
             </div>
+            {contextLabel && (
+              <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+                {contextLabel} · an admin approves it before it can be linked
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -1171,12 +1261,9 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
 
   const isExistingOrder = r.payment_against === 'existing_order'
 
-  // order_number is locked in step with status/order_id for these two states
-  // (link_finance_payment_to_order / unlink_finance_payment_from_order own
-  // that field exclusively once a payment has been approved). Editing it
-  // freely here would risk exactly the status/order_id/order_number mismatch
-  // the new invariant exists to prevent.
-  const isLinkageStatus = r.status === 'approved_unlinked' || r.status === 'approved_linked'
+  // Set once an approval was detected mid-edit: the request is gone from this
+  // page's jurisdiction, so retrying the save can only fail the same way.
+  const [stale, setStale] = useState(false)
 
   const set = (key: keyof typeof form) => (
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -1194,13 +1281,20 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     }
     setSaving(true)
     setError(null)
-    // order_number is display/reference text only, and editing it here never
-    // touches order_id — but once a payment is approved_unlinked/
-    // approved_linked, order_number itself is owned by the link/unlink RPCs,
-    // so it is left out of this payload entirely for those two statuses
-    // rather than resent unchanged.
+    // order_number stays in the payload unconditionally: this modal now only
+    // ever opens for an unapproved request, where order_number is free-form
+    // reference text and order_id is untouched. For the two approved_* states
+    // it is owned by the link/unlink RPCs — and those rows can no longer reach
+    // this form at all (canManageRequest), nor survive the status filter below.
     const isCreatorReapply = !isAdmin && (r.status === 'needs_clarification' || r.status === 'rejected')
 
+    // The status filter is the race guard: PostgREST re-evaluates it against
+    // the committed row, so an approval that landed while this modal was open
+    // turns the save into a zero-row no-op instead of overwriting the approved
+    // record. It applies to admins too, whose RLS policy alone would allow the
+    // write. Nothing protected is submitted: request_number, submitted_by,
+    // approved_by/at, created_at, order_id and the linkage columns are all
+    // absent from the payload.
     const { data: updated, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
@@ -1210,17 +1304,18 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         payment_mode: editDbMode.payment_mode,
         received_in:  editDbMode.received_in,
         proof_note:   form.proofNote.trim() || null,
-        ...(isLinkageStatus ? {} : { order_number: form.orderNumber.trim() || null }),
+        order_number: form.orderNumber.trim() || null,
         sales_note:   form.salesNote.trim() || null,
         ...(isCreatorReapply ? { status: 'pending_approval' } : {}),
         updated_at:   new Date().toISOString(),
       })
       .eq('id', r.id)
-      .select('id, client_name, amount, status')
-      .single()
+      .in('status', UNAPPROVED_STATUSES)
+      .select('id')
+      .maybeSingle()
     setSaving(false)
     if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
-    if (!updated) { setError('No row was updated. Check permissions or row status.'); return }
+    if (!updated) { setStale(true); setError(APPROVED_RACE_MESSAGE); return }
 
     // A creator editing a needs_clarification or rejected request moves it
     // back to pending_approval — notify approvers it is ready for review again.
@@ -1237,7 +1332,10 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   }
 
   return (
-    <FinanceModal title={!isAdmin && r.status === 'rejected' ? 'Reapply Payment Request' : 'Edit Payment Request'} onClose={onClose}>
+    // Once an approval has been detected, every dismissal path refreshes so the
+    // table stops showing the request as still editable (see the same note on
+    // DeleteConfirmModal).
+    <FinanceModal title={!isAdmin && r.status === 'rejected' ? 'Reapply Payment Request' : 'Edit Payment Request'} onClose={stale ? onSaved : onClose}>
       {!isAdmin && r.status === 'needs_clarification' && (
         <div style={{
           padding: '12px 14px', borderRadius: '8px',
@@ -1304,13 +1402,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       </Field>
       <Field label="Order Number (optional)">
         <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
-          placeholder="Leave blank if order not yet created" style={{ width: '100%' }}
-          readOnly={isLinkageStatus} disabled={isLinkageStatus} />
-        {isLinkageStatus && (
-          <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-            Managed by Link / Unlink on the Received Payments page.
-          </span>
-        )}
+          placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
       </Field>
       <Field label="Sales Note (optional)">
         <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
@@ -1318,15 +1410,26 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
       {error && <ErrorBanner message={error} />}
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
-        <button onClick={handleSave} disabled={!canSubmit || saving}
-          className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          {!isAdmin && r.status === 'rejected'
-            ? (saving ? 'Reapplying…' : 'Save & Reapply')
-            : (saving ? 'Saving…' : 'Save Changes')}
-        </button>
-      </div>
+      {/* Once an approval has been detected there is nothing left to save here,
+          so the form's actions collapse to a single dismissal that also
+          refreshes the table (onSaved) — never a retry that must fail again. */}
+      {stale ? (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '4px' }}>
+          <button onClick={onSaved} className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
+            Close
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
+          <button onClick={handleSave} disabled={!canSubmit || saving}
+            className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
+            {!isAdmin && r.status === 'rejected'
+              ? (saving ? 'Reapplying…' : 'Save & Reapply')
+              : (saving ? 'Saving…' : 'Save Changes')}
+          </button>
+        </div>
+      )}
     </FinanceModal>
   )
 }
@@ -1570,31 +1673,82 @@ type DeleteConfirmModalProps = {
 function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: DeleteConfirmModalProps) {
   const [deleting, setDeleting] = useState(false)
   const [error, setError]       = useState<string | null>(null)
+  // Set once the outcome is final and the confirmation is spent — either the
+  // request was approved mid-flight (nothing was deleted) or it was deleted but
+  // its proof file could not be removed. Both collapse the footer to a single
+  // dismissal that refreshes the table; neither offers a retry that can help.
+  const [settled, setSettled]   = useState(false)
+  const [warning, setWarning]   = useState<string | null>(null)
   const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
 
   const handleDelete = async () => {
     setDeleting(true)
     setError(null)
+
+    // 1. Read the proof paths first: payment_proof_attachments cascades with
+    //    the request, so after the delete there is nothing left to read them
+    //    from. Only this request's own attachments are collected, so a file
+    //    belonging to any other record can never be touched.
+    const { data: proofs, error: proofErr } = await supabase
+      .from('payment_proof_attachments')
+      .select('storage_path')
+      .eq('payment_request_id', r.id)
+    if (proofErr) {
+      setDeleting(false)
+      setError('Could not read this request’s proof attachments. Nothing was deleted — please try again.')
+      return
+    }
+
+    // 2. Delete the request itself, filtered on status. RLS re-evaluates that
+    //    filter against the committed row, so an approval landing while this
+    //    modal was open makes this a zero-row no-op rather than destroying an
+    //    approved payment. The request goes first deliberately: deleting the
+    //    proof object first would destroy the evidence for a payment that then
+    //    turned out to be un-deletable.
     const { error: dbError, count } = await supabase
       .from('finance_payment_requests')
       .delete({ count: 'exact' })
       .eq('id', r.id)
+      .in('status', UNAPPROVED_STATUSES)
+    if (dbError) { setDeleting(false); setError(friendlyDbErrorMessage(dbError)); return }
+    if (count === 0) { setDeleting(false); setSettled(true); setError(APPROVED_RACE_MESSAGE); return }
+
+    // 3. The request is gone; remove its now-orphaned proof objects. Authorized
+    //    by the parent-less branch of the payment_proofs_delete storage policy
+    //    (20260700000000). A failure here cannot be retried usefully and must
+    //    not be reported as a clean success.
+    const paths = ((proofs ?? []) as { storage_path: string }[])
+      .map(p => p.storage_path)
+      .filter(Boolean)
+    if (paths.length > 0) {
+      const { data: removed, error: rmErr } = await supabase.storage.from(PROOF_BUCKET).remove(paths)
+      if (rmErr || (removed?.length ?? 0) < paths.length) {
+        setDeleting(false)
+        setSettled(true)
+        setWarning(`Payment request ${r.request_number} was deleted, but its proof file could not be removed from storage. Please ask an admin to delete it from the payment-proofs bucket.`)
+        return
+      }
+    }
+
     setDeleting(false)
-    if (dbError) { setError(dbError.message); return }
-    if (count === 0) { setError('No row was deleted. Check permissions.'); return }
     onDeleted()
   }
 
   return (
-    <FinanceModal title="Delete Payment Request" onClose={onClose}>
+    // Once settled, EVERY dismissal path (✕, Escape, overlay click, the Close
+    // button) must refresh the table — in the partial-success case the request
+    // really is gone, and a plain close would leave a deleted row on screen
+    // that reports "already approved" if Delete is clicked again.
+    <FinanceModal title="Delete Payment Request" onClose={settled ? onDeleted : onClose}>
       <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7 }}>
-        Delete this payment request? This cannot be undone.
+        Delete this Payment Request? This action cannot be undone.
       </div>
       <div style={{
         background: colors.raised, borderRadius: '8px', padding: '12px 14px',
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
         border: `1px solid ${colors.border}`,
       }}>
+        <DetailRow label="Request"      value={r.request_number} />
         <DetailRow label="Client"       value={r.client_name} />
         <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
         <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
@@ -1610,20 +1764,33 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
         </div>
       </div>
       {error && <ErrorBanner message={error} />}
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          style={{
-            padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
-            border: `1px solid ${colors.red}`, background: colors.redTint, color: colors.red,
-            cursor: deleting ? 'default' : 'pointer', opacity: deleting ? 0.6 : 1,
-          }}
-        >
-          {deleting ? 'Deleting…' : 'Delete'}
-        </button>
-      </div>
+      {warning && (
+        <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#FFF7ED', border: '1px solid #FED7AA', color: '#9A3412', fontSize: '12px', lineHeight: 1.55 }}>
+          {warning}
+        </div>
+      )}
+      {settled ? (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '4px' }}>
+          <button onClick={onDeleted} className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
+            Close
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            style={{
+              padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
+              border: `1px solid ${colors.red}`, background: colors.redTint, color: colors.red,
+              cursor: deleting ? 'default' : 'pointer', opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      )}
     </FinanceModal>
   )
 }
@@ -1642,8 +1809,6 @@ const TH_STYLE: React.CSSProperties = {
   borderBottom: `1px solid ${colors.border}`,
   background: colors.raised,
 }
-
-const EDITABLE_STATUSES = new Set(['pending_approval', 'needs_clarification'])
 
 function PaymentsTable({
   rows,
@@ -1696,9 +1861,12 @@ function PaymentsTable({
               isRejected ? colors.red :
               'transparent'
 
-            const showEdit    = isAdmin || (r.submitted_by === userId && EDITABLE_STATUSES.has(r.status))
-            const showReapply = !isAdmin && r.submitted_by === userId && isRejected
-            const showDelete  = isAdmin
+            // Approved requests are view-only here for everyone, admins
+            // included — they belong to Received Payments from that point on.
+            const canManage   = canManageRequest(r, isAdmin, userId)
+            const showReapply = canManage && !isAdmin && isRejected
+            const showEdit    = canManage && !showReapply
+            const showDelete  = canManage
             const isHighlighted = r.id === highlightId
 
             return (
@@ -1774,23 +1942,13 @@ function PaymentsTable({
                       View
                     </button>
                     {showEdit && (
-                      isAdmin ? (
-                        <button
-                          onClick={() => onEdit(r)}
-                          className="boe-btn boe-btn-ghost"
-                          style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
-                        >
-                          Edit
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => onEdit(r)}
-                          className="boe-btn boe-btn-ghost"
-                          style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
-                        >
-                          Edit
-                        </button>
-                      )
+                      <button
+                        onClick={() => onEdit(r)}
+                        className="boe-btn boe-btn-ghost"
+                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                      >
+                        Edit
+                      </button>
                     )}
                     {showReapply && (
                       <button
@@ -1839,6 +1997,10 @@ function FinancePageInner() {
   const [requests, setRequests]         = useState<PaymentRequest[]>([])
   const [listLoading, setListLoading]   = useState(false)
   const [showForm, setShowForm]           = useState(false)
+  // Prefill carried in from another module's "Add Payment" action (currently
+  // the Order Requests details modal). Cleared with the form, so the plain
+  // "+ New" button always opens an empty one.
+  const [formPrefill, setFormPrefill]     = useState<{ clientName: string; salesNote: string; contextLabel: string } | null>(null)
   const [reviewRequest, setReviewRequest] = useState<PaymentRequest | null>(null)
   const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
   const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
@@ -1916,6 +2078,18 @@ function FinancePageInner() {
     const resolveDeepLink = () => {
       if (pageLoading || deepLinkHandled.current) return
       deepLinkHandled.current = true
+
+      // ?new=1[&client=&note=] — another module asked for a new payment request
+      // against a client it already knows. Opens THIS page's own submission
+      // form prefilled; nothing is created until the user submits it here.
+      if (searchParams.get('new') === '1') {
+        const client = searchParams.get('client')?.trim() ?? ''
+        const note   = searchParams.get('note')?.trim() ?? ''
+        setFormPrefill({ clientName: client, salesNote: note, contextLabel: note })
+        setShowForm(true)
+        router.replace('/finance')
+        return
+      }
 
       const requestId = searchParams.get('request')
       if (requestId) {
@@ -1999,7 +2173,7 @@ function FinancePageInner() {
       onSignOut={handleSignOut}
       onRefresh={loadRequests}
       actions={
-        <button onClick={() => setShowForm(true)} className="boe-btn boe-btn-primary"
+        <button onClick={() => { setFormPrefill(null); setShowForm(true) }} className="boe-btn boe-btn-primary"
           style={{ padding: '6px 14px', fontSize: '12px' }}>
           + New
         </button>
@@ -2083,8 +2257,11 @@ function FinancePageInner() {
         <NewPaymentConfirmationModal
           userId={userId}
           supabase={supabase}
-          onClose={() => setShowForm(false)}
-          onSaved={() => { setShowForm(false); loadRequests() }}
+          initialClientName={formPrefill?.clientName}
+          initialSalesNote={formPrefill?.salesNote}
+          contextLabel={formPrefill?.contextLabel}
+          onClose={() => { setShowForm(false); setFormPrefill(null) }}
+          onSaved={() => { setShowForm(false); setFormPrefill(null); loadRequests() }}
         />
       )}
       {reviewRequest && (
@@ -2100,8 +2277,13 @@ function FinancePageInner() {
           request={detailRequest}
           onClose={() => setDetailRequest(null)}
           isAdmin={isAdmin}
+          userId={userId}
           supabase={supabase}
           onCorrected={() => { setDetailRequest(null); loadRequests() }}
+          // Details hands off to the same two modals the table uses; only one
+          // Finance modal is open at a time, so it closes as they open.
+          onEdit={r => { setDetailRequest(null); setEditRequest(r) }}
+          onDelete={r => { setDetailRequest(null); setDeleteRequest(r) }}
         />
       )}
       {editRequest && (

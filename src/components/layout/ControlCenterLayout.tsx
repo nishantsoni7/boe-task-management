@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, LayoutGrid, Building2, Users, ShieldCheck, Layers, History, X, ClipboardList } from 'lucide-react'
+import { Home, LayoutGrid, Building2, Users, ShieldCheck, Layers, History, X, ClipboardList, Hash, Eraser } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 
-export type ControlCenterTab = 'overview' | 'departments' | 'people' | 'modules'
+export type ControlCenterTab = 'overview' | 'departments' | 'people' | 'modules' | 'order-numbering'
 
 type ControlCenterLayoutProps = {
   profile: UserProfile | null
@@ -116,11 +116,30 @@ export function ControlCenterLayout({
             active={pathname === '/admin/control-center/action-queue'}
             onClick={() => navTo('/admin/control-center/action-queue')}
           />
+          {/* Order Numbering earns a top-level entry rather than living inside
+              Overview: an admin looking for "where do I set the next Order
+              number" scans this list, and anything not named here is, in
+              practice, unfindable. */}
+          <NavItem
+            label="Order Numbering"
+            icon={<Hash size={15} strokeWidth={1.8} />}
+            active={pathname === '/admin/control-center' && activeTab === 'order-numbering'}
+            onClick={() => goToTab('order-numbering')}
+          />
           <NavItem
             label="Module Visibility"
             icon={<Layers size={15} strokeWidth={1.8} />}
             active={pathname === '/admin/control-center' && activeTab === 'modules'}
             onClick={() => goToTab('modules')}
+          />
+          {/* Its own page, deliberately far from the everyday Finance and
+              Orders lists. Removing a finalized test record is not a routine
+              action and must not sit next to routine ones. */}
+          <NavItem
+            label="Test Data Cleanup"
+            icon={<Eraser size={15} strokeWidth={1.8} />}
+            active={pathname === '/admin/control-center/test-data-cleanup'}
+            onClick={() => navTo('/admin/control-center/test-data-cleanup')}
           />
           <NavItem
             label="Change History"

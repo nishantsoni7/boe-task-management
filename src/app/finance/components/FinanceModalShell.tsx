@@ -149,10 +149,20 @@ export function RequestModalShell({
 
         {/* ── Scrollable body — single scroll container holding a two-zone workspace.
             On desktop the two zones sit side by side (left ≈56%, right ≈44%); when
-            the modal is too narrow they wrap and stack in DOM order. ── */}
+            the modal is too narrow they wrap and stack in DOM order.
+
+            Every direct child is flexShrink: 0. This container is a column flex
+            box, so its children are shrinkable by default — and a child that
+            sets `overflow: hidden` (the rounded, clipped summary/table cards the
+            callers pass in `top` and `bottom`) also loses its automatic minimum
+            size, which lets flexbox squash it to a few pixels instead of letting
+            this container scroll. That silently blanked the Order Request
+            summary strip whenever the content was taller than the dialog.
+            Pinning the children at their natural height is what makes
+            `overflowY: auto` above actually take effect. ── */}
         <div style={{ padding: '18px 20px', overflowY: 'auto', overflowX: 'hidden', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {top}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
+          {top && <div style={{ flexShrink: 0 }}>{top}</div>}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start', flexShrink: 0 }}>
             <div style={{ flex: '56 1 360px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {left}
             </div>
@@ -160,7 +170,7 @@ export function RequestModalShell({
               {right}
             </div>
           </div>
-          {bottom}
+          {bottom && <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>{bottom}</div>}
         </div>
 
         {/* ── Optional pinned action bar — always reachable while the body scrolls ── */}

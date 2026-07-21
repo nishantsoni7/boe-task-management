@@ -44,7 +44,7 @@ function buildHref(category: QueueCategory, id: string): string {
     case 'finance_pending_approval':    return `/finance?tab=pending&request=${id}`
     case 'finance_needs_clarification': return `/finance?tab=clarification&request=${id}`
     case 'finance_suspense':            return `/finance/received?payment=${id}&action=link`
-    case 'order_request_conversion':    return `/orders/requests?tab=active&request=${id}&action=convert`
+    case 'order_request_conversion':    return `/orders/requests?tab=pending&request=${id}&action=convert`
   }
 }
 
@@ -109,7 +109,10 @@ export default function ActionQueuePage() {
         .from('finance_payment_requests')
         .select('id, request_number, client_name, amount, status, created_at, updated_at, clarification_requested_at, approved_at, submitted_by_user:users!submitted_by(full_name)')
         .eq('status', 'approved_unlinked')
-        .is('order_id', null),
+        .is('order_id', null)
+        // A payment parked on an Order Request (20260698) is no longer an
+        // actionable suspense item — it links itself on conversion.
+        .is('order_request_id', null),
       supabase
         .from('order_requests')
         .select('id, request_number, client_name, total_value, created_at, created_by_user:users!created_by(full_name)')

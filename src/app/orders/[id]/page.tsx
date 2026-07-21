@@ -29,8 +29,15 @@ type Order = {
   lead_source: string | null
   status: string
   notes: string | null
+  /** True only for records created during the testing phase (20260706000000). */
+  is_test_data?: boolean
   created_at: string
   updated_at: string
+  // Read-only provenance back to the Order Request this Order was created from
+  // (20260701000000). Null for an Order with no originating request. Both are
+  // immutable in the database once set, so they are never edited here.
+  source_order_request_id: string | null
+  source_request_number: string | null
 }
 
 type LinkedPayment = {
@@ -53,10 +60,15 @@ type ActivityEntry = {
 
 // ── Status transition graph ───────────────────────────────────────────────────
 
-type OrderStatus = 'requested' | 'running' | 'on_hold' | 'ready_for_dispatch' | 'dispatched' | 'cancelled'
+// 'requested' was retired in 20260702000000. Conversion IS the approval, so a
+// Confirmed Order is born at 'running' and there is no pre-approval state to
+// transition out of. `allowedTransitions` already falls back to [] for any
+// status missing from the graph, so a historical row would offer no actions
+// rather than throwing — but none can exist: the database CHECK now rejects
+// the value and every stored row was migrated to 'running'.
+type OrderStatus = 'running' | 'on_hold' | 'ready_for_dispatch' | 'dispatched' | 'cancelled'
 
 const TRANSITION_GRAPH: Record<OrderStatus, OrderStatus[]> = {
-  requested:          ['running',   'cancelled'],
   running:            ['on_hold',   'ready_for_dispatch', 'cancelled'],
   on_hold:            ['running',   'cancelled'],
   ready_for_dispatch: ['dispatched','cancelled'],
@@ -77,7 +89,6 @@ function allowedTransitions(profile: UserProfile, currentStatus: string): OrderS
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  requested:          { label: 'Requested',          bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
   running:            { label: 'Running',             bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
   on_hold:            { label: 'On Hold',             bg: '#FFF7ED', color: '#9A3412', border: '#FED7AA' },
   ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' },
@@ -115,6 +126,10 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
   payment_linked:   'Payment linked',
   payment_unlinked: 'Payment unlinked',
   note_added:       'Note added',
+  // Written by convert_order_request_to_order(). Present in the log since
+  // 20260681000000 but never labelled here, so it rendered as its raw
+  // event_type; it is the Order-side record of where this Order came from.
+  order_created_from_request: 'Order created from request',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -191,6 +206,7 @@ function ActivityDot({ event_type }: { event_type: string }) {
     payment_linked:   colors.green,
     payment_unlinked: colors.amber,
     note_added:       colors.muted,
+    order_created_from_request: colors.green,
   }
   const c = colorMap[event_type] ?? colors.muted
   return <div style={{ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, marginTop: 5 }} />
@@ -209,6 +225,9 @@ function activityDescription(entry: ActivityEntry): string {
   }
   if (event_type === 'payment_unlinked') return 'Payment unlinked'
   if (event_type === 'note_added') return (payload.note as string) ?? ''
+  if (event_type === 'order_created_from_request') {
+    return payload.request_number ? `From ${payload.request_number}` : ''
+  }
   return ''
 }
 
@@ -263,108 +282,6 @@ function CancelConfirmDialog({
             }}
           >
             Yes, Cancel Order
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Delete Confirmation Dialog ────────────────────────────────────────────────
-
-function DeleteConfirmDialog({
-  order,
-  onDeleted,
-  onDismiss,
-}: {
-  order: Order
-  onDeleted: () => void
-  onDismiss: () => void
-}) {
-  const [deleting, setDeleting] = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
-  const supabase = useMemo(() => createClient(), [])
-
-  const handleDelete = async () => {
-    if (deleting) return
-    setDeleting(true)
-    setError(null)
-
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { setError('Not authenticated.'); setDeleting(false); return }
-
-    try {
-      const res = await fetch(`/api/orders/${order.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(body.error ?? 'Failed to delete this order. Please try again.')
-        setDeleting(false)
-        return
-      }
-      onDeleted()
-    } catch {
-      setError('Failed to delete this order. Please try again.')
-      setDeleting(false)
-    }
-  }
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '16px',
-      }}
-      onClick={e => { if (e.target === e.currentTarget && !deleting) onDismiss() }}
-    >
-      <div style={{
-        background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '12px', width: '100%', maxWidth: '400px',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.18)', padding: '24px',
-      }}>
-        <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, marginBottom: '10px' }}>
-          Delete request {order.display_number}?
-        </div>
-        <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6, marginBottom: '18px' }}>
-          {order.client_name}
-          <br /><br />
-          This will permanently delete this request and its related data. This action cannot be undone.
-        </div>
-        {error && (
-          <div style={{
-            padding: '10px 12px', borderRadius: '8px', marginBottom: '14px',
-            background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px',
-          }}>
-            {error}
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onDismiss}
-            disabled={deleting}
-            style={{
-              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: 'transparent', border: `1px solid ${colors.border}`,
-              color: colors.secondary, cursor: deleting ? 'not-allowed' : 'pointer',
-              opacity: deleting ? 0.6 : 1,
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            style={{
-              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: colors.red, border: 'none', color: '#fff',
-              cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.7 : 1,
-            }}
-          >
-            {deleting ? 'Deleting…' : 'Delete Request'}
           </button>
         </div>
       </div>
@@ -500,7 +417,11 @@ export default function OrderDetailPage() {
   const [payments,      setPayments]      = useState<LinkedPayment[]>([])
   const [activity,      setActivity]      = useState<ActivityEntry[]>([])
   const [notFound,      setNotFound]      = useState(false)
-  const [pendingDelete, setPendingDelete] = useState(false)
+  // Test Data Cleanup is a temporary, testing-phase-only affordance. Both halves
+  // are required: the Order has to have been created during testing, AND cleanup
+  // has to still be enabled. The RPC is admin-gated and simply errors for anyone
+  // else, so a non-admin silently gets false — which is the right answer anyway.
+  const [cleanupEnabled, setCleanupEnabled] = useState(false)
 
   const router     = useRouter()
   const params     = useParams()
@@ -516,6 +437,7 @@ export default function OrderDetailPage() {
         requested_by, assigned_to, created_by,
         confirm_date, due_date, total_value, total_product_value,
         lead_source, status, notes, created_at, updated_at,
+        source_order_request_id, source_request_number, is_test_data,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
         created_by_user:users!created_by(full_name)
@@ -575,6 +497,13 @@ export default function OrderDetailPage() {
 
       setProfile(me as UserProfile)
       await loadOrder()
+
+      if ((me as UserProfile | null)?.role === 'admin') {
+        const { data: s } = await supabase.rpc('get_test_data_cleanup_settings')
+        const settings = s as { enabled?: boolean; permanently_disabled?: boolean } | null
+        setCleanupEnabled(!!settings?.enabled && !settings?.permanently_disabled)
+      }
+
       setPageLoading(false)
     }
     init()
@@ -585,6 +514,8 @@ export default function OrderDetailPage() {
     await supabase.auth.signOut()
     router.replace('/login')
   }
+
+  const canCleanUp = cleanupEnabled && !!order?.is_test_data
 
   if (pageLoading) return <LoadingScreen />
 
@@ -658,16 +589,31 @@ export default function OrderDetailPage() {
                 }}
               />
             )}
-            {profile?.role === 'admin' && !viewAsUserId && (
+            {/* A Confirmed Order has no destructive action. It is permanent
+                business history, enforced by the database (20260705000000):
+                public.orders carries no DELETE policy and orders_prevent_delete
+                refuses every path, including the service role.
+
+                While the system is in its testing phase, an Order that was
+                created during testing offers a route to the separate cleanup
+                flow instead. Deliberately not styled or worded as a delete: it
+                navigates to a page that then requires a reason, a typed
+                confirmation, and a chain where every record is verified test
+                data. It disappears on its own once cleanup is permanently
+                disabled, because canCleanUp then stays false. */}
+            {profile?.role === 'admin' && !viewAsUserId && canCleanUp && (
               <button
-                onClick={() => setPendingDelete(true)}
+                onClick={() => router.push(
+                  `/admin/control-center/test-data-cleanup?type=order&id=${order.id}`
+                )}
                 style={{
                   padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: 600,
-                  background: 'transparent', border: `1px solid ${colors.red}`,
-                  color: colors.red, cursor: 'pointer',
+                  background: 'transparent', border: `1px solid ${colors.border}`,
+                  color: colors.secondary, cursor: 'pointer',
                 }}
+                title="This Order was created during system testing"
               >
-                Delete
+                Clean Up Test Transaction
               </button>
             )}
           </div>
@@ -705,6 +651,22 @@ export default function OrderDetailPage() {
           <MetaField label="Total Order Value"   value={fmtAmount(order.total_value)} />
           <MetaField label="Created"       value={fmtDate(order.created_at)} />
           <MetaField label="Last Updated"  value={fmtDate(order.updated_at)} />
+          {/* Read-only provenance. Rendered only for an Order that actually came
+              from a request, so Orders created by other paths don't show an
+              empty field. Deliberately not a link: converted requests are being
+              removed from the Order Requests module, so there is nowhere to
+              navigate to. The internal request id rides along as a title
+              attribute for support/audit lookups without adding UI noise. */}
+          {order.source_request_number && (
+            <MetaField
+              label="Source Request"
+              value={
+                <span title={order.source_order_request_id ?? undefined}>
+                  {order.source_request_number}
+                </span>
+              }
+            />
+          )}
         </div>
 
         {/* Notes (if any) */}
@@ -835,13 +797,6 @@ export default function OrderDetailPage() {
 
       </div>
 
-      {pendingDelete && (
-        <DeleteConfirmDialog
-          order={order}
-          onDeleted={() => router.push('/orders/all?deleted=1')}
-          onDismiss={() => setPendingDelete(false)}
-        />
-      )}
     </OrdersLayout>
   )
 }

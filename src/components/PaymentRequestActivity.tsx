@@ -48,8 +48,15 @@ function eventLabel(row: ActivityRow): string {
   const p = row.payload ?? {}
   switch (row.event_type) {
     case 'request_submitted':  return 'Payment Request submitted'
-    case 'order_linked':       return `Linked to Order ${p.order_number ?? p.order_id ?? ''}`
+    case 'order_linked':
+      // from_order_request_* is present only when the link happened as an
+      // automatic transfer during Order Request conversion (20260698).
+      return p.from_order_request_number || p.from_order_request_id
+        ? `Linked to Order ${p.order_number ?? p.order_id ?? ''} (transferred from Order Request ${p.from_order_request_number ?? p.from_order_request_id})`
+        : `Linked to Order ${p.order_number ?? p.order_id ?? ''}`
     case 'order_unlinked':     return `Unlinked from Order ${p.order_number ?? p.order_id ?? ''}`
+    case 'order_request_linked':   return `Linked to Order Request ${p.order_request_number ?? p.order_request_id ?? ''}`
+    case 'order_request_unlinked': return `Unlinked from Order Request ${p.order_request_number ?? p.order_request_id ?? ''}`
     case 'order_link_changed': return `Order link changed from ${p.from_order_number ?? p.from_order_id ?? ''} to ${p.to_order_number ?? p.to_order_id ?? ''}`
     case 'status_changed':     return `Status changed from ${statusLabel(p.from_status)} to ${statusLabel(p.to_status)}`
     default:                   return row.event_type
@@ -67,6 +74,8 @@ function markerColor(row: ActivityRow): string {
   }
   if (row.event_type === 'order_linked')   return colors.green
   if (row.event_type === 'order_unlinked') return colors.amber
+  if (row.event_type === 'order_request_linked')   return colors.green
+  if (row.event_type === 'order_request_unlinked') return colors.amber
   return colors.muted
 }
 

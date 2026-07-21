@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useState, useMemo } from 'react'
+import { Suspense, useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -8,6 +8,7 @@ import { ControlCenterLayout, type ControlCenterTab } from '@/components/layout/
 import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 import { formatFullDate } from '@/lib/ui'
+import { orderNumberErrorMessage, parseOrderNumberInput, formatOrderNumber } from '@/lib/orderNumbering'
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -317,6 +318,181 @@ function OverviewCard({
   )
 }
 
+// ── Confirmed Order Number Cycle ─────────────────────────────────────────────
+//
+// The admin control for the next Confirmed Order number (migrations
+// 20260703000000 and 20260704000000).
+//
+// It has its own Control Center tab and its own sidebar entry. The first version
+// of this control lived at the bottom of the Overview tab, below the metric
+// grid and styled like the informational panel beside it — it rendered
+// correctly and shipped in the bundle, and it was still effectively invisible,
+// because nothing in the navigation named it. A control an admin cannot find is
+// a control that does not exist, so discoverability is the feature here.
+//
+// Both values come from get_confirmed_order_number_cycle() rather than from the
+// table: order_number_cycle has RLS enabled with no policies, so it is not
+// client-readable at all. That RPC is admin-gated in the database, which means
+// nothing on this page is what stands between a non-admin and the data.
+//
+// Client-side validation (parseOrderNumberInput) is a convenience that saves a
+// round trip on an obvious typo. Every rule it applies is independently enforced
+// by set_next_confirmed_order_number(), and when the two disagree the database
+// wins and its message is what gets shown.
+
+type OrderNumberCycle = {
+  next_number: number | null
+  next_number_display: string | null
+  highest_existing_number: number
+  highest_existing_display: string | null
+  configured: boolean
+  exhausted: boolean
+}
+
+function OrderNumberCycleTab() {
+  const supabase = useMemo(() => createClient(), [])
+
+  const [cycle,    setCycle]    = useState<OrderNumberCycle | null>(null)
+  const [loading,  setLoading]  = useState(true)
+  const [loadErr,  setLoadErr]  = useState('')
+  const [input,    setInput]    = useState('')
+  const [saving,   setSaving]   = useState(false)
+  const [error,    setError]    = useState('')
+  const [saved,    setSaved]    = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setLoadErr('')
+    const { data, error: rpcErr } = await supabase.rpc('get_confirmed_order_number_cycle')
+    if (rpcErr) {
+      // The card must survive this. Losing the whole section on a failed read
+      // would put the admin back where they started: unable to find the control.
+      setLoadErr(orderNumberErrorMessage(rpcErr.message, 'admin') ?? rpcErr.message)
+      setCycle(null)
+      setLoading(false)
+      return
+    }
+    const res = data as OrderNumberCycle | null
+    setCycle(res)
+    setInput(res?.next_number != null ? String(res.next_number) : '')
+    setLoading(false)
+  }, [supabase])
+
+  useEffect(() => { void load() }, [load])
+
+  const parsed  = parseOrderNumberInput(input)
+  const preview = parsed.ok ? formatOrderNumber(parsed.value) : null
+
+  // Save is disabled when nothing changed. Compared numerically, so retyping
+  // '0020' over a stored 20 correctly counts as unchanged.
+  const unchanged = parsed.ok && cycle?.next_number != null && parsed.value === cycle.next_number
+  const canSave   = !saving && !loading && parsed.ok && !unchanged
+
+  const save = async () => {
+    setError('')
+    setSaved('')
+    if (!parsed.ok) { setError(parsed.error); return }
+
+    setSaving(true)
+    const { error: rpcErr } = await supabase.rpc('set_next_confirmed_order_number', {
+      p_next_number: parsed.value,
+    })
+    setSaving(false)
+
+    if (rpcErr) {
+      // The database is authoritative. Show what it actually said, in plain
+      // language where there is a mapping, and never a generic fallback that
+      // hides which rule was broken.
+      setError(orderNumberErrorMessage(rpcErr.message, 'admin') ?? rpcErr.message)
+      return
+    }
+
+    setSaved(`The next Confirmed Order will be ${formatOrderNumber(parsed.value)}.`)
+    await load()
+  }
+
+  return (
+    <div>
+      <SectionHeading
+        title="Confirmed Order Number Cycle"
+        description="Choose the number the next Confirmed Order will be given. Order Request numbers (ORD-REQ-…) are a separate scheme and are not affected."
+      />
+
+      <div style={SECTION}>
+        {loading ? (
+          <div style={{ fontSize: 12.5, color: '#8C94A6' }}>Loading…</div>
+        ) : loadErr ? (
+          <>
+            <div style={{ ...ERROR_MSG, marginBottom: 12 }}>{loadErr}</div>
+            <button style={BTN_SAVE} onClick={() => void load()}>Retry</button>
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 40, marginBottom: 22, flexWrap: 'wrap' }}>
+              <div>
+                <div style={OVERVIEW_NUMBER}>{cycle?.highest_existing_display ?? '—'}</div>
+                <div style={OVERVIEW_LABEL}>Highest existing Order number</div>
+              </div>
+              <div>
+                <div style={OVERVIEW_NUMBER}>
+                  {cycle?.next_number_display ?? (cycle?.exhausted ? 'Exhausted' : 'Not set')}
+                </div>
+                <div style={OVERVIEW_LABEL}>Next Confirmed Order number</div>
+              </div>
+            </div>
+
+            <label style={{ ...LABEL, display: 'block' }}>Next Order number</label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                value={input}
+                onChange={e => { setInput(e.target.value); setError(''); setSaved('') }}
+                onKeyDown={e => { if (e.key === 'Enter' && canSave) void save() }}
+                style={{ ...INPUT, width: 130, marginBottom: 0 }}
+                inputMode="numeric"
+                placeholder="e.g. 25"
+                aria-label="Next Confirmed Order number"
+              />
+              {/* The live four-digit preview: it is what the admin is actually
+                  choosing, so it is shown at the moment of choosing rather than
+                  only after a save. */}
+              <div style={{ fontSize: 12.5, color: '#6B7384' }}>
+                {preview
+                  ? <>will be saved as <strong style={{ color: '#111318', fontSize: 15 }}>{preview}</strong></>
+                  : input.trim() ? <span style={{ color: '#D94F4F' }}>{parsed.ok ? '' : parsed.error}</span> : null}
+              </div>
+            </div>
+
+            <div style={{ ...BTN_ROW, justifyContent: 'flex-start', marginTop: 16 }}>
+              <button
+                style={{ ...BTN_SAVE, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default' }}
+                onClick={save}
+                disabled={!canSave}
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+
+            {error && <div style={{ ...ERROR_MSG, marginTop: 12, marginBottom: 0 }}>{error}</div>}
+            {saved && <div style={{ fontSize: 12.5, color: '#166534', marginTop: 12 }}>{saved}</div>}
+
+            <div style={{
+              fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
+              border: '1px solid #E8EBF0', borderRadius: 10, padding: '12px 16px',
+              marginTop: 20, lineHeight: 1.6,
+            }}>
+              This changes the number assigned to the next future Confirmed Order.
+              Existing Orders are not renumbered.
+              <br />
+              Order numbers are always four digits, 0001 to 9999, and the next number must be
+              higher than the highest Order that already exists.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function OverviewTab({
   deptCount, activeDeptCount, peopleCount, moduleCount, enforcedCount, onNavigate, onOpenAccessControl,
 }: {
@@ -359,6 +535,23 @@ function OverviewTab({
           hint="Modules with enforced permissions"
           onClick={onOpenAccessControl}
         />
+      </div>
+      {/* A second way in. The sidebar entry is the primary fix for finding this
+          control; this card means an admin who starts on Overview also lands on
+          it without having to already know the feature exists. */}
+      <div style={{
+        fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
+        border: '1px solid #E8EBF0', borderRadius: 10, padding: '12px 16px',
+        marginBottom: 12,
+      }}>
+        <strong>Confirmed Order numbering</strong> — set the number the next Confirmed Order
+        will be given in{' '}
+        <button
+          onClick={() => onNavigate('order-numbering')}
+          style={{ color: '#5585E8', background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}
+        >
+          Order Numbering
+        </button>.
       </div>
       <div style={{
         fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
@@ -407,7 +600,9 @@ function ControlCenterPageInner() {
   const searchParams = useSearchParams()
   const tabParam = searchParams.get('tab')
   const tab: ControlCenterTab =
-    tabParam === 'departments' || tabParam === 'people' || tabParam === 'modules' ? tabParam : 'overview'
+    tabParam === 'departments' || tabParam === 'people' || tabParam === 'modules'
+      || tabParam === 'order-numbering'
+      ? tabParam : 'overview'
 
   function changeTab(next: ControlCenterTab) {
     router.replace(`/admin/control-center?tab=${next}`)
@@ -746,6 +941,9 @@ function ControlCenterPageInner() {
             onOpenAccessControl={() => router.push('/admin/control-center/permissions')}
           />
         )}
+
+        {/* ── Confirmed Order Number Cycle ─────────────────────────────────── */}
+        {tab === 'order-numbering' && <OrderNumberCycleTab />}
 
         {/* ── Departments ──────────────────────────────────────────────────── */}
         {tab === 'departments' && (

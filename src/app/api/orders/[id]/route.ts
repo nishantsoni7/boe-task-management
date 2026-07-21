@@ -1,74 +1,33 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-function serviceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
-
-// DELETE /api/orders/[id] — admin-only permanent delete of an order request.
-// order_activity_log rows cascade automatically (ON DELETE CASCADE).
-// finance_payment_requests.order_id is set null automatically (ON DELETE
-// SET NULL) — blocked below for approved_linked rows, since that status
-// requires a non-null order_id (finance_payment_requests_approved_linked_requires_order_id).
+// DELETE /api/orders/[id] — permanently refused.
+//
+// This route used to hard-delete a Confirmed Order with a SERVICE-ROLE client,
+// guarded only by an admin check plus two business checks. That made it the most
+// dangerous delete path in the system: a service-role client bypasses RLS
+// entirely, so no policy could ever constrain it, and any Order that happened to
+// lack provenance and approved payments was one request away from being erased.
+//
+// Confirmed Orders are now permanent business history (migration
+// 20260705000000). The database enforces that for every path, including this
+// one — public.orders has no DELETE policy at all, and the BEFORE DELETE trigger
+// orders_prevent_delete raises for the service role and direct SQL too. So this
+// handler could not delete an Order even if it tried.
+//
+// It is kept, rather than removed, so that anything still calling it gets a
+// clear explanation instead of a 404 that reads like a bug. Removing a test
+// Order during the testing phase goes through Admin Control Center → Test Data
+// Cleanup, which is admin-gated, audited, and refuses anything that is not
+// verified test data.
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params
+  await params
 
-  const token = req.headers.get('authorization')?.replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const client = serviceClient()
-  const { data: { user: caller }, error: callerError } = await client.auth.getUser(token)
-  if (callerError || !caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: callerProfile } = await client
-    .from('users')
-    .select('role')
-    .eq('id', caller.id)
-    .single()
-
-  if (callerProfile?.role !== 'admin') {
-    return NextResponse.json({ error: 'Only admins can delete order requests' }, { status: 403 })
-  }
-
-  const { data: order } = await client
-    .from('orders')
-    .select('id')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (!order) {
-    return NextResponse.json({ error: 'Order request not found' }, { status: 404 })
-  }
-
-  const { data: linkedReceived } = await client
-    .from('finance_payment_requests')
-    .select('id')
-    .eq('order_id', id)
-    .eq('status', 'approved_linked')
-    .limit(1)
-
-  if (linkedReceived && linkedReceived.length > 0) {
-    return NextResponse.json({
-      error: 'This order has payments marked as Received. Unlink them in Finance before deleting this order.',
-    }, { status: 409 })
-  }
-
-  const { error: deleteError } = await client
-    .from('orders')
-    .delete()
-    .eq('id', id)
-
-  if (deleteError) {
-    return NextResponse.json({
-      error: 'Could not delete this order because related records are still attached. Please try again or contact support.',
-    }, { status: 409 })
-  }
-
-  return NextResponse.json({ success: true })
+  return NextResponse.json({
+    error:
+      'Confirmed Orders are permanent business history and cannot be deleted. '
+      + 'A test Order can be removed through Admin Control Center → Test Data Cleanup while testing is enabled.',
+  }, { status: 403 })
 }

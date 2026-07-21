@@ -32,7 +32,6 @@ type DashboardStats = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  requested:          { label: 'Requested',          bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
   running:            { label: 'Running',             bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
   on_hold:            { label: 'On Hold',             bg: '#FFF7ED', color: '#9A3412', border: '#FED7AA' },
   ready_for_dispatch: { label: 'Ready for Dispatch',  bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' },
@@ -162,6 +161,9 @@ export default function OrdersDashboardPage() {
         .eq('status', 'ready_for_dispatch'),
       supabase.from('finance_payment_requests').select('*', { count: 'exact', head: true })
         .is('order_id', null)
+        // A payment parked on an Order Request (20260698) links itself on
+        // conversion — it is no longer an actionable unlinked payment.
+        .is('order_request_id', null)
         .in('status', ['approved_unlinked', 'approved_linked']),
       supabase.from('orders').select('*', { count: 'exact', head: true })
         .in('status', ['running', 'on_hold'])

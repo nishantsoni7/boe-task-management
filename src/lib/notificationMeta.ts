@@ -114,10 +114,18 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
   }
 
   // ── Orders ─────────────────────────────────────────────────────────────────
+  // Every Order notification carries the Order REQUEST id in entity_id and
+  // deep-links into the Order Requests module — except order_converted, whose
+  // subject is the Confirmed Order that was just created. That one carries the
+  // ORDER id instead (set at the call site in orders/requests/page.tsx) and
+  // points at the Order's own detail page, because a converted request is being
+  // removed from the Order Requests module and would no longer resolve there.
   if (type.startsWith('order')) {
     const badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
     const href = n.entity_id
-      ? `/orders/requests?tab=all&request=${n.entity_id}`
+      ? (type === 'order_converted'
+          ? `/orders/${n.entity_id}`
+          : `/orders/requests?tab=all&request=${n.entity_id}`)
       : '/orders/requests'
     return {
       category: 'order',
