@@ -53,6 +53,7 @@ export async function notifyFinance(payload: FinanceNotifyPayload): Promise<void
 
 export type OrderNotifyEvent =
   | 'order_submitted'
+  | 'order_reassigned'
   | 'order_clarification'
   | 'order_resubmitted'
   | 'order_rejected'

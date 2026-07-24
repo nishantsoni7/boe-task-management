@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 // Titles carry the request number so the record can be located.
 export type OrderNotifyEvent =
   | 'order_submitted'
+  | 'order_reassigned'
   | 'order_clarification'
   | 'order_resubmitted'
   | 'order_rejected'
@@ -78,6 +79,14 @@ export async function POST(req: NextRequest) {
     case 'order_submitted':
       // Reviewers (admins) plus the assigned user, when one is set.
       await toAdmins(`Order request ${requestNumber} requires review.`)
+      push(assignedTo, `You were assigned order request ${requestNumber}.`, 'order_assigned')
+      break
+    case 'order_reassigned':
+      // An admin moved the request to a different assignee (edit_order_request,
+      // 20260708). Only the NEW assignee is notified, and it carries the same
+      // stable 'order_assigned' type as a first assignment, so the shared
+      // resolver badges and deep-links it identically. Reviewers are
+      // deliberately not notified: nothing here needs their review.
       push(assignedTo, `You were assigned order request ${requestNumber}.`, 'order_assigned')
       break
     case 'order_resubmitted':

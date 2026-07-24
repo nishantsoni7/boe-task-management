@@ -47,9 +47,24 @@ type OrderRequest = {
 
 // The project's existing requester rule (order_requests_requester_select /
 // _insert, and resubmit_order_request): the requester is created_by OR
-// requested_by. assigned_to is deliberately NOT an owner.
+// requested_by. assigned_to is deliberately NOT an owner — an assignee is a
+// participant (see isRequestParticipant), never the requester, so this stays
+// the gate for Resubmit / Reapply, which the two form RPCs still restrict to
+// created_by OR requested_by server-side.
 function isPermittedRequester(r: OrderRequest, userId: string): boolean {
   return r.created_by === userId || r.requested_by === userId
+}
+
+// The wider participant rule (20260707): the requester, PLUS the person the
+// request is assigned to. An admin can create a request on a salesperson's
+// behalf, in which case created_by and requested_by are both the admin and
+// assigned_to is the only thing tying the salesperson to it.
+//
+// Scoped to reading and to payment linkage only. It deliberately does NOT gate
+// editing: public.order_requests has had no UPDATE policy for any role since
+// 20260683/20260687 moved every mutation into a SECURITY DEFINER RPC.
+function isRequestParticipant(r: OrderRequest, userId: string): boolean {
+  return isPermittedRequester(r, userId) || r.assigned_to === userId
 }
 
 // The statuses in which a request is still the requester's to work on: edit it,
@@ -60,20 +75,38 @@ function isPermittedRequester(r: OrderRequest, userId: string): boolean {
 // this constant.
 const REQUESTER_OPEN_STATUSES = ['submitted', 'needs_clarification', 'rejected']
 
-// May this viewer still change the request itself? Admins always may; the
-// requester only while it is open. Mirrors, and never widens, what
-// order_requests_requester_update / resubmit / reapply already permit.
+// The statuses edit_order_request (20260708) accepts. Deliberately a separate
+// constant from REQUESTER_OPEN_STATUSES: the two lists coincide today but answer
+// different questions — what may be EDITED versus what may receive payments —
+// and each must stay pinned to its own RPC rather than drift together.
+// 'converted' is absent, which is what makes a converted request read-only here.
+const EDITABLE_STATUSES = ['submitted', 'needs_clarification', 'rejected']
+
+// May this viewer still change the request itself? Editing follows the
+// ASSIGNMENT, not authorship: an admin may edit any unconverted request, and
+// the person it is currently assigned to may edit theirs. created_by /
+// requested_by grant nothing on their own — a self-created request stays
+// editable because its creator is normally also its assignee, and a former
+// assignee loses access the moment an admin reassigns.
+//
+// Status is checked for BOTH roles (not just the assignee) so the rule reads the
+// same way the RPC enforces it, and a future status is excluded by default
+// instead of silently becoming admin-editable.
+//
+// Mirrors, and never widens, edit_order_request. That RPC is the enforcement;
+// this only decides whether to render the button.
 function canEditRequest(r: OrderRequest, userId: string, isAdmin: boolean): boolean {
-  if (r.status === 'converted' || r.converted_order_id) return false
-  return isAdmin || (isPermittedRequester(r, userId) && REQUESTER_OPEN_STATUSES.includes(r.status))
+  if (r.converted_order_id || !EDITABLE_STATUSES.includes(r.status)) return false
+  return isAdmin || r.assigned_to === userId
 }
 
-// May this viewer attach or detach payments on this request? Same rule, but
-// stated separately because it maps to a different server-side gate (the two
-// linkage RPCs) and must never drift from it.
+// May this viewer attach or detach payments on this request? Stated separately
+// because it maps to a different server-side gate (the two linkage RPCs) and
+// must never drift from it — and since 20260707 that gate accepts the assignee
+// too, which the edit rule above does not.
 function canManagePayments(r: OrderRequest, userId: string, isAdmin: boolean): boolean {
   if (r.converted_order_id || !REQUESTER_OPEN_STATUSES.includes(r.status)) return false
-  return isAdmin || isPermittedRequester(r, userId)
+  return isAdmin || isRequestParticipant(r, userId)
 }
 
 // A payment attached to this request via order_request_id. Non-admins see
@@ -98,6 +131,21 @@ type LinkedPayment = {
   submitted_by: string
   submitted_by_name?: string
   created_at: string
+}
+
+// Structured result returned by edit_order_request() (20260708/20260709). The
+// RPC returns a single jsonb OBJECT, so supabase-js hands it back as `data`
+// directly — not an array, and not a PostgrestResponse row, so no .single() or
+// .maybeSingle() is involved on this path.
+type EditRequestResult = {
+  order_request_id:     string
+  request_number:       string
+  status:               string
+  updated_at:           string
+  assignee_changed:     boolean
+  previous_assigned_to: string | null
+  assigned_to:          string | null
+  changed_fields:       string[]
 }
 
 // Structured result returned by convert_order_request_to_order().
@@ -1373,9 +1421,10 @@ function RequestDetailsModal({
   onPaymentLinked: (payment: SuspensePayment) => void
   onPaymentUnlinked: () => void
 }) {
-  // Payment linking is offered to an admin or to the request's own requester,
-  // and only while the request is still open — exactly the rule
-  // link_finance_payment_to_order_request enforces server-side (20260699).
+  // Payment linking is offered to an admin, the request's own requester, or the
+  // person it is assigned to, and only while the request is still open —
+  // exactly the rule link_finance_payment_to_order_request enforces
+  // server-side (20260699, widened to the assignee in 20260707).
   const canLinkPayment = canManagePayments(r, currentUserId, isAdmin)
   // A non-admin's link search is restricted to their own submissions; an admin
   // keeps the full suspense-ledger search.
@@ -1561,11 +1610,13 @@ function RequestDetailsModal({
   const isRequester  = isPermittedRequester(r, currentUserId)
   const canResubmit  = r.status === 'needs_clarification' && isRequester
   const canReapply   = r.status === 'rejected' && isRequester
-  // Editing a plain submitted request is a direct, policy-checked update
-  // (order_requests_requester_update); the other two statuses are edited
-  // through their own RPC as part of Resubmit / Reapply, so a separate Edit
-  // button there would be a second door to the same change.
-  const canEditRequestNow = canEditRequest(r, currentUserId, isAdmin) && r.status === 'submitted'
+  // Editing is offered in every editable status — submitted, needs_clarification
+  // and rejected — exactly the set edit_order_request accepts, and to exactly the
+  // people it accepts (admin, or the current assignee). It sits alongside
+  // Resubmit / Reapply rather than replacing them: Edit corrects details and
+  // leaves status untouched, while those two hand the request back for review.
+  // They remain separate actions with separate RPCs.
+  const canEditRequestNow = canEditRequest(r, currentUserId, isAdmin)
   const canAddPayment     = canManagePayments(r, currentUserId, isAdmin)
 
   // Deleting an Order Request is admin-only and only while it is UNCONVERTED —
@@ -2536,6 +2587,81 @@ function ClarifyModal({
 // a rule the reader can act on, so each gets a sentence rather than a shared
 // "something went wrong" that hides which rule refused. An unrecognised message
 // falls through unchanged — still more useful than a generic string.
+// Shape of a PostgREST/supabase-js error, narrowed to the fields worth acting on.
+type RpcErrorLike = {
+  message?: string | null
+  code?: string | null
+  details?: string | null
+  hint?: string | null
+}
+
+// Detailed, developer-facing record of a failed RPC. Kept out of the UI string
+// on purpose — the user gets a sentence, the console gets the SQLSTATE, details
+// and hint needed to diagnose it. Never logs the arguments, which carry client
+// and commercial data.
+function logRpcFailure(rpc: string, err: RpcErrorLike): void {
+  console.error(`[rpc:${rpc}] failed`, {
+    rpc,
+    code:    err.code    ?? null,
+    message: err.message ?? null,
+    details: err.details ?? null,
+    hint:    err.hint    ?? null,
+  })
+}
+
+// edit_order_request raises a distinct message per rule it enforces; each maps to
+// a sentence the reader can act on, so the UI names the rule that refused rather
+// than hiding every failure behind one string.
+//
+// This deliberately does NOT claim the request "may have already changed" unless
+// a real concurrency condition was detected (40001/55P03). The previous generic
+// fallback said exactly that for every failure, which sent readers hunting for a
+// phantom conflict when the actual cause was a plain server-side error — the
+// reason the 22P02 defect in 20260708 took so long to place.
+//
+// No raw SQL, constraint name, or internal identifier reaches the user.
+function editRequestErrorMessage(err: RpcErrorLike): string {
+  const m    = (err.message ?? '').toLowerCase()
+  const code = err.code ?? ''
+
+  // No SQLSTATE and no message at all: the request never reached PostgREST.
+  if (!code && !m) return 'Could not reach the server. Check your connection and try again.'
+
+  // PostgREST could not resolve the function — app and database are out of step.
+  if (code === 'PGRST202' || code === 'PGRST203') {
+    return 'This page is out of date with the server. Reload and try again.'
+  }
+
+  // Rules this RPC states explicitly, most specific first.
+  if (m.includes('only an admin may change the assignee')) return 'Only an admin can change the assignee of an order request.'
+  if (m.includes('may edit this order request'))           return 'You no longer have permission to edit this request.'
+  if (m.includes('has been converted'))                    return 'This request has been converted to an Order and can no longer be edited.'
+  if (m.includes('cannot be edited'))                      return 'This request is no longer in an editable state. Refresh and try again.'
+  if (m.includes('not found'))                             return 'This request no longer exists. Refresh the list.'
+  if (m.includes('authentication required'))               return 'Your session has expired. Sign in again to continue.'
+  // Already complete, user-facing sentences from the RPC itself.
+  if (m.includes('assignee must be'))     return err.message as string
+  if (m.includes('must not be negative')) return err.message as string
+  if (m.includes('client name is required')) return 'Client name is required.'
+
+  // Genuine permission refusal that did not match a message above.
+  if (code === '42501') return 'You do not have permission to make this change.'
+
+  // Real database validation failures: bad value, wrong type, missing/!broken
+  // reference, or a CHECK constraint. One message, because the user's action is
+  // the same in every case — correct a field and retry.
+  if (['23514', '23502', '23503', '22P02', '22007', '22003', '22001'].includes(code)) {
+    return 'One of the values entered is not valid for this request. Check the fields and try again.'
+  }
+
+  // The only cases that genuinely mean "someone else touched this".
+  if (code === '40001' || code === '55P03') {
+    return 'Someone else is editing this request right now. Please try again in a moment.'
+  }
+
+  return 'Could not save this request. Please try again.'
+}
+
 function deleteRequestErrorMessage(message: string): string {
   if (message.includes('ORDER_REQUEST_CONVERTED_PERMANENT')) {
     return 'This Order Request created a Confirmed Order and is retained as permanent source history. It cannot be deleted.'
@@ -2920,6 +3046,7 @@ function RequestFormModal({
   request,
   salesAssignees,
   overrideAssignees,
+  isAdmin,
   onClose,
   onSaved,
 }: {
@@ -2927,9 +3054,15 @@ function RequestFormModal({
   request: OrderRequest
   salesAssignees: AssigneeOption[]
   overrideAssignees: AssigneeOption[]
+  isAdmin: boolean
   onClose: () => void
   onSaved: (requestNumber: string) => void
 }) {
+  // Only an admin may reassign, and only on the Edit path — edit_order_request
+  // rejects a non-admin who supplies a different assigned_to (42501), so this is
+  // a mirror of the server rule, not the rule itself. Resubmit and Reapply are
+  // untouched: their RPCs are requester-only and still accept p_assigned_to.
+  const assigneeLocked = mode === 'edit' && !isAdmin
   // A legacy assignee that no longer qualifies (inactive, or neither Sales
   // nor authorised) stays visible and selected — never silently dropped.
   const isLegacyAssigneeOutOfList = !!request.assigned_to
@@ -2960,35 +3093,46 @@ function RequestFormModal({
   const persist = async (): Promise<string | null> => {
     if (mode === 'edit') {
       // No status change: a plain correction to a request still under review.
-      // The assignee-eligibility trigger (20260697) validates assigned_to on
-      // this path exactly as it does inside the RPCs.
-      const { data, error: dbErr } = await supabase
-        .from('order_requests')
-        .update({
-          client_name:         form.client_name.trim(),
-          assigned_to:         form.assigned_to  || null,
-          confirm_date:        form.confirm_date || null,
-          due_date:            form.due_date     || null,
-          total_value:         form.total_value  ? parseFloat(form.total_value) : null,
-          total_product_value: form.total_product_value ? parseFloat(form.total_product_value) : null,
-          lead_source:         form.lead_source  || null,
-          notes:               form.notes.trim() || null,
-          updated_at:          new Date().toISOString(),
-        })
-        .eq('id', request.id)
-        .select('id')
-        .maybeSingle()
+      // Goes through edit_order_request (20260708), NOT a direct table update —
+      // public.order_requests has no UPDATE policy for any role, so the previous
+      // direct `.update()` matched zero rows and failed for everyone, admins
+      // included. The RPC re-checks admin-or-assignee, the converted lock, and
+      // assignee eligibility server-side.
+      const { data, error: rpcErr } = await supabase.rpc('edit_order_request', {
+        p_order_request_id:    request.id,
+        p_client_name:         form.client_name,
+        p_assigned_to:         form.assigned_to  || null,
+        p_confirm_date:        form.confirm_date || null,
+        p_due_date:            form.due_date     || null,
+        p_total_value:         form.total_value  ? parseFloat(form.total_value) : null,
+        p_total_product_value: form.total_product_value ? parseFloat(form.total_product_value) : null,
+        p_lead_source:         form.lead_source  || null,
+        p_notes:               form.notes,
+      })
 
-      if (dbErr) {
-        return dbErr.message?.includes('Assignee must be')
-          ? dbErr.message
-          : dbErr.message?.includes('can no longer be edited')
-            ? 'This request has been converted and can no longer be edited.'
-            : 'Could not save this request. It may have already changed. Please refresh and try again.'
+      if (rpcErr) {
+        logRpcFailure('edit_order_request', rpcErr)
+        return editRequestErrorMessage(rpcErr)
       }
-      // RLS filtered the row out: the request left the editable state (or was
-      // never this user's) between opening the form and saving.
-      if (!data) return 'This request can no longer be edited. Please refresh and try again.'
+
+      // Reassignment notification, keyed off COMMITTED database state
+      // (assignee_changed is computed inside the RPC from the pre-update row)
+      // rather than pre-save form values, so it fires exactly when assigned_to
+      // actually moved — never on a no-op save, never on a plain field edit.
+      //
+      // notifyOrders never throws: it swallows and logs its own failures, and is
+      // deliberately not awaited. A notification outage therefore cannot turn a
+      // committed edit into a visible save failure.
+      const result = data as EditRequestResult | null
+      if (result?.assignee_changed && result.assigned_to) {
+        void notifyOrders({
+          event:         'order_reassigned',
+          requestNumber: request.request_number,
+          entityId:      request.id,
+          clientName:    form.client_name.trim(),
+          assignedTo:    result.assigned_to,
+        })
+      }
       return null
     }
 
@@ -3118,10 +3262,16 @@ function RequestFormModal({
             </div>
           )}
 
+          {/* Editing never changes status, so the note states what the request
+              will still be afterwards — "stays under review" would be wrong on a
+              request that is awaiting clarification or already rejected. */}
           {mode === 'edit' && (
             <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
-              This request stays under review — saving updates its details without
-              resubmitting it.
+              {request.status === 'needs_clarification'
+                ? 'Saving updates the details only. This request still needs clarification — use Update and Resubmit to send it back for review.'
+                : request.status === 'rejected'
+                  ? 'Saving updates the details only. This request stays rejected — use Reapply to submit it again.'
+                  : 'This request stays under review — saving updates its details without resubmitting it.'}
             </div>
           )}
 
@@ -3132,7 +3282,15 @@ function RequestFormModal({
             </label>
             <label style={labelStyle}>
               Assignee
-              <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
+              <select
+                style={assigneeLocked
+                  ? { ...inputStyle, background: colors.float, color: colors.secondary, cursor: 'not-allowed' }
+                  : inputStyle}
+                value={form.assigned_to}
+                onChange={set('assigned_to')}
+                disabled={assigneeLocked}
+                aria-label={assigneeLocked ? 'Assignee (only an admin can change this)' : 'Assignee'}
+              >
                 <option value="">— Select —</option>
                 {isLegacyAssigneeOutOfList && (
                   <optgroup label="Current Assignee">
@@ -3150,6 +3308,14 @@ function RequestFormModal({
                   </optgroup>
                 )}
               </select>
+              {assigneeLocked && (
+                <span style={{
+                  fontSize: '10.5px', fontWeight: 500, color: colors.muted,
+                  textTransform: 'none', letterSpacing: 0,
+                }}>
+                  Only an admin can change the assignee.
+                </span>
+              )}
             </label>
           </div>
 
@@ -3320,11 +3486,13 @@ function OrderRequestsPageInner() {
     //
     // Run for every viewer, not just admins. The query is keyed to the ids of
     // requests already on screen, and a non-admin only ever sees requests they
-    // own — for which finance_payment_requests_order_request_owner_select
-    // (20260699) exposes every attached payment. So the sums are complete for
-    // both roles, and the requester finally sees the same advance figure the
-    // admin does instead of a "Finance access required" placeholder. A failed
-    // query leaves the map null, which renders as "—" rather than a false ₹0.
+    // own or are assigned — for which
+    // finance_payment_requests_order_request_owner_select (20260699) and its
+    // assignee counterpart (20260707) expose every attached payment. So the
+    // sums are complete for both roles, and the requester finally sees the same
+    // advance figure the admin does instead of a "Finance access required"
+    // placeholder. A failed query leaves the map null, which renders as "—"
+    // rather than a false ₹0.
     const requestIds = mapped.map(r => r.id)
 
     const parkedRes = requestIds.length > 0
@@ -3831,13 +3999,21 @@ function OrderRequestsPageInner() {
           request={editTarget}
           salesAssignees={salesAssignees}
           overrideAssignees={overrideAssignees}
+          isAdmin={isAdmin}
           onClose={() => setEditTarget(null)}
           onSaved={requestNumber => {
+            // An edit never moves status, so the confirmation reports the status
+            // the request is still in rather than assuming "under review".
+            const stillIs = editTarget.status === 'needs_clarification'
+              ? 'It still needs clarification.'
+              : editTarget.status === 'rejected'
+                ? 'It is still rejected.'
+                : 'It is still under review.'
             setEditTarget(null)
             setDetailsTarget(null)
             setSuccessNumber(null)
             setConverted(null)
-            setActionMessage(`${requestNumber} updated. It is still under review.`)
+            setActionMessage(`${requestNumber} updated. ${stillIs}`)
             loadRequests()
           }}
         />
@@ -3849,6 +4025,7 @@ function OrderRequestsPageInner() {
           request={resubmitTarget}
           salesAssignees={salesAssignees}
           overrideAssignees={overrideAssignees}
+          isAdmin={isAdmin}
           onClose={() => setResubmitTarget(null)}
           onSaved={requestNumber => {
             setResubmitTarget(null)
@@ -3901,6 +4078,7 @@ function OrderRequestsPageInner() {
           request={reapplyTarget}
           salesAssignees={salesAssignees}
           overrideAssignees={overrideAssignees}
+          isAdmin={isAdmin}
           onClose={() => setReapplyTarget(null)}
           onSaved={requestNumber => {
             setReapplyTarget(null)
