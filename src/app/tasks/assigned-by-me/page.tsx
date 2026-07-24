@@ -15,7 +15,6 @@ import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers } from '@/hooks/queries/useMyTasks'
 import {
   CheckCircle2, ExternalLink, Star, AlertCircle,
-  List, Bell, PlayCircle, Clock, RefreshCcw, ShieldAlert,
   Search, Pencil, Trash2, Plus, Paperclip, X,
 } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
@@ -55,92 +54,20 @@ function formatDate(d: string | null): string | null {
 // ─── Tab config ───────────────────────────────────────────────────────────────
 type TabKey = 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion'
 
-const TABS: { key: TabKey; label: string; color: string; Icon: React.ElementType }[] = [
-  { key: 'all',            label: 'All',             color: colors.secondary, Icon: List         },
-  { key: 'important',      label: 'Important',       color: '#C49A28',        Icon: Bell         },
-  { key: 'unacknowledged', label: 'Unacknowledged',  color: '#9B6FD4',        Icon: Bell         },
-  { key: 'in_progress',    label: 'In Progress',     color: colors.blue,      Icon: PlayCircle   },
-  { key: 'overdue',        label: 'Overdue',         color: colors.red,       Icon: Clock        },
-  { key: 'needs_update',   label: 'Pending Update',  color: colors.amber,     Icon: RefreshCcw   },
-  { key: 'non_completion', label: 'Non Completion',  color: '#E05C2A',        Icon: ShieldAlert  },
+const TABS: { key: TabKey; label: string; color: string }[] = [
+  { key: 'all',            label: 'All',             color: colors.secondary },
+  { key: 'important',      label: 'Important',       color: '#C49A28'        },
+  { key: 'unacknowledged', label: 'Unacknowledged',  color: '#9B6FD4'        },
+  { key: 'in_progress',    label: 'In Progress',     color: colors.blue      },
+  { key: 'overdue',        label: 'Overdue',         color: colors.red       },
+  { key: 'needs_update',   label: 'Pending Update',  color: colors.amber     },
+  { key: 'non_completion', label: 'Non Completion',  color: '#E05C2A'        },
 ]
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high:   { label: 'High', color: '#B06035'    },
   medium: { label: 'Med',  color: '#C07820'    },
   low:    { label: 'Low',  color: colors.muted },
-}
-
-// ─── Right panel ─────────────────────────────────────────────────────────────
-function RightPanel({
-  counts, activeTab, onTabChange,
-}: {
-  counts: Record<TabKey, number>
-  activeTab: TabKey
-  onTabChange: (k: TabKey) => void
-}) {
-  return (
-    <div style={{ flex: 3, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-
-      <div style={{
-        background: colors.base, border: `1.5px solid ${colors.border}`,
-        borderRadius: '10px', overflow: 'hidden',
-      }}>
-        <div style={{
-          fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
-          textTransform: 'uppercase', color: colors.muted,
-          padding: '10px 16px 6px',
-        }}>
-          Views
-        </div>
-        {TABS.map((item, i, arr) => {
-          const isActive = activeTab === item.key
-          const { Icon } = item
-          return (
-            <button
-              key={item.key}
-              onClick={() => onTabChange(item.key)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', padding: '8px 14px',
-                background: isActive ? `${item.color}0d` : 'transparent',
-                border: 'none',
-                borderBottom: i < arr.length - 1 ? `1px solid ${colors.border}` : 'none',
-                borderLeft: `3px solid ${isActive ? item.color : 'transparent'}`,
-                cursor: 'pointer', outline: 'none', transition: 'all 0.1s', textAlign: 'left',
-              }}
-            >
-              <span style={{
-                display: 'flex', alignItems: 'center', gap: '7px',
-                fontSize: '12px', fontWeight: isActive ? 600 : 500,
-                color: isActive ? item.color : counts[item.key] > 0 ? colors.secondary : colors.muted,
-              }}>
-                <Icon size={12} style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }} />
-                {item.label}
-              </span>
-              <span style={{
-                fontSize: '12px', fontWeight: 700,
-                color: counts[item.key] > 0 ? item.color : colors.muted,
-                background: isActive ? `${item.color}18` : 'rgba(0,0,0,0.04)',
-                padding: '1px 7px', borderRadius: '10px', minWidth: '22px', textAlign: 'center',
-              }}>
-                {counts[item.key]}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-
-      <div style={{
-        background: colors.raised, border: `1.5px solid ${colors.border}`,
-        borderRadius: '10px', padding: '12px 16px',
-        fontSize: '11.5px', color: colors.muted, lineHeight: 1.6,
-      }}>
-        Tasks you delegated to team members. Track their progress here.
-      </div>
-
-    </div>
-  )
 }
 
 // ─── Task card ────────────────────────────────────────────────────────────────
@@ -316,6 +243,13 @@ function TaskCard({
       <div style={{ flexShrink: 0, width: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
           {task.status}
+        </span>
+      </div>
+
+      {/* Created On — fixed 100px */}
+      <div style={{ flexShrink: 0, width: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+          {formatDate(task.created_at) ?? '—'}
         </span>
       </div>
 
@@ -1138,10 +1072,46 @@ export default function AssignedByMePage() {
         )}
       >
 
-        <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0 }}>
 
-          {/* Left: task list */}
-          <div style={{ flex: 7, minWidth: 0 }}>
+            {/* View tabs — relocated from the former right sidebar */}
+            <div style={{
+              display: 'flex', gap: '0',
+              borderBottom: `1px solid ${colors.border}`,
+              marginBottom: '12px', overflowX: 'auto',
+            }}>
+              {TABS.map(item => {
+                const isActive = activeTab === item.key
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => handleTabChange(item.key)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '10px 4px', marginRight: '20px',
+                      background: 'transparent', border: 'none',
+                      borderBottom: `2px solid ${isActive ? item.color : 'transparent'}`,
+                      cursor: 'pointer', outline: 'none',
+                      fontSize: '12.5px', fontWeight: isActive ? 700 : 500,
+                      color: isActive ? item.color : colors.secondary,
+                      transition: 'color 0.12s, border-color 0.12s',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {item.label}
+                    <span style={{
+                      fontSize: '11px', fontWeight: 700,
+                      padding: '1px 7px', borderRadius: '10px',
+                      background: isActive ? `${item.color}18` : 'rgba(0,0,0,0.05)',
+                      color: isActive ? item.color : colors.muted,
+                      minWidth: '20px', textAlign: 'center',
+                    }}>
+                      {counts[item.key]}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
 
             {/* Search + filter toolbar */}
             <div style={{
@@ -1204,6 +1174,7 @@ export default function AssignedByMePage() {
                 <div style={{ flexShrink: 0, width: '130px', paddingLeft: '8px' }}>Assigned To</div>
                 <div style={{ flexShrink: 0, width: '56px', textAlign: 'center' }}>Priority</div>
                 <div style={{ flexShrink: 0, width: '90px', textAlign: 'center' }}>Status</div>
+                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Created On</div>
                 <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Due Date</div>
                 <div style={{ flexShrink: 0, width: '84px', textAlign: 'center' }}>Action</div>
               </div>
@@ -1232,10 +1203,6 @@ export default function AssignedByMePage() {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Right: views panel — hidden on mobile */}
-          {!isMobile && <RightPanel counts={counts} activeTab={activeTab} onTabChange={handleTabChange} />}
 
         </div>
       </DashboardLayout>

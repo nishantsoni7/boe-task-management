@@ -833,6 +833,33 @@ export default function TaskDetailPage() {
     ? (task.status === 'completed' ? 'Completed' : 'Open')
     : (task.status.charAt(0).toUpperCase() + task.status.slice(1))
 
+  // ── Task creation event ──────────────────────────────────────────────────
+  // Every task written through the app records a real `created` activity row. Tasks
+  // created before that behaviour existed have none, so their timeline would omit the
+  // origin event. For those tasks only — never when a real `created` row is present —
+  // synthesize a read-only creation entry from tasks.created_at, so creation shows
+  // exactly once, works for old and new tasks, inserts no row, and sends no notification.
+  const hasCreatedRow = log.some(e => e.action === 'created')
+  const displayLog: LogEntry[] = hasCreatedRow
+    ? log
+    : [
+        ...log,
+        {
+          id:             `synthetic-created-${task.id}`,
+          action:         'created',
+          note:           null,
+          from_status:    null,
+          to_status:      null,
+          old_val:        null,
+          new_val:        null,
+          created_at:     task.created_at,
+          actor_id:       task.created_by,
+          actor_name:     creatorName ?? undefined,
+          attachment_url: null,
+          attachments:    [],
+        },
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
   return (
     <DashboardLayout
       profile={profile}
@@ -1706,18 +1733,18 @@ export default function TaskDetailPage() {
               <span style={{ fontSize: '15px', fontWeight: 600, color: '#20242D', letterSpacing: '-0.01em' }}>
                 {isQuotation ? 'Quotation History' : 'Activity'}
               </span>
-              {log.length > 0 && (
+              {displayLog.length > 0 && (
                 <span style={{
                   fontSize: '11px', fontWeight: 500, color: '#7C8595',
                   background: '#F4F6F8', border: '1px solid #E3E7EC',
                   padding: '2px 7px', borderRadius: '20px', letterSpacing: '0.02em', lineHeight: 1.4,
                 }}>
-                  {log.length} {log.length === 1 ? 'event' : 'events'}
+                  {displayLog.length} {displayLog.length === 1 ? 'event' : 'events'}
                 </span>
               )}
             </div>
 
-            {log.length === 0 ? (
+            {displayLog.length === 0 ? (
               <div style={{ padding: '20px 16px' }}>
                 <p style={{ fontSize: '11.5px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
                   No activity yet.
@@ -1781,7 +1808,7 @@ export default function TaskDetailPage() {
                     }
                   }
 
-                  return log.map((entry, i) => {
+                  return displayLog.map((entry, i) => {
                     const dotColor =
                       entry.action === 'acknowledged'     ? colors.green
                       : entry.action === 'status_changed' && entry.to_status
@@ -1813,7 +1840,7 @@ export default function TaskDetailPage() {
                         style={{
                           display: 'flex', alignItems: 'flex-start', gap: '12px',
                           padding: '16px 20px',
-                          borderBottom: i < log.length - 1 ? '1px solid #E9ECF1' : 'none',
+                          borderBottom: i < displayLog.length - 1 ? '1px solid #E9ECF1' : 'none',
                         }}
                       >
                         {/* Dot */}
@@ -1835,8 +1862,19 @@ export default function TaskDetailPage() {
                               margin: 0, fontSize: '12.5px', fontWeight: 500,
                               lineHeight: 1.4, flex: '1 1 auto', minWidth: '140px',
                             }}>
-                              <span style={{ fontWeight: 500, color: '#2F3440' }}>{entry.actor_name ?? 'Someone'}</span>
-                              <span style={{ fontWeight: 400, color: colors.secondary }}> {getHeadingRest(entry)}</span>
+                              {/* Self-created tasks follow the BOE "Self" convention (as in "Assigned By: Self")
+                                  — never surface the creator's own name when creator and assignee are the same. */}
+                              {entry.action === 'created' && isSelfTask && !isQuotation ? (
+                                <>
+                                  <span style={{ fontWeight: 400, color: colors.secondary }}>Task created by </span>
+                                  <span style={{ fontWeight: 500, color: '#2F3440' }}>Self</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span style={{ fontWeight: 500, color: '#2F3440' }}>{entry.actor_name ?? 'Someone'}</span>
+                                  <span style={{ fontWeight: 400, color: colors.secondary }}> {getHeadingRest(entry)}</span>
+                                </>
+                              )}
                             </p>
                             <span style={{
                               fontSize: '12px', fontWeight: 400, color: '#98A1B2',
