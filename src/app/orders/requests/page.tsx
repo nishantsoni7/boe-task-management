@@ -8,7 +8,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
-import { X, CheckCircle2, Clock, Layers, MessageCircleQuestion, CircleX, type LucideIcon } from 'lucide-react'
+import { X, CheckCircle2, Clock, Layers, MessageCircleQuestion, CircleX, FileText, Paperclip, User, type LucideIcon } from 'lucide-react'
 import { StatusTabs, accentFromBadge, BRAND_TAB_ACCENT, type TabAccent } from '@/components/ui/StatusTabs'
 import { notifyOrders } from '@/lib/notify'
 import { formatINR } from '@/lib/currency'
@@ -16,6 +16,16 @@ import { orderNumberErrorMessage } from '@/lib/orderNumbering'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
+import {
+  ORDER_REQ_ATTACHMENT_BUCKET,
+  prepareAttachment,
+  buildAttachmentPath,
+  formatBytes,
+  extOf,
+  MAIN_PI_ACCEPT,
+  REFERENCE_ACCEPT,
+  type AttachmentCategory,
+} from '@/lib/orderRequestAttachments'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,6 +117,24 @@ function canEditRequest(r: OrderRequest, userId: string, isAdmin: boolean): bool
 function canManagePayments(r: OrderRequest, userId: string, isAdmin: boolean): boolean {
   if (r.converted_order_id || !REQUESTER_OPEN_STATUSES.includes(r.status)) return false
   return isAdmin || isRequestParticipant(r, userId)
+}
+
+// Escape-to-close for the handwritten form modals on this page. Their backdrops
+// are intentionally inert (BOE form-modal dismissal rule — an outside click must
+// never discard entered data), so Escape, the × and Cancel are the only
+// dismissals. `canClose` mirrors each modal's own in-flight guard (e.g. !saving)
+// so a mid-submit Escape can't abandon a save in progress; it is a dependency,
+// so the listener always sees the current value rather than a stale closure.
+// (The shared FinanceModalShell modals bring their own Escape via
+// useModalScrollLockAndEscape — this is only for the local overlays here.)
+function useEscapeToClose(onClose: () => void, canClose: boolean = true) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && canClose) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, canClose])
 }
 
 // A payment attached to this request via order_request_id. Non-admins see
@@ -1101,7 +1129,7 @@ function UnlinkPaymentModal({
   }
 
   return (
-    <FinanceModal title="Unlink Payment?" width="420px" onClose={() => { if (!saving) onClose() }}>
+    <FinanceModal title="Unlink Payment?" width="420px" closeOnBackdropClick={false} onClose={() => { if (!saving) onClose() }}>
       <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6 }}>
         This removes the link between <strong>{p.request_number}</strong> ({fmtAmount(p.amount)} from{' '}
         <strong>{p.client_name}</strong>) and <strong>{request.request_number}</strong>. The payment
@@ -1382,6 +1410,147 @@ function RequestPaymentsPanel({
   )
 }
 
+// ── Attachments panel (details modal) ─────────────────────────────────────────
+// Compact read-only view of the request's Main PI and reference attachments.
+// Reads order_request_attachments with the viewer's own RLS (participant or
+// admin) and opens each file through a short-lived signed URL from the private
+// bucket — raw storage paths are never exposed. Renders nothing for a legacy
+// request that has no attachments, so it never adds empty chrome.
+type RequestAttachmentRow = {
+  id: string
+  attachment_type: 'main_pi' | 'reference'
+  file_name: string
+  storage_path: string
+  uploaded_size_bytes: number | null
+}
+
+// Only true commercial-document previews are opened inline (PDF, still images);
+// every other reference format (Word, Excel, CSV, TXT) is served as a DOWNLOAD
+// via Content-Disposition: attachment, so the browser never renders an
+// unexpected reference file inline. The bucket stays private either way — access
+// is always a short-lived signed URL.
+const INLINE_PREVIEW_EXTS = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp'])
+
+function AttachmentFileRow({
+  row, supabase, primary,
+}: {
+  row: RequestAttachmentRow
+  supabase: ReturnType<typeof createClient>
+  primary?: boolean
+}) {
+  const [opening, setOpening] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+
+  const inline = INLINE_PREVIEW_EXTS.has(extOf(row.file_name))
+
+  const open = async () => {
+    if (opening) return
+    setOpening(true)
+    setError(null)
+    // Previewable types open inline; everything else is forced to download by
+    // passing the display filename to the `download` option (sets
+    // Content-Disposition: attachment). Signed URL is short-lived (60s).
+    const { data, error: e } = await supabase.storage
+      .from(ORDER_REQ_ATTACHMENT_BUCKET)
+      .createSignedUrl(row.storage_path, 60, inline ? undefined : { download: row.file_name })
+    setOpening(false)
+    if (e || !data?.signedUrl) {
+      setError('This file could not be opened. It may have been moved or removed.')
+      return
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+      padding: '8px 10px', borderRadius: '8px',
+      background: colors.base, border: `1px solid ${primary ? '#FDE68A' : colors.border}`,
+    }}>
+      <span style={{ fontSize: '12.5px', color: colors.primary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {row.file_name}
+      </span>
+      {row.uploaded_size_bytes != null && (
+        <span style={{ fontSize: '11px', color: colors.muted, flexShrink: 0 }}>{formatBytes(row.uploaded_size_bytes)}</span>
+      )}
+      <button
+        onClick={open}
+        disabled={opening}
+        className="boe-btn boe-btn-ghost"
+        style={{ padding: '4px 12px', fontSize: '11px', fontWeight: 600, color: colors.blue, flexShrink: 0 }}
+      >
+        {opening ? (inline ? 'Opening…' : 'Downloading…') : (inline ? 'Open' : 'Download')}
+      </button>
+      {error && <span style={{ fontSize: '11px', color: colors.red, width: '100%' }}>{error}</span>}
+    </div>
+  )
+}
+
+function RequestAttachmentsPanel({
+  request: r,
+  supabase,
+}: {
+  request: OrderRequest
+  supabase: ReturnType<typeof createClient>
+}) {
+  const [rows,    setRows]    = useState<RequestAttachmentRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(false)
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      const { data, error: e } = await supabase
+        .from('order_request_attachments')
+        .select('id, attachment_type, file_name, storage_path, uploaded_size_bytes')
+        .eq('order_request_id', r.id)
+        .order('attachment_type', { ascending: true })   // main_pi before reference
+        .order('created_at', { ascending: true })
+      if (!active) return
+      setError(!!e)
+      setRows((data ?? []) as RequestAttachmentRow[])
+      setLoading(false)
+    })()
+    return () => { active = false }
+  }, [supabase, r.id])
+
+  const mainPi     = rows.find(row => row.attachment_type === 'main_pi') ?? null
+  const references = rows.filter(row => row.attachment_type === 'reference')
+
+  // Nothing to show for a legacy request with no attachments (and not loaded
+  // yet) — stay invisible rather than render an empty section.
+  if (loading) return null
+  if (!error && rows.length === 0) return null
+
+  return (
+    <div style={{ padding: '12px 16px', borderRadius: '10px', background: colors.raised, border: `1px solid ${colors.border}` }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Attachments
+      </div>
+      {error ? (
+        <div style={{ fontSize: '12px', color: colors.muted, marginTop: '8px' }}>Attachments could not be loaded.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <span style={{ fontSize: '10.5px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Main PI</span>
+            {mainPi
+              ? <AttachmentFileRow row={mainPi} supabase={supabase} primary />
+              : <span style={{ fontSize: '12px', color: colors.muted }}>Not attached.</span>}
+          </div>
+          {references.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <span style={{ fontSize: '10.5px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Other Reference Attachments
+              </span>
+              {references.map(row => <AttachmentFileRow key={row.id} row={row} supabase={supabase} />)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RequestDetailsModal({
   request: r,
   advance,
@@ -1572,6 +1741,10 @@ function RequestDetailsModal({
         </div>
       )}
 
+      {/* Main PI + reference attachments, opened via short-lived signed URLs.
+          Renders nothing for a legacy request that has none. */}
+      <RequestAttachmentsPanel request={r} supabase={supabase} />
+
       {/* Payments attached to this request. Identical for admin and requester;
           only the per-row actions differ. */}
       <RequestPaymentsPanel
@@ -1696,6 +1869,11 @@ function RequestDetailsModal({
         // A payment dialog layered above must not tear down the request view
         // underneath it — same guard the page applies for its own action modals.
         onClose={() => { if (!viewPayment && !unlinkPayment) onClose() }}
+        // Read-only by default, so a backdrop click still closes it (convenient
+        // click-away). But once the inline payment-link form is open it holds
+        // unsaved input — a search term and a pending selection — so the backdrop
+        // goes inert (form-modal dismissal rule); × and Escape still close.
+        closeOnBackdropClick={!linkPanelOpen}
         top={top}
         left={left}
         right={right}
@@ -1764,22 +1942,177 @@ function validateAmount(label: string, raw: string): string | null {
   return null
 }
 
+// ── Attachment staging (create form) ──────────────────────────────────────────
+// A file the user picked for the New Order Request, tracked from selection to
+// upload. Preparation (validate + compress-if-over-10MB) runs the moment a file
+// is chosen, so each row shows its own size/status/error BEFORE submit and one
+// invalid reference never discards the others. `prepared` is the exact File that
+// will be uploaded (the original when small enough, or a compressed JPEG).
+type StagedFile = {
+  localId:      string
+  displayName:  string   // original selected name (what the user recognises)
+  category:     AttachmentCategory
+  status:       'preparing' | 'ready' | 'error'
+  prepared:     File | null
+  contentType:  string | null   // resolved upload MIME (set once ready)
+  originalSize: number
+  finalSize:    number | null
+  compressed:   boolean
+  error:        string | null
+}
+
+let stagedFileCounter = 0
+function nextStagedId(): string {
+  stagedFileCounter += 1
+  return `staged-${Date.now()}-${stagedFileCounter}`
+}
+
+// Validate + compress one picked file into a StagedFile for the given category.
+// Never throws — a rejected/oversized/uncompressible file resolves to an 'error'
+// row carrying the reason, so the caller can display it inline and keep every
+// other selection.
+async function stageSelectedFile(file: File, category: AttachmentCategory): Promise<StagedFile> {
+  const base: Pick<StagedFile, 'localId' | 'displayName' | 'category' | 'originalSize'> = {
+    localId:      nextStagedId(),
+    displayName:  file.name,
+    category,
+    originalSize: file.size,
+  }
+  const result = await prepareAttachment(file, category)
+  if (!result.ok) {
+    return { ...base, status: 'error', prepared: null, contentType: null, finalSize: null, compressed: false, error: result.error }
+  }
+  return {
+    ...base,
+    status:      'ready',
+    prepared:    result.file,
+    contentType: result.contentType,
+    finalSize:   result.finalSize,
+    compressed:  result.compressed,
+    error:       null,
+  }
+}
+
+// Best-effort cleanup of the current user's own abandoned upload-stage drafts —
+// rows left unfinalized because a browser/session was interrupted mid-creation
+// (issue: an interrupted session must not leave a stranded incomplete request).
+// Such rows are already invisible to everyone else and excluded from every list;
+// this reclaims them and their storage objects. Only drafts OLDER than a safe
+// window (so it can never race an upload in progress in another tab) and within
+// the cleanup RPC's own recency limit are touched. Never throws.
+async function sweepStaleDrafts(supabase: ReturnType<typeof createClient>, userId: string) {
+  const olderThan = new Date(Date.now() - 30 * 60 * 1000).toISOString()      // > 30 min old (past any live upload)
+  const newerThan = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() // < 24h old (the RPC's window)
+  const { data } = await supabase
+    .from('order_requests')
+    .select('id')
+    .is('finalized_at', null)
+    .eq('created_by', userId)
+    .lt('created_at', olderThan)
+    .gt('created_at', newerThan)
+    .limit(20)
+  for (const row of (data ?? []) as { id: string }[]) {
+    // Same recoverable sequence as rollbackCreation: remove objects FIRST (the
+    // draft row still authorises it), and delete the row ONLY when every object
+    // was removed, so a partial storage failure never orphans a file or leaves
+    // metadata pointing at a missing one. A still-blocked draft is simply retried
+    // on the next load.
+    const { data: att } = await supabase
+      .from('order_request_attachments')
+      .select('storage_path')
+      .eq('order_request_id', row.id)
+    const paths = ((att ?? []) as { storage_path: string }[]).map(a => a.storage_path).filter(Boolean)
+    let allRemoved = true
+    if (paths.length > 0) {
+      const { data: removed, error: rmErr } = await supabase.storage
+        .from(ORDER_REQ_ATTACHMENT_BUCKET).remove(paths)
+      allRemoved = !rmErr && (removed?.length ?? 0) >= paths.length
+    }
+    if (allRemoved) {
+      await supabase.rpc('cleanup_unfinalized_order_request', { p_order_request_id: row.id }).then(() => {}, () => {})
+    }
+  }
+}
+
+// One selected-file row in the create form's Attachments section. Shows the
+// name, size (original, plus final when compression shrank it), the current
+// status, any inline error, and a Remove control while idle. Purely
+// presentational — all state lives in SubmitRequestModal.
+function AttachmentStagedRow({
+  staged, onRemove, disabled,
+}: {
+  staged: StagedFile
+  onRemove?: () => void
+  disabled: boolean
+}) {
+  const isError = staged.status === 'error'
+  const sizeLine = staged.status === 'ready'
+    ? (staged.compressed && staged.finalSize != null
+        ? `${formatBytes(staged.originalSize)} → ${formatBytes(staged.finalSize)} (compressed)`
+        : formatBytes(staged.originalSize))
+    : formatBytes(staged.originalSize)
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: '10px',
+      padding: '8px 10px', borderRadius: '8px',
+      background: isError ? '#FEF2F2' : colors.raised,
+      border: `1px solid ${isError ? '#FECACA' : colors.border}`,
+    }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {staged.displayName}
+        </span>
+        {isError ? (
+          <span style={{ fontSize: '11px', color: colors.red, lineHeight: 1.4 }}>{staged.error}</span>
+        ) : staged.status === 'preparing' ? (
+          <span style={{ fontSize: '11px', color: colors.muted }}>Processing…</span>
+        ) : (
+          <span style={{ fontSize: '11px', color: colors.muted }}>{sizeLine}</span>
+        )}
+      </div>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={disabled}
+          aria-label={`Remove ${staged.displayName}`}
+          style={{
+            flexShrink: 0, background: 'none', border: 'none',
+            padding: 0, cursor: disabled ? 'not-allowed' : 'pointer',
+            color: colors.muted, fontSize: '11px', fontWeight: 600, textDecoration: 'underline',
+          }}
+        >
+          Remove
+        </button>
+      )}
+    </div>
+  )
+}
+
 function SubmitRequestModal({
   salesAssignees,
   overrideAssignees,
   currentUserId,
+  currentUserName,
+  isAdmin,
   onClose,
   onSubmitted,
 }: {
   salesAssignees: AssigneeOption[]
   overrideAssignees: AssigneeOption[]
   currentUserId: string
+  currentUserName: string
+  isAdmin: boolean
   onClose: () => void
-  onSubmitted: (requestNumber: string) => void
+  onSubmitted: (requestNumber: string, notifyDelivered: boolean) => void
 }) {
-  // Default to the current user only when they're actually eligible — never
-  // the first eligible user in the list.
+  // Assignee rule mirrors the server (validate_order_request_assignee trigger,
+  // 20260710): a non-admin may only ever assign the request to themselves, so
+  // their assignee is pinned to their own id and never chosen from a list. An
+  // admin keeps the eligible-assignee dropdown, defaulting to themselves only
+  // when they are actually eligible — never the first person in the list.
   const [form,   setForm]   = useState<RequestForm>(() => {
+    if (!isAdmin) return { ...EMPTY_FORM, assigned_to: currentUserId }
     const isSelfEligible = salesAssignees.some(u => u.id === currentUserId)
       || overrideAssignees.some(u => u.id === currentUserId)
     return { ...EMPTY_FORM, assigned_to: isSelfEligible ? currentUserId : '' }
@@ -1788,9 +2121,130 @@ function SubmitRequestModal({
   const [error,  setError]  = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
 
+  // ── Attachments ──
+  // Main PI is mandatory and single; references are optional and multiple.
+  // Each file is prepared (validated + compressed if >10 MB) the moment it is
+  // picked, so its status/size/error show before submit. `phase` drives the
+  // submit button's live status text during the create → upload sequence.
+  const [mainPi, setMainPi] = useState<StagedFile | null>(null)
+  const [refs,   setRefs]   = useState<StagedFile[]>([])
+  const [phase,  setPhase]  = useState<'idle' | 'creating' | 'main' | 'refs' | 'finalizing'>('idle')
+  const mainPiInputRef = useRef<HTMLInputElement>(null)
+  const refsInputRef   = useRef<HTMLInputElement>(null)
+
+  const preparing = mainPi?.status === 'preparing' || refs.some(r => r.status === 'preparing')
+  // Uploads are in flight from the moment the request row is created; closing
+  // then would orphan uploaded objects, so close controls are locked while
+  // `saving`. Compression (`preparing`) is client-only with nothing to orphan,
+  // so it does not lock the modal — it only disables the submit button.
+  const busy = saving
+  const inFlight = saving || preparing
+
+  const handlePickMainPi = async (file: File | null) => {
+    if (mainPiInputRef.current) mainPiInputRef.current.value = ''
+    if (!file) return
+    setError(null)
+    // Replacing removes the previous local selection entirely (single slot).
+    const localId = nextStagedId()
+    setMainPi({ localId, displayName: file.name, category: 'main_pi', status: 'preparing', prepared: null, contentType: null, originalSize: file.size, finalSize: null, compressed: false, error: null })
+    const staged = await stageSelectedFile(file, 'main_pi')
+    setMainPi(prev => (prev?.localId === localId ? { ...staged, localId } : prev))
+  }
+
+  const handlePickRefs = async (files: File[]) => {
+    if (refsInputRef.current) refsInputRef.current.value = ''
+    if (files.length === 0) return
+    setError(null)
+    // Each file gets its own placeholder immediately, then resolves independently
+    // — one invalid file never discards the others already chosen.
+    const placeholders: StagedFile[] = files.map(f => ({
+      localId: nextStagedId(), displayName: f.name, category: 'reference', status: 'preparing',
+      prepared: null, contentType: null, originalSize: f.size, finalSize: null, compressed: false, error: null,
+    }))
+    setRefs(prev => [...prev, ...placeholders])
+    await Promise.all(files.map(async (f, i) => {
+      const staged = await stageSelectedFile(f, 'reference')
+      const id = placeholders[i].localId
+      setRefs(prev => prev.map(r => (r.localId === id ? { ...staged, localId: id } : r)))
+    }))
+  }
+
+  const removeRef = (localId: string) => setRefs(prev => prev.filter(r => r.localId !== localId))
+
+  // Upload one prepared file to the private bucket and record its metadata row.
+  // Returns the storage path on success (so the caller can compensate on a
+  // later failure) or an error message. On a metadata failure it removes the
+  // just-uploaded object so no orphan remains.
+  const persistAttachment = async (
+    requestId: string,
+    uploaderId: string,
+    type: 'main_pi' | 'reference',
+    staged: StagedFile,
+  ): Promise<{ path: string } | { error: string }> => {
+    const file = staged.prepared
+    if (!file) return { error: `“${staged.displayName}” is not ready to upload.` }
+    const contentType = staged.contentType
+    if (!contentType) return { error: `“${staged.displayName}” has an unsupported file type.` }
+
+    const path = buildAttachmentPath(requestId, type, staged.displayName)
+
+    const { error: upErr } = await supabase.storage
+      .from(ORDER_REQ_ATTACHMENT_BUCKET)
+      .upload(path, file, { upsert: false, contentType })
+    if (upErr) return { error: `Could not upload “${staged.displayName}”. Please try again.` }
+
+    const { error: metaErr } = await supabase
+      .from('order_request_attachments')
+      .insert({
+        order_request_id:    requestId,
+        attachment_type:     type,
+        file_name:           file.name,
+        storage_path:        path,
+        mime_type:           contentType,
+        original_size_bytes: staged.originalSize,
+        uploaded_size_bytes: file.size,
+        uploaded_by:         uploaderId,
+      })
+    if (metaErr) {
+      await supabase.storage.from(ORDER_REQ_ATTACHMENT_BUCKET).remove([path]).catch(() => {})
+      return { error: `Could not save “${staged.displayName}”. Please try again.` }
+    }
+    return { path }
+  }
+
+  // Compensation for a failed creation — recoverable, never atomic (Supabase
+  // Storage and Postgres cannot share a transaction). Order and the success-check
+  // matter:
+  //   1. Remove the uploaded objects FIRST, while the draft row still authorises
+  //      it. storage.remove is idempotent, so a retry re-removing an
+  //      already-gone object is a no-op.
+  //   2. ONLY delete the draft row (via the narrow cleanup RPC, which cascades the
+  //      metadata) when every object was removed. If some object could not be
+  //      removed, the row + metadata are KEPT so nothing is orphaned — the draft
+  //      stays invisible/uncounted/unnotified and the load-time sweep retries the
+  //      whole sequence later. This guarantees we never delete metadata while its
+  //      files still exist, and never orphan a file whose row we already deleted.
+  const rollbackCreation = async (requestId: string, paths: string[]) => {
+    let allRemoved = true
+    if (paths.length > 0) {
+      const { data: removed, error: rmErr } = await supabase.storage
+        .from(ORDER_REQ_ATTACHMENT_BUCKET).remove(paths)
+      allRemoved = !rmErr && (removed?.length ?? 0) >= paths.length
+    }
+    if (allRemoved) {
+      await supabase.rpc('cleanup_unfinalized_order_request', { p_order_request_id: requestId }).then(() => {}, () => {})
+    }
+    // If not allRemoved: leave the draft for the sweep to reclaim — it is already
+    // invisible, so nothing user-facing depends on it being gone this instant.
+  }
+
   const set = (k: keyof RequestForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(f => ({ ...f, [k]: e.target.value }))
+
+  // Escape closes; the backdrop does not (form-modal dismissal rule). Locked
+  // while uploads are in flight so a mid-upload Escape cannot orphan objects.
+  useEscapeToClose(onClose, !busy)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1799,11 +2253,33 @@ function SubmitRequestModal({
     if (productValueError) { setError(productValueError); return }
     const orderValueError = validateAmount('Total Order Value', form.total_value)
     if (orderValueError) { setError(orderValueError); return }
+
+    // Attachment gates — the Main PI is mandatory and must be prepared; no file
+    // may still be processing; and a reference that failed to prepare must be
+    // fixed or removed (never silently dropped).
+    if (preparing) { setError('Please wait for the selected files to finish processing.'); return }
+    if (!mainPi)                    { setError('A Main PI file is required before you can submit.'); return }
+    if (mainPi.status === 'error')  { setError(mainPi.error ?? 'The Main PI file could not be prepared. Replace it and try again.'); return }
+    if (mainPi.status !== 'ready' || !mainPi.prepared) { setError('The Main PI file is not ready yet.'); return }
+    if (refs.some(r => r.status === 'error')) {
+      setError('One or more reference files could not be prepared. Remove or replace them, then submit again.')
+      return
+    }
+    const readyRefs = refs.filter(r => r.status === 'ready' && r.prepared)
+
     setSaving(true)
     setError(null)
+    setPhase('creating')
 
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) { setError('Not authenticated.'); setSaving(false); return }
+    if (!session) { setError('Not authenticated.'); setSaving(false); setPhase('idle'); return }
+
+    // A non-admin can only ever be their own assignee, so the assignee is taken
+    // straight from the authenticated session id — never from the (locked) form
+    // value, and never trusting a tampered payload. The database enforces the
+    // same rule (validate_order_request_assignee, 20260710); this just keeps the
+    // client honest. An admin sends whatever eligible assignee they picked.
+    const resolvedAssignee = isAdmin ? (form.assigned_to || null) : session.user.id
 
     // No order number, no display_number: this only creates an order_requests
     // row. request_number (ORD-REQ-YYYY-NNNN) is assigned by the database.
@@ -1812,7 +2288,7 @@ function SubmitRequestModal({
     const payload = {
       client_name:          form.client_name.trim(),
       requested_by:         session.user.id,
-      assigned_to:          form.assigned_to || null,
+      assigned_to:          resolvedAssignee,
       confirm_date:         form.confirm_date || null,
       due_date:             form.due_date     || null,
       total_product_value:  form.total_product_value ? parseFloat(form.total_product_value) : null,
@@ -1820,6 +2296,18 @@ function SubmitRequestModal({
       lead_source:          form.lead_source  || null,
       notes:                form.notes.trim() || null,
       created_by:           session.user.id,
+      // ATTACHMENT DRAFT path: send finalized_at = null EXPLICITLY so the row is
+      // born an upload-stage draft (invisible / uncounted / unnotified) until the
+      // Main PI is uploaded and finalize_order_request() verifies it below.
+      //
+      // Never omit this key here. Omission is the LEGACY (attachment-unaware)
+      // path: the column DEFAULT now() (20260711 §2) would then make the row an
+      // immediately operational submission with no Main PI. An explicit null is
+      // exactly what separates this new draft flow from that legacy default and
+      // is the only way to open a draft. (The insert policy does not enforce
+      // this — see 20260711 §2b — so it is a client contract; finalize plus the
+      // one-Main-PI index are what actually guarantee a finalized request's PI.)
+      finalized_at:         null,
     }
 
     const { data: created, error: insertErr } = await supabase
@@ -1833,34 +2321,134 @@ function SubmitRequestModal({
         ? insertErr.message
         : (insertErr?.message ?? 'Failed to submit order request.'))
       setSaving(false)
+      setPhase('idle')
       return
     }
 
-    // Notify reviewers, and the assigned user when one is set (non-blocking).
-    void notifyOrders({
-      event: 'order_submitted',
-      requestNumber: created.request_number,
-      entityId: created.id,
-      clientName: form.client_name.trim(),
-      creatorId: session.user.id,
-      assignedTo: form.assigned_to || null,
-    })
+    // The row was created as an UPLOAD-STAGE DRAFT (finalized_at forced NULL by
+    // the DB trigger): invisible to reviewers, no notification, no
+    // request_submitted activity. It becomes a real submission ONLY when
+    // finalize_order_request() verifies the Main PI below. Any failure before
+    // that rolls the whole draft back (objects + row via the cleanup RPC) and
+    // keeps the form and every selection intact.
+    const uploaded: string[] = []
 
-    onSubmitted(created.request_number)
+    setPhase('main')
+    const mainRes = await persistAttachment(created.id, session.user.id, 'main_pi', mainPi)
+    if ('error' in mainRes) {
+      await rollbackCreation(created.id, uploaded)
+      setError(`${mainRes.error} The request was not submitted.`)
+      setSaving(false)
+      setPhase('idle')
+      return
+    }
+    uploaded.push(mainRes.path)
+
+    if (readyRefs.length > 0) setPhase('refs')
+    for (const rf of readyRefs) {
+      const res = await persistAttachment(created.id, session.user.id, 'reference', rf)
+      if ('error' in res) {
+        await rollbackCreation(created.id, uploaded)
+        setError(`${res.error} The request was not submitted — remove that file or try again.`)
+        setSaving(false)
+        setPhase('idle')
+        return
+      }
+      uploaded.push(res.path)
+    }
+
+    // Finalize: the DATABASE verifies exactly one Main PI, flips the request into
+    // its normal submitted workflow, and writes request_submitted +
+    // attachments_uploaded transactionally. Until this succeeds the request does
+    // not exist as a submission. A failure rolls the draft back.
+    setPhase('finalizing')
+    const { data: finalizeData, error: finalizeErr } = await supabase.rpc('finalize_order_request', {
+      p_order_request_id: created.id,
+    })
+    if (finalizeErr) {
+      await rollbackCreation(created.id, uploaded)
+      const m = (finalizeErr.message ?? '').toLowerCase()
+      setError(
+        m.includes('main_pi_required')
+          ? 'The Main PI could not be verified. The request was not submitted — please try again.'
+          : 'The request could not be submitted. Please try again.'
+      )
+      setSaving(false)
+      setPhase('idle')
+      return
+    }
+
+    // finalize_order_request is idempotent: `finalized_now` is true ONLY on the
+    // call that performed the first unfinalized→finalized transition. A retry
+    // that lands on an already-finalized request returns finalized_now = false,
+    // already_finalized = true — still an overall success (the request IS
+    // submitted), but it must NOT notify or activity-log a second time. The RPC
+    // itself writes no duplicate activity on that path; here we gate the
+    // notification on finalized_now so a retry never double-notifies.
+    const finalizedNow = (finalizeData as { finalized_now?: boolean } | null)?.finalized_now === true
+
+    // Notify reviewers, and the assigned user when one is set. Fired at most once,
+    // only for the first finalization. A delivery failure is non-fatal: the
+    // request stays successfully submitted and we surface a soft note rather than
+    // a false creation failure (see the success banner).
+    let notifyDelivered = true
+    if (finalizedNow) {
+      notifyDelivered = await notifyOrders({
+        event: 'order_submitted',
+        requestNumber: created.request_number,
+        entityId: created.id,
+        clientName: form.client_name.trim(),
+        creatorId: session.user.id,
+        assignedTo: resolvedAssignee,
+      })
+    }
+
+    onSubmitted(created.request_number, notifyDelivered)
   }
 
+  // Labels: title case, compact, medium weight, readable — not the old
+  // all-uppercase micro-labels. A subtle required marker is appended per field.
   const labelStyle: React.CSSProperties = {
-    display: 'flex', flexDirection: 'column', gap: '4px',
-    fontSize: '11px', fontWeight: 600, color: colors.muted,
-    textTransform: 'uppercase', letterSpacing: '0.05em',
+    display: 'flex', flexDirection: 'column', gap: '5px',
+    fontSize: '12px', fontWeight: 600, color: colors.secondary, letterSpacing: 0,
   }
   const inputStyle: React.CSSProperties = {
     padding: '7px 10px', borderRadius: '6px',
     border: `1px solid ${colors.border}`,
-    background: colors.raised, color: colors.primary,
+    background: colors.base, color: colors.primary,
     fontSize: '13px', width: '100%', boxSizing: 'border-box',
     outline: 'none',
   }
+  const sectionHeadingStyle: React.CSSProperties = {
+    fontSize: '13px', fontWeight: 600, color: colors.primary,
+    display: 'flex', alignItems: 'center', gap: '7px',
+  }
+  const badgeStyle = (tone: 'required' | 'optional'): React.CSSProperties => ({
+    fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
+    borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap',
+    color:      tone === 'required' ? '#B45309' : colors.muted,
+    background:  tone === 'required' ? '#FEF3C7' : colors.float,
+    border:     `1px solid ${tone === 'required' ? '#FDE68A' : colors.border}`,
+  })
+  const panelStyle: React.CSSProperties = {
+    display: 'flex', flexDirection: 'column', gap: '8px',
+    padding: '12px 14px', borderRadius: '10px',
+    border: `1px solid ${colors.border}`, background: colors.raised,
+  }
+  const chooseButtonStyle = (enabled: boolean): React.CSSProperties => ({
+    ...inputStyle, display: 'flex', alignItems: 'center', gap: '8px',
+    textAlign: 'left', color: colors.secondary, borderStyle: 'dashed',
+    cursor: enabled ? 'pointer' : 'not-allowed', opacity: enabled ? 1 : 0.7,
+  })
+  const linkActionStyle = (enabled: boolean): React.CSSProperties => ({
+    alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
+    cursor: enabled ? 'pointer' : 'not-allowed', font: 'inherit',
+    fontSize: '11.5px', fontWeight: 600, color: colors.blue, textDecoration: 'underline',
+  })
+  const req = <span style={{ color: colors.red, fontWeight: 600 }} aria-hidden="true"> *</span>
+  // Assignee (admin) rides in the grid; for a non-admin it becomes the info strip
+  // below the header, so its columns shift to keep each row a clean 12 tracks.
+  const dateSpanClass = isAdmin ? 'orqm-c4' : 'orqm-c6'
 
   return (
     <div
@@ -1868,120 +2456,292 @@ function SubmitRequestModal({
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(0,0,0,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '16px',
+        padding: '20px',
       }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      // Backdrop is inert by design (BOE form-modal dismissal rule): an outside
+      // click never closes and never discards entered data. Dismiss via ×,
+      // Cancel, Escape (useEscapeToClose below), or a successful submit.
     >
-      <div style={{
-        background: colors.base,
-        border: `1px solid ${colors.border}`,
-        borderRadius: '12px',
-        width: '100%', maxWidth: '540px',
-        maxHeight: '90vh', overflowY: 'auto',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-      }}>
-        {/* Header */}
+      {/* Grid CSS is colocated with the component (unique `orqm-` classes) rather
+          than appended to the shared global stylesheet, so the multi-column
+          layout always ships and loads with the modal — it cannot be defeated by
+          a stale global stylesheet or by inline-style precedence. A 12-track grid
+          gives intentional field widths; everything collapses to one column at
+          ≤720px. */}
+      <style>{`
+        .orqm-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px 16px; align-items: start; }
+        .orqm-c4 { grid-column: span 4; }
+        .orqm-c6 { grid-column: span 6; }
+        .orqm-c8 { grid-column: span 8; }
+        .orqm-docs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
+        .orqm-field:focus { border-color: rgba(232,160,48,0.55); box-shadow: 0 0 0 3px rgba(232,160,48,0.12); }
+        @media (max-width: 720px) {
+          .orqm-grid > * { grid-column: 1 / -1 !important; }
+          .orqm-docs { grid-template-columns: 1fr; }
+        }
+      `}</style>
+
+      {/* Desktop-first operational frame: ~940px, viewport-capped. Header, the
+          non-admin assignee strip, the error banner and the footer are all
+          pinned; only the section body between them scrolls, and only when the
+          content genuinely grows. */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Submit order request"
+        style={{
+          background: colors.base,
+          border: `1px solid ${colors.border}`,
+          borderRadius: '12px',
+          width: 'min(940px, calc(100vw - 40px))',
+          maxHeight: 'calc(100vh - 40px)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+        }}
+      >
+        {/* Compact header */}
         <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px',
+          padding: '12px 20px', borderBottom: `1px solid ${colors.border}`, flexShrink: 0,
         }}>
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Submit Order Request</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Submit Order Request</div>
             <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-              A request number is assigned on submission. No order is created yet.
+              A request number will be assigned after submission.
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, display: 'flex' }}>
-            <X size={16} />
+          <button
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Close"
+            style={{ background: 'none', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', color: colors.muted, display: 'flex', flexShrink: 0, marginTop: '1px' }}
+          >
+            <X size={17} />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <label style={labelStyle}>
-              Client Name *
-              <input style={inputStyle} value={form.client_name} onChange={set('client_name')} placeholder="Client name" required />
-            </label>
-            <label style={labelStyle}>
-              Assignee
-              <select style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
-                <option value="">— Select —</option>
-                {salesAssignees.length > 0 && (
-                  <optgroup label="Sales Team">
-                    {salesAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                  </optgroup>
+        {/* Non-admin: compact "assigned to you" strip instead of a large disabled
+            field. The assignee id still comes from the session on submit — this is
+            display only (mirrors the admin-less branch of the assignee rule). */}
+        {!isAdmin && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '9px',
+            padding: '8px 20px', background: colors.raised,
+            borderBottom: `1px solid ${colors.border}`, flexShrink: 0,
+          }}>
+            <User size={15} color={colors.muted} style={{ flexShrink: 0 }} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '3px 8px', minWidth: 0 }}>
+              <span style={{ fontSize: '12.5px', color: colors.primary }}>
+                Assigned to: <strong style={{ fontWeight: 600 }}>{currentUserName}</strong>
+              </span>
+              <span style={{ fontSize: '11.5px', color: colors.muted }}>This request will be assigned to you.</span>
+            </div>
+          </div>
+        )}
+
+        {/* Form — flex column: scrollable section body + pinned error/footer. */}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          {/* Scrollable body */}
+          <div style={{ padding: '14px 20px', overflowY: 'auto', overflowX: 'hidden', flex: 1, display: 'flex', flexDirection: 'column', gap: '13px' }}>
+
+            {/* ── Section 1: Request information ── */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={sectionHeadingStyle}>Request information</div>
+              <div className="orqm-grid">
+                <label className="orqm-c8" style={labelStyle}>
+                  <span>Client name{req}</span>
+                  <input className="orqm-field" style={inputStyle} value={form.client_name} onChange={set('client_name')} placeholder="Client name" required />
+                </label>
+
+                <label className="orqm-c4" style={labelStyle}>
+                  <span>Lead source</span>
+                  <select className="orqm-field" style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
+                    <option value="">— Select —</option>
+                    {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </label>
+
+                {isAdmin && (
+                  <label className="orqm-c4" style={labelStyle}>
+                    <span>Assignee</span>
+                    <select className="orqm-field" style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
+                      <option value="">— Select —</option>
+                      {salesAssignees.length > 0 && (
+                        <optgroup label="Sales Team">
+                          {salesAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                        </optgroup>
+                      )}
+                      {overrideAssignees.length > 0 && (
+                        <optgroup label="Authorised Assignees">
+                          {overrideAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                        </optgroup>
+                      )}
+                    </select>
+                  </label>
                 )}
-                {overrideAssignees.length > 0 && (
-                  <optgroup label="Authorised Assignees">
-                    {overrideAssignees.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                  </optgroup>
-                )}
-              </select>
-            </label>
+
+                <label className={dateSpanClass} style={labelStyle}>
+                  <span>Confirmation date</span>
+                  <input type="date" className="orqm-field" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
+                </label>
+                <label className={dateSpanClass} style={labelStyle}>
+                  <span>Due date</span>
+                  <input type="date" className="orqm-field" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
+                </label>
+
+                <label className="orqm-c6" style={labelStyle}>
+                  <span>Product value</span>
+                  <div style={{ position: 'relative', display: 'flex' }}>
+                    <span aria-hidden="true" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: colors.muted, pointerEvents: 'none' }}>₹</span>
+                    <input type="number" min="0" step="0.01" className="orqm-field" style={{ ...inputStyle, paddingLeft: '22px' }} value={form.total_product_value} onChange={set('total_product_value')} placeholder="0" aria-label="Product value in rupees" />
+                  </div>
+                </label>
+                <label className="orqm-c6" style={labelStyle}>
+                  <span>Total order value</span>
+                  <div style={{ position: 'relative', display: 'flex' }}>
+                    <span aria-hidden="true" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: colors.muted, pointerEvents: 'none' }}>₹</span>
+                    <input type="number" min="0" step="0.01" className="orqm-field" style={{ ...inputStyle, paddingLeft: '22px' }} value={form.total_value} onChange={set('total_value')} placeholder="0" aria-label="Total order value in rupees" />
+                  </div>
+                </label>
+              </div>
+            </section>
+
+            {/* ── Section 2: Documents (above Notes) — two compact upload panels ── */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
+              <div style={sectionHeadingStyle}>Documents</div>
+              <div className="orqm-docs">
+                {/* Left panel — Main PI (mandatory, single) */}
+                <div style={panelStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileText size={15} color={colors.secondary} style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>Main PI</span>
+                    <span style={badgeStyle('required')}>Required</span>
+                  </div>
+                  <span style={{ fontSize: '11.5px', color: colors.muted }}>PDF or image · one file</span>
+                  <input
+                    ref={mainPiInputRef}
+                    type="file"
+                    accept={MAIN_PI_ACCEPT}
+                    style={{ display: 'none' }}
+                    onChange={e => { void handlePickMainPi(e.target.files?.[0] ?? null) }}
+                  />
+                  {mainPi ? (
+                    <>
+                      <AttachmentStagedRow
+                        staged={mainPi}
+                        disabled={busy}
+                        onRemove={() => { setMainPi(null); setError(null) }}
+                      />
+                      <button type="button" onClick={() => mainPiInputRef.current?.click()} disabled={inFlight} style={linkActionStyle(!inFlight)}>
+                        Replace file
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => mainPiInputRef.current?.click()} disabled={inFlight} style={chooseButtonStyle(!inFlight)}>
+                      <Paperclip size={14} /> Choose file
+                    </button>
+                  )}
+                </div>
+
+                {/* Right panel — reference attachments (optional, multiple) */}
+                <div style={panelStyle}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Paperclip size={15} color={colors.secondary} style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>Reference attachments</span>
+                    <span style={badgeStyle('optional')}>Optional</span>
+                  </div>
+                  <span style={{ fontSize: '11.5px', color: colors.muted }}>PDF, image, Office or text · multiple files</span>
+                  <input
+                    ref={refsInputRef}
+                    type="file"
+                    multiple
+                    accept={REFERENCE_ACCEPT}
+                    style={{ display: 'none' }}
+                    onChange={e => { void handlePickRefs(Array.from(e.target.files ?? [])) }}
+                  />
+                  {refs.length > 0 && (
+                    <>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.secondary }}>
+                        {refs.length} file{refs.length !== 1 ? 's' : ''} selected
+                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {refs.map(r => (
+                          <AttachmentStagedRow key={r.localId} staged={r} disabled={busy} onRemove={() => removeRef(r.localId)} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  <button type="button" onClick={() => refsInputRef.current?.click()} disabled={inFlight} style={chooseButtonStyle(!inFlight)}>
+                    <Paperclip size={14} /> {refs.length > 0 ? 'Add more files' : 'Choose files'}
+                  </button>
+                  <span style={{ fontSize: '10.5px', color: colors.muted, lineHeight: 1.45 }}>
+                    Images over 10 MB are compressed; other large files must be reduced first.
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            {/* ── Section 3: Notes (last, full width) ── */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
+              <div style={sectionHeadingStyle}>
+                Notes
+                <span style={{ fontSize: '11px', fontWeight: 500, color: colors.muted }}>Optional</span>
+              </div>
+              <textarea
+                className="orqm-field"
+                aria-label="Notes"
+                style={{ ...inputStyle, minHeight: '72px', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
+                value={form.notes}
+                onChange={set('notes')}
+                placeholder="Add any special instructions or context"
+              />
+            </section>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <label style={labelStyle}>
-              Confirmation Date
-              <input type="date" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
-            </label>
-            <label style={labelStyle}>
-              Due Date
-              <input type="date" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
-            </label>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <label style={labelStyle}>
-              Total Product Value (₹)
-              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_product_value} onChange={set('total_product_value')} placeholder="0" />
-            </label>
-            <label style={labelStyle}>
-              Total Order Value (₹)
-              <input type="number" min="0" step="0.01" style={inputStyle} value={form.total_value} onChange={set('total_value')} placeholder="0" />
-            </label>
-          </div>
-
-          <label style={labelStyle}>
-            Lead Source
-            <select style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
-              <option value="">— Select —</option>
-              {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </label>
-
-          <label style={labelStyle}>
-            Notes
-            <textarea
-              style={{ ...inputStyle, minHeight: '72px', resize: 'vertical', fontFamily: 'inherit' }}
-              value={form.notes}
-              onChange={set('notes')}
-              placeholder="Any additional notes…"
-            />
-          </label>
-
+          {/* Pinned error banner — always visible near the submit action. */}
           {error && (
-            <div style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px' }}>
-              {error}
+            <div style={{ padding: '0 20px', flexShrink: 0 }}>
+              <div role="alert" style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px', marginBottom: '2px' }}>
+                {error}
+              </div>
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-            <button type="button" onClick={onClose} style={{
-              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary, cursor: 'pointer',
-            }}>
-              Cancel
-            </button>
-            <button type="submit" disabled={saving} style={{
-              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: '#DC1F2E', border: 'none', color: '#fff',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              opacity: saving ? 0.7 : 1,
-            }}>
-              {saving ? 'Submitting…' : 'Submit Request'}
-            </button>
+          {/* Compact pinned footer — required note left, actions right. */}
+          <div style={{
+            display: 'flex', gap: '12px', justifyContent: 'space-between', alignItems: 'center',
+            padding: '10px 20px', borderTop: `1px solid ${colors.border}`, flexShrink: 0, background: colors.base,
+          }}>
+            <span style={{ fontSize: '11.5px', color: colors.muted }}>
+              <span style={{ color: colors.red }}>*</span> Required fields
+            </span>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <button type="button" onClick={onClose} disabled={busy} style={{
+                padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+                background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
+                cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
+              }}>
+                Cancel
+              </button>
+              <button type="submit" disabled={saving || preparing} style={{
+                padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+                background: '#DC1F2E', border: 'none', color: '#fff',
+                cursor: (saving || preparing) ? 'not-allowed' : 'pointer',
+                opacity: (saving || preparing) ? 0.7 : 1,
+              }}>
+                {preparing
+                  ? 'Processing files…'
+                  : phase === 'creating'
+                    ? 'Preparing request…'
+                    : phase === 'main'
+                      ? 'Uploading Main PI…'
+                      : phase === 'refs'
+                        ? 'Uploading attachments…'
+                        : phase === 'finalizing'
+                          ? 'Submitting request…'
+                          : 'Submit Request'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
@@ -2096,6 +2856,10 @@ function ConvertModal({
   // deselection, no separate state to keep in sync.
   const mismatchedSelected = selectedList.filter(p => !isClientMatch(p))
 
+  // Escape closes; the backdrop does not (form-modal dismissal rule). Selected
+  // payments are unsaved input, so an outside click must never discard them.
+  useEscapeToClose(onClose, !saving)
+
   const handleConvert = async () => {
     if (saving) return  // guards against double-clicks; the RPC is the real guard
     setSaving(true)
@@ -2182,7 +2946,9 @@ function ConvertModal({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '16px',
       }}
-      onClick={e => { if (e.target === e.currentTarget && !saving) onClose() }}
+      // Backdrop is inert by design (BOE form-modal dismissal rule): an outside
+      // click never closes and never discards entered data. Dismiss via ×,
+      // Cancel, Escape (useEscapeToClose below), or a successful submit.
     >
       <div style={{
         background: colors.base,
@@ -2443,6 +3209,9 @@ function ClarifyModal({
 
   const noteValid = note.trim().length > 0
 
+  // Escape closes; the backdrop does not (form-modal dismissal rule).
+  useEscapeToClose(onClose, !saving)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (saving || !noteValid) return
@@ -2487,7 +3256,9 @@ function ClarifyModal({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '16px',
       }}
-      onClick={e => { if (e.target === e.currentTarget && !saving) onClose() }}
+      // Backdrop is inert by design (BOE form-modal dismissal rule): an outside
+      // click never closes and never discards entered data. Dismiss via ×,
+      // Cancel, Escape (useEscapeToClose below), or a successful submit.
     >
       <div style={{
         background: colors.base,
@@ -2703,28 +3474,40 @@ function DeleteRequestModal({
   const linkedCount  = payments?.length ?? 0
   const linkedAmount = (payments ?? []).reduce((sum, p) => sum + Number(p.amount ?? 0), 0)
 
+  // Escape closes; the backdrop does not (form-modal dismissal rule).
+  useEscapeToClose(onClose, !deleting)
+
   const handleDelete = async () => {
     if (deleting) return
     setDeleting(true)
     setError(null)
 
-    const { data, error: rpcErr } = await supabase.rpc('admin_delete_order_request', {
-      p_order_request_id: request.id,
-      // Only ever true when the admin has been shown the payments and the button
-      // they clicked says so.
-      p_unlink_payments:  linkedCount > 0,
-    })
-
-    if (rpcErr) {
-      // Modal stays open, and the database's own message is shown rather than a
-      // generic failure — it names the actual rule that refused.
+    // Deletion is a single server-side orchestration (/api/orders/requests/delete):
+    // it loads the attachment paths from the database itself (never trusting the
+    // browser), removes the storage objects with the service role FIRST, and only
+    // THEN runs admin_delete_order_request. If storage removal fails the request
+    // is NOT deleted, so its files stay recorded and discoverable for a retry —
+    // there is no window where the row is gone but objects are orphaned.
+    let body: { success?: boolean; unlinked_count?: number; error?: string } | null = null
+    try {
+      const res = await fetch('/api/orders/requests/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: request.id, unlinkPayments: linkedCount > 0 }),
+      })
+      body = await res.json().catch(() => null)
+      if (!res.ok || !body?.success) {
+        setDeleting(false)
+        setError(body?.error ? deleteRequestErrorMessage(body.error) : 'Could not delete this request. Please try again.')
+        return
+      }
+    } catch {
       setDeleting(false)
-      setError(deleteRequestErrorMessage(rpcErr.message))
+      setError('Could not reach the server to delete this request. Please try again.')
       return
     }
 
-    const res = data as { unlinked_count?: number } | null
-    onDeleted(request.request_number, res?.unlinked_count ?? 0)
+    onDeleted(request.request_number, body?.unlinked_count ?? 0)
   }
 
   const keyStyle: React.CSSProperties = {
@@ -2740,7 +3523,9 @@ function DeleteRequestModal({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '16px',
       }}
-      onClick={e => { if (e.target === e.currentTarget && !deleting) onClose() }}
+      // Backdrop is inert by design (BOE form-modal dismissal rule): an outside
+      // click never closes. Dismiss via ×, Cancel, or Escape (useEscapeToClose
+      // below), all of which already respect the in-flight delete guard.
     >
       <div style={{
         background: colors.base, border: `1px solid ${colors.border}`,
@@ -2871,6 +3656,9 @@ function RejectModal({
 
   const reasonValid = reason.trim().length > 0
 
+  // Escape closes; the backdrop does not (form-modal dismissal rule).
+  useEscapeToClose(onClose, !saving)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (saving || !reasonValid) return
@@ -2919,7 +3707,9 @@ function RejectModal({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '16px',
       }}
-      onClick={e => { if (e.target === e.currentTarget && !saving) onClose() }}
+      // Backdrop is inert by design (BOE form-modal dismissal rule): an outside
+      // click never closes and never discards entered data. Dismiss via ×,
+      // Cancel, Escape (useEscapeToClose below), or a successful submit.
     >
       <div style={{
         background: colors.base,
@@ -3058,11 +3848,14 @@ function RequestFormModal({
   onClose: () => void
   onSaved: (requestNumber: string) => void
 }) {
-  // Only an admin may reassign, and only on the Edit path — edit_order_request
-  // rejects a non-admin who supplies a different assigned_to (42501), so this is
-  // a mirror of the server rule, not the rule itself. Resubmit and Reapply are
-  // untouched: their RPCs are requester-only and still accept p_assigned_to.
-  const assigneeLocked = mode === 'edit' && !isAdmin
+  // Only an admin may set or change the assignee. A non-admin is locked to the
+  // request's current assignee on EVERY update path — edit, resubmit and reapply
+  // alike — mirroring the server rule (validate_order_request_assignee, 20260710:
+  // a non-admin update may not change assigned_to; edit_order_request also
+  // rejects it directly with 42501). Locking, rather than removing, the field
+  // keeps the current assignee visible and re-sends the unchanged value, which
+  // the trigger treats as a no-op.
+  const assigneeLocked = !isAdmin
   // A legacy assignee that no longer qualifies (inactive, or neither Sales
   // nor authorised) stays visible and selected — never silently dropped.
   const isLegacyAssigneeOutOfList = !!request.assigned_to
@@ -3157,6 +3950,10 @@ function RequestFormModal({
       : 'Could not reapply this request. It may have already changed. Please refresh and try again.'
   }
 
+  // Escape closes; the backdrop does not (form-modal dismissal rule). Locks the
+  // edit/resubmit/reapply form data against an accidental outside click.
+  useEscapeToClose(onClose, !saving)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (saving) return
@@ -3215,7 +4012,9 @@ function RequestFormModal({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '16px',
       }}
-      onClick={e => { if (e.target === e.currentTarget && !saving) onClose() }}
+      // Backdrop is inert by design (BOE form-modal dismissal rule): an outside
+      // click never closes and never discards entered data. Dismiss via ×,
+      // Cancel, Escape (useEscapeToClose below), or a successful submit.
     >
       <div style={{
         background: colors.base,
@@ -3407,6 +4206,9 @@ function OrderRequestsPageInner() {
   const [search,        setSearch]        = useState('')
   const [showModal,     setShowModal]     = useState(false)
   const [successNumber, setSuccessNumber] = useState<string | null>(null)
+  // True when a request finalized successfully but its notification could not be
+  // delivered — a soft, non-blocking note, never a creation failure.
+  const [successNotifyFailed, setSuccessNotifyFailed] = useState(false)
   const [convertTarget, setConvertTarget] = useState<OrderRequest | null>(null)
   const [converted,     setConverted]     = useState<ConvertResult | null>(null)
   const [clarifyTarget,  setClarifyTarget]  = useState<OrderRequest | null>(null)
@@ -3461,6 +4263,10 @@ function OrderRequestsPageInner() {
         assigned_to_user:users!assigned_to(full_name)
       `)
       .neq('status', 'converted')
+      // Exclude upload-stage drafts (finalized_at IS NULL): a request that has
+      // not been finalized has no verified Main PI and is not a real submission.
+      // RLS already hides other people's drafts; this also hides the viewer's own.
+      .not('finalized_at', 'is', null)
       .order('created_at', { ascending: false })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3546,6 +4352,10 @@ function OrderRequestsPageInner() {
       // longer needs the freshly-read role handed in.
       await loadRequests()
       setPageLoading(false)
+
+      // Reclaim any of this user's own abandoned upload-stage drafts (an
+      // interrupted session). Best-effort and non-blocking — never delays the UI.
+      void sweepStaleDrafts(supabase, session.user.id)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3665,9 +4475,10 @@ function OrderRequestsPageInner() {
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <CheckCircle2 size={15} />
             Request submitted — <strong>{successNumber}</strong>. No order has been created yet.
+            {successNotifyFailed && ' The request was created successfully, but the notification could not be delivered.'}
           </span>
           <button
-            onClick={() => setSuccessNumber(null)}
+            onClick={() => { setSuccessNumber(null); setSuccessNotifyFailed(false) }}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
           >
             ✕
@@ -3954,10 +4765,13 @@ function OrderRequestsPageInner() {
           salesAssignees={salesAssignees}
           overrideAssignees={overrideAssignees}
           currentUserId={currentUserId}
+          currentUserName={profile?.full_name ?? 'You'}
+          isAdmin={isAdmin}
           onClose={() => setShowModal(false)}
-          onSubmitted={requestNumber => {
+          onSubmitted={(requestNumber, notifyDelivered) => {
             setShowModal(false)
             setSuccessNumber(requestNumber)
+            setSuccessNotifyFailed(!notifyDelivered)
             loadRequests()
           }}
         />
