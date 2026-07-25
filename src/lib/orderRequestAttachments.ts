@@ -16,12 +16,13 @@
 export const ORDER_REQ_ATTACHMENT_BUCKET = 'order-request-attachments'
 
 // ── Accepted types ────────────────────────────────────────────────────────────
-// Two allow-lists. The Main PI is a single primary commercial document (an
-// invoice) so it is deliberately narrow — PDF or image only. Reference
-// attachments additionally accept the safe, well-defined Office/text formats the
-// codebase already trusts (task attachments, 20260607). ZIP is NOT included in
-// this phase. These MUST stay a subset of the bucket's allowed_mime_types in
-// supabase/migrations/20260711000000_order_request_attachments.sql.
+// Two allow-lists. The Main PI is the primary commercial document (a Proforma
+// Invoice) and MUST be an Excel workbook — .xlsx or .xls ONLY. A PDF or image is
+// never accepted as the Main PI; a PI PDF may be attached under references
+// instead. Reference attachments accept the safe, well-defined PDF / image /
+// Office / text formats the codebase already trusts (task attachments, 20260607).
+// ZIP is NOT included in this phase. These MUST stay a subset of the bucket's
+// allowed_mime_types in supabase/migrations/20260711000000_order_request_attachments.sql.
 
 const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp'] as const
 const PDF_MIME = 'application/pdf'
@@ -37,7 +38,7 @@ const TEXT_MIMES = ['text/plain', 'text/csv'] as const
 // ZIP is intentionally NOT in this phase — a container can hold anything, so it
 // needs an explicit product decision rather than an automatic inclusion.
 
-export const MAIN_PI_ALLOWED_TYPES: readonly string[] = [PDF_MIME, ...IMAGE_MIMES]
+export const MAIN_PI_ALLOWED_TYPES: readonly string[] = [...SHEET_MIMES]
 export const REFERENCE_ALLOWED_TYPES: readonly string[] = [
   PDF_MIME, ...IMAGE_MIMES, ...DOC_MIMES, ...SHEET_MIMES, ...TEXT_MIMES,
 ]
@@ -49,22 +50,26 @@ export type AttachmentCategory = 'main_pi' | 'reference'
 // blocks unknown types AND double-extension tricks ("invoice.pdf.exe" → ext
 // "exe" → rejected). Macro-enabled Office formats (.docm/.xlsm/.dotm/…) are
 // absent by design and therefore rejected.
-export const MAIN_PI_EXTS = ['pdf', 'jpg', 'jpeg', 'png', 'webp'] as const
+export const MAIN_PI_EXTS = ['xlsx', 'xls'] as const
 export const REFERENCE_EXTS = [
   'pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv',
 ] as const
 
 // Human labels + input `accept` strings for the two categories, so the UI and
 // the validation share one source of truth.
-export const MAIN_PI_ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp'
+export const MAIN_PI_ACCEPT =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,.xlsx,.xls'
+// Reference attachments keep the full PDF / image / Office / text set (a PI PDF
+// belongs here). Built INDEPENDENTLY of MAIN_PI_ACCEPT, which is now Excel-only —
+// references must never be narrowed to Excel by a change to the Main PI list.
 export const REFERENCE_ACCEPT =
-  MAIN_PI_ACCEPT +
+  'application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp' +
   ',application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document' +
   ',application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' +
   ',text/plain,text/csv' +
   ',.doc,.docx,.xls,.xlsx,.txt,.csv'
 
-export const MAIN_PI_TYPES_LABEL = 'PDF, JPG, PNG or WEBP'
+export const MAIN_PI_TYPES_LABEL = 'Excel (.xlsx or .xls)'
 export const REFERENCE_TYPES_LABEL = 'PDF, image, Word, Excel, CSV or TXT'
 
 // Extension → canonical MIME. The canonical MIME is what we UPLOAD as, so a
@@ -308,7 +313,13 @@ export async function prepareAttachment(
 
   const contentType = resolveUploadType(file, category)
   if (!contentType) {
-    return { ok: false, error: `Only ${typesLabelFor(category)} files are allowed here.`, originalSize }
+    return {
+      ok: false,
+      error: category === 'main_pi'
+        ? 'Main PI must be an Excel file in .xlsx or .xls format.'
+        : `Only ${typesLabelFor(category)} files are allowed here.`,
+      originalSize,
+    }
   }
 
   if (file.size <= ORDER_REQ_ATTACHMENT_MAX_BYTES) {

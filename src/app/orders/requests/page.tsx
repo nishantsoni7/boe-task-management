@@ -2617,7 +2617,7 @@ function SubmitRequestModal({
                     <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>Main PI</span>
                     <span style={badgeStyle('required')}>Required</span>
                   </div>
-                  <span style={{ fontSize: '11.5px', color: colors.muted }}>PDF or image · one file</span>
+                  <span style={{ fontSize: '11.5px', color: colors.muted }}>Excel file only · .xlsx or .xls</span>
                   <input
                     ref={mainPiInputRef}
                     type="file"
@@ -2633,12 +2633,12 @@ function SubmitRequestModal({
                         onRemove={() => { setMainPi(null); setError(null) }}
                       />
                       <button type="button" onClick={() => mainPiInputRef.current?.click()} disabled={inFlight} style={linkActionStyle(!inFlight)}>
-                        Replace file
+                        Replace Excel PI
                       </button>
                     </>
                   ) : (
                     <button type="button" onClick={() => mainPiInputRef.current?.click()} disabled={inFlight} style={chooseButtonStyle(!inFlight)}>
-                      <Paperclip size={14} /> Choose file
+                      <Paperclip size={14} /> Choose Excel PI
                     </button>
                   )}
                 </div>

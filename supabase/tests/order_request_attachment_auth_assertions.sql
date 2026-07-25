@@ -62,8 +62,8 @@ values
 insert into public.order_request_attachments
   (order_request_id, attachment_type, file_name, storage_path, uploaded_by)
 values
-  (current_setting('test.d_assignee')::uuid, 'main_pi', 'admin-pi.pdf',
-   current_setting('test.d_assignee') || '/main-pi/' || gen_random_uuid() || '-admin-pi.pdf',
+  (current_setting('test.d_assignee')::uuid, 'main_pi', 'admin-pi.xlsx',
+   current_setting('test.d_assignee') || '/main-pi/' || gen_random_uuid() || '-admin-pi.xlsx',
    current_setting('test.admin_id')::uuid);
 
 -- Stale draft by an unrelated user, backdated > 24h for the admin sweep/cleanup.
@@ -100,8 +100,8 @@ begin
 
   insert into public.order_request_attachments
     (order_request_id, attachment_type, file_name, storage_path, uploaded_by)
-  values (current_setting('test.d_creator')::uuid, 'main_pi', 'pi.pdf',
-          current_setting('test.d_creator') || '/main-pi/' || gen_random_uuid() || '-pi.pdf',
+  values (current_setting('test.d_creator')::uuid, 'main_pi', 'pi.xlsx',
+          current_setting('test.d_creator') || '/main-pi/' || gen_random_uuid() || '-pi.xlsx',
           current_setting('test.sales_id')::uuid);
 
   v_res := public.finalize_order_request(current_setting('test.d_creator')::uuid);
@@ -164,8 +164,8 @@ begin
 
   insert into public.order_request_attachments
     (order_request_id, attachment_type, file_name, storage_path, uploaded_by)
-  values (current_setting('test.d_admin_own')::uuid, 'main_pi', 'admin-own-pi.pdf',
-          current_setting('test.d_admin_own') || '/main-pi/' || gen_random_uuid() || '-pi.pdf',
+  values (current_setting('test.d_admin_own')::uuid, 'main_pi', 'admin-own-pi.xlsx',
+          current_setting('test.d_admin_own') || '/main-pi/' || gen_random_uuid() || '-pi.xlsx',
           current_setting('test.admin_id')::uuid);
 
   v_res := public.finalize_order_request(current_setting('test.d_admin_own')::uuid);

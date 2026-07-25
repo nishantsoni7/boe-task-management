@@ -556,6 +556,38 @@ begin
       using errcode = 'P0001';
   end if;
 
+  -- The Main PI must be an Excel workbook (.xlsx or .xls) — enforced server-side
+  -- so a crafted request can never finalize a PDF/image/other file as the Main PI
+  -- (the client also validates this; this is the authoritative gate). Validated on
+  -- BOTH signals that the table stores:
+  --   * file_name extension MUST be .xlsx or .xls; AND
+  --   * mime_type MUST be an Excel mime, OR NULL/empty. NULL/empty is allowed
+  --     because a genuine workbook can arrive with a missing/quirky browser mime
+  --     (and a direct/service insert may omit it); the client uploads a canonical
+  --     Excel mime, so a real upload always carries one. A NON-empty, non-Excel
+  --     stored mime (e.g. application/pdf on a .xlsx name) is a clear conflict and
+  --     is rejected rather than trusting the filename alone.
+  -- Existing/legacy attachment rows are never re-validated — only this finalize
+  -- path is gated, so viewing and deletion of any older non-Excel Main PI stay
+  -- format-agnostic.
+  if not exists (
+    select 1 from public.order_request_attachments
+    where order_request_id = p_order_request_id
+      and attachment_type = 'main_pi'
+      and (lower(file_name) like '%.xlsx' or lower(file_name) like '%.xls')
+      and (
+        mime_type is null
+        or mime_type = ''
+        or mime_type in (
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel'
+        )
+      )
+  ) then
+    raise exception 'MAIN_PI_NOT_EXCEL: the Main PI must be an Excel file (.xlsx or .xls).'
+      using errcode = 'P0001';
+  end if;
+
   select count(*) into v_ref
   from public.order_request_attachments
   where order_request_id = p_order_request_id and attachment_type = 'reference';
