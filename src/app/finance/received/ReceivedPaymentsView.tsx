@@ -12,6 +12,14 @@ import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { formatINR, isValidAmount } from '@/lib/currency'
 import { notifyFinance } from '@/lib/notify'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
+import {
+  CONFIRMED_PAYMENT_STATUSES,
+  applyLinkageScope,
+  resolveLinkedAgainst,
+  type LinkedAgainst,
+} from '@/app/finance/paymentRouting'
+import { useQueryClient } from '@tanstack/react-query'
+import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -33,6 +41,10 @@ type PaymentRequest = {
   payment_against: string
   submitted_by: string
   submitted_by_name?: string
+  /** The admin who approved the payment — finance_payment_requests.approved_by,
+   *  set by approve_finance_payment_request. Undefined on legacy rows approved
+   *  before the column was populated. */
+  approved_by_name?: string
   admin_note: string | null
   created_at: string
 }
@@ -87,16 +99,19 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
 
 // ── Modes ─────────────────────────────────────────────────────────────────────
 // Received Payments is two sibling pages, not one page with a tab strip. The
-// split axis is linkage, and it is exhaustive and mutually exclusive by
-// construction: 20260698 adds a CHECK forbidding order_id and order_request_id
-// on the same row, so a payment is attached to a Confirmed Order, parked on an
-// Order Request awaiting conversion, or attached to neither (suspense).
+// split axis is ALLOCATION — see linkageModeFor in ../paymentRouting:
 //
 //   linked   → order_id IS NOT NULL  OR  order_request_id IS NOT NULL
 //   unlinked → order_id IS NULL     AND  order_request_id IS NULL
 //
-// Together the two still cover exactly the rows the single page used to load
-// (status approved_linked / approved_unlinked), so nothing became invisible.
+// An Order Request linkage counts as LINKED. The money has been allocated to a
+// piece of business; conversion later moves it onto the Order by itself. What
+// makes Non-Linked worth its own page is the opposite case — money with nothing
+// at all pointing at it, which is the only set that needs someone to act.
+//
+// The two predicates are exhaustive and mutually exclusive over the pair of
+// columns, so the pair covers exactly the approved rows the single page used to
+// load (approved_linked / approved_unlinked) and nothing is invisible.
 
 export type ReceivedPaymentsMode = 'linked' | 'unlinked'
 
@@ -110,21 +125,23 @@ const MODE_META: Record<ReceivedPaymentsMode, {
   linked: {
     path:     '/finance/received/linked',
     title:    'Linked Payments',
-    subtitle: 'Received payments attached to a Confirmed Order or to an Order Request awaiting conversion.',
+    subtitle: 'Received payments linked to either an Order or an Order Request.',
     empty:    'No linked payments yet.',
     searchPlaceholder: 'Client, order or request…',
   },
   unlinked: {
     path:     '/finance/received/unlinked',
     title:    'Non-Linked Payments',
-    subtitle: 'Suspense entries — money received with no Order and no Order Request attached.',
-    empty:    'No suspense entries. Every received payment is linked.',
+    subtitle: 'Received payments linked to neither an Order nor an Order Request.',
+    empty:    'No unallocated payments. Every received payment is linked.',
     searchPlaceholder: 'Client…',
   },
 }
 
 // Linked Payments only: narrows the two linkage targets apart. A plain form
-// control alongside search — deliberately not a revived tab strip.
+// control alongside search — deliberately not a revived tab strip. Non-Linked
+// Payments needs none: every row there is linked to nothing by definition, so
+// there is nothing left to narrow.
 type LinkageFilter = 'all' | 'order' | 'request'
 
 const LINKAGE_FILTER_OPTIONS: { value: LinkageFilter; label: string }[] = [
@@ -181,13 +198,6 @@ function fmtDate(iso: string) {
 
 function fmtAmount(n: number) {
   return formatINR(n)
-}
-
-function fmtDateTime(iso: string) {
-  const d = new Date(iso)
-  const date = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-  return `${date}, ${time}`
 }
 
 // Maps the approved_linked-requires-order_id CHECK constraint violation to a
@@ -272,28 +282,41 @@ function StatusBadge({ status, requestLinked }: { status: string; requestLinked?
   )
 }
 
-// Shown in the Order column when the payment is parked on an Order Request.
-function RequestLinkBadge({ requestNumber }: { requestNumber: string }) {
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-      background: '#F5F3FF', color: '#5B21B6', border: '1px solid #DDD6FE',
-      fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
-    }}>
-      {requestNumber}
-    </span>
-  )
+// ── Linked Against cell ───────────────────────────────────────────────────────
+// One badge for all three outcomes of resolveLinkedAgainst (../paymentRouting),
+// so a reader never has to work out which of two differently-shaped cells they
+// are looking at. The TYPE is spelled out in words next to the number —
+// "Order ORD-…" / "Order Request REQ-…" — because colour alone cannot carry it,
+// and the number alone cannot say what it is a number OF.
+//
+// Palette is unchanged from the badges this replaces: blue for a Confirmed
+// Order, violet for an Order Request, amber for neither.
+const LINKED_AGAINST_STYLE: Record<LinkedAgainst['kind'], { bg: string; color: string; border: string }> = {
+  order:   { bg: colors.blueTint, color: colors.blue, border: 'rgba(85,133,232,0.25)' },
+  request: { bg: '#F5F3FF',       color: '#5B21B6',   border: '#DDD6FE' },
+  none:    { bg: '#FFF7ED',       color: '#9A3412',   border: '#FED7AA' },
 }
 
-// Shown when payment has no order_id
-function SuspenseBadge() {
+function LinkedAgainstBadge({ target }: { target: LinkedAgainst }) {
+  const s = LINKED_AGAINST_STYLE[target.kind]
   return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-      background: '#FFF7ED', color: '#9A3412', border: '1px solid #FED7AA',
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
-    }}>
-      Suspense
+    <span
+      title={target.label}
+      style={{
+        display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+        background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+        fontSize: '11px', fontWeight: target.kind === 'none' ? 600 : 700, whiteSpace: 'nowrap',
+      }}
+    >
+      {target.kind === 'none' ? (
+        target.label
+      ) : (
+        <>
+          <span style={{ fontWeight: 600, opacity: 0.85 }}>{target.prefix}</span>
+          {' '}
+          {target.number}
+        </>
+      )}
     </span>
   )
 }
@@ -928,11 +951,18 @@ const TH_STYLE: React.CSSProperties = {
   background: colors.raised,
 }
 
+// Compact operational column set, identical on both Received Payments pages:
+// which request the money came in on, who it is from, how much, when, WHAT IT IS
+// LINKED AGAINST, how it arrived, who confirmed it, and what can be done to it.
+//
+// Received In, Submitted By, Submitted On and the status badge were dropped from
+// the row to make room without widening the table. None of them left the system
+// — all four are in the details modal one click away, and the page itself (and
+// the Linked Against cell) now carries what the status badge used to say.
 function ReceivedPaymentsTable({
   rows,
   isAdmin,
   highlightId,
-  showLinkageCaption,
   onView,
   onEdit,
   onLink,
@@ -941,9 +971,6 @@ function ReceivedPaymentsTable({
   rows: PaymentRequest[]
   isAdmin: boolean
   highlightId?: string | null
-  /** Linked Payments only: names the target type under the number badge, so a
-   *  Confirmed Order and an Order Request are told apart by words, not colour. */
-  showLinkageCaption?: boolean
   onView:   (r: PaymentRequest) => void
   onEdit:   (r: PaymentRequest) => void
   onLink:   (r: PaymentRequest) => void
@@ -953,25 +980,24 @@ function ReceivedPaymentsTable({
 
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '960px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '880px' }}>
         <thead>
           <tr>
+            <th style={TH_STYLE}>Payment Request #</th>
             <th style={TH_STYLE}>Client</th>
-            <th style={TH_STYLE}>Order</th>
             <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
             <th style={TH_STYLE}>Payment Date</th>
-            <th style={TH_STYLE}>Mode</th>
-            <th style={TH_STYLE}>Received In</th>
-            <th style={TH_STYLE}>Submitted By</th>
-            <th style={TH_STYLE}>Submitted On</th>
-            <th style={TH_STYLE}>Status</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Actions</th>
+            <th style={TH_STYLE}>Linked Against</th>
+            <th style={TH_STYLE}>Payment Mode</th>
+            <th style={TH_STYLE}>Confirmed By</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Action</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(r => {
-            const isLinked = !!r.order_id
-            const isRequestLinked = !r.order_id && !!r.order_request_id
+            const target = resolveLinkedAgainst(r)
+            const isLinked = target.kind === 'order'
+            const isRequestLinked = target.kind === 'request'
             const isHighlighted = r.id === highlightId
             return (
               <tr
@@ -982,31 +1008,11 @@ function ReceivedPaymentsTable({
                 onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
                 onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
               >
+                <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
+                  {r.request_number}
+                </td>
                 <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
                   {r.client_name}
-                </td>
-                {/* Order column — linked order number, linked order request
-                    number, or Suspense badge */}
-                <td style={TD}>
-                  {isLinked ? (
-                    <span style={{
-                      display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-                      background: colors.blueTint, color: colors.blue,
-                      border: `1px solid rgba(85,133,232,0.25)`,
-                      fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
-                    }}>
-                      {r.order_number ?? r.order_id}
-                    </span>
-                  ) : isRequestLinked ? (
-                    <RequestLinkBadge requestNumber={r.order_request_number ?? r.order_request_id!} />
-                  ) : (
-                    <SuspenseBadge />
-                  )}
-                  {showLinkageCaption && (isLinked || isRequestLinked) && (
-                    <div style={{ fontSize: '10px', color: colors.muted, marginTop: '3px' }}>
-                      {isLinked ? 'Confirmed Order' : 'Order Request'}
-                    </div>
-                  )}
                 </td>
                 <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                   {fmtAmount(r.amount)}
@@ -1014,20 +1020,17 @@ function ReceivedPaymentsTable({
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {fmtDate(r.payment_date)}
                 </td>
+                {/* Linked Against — Confirmed Order first, then Order Request,
+                    then "Not linked". Never blank, and never a pending label
+                    while a real request number is available. */}
+                <td style={TD}>
+                  <LinkedAgainstBadge target={target} />
+                </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
                 </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {RECEIVED_IN_LABEL[r.received_in] ?? r.received_in}
-                </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {r.submitted_by_name ?? '—'}
-                </td>
-                <td style={{ ...TD, fontSize: '11px', color: colors.muted }}>
-                  {fmtDateTime(r.created_at)}
-                </td>
-                <td style={TD}>
-                  <StatusBadge status={r.status} requestLinked={isRequestLinked} />
+                  {r.approved_by_name ?? '—'}
                 </td>
                 <td style={{ ...TD, textAlign: 'right' }}>
                   <div
@@ -1142,6 +1145,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   const router       = useRouter()
   const supabase     = useMemo(() => createClient(), [])
   const searchParams = useSearchParams()
+  const queryClient  = useQueryClient()
 
   // Guards the one-time ?payment= deep-link resolution below (see effect near
   // the bottom of init) so it can never re-fire and reopen a closed modal.
@@ -1159,13 +1163,16 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
         received_in, proof_note, order_number, order_id,
         order_request_id, order_request_number, sales_note,
         status, payment_against, submitted_by, admin_note, created_at,
-        submitted_by_user:users!submitted_by(full_name)
+        submitted_by_user:users!submitted_by(full_name),
+        approved_by_user:users!approved_by(full_name)
       `)
-      .in('status', ['approved_linked', 'approved_unlinked'])
+      .in('status', CONFIRMED_PAYMENT_STATUSES as unknown as string[])
 
-    const scoped = mode === 'linked'
-      ? base.or('order_id.not.is.null,order_request_id.not.is.null')
-      : base.is('order_id', null).is('order_request_id', null)
+    // Either linkage counts. Filtered in the database rather than in the browser
+    // so neither page ever holds the other's rows — and through the SAME
+    // applyLinkageScope the sidebar counts use, so the list and the number
+    // beside its nav entry are one predicate, not two that must be kept in step.
+    const scoped = applyLinkageScope(base, mode)
 
     const { data } = await scoped.order('created_at', { ascending: false })
 
@@ -1173,10 +1180,25 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
     const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
       ...r,
       submitted_by_name: r.submitted_by_user?.full_name ?? undefined,
+      // approved_by is set by approve_finance_payment_request (20260688/20260690)
+      // — the admin who confirmed the money arrived. Null only on a row approved
+      // before that column existed.
+      approved_by_name:  r.approved_by_user?.full_name ?? undefined,
       submitted_by_user: undefined,
+      approved_by_user:  undefined,
     }))
     setRequests(mapped)
     setListLoading(false)
+  }
+
+  // Every mutation on this page — link, unlink, edit, status correction — can
+  // move a row between the two Received Payments pages or in or out of them
+  // entirely, so each re-reads the list AND invalidates the sidebar counts. The
+  // initial load deliberately does not: the counts query is mounting alongside
+  // it and would only be told to fetch twice.
+  const refreshAfterMutation = () => {
+    loadRequests()
+    queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
   }
 
   useEffect(() => {
@@ -1274,7 +1296,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
 
     setUnlinkTarget(null)
     setUnlinkReason('')
-    loadRequests()
+    refreshAfterMutation()
   }
 
   const visible = useMemo(() => {
@@ -1286,6 +1308,9 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
         (r.order_request_number ?? '').toLowerCase().includes(q)
       )
       if (!matchesSearch) return false
+      // Linked Payments only — narrows to one of the two linkage targets. Both
+      // filters are no-ops on Non-Linked Payments, which never renders the
+      // control (every row there is linked to nothing).
       if (linkage === 'order')   return !!r.order_id
       if (linkage === 'request') return !r.order_id && !!r.order_request_id
       return true
@@ -1333,7 +1358,9 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
         </div>
 
         {/* Linked Payments only — a payment is attached to a Confirmed Order or
-            to an Order Request, never both, so this simply narrows to one. */}
+            to an Order Request, never both, so this simply narrows to one.
+            Non-Linked Payments holds one kind by definition, so it needs no
+            filter — one that could never match would be worse than none. */}
         {mode === 'linked' && (
           <select
             className="boe-input"
@@ -1370,7 +1397,6 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
             rows={visible}
             isAdmin={isAdmin}
             highlightId={highlightId}
-            showLinkageCaption={mode === 'linked'}
             onView={r  => setDetailRequest(r)}
             onEdit={r  => setEditRequest(r)}
             onLink={r  => setLinkRequest(r)}
@@ -1387,7 +1413,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           onClose={() => setDetailRequest(null)}
           isAdmin={isAdmin}
           supabase={supabase}
-          onCorrected={() => { setDetailRequest(null); loadRequests() }}
+          onCorrected={() => { setDetailRequest(null); refreshAfterMutation() }}
         />
       )}
 
@@ -1396,7 +1422,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           request={editRequest}
           supabase={supabase}
           onClose={() => setEditRequest(null)}
-          onSaved={() => { setEditRequest(null); loadRequests() }}
+          onSaved={() => { setEditRequest(null); refreshAfterMutation() }}
         />
       )}
 
@@ -1407,7 +1433,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           payment={linkRequest}
           supabase={supabase}
           onClose={() => setLinkRequest(null)}
-          onLinked={() => { setLinkRequest(null); loadRequests() }}
+          onLinked={() => { setLinkRequest(null); refreshAfterMutation() }}
         />
       )}
 

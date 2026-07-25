@@ -26,7 +26,10 @@ import {
   BRAND_TAB_ACCENT,
   type TabAccent,
 } from '@/components/ui/StatusTabs'
-import { Archive, CircleX, Clock, Layers, MessageCircleQuestion, Unlink, type LucideIcon } from 'lucide-react'
+import { Archive, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
+import { REQUEST_STAGE_STATUSES, isRequestStageStatus } from './paymentRouting'
+import { useQueryClient } from '@tanstack/react-query'
+import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -62,7 +65,7 @@ type OrderResult = {
 }
 
 type AdminAction = 'approve' | 'needs_clarification' | 'reject'
-type FilterTab   = 'pending' | 'order_pending' | 'clarification' | 'rejected' | 'archive' | 'all'
+type FilterTab   = 'pending' | 'clarification' | 'rejected' | 'archive' | 'all'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -161,23 +164,19 @@ const RECEIVED_IN_OPTIONS: { label: string; value: string }[] = [
 ]
 
 // Tab accents come from the STATUS_META row badges above, so a status wears one
-// colour in the strip, the row, and the modal. Two exceptions, both deliberate:
-//   • order_pending — its badge shares #92400E with pending_approval, which
-//     would make the two tabs indistinguishable. It takes the violet already
-//     used for "Awaiting Order Confirmation" on Received Payments: the same
-//     waiting-on-an-order-number meaning. The row badge is left untouched.
+// colour in the strip, the row, and the modal. One exception, deliberate:
 //   • archive — a derived view, not a DB status, so it has no badge. It uses
 //     the neutral palette STATUS_META already falls back to for unknowns.
-const ORDER_PENDING_TAB_ACCENT: TabAccent = {
-  color: '#5B21B6', tint: '#F5F3FF', badge: '#F5F3FF', badgeActive: '#DDD6FE',
-}
+//
+// There is no longer an "Order No. Pending" tab. A confirmed payment is not a
+// payment request in any state, so it has no tab here to sit in — it belongs to
+// Received Payments from the moment of approval. See the query scope below.
 const ARCHIVE_TAB_ACCENT: TabAccent = {
   color: '#4B5563', tint: '#F3F4F6', badge: '#F3F4F6', badgeActive: '#E5E7EB',
 }
 
 const FILTER_TABS: { key: FilterTab; label: string; Icon: LucideIcon; accent: TabAccent }[] = [
   { key: 'pending',       label: 'Pending',             Icon: Clock,                  accent: accentFromBadge(STATUS_META.pending_approval) },
-  { key: 'order_pending', label: 'Order No. Pending',   Icon: Unlink,                 accent: ORDER_PENDING_TAB_ACCENT },
   { key: 'clarification', label: 'Needs Clarification', Icon: MessageCircleQuestion,  accent: accentFromBadge(STATUS_META.needs_clarification) },
   { key: 'rejected',      label: 'Rejected',            Icon: CircleX,                accent: accentFromBadge(STATUS_META.rejected) },
   { key: 'archive',       label: 'Archive',             Icon: Archive,                accent: ARCHIVE_TAB_ACCENT },
@@ -186,7 +185,6 @@ const FILTER_TABS: { key: FilterTab; label: string; Icon: LucideIcon; accent: Ta
 
 const EMPTY_MESSAGES: Record<FilterTab, string> = {
   pending:       'No pending payment requests.',
-  order_pending: 'No payments with order number pending.',
   clarification: 'No payments awaiting clarification.',
   rejected:      'No rejected payments.',
   archive:       'No archived rejected requests.',
@@ -198,7 +196,9 @@ const EMPTY_MESSAGES: Record<FilterTab, string> = {
 // Maps an incoming ?tab= value (e.g. from the Admin Action Queue) to a known
 // FilterTab, defaulting to 'pending' for anything missing or unrecognized —
 // never throws on an invalid/stale deep link.
-const FILTER_TAB_KEYS: FilterTab[] = ['pending', 'order_pending', 'clarification', 'rejected', 'archive', 'all']
+// A stale deep link (?tab=order_pending, from before confirmed payments left
+// this page) is simply not in this list, so it falls through to 'pending'.
+const FILTER_TAB_KEYS: FilterTab[] = ['pending', 'clarification', 'rejected', 'archive', 'all']
 function parseFilterTab(value: string | null): FilterTab {
   return (FILTER_TAB_KEYS as string[]).includes(value ?? '') ? (value as FilterTab) : 'pending'
 }
@@ -213,17 +213,16 @@ function fmtAmount(n: number) {
 
 // Order No. display for both employee and admin views: shows the real number
 // once one exists, otherwise a concise state describing why not. A new_order
-// request never allocates a number through approval (20260690000000) — it
-// only reaches one when it is later attached to a real Order (Order Request
-// conversion, or the Finance linking RPC), so approved_unlinked and
-// pending/in-review new_order requests need distinct copy.
+// request never allocates a number through approval (20260690000000) — it only
+// reaches one when it is later attached to a real Order (Order Request
+// conversion, or the Finance linking RPC).
+//
+// The former approved_unlinked branch ("Received — awaiting order creation") is
+// gone with the rows it described: this page no longer loads a confirmed
+// payment, so every record reaching here is still at the request stage.
 function orderNoDisplay(r: PaymentRequest): string {
   if (r.order_number) return r.order_number
-  if (r.payment_against === 'new_order') {
-    return r.status === 'approved_unlinked'
-      ? 'Received — awaiting order creation'
-      : 'New Order — no order created yet'
-  }
+  if (r.payment_against === 'new_order') return 'New Order — no order created yet'
   return '—'
 }
 
@@ -238,17 +237,19 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
 }
 
 // ── Approval lock ─────────────────────────────────────────────────────────────
-// Approval is the single hard locking point for this page. The two approved_*
-// statuses are the Received Payments workflow's territory: approved_linked is
-// already excluded from this page's query, and approved_unlinked still appears
-// here (Order No. Pending tab) purely as history — view-only for everyone,
-// including admins, who correct it from Received Payments instead.
+// Approval is the single hard locking point for this page, and now also its
+// boundary. BOTH approved_* statuses are the Received Payments workflow's
+// territory and neither is loaded here any more: once an admin confirms the
+// money arrived, the record is a received payment, not an outstanding request,
+// and it leaves this page in the same breath.
 //
-// UNAPPROVED_STATUSES is also sent as a filter on every update/delete issued by
-// this page, so the same rule is re-evaluated server-side against the committed
-// row at mutation time (see the race note on APPROVED_RACE_MESSAGE).
+// UNAPPROVED_STATUSES is the query scope AND the filter sent on every
+// update/delete this page issues, so the same rule is re-evaluated server-side
+// against the committed row at mutation time (see the race note on
+// APPROVED_RACE_MESSAGE) — a row approved between load and click is still
+// refused by the database, not merely hidden.
 
-const UNAPPROVED_STATUSES = ['pending_approval', 'needs_clarification', 'rejected'] as const
+const UNAPPROVED_STATUSES = REQUEST_STAGE_STATUSES
 
 function isApproved(status: string): boolean {
   return status === 'approved_unlinked' || status === 'approved_linked'
@@ -303,16 +304,21 @@ function isStaleClarification(r: PaymentRequest, cutoff: number): boolean {
   return new Date(ts).getTime() <= cutoff
 }
 
+// Every tab is additionally gated on isRequestStageStatus, so a confirmed
+// payment cannot surface in ANY of them — not through 'all', not through a
+// locally stale row approved by someone else since this page loaded, and not
+// through the Archive rule. The query below already refuses to load one; this
+// is the second, independent gate over whatever is in memory.
 function matchesTab(r: PaymentRequest, tab: FilterTab, cutoff: number): boolean {
+  if (!isRequestStageStatus(r.status)) return false
   switch (tab) {
     case 'pending':       return r.status === 'pending_approval'
-    case 'order_pending': return r.status === 'approved_unlinked'
     case 'clarification': return r.status === 'needs_clarification'
     case 'rejected':      return r.status === 'rejected' && !isArchivedRejected(r, cutoff)
     case 'archive':       return isArchivedRejected(r, cutoff)
-    // 'all' shows active requests only: excludes approved_linked (the Received
-    // Payments view) and excludes archived rejected, but keeps stale clarification.
-    default:              return r.status !== 'approved_linked' && !isArchivedRejected(r, cutoff)
+    // 'all' shows active requests only: every request-stage record except
+    // archived rejected, but keeps stale clarification.
+    default:              return !isArchivedRejected(r, cutoff)
   }
 }
 
@@ -2033,6 +2039,7 @@ function FinancePageInner() {
   const router       = useRouter()
   const supabase     = useMemo(() => createClient(), [])
   const searchParams = useSearchParams()
+  const queryClient  = useQueryClient()
 
   // ?tab= from the Admin Action Queue selects the initial tab; manual tab
   // clicks below still just call setActiveTab and are otherwise untouched.
@@ -2055,7 +2062,11 @@ function FinancePageInner() {
         updated_at, rejected_at, clarification_requested_at,
         submitted_by_user:users!submitted_by(full_name)
       `)
-      .neq('status', 'approved_linked')
+      // Request-stage records ONLY. This replaces a .neq('approved_linked'),
+      // which let approved_unlinked through and put confirmed money on the
+      // Payment Requests page. Filtering positively means a status added later
+      // has to be named here to appear, rather than appearing by default.
+      .in('status', REQUEST_STAGE_STATUSES as unknown as string[])
       .order('created_at', { ascending: false })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2155,21 +2166,24 @@ function FinancePageInner() {
   }, [requests, activeTab, search])
 
   // ── Status counts (across all unfiltered) ────────────────────────────────────
+  // Counted through the SAME matchesTab predicate the list uses, so a tab's
+  // badge and its contents can never disagree — and so the confirmed-payment
+  // exclusion is applied to the counts by construction rather than by five
+  // filters that each have to remember it.
   const counts = useMemo(() => {
     const cutoff = archiveCutoff()
+    const countTab = (tab: FilterTab) => requests.filter(r => matchesTab(r, tab, cutoff)).length
     return {
-      pending:       requests.filter(r => r.status === 'pending_approval').length,
-      order_pending: requests.filter(r => r.status === 'approved_unlinked').length,
-      clarification: requests.filter(r => r.status === 'needs_clarification').length,
-      rejected:      requests.filter(r => r.status === 'rejected' && !isArchivedRejected(r, cutoff)).length,
-      archive:       requests.filter(r => isArchivedRejected(r, cutoff)).length,
-      all:           requests.filter(r => r.status !== 'approved_linked' && !isArchivedRejected(r, cutoff)).length,
+      pending:       countTab('pending'),
+      clarification: countTab('clarification'),
+      rejected:      countTab('rejected'),
+      archive:       countTab('archive'),
+      all:           countTab('all'),
     }
   }, [requests])
 
   const tabCount: Record<FilterTab, number> = {
     pending:       counts.pending,
-    order_pending: counts.order_pending,
     clarification: counts.clarification,
     rejected:      counts.rejected,
     archive:       counts.archive,
@@ -2287,7 +2301,16 @@ function FinancePageInner() {
           request={reviewRequest}
           supabase={supabase}
           onClose={() => setReviewRequest(null)}
-          onActioned={() => { setReviewRequest(null); loadRequests() }}
+          // Approval is the ONE action on this page that creates a received
+          // payment — a new_order approval lands in suspense with no linkage, so
+          // the sidebar's Non-Linked count changes the moment it commits.
+          // Clarify and Reject keep the record at request stage and move no
+          // count, but they share this callback and re-checking is free.
+          onActioned={() => {
+            setReviewRequest(null)
+            loadRequests()
+            queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
+          }}
         />
       )}
       {detailRequest && (

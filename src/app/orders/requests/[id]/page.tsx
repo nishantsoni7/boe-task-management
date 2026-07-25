@@ -32,6 +32,7 @@ import type { UserProfile } from '@/lib/types'
 import { ArrowLeft, CalendarCheck2, CalendarClock, CheckCircle2, ChevronRight, MoreHorizontal } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import { prepareAttachment } from '@/lib/orderRequestAttachments'
+import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 import {
   RequestAttachmentsCard,
   RequestPaymentsModal,
@@ -749,6 +750,12 @@ function OrderRequestDetailPageInner() {
     // to, so any change that can move it out of that scope (conversion,
     // deletion, a status move) must invalidate the badge query.
     queryClient.invalidateQueries({ queryKey: ['order-requests', 'total-count'] })
+    // Finance's Received Payments counts move from here too: linking a payment
+    // to this request, unlinking it, and conversion (which rewrites the linkage
+    // onto the new Order) each change which side of that split a payment sits
+    // on. Invalidating rather than refetching means the Finance sidebar simply
+    // reads fresh numbers whenever it is next mounted.
+    queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
   }
 
   useEffect(() => {

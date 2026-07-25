@@ -10,6 +10,11 @@ import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
 import { useUnreadFinanceNotifications } from '@/hooks/queries/useUnreadNotifications'
+import {
+  useReceivedPaymentsCounts,
+  RECEIVED_PAYMENTS_COUNTS_KEY,
+} from '@/hooks/queries/useReceivedPaymentsCounts'
+import { useQueryClient } from '@tanstack/react-query'
 
 type FinanceLayoutProps = {
   profile: UserProfile | null
@@ -35,15 +40,24 @@ export function FinanceLayout({
   const router   = useRouter()
   const pathname = usePathname()
   const { triggerRefresh } = useRefresh()
+  const queryClient = useQueryClient()
 
   // Finance-only unread count — drives both the sidebar "Notifications" badge and
   // the pulsing alert block below. Shares the notifications query cache, so
   // marking read anywhere clears it via the existing invalidation.
   const unreadFinance = useUnreadFinanceNotifications()
 
+  // Neutral volume counts for the two Received Payments entries. Not unread
+  // counts: opening a page never changes them.
+  const receivedCounts = useReceivedPaymentsCounts()
+
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
     setRefreshing(true)
+    // The Refresh control (and the visibilitychange handler below) re-reads the
+    // page; the sidebar counts are part of the same picture, so they are
+    // invalidated in the same breath rather than being left to staleTime.
+    queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
     if (onRefresh) {
       await onRefresh()
     } else {
@@ -51,7 +65,7 @@ export function FinanceLayout({
       router.refresh()
     }
     setRefreshing(false)
-  }, [refreshing, onRefresh, triggerRefresh, router])
+  }, [refreshing, onRefresh, triggerRefresh, router, queryClient])
 
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible') handleRefresh() }
@@ -73,9 +87,11 @@ export function FinanceLayout({
   // the only list routes, and /finance/received itself only redirects to the
   // first of them. The heading is deliberately inert so the section can never
   // open a third list of its own.
-  const receivedSubItems = [
-    { label: 'Linked Payments',     path: '/finance/received/linked' },
-    { label: 'Non-Linked Payments', path: '/finance/received/unlinked' },
+  // `badge` stays undefined only while the count query is still loading; a real
+  // zero renders as "0" rather than disappearing.
+  const receivedSubItems: { label: string; path: string; badge: number | undefined }[] = [
+    { label: 'Linked Payments',     path: '/finance/received/linked',   badge: receivedCounts.linked },
+    { label: 'Non-Linked Payments', path: '/finance/received/unlinked', badge: receivedCounts.unlinked },
   ]
 
   return (
@@ -173,6 +189,20 @@ export function FinanceLayout({
                     style={{ background: active ? '#DC1F2E' : '#A0A9BE' }}
                   />
                   {item.label}
+                  {/* Neutral volume badge — the same grey-on-grey treatment
+                      OrdersLayout uses for its Order Requests count, never the
+                      red unread-alert styling. marginLeft:auto pins it to the
+                      trailing edge without disturbing the submenu indent. */}
+                  {typeof item.badge === 'number' && (
+                    <span style={{
+                      marginLeft: 'auto', flexShrink: 0,
+                      fontSize: '10px', fontWeight: 700, color: '#3D4455',
+                      background: 'rgba(0,0,0,0.08)', borderRadius: '999px',
+                      padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
+                    }}>
+                      {item.badge > 999 ? '999+' : item.badge}
+                    </span>
+                  )}
                 </button>
               )
             })}
