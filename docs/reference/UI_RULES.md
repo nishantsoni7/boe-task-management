@@ -128,6 +128,31 @@ Daily updates should never require long forms.
 
 ---
 
+# Form Modal Dismissal
+
+Any modal, dialog, drawer, or pop-up that holds a form or unsaved user input must protect that input from accidental loss.
+
+A form modal may close ONLY through:
+
+* the Cancel button
+* the × close control (top-right)
+* the Escape key
+* a successful submission
+
+Rules:
+
+* Backdrop / overlay / outside clicks must do nothing — never wire the backdrop to close.
+* Clicking inside the dialog must not bubble into a close handler.
+* A pointer-down inside the dialog followed by pointer-up outside must not close it.
+* Dropdowns, date pickers, comboboxes, and portals must keep working.
+* A failed save keeps the modal open with all entered values intact.
+* Submitting state must not allow accidental duplicate saves.
+* Read-only detail pop-ups (no input) may keep click-away-to-close.
+
+Shared modal components take an explicit `closeOnBackdropClick` prop that defaults to the legacy behaviour; every form-modal usage passes `false`. This is a permanent rule for all current and future BOE form modals. See `05_Business_Rules.md → Form Modal Dismissal Rule`.
+
+---
+
 # Typography Rules
 
 Use compact operational typography.

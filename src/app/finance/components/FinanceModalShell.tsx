@@ -39,16 +39,23 @@ export function FinanceModal({
   onClose,
   children,
   width = '480px',
+  closeOnBackdropClick = true,
 }: {
   title: string
   onClose: () => void
   children: React.ReactNode
   width?: string
+  // Whether an outside (backdrop) click dismisses the modal. Defaults to true to
+  // preserve every existing caller's behaviour. Form modals that hold unsaved
+  // input MUST pass false — the BOE form-modal dismissal rule: a backdrop click
+  // never discards entered data; Escape and the × still close. See docs
+  // 05_Business_Rules.md → "Form Modal Dismissal Rule".
+  closeOnBackdropClick?: boolean
 }) {
   useModalScrollLockAndEscape(onClose)
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: FINANCE_MODAL_OVERLAY_Z }} />
+      <div onClick={closeOnBackdropClick ? onClose : undefined} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: FINANCE_MODAL_OVERLAY_Z }} />
       <div style={{
         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
         width, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
@@ -85,6 +92,7 @@ export function RequestModalShell({
   bottom,
   footer,
   width = '880px',
+  closeOnBackdropClick = true,
 }: {
   requestNumber: string
   submittedLine: React.ReactNode
@@ -103,6 +111,13 @@ export function RequestModalShell({
   footer?: React.ReactNode
   // Dialog width. Defaults to the Finance modals' original 880px.
   width?: string
+  // Whether an outside (backdrop) click dismisses the modal. Defaults to true to
+  // preserve every existing caller's behaviour (read-only detail views keep
+  // click-away-to-close). Pass false whenever the modal contains a form or
+  // unsaved input — the BOE form-modal dismissal rule: a backdrop click never
+  // discards entered data; Escape and the × still close. See docs
+  // 05_Business_Rules.md → "Form Modal Dismissal Rule".
+  closeOnBackdropClick?: boolean
 }) {
   useModalScrollLockAndEscape(onClose)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -111,7 +126,7 @@ export function RequestModalShell({
   return (
     <>
       {/* Overlay */}
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: FINANCE_MODAL_OVERLAY_Z }} />
+      <div onClick={closeOnBackdropClick ? onClose : undefined} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: FINANCE_MODAL_OVERLAY_Z }} />
 
       {/* Dialog */}
       <div
