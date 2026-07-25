@@ -39,12 +39,17 @@ const CATEGORY_META: Record<QueueCategory, { label: string; actionLabel: string 
 
 // Deep-links into the destination page's existing tab/record/modal query-param
 // handling (added alongside this queue) — never a new route or page.
+//
+// The Order Request link points at the request's own detail page, which owns
+// the Convert action; `action=convert` is re-checked there against the same
+// admin + status='submitted' condition the manual button requires, and `from`
+// is the list tab its Back control returns to.
 function buildHref(category: QueueCategory, id: string): string {
   switch (category) {
     case 'finance_pending_approval':    return `/finance?tab=pending&request=${id}`
     case 'finance_needs_clarification': return `/finance?tab=clarification&request=${id}`
     case 'finance_suspense':            return `/finance/received?payment=${id}&action=link`
-    case 'order_request_conversion':    return `/orders/requests?tab=pending&request=${id}&action=convert`
+    case 'order_request_conversion':    return `/orders/requests/${id}?from=pending&action=convert`
   }
 }
 

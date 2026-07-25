@@ -205,6 +205,64 @@ export function sanitizeFileName(name: string): string {
   return (cleaned || 'file').slice(0, 80)
 }
 
+// ── Attachment-edit failure reporting ─────────────────────────────────────────
+// edit_order_request_attachments() raises a distinct greppable code per rule it
+// enforces. Each maps to a sentence that names what refused, so the reader can
+// tell a rejected FILE from a lost PERMISSION from a server that is not ready —
+// three problems with three different remedies that a single fallback string
+// used to hide behind "please try again".
+//
+// The critical rule: "Nothing was changed" is a factual claim about the record,
+// so it is stated ONLY where the outcome is known. Every branch below is reached
+// after the metadata transaction rolled back in full, which is why they may say
+// it; the caller must not append it to an outcome it cannot verify.
+//
+// No raw SQL, SQLSTATE, storage path, constraint name or internal function name
+// reaches the user. Pure.
+export type AttachmentEditErrorLike = { code?: string | null; message?: string | null }
+
+export function attachmentEditErrorMessage(err: AttachmentEditErrorLike): string {
+  const code = err.code ?? ''
+  const m    = (err.message ?? '').toLowerCase()
+
+  // PostgREST could not resolve the function: the database is missing the
+  // migration this feature depends on. Every other message would send the reader
+  // hunting for a problem with their file, so this says what is actually wrong
+  // and who can fix it — without naming the function or the migration.
+  if (code === 'PGRST202' || code === 'PGRST203'
+      || m.includes('schema cache') || m.includes('could not find the function')) {
+    return 'Attachment editing is not available on this server yet. Nothing was changed — ask an administrator to complete the setup.'
+  }
+
+  // The rules the function states explicitly, most specific first.
+  if (m.includes('main_pi_not_excel'))     return 'The Main PI must be an Excel file (.xlsx or .xls). Nothing was changed.'
+  if (m.includes('main_pi_required'))      return 'A submitted Order Request must always have a Main PI. Nothing was changed.'
+  if (m.includes('main_pi_not_removable')) return 'The Main PI can only be replaced, never removed on its own. Nothing was changed.'
+  if (m.includes('main_pi_invalid'))       return 'The replacement Main PI could not be read. Choose the file again — nothing was changed.'
+  if (m.includes('attachment_invalid'))    return 'One of the new files could not be read. Choose it again — nothing was changed.'
+  if (m.includes('attachments_locked'))    return 'This Order Request can no longer have its attachments changed. Nothing was changed.'
+  if (m.includes('attachment_not_found'))  return 'One of the selected files no longer belongs to this Order Request. Refresh and try again — nothing was changed.'
+  if (m.includes('order_request_not_found')) return 'This Order Request no longer exists. Nothing was changed.'
+
+  // A genuinely empty request. The ONLY case that may lead with "nothing
+  // changed", because here it is the whole story rather than a consolation.
+  if (m.includes('no_attachment_changes')) return 'No attachment changes were supplied, so nothing was saved.'
+
+  // Permission refusal that did not match a message above.
+  if (code === '42501' || m.includes('permission') || m.includes('authentication required')) {
+    return 'You do not have permission to change the attachments on this Order Request. Nothing was changed.'
+  }
+
+  // The only codes that genuinely mean "someone else touched this record".
+  // Never claimed otherwise: a generic failure reported as a conflict sends the
+  // reader looking for a phantom edit (the lesson recorded in 20260709).
+  if (code === '40001' || code === '55P03') {
+    return 'Someone else is changing this Order Request right now. Nothing was changed — try again in a moment.'
+  }
+
+  return 'Could not save the attachment changes. Nothing was changed — please try again.'
+}
+
 function randomToken(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`

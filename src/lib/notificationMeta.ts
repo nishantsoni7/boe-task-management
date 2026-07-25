@@ -14,8 +14,10 @@
 //     `task_acknowledged`; meaning lives in the title, so the badge/actor are
 //     parsed from the title and the deep link uses `task_id`.
 //   * Finance / Orders — dedicated stable enum types (`finance_*` / `order_*`)
-//     drive the badge and destination; the exact record is found via `entity_id`
-//     using each page's existing `?request=` / `?payment=` deep-link contract.
+//     drive the badge and destination; the exact record is found via
+//     `entity_id`. Finance uses its pages' `?request=` / `?payment=` deep-link
+//     contract; an Order Request has its own detail route, so the id is a path
+//     segment there rather than a query parameter.
 
 import type { Notification } from '@/lib/types'
 import { colors } from '@/lib/tokens'
@@ -118,17 +120,21 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
 
   // ── Orders ─────────────────────────────────────────────────────────────────
   // Every Order notification carries the Order REQUEST id in entity_id and
-  // deep-links into the Order Requests module — except order_converted, whose
-  // subject is the Confirmed Order that was just created. That one carries the
-  // ORDER id instead (set at the call site in orders/requests/page.tsx) and
-  // points at the Order's own detail page, because a converted request is being
-  // removed from the Order Requests module and would no longer resolve there.
+  // deep-links to that request's own detail page (/orders/requests/[id]) —
+  // except order_converted, whose subject is the Confirmed Order that was just
+  // created. That one carries the ORDER id instead (set at the call site in the
+  // Convert modal) and points at the Order's own detail page, because a
+  // converted request is removed from the Order Requests list.
+  //
+  // `from=all` is the list tab the reader returns to via the detail page's Back
+  // control — the "All" scope, the same one this link used to select when it
+  // opened the list with a modal on top.
   if (type.startsWith('order')) {
     const badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
     const href = n.entity_id
       ? (type === 'order_converted'
           ? `/orders/${n.entity_id}`
-          : `/orders/requests?tab=all&request=${n.entity_id}`)
+          : `/orders/requests/${n.entity_id}?from=all`)
       : '/orders/requests'
     return {
       category: 'order',

@@ -483,6 +483,206 @@ body {
 .boe-btn-danger:hover { background: rgba(217,79,79,0.14); }
 
 /* ─────────────────────────────────────────────────────
+   RECORD HEADER ACTIONS
+   Additive only — nothing above is modified.
+
+   Action buttons that sit on a record page's own surface
+   (.boe-page-body inherits the #F4F5F7 app background).
+   A transparent button with a rgba(0,0,0,0.08) hairline
+   disappears against that grey, so a secondary action
+   here rides on a WHITE raised surface with a genuine
+   border. Quiet, not loud: one dominant primary is still
+   the only filled button.
+
+   Used by the Order Request detail page via
+   headerActionClass() in
+   src/app/orders/requests/components/shared.ts.
+───────────────────────────────────────────────────── */
+.boe-record-action {
+  /* `appearance` is reset explicitly so the platform's own button chrome can
+     never fight the surface defined below, and so the rule states the full
+     button treatment rather than relying on what the UA happens to supply. */
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  /* A shared minimum height keeps the icon-only overflow trigger on the same
+     baseline as the labelled actions beside it. */
+  min-height: 34px;
+  padding: 8px 15px;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  /* Explicit line-height, so the label sits optically centred rather than
+     inheriting a tall body line-height and riding high in the button. */
+  line-height: 1.15;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+  color: #3D4455;
+  background: #FFFFFF;
+  /* Solid, not a low-alpha hairline: this sits on the #F4F5F7 page, where an
+     8%-black border is very nearly the background itself. */
+  border: 1px solid #C7CDD9;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.06);
+  transition: background 0.16s ease, border-color 0.16s ease,
+              color 0.16s ease, box-shadow 0.16s ease;
+}
+.boe-record-action:hover:not(:disabled) {
+  background: #F4F6F9;
+  border-color: #A5AEC0;
+  color: #111318;
+}
+/* Pressed — the surface sinks rather than merely darkening, so a click reads as
+   a press even at a glance. */
+.boe-record-action:active:not(:disabled) {
+  background: #E9EDF3;
+  border-color: #97A1B5;
+  box-shadow: inset 0 1px 2px rgba(16,24,40,0.12);
+}
+/* Focus ring is never removed — keyboard users must always see where they are. */
+.boe-record-action:focus-visible {
+  outline: 2px solid #5585E8;
+  outline-offset: 2px;
+}
+/* A disabled action still reads as a BUTTON on the grey page: it keeps its
+   surface, border and shape, and only loses contrast. It must not vanish. */
+.boe-record-action:disabled {
+  background: #F7F8FA;
+  color: #A3AAB8;
+  border-color: #DDE1E9;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Reject / destructive — red text on a red-tinted border, still a full button
+   surface. Deliberately NOT solid red: solid is reserved for the one primary
+   action, so destructive must never out-shout it. */
+.boe-record-action--danger {
+  color: #B42318;
+  border-color: #EFB4AF;
+}
+.boe-record-action--danger:hover:not(:disabled) {
+  background: #FEF3F2;
+  border-color: #DE8A83;
+  color: #912018;
+}
+.boe-record-action--danger:active:not(:disabled) {
+  background: #FDE4E1;
+  border-color: #CE7069;
+  color: #7A1B12;
+}
+.boe-record-action--danger:disabled {
+  background: #FDF8F8;
+  color: #CFA6A2;
+  border-color: #EBD9D7;
+}
+
+/* The single dominant action for the record's current state. */
+.boe-record-action--primary {
+  background: #DC1F2E;
+  border-color: #C41A27;
+  color: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(220,31,46,0.30);
+}
+.boe-record-action--primary:hover:not(:disabled) {
+  background: #C21B28;
+  border-color: #A9161F;
+  color: #FFFFFF;
+}
+.boe-record-action--primary:active:not(:disabled) {
+  background: #A9161F;
+  border-color: #8E1119;
+  color: #FFFFFF;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.22);
+}
+.boe-record-action--primary:disabled {
+  background: #EFB5BA;
+  border-color: #EFB5BA;
+  color: #FFFFFF;
+  box-shadow: none;
+}
+
+/* Icon-only variant (the overflow trigger) — square, same surface and states. */
+.boe-record-action--icon {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+
+/* ─────────────────────────────────────────────────────
+   RECORD DETAIL WORKSPACE
+
+   The Order Request detail page's LEFT side is one record
+   surface of two columns, not a stack of unrelated bands:
+
+     Commercial Summary | Key Dates
+     Attachments        | Request Record
+     Linked Payments (full width)
+
+   The split is FLEX WRAPPING rather than a grid plus a
+   query, deliberately. The left workspace's own width
+   depends on whether the activity rail has wrapped beside
+   it (it wraps at around 1220px, which makes the workspace
+   WIDER), so a viewport media query cannot track it — and
+   `container-type` here would apply `contain: layout`,
+   which would capture the position:fixed attachment
+   preview modal RequestAttachmentsCard renders inside this
+   same column.
+
+   Both rows declare the SAME basis and grow, so the column
+   boundary lines up between row 1 and row 2 and both rows
+   break to a single column at the same available width
+   (below 340 + 300 + 14px).
+───────────────────────────────────────────────────── */
+.boe-record-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+/* Row 1's two cards carry comparable content, so they share a height and the
+   date tiles inside absorb the difference. Row 2's do not: an Attachments card
+   holding several files must never push blank space into the record fields. */
+.boe-record-row--top    { align-items: stretch; }
+.boe-record-row--fields { align-items: flex-start; }
+
+.boe-record-col-main { flex: 3 1 340px; min-width: 0; }
+.boe-record-col-side { flex: 2 1 300px; min-width: 0; }
+
+/* Commercial figures: a 2 × 2 block inside the summary card rather than four
+   oversized columns across the whole width. Four across is deliberately gone —
+   at every width this column actually reaches, four figures read as a banner
+   instead of a ledger. */
+.boe-record-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* The 1px gap IS the divider grid; the card's own background shows through. */
+  gap: 1px;
+}
+
+/* Record metadata: label above value, so a long assignee name wraps in its own
+   cell instead of colliding with the label. */
+.boe-record-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px 14px;
+}
+
+/* Only on a genuinely narrow phone. At 390px both grids still hold two readable
+   columns, so the collapse sits below that rather than at a tablet breakpoint. */
+@media (max-width: 360px) {
+  .boe-record-metrics,
+  .boe-record-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ─────────────────────────────────────────────────────
    FORM INPUTS — tightened
 ───────────────────────────────────────────────────── */
 .boe-input {
