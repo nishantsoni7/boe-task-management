@@ -215,6 +215,35 @@ function TestDataCleanupInner() {
     setRunErr('')
     setStorageWarning('')
 
+    // Order Request attachments live in a private, DRAFT-ONLY-deletable bucket, so
+    // their objects are removed by the admin-only, DB-authoritative purge route
+    // (which loads each request's paths from the database itself — the browser
+    // never supplies them). This is done BEFORE the bulk DB delete: if any purge
+    // fails we ABORT and never delete the rows, so the metadata (and its
+    // discoverable paths) survive for a retry. Nothing is left as an
+    // undiscoverable orphaned file.
+    const requestIds = preview.to_delete.filter(r => r.type === 'order_request').map(r => r.id)
+    for (const requestId of requestIds) {
+      let purgeFailed = true
+      try {
+        const purgeRes = await fetch('/api/orders/requests/attachments/cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestId }),
+        })
+        const purgeBody = await purgeRes.json().catch(() => null)
+        purgeFailed = !purgeRes.ok || (purgeBody?.failed?.length ?? 0) > 0
+      } catch {
+        purgeFailed = true
+      }
+      if (purgeFailed) {
+        // Row + metadata left intact and discoverable. Nothing was DB-deleted.
+        setRunning(false)
+        setRunErr('One or more Order Request attachment files could not be removed from storage. Nothing was deleted — please retry.')
+        return
+      }
+    }
+
     const { data, error } = await supabase.rpc('execute_test_data_cleanup', {
       p_root_type:    preview.root_type,
       p_root_id:      preview.root_id,
@@ -233,18 +262,19 @@ function TestDataCleanupInner() {
 
     const res = data as CleanupResult
 
-    // Storage is not part of the database transaction, so it is only touched
-    // after the commit — and its failure must never be reported as a clean
-    // success. The paths come from the RPC, which returns only objects that no
-    // surviving record references.
+    // Payment proofs live in a different bucket with a row-independent admin
+    // storage policy; they are removed after the commit from the RPC's own path
+    // list, as before. A failure is surfaced, never reported as a clean success.
+    const warnings: string[] = []
     if (res.storage_paths?.length) {
       const { data: removed, error: rmErr } =
         await supabase.storage.from(PROOF_BUCKET).remove(res.storage_paths)
       if (rmErr || (removed?.length ?? 0) < res.storage_paths.length) {
-        setStorageWarning(
-          'Database cleanup succeeded, but one or more proof files could not be removed.'
-        )
+        warnings.push('one or more proof files could not be removed')
       }
+    }
+    if (warnings.length > 0) {
+      setStorageWarning(`Database cleanup succeeded, but ${warnings.join(' and ')}.`)
     }
 
     setRunning(false)
