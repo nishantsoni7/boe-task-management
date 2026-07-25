@@ -221,6 +221,58 @@ begin
 end $$;
 
 reset role;
+
+-- ── Activity CHECK constraint: the migration REWRITES it, so every previously
+-- permitted value must survive alongside the new one. This guards the exact
+-- defect found on 2026-07-25: an earlier draft of 20260711 re-created the
+-- constraint from an older list and silently revoked 'request_edited', which
+-- would have made every edit_order_request() call fail with 23514 — invisible
+-- until the first real edit, because the activity table was empty at apply time.
+do $$
+declare
+  v_def text;
+  v_missing text[] := '{}';
+  v_value text;
+begin
+  select pg_get_constraintdef(c.oid) into v_def
+  from pg_constraint c
+  join pg_class t on t.oid = c.conrelid
+  join pg_namespace n on n.oid = t.relnamespace
+  where n.nspname = 'public'
+    and t.relname = 'order_request_activity'
+    and c.conname = 'order_request_activity_event_type_check';
+
+  assert v_def is not null, 'order_request_activity_event_type_check must exist';
+
+  foreach v_value in array array[
+    'request_submitted', 'status_changed', 'request_converted',
+    'clarification_requested', 'clarification_resubmitted', 'request_rejected',
+    'reapplication_submitted', 'payment_linked', 'payment_unlinked',
+    'request_edited',        -- 20260708 — the one that was nearly dropped
+    'attachments_uploaded'   -- 20260711
+  ] loop
+    if position('''' || v_value || '''' in v_def) = 0 then
+      v_missing := array_append(v_missing, v_value);
+    end if;
+  end loop;
+
+  assert cardinality(v_missing) = 0,
+    'event_type CHECK is missing permitted value(s): ' || array_to_string(v_missing, ', ');
+end $$;
+
+-- Behavioural proof, not just text matching: a request_edited row must still be
+-- insertable after this migration has rewritten the constraint.
+do $$
+declare v_req uuid := current_setting('test.d_assignee')::uuid;
+begin
+  insert into public.order_request_activity (order_request_id, event_type, actor_id)
+  values (v_req, 'request_edited', current_setting('test.creator_id')::uuid);
+  assert exists (
+    select 1 from public.order_request_activity
+    where order_request_id = v_req and event_type = 'request_edited'
+  ), 'a request_edited activity row must still be insertable after 20260711';
+end $$;
+
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;
 
 rollback;

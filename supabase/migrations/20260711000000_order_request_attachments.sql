@@ -56,12 +56,32 @@
 -- automatic inclusion). Raw CAD (DWG/DXF) is likewise not accepted: browsers
 -- report its MIME inconsistently and admitting it would require octet-stream — a
 -- CAD file is exported to PDF instead.
+--
+-- PER-FILE SIZE LIMIT — 10 MB, the BOE product rule
+-- -------------------------------------------------
+-- No Order Request attachment may be STORED above 10 MB. A user may SELECT a
+-- larger file, but the app must then reduce it below the limit with a safe,
+-- format-specific processor (today: images only) or refuse it. The original
+-- oversized bytes never reach Storage.
+--
+-- This bucket limit is the INDEPENDENT BACKEND ENFORCEMENT of that rule, not the
+-- first line of defence: the client checks first so the user gets a useful
+-- message, and the bucket refuses regardless of what any client believes. It MUST
+-- stay equal to ORDER_REQ_ATTACHMENT_MAX_BYTES in
+-- src/lib/orderRequestAttachments.ts — one rule expressed in two places.
+--
+-- NOT to be confused with the Supabase PROJECT-WIDE Storage ceiling, which is
+-- 50 MB on this project's plan (Dashboard → Storage → Settings, verified
+-- 2026-07-25; fixed on the Free plan). That is infrastructure headroom, not
+-- permission — the product limit is 10 MB and is deliberately far below it. Do
+-- not raise this bucket toward the infrastructure ceiling: they answer different
+-- questions.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'order-request-attachments',
   'order-request-attachments',
   false,      -- private: no anonymous/public read
-  10485760,   -- 10 MB per file (10 × 1024 × 1024)
+  10485760,   -- 10 MB per file (10 × 1024 × 1024) — the BOE product rule
   array[
     'application/pdf',
     'image/jpeg','image/png','image/webp',
@@ -456,9 +476,22 @@ create policy "order_request_attachments_storage_delete"
   );
 
 -- ── 6. Activity event type ────────────────────────────────────────────────────
--- Add 'attachments_uploaded' to the CHECK (Postgres cannot add a value to a
--- CHECK in place). request_submitted is already permitted.
-
+-- Add 'attachments_uploaded' to the CHECK. Postgres cannot add a value to a
+-- CHECK in place, so the constraint must be dropped and re-created with the FULL
+-- list — which makes this the single most dangerous statement in the migration:
+-- any value omitted here is silently REVOKED.
+--
+-- The list below is the LIVE constraint (verified against the linked database on
+-- 2026-07-25) PLUS 'attachments_uploaded'. In particular 'request_edited' — added
+-- by 20260708 for edit_order_request() — MUST stay. An earlier draft of this
+-- migration was written before 20260708 existed and omitted it, which would have
+-- made every future "Edit Request" fail with a 23514 CHECK violation. It applied
+-- cleanly in testing only because order_request_activity happened to be empty, so
+-- the breakage would not have surfaced until the first real edit in production.
+--
+-- RULE for anyone editing this list: re-read the constraint from the live
+-- database first (pg_get_constraintdef) and take the UNION with whatever this
+-- migration adds. Never retype it from memory or from an older migration.
 alter table public.order_request_activity
   drop constraint order_request_activity_event_type_check;
 
@@ -474,7 +507,8 @@ alter table public.order_request_activity
     'reapplication_submitted',
     'payment_linked',
     'payment_unlinked',
-    'attachments_uploaded'
+    'request_edited',          -- from 20260708 — do NOT drop (see note above)
+    'attachments_uploaded'     -- added by this migration
   ));
 
 -- ── 7. finalize_order_request() ───────────────────────────────────────────────
@@ -762,3 +796,112 @@ $$;
 
 revoke execute on function public.admin_list_stale_order_request_drafts(integer) from public, anon;
 grant execute on function public.admin_list_stale_order_request_drafts(integer) to authenticated;
+
+-- ── 10. remove_unfinalized_order_request_attachment() ─────────────────────────
+-- Remove ONE optional reference attachment from a draft, without discarding the
+-- whole draft.
+--
+-- Why an RPC and not a DELETE policy: §4 deliberately gives
+-- order_request_attachments NO delete policy, which is what makes it impossible
+-- to strip the Main PI off a finalized request. A client CAN already delete the
+-- storage OBJECT of a draft (§5 delete policy is draft-only), but it can never
+-- delete the metadata ROW — so a client-side removal would leave a row pointing
+-- at a file that no longer exists. This function closes exactly that gap, and
+-- nothing wider: it is the only way a single metadata row is ever removed, and it
+-- refuses everything except an optional reference on a live draft.
+--
+-- Check ORDER is deliberate: the caller is AUTHORISED BEFORE any property of the
+-- attachment is revealed, so an unauthorised user gets an identical 42501 whether
+-- the row is a Main PI, already finalized, or converted — the function never
+-- becomes an oracle for another user's draft contents.
+--
+-- The parent request is locked FOR UPDATE so a removal cannot interleave with a
+-- concurrent finalize_order_request(): whichever runs second sees the other's
+-- committed state, and a request can never finalize while one of its files is
+-- half-removed.
+--
+-- Not-found is an idempotent SUCCESS (removed=false, reason=not_found), matching
+-- cleanup_unfinalized_order_request(). A client retrying after a dropped response
+-- must converge rather than error.
+create or replace function public.remove_unfinalized_order_request_attachment(p_attachment_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_att   public.order_request_attachments%rowtype;
+  v_req   public.order_requests%rowtype;
+begin
+  if v_actor is null then
+    raise exception 'Authentication required.' using errcode = '42501';
+  end if;
+
+  select * into v_att
+  from public.order_request_attachments
+  where id = p_attachment_id;
+
+  if not found then
+    -- Already gone (a retry, or a prior removal). Idempotent success.
+    return jsonb_build_object('removed', false, 'reason', 'not_found');
+  end if;
+
+  select * into v_req
+  from public.order_requests
+  where id = v_att.order_request_id
+  for update;
+
+  if not found then
+    raise exception 'ORDER_REQUEST_NOT_FOUND: That Order Request no longer exists.'
+      using errcode = 'P0002';
+  end if;
+
+  -- AUTHORISE FIRST (see note above). Same participant set as
+  -- order_request_attachment_writable(): the creator/owner, or an admin. A pure
+  -- assignee is excluded — an unfinalized draft is the creator's workspace.
+  if not (
+    v_req.created_by = v_actor
+    or v_req.requested_by = v_actor
+    or exists (select 1 from public.users u where u.id = v_actor and u.role = 'admin')
+  ) then
+    raise exception 'You cannot modify this Order Request.' using errcode = '42501';
+  end if;
+
+  -- Upload stage only. A finalized or converted request's attachments are
+  -- immutable for everyone, admin included — unchanged by this function.
+  if v_req.finalized_at is not null then
+    raise exception 'ATTACHMENT_NOT_REMOVABLE: this Order Request is already submitted.'
+      using errcode = '42501';
+  end if;
+
+  if v_req.status <> 'submitted' or v_req.converted_order_id is not null then
+    raise exception 'ATTACHMENT_NOT_REMOVABLE: this Order Request is not in an editable state.'
+      using errcode = '42501';
+  end if;
+
+  -- The Main PI is mandatory and is NEVER removable through this path. Replacing
+  -- it means discarding the draft; that keeps "exactly one Main PI on every
+  -- finalized request" true by construction rather than by client discipline.
+  if v_att.attachment_type <> 'reference' then
+    raise exception 'MAIN_PI_NOT_REMOVABLE: the Main PI cannot be removed individually.'
+      using errcode = '42501';
+  end if;
+
+  -- Exactly one row, addressed by primary key.
+  delete from public.order_request_attachments where id = p_attachment_id;
+
+  -- storage_path is returned so the caller can reconcile/confirm which object the
+  -- row referred to; the caller removes the object BEFORE calling this.
+  return jsonb_build_object(
+    'removed',          true,
+    'attachment_id',    v_att.id,
+    'order_request_id', v_att.order_request_id,
+    'storage_path',     v_att.storage_path,
+    'file_name',        v_att.file_name
+  );
+end;
+$$;
+
+revoke execute on function public.remove_unfinalized_order_request_attachment(uuid) from public, anon;
+grant execute on function public.remove_unfinalized_order_request_attachment(uuid) to authenticated;

@@ -116,7 +116,10 @@ export default function ActionQueuePage() {
       supabase
         .from('order_requests')
         .select('id, request_number, client_name, total_value, created_at, created_by_user:users!created_by(full_name)')
-        .eq('status', 'submitted'),
+        .eq('status', 'submitted')
+        // Only finalized submissions are actionable; upload-stage drafts
+        // (finalized_at IS NULL) have no verified Main PI and are not yet real.
+        .not('finalized_at', 'is', null),
     ])
 
     // Handle partial failure honestly rather than silently rendering an empty queue.

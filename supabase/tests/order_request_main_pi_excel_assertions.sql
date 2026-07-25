@@ -142,8 +142,13 @@ begin
     'text/plain', 'text/csv'
   ], 'bucket allow-list must still include the approved reference mime types';
 
+  -- 10 MB — the BOE product rule, enforced by the bucket INDEPENDENTLY of the
+  -- client. Must stay in step with ORDER_REQ_ATTACHMENT_MAX_BYTES in
+  -- src/lib/orderRequestAttachments.ts. This is deliberately far below the
+  -- project-wide Supabase ceiling (50 MB); that ceiling is infrastructure
+  -- headroom, not the allowed attachment size.
   assert (select file_size_limit from storage.buckets where id = 'order-request-attachments') = 10485760,
-    'bucket size limit must remain 10 MB';
+    'bucket size limit must be 10 MB (the BOE product rule)';
 end $$;
 
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;

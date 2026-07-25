@@ -18,14 +18,20 @@ import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import {
   ORDER_REQ_ATTACHMENT_BUCKET,
+  ORDER_REQ_ATTACHMENT_MAX_BYTES,
   prepareAttachment,
+  plannedProcessing,
+  planStageApplication,
+  planReferenceRemoval,
   buildAttachmentPath,
   formatBytes,
   extOf,
   MAIN_PI_ACCEPT,
   REFERENCE_ACCEPT,
   type AttachmentCategory,
+  type PrepareStage,
 } from '@/lib/orderRequestAttachments'
+import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1948,17 +1954,56 @@ function validateAmount(label: string, raw: string): string | null {
 // is chosen, so each row shows its own size/status/error BEFORE submit and one
 // invalid reference never discards the others. `prepared` is the exact File that
 // will be uploaded (the original when small enough, or a compressed JPEG).
+// Statuses are the real lifecycle, not decoration: 'compressing' is shown only
+// when the file is genuinely being re-encoded (willCompressImage decides, so the
+// label cannot disagree with the work), and 'uploaded' means the object AND its
+// metadata row are both committed. There is deliberately no percentage anywhere:
+// supabase-js storage uploads are fetch-based and expose no progress events, so a
+// percentage could only be simulated — and an invented number is worse than none.
+// The processing statuses mirror the real stages reported by prepareAttachment,
+// so an oversized workbook visibly moves through Reading → Optimizing →
+// Rebuilding → Validating instead of sitting on one opaque label for the many
+// seconds that work genuinely takes.
+type StagedStatus =
+  | 'preparing' | 'compressing'
+  | 'reading' | 'optimizing' | 'rebuilding' | 'validating'
+  | 'ready' | 'uploading' | 'uploaded' | 'removing' | 'error'
+
+// prepareAttachment's stages map onto staged-row statuses 1:1.
+const STAGE_TO_STATUS: Record<PrepareStage, StagedStatus> = {
+  checking:    'preparing',
+  compressing: 'compressing',
+  reading:     'reading',
+  optimizing:  'optimizing',
+  rebuilding:  'rebuilding',
+  validating:  'validating',
+}
+
+// The single source of truth for "this file is still being worked on".
+const PROCESSING_STATUSES: ReadonlySet<StagedStatus> = new Set(Object.values(STAGE_TO_STATUS))
+
 type StagedFile = {
   localId:      string
   displayName:  string   // original selected name (what the user recognises)
   category:     AttachmentCategory
-  status:       'preparing' | 'ready' | 'error'
+  status:       StagedStatus
   prepared:     File | null
   contentType:  string | null   // resolved upload MIME (set once ready)
   originalSize: number
   finalSize:    number | null
   compressed:   boolean
   error:        string | null
+  // Set once the object + metadata are committed, so a retry after a LATER
+  // failure re-uses the upload instead of duplicating the object/metadata row.
+  uploadedPath: string | null
+  // Primary key of the committed metadata row. Required to remove THIS file
+  // alone (remove_unfinalized_order_request_attachment addresses it by id).
+  attachmentId: string | null
+  // Which stage failed. An upload failure is retryable (we still hold the
+  // prepared bytes); a preparation failure is not — that file is invalid or over
+  // the ceiling, so the only way forward is Remove. A removal failure leaves the
+  // file present and still attached, so it can simply be removed again.
+  failedStage:  'prepare' | 'upload' | 'remove' | null
 }
 
 let stagedFileCounter = 0
@@ -1971,16 +2016,25 @@ function nextStagedId(): string {
 // Never throws — a rejected/oversized/uncompressible file resolves to an 'error'
 // row carrying the reason, so the caller can display it inline and keep every
 // other selection.
-async function stageSelectedFile(file: File, category: AttachmentCategory): Promise<StagedFile> {
-  const base: Pick<StagedFile, 'localId' | 'displayName' | 'category' | 'originalSize'> = {
+async function stageSelectedFile(
+  file: File,
+  category: AttachmentCategory,
+  onStage?: (status: StagedStatus) => void,
+): Promise<StagedFile> {
+  const base: Pick<StagedFile, 'localId' | 'displayName' | 'category' | 'originalSize' | 'uploadedPath' | 'attachmentId'> = {
     localId:      nextStagedId(),
     displayName:  file.name,
     category,
     originalSize: file.size,
+    uploadedPath: null,
+    attachmentId: null,
   }
-  const result = await prepareAttachment(file, category)
+  const result = await prepareAttachment(file, category, (stage) => onStage?.(STAGE_TO_STATUS[stage]))
   if (!result.ok) {
-    return { ...base, status: 'error', prepared: null, contentType: null, finalSize: null, compressed: false, error: result.error }
+    return {
+      ...base, status: 'error', prepared: null, contentType: null,
+      finalSize: null, compressed: false, error: result.error, failedStage: 'prepare',
+    }
   }
   return {
     ...base,
@@ -1990,6 +2044,37 @@ async function stageSelectedFile(file: File, category: AttachmentCategory): Prom
     finalSize:   result.finalSize,
     compressed:  result.compressed,
     error:       null,
+    failedStage: null,
+  }
+}
+
+// The first label a picked file shows, chosen from what prepareAttachment has
+// actually decided to do with it.
+const PLANNED_STATUS: Record<'image' | 'xlsx' | 'none', StagedStatus> = {
+  image: 'compressing',
+  xlsx:  'reading',
+  none:  'preparing',
+}
+
+// A fresh placeholder shown the instant a file is picked, before any async work.
+// The status is the TRUTH about what is about to happen — plannedProcessing
+// reuses prepareAttachment's own conditions — so "Compressing image…" never
+// appears over a file that is actually being passed through untouched.
+function placeholderFor(file: File, category: AttachmentCategory): StagedFile {
+  return {
+    localId:      nextStagedId(),
+    displayName:  file.name,
+    category,
+    status:       PLANNED_STATUS[plannedProcessing(file, category) ?? 'none'],
+    prepared:     null,
+    contentType:  null,
+    originalSize: file.size,
+    finalSize:    null,
+    compressed:   false,
+    error:        null,
+    uploadedPath: null,
+    attachmentId: null,
+    failedStage:  null,
   }
 }
 
@@ -2038,38 +2123,79 @@ async function sweepStaleDrafts(supabase: ReturnType<typeof createClient>, userI
 // name, size (original, plus final when compression shrank it), the current
 // status, any inline error, and a Remove control while idle. Purely
 // presentational — all state lives in SubmitRequestModal.
+// Size line: shows the processed size alongside the original ONLY when they
+// actually differ, so an untouched Excel workbook reads as one honest number
+// rather than implying it was processed.
+function stagedSizeLine(staged: StagedFile): string {
+  if (staged.compressed && staged.finalSize != null && staged.finalSize !== staged.originalSize) {
+    return `${formatBytes(staged.originalSize)} → ${formatBytes(staged.finalSize)} compressed`
+  }
+  return formatBytes(staged.originalSize)
+}
+
+const STAGED_STATUS_LABEL: Record<Exclude<StagedStatus, 'error'>, string> = {
+  preparing:   'Checking file…',
+  compressing: 'Compressing image…',
+  reading:     'Reading workbook…',
+  optimizing:  'Optimizing embedded images…',
+  rebuilding:  'Rebuilding workbook…',
+  validating:  'Validating workbook…',
+  ready:       'Ready to upload',
+  uploading:   'Uploading…',
+  uploaded:    'Uploaded',
+  removing:    'Removing…',
+}
+
 function AttachmentStagedRow({
-  staged, onRemove, disabled,
+  staged, onRemove, onRetry, disabled,
 }: {
   staged: StagedFile
   onRemove?: () => void
+  onRetry?: () => void
   disabled: boolean
 }) {
   const isError = staged.status === 'error'
-  const sizeLine = staged.status === 'ready'
-    ? (staged.compressed && staged.finalSize != null
-        ? `${formatBytes(staged.originalSize)} → ${formatBytes(staged.finalSize)} (compressed)`
-        : formatBytes(staged.originalSize))
-    : formatBytes(staged.originalSize)
+  const isDone  = staged.status === 'uploaded'
+  // A file mid-processing is NOT an error, so it never gets error colouring —
+  // only a real failure turns the row red.
+  const statusColor = isError ? colors.red : isDone ? colors.green : colors.muted
+  // Retry is offered only where it can actually succeed: an upload that failed
+  // with the prepared bytes still in hand.
+  const canRetry = isError && staged.failedStage === 'upload' && !!staged.prepared && !!onRetry
+
   return (
     <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: '10px',
-      padding: '8px 10px', borderRadius: '8px',
-      background: isError ? '#FEF2F2' : colors.raised,
-      border: `1px solid ${isError ? '#FECACA' : colors.border}`,
+      display: 'flex', alignItems: 'center', gap: '8px',
+      padding: '8px 12px', borderRadius: '8px',
+      background: isError ? colors.redTint : colors.raised,
+      border: `1px solid ${isError ? 'rgba(217,79,79,0.25)' : colors.border}`,
     }}>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <Paperclip size={12} color={colors.secondary} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1px' }}>
+        <span style={{ fontSize: '12px', color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {staged.displayName}
         </span>
-        {isError ? (
-          <span style={{ fontSize: '11px', color: colors.red, lineHeight: 1.4 }}>{staged.error}</span>
-        ) : staged.status === 'preparing' ? (
-          <span style={{ fontSize: '11px', color: colors.muted }}>Processing…</span>
-        ) : (
-          <span style={{ fontSize: '11px', color: colors.muted }}>{sizeLine}</span>
-        )}
+        <span style={{ fontSize: '11px', color: statusColor, lineHeight: 1.4, wordBreak: 'break-word' }}>
+          {staged.status === 'error'
+            ? staged.error
+            : `${STAGED_STATUS_LABEL[staged.status]} · ${stagedSizeLine(staged)}`}
+        </span>
       </div>
+      {canRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={disabled}
+          aria-label={`Retry upload of ${staged.displayName}`}
+          style={{
+            flexShrink: 0, background: 'none', border: 'none', padding: '0 2px',
+            cursor: disabled ? 'not-allowed' : 'pointer', font: 'inherit',
+            color: colors.blue, fontSize: '11px', fontWeight: 600,
+          }}
+        >
+          Retry
+        </button>
+      )}
       {onRemove && (
         <button
           type="button"
@@ -2077,16 +2203,150 @@ function AttachmentStagedRow({
           disabled={disabled}
           aria-label={`Remove ${staged.displayName}`}
           style={{
-            flexShrink: 0, background: 'none', border: 'none',
-            padding: 0, cursor: disabled ? 'not-allowed' : 'pointer',
-            color: colors.muted, fontSize: '11px', fontWeight: 600, textDecoration: 'underline',
+            flexShrink: 0, background: 'none', border: 'none', padding: '0 2px',
+            display: 'flex', alignItems: 'center',
+            cursor: disabled ? 'not-allowed' : 'pointer',
           }}
         >
-          Remove
+          <X size={13} color={colors.muted} strokeWidth={2} />
         </button>
       )}
     </div>
   )
+}
+
+// ── Submit-path failure classification ────────────────────────────────────────
+// ONE place that decides what a failed submission means, so the reader is told
+// which KIND of thing went wrong and is never shown a raw PostgREST / Postgres /
+// Storage string. The draft-insert branch previously printed insertErr.message
+// verbatim for anything it did not recognise, so an RLS refusal reached a
+// salesperson as `new row violates row-level security policy for table
+// "order_requests"` — internals, and no action the reader could take.
+//
+// The "system update" sentence is RESERVED for exactly one condition: the app
+// asked this database for schema it does not have (the attachment migration is
+// not applied). It is deliberately NOT the fallback — a permission, validation,
+// connection or unknown failure each gets its own sentence, because the reader's
+// next action differs in every one of those cases.
+//
+// RpcErrorLike / logRpcFailure are declared further down beside the edit + delete
+// classifiers; the type erases and the function declaration hoists, so both are
+// usable here and there is only one definition of each.
+type SubmitFailureKind =
+  | 'schema'      // app ↔ database out of step (missing column / table / function)
+  | 'permission'  // RLS or SECURITY DEFINER refusal
+  | 'validation'  // a value the database refused
+  | 'network'     // the request never reached PostgREST
+  | 'conflict'    // another transaction holds the row
+  | 'unknown'
+
+const SUBMIT_SCHEMA_MESSAGE =
+  'We could not prepare this Order Request for submission. Please try again after the system update.'
+const SUBMIT_NETWORK_MESSAGE =
+  'Could not reach the server. Check your connection and try again.'
+const SUBMIT_CONFLICT_MESSAGE =
+  'This request is busy right now. Please try again in a moment.'
+const SUBMIT_VALIDATION_MESSAGE =
+  'One of the values entered is not valid for this request. Check the fields and try again.'
+
+function classifySubmitFailure(err: RpcErrorLike): SubmitFailureKind {
+  const code = err.code ?? ''
+  const m = (err.message ?? '').toLowerCase()
+
+  // PostgREST answered from a schema cache that does not contain what the app
+  // asked for: PGRST202/203 = function, PGRST204 = column, PGRST205 = table.
+  // 42703 / 42P01 / 42883 are that same mismatch reported by Postgres itself
+  // (an undefined column / table / function) rather than by the cache.
+  if (['PGRST202', 'PGRST203', 'PGRST204', 'PGRST205'].includes(code)) return 'schema'
+  if (code === '42703' || code === '42P01' || code === '42883') return 'schema'
+  if (m.includes('schema cache')) return 'schema'
+
+  // No code of any kind: fetch rejected before PostgREST replied.
+  if (!code && (m === '' || m.includes('failed to fetch') || m.includes('networkerror') || m.includes('load failed'))) {
+    return 'network'
+  }
+
+  if (code === '42501' || m.includes('row-level security') || m.includes('permission denied')) return 'permission'
+  if (code === '40001' || code === '55P03') return 'conflict'
+  if (['23502', '23503', '23505', '23514', '22P02', '22007', '22003', '22001', 'P0001'].includes(code)) {
+    return 'validation'
+  }
+  return 'unknown'
+}
+
+// Developer-facing record of a failed submission stage. The reader gets one
+// sentence; the console gets the stage, the code and the server's own message —
+// what is actually needed to place the failure. It carries NO form values, no
+// file bytes, no filenames, no storage paths and no signed URLs; the draft's own
+// id is included because that is the handle needed to find the row.
+type SubmitStage = 'draft-insert' | 'attachment-upload' | 'attachment-metadata' | 'finalize'
+
+function logSubmitFailure(stage: SubmitStage, err: RpcErrorLike, requestId?: string | null): void {
+  console.error('[order-request:submit] failed', {
+    stage,
+    kind:      classifySubmitFailure(err),
+    code:      err.code    ?? null,
+    message:   err.message ?? null,
+    details:   err.details ?? null,
+    hint:      err.hint    ?? null,
+    requestId: requestId   ?? null,
+  })
+}
+
+// The draft INSERT. Its own rules (assignee eligibility 20260697, assignee
+// ownership 20260710) already raise finished, user-facing sentences, so those are
+// named rather than folded into the generic validation string.
+function submitDraftErrorMessage(err: RpcErrorLike): string {
+  const m = (err.message ?? '').toLowerCase()
+  switch (classifySubmitFailure(err)) {
+    case 'schema':   return SUBMIT_SCHEMA_MESSAGE
+    case 'network':  return SUBMIT_NETWORK_MESSAGE
+    case 'conflict': return SUBMIT_CONFLICT_MESSAGE
+    case 'permission':
+      if (m.includes('only assign an order request to yourself')) {
+        return 'You can only assign an Order Request to yourself.'
+      }
+      return 'You do not have permission to create an Order Request.'
+    case 'validation':
+      if (m.includes('assignee must be')) {
+        return 'The selected assignee must be an active Sales team member or an authorised Order Assignee.'
+      }
+      return SUBMIT_VALIDATION_MESSAGE
+    default:
+      return 'The request could not be submitted. Please try again.'
+  }
+}
+
+// finalize_order_request(). Its named failures are checked FIRST, because each
+// one is a rule the reader can act on and several share SQLSTATEs with the
+// generic classes below (MAIN_PI_* are P0001; the authorisation refusals are
+// 42501). Only what none of them matched falls through to the classification.
+function finalizeRequestErrorMessage(err: RpcErrorLike): string {
+  const m = (err.message ?? '').toLowerCase()
+  if (m.includes('main_pi_required')) {
+    return 'The Main PI could not be verified. The request was not submitted — please try again.'
+  }
+  if (m.includes('main_pi_not_excel')) {
+    return 'The Main PI must be an Excel file (.xlsx or .xls). The request was not submitted.'
+  }
+  if (m.includes('order_request_not_found')) {
+    return 'This submission is no longer available. Please start it again.'
+  }
+  if (m.includes('not in a finalizable state')) {
+    return 'This submission can no longer be completed. Please start it again.'
+  }
+  if (m.includes('authentication required')) {
+    return 'Your session has expired. Sign in again and submit the request.'
+  }
+
+  switch (classifySubmitFailure(err)) {
+    case 'schema':     return SUBMIT_SCHEMA_MESSAGE
+    case 'network':    return SUBMIT_NETWORK_MESSAGE
+    case 'conflict':   return SUBMIT_CONFLICT_MESSAGE
+    case 'permission': return 'You do not have permission to submit this Order Request.'
+    case 'validation': return SUBMIT_VALIDATION_MESSAGE
+    default:           return 'The request could not be submitted. Please try again.'
+  }
 }
 
 function SubmitRequestModal({
@@ -2123,32 +2383,175 @@ function SubmitRequestModal({
 
   // ── Attachments ──
   // Main PI is mandatory and single; references are optional and multiple.
-  // Each file is prepared (validated + compressed if >10 MB) the moment it is
-  // picked, so its status/size/error show before submit. `phase` drives the
-  // submit button's live status text during the create → upload sequence.
+  // Each file is prepared the moment it is picked (validated, and re-encoded only
+  // if it is an image over the image threshold), so its status/size/error show
+  // before submit. `phase` drives the submit button's live status text.
   const [mainPi, setMainPi] = useState<StagedFile | null>(null)
   const [refs,   setRefs]   = useState<StagedFile[]>([])
   const [phase,  setPhase]  = useState<'idle' | 'creating' | 'main' | 'refs' | 'finalizing'>('idle')
   const mainPiInputRef = useRef<HTMLInputElement>(null)
   const refsInputRef   = useRef<HTMLInputElement>(null)
+  // The hidden file inputs cannot hold focus, so after the picker closes focus
+  // is restored explicitly to the button that opened it. Without this, whether
+  // focus survives depends on React reconciliation (a file row is inserted ABOVE
+  // the button when the first file is chosen), which is not something keyboard
+  // users should be left to chance on.
+  const mainPiButtonRef = useRef<HTMLButtonElement>(null)
+  const refsButtonRef   = useRef<HTMLButtonElement>(null)
 
-  const preparing = mainPi?.status === 'preparing' || refs.some(r => r.status === 'preparing')
+  // The upload-stage draft, held ACROSS failed attempts. Keeping the id is what
+  // lets a retry re-use the same draft (and skip already-uploaded files) instead
+  // of minting a second draft row and a second copy of every object.
+  const draftIdRef     = useRef<string | null>(null)
+  const draftNumberRef = useRef<string | null>(null)
+
+  // localId of the reference currently being removed, or null. Doubles as the
+  // guard that prevents a second removal (or a double-click) from racing it.
+  const [removingId, setRemovingId] = useState<string | null>(null)
+
+  // Flipped when the modal is torn down. File preparation can be seconds long
+  // (unzip → re-encode → rebuild → validate), and a result arriving after the
+  // modal closed must be dropped rather than written into unmounted state.
+  //
+  // The setup line is NOT redundant with useRef(false). React StrictMode runs
+  // setup → cleanup → setup on the FIRST mount in development to surface effects
+  // that are not idempotent. Without the reset, that rehearsal cleanup latched
+  // the ref at `true` for the entire life of a modal that was in fact mounted and
+  // visible, so planStageApplication answered 'discard-aborted' for every
+  // prepared file and the Main PI sat on "Checking file…" forever — dev only,
+  // never production, which is why the deployed build was unaffected.
+  //
+  // Owning BOTH edges makes the effect idempotent: whatever order React runs the
+  // phases in, the last thing to run on a live instance is setup (false), and the
+  // last thing to run on a dead one is cleanup (true).
+  const stagingAbortedRef = useRef(false)
+  useEffect(() => {
+    stagingAbortedRef.current = false
+    return () => { stagingAbortedRef.current = true }
+  }, [])
+
+  // Every status that means "work is still happening to this file". The submit
+  // button is blocked while ANY of them is set, so a request can never be
+  // created from a workbook that is still being optimised or validated. Derived
+  // from STAGE_TO_STATUS rather than retyped, so a new preparation stage cannot
+  // be added without the submit button automatically waiting for it.
+  const isBusyStatus = (s: StagedStatus) => PROCESSING_STATUSES.has(s)
+  // `preparing` gates the submit button, so a removal in flight belongs here:
+  // the request must not finalize while one of its files is half-removed.
+  const preparing = (mainPi != null && isBusyStatus(mainPi.status))
+    || refs.some(r => isBusyStatus(r.status))
+    || removingId !== null
   // Uploads are in flight from the moment the request row is created; closing
   // then would orphan uploaded objects, so close controls are locked while
-  // `saving`. Compression (`preparing`) is client-only with nothing to orphan,
-  // so it does not lock the modal — it only disables the submit button.
+  // `saving`. Compression is client-only with nothing to orphan, so it does not
+  // lock the modal — it only disables the submit button.
   const busy = saving
   const inFlight = saving || preparing
+
+  // Authoritative list of objects committed for the live draft. Kept in a ref
+  // rather than derived from state so compensation always sees every path, even
+  // when it runs from a stale closure.
+  const uploadedPathsRef = useRef<string[]>([])
+
+  // Return every staged row to its pre-upload state after the draft behind it has
+  // been discarded, so the UI never shows "Uploaded" for an object that no longer
+  // exists. A row that still holds prepared bytes goes back to 'ready'.
+  const resetUploadMarks = () => {
+    const revert = (s: StagedFile): StagedFile => ({
+      ...s,
+      uploadedPath: null,
+      attachmentId: null,
+      status:      s.prepared ? 'ready' : s.status,
+      error:       s.failedStage === 'upload' || s.failedStage === 'remove' ? null : s.error,
+      failedStage: s.failedStage === 'upload' || s.failedStage === 'remove' ? null : s.failedStage,
+    })
+    setMainPi(prev => (prev ? revert(prev) : prev))
+    setRefs(prev => prev.map(revert))
+  }
+
+  // Compensation for the live draft — recoverable, never atomic (Storage and
+  // Postgres cannot share a transaction). Order and the success-check matter:
+  //   1. Remove the uploaded objects FIRST, while the draft row still authorises
+  //      it. storage.remove is idempotent, so re-removing is a no-op.
+  //   2. Delete the draft row (via the narrow cleanup RPC, which cascades the
+  //      metadata) ONLY when every object was removed. If some object survived,
+  //      the row + metadata are KEPT so nothing is orphaned — the draft stays
+  //      invisible/uncounted/unnotified and the load-time sweep retries later.
+  // This guarantees we never delete metadata while its files still exist, and
+  // never orphan a file whose row we already deleted.
+  const discardDraft = async () => {
+    const requestId = draftIdRef.current
+    const paths = uploadedPathsRef.current
+    if (!requestId) return
+    let allRemoved = true
+    if (paths.length > 0) {
+      const { data: removed, error: rmErr } = await supabase.storage
+        .from(ORDER_REQ_ATTACHMENT_BUCKET).remove(paths)
+      allRemoved = !rmErr && (removed?.length ?? 0) >= paths.length
+    }
+    if (allRemoved) {
+      await supabase.rpc('cleanup_unfinalized_order_request', { p_order_request_id: requestId }).then(() => {}, () => {})
+    }
+    // Either way the client lets go of the draft: if some object could not be
+    // removed the row is deliberately left for the sweep, and it is already
+    // invisible to everyone but its creator.
+    draftIdRef.current = null
+    draftNumberRef.current = null
+    uploadedPathsRef.current = []
+    resetUploadMarks()
+  }
+
+  // Retry a single reference file whose UPLOAD failed, without touching the files
+  // that already succeeded and without re-submitting the whole form. The draft is
+  // still alive, so this simply re-runs that one upload against it.
+  const retryRef = async (localId: string) => {
+    const requestId = draftIdRef.current
+    const target = refs.find(r => r.localId === localId)
+    if (!requestId || !target?.prepared) return
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setError('Not authenticated.'); return }
+
+    setError(null)
+    setRefs(prev => prev.map(r => (r.localId === localId ? { ...r, status: 'uploading', error: null, failedStage: null } : r)))
+    const res = await persistAttachment(requestId, session.user.id, 'reference', target)
+    if ('error' in res) {
+      setRefs(prev => prev.map(r => (r.localId === localId ? { ...r, status: 'error', error: res.error, failedStage: 'upload' } : r)))
+      return
+    }
+    uploadedPathsRef.current = [...uploadedPathsRef.current, res.path]
+    setRefs(prev => prev.map(r => (r.localId === localId ? { ...r, status: 'uploaded', uploadedPath: res.path, attachmentId: res.attachmentId, error: null, failedStage: null } : r)))
+  }
 
   const handlePickMainPi = async (file: File | null) => {
     if (mainPiInputRef.current) mainPiInputRef.current.value = ''
     if (!file) return
     setError(null)
-    // Replacing removes the previous local selection entirely (single slot).
-    const localId = nextStagedId()
-    setMainPi({ localId, displayName: file.name, category: 'main_pi', status: 'preparing', prepared: null, contentType: null, originalSize: file.size, finalSize: null, compressed: false, error: null })
-    const staged = await stageSelectedFile(file, 'main_pi')
-    setMainPi(prev => (prev?.localId === localId ? { ...staged, localId } : prev))
+    // Replacing removes the previous local selection entirely (single slot). Any
+    // previously uploaded Main PI object belongs to a draft that is rolled back
+    // on failure, so there is nothing to reconcile here.
+    //
+    // The placeholder's localId IS the generation token: every pick, replacement
+    // and retry mints a new one, and the result below is applied only if that
+    // exact id still occupies the slot. A slow workbook optimisation for a file
+    // the user has since replaced therefore lands nowhere.
+    const placeholder = placeholderFor(file, 'main_pi')
+    const generation = placeholder.localId
+    setMainPi(placeholder)
+    mainPiButtonRef.current?.focus()
+
+    const applyIfCurrent = (update: (prev: StagedFile) => StagedFile) => {
+      setMainPi(prev => {
+        const decision = planStageApplication({
+          slotId: prev?.localId ?? null, resultId: generation, aborted: stagingAbortedRef.current,
+        })
+        return decision === 'apply' && prev ? update(prev) : prev
+      })
+    }
+
+    const staged = await stageSelectedFile(file, 'main_pi', (status) => {
+      applyIfCurrent(prev => ({ ...prev, status }))
+    })
+    applyIfCurrent(() => ({ ...staged, localId: generation }))
   }
 
   const handlePickRefs = async (files: File[]) => {
@@ -2156,20 +2559,117 @@ function SubmitRequestModal({
     if (files.length === 0) return
     setError(null)
     // Each file gets its own placeholder immediately, then resolves independently
-    // — one invalid file never discards the others already chosen.
-    const placeholders: StagedFile[] = files.map(f => ({
-      localId: nextStagedId(), displayName: f.name, category: 'reference', status: 'preparing',
-      prepared: null, contentType: null, originalSize: f.size, finalSize: null, compressed: false, error: null,
-    }))
+    // — one invalid file never discards the others already chosen. Same
+    // generation rule as the Main PI, per row.
+    const placeholders = files.map(f => placeholderFor(f, 'reference'))
     setRefs(prev => [...prev, ...placeholders])
+    refsButtonRef.current?.focus()
+
+    const applyIfCurrent = (generation: string, update: (prev: StagedFile) => StagedFile) => {
+      setRefs(prev => prev.map(r => {
+        const decision = planStageApplication({
+          slotId: r.localId, resultId: generation, aborted: stagingAbortedRef.current,
+        })
+        return decision === 'apply' ? update(r) : r
+      }))
+    }
+
     await Promise.all(files.map(async (f, i) => {
-      const staged = await stageSelectedFile(f, 'reference')
-      const id = placeholders[i].localId
-      setRefs(prev => prev.map(r => (r.localId === id ? { ...staged, localId: id } : r)))
+      const generation = placeholders[i].localId
+      const staged = await stageSelectedFile(f, 'reference', (status) => {
+        applyIfCurrent(generation, prev => ({ ...prev, status }))
+      })
+      applyIfCurrent(generation, () => ({ ...staged, localId: generation }))
     }))
   }
 
-  const removeRef = (localId: string) => setRefs(prev => prev.filter(r => r.localId !== localId))
+  // Removing the Main PI. It is NEVER individually removable once committed —
+  // the RPC refuses a main_pi row precisely so "exactly one Main PI on every
+  // finalized request" cannot be broken — so if it was already uploaded (an
+  // earlier submit got as far as the Main PI, then a reference failed), clearing
+  // it discards the whole draft. Otherwise it is a purely local deselection.
+  // Without this, clearing an uploaded Main PI locally and picking another would
+  // try to insert a SECOND main_pi row and hit the partial unique index.
+  const removeMainPi = async () => {
+    setError(null)
+    if (removingId !== null) return
+    if (mainPi?.uploadedPath && draftIdRef.current) {
+      setRemovingId('main-pi')
+      await discardDraft()
+      setRemovingId(null)
+    }
+    setMainPi(null)
+  }
+
+  // Remove ONE reference attachment.
+  //
+  // Nothing is uploaded until submit, so the ordinary case is purely local. The
+  // interesting case is a file committed by an earlier, partially failed submit:
+  // both its storage object and its metadata row must go, and the ORDER is what
+  // keeps the draft consistent —
+  //   1. remove the OBJECT first, while the draft still authorises it (the
+  //      draft-only storage DELETE policy). If this fails, nothing has changed:
+  //      the row still points at a file that exists, so we simply keep the file
+  //      visible with a per-file error.
+  //   2. then remove the metadata ROW via the narrow RPC. If THIS fails the
+  //      object is already gone, which is the one state we must never leave —
+  //      a row pointing at a missing file. We fall back to discarding the whole
+  //      draft, which cascades the row away. That is the old behaviour, now only
+  //      a rare fallback rather than the normal path.
+  // The Main PI is never removable here; planReferenceRemoval blocks it and the
+  // RPC refuses it independently.
+  const removeRef = async (localId: string) => {
+    const target = refs.find(r => r.localId === localId)
+    if (!target) return
+    setError(null)
+
+    const plan = planReferenceRemoval(
+      { category: target.category, uploadedPath: target.uploadedPath, attachmentId: target.attachmentId },
+      { hasDraft: draftIdRef.current !== null, removalInFlight: removingId !== null },
+    )
+
+    if (plan.kind === 'blocked') { setError(plan.reason); return }
+    if (plan.kind === 'local')   { setRefs(prev => prev.filter(r => r.localId !== localId)); return }
+
+    // ── Committed file ──
+    setRemovingId(localId)
+    setRefs(prev => prev.map(r => (r.localId === localId ? { ...r, status: 'removing', error: null, failedStage: null } : r)))
+
+    const { data: removed, error: rmErr } = await supabase.storage
+      .from(ORDER_REQ_ATTACHMENT_BUCKET).remove([plan.storagePath])
+
+    if (rmErr || (removed?.length ?? 0) < 1) {
+      // Step 1 failed — nothing changed. The file stays attached and visible.
+      setRefs(prev => prev.map(r => (r.localId === localId
+        ? { ...r, status: 'error', error: 'Could not remove this file. Please try again.', failedStage: 'remove' }
+        : r)))
+      setRemovingId(null)
+      return
+    }
+
+    // The object is gone, so it must not be re-removed by any later
+    // compensation — drop it from the compensation list BEFORE anything else.
+    uploadedPathsRef.current = uploadedPathsRef.current.filter(p => p !== plan.storagePath)
+
+    const { error: rpcErr } = await supabase.rpc('remove_unfinalized_order_request_attachment', {
+      p_attachment_id: plan.attachmentId,
+    })
+
+    if (rpcErr) {
+      // Step 2 failed: the row now points at a file that no longer exists.
+      // Discarding the draft cascades that row away, so no dangling metadata
+      // survives. Every file returns to 'ready' and the user can submit again.
+      console.error('[order-request] single attachment removal failed; discarding draft:', rpcErr)
+      await discardDraft()
+      setRefs(prev => prev.filter(r => r.localId !== localId))
+      setError('That file was removed, but the request had to be reset. Your files are still listed — please submit again.')
+      setRemovingId(null)
+      return
+    }
+
+    setRefs(prev => prev.filter(r => r.localId !== localId))
+    setRemovingId(null)
+  }
 
   // Upload one prepared file to the private bucket and record its metadata row.
   // Returns the storage path on success (so the caller can compensate on a
@@ -2180,7 +2680,7 @@ function SubmitRequestModal({
     uploaderId: string,
     type: 'main_pi' | 'reference',
     staged: StagedFile,
-  ): Promise<{ path: string } | { error: string }> => {
+  ): Promise<{ path: string; attachmentId: string } | { error: string }> => {
     const file = staged.prepared
     if (!file) return { error: `“${staged.displayName}” is not ready to upload.` }
     const contentType = staged.contentType
@@ -2188,12 +2688,33 @@ function SubmitRequestModal({
 
     const path = buildAttachmentPath(requestId, type, staged.displayName)
 
+    // The prepared File is uploaded EXACTLY as-is. For the Excel Main PI that
+    // means the original workbook bytes, its original filename and an Excel
+    // content type — never re-encoded, re-zipped or converted, so it downloads
+    // and opens later precisely as the salesperson submitted it.
     const { error: upErr } = await supabase.storage
       .from(ORDER_REQ_ATTACHMENT_BUCKET)
       .upload(path, file, { upsert: false, contentType })
-    if (upErr) return { error: `Could not upload “${staged.displayName}”. Please try again.` }
+    if (upErr) {
+      logSubmitFailure('attachment-upload', upErr as RpcErrorLike, requestId)
+      // The bucket enforces its own per-file limit, and the project-wide Storage
+      // limit sits above it, so an oversized file is refused HERE even though the
+      // client already checked. Name that cause precisely instead of a generic
+      // "try again" the user cannot act on.
+      const msg = (upErr.message ?? '').toLowerCase()
+      const tooBig = msg.includes('exceeded the maximum allowed size')
+        || msg.includes('payload too large')
+        || msg.includes('entity too large')
+      return {
+        error: tooBig
+          ? `“${staged.displayName}” is larger than the upload limit and was rejected by storage.`
+          : `Could not upload “${staged.displayName}”. Please try again.`,
+      }
+    }
 
-    const { error: metaErr } = await supabase
+    // The row id comes back so a single reference can later be removed on its
+    // own (remove_unfinalized_order_request_attachment addresses it by id).
+    const { data: metaRow, error: metaErr } = await supabase
       .from('order_request_attachments')
       .insert({
         order_request_id:    requestId,
@@ -2205,46 +2726,32 @@ function SubmitRequestModal({
         uploaded_size_bytes: file.size,
         uploaded_by:         uploaderId,
       })
-    if (metaErr) {
+      .select('id')
+      .single()
+    if (metaErr || !metaRow) {
+      logSubmitFailure('attachment-metadata', metaErr ?? { message: 'No metadata row returned.' }, requestId)
       await supabase.storage.from(ORDER_REQ_ATTACHMENT_BUCKET).remove([path]).catch(() => {})
       return { error: `Could not save “${staged.displayName}”. Please try again.` }
     }
-    return { path }
-  }
-
-  // Compensation for a failed creation — recoverable, never atomic (Supabase
-  // Storage and Postgres cannot share a transaction). Order and the success-check
-  // matter:
-  //   1. Remove the uploaded objects FIRST, while the draft row still authorises
-  //      it. storage.remove is idempotent, so a retry re-removing an
-  //      already-gone object is a no-op.
-  //   2. ONLY delete the draft row (via the narrow cleanup RPC, which cascades the
-  //      metadata) when every object was removed. If some object could not be
-  //      removed, the row + metadata are KEPT so nothing is orphaned — the draft
-  //      stays invisible/uncounted/unnotified and the load-time sweep retries the
-  //      whole sequence later. This guarantees we never delete metadata while its
-  //      files still exist, and never orphan a file whose row we already deleted.
-  const rollbackCreation = async (requestId: string, paths: string[]) => {
-    let allRemoved = true
-    if (paths.length > 0) {
-      const { data: removed, error: rmErr } = await supabase.storage
-        .from(ORDER_REQ_ATTACHMENT_BUCKET).remove(paths)
-      allRemoved = !rmErr && (removed?.length ?? 0) >= paths.length
-    }
-    if (allRemoved) {
-      await supabase.rpc('cleanup_unfinalized_order_request', { p_order_request_id: requestId }).then(() => {}, () => {})
-    }
-    // If not allRemoved: leave the draft for the sweep to reclaim — it is already
-    // invisible, so nothing user-facing depends on it being gone this instant.
+    return { path, attachmentId: (metaRow as { id: string }).id }
   }
 
   const set = (k: keyof RequestForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(f => ({ ...f, [k]: e.target.value }))
 
+  // Abandoning the form must not strand the draft behind it. A draft only exists
+  // here after a failed attempt (success closes the modal itself), so closing
+  // discards it — objects first, then the row — exactly as a failed submit would.
+  const handleClose = () => {
+    if (busy) return
+    if (draftIdRef.current) void discardDraft()
+    onClose()
+  }
+
   // Escape closes; the backdrop does not (form-modal dismissal rule). Locked
   // while uploads are in flight so a mid-upload Escape cannot orphan objects.
-  useEscapeToClose(onClose, !busy)
+  useEscapeToClose(handleClose, !busy)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -2255,17 +2762,22 @@ function SubmitRequestModal({
     if (orderValueError) { setError(orderValueError); return }
 
     // Attachment gates — the Main PI is mandatory and must be prepared; no file
-    // may still be processing; and a reference that failed to prepare must be
-    // fixed or removed (never silently dropped).
+    // may still be processing; and a reference in ANY failed state must be
+    // retried or removed first, so a file the user chose is never silently
+    // dropped from a request that then reports success.
+    if (saving) return  // belt-and-braces against a double submit
     if (preparing) { setError('Please wait for the selected files to finish processing.'); return }
     if (!mainPi)                    { setError('A Main PI file is required before you can submit.'); return }
     if (mainPi.status === 'error')  { setError(mainPi.error ?? 'The Main PI file could not be prepared. Replace it and try again.'); return }
-    if (mainPi.status !== 'ready' || !mainPi.prepared) { setError('The Main PI file is not ready yet.'); return }
+    if (mainPi.status !== 'ready' && mainPi.status !== 'uploaded') { setError('The Main PI file is not ready yet.'); return }
     if (refs.some(r => r.status === 'error')) {
-      setError('One or more reference files could not be prepared. Remove or replace them, then submit again.')
+      setError('One or more reference files still need to be retried or removed before this request can be submitted.')
       return
     }
-    const readyRefs = refs.filter(r => r.status === 'ready' && r.prepared)
+    // Everything not already committed still needs uploading. Files carried over
+    // from a previous failed attempt keep their 'uploaded' state and are skipped,
+    // so a retry never uploads the same object twice.
+    const pendingRefs = refs.filter(r => r.status !== 'uploaded' && r.prepared)
 
     setSaving(true)
     setError(null)
@@ -2310,51 +2822,90 @@ function SubmitRequestModal({
       finalized_at:         null,
     }
 
-    const { data: created, error: insertErr } = await supabase
-      .from('order_requests')
-      .insert(payload)
-      .select('id, request_number')
-      .single()
+    // Re-use the draft from a previous failed attempt when there is one; only
+    // create a row when there is not. This is what prevents a retry from leaving
+    // a trail of duplicate drafts.
+    let requestId     = draftIdRef.current
+    let requestNumber = draftNumberRef.current
 
-    if (insertErr || !created) {
-      setError(insertErr?.message?.includes('Assignee must be')
-        ? insertErr.message
-        : (insertErr?.message ?? 'Failed to submit order request.'))
-      setSaving(false)
-      setPhase('idle')
-      return
-    }
+    if (!requestId) {
+      const { data: created, error: insertErr } = await supabase
+        .from('order_requests')
+        .insert(payload)
+        .select('id, request_number')
+        .single()
 
-    // The row was created as an UPLOAD-STAGE DRAFT (finalized_at forced NULL by
-    // the DB trigger): invisible to reviewers, no notification, no
-    // request_submitted activity. It becomes a real submission ONLY when
-    // finalize_order_request() verifies the Main PI below. Any failure before
-    // that rolls the whole draft back (objects + row via the cleanup RPC) and
-    // keeps the form and every selection intact.
-    const uploaded: string[] = []
-
-    setPhase('main')
-    const mainRes = await persistAttachment(created.id, session.user.id, 'main_pi', mainPi)
-    if ('error' in mainRes) {
-      await rollbackCreation(created.id, uploaded)
-      setError(`${mainRes.error} The request was not submitted.`)
-      setSaving(false)
-      setPhase('idle')
-      return
-    }
-    uploaded.push(mainRes.path)
-
-    if (readyRefs.length > 0) setPhase('refs')
-    for (const rf of readyRefs) {
-      const res = await persistAttachment(created.id, session.user.id, 'reference', rf)
-      if ('error' in res) {
-        await rollbackCreation(created.id, uploaded)
-        setError(`${res.error} The request was not submitted — remove that file or try again.`)
+      if (insertErr || !created) {
+        // Classified, never echoed. A missing finalized_at column (the attachment
+        // migration has not reached this database) is the ONE case that earns the
+        // "system update" sentence; an RLS refusal, a rejected assignee, a dropped
+        // connection and an unknown fault each get their own — see
+        // submitDraftErrorMessage. Honest failure in every case, never a false
+        // success, and never a raw PostgREST/Postgres string in the UI.
+        const err: RpcErrorLike = insertErr ?? { message: 'The request was not created.' }
+        logSubmitFailure('draft-insert', err)
+        setError(submitDraftErrorMessage(err))
         setSaving(false)
         setPhase('idle')
         return
       }
-      uploaded.push(res.path)
+      // The row is an UPLOAD-STAGE DRAFT (explicit finalized_at = null):
+      // invisible to reviewers and to a non-creator assignee, uncounted, with no
+      // notification and no request_submitted activity. It becomes a real
+      // submission ONLY when finalize_order_request() verifies the Main PI below.
+      // Precise shape of the select above, rather than letting the untyped
+      // PostgREST result widen these two ids to `any`.
+      const row = created as { id: string; request_number: string }
+      requestId     = row.id
+      requestNumber = row.request_number
+      draftIdRef.current     = row.id
+      draftNumberRef.current = row.request_number
+      uploadedPathsRef.current = []
+    }
+
+    // ── Main PI (required) ──
+    if (mainPi.status !== 'uploaded') {
+      setPhase('main')
+      setMainPi(prev => (prev ? { ...prev, status: 'uploading', error: null, failedStage: null } : prev))
+      const mainRes = await persistAttachment(requestId, session.user.id, 'main_pi', mainPi)
+      if ('error' in mainRes) {
+        // The Main PI is mandatory, so without it there is nothing to keep: the
+        // whole draft is discarded and the user starts the attempt cleanly.
+        setMainPi(prev => (prev ? { ...prev, status: 'error', error: mainRes.error, failedStage: 'upload' } : prev))
+        await discardDraft()
+        setError(`${mainRes.error} The request was not submitted.`)
+        setSaving(false)
+        setPhase('idle')
+        return
+      }
+      uploadedPathsRef.current = [...uploadedPathsRef.current, mainRes.path]
+      setMainPi(prev => (prev ? { ...prev, status: 'uploaded', uploadedPath: mainRes.path, attachmentId: mainRes.attachmentId, error: null, failedStage: null } : prev))
+    }
+
+    // ── Reference attachments (optional) ──
+    // A failure here does NOT discard the files that already succeeded. Each row
+    // records its own outcome, the draft stays alive, and the user retries or
+    // removes just the offending file — but the request is NOT finalized while
+    // any selected file is unresolved.
+    if (pendingRefs.length > 0) setPhase('refs')
+    let anyRefFailed = false
+    for (const rf of pendingRefs) {
+      setRefs(prev => prev.map(r => (r.localId === rf.localId ? { ...r, status: 'uploading', error: null, failedStage: null } : r)))
+      const res = await persistAttachment(requestId, session.user.id, 'reference', rf)
+      if ('error' in res) {
+        anyRefFailed = true
+        setRefs(prev => prev.map(r => (r.localId === rf.localId ? { ...r, status: 'error', error: res.error, failedStage: 'upload' } : r)))
+        continue
+      }
+      uploadedPathsRef.current = [...uploadedPathsRef.current, res.path]
+      setRefs(prev => prev.map(r => (r.localId === rf.localId ? { ...r, status: 'uploaded', uploadedPath: res.path, attachmentId: res.attachmentId, error: null, failedStage: null } : r)))
+    }
+
+    if (anyRefFailed) {
+      setError('Some reference files could not be uploaded. Retry or remove them, then submit again — your other files are safe and the request has not been submitted.')
+      setSaving(false)
+      setPhase('idle')
+      return
     }
 
     // Finalize: the DATABASE verifies exactly one Main PI, flips the request into
@@ -2363,20 +2914,30 @@ function SubmitRequestModal({
     // not exist as a submission. A failure rolls the draft back.
     setPhase('finalizing')
     const { data: finalizeData, error: finalizeErr } = await supabase.rpc('finalize_order_request', {
-      p_order_request_id: created.id,
+      p_order_request_id: requestId,
     })
     if (finalizeErr) {
-      await rollbackCreation(created.id, uploaded)
-      const m = (finalizeErr.message ?? '').toLowerCase()
-      setError(
-        m.includes('main_pi_required')
-          ? 'The Main PI could not be verified. The request was not submitted — please try again.'
-          : 'The request could not be submitted. Please try again.'
-      )
+      // Logged BEFORE the rollback, so the diagnostic still carries the draft id
+      // that discardDraft is about to clear.
+      logSubmitFailure('finalize', finalizeErr, requestId)
+      // The draft cannot become a submission, so it is discarded in full rather
+      // than left behind — a retry then starts from a clean draft.
+      await discardDraft()
+      // A missing RPC (migration not applied) is the only "system update" case;
+      // MAIN_PI_REQUIRED, MAIN_PI_NOT_EXCEL, an authorisation refusal and a lost
+      // connection each name themselves — see finalizeRequestErrorMessage. The
+      // previous `does not exist` substring test also caught ordinary runtime
+      // failures and mislabelled them as an un-applied migration.
+      setError(finalizeRequestErrorMessage(finalizeErr))
       setSaving(false)
       setPhase('idle')
       return
     }
+
+    // Finalized: this draft is now a real submission, so the client lets go of it
+    // — no later close/cleanup path may treat it as a discardable draft.
+    draftIdRef.current = null
+    uploadedPathsRef.current = []
 
     // finalize_order_request is idempotent: `finalized_now` is true ONLY on the
     // call that performed the first unfinalized→finalized transition. A retry
@@ -2395,57 +2956,57 @@ function SubmitRequestModal({
     if (finalizedNow) {
       notifyDelivered = await notifyOrders({
         event: 'order_submitted',
-        requestNumber: created.request_number,
-        entityId: created.id,
+        requestNumber: requestNumber ?? '',
+        entityId: requestId,
         clientName: form.client_name.trim(),
         creatorId: session.user.id,
         assignedTo: resolvedAssignee,
       })
     }
 
-    onSubmitted(created.request_number, notifyDelivered)
+    onSubmitted(requestNumber ?? '', notifyDelivered)
   }
 
-  // Labels: title case, compact, medium weight, readable — not the old
-  // all-uppercase micro-labels. A subtle required marker is appended per field.
-  const labelStyle: React.CSSProperties = {
-    display: 'flex', flexDirection: 'column', gap: '5px',
-    fontSize: '12px', fontWeight: 600, color: colors.secondary, letterSpacing: 0,
+  // Visual system is the Task creation form's (src/app/tasks/create/page.tsx):
+  // the shared `.boe-form-section-label` (10px, 700, uppercase, 0.1em tracking)
+  // and `.boe-input` (8px radius, 1px rgba(0,0,0,0.13) border, 13px DM Sans, amber
+  // focus ring) rather than a second set of hand-rolled inline field styles. The
+  // required marker matches the Task form's `*` treatment exactly.
+  const req = <span style={{ color: colors.red, fontWeight: 500 }}> *</span>
+  const optional = <span style={{ color: colors.muted, fontWeight: 400 }}>(optional)</span>
+
+  // Visually hidden, still announced. The "*" and "(optional)" markers are
+  // visual shorthand; screen readers get the words.
+  const srOnly: React.CSSProperties = {
+    position: 'absolute', width: 1, height: 1, overflow: 'hidden',
+    clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap',
   }
-  const inputStyle: React.CSSProperties = {
-    padding: '7px 10px', borderRadius: '6px',
-    border: `1px solid ${colors.border}`,
-    background: colors.base, color: colors.primary,
-    fontSize: '13px', width: '100%', boxSizing: 'border-box',
-    outline: 'none',
-  }
-  const sectionHeadingStyle: React.CSSProperties = {
-    fontSize: '13px', fontWeight: 600, color: colors.primary,
-    display: 'flex', alignItems: 'center', gap: '7px',
-  }
-  const badgeStyle = (tone: 'required' | 'optional'): React.CSSProperties => ({
-    fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase',
-    borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap',
-    color:      tone === 'required' ? '#B45309' : colors.muted,
-    background:  tone === 'required' ? '#FEF3C7' : colors.float,
-    border:     `1px solid ${tone === 'required' ? '#FDE68A' : colors.border}`,
+
+  // Drop zone mirrors the Task form's: 40px, 1.5px dashed, blue-tinted while a
+  // file is over it. One instance per target so dropping on Main PI cannot
+  // accidentally add reference files.
+  const mainPiDrop = useDragAndPaste((files) => { void handlePickMainPi(files[0] ?? null) })
+  const refsDrop   = useDragAndPaste((files) => { void handlePickRefs(files) })
+
+  const dropZoneStyle = (active: boolean, enabled: boolean): React.CSSProperties => ({
+    width: '100%', height: '40px', boxSizing: 'border-box',
+    borderRadius: '8px',
+    border: `1.5px dashed ${active ? colors.blue : colors.border}`,
+    background: active ? colors.blueTint : colors.raised,
+    cursor: enabled ? 'pointer' : 'not-allowed',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+    transition: 'border-color 0.15s, background 0.15s',
+    opacity: enabled ? 1 : 0.6,
   })
-  const panelStyle: React.CSSProperties = {
-    display: 'flex', flexDirection: 'column', gap: '8px',
-    padding: '12px 14px', borderRadius: '10px',
-    border: `1px solid ${colors.border}`, background: colors.raised,
-  }
-  const chooseButtonStyle = (enabled: boolean): React.CSSProperties => ({
-    ...inputStyle, display: 'flex', alignItems: 'center', gap: '8px',
-    textAlign: 'left', color: colors.secondary, borderStyle: 'dashed',
-    cursor: enabled ? 'pointer' : 'not-allowed', opacity: enabled ? 1 : 0.7,
-  })
-  const linkActionStyle = (enabled: boolean): React.CSSProperties => ({
-    alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
-    cursor: enabled ? 'pointer' : 'not-allowed', font: 'inherit',
-    fontSize: '11.5px', fontWeight: 600, color: colors.blue, textDecoration: 'underline',
-  })
-  const req = <span style={{ color: colors.red, fontWeight: 600 }} aria-hidden="true"> *</span>
+
+  // Submit is gated on the request being genuinely submittable — the Task form's
+  // canSubmit pattern. The required Main PI must be present and settled, nothing
+  // may still be processing or uploading, and no file may be sitting in a failed
+  // state. This is what makes the disabled button honest rather than decorative.
+  const mainPiSettled = mainPi != null && (mainPi.status === 'ready' || mainPi.status === 'uploaded')
+  const noFileErrors  = mainPi?.status !== 'error' && !refs.some(r => r.status === 'error')
+  const canSubmit = !saving && !preparing && mainPiSettled && noFileErrors && form.client_name.trim().length > 0
+
   // Assignee (admin) rides in the grid; for a non-admin it becomes the info strip
   // below the header, so its columns shift to keep each row a clean 12 tracks.
   const dateSpanClass = isAdmin ? 'orqm-c4' : 'orqm-c6'
@@ -2469,12 +3030,14 @@ function SubmitRequestModal({
           gives intentional field widths; everything collapses to one column at
           ≤720px. */}
       <style>{`
-        .orqm-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px 16px; align-items: start; }
+        .orqm-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px 16px; align-items: start; }
         .orqm-c4 { grid-column: span 4; }
         .orqm-c6 { grid-column: span 6; }
         .orqm-c8 { grid-column: span 8; }
-        .orqm-docs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }
-        .orqm-field:focus { border-color: rgba(232,160,48,0.55); box-shadow: 0 0 0 3px rgba(232,160,48,0.12); }
+        .orqm-docs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+        /* min-width:0 lets a long filename ellipsize inside a grid cell instead
+           of forcing the track wider and scrolling the whole dialog sideways. */
+        .orqm-grid > *, .orqm-docs > * { min-width: 0; }
         @media (max-width: 720px) {
           .orqm-grid > * { grid-column: 1 / -1 !important; }
           .orqm-docs { grid-template-columns: 1fr; }
@@ -2492,17 +3055,19 @@ function SubmitRequestModal({
         style={{
           background: colors.base,
           border: `1px solid ${colors.border}`,
-          borderRadius: '12px',
+          // Task form's restrained card treatment: 10px radius and the same
+          // soft 1px shadow, rather than a heavier modal-specific elevation.
+          borderRadius: '10px',
           width: 'min(940px, calc(100vw - 40px))',
           maxHeight: 'calc(100vh - 40px)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
         }}
       >
         {/* Compact header */}
         <div style={{
           display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px',
-          padding: '12px 20px', borderBottom: `1px solid ${colors.border}`, flexShrink: 0,
+          padding: '14px 20px', borderBottom: `1px solid ${colors.border}`, flexShrink: 0,
         }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Submit Order Request</div>
@@ -2511,7 +3076,8 @@ function SubmitRequestModal({
             </div>
           </div>
           <button
-            onClick={onClose}
+            type="button"
+            onClick={handleClose}
             disabled={busy}
             aria-label="Close"
             style={{ background: 'none', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', color: colors.muted, display: 'flex', flexShrink: 0, marginTop: '1px' }}
@@ -2545,26 +3111,25 @@ function SubmitRequestModal({
           <div style={{ padding: '14px 20px', overflowY: 'auto', overflowX: 'hidden', flex: 1, display: 'flex', flexDirection: 'column', gap: '13px' }}>
 
             {/* ── Section 1: Request information ── */}
-            <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={sectionHeadingStyle}>Request information</div>
+            <section>
               <div className="orqm-grid">
-                <label className="orqm-c8" style={labelStyle}>
-                  <span>Client name{req}</span>
-                  <input className="orqm-field" style={inputStyle} value={form.client_name} onChange={set('client_name')} placeholder="Client name" required />
-                </label>
+                <div className="orqm-c8">
+                  <label className="boe-form-section-label" htmlFor="orq-client-name">Client Name{req}</label>
+                  <input id="orq-client-name" className="boe-input" value={form.client_name} onChange={set('client_name')} placeholder="Client name" required />
+                </div>
 
-                <label className="orqm-c4" style={labelStyle}>
-                  <span>Lead source</span>
-                  <select className="orqm-field" style={inputStyle} value={form.lead_source} onChange={set('lead_source')}>
+                <div className="orqm-c4">
+                  <label className="boe-form-section-label" htmlFor="orq-lead-source">Lead Source</label>
+                  <select id="orq-lead-source" className="boe-input" value={form.lead_source} onChange={set('lead_source')}>
                     <option value="">— Select —</option>
                     {LEAD_SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
-                </label>
+                </div>
 
                 {isAdmin && (
-                  <label className="orqm-c4" style={labelStyle}>
-                    <span>Assignee</span>
-                    <select className="orqm-field" style={inputStyle} value={form.assigned_to} onChange={set('assigned_to')}>
+                  <div className="orqm-c4">
+                    <label className="boe-form-section-label" htmlFor="orq-assignee">Assignee</label>
+                    <select id="orq-assignee" className="boe-input" value={form.assigned_to} onChange={set('assigned_to')}>
                       <option value="">— Select —</option>
                       {salesAssignees.length > 0 && (
                         <optgroup label="Sales Team">
@@ -2577,81 +3142,107 @@ function SubmitRequestModal({
                         </optgroup>
                       )}
                     </select>
-                  </label>
+                  </div>
                 )}
 
-                <label className={dateSpanClass} style={labelStyle}>
-                  <span>Confirmation date</span>
-                  <input type="date" className="orqm-field" style={inputStyle} value={form.confirm_date} onChange={set('confirm_date')} />
-                </label>
-                <label className={dateSpanClass} style={labelStyle}>
-                  <span>Due date</span>
-                  <input type="date" className="orqm-field" style={inputStyle} value={form.due_date} onChange={set('due_date')} />
-                </label>
+                <div className={dateSpanClass}>
+                  <label className="boe-form-section-label" htmlFor="orq-confirm-date">Confirmation Date</label>
+                  <input id="orq-confirm-date" type="date" className="boe-input" style={{ colorScheme: 'light' }} value={form.confirm_date} onChange={set('confirm_date')} />
+                </div>
+                <div className={dateSpanClass}>
+                  <label className="boe-form-section-label" htmlFor="orq-due-date">Due Date</label>
+                  <input id="orq-due-date" type="date" className="boe-input" style={{ colorScheme: 'light' }} value={form.due_date} onChange={set('due_date')} />
+                </div>
 
-                <label className="orqm-c6" style={labelStyle}>
-                  <span>Product value</span>
+                <div className="orqm-c6">
+                  <label className="boe-form-section-label" htmlFor="orq-product-value">Product Value</label>
                   <div style={{ position: 'relative', display: 'flex' }}>
-                    <span aria-hidden="true" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: colors.muted, pointerEvents: 'none' }}>₹</span>
-                    <input type="number" min="0" step="0.01" className="orqm-field" style={{ ...inputStyle, paddingLeft: '22px' }} value={form.total_product_value} onChange={set('total_product_value')} placeholder="0" aria-label="Product value in rupees" />
+                    <span aria-hidden="true" style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: colors.muted, pointerEvents: 'none' }}>₹</span>
+                    <input id="orq-product-value" type="number" min="0" step="0.01" className="boe-input" style={{ paddingLeft: '23px' }} value={form.total_product_value} onChange={set('total_product_value')} placeholder="0" />
                   </div>
-                </label>
-                <label className="orqm-c6" style={labelStyle}>
-                  <span>Total order value</span>
+                </div>
+                <div className="orqm-c6">
+                  <label className="boe-form-section-label" htmlFor="orq-total-value">Total Order Value</label>
                   <div style={{ position: 'relative', display: 'flex' }}>
-                    <span aria-hidden="true" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: colors.muted, pointerEvents: 'none' }}>₹</span>
-                    <input type="number" min="0" step="0.01" className="orqm-field" style={{ ...inputStyle, paddingLeft: '22px' }} value={form.total_value} onChange={set('total_value')} placeholder="0" aria-label="Total order value in rupees" />
+                    <span aria-hidden="true" style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: colors.muted, pointerEvents: 'none' }}>₹</span>
+                    <input id="orq-total-value" type="number" min="0" step="0.01" className="boe-input" style={{ paddingLeft: '23px' }} value={form.total_value} onChange={set('total_value')} placeholder="0" />
                   </div>
-                </label>
+                </div>
               </div>
             </section>
 
-            {/* ── Section 2: Documents (above Notes) — two compact upload panels ── */}
-            <section style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
-              <div style={sectionHeadingStyle}>Documents</div>
+            {/* ── Section 2: Documents (above Notes) — two upload targets ── */}
+            <section>
               <div className="orqm-docs">
-                {/* Left panel — Main PI (mandatory, single) */}
-                <div style={panelStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <FileText size={15} color={colors.secondary} style={{ flexShrink: 0 }} />
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>Main PI</span>
-                    <span style={badgeStyle('required')}>Required</span>
-                  </div>
-                  <span style={{ fontSize: '11.5px', color: colors.muted }}>Excel file only · .xlsx or .xls</span>
+                {/* Left — Main PI (mandatory, single).
+                    role="group" + aria-labelledby gives the whole control its
+                    "Main PI (required)" name WITHOUT competing with the button's
+                    own name, so there is exactly one accessible name per control.
+                    htmlFor additionally makes the visible label click through to
+                    the hidden input, which is the native behaviour users expect. */}
+                <div role="group" aria-labelledby="orq-mainpi-label">
+                  <label className="boe-form-section-label" id="orq-mainpi-label" htmlFor="orq-mainpi-input">
+                    Main PI{req}<span style={srOnly}>(required)</span>
+                  </label>
                   <input
+                    id="orq-mainpi-input"
                     ref={mainPiInputRef}
                     type="file"
                     accept={MAIN_PI_ACCEPT}
                     style={{ display: 'none' }}
                     onChange={e => { void handlePickMainPi(e.target.files?.[0] ?? null) }}
                   />
-                  {mainPi ? (
-                    <>
+                  {mainPi && (
+                    <div style={{ marginBottom: '6px' }}>
                       <AttachmentStagedRow
                         staged={mainPi}
-                        disabled={busy}
-                        onRemove={() => { setMainPi(null); setError(null) }}
+                        disabled={inFlight}
+                        onRemove={inFlight ? undefined : () => { void removeMainPi() }}
                       />
-                      <button type="button" onClick={() => mainPiInputRef.current?.click()} disabled={inFlight} style={linkActionStyle(!inFlight)}>
-                        Replace Excel PI
-                      </button>
-                    </>
-                  ) : (
-                    <button type="button" onClick={() => mainPiInputRef.current?.click()} disabled={inFlight} style={chooseButtonStyle(!inFlight)}>
-                      <Paperclip size={14} /> Choose Excel PI
-                    </button>
+                    </div>
                   )}
+                  <div
+                    style={{ position: 'relative' }}
+                    onDragOver={mainPiDrop.onDragOver}
+                    onDragEnter={mainPiDrop.onDragEnter}
+                    onDragLeave={mainPiDrop.onDragLeave}
+                    onDrop={inFlight ? undefined : mainPiDrop.onDrop}
+                  >
+                    <button
+                      ref={mainPiButtonRef}
+                      type="button"
+                      onClick={() => mainPiInputRef.current?.click()}
+                      disabled={inFlight}
+                      style={dropZoneStyle(mainPiDrop.dropActive, !inFlight)}
+                    >
+                      <FileText size={13} color={colors.secondary} strokeWidth={1.8} />
+                      <span style={{ fontSize: '12px', color: colors.secondary }}>
+                        {mainPi ? 'Replace Excel PI' : 'Add Excel PI'}
+                      </span>
+                    </button>
+                    {mainPiDrop.dropActive && (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        pointerEvents: 'none', fontSize: '12px', fontWeight: 600, color: colors.blue,
+                        background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
+                      }}>
+                        Drop the Excel PI
+                      </div>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '10px', color: colors.muted, marginTop: '4px' }}>
+                    Excel workbook (.xlsx or .xls), up to {formatBytes(ORDER_REQ_ATTACHMENT_MAX_BYTES)} — stored exactly as submitted
+                  </p>
                 </div>
 
-                {/* Right panel — reference attachments (optional, multiple) */}
-                <div style={panelStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Paperclip size={15} color={colors.secondary} style={{ flexShrink: 0 }} />
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>Reference attachments</span>
-                    <span style={badgeStyle('optional')}>Optional</span>
-                  </div>
-                  <span style={{ fontSize: '11.5px', color: colors.muted }}>PDF, image, Office or text · multiple files</span>
+                {/* Right — reference attachments (optional, multiple) */}
+                <div role="group" aria-labelledby="orq-refs-label">
+                  <label className="boe-form-section-label" id="orq-refs-label" htmlFor="orq-refs-input">
+                    Reference Attachments {optional}
+                  </label>
                   <input
+                    id="orq-refs-input"
                     ref={refsInputRef}
                     type="file"
                     multiple
@@ -2660,74 +3251,127 @@ function SubmitRequestModal({
                     onChange={e => { void handlePickRefs(Array.from(e.target.files ?? [])) }}
                   />
                   {refs.length > 0 && (
-                    <>
-                      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.secondary }}>
-                        {refs.length} file{refs.length !== 1 ? 's' : ''} selected
-                      </span>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {refs.map(r => (
-                          <AttachmentStagedRow key={r.localId} staged={r} disabled={busy} onRemove={() => removeRef(r.localId)} />
-                        ))}
-                      </div>
-                    </>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
+                      {refs.map(r => (
+                        <AttachmentStagedRow
+                          key={r.localId}
+                          staged={r}
+                          disabled={inFlight}
+                          onRetry={() => { void retryRef(r.localId) }}
+                          onRemove={inFlight ? undefined : () => { void removeRef(r.localId) }}
+                        />
+                      ))}
+                    </div>
                   )}
-                  <button type="button" onClick={() => refsInputRef.current?.click()} disabled={inFlight} style={chooseButtonStyle(!inFlight)}>
-                    <Paperclip size={14} /> {refs.length > 0 ? 'Add more files' : 'Choose files'}
-                  </button>
-                  <span style={{ fontSize: '10.5px', color: colors.muted, lineHeight: 1.45 }}>
-                    Images over 10 MB are compressed; other large files must be reduced first.
-                  </span>
+                  <div
+                    style={{ position: 'relative' }}
+                    onDragOver={refsDrop.onDragOver}
+                    onDragEnter={refsDrop.onDragEnter}
+                    onDragLeave={refsDrop.onDragLeave}
+                    onDrop={inFlight ? undefined : refsDrop.onDrop}
+                  >
+                    <button
+                      ref={refsButtonRef}
+                      type="button"
+                      onClick={() => refsInputRef.current?.click()}
+                      disabled={inFlight}
+                      style={dropZoneStyle(refsDrop.dropActive, !inFlight)}
+                    >
+                      <Paperclip size={13} color={colors.secondary} strokeWidth={1.8} />
+                      <span style={{ fontSize: '12px', color: colors.secondary }}>
+                        {refs.length > 0 ? 'Add more files' : 'Add files'}
+                      </span>
+                    </button>
+                    {refsDrop.dropActive && (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        pointerEvents: 'none', fontSize: '12px', fontWeight: 600, color: colors.blue,
+                        background: 'rgba(255,255,255,0.6)', borderRadius: '8px',
+                      }}>
+                        Drop files to attach
+                      </div>
+                    )}
+                  </div>
+                  <p style={{ fontSize: '10px', color: colors.muted, marginTop: '4px' }}>
+                    PDF, image, Word, Excel, CSV or TXT, up to {formatBytes(ORDER_REQ_ATTACHMENT_MAX_BYTES)} each — larger images are compressed automatically
+                  </p>
                 </div>
               </div>
             </section>
 
             {/* ── Section 3: Notes (last, full width) ── */}
-            <section style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: `1px solid ${colors.border}`, paddingTop: '12px' }}>
-              <div style={sectionHeadingStyle}>
-                Notes
-                <span style={{ fontSize: '11px', fontWeight: 500, color: colors.muted }}>Optional</span>
-              </div>
+            <section>
+              <label className="boe-form-section-label" htmlFor="orq-notes">Notes {optional}</label>
               <textarea
-                className="orqm-field"
-                aria-label="Notes"
-                style={{ ...inputStyle, minHeight: '72px', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
+                id="orq-notes"
+                className="boe-input"
+                rows={4}
+                style={{ resize: 'none' }}
                 value={form.notes}
                 onChange={set('notes')}
-                placeholder="Add any special instructions or context"
+                placeholder="Add any special instructions or context…"
               />
             </section>
           </div>
 
-          {/* Pinned error banner — always visible near the submit action. */}
-          {error && (
-            <div style={{ padding: '0 20px', flexShrink: 0 }}>
-              <div role="alert" style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px', marginBottom: '2px' }}>
-                {error}
+          {/* Pinned error banner — always visible near the submit action. Only
+              whole-submission failures land here; per-file problems stay on their
+              own file row. aria-live so a screen reader hears the failure and the
+              live upload phase without moving focus. */}
+          <div aria-live="polite" style={{ flexShrink: 0 }}>
+            {error && (
+              <div style={{ padding: '0 20px' }}>
+                <div role="alert" style={{
+                  fontSize: '12px', color: colors.red,
+                  background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+                  borderRadius: '8px', padding: '9px 12px', marginBottom: '2px',
+                }}>
+                  {error}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+            <span style={{
+              position: 'absolute', width: 1, height: 1, overflow: 'hidden',
+              clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap',
+            }}>
+              {phase === 'main' ? 'Uploading Main PI'
+                : phase === 'refs' ? 'Uploading reference attachments'
+                : phase === 'finalizing' ? 'Submitting request'
+                : ''}
+            </span>
+          </div>
 
-          {/* Compact pinned footer — required note left, actions right. */}
+          {/* Compact pinned footer — required note left, actions right. It sits
+              outside the scroll area, so it never overlaps a field or the error. */}
           <div style={{
             display: 'flex', gap: '12px', justifyContent: 'space-between', alignItems: 'center',
-            padding: '10px 20px', borderTop: `1px solid ${colors.border}`, flexShrink: 0, background: colors.base,
+            flexWrap: 'wrap',
+            padding: '12px 20px', borderTop: `1px solid ${colors.border}`, flexShrink: 0, background: colors.base,
           }}>
-            <span style={{ fontSize: '11.5px', color: colors.muted }}>
+            <span style={{ fontSize: '11px', color: colors.muted }}>
               <span style={{ color: colors.red }}>*</span> Required fields
             </span>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <button type="button" onClick={onClose} disabled={busy} style={{
-                padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginLeft: 'auto' }}>
+              <button type="button" onClick={handleClose} disabled={busy} style={{
+                padding: '10px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
                 background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
                 cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
               }}>
                 Cancel
               </button>
-              <button type="submit" disabled={saving || preparing} style={{
-                padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-                background: '#DC1F2E', border: 'none', color: '#fff',
-                cursor: (saving || preparing) ? 'not-allowed' : 'pointer',
-                opacity: (saving || preparing) ? 0.7 : 1,
+              {/* Primary action uses the Task form's button language exactly:
+                  dark `colors.primary` when actionable, and the muted
+                  `colors.float`/`colors.muted` pair when not — a disabled state
+                  that stays legible instead of a dimmed-out colour block. */}
+              <button type="submit" disabled={!canSubmit} style={{
+                padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                background: canSubmit ? colors.primary : colors.float,
+                border: 'none',
+                color: canSubmit ? '#fff' : colors.muted,
+                cursor: canSubmit ? 'pointer' : 'not-allowed',
+                transition: 'background 0.15s, color 0.15s',
+                letterSpacing: '0.01em',
               }}>
                 {preparing
                   ? 'Processing files…'
@@ -2738,7 +3382,7 @@ function SubmitRequestModal({
                       : phase === 'refs'
                         ? 'Uploading attachments…'
                         : phase === 'finalizing'
-                          ? 'Submitting request…'
+                          ? 'Submitting…'
                           : 'Submit Request'}
               </button>
             </div>

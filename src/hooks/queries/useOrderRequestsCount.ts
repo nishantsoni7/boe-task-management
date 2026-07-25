@@ -33,6 +33,10 @@ export function useOrderRequestsCount(): number | undefined {
         .from('order_requests')
         .select('id', { count: 'exact', head: true })
         .neq('status', 'converted')
+        // Upload-stage drafts (finalized_at IS NULL) are not real submissions —
+        // exclude them so the badge never counts a request without a verified
+        // Main PI. Mirrors the Order Requests page's list filter.
+        .not('finalized_at', 'is', null)
       return count ?? 0
     },
     staleTime: 30 * 1000,

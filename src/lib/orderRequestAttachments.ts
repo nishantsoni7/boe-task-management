@@ -95,9 +95,33 @@ const EXT_TYPES: Record<string, string> = {
 // is a recognised-yet-disallowed binary (e.g. an executable) is rejected.
 const TEXT_LIKE = new Set<string>(['text/plain', 'text/csv'])
 
-// 10 MB = 10 × 1024 × 1024, the convention used across the codebase and by the
-// bucket's file_size_limit.
+// ── Size policy ───────────────────────────────────────────────────────────────
+// THE BOE PRODUCT RULE: no attachment may be STORED above 10 MB.
+//
+// Distinguish two things that are easy to confuse:
+//   * the ORIGINAL SELECTED size — may legitimately exceed 10 MB. The user picks
+//     whatever they have; the app then tries to process it.
+//   * the FINAL UPLOAD size — must ALWAYS be <= 10 MB. This is what reaches
+//     Supabase Storage, and it is the number this constant governs.
+//
+// A file over 10 MB is therefore never simply passed through: it is either
+// reduced below the limit by a safe, format-specific processor, or it is
+// REFUSED. The original oversized bytes must never reach Storage.
+//
+// This MUST equal the bucket's file_size_limit in
+// supabase/migrations/20260711000000_order_request_attachments.sql (10485760) —
+// one rule expressed in two places, with the bucket acting as an INDEPENDENT
+// backend enforcement boundary rather than as the first line of defence.
+//
+// NOT to be confused with the Supabase project-wide Storage ceiling (50 MB on
+// this project's plan, verified 2026-07-25). That is infrastructure headroom, not
+// permission: the product limit is 10 MB and is deliberately far below it.
 export const ORDER_REQ_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+
+// What an oversized image is compressed DOWN to. Deliberately BELOW the 10 MB
+// ceiling rather than equal to it, so the stored file keeps safe overhead and a
+// result that lands just under the target can never round past the limit.
+export const IMAGE_COMPRESS_TARGET_BYTES = 8 * 1024 * 1024
 
 export function extOf(fileName: string): string {
   return fileName.split('.').pop()?.toLowerCase() ?? ''
@@ -156,13 +180,17 @@ export function isCompressibleImageType(mime: string): boolean {
   return COMPRESSIBLE_IMAGE_TYPES.includes(mime)
 }
 
-// Human-readable size, e.g. "8.4 MB", "612 KB", "0 B". Pure.
+// Human-readable size, e.g. "8.4 MB", "612 KB", "10 MB", "0 B". Pure.
+// A whole number never keeps a pointless ".0" — these strings appear in
+// user-facing limit messages, where "over the 10.0 MB limit" reads like a
+// machine and "over the 10 MB limit" reads like a sentence.
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   const value = bytes / Math.pow(1024, i)
-  return `${value >= 100 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`
+  const rounded = value >= 100 || i === 0 ? Math.round(value) : Number(value.toFixed(1))
+  return `${rounded} ${units[i]}`
 }
 
 // Keep only characters safe in a storage key and a display name; collapse the
@@ -195,20 +223,62 @@ export function buildAttachmentPath(
   return `${orderRequestId}/${folder}/${randomToken()}-${sanitizeFileName(fileName)}`
 }
 
-function withJpgExtension(name: string): string {
+// Swap a filename's extension so it always agrees with the MIME we actually
+// encoded. A compressed file whose extension disagrees with its bytes would be
+// rejected by resolveUploadType on any later re-validation, and would download
+// as an unopenable file.
+function withExtension(name: string, ext: 'jpg' | 'png' | 'webp'): string {
   const base = name.replace(/\.[^.]+$/, '')
-  return `${base || 'image'}.jpg`
+  return `${base || 'image'}.${ext}`
+}
+
+// Decoded source for compression. createImageBitmap with
+// imageOrientation:'from-image' applies the EXIF orientation tag, so a phone
+// photo taken sideways is re-encoded the way the user sees it rather than
+// silently rotated — canvas drawImage of a raw <img> does NOT do this on every
+// browser. The <img> path is the fallback where createImageBitmap is missing.
+type DecodedImage = { source: CanvasImageSource; width: number; height: number; close: () => void }
+
+async function decodeImage(file: File): Promise<DecodedImage | null> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' })
+      if (bmp.width && bmp.height) {
+        return { source: bmp, width: bmp.width, height: bmp.height, close: () => bmp.close() }
+      }
+      bmp.close()
+    } catch {
+      // fall through to the <img> path
+    }
+  }
+  const objectUrl = URL.createObjectURL(file)
+  const img = await new Promise<HTMLImageElement | null>((resolve) => {
+    const el = new Image()
+    el.onload = () => resolve(el)
+    el.onerror = () => resolve(null)
+    el.src = objectUrl
+  })
+  if (!img || !img.naturalWidth || !img.naturalHeight) {
+    URL.revokeObjectURL(objectUrl)
+    return null
+  }
+  return {
+    source: img,
+    width: img.naturalWidth,
+    height: img.naturalHeight,
+    close: () => URL.revokeObjectURL(objectUrl),
+  }
 }
 
 function renderToBlob(
-  img: HTMLImageElement,
+  img: DecodedImage,
   scale: number,
-  type: 'image/png' | 'image/jpeg',
+  type: 'image/png' | 'image/jpeg' | 'image/webp',
   quality: number | undefined,
   flattenWhite: boolean,
 ): Promise<Blob | null> {
-  const w = Math.max(1, Math.round(img.naturalWidth * scale))
-  const h = Math.max(1, Math.round(img.naturalHeight * scale))
+  const w = Math.max(1, Math.round(img.width * scale))
+  const h = Math.max(1, Math.round(img.height * scale))
   const canvas = document.createElement('canvas')
   canvas.width = w
   canvas.height = h
@@ -218,70 +288,213 @@ function renderToBlob(
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, w, h)
   }
-  ctx.drawImage(img, 0, 0, w, h)
+  ctx.drawImage(img.source, 0, 0, w, h)
   return new Promise((resolve) => canvas.toBlob(resolve, type, quality))
 }
 
-// Compress an oversized image to at most maxBytes with CONSERVATIVE settings, so
+// Compress an oversized image down to targetBytes with CONSERVATIVE settings, so
 // drawing dimensions, finish references, labels and specifications stay legible:
-//   - a generous 3000px longest-edge cap, stepping down only as needed;
+//   - a generous 3000px longest-edge cap, stepping down only as needed, and NEVER
+//     upscaling (scale is clamped to <= 1, so a small-but-heavy image is only
+//     re-encoded, never enlarged);
 //   - a high JPEG quality floor (0.72; never the aggressive 0.5 of the old code);
-//   - PNGs are FIRST re-encoded losslessly as resized PNG, which PRESERVES
-//     transparency and avoids flattening technical content onto white. Only if a
-//     lossless PNG still cannot fit does it fall back to a white-flattened JPEG
-//     (the sole case where a transparent PNG is flattened — a documented last
-//     resort, not the default).
+//   - EXIF orientation applied at decode, so a sideways phone photo is not rotated;
+//   - it STOPS at the first attempt that reaches the target rather than continuing
+//     to degrade the picture — attempts run largest/highest-quality first.
+//
+// Transparency is preserved wherever the source has it: PNG and WEBP are first
+// re-encoded in their OWN alpha-capable format (PNG losslessly, WEBP at stepped
+// quality). Only if that still cannot reach the target does either fall back to a
+// white-flattened JPEG — a documented last resort, not the default, and the only
+// path that discards an alpha channel.
+//
 // Returns the compressed File, or null when even the smallest/lowest-quality
-// attempt is still over the limit (the caller then rejects the file rather than
-// upload it oversized or unreadable). Returns the ORIGINAL untouched when it is
-// already within the limit or the canvas API is unavailable.
-async function compressImageToLimit(file: File, maxBytes: number): Promise<File | null> {
-  if (file.size <= maxBytes) return file
+// attempt is still over the target (the caller then reports a per-file error
+// rather than uploading something oversized or unreadable). Returns the ORIGINAL
+// untouched when it is already within the target or the canvas API is missing.
+async function compressImageToTarget(file: File, targetBytes: number): Promise<File | null> {
+  if (file.size <= targetBytes) return file
   if (typeof window === 'undefined' || typeof document === 'undefined') return null
   if (!isCompressibleImageType(file.type)) return null
 
-  const objectUrl = URL.createObjectURL(file)
-  try {
-    const img = await new Promise<HTMLImageElement | null>((resolve) => {
-      const el = new Image()
-      el.onload = () => resolve(el)
-      el.onerror = () => resolve(null)
-      el.src = objectUrl
-    })
-    if (!img || !img.naturalWidth || !img.naturalHeight) return null
+  const img = await decodeImage(file)
+  if (!img) return null
 
-    const longest = Math.max(img.naturalWidth, img.naturalHeight)
+  try {
+    const longest = Math.max(img.width, img.height)
     const MAX_EDGE = 3000
+    // min(1, …) is the no-upscale guarantee: an image already under MAX_EDGE
+    // keeps its native dimensions and is only re-encoded.
     const baseScale = Math.min(1, MAX_EDGE / longest)
     const scales = [baseScale, baseScale * 0.85, baseScale * 0.7, baseScale * 0.55, baseScale * 0.42]
     const qualities = [0.92, 0.85, 0.78, 0.72]
 
-    // PNG first: lossless resize, transparency preserved. Try largest scales.
+    // PNG: lossless resize, alpha intact. Largest scale first, stop on success.
     if (file.type === 'image/png') {
       for (const scale of scales) {
         const blob = await renderToBlob(img, scale, 'image/png', undefined, false)
-        if (blob && blob.size <= maxBytes) {
-          return new File([blob], file.name, { type: 'image/png', lastModified: Date.now() })
+        if (blob && blob.size <= targetBytes) {
+          return new File([blob], withExtension(file.name, 'png'), { type: 'image/png', lastModified: Date.now() })
         }
       }
-      // Fall through to the JPEG path (flatten on white) only as a last resort.
     }
 
-    // JPEG path for JPEG/WEBP, and the PNG last resort. Flatten onto white so a
-    // transparent source never renders as black.
+    // WEBP: re-encode as WEBP so an alpha channel survives. Skipped silently if
+    // the browser cannot encode WEBP (toBlob then yields a non-webp/empty blob,
+    // which the type guard below rejects).
+    if (file.type === 'image/webp') {
+      for (const scale of scales) {
+        for (const quality of qualities) {
+          const blob = await renderToBlob(img, scale, 'image/webp', quality, false)
+          if (blob && blob.type === 'image/webp' && blob.size <= targetBytes) {
+            return new File([blob], withExtension(file.name, 'webp'), { type: 'image/webp', lastModified: Date.now() })
+          }
+        }
+      }
+    }
+
+    // JPEG path — the normal route for JPEG sources, and the last resort for a
+    // PNG/WEBP that could not reach the target in its own format. Flatten onto
+    // white so a transparent source never renders as black.
     for (const scale of scales) {
       for (const quality of qualities) {
         const blob = await renderToBlob(img, scale, 'image/jpeg', quality, true)
-        if (blob && blob.size <= maxBytes) {
-          return new File([blob], withJpgExtension(file.name), { type: 'image/jpeg', lastModified: Date.now() })
+        if (blob && blob.size <= targetBytes) {
+          return new File([blob], withExtension(file.name, 'jpg'), { type: 'image/jpeg', lastModified: Date.now() })
         }
       }
     }
     return null
   } finally {
-    URL.revokeObjectURL(objectUrl)
+    img.close()
   }
 }
+
+// ── Removing one already-selected reference attachment ────────────────────────
+// The DECISION of how to remove a file is separated from the async work of doing
+// it, so the rule is unit-testable without a DOM or a Supabase client.
+//
+// Two genuinely different cases:
+//   * nothing was committed yet (the usual case — uploads only happen during
+//     submit) → drop it from local state, no server work at all;
+//   * the file was already uploaded by an earlier, partially failed submit →
+//     the storage object AND its metadata row must both go, in that order.
+export type ReferenceRemoval =
+  | { kind: 'local' }
+  | { kind: 'remote'; storagePath: string; attachmentId: string }
+  | { kind: 'blocked'; reason: string }
+
+export type RemovableFile = {
+  category:     AttachmentCategory
+  uploadedPath: string | null
+  attachmentId: string | null
+}
+
+// Decide how to remove one selected file. Pure.
+//   - a Main PI is never removable this way (the RPC refuses it too; this keeps
+//     the client from even attempting it);
+//   - a removal already in flight blocks a second one, so a double-click cannot
+//     delete an object twice or race the metadata delete;
+//   - a file with an uploaded path but no attachment id would leave a row we
+//     cannot address, so it is blocked rather than half-removed.
+export function planReferenceRemoval(
+  file: RemovableFile,
+  opts: { hasDraft: boolean; removalInFlight: boolean },
+): ReferenceRemoval {
+  if (opts.removalInFlight) {
+    return { kind: 'blocked', reason: 'Another file is still being removed.' }
+  }
+  if (file.category !== 'reference') {
+    return { kind: 'blocked', reason: 'The Main PI cannot be removed individually.' }
+  }
+  // Never uploaded (or the draft behind it is already gone) — purely local.
+  if (!file.uploadedPath || !opts.hasDraft) return { kind: 'local' }
+
+  if (!file.attachmentId) {
+    return { kind: 'blocked', reason: 'This file cannot be removed cleanly. Please cancel and start again.' }
+  }
+  return { kind: 'remote', storagePath: file.uploadedPath, attachmentId: file.attachmentId }
+}
+
+// ── Stale-result guard ────────────────────────────────────────────────────────
+// Preparing a file is asynchronous and can take seconds (a 40 MB workbook has to
+// be unzipped, re-encoded, rebuilt and re-validated). In that window the user can
+// replace the file, remove it, retry it, or close the modal. Every one of those
+// starts a NEW generation, and the older in-flight result must be thrown away —
+// otherwise a slow optimisation of a file the user already replaced would land on
+// top of the current selection and the wrong bytes would be uploaded.
+//
+// The rule is a pure function so it can be tested directly, rather than being an
+// inline identity comparison buried in a React callback.
+export type StageApplication = 'apply' | 'discard-stale' | 'discard-aborted'
+
+export function planStageApplication(opts: {
+  /** localId currently occupying the slot the result was produced for, or null
+   *  if the slot was cleared (file removed, modal reset). */
+  slotId: string | null
+  /** localId the in-flight result belongs to. */
+  resultId: string
+  /** Set when the whole staging context was torn down (modal closed/reset). */
+  aborted: boolean
+}): StageApplication {
+  if (opts.aborted) return 'discard-aborted'
+  if (opts.slotId === null || opts.slotId !== opts.resultId) return 'discard-stale'
+  return 'apply'
+}
+
+// What prepareAttachment() is ABOUT to do with this file, so the UI can show the
+// truth before the work starts rather than a vague "Preparing…". Shares
+// prepareAttachment's own conditions, so the status shown can never disagree
+// with the work actually performed.
+//   'image' → an oversized picture will be re-encoded;
+//   'xlsx'  → an oversized workbook will have its embedded images optimised;
+//   null    → the file is passed through untouched (or will be refused).
+export type PlannedProcessing = 'image' | 'xlsx' | null
+
+export function plannedProcessing(file: File, category: AttachmentCategory): PlannedProcessing {
+  const contentType = resolveUploadType(file, category)
+  if (!contentType) return null
+  if (file.size <= ORDER_REQ_ATTACHMENT_MAX_BYTES) return null
+  if (isCompressibleImageType(contentType)) return 'image'
+  if (isOptimizableWorkbook(file)) return 'xlsx'
+  return null
+}
+
+// Back-compat: the boolean the UI used before workbook optimisation existed.
+export function willCompressImage(file: File, category: AttachmentCategory): boolean {
+  return plannedProcessing(file, category) === 'image'
+}
+
+// Only the ZIP-based .xlsx can be optimised. A legacy .xls is BIFF8 — a binary
+// stream format whose images live inside OLE compound-document streams. There is
+// no safe reduction path for it: it cannot be re-zipped, converting it to .xlsx
+// would rewrite the whole workbook, and a SheetJS rewrite is exactly the
+// content-destroying operation this feature refuses to perform. So an oversized
+// .xls is refused, permanently and by design.
+function isOptimizableWorkbook(file: File): boolean {
+  return extOf(file.name) === 'xlsx'
+}
+
+// Stages surfaced while a file is prepared. These map 1:1 onto real work — the
+// UI never shows a stage that did not happen, and there is deliberately no
+// percentage anywhere (nothing in this pipeline reports fractional progress, so
+// a percentage could only be invented).
+export type PrepareStage =
+  | 'checking'    // validating type + size
+  | 'compressing' // re-encoding an oversized image
+  | 'reading'     // reading an oversized workbook as a ZIP
+  | 'optimizing'  // re-encoding embedded workbook images
+  | 'rebuilding'  // writing the new archive
+  | 'validating'  // reopening + proving the archive is unchanged apart from media
+
+// Every stage that means "still working". The UI derives its submit-blocking set
+// from exactly this list, so a stage added here can never be one the submit
+// button forgets to wait for.
+export const PREPARE_STAGES: readonly PrepareStage[] = [
+  'checking', 'compressing', 'reading', 'optimizing', 'rebuilding', 'validating',
+]
+
+export type PrepareProgress = (stage: PrepareStage) => void
 
 // Outcome of preparing one selected file. `originalSize` is always the selected
 // size; `finalSize`/`file` are what will be uploaded when ok.
@@ -289,23 +502,66 @@ export type PreparedAttachment =
   | { ok: true;  file: File; contentType: string; originalSize: number; finalSize: number; compressed: boolean }
   | { ok: false; error: string; originalSize: number }
 
-// Validate + (if needed) compress one selected file for the given category.
-// Pure decision logic plus canvas work; no upload, no DB write. Rules:
-//   - empty file                              → error
-//   - type not allowed for this category      → clear "allowed types" error
-//   - within 10 MB                            → uploaded as-is, no compression
-//   - image over 10 MB                        → compressed; still over ⇒ error
-//   - PDF over 10 MB                          → refused (no safe browser
-//                                               compression) with a PDF-specific
-//                                               "upload a smaller PDF" message
-//   - other non-compressible over 10 MB       → refused with a "compress/reduce
-//     (DOCX/XLSX/TXT/CSV)                        externally" message — never a
-//                                               fake "compressed" claim
+// Validate one selected file and, when it is over the limit, try to process it
+// down. No upload, no DB write.
+//
+// THE INVARIANT: this function NEVER returns ok:true with finalSize above
+// ORDER_REQ_ATTACHMENT_MAX_BYTES. Whatever comes back as `file` is what gets
+// stored, so an oversized original can only ever leave here as a REDUCED file or
+// as an error. That is the single guarantee the whole size rule rests on, and the
+// final `finalSize` check below enforces it belt-and-braces, independently of how
+// any individual processor behaved.
+//
+// Rules, in order:
+//   - empty file                         → error
+//   - type not allowed for this category → clear "allowed types" error
+//   - within 10 MB                       → stored exactly as selected, untouched
+//   - IMAGE over 10 MB                   → compressed toward ~8 MB; if the result
+//                                          is still over 10 MB ⇒ REJECTED
+//   - .xlsx over 10 MB                   → embedded images under xl/media are
+//                                          re-encoded IN PLACE; every other ZIP
+//                                          entry is carried through byte-for-byte
+//                                          and the rebuilt workbook is reopened
+//                                          and proven unchanged before it is
+//                                          accepted. Anything short of that ⇒
+//                                          REJECTED.
+//   - anything else over 10 MB           → REJECTED. There is no safe automatic
+//     (.xls / PDF / Word / CSV / TXT)      reducer for these formats; rewriting a
+//                                          legacy workbook or an already-compressed
+//                                          container without being able to validate
+//                                          the result would risk silently corrupting
+//                                          a commercial document, so we refuse
+//                                          instead of pretending.
 export async function prepareAttachment(
   file: File,
   category: AttachmentCategory,
+  onStage?: PrepareProgress,
+): Promise<PreparedAttachment> {
+  const result = await decideAttachment(file, category, onStage)
+
+  // THE BACKSTOP. Whatever the branches above decided, nothing leaves this
+  // function marked ok while exceeding the storage limit. If a processor ever
+  // regresses — returns a file bigger than it promised, or a new format branch
+  // forgets its own size check — this converts a silent oversized upload into a
+  // plain refusal. The bucket's file_size_limit would also reject it server-side,
+  // but the user deserves the answer here, before an upload is attempted.
+  if (result.ok && result.finalSize > ORDER_REQ_ATTACHMENT_MAX_BYTES) {
+    return {
+      ok: false,
+      error: `This file could not be reduced below ${formatBytes(ORDER_REQ_ATTACHMENT_MAX_BYTES)}. Please attach a smaller file.`,
+      originalSize: result.originalSize,
+    }
+  }
+  return result
+}
+
+async function decideAttachment(
+  file: File,
+  category: AttachmentCategory,
+  onStage?: PrepareProgress,
 ): Promise<PreparedAttachment> {
   const originalSize = file.size
+  onStage?.('checking')
 
   if (file.size === 0) {
     return { ok: false, error: 'The selected file is empty.', originalSize }
@@ -322,35 +578,93 @@ export async function prepareAttachment(
     }
   }
 
+  // Within the limit — stored byte-for-byte. An Excel Main PI under 10 MB takes
+  // this path, so a normal workbook is never re-encoded or restructured.
   if (file.size <= ORDER_REQ_ATTACHMENT_MAX_BYTES) {
     return { ok: true, file, contentType, originalSize, finalSize: file.size, compressed: false }
   }
 
-  // Over 10 MB from here.
-  if (isCompressibleImageType(contentType)) {
-    const compressed = await compressImageToLimit(file, ORDER_REQ_ATTACHMENT_MAX_BYTES)
-    if (!compressed) {
+  // ── Over the limit from here: process or refuse. Never pass through. ──
+
+  // .xlsx — optimise the embedded images and NOTHING else. The optimiser proves
+  // the rebuilt workbook is byte-identical outside xl/media before returning ok,
+  // so a failure here is a genuine "cannot do this safely", never a silent
+  // downgrade of the document.
+  if (isOptimizableWorkbook(file)) {
+    onStage?.('reading')
+    let optimized: File | null = null
+    try {
+      const [{ optimizeXlsxMedia, createCanvasMediaEncoder }, buffer] = await Promise.all([
+        import('./xlsxMediaOptimizer'),
+        file.arrayBuffer(),
+      ])
+      const result = await optimizeXlsxMedia(new Uint8Array(buffer), {
+        encoder: createCanvasMediaEncoder(),
+        limitBytes: ORDER_REQ_ATTACHMENT_MAX_BYTES,
+        onStage: (stage) => onStage?.(stage),
+      })
+      if (result.ok) {
+        // Original filename and canonical .xlsx MIME are BOTH preserved: the
+        // stored object is the same document, only lighter.
+        optimized = new File([result.bytes as unknown as BlobPart], file.name, {
+          type: contentType,
+          lastModified: file.lastModified,
+        })
+      }
+    } catch {
+      optimized = null // a thrown optimiser is a refusal, never a pass-through
+    }
+
+    if (optimized && optimized.size <= ORDER_REQ_ATTACHMENT_MAX_BYTES) {
       return {
-        ok: false,
-        error: 'This image is larger than 10 MB and could not be reduced below the limit without losing too much detail. Please upload a smaller image.',
-        originalSize,
+        ok: true, file: optimized, contentType,
+        originalSize, finalSize: optimized.size, compressed: true,
       }
     }
-    // A PNG that stayed PNG keeps its type; otherwise it is JPEG.
-    return { ok: true, file: compressed, contentType: compressed.type, originalSize, finalSize: compressed.size, compressed: true }
-  }
-
-  if (contentType === PDF_MIME) {
     return {
       ok: false,
-      error: 'This PDF is larger than 10 MB and cannot be compressed here. Please upload a compressed PDF under 10 MB.',
+      error: `This Excel file is ${formatBytes(originalSize)}. It could not be safely reduced below ${formatBytes(ORDER_REQ_ATTACHMENT_MAX_BYTES)} without changing its workbook structure. Please use a smaller Main PI file.`,
       originalSize,
     }
   }
 
+  // Legacy .xls — no safe automatic reduction path exists, so say exactly that
+  // and point at the format that does have one.
+  if (category === 'main_pi') {
+    return {
+      ok: false,
+      error: `This legacy Excel file is ${formatBytes(originalSize)}, larger than ${formatBytes(ORDER_REQ_ATTACHMENT_MAX_BYTES)}, and cannot be safely reduced automatically. Please upload an .xlsx file below ${formatBytes(ORDER_REQ_ATTACHMENT_MAX_BYTES)}.`,
+      originalSize,
+    }
+  }
+
+  // Images are the other format the app can reduce safely.
+  if (isCompressibleImageType(contentType)) {
+    onStage?.('compressing')
+    const compressed = await compressImageToTarget(file, IMAGE_COMPRESS_TARGET_BYTES)
+    if (compressed && compressed.size <= ORDER_REQ_ATTACHMENT_MAX_BYTES) {
+      // The extension was rewritten to match whatever format we encoded, so the
+      // stored type, the stored name and the bytes always agree.
+      return {
+        ok: true, file: compressed, contentType: compressed.type,
+        originalSize, finalSize: compressed.size, compressed: true,
+      }
+    }
+    // Every safe automatic path was tried and none produced a usable file.
+    return {
+      ok: false,
+      error: `This image is ${formatBytes(originalSize)}. It was compressed automatically but could not be brought under ${formatBytes(ORDER_REQ_ATTACHMENT_MAX_BYTES)} without losing too much detail. Please attach a smaller image.`,
+      originalSize,
+    }
+  }
+
+  // A reference attachment in a format with no safe reducer (PDF, Word, Excel,
+  // CSV, TXT). The message states plainly what the app can and cannot do — it
+  // does NOT claim an attempt that never happened, and it does not imply that
+  // larger files would be accepted.
   return {
     ok: false,
-    error: 'This file is larger than 10 MB and cannot be compressed in the browser. Please compress or reduce it externally and upload a version under 10 MB.',
+    error: `This file is ${formatBytes(originalSize)}, over the ${formatBytes(ORDER_REQ_ATTACHMENT_MAX_BYTES)} limit. This format cannot be reduced automatically in the app, so please attach a version of ${formatBytes(ORDER_REQ_ATTACHMENT_MAX_BYTES)} or less.`,
     originalSize,
   }
 }

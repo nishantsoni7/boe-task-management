@@ -695,6 +695,11 @@ function LinkOrderModal({
             .select('id, request_number, client_name, total_value, status, assigned_to_user:users!assigned_to(full_name)')
             .or(`request_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
             .in('status', ['submitted', 'needs_clarification'])
+            // Never surface an upload-stage draft (finalized_at IS NULL) as a
+            // linkable request — it has no verified Main PI and is not a real
+            // submission. RLS already hides other users' drafts; this covers the
+            // edge where the searcher is the draft's own creator.
+            .not('finalized_at', 'is', null)
             .order('created_at', { ascending: false })
             .limit(20)
         : Promise.resolve({ data: [] }),

@@ -72,7 +72,12 @@ export type OrderNotifyPayload = {
   orderNumber?: string | null
 }
 
-export async function notifyOrders(payload: OrderNotifyPayload): Promise<void> {
+// Returns true when the notification was accepted by the API, false on any
+// failure. NEVER throws — a notification is always non-fatal to the action that
+// triggered it, so callers can `void` it (fire-and-forget) OR await the boolean
+// to surface a soft "created, but not notified" message. A false result must not
+// roll back or fail the underlying action.
+export async function notifyOrders(payload: OrderNotifyPayload): Promise<boolean> {
   try {
     const res = await fetch('/api/orders/notify', {
       method: 'POST',
@@ -84,8 +89,11 @@ export async function notifyOrders(payload: OrderNotifyPayload): Promise<void> {
       // error so a swallowed notify (e.g. unapplied enum migration) is visible.
       const detail = await res.json().catch(() => null)
       console.error(`[notifyOrders] ${payload.event} not delivered (HTTP ${res.status}):`, detail?.error ?? res.statusText)
+      return false
     }
+    return true
   } catch (err) {
     console.error('[notifyOrders] failed:', err)
+    return false
   }
 }
