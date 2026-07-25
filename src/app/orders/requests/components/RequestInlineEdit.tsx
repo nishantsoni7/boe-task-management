@@ -22,9 +22,11 @@ import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { notifyOrders } from '@/lib/notify'
 import {
+  clarificationResponseErrorMessage,
   editRequestErrorMessage,
   logRpcFailure,
   validateAmount,
+  validateClarificationResponse,
   type EditRequestResult,
   type OrderRequest,
   type RequestForm,
@@ -123,10 +125,13 @@ export function describeAttachmentEdits(e: AttachmentEdits): string | null {
 }
 
 export const REQUEST_EDIT_META: Record<RequestEditMode, { submit: string; saving: string; started: string }> = {
-  edit:     { submit: 'Save Changes',        saving: 'Saving…',       started: 'Editing request' },
-  resubmit: { submit: 'Update and Resubmit', saving: 'Resubmitting…', started: 'Updating for resubmission' },
-  reapply:  { submit: 'Update and Reapply',  saving: 'Reapplying…',   started: 'Updating to reapply' },
+  edit:     { submit: 'Save Changes',         saving: 'Saving…',       started: 'Editing request' },
+  // "Respond and Resubmit", not "Update and Resubmit": the answer is the point
+  // of this mode, and the old label named the optional half of it.
+  resubmit: { submit: 'Respond and Resubmit', saving: 'Resubmitting…', started: 'Responding to clarification' },
+  reapply:  { submit: 'Update and Reapply',   saving: 'Reapplying…',   started: 'Updating to reapply' },
 }
+
 
 // The record, as the form sees it. Every value is a string because these are
 // form controls; empty string is the canonical "not set", converted back to
@@ -194,12 +199,14 @@ export function buildRequestFormPayload(orderRequestId: string, form: RequestFor
 // deliberately not awaited, so a notification outage can never turn a committed
 // save into a visible failure.
 export async function persistRequestForm({
-  supabase, mode, request, form,
+  supabase, mode, request, form, clarificationResponse,
 }: {
   supabase: ReturnType<typeof createClient>
   mode: RequestEditMode
   request: OrderRequest
   form: RequestForm
+  /** Required in 'resubmit' mode; ignored by the other two. */
+  clarificationResponse?: string
 }): Promise<string | null> {
   const payload = buildRequestFormPayload(request.id, form)
 
@@ -231,15 +238,42 @@ export async function persistRequestForm({
     return null
   }
 
-  const { error: rpcErr } = await supabase.rpc(
-    mode === 'resubmit' ? 'resubmit_order_request' : 'reapply_order_request',
-    payload,
-  )
+  if (mode === 'resubmit') {
+    // respond_to_clarification (20260714), NOT the older resubmit_order_request.
+    // The old function authorises on created_by/requested_by only, which locks
+    // out the assignee — the whole defect this replaces. It is left in the
+    // database untouched (its rule is the narrower one, so nothing is widened by
+    // its continued existence) but nothing in the app calls it any more.
+    const response = clarificationResponse ?? ''
+    const invalid = validateClarificationResponse(response)
+    if (invalid) return invalid
+
+    const { error: rpcErr } = await supabase.rpc('respond_to_clarification', {
+      ...payload,
+      p_response: response.trim(),
+    })
+    if (rpcErr) {
+      logRpcFailure('respond_to_clarification', rpcErr)
+      return clarificationResponseErrorMessage(rpcErr)
+    }
+
+    // Raised only after the transaction committed, so an admin is never told a
+    // request came back when it did not. notifyOrders swallows its own failures
+    // and is not awaited, so a notification outage cannot turn a committed
+    // resubmission into a visible error.
+    void notifyOrders({
+      event: 'order_resubmitted',
+      requestNumber: request.request_number,
+      entityId: request.id,
+      clientName: form.client_name.trim(),
+    })
+    return null
+  }
+
+  const { error: rpcErr } = await supabase.rpc('reapply_order_request', payload)
   if (rpcErr) {
     if (rpcErr.message?.includes('Assignee must be')) return rpcErr.message
-    return mode === 'resubmit'
-      ? 'Could not resubmit this request. It may have already changed. Please refresh and try again.'
-      : 'Could not reapply this request. It may have already changed. Please refresh and try again.'
+    return 'Could not reapply this request. It may have already changed. Please refresh and try again.'
   }
 
   // Only a hand-back to the reviewers' queue is announced. An in-place edit of
@@ -258,10 +292,10 @@ export async function persistRequestForm({
 // never moves status, so it names the status the request will STILL be in
 // rather than implying a review hand-back.
 export function editModeNotice(mode: RequestEditMode, status: string): string {
-  if (mode === 'resubmit') return 'Saving applies your changes and sends this request back for review.'
+  if (mode === 'resubmit') return 'Saving records your response, applies your changes and sends this request back for review.'
   if (mode === 'reapply')  return 'Saving applies your changes and submits this request for review again.'
   return status === 'needs_clarification'
-    ? 'Saving updates the details only. This request still needs clarification — use Update and Resubmit to send it back for review.'
+    ? 'Saving updates the details only. This request still needs clarification — use Respond and Resubmit to send it back for review.'
     : status === 'rejected'
       ? 'Saving updates the details only. This request stays rejected — use Update and Reapply to submit it again.'
       : 'Saving updates the details only. This request stays under review.'

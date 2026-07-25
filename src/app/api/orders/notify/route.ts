@@ -90,7 +90,11 @@ export async function POST(req: NextRequest) {
       push(assignedTo, `You were assigned order request ${requestNumber}.`, 'order_assigned')
       break
     case 'order_resubmitted':
-      await toAdmins(`Order request ${requestNumber} was resubmitted.`)
+      // Raised by respond_to_clarification's caller AFTER the transaction
+      // committed, and by the reapply path. Says WHY it is back, so a reviewer
+      // reading the list knows there is an answer waiting rather than just a
+      // status change.
+      await toAdmins(`Order request ${requestNumber} was updated and resubmitted after clarification.`)
       break
     case 'order_clarification':
       push(creatorId, `Clarification requested for order request ${requestNumber}.`)

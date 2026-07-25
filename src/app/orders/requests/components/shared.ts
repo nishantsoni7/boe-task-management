@@ -12,7 +12,7 @@
 
 import { useEffect } from 'react'
 import { formatINR } from '@/lib/currency'
-import { extOf } from '@/lib/orderRequestAttachments'
+import { extOf, isExcelAttachmentName } from '@/lib/orderRequestAttachments'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -117,6 +117,30 @@ export function canEditAttachments(r: OrderRequest, userId: string, isAdmin: boo
   return canEditRequest(r, userId, isAdmin)
 }
 
+// May this viewer answer an outstanding clarification and hand the request back
+// for review?
+//
+// This is DELIBERATELY WIDER than isPermittedRequester, which is what the old
+// Update-and-Resubmit button used. That rule is created_by OR requested_by, and
+// it excluded the assignee — so when an admin raised a request on a
+// salesperson's behalf (created_by and requested_by both the admin, assigned_to
+// the salesperson), the one person who had to answer the question was the one
+// person who could not. Both layers had the same hole: resubmit_order_request
+// refused them too, so showing the button alone would only have moved the
+// failure from a missing control to a 42501.
+//
+// The set is: admin, requester (either sense), or CURRENT assignee. Stated as
+// four explicit conditions rather than composed from isRequestParticipant, so
+// widening the participant rule for some other feature can never silently widen
+// this one. An unrelated user is not included at any layer.
+//
+// Mirrors, and never widens, respond_to_clarification (20260714). That RPC is
+// the enforcement; this only decides whether to render the action.
+export function canRespondToClarification(r: OrderRequest, userId: string, isAdmin: boolean): boolean {
+  if (r.converted_order_id || r.status !== 'needs_clarification') return false
+  return isAdmin || isPermittedRequester(r, userId) || r.assigned_to === userId
+}
+
 // May this viewer attach or detach payments on this request? Stated separately
 // because it maps to a different server-side gate (the two linkage RPCs) and
 // must never drift from it — and since 20260707 that gate accepts the assignee
@@ -181,6 +205,17 @@ export type EditRequestResult = {
   previous_assigned_to: string | null
   assigned_to:          string | null
   changed_fields:       string[]
+}
+
+// Structured result returned by respond_to_clarification() (20260714). Same
+// single-jsonb-object convention as edit_order_request, so supabase-js hands it
+// back as `data` directly — no .single()/.maybeSingle() on this path either.
+export type ClarificationResponseResult = {
+  order_request_id: string
+  request_number:   string
+  status:           string
+  updated_at:       string
+  changed_fields:   string[]
 }
 
 // Structured result returned by convert_order_request_to_order().
@@ -258,6 +293,28 @@ export function previewKindOf(fileName: string): PreviewKind {
   if (ext === 'xlsx' || ext === 'xls')              return 'sheet'
   if (ext === 'csv'  || ext === 'txt')              return 'text'
   return 'none'
+}
+
+// Whether THIS viewer may open THIS attachment in the shared preview modal.
+//
+// Two different questions folded into one answer:
+//   1. can the app render it at all?  → previewKindOf
+//   2. may this person trigger THAT renderer?
+//
+// Only the second question has a role in it, and only for ONE type. The shared
+// preview component (@/components/ui/AttachmentPreviewModal, the same one Task
+// Management uses) renders PDF, images and CSV entirely inside the browser, but
+// renders Excel through Microsoft's Office Online viewer — which works by having
+// Microsoft's servers fetch the file URL. Task attachments are in a PUBLIC
+// bucket so that costs nothing there; Order Request attachments are private, so
+// previewing a workbook discloses it off-site.
+//
+// The workbook preview is therefore limited to admins — the people who have to
+// approve a request against its PI, and for whom the trade is worth making.
+// Everyone else keeps the download, which never leaves BOE. Pure.
+export function canPreviewAttachment(fileName: string, isAdmin: boolean): boolean {
+  if (previewKindOf(fileName) === 'none') return false
+  return isExcelAttachmentName(fileName) ? isAdmin : true
 }
 
 // ── Status + label metadata ───────────────────────────────────────────────────
@@ -613,6 +670,79 @@ export function editRequestErrorMessage(err: RpcErrorLike): string {
   }
 
   return 'Could not save this request. Please try again.'
+}
+
+// ── The clarification response ────────────────────────────────────────────────
+// Required, and required to contain something. A resubmission that says nothing
+// leaves the reviewer exactly where they started, which is why whitespace is
+// rejected rather than trimmed to an empty string and quietly accepted.
+//
+// respond_to_clarification applies the identical rule (20260714 §5) and is the
+// actual gate; this exists so the reader is told before a round trip, and so the
+// rule is testable as a pure function. Both sides compare the TRIMMED value, so
+// neither can accept what the other refuses.
+export const CLARIFICATION_RESPONSE_REQUIRED =
+  'Enter a response to the clarification before resubmitting.'
+
+export function validateClarificationResponse(response: string): string | null {
+  return response.trim() === '' ? CLARIFICATION_RESPONSE_REQUIRED : null
+}
+
+// The stale-status sentence. Named because the page shows it in two places (the
+// inline error, and the banner after a failed save) and the two must not drift.
+export const CLARIFICATION_STALE_MESSAGE =
+  'This request is no longer awaiting clarification. Refresh the page to see its current status.'
+
+// respond_to_clarification (20260714) failures, mapped to sentences that name
+// WHICH rule refused. The distinction that matters most here is a STALE request
+// — someone else already moved it — versus a permission refusal versus a bad
+// field: three different problems with three different remedies, which a single
+// "please try again" used to hide.
+//
+// Nothing about the row leaks: no SQLSTATE, no function name, no column name and
+// no internal identifier reaches the reader.
+export function clarificationResponseErrorMessage(err: RpcErrorLike): string {
+  const m    = (err.message ?? '').toLowerCase()
+  const code = err.code ?? ''
+
+  if (!code && !m) return 'Could not reach the server. Check your connection and try again.'
+
+  // App and database are out of step — this build calls an RPC the server does
+  // not have yet, which is the expected failure if 20260714 has not been applied.
+  if (code === 'PGRST202' || code === 'PGRST203'
+      || m.includes('schema cache') || m.includes('could not find the function')) {
+    return 'Responding to clarification is not available on this server yet. Ask an administrator to complete the setup.'
+  }
+
+  // The status gate. Deliberately first among the rule matches: it is the one
+  // failure where retrying is pointless and reloading is the actual remedy.
+  if (m.includes('no longer awaiting clarification')) return CLARIFICATION_STALE_MESSAGE
+  if (m.includes('has been converted')) {
+    return 'This request has been converted to an Order and can no longer be changed.'
+  }
+
+  if (m.includes('response to the clarification is required')) return CLARIFICATION_RESPONSE_REQUIRED
+  if (m.includes('only an admin may change the assignee')) return 'Only an admin can change the assignee of an order request.'
+  if (m.includes('permission to respond'))  return 'You do not have permission to respond to this clarification.'
+  if (m.includes('not found'))              return 'This request no longer exists. Refresh the list.'
+  if (m.includes('authentication required')) return 'Your session has expired. Sign in again to continue.'
+  // Already complete, user-facing sentences from the RPC itself.
+  if (m.includes('assignee must be'))     return err.message as string
+  if (m.includes('must not be negative')) return err.message as string
+  if (m.includes('client name is required')) return 'Client name is required.'
+
+  if (code === '42501') return 'You do not have permission to respond to this clarification.'
+
+  if (['23514', '23502', '23503', '22P02', '22007', '22003', '22001'].includes(code)) {
+    return 'One of the values entered is not valid for this request. Check the fields and try again.'
+  }
+
+  // The only codes that genuinely mean "someone else touched this record".
+  if (code === '40001' || code === '55P03') {
+    return 'Someone else is changing this request right now. Please try again in a moment.'
+  }
+
+  return 'Could not submit your response. Please try again.'
 }
 
 // admin_delete_order_request raises stable, greppable code prefixes. Each one is

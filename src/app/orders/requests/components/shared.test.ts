@@ -20,6 +20,12 @@ import {
   canEditAttachments,
   canEditRequest,
   canManagePayments,
+  canPreviewAttachment,
+  canRespondToClarification,
+  clarificationResponseErrorMessage,
+  validateClarificationResponse,
+  CLARIFICATION_RESPONSE_REQUIRED,
+  CLARIFICATION_STALE_MESSAGE,
   getAdvanceInfo,
   headerActionClass,
   isPermittedRequester,
@@ -38,6 +44,7 @@ import {
   validateAttachmentEdits,
   validateRequestForm,
   EMPTY_ATTACHMENT_EDITS,
+  REQUEST_EDIT_META,
   type AttachmentEdits,
   type StagedAttachment,
 } from './RequestInlineEdit'
@@ -49,6 +56,7 @@ import {
   formatRecordedValue,
   parseRecordedChanges,
   recordedChangeLines,
+  titleNamesActor,
 } from './RequestActivityTimeline'
 import { getNotificationMeta } from '@/lib/notificationMeta'
 import type { Notification } from '@/lib/types'
@@ -211,6 +219,221 @@ describe('attachment preview routing', () => {
     for (const name of ['spec.docx', 'spec.doc', 'archive.zip', 'script.html', 'thing.svg', 'installer.exe', 'noextension']) {
       assert.equal(previewKindOf(name), 'none', name)
     }
+  })
+})
+
+// The one preview that leaves BOE. The shared modal renders Excel through
+// Microsoft's Office Online viewer, so offering it is a disclosure decision, not
+// just a rendering one — hence the role in the signature.
+describe('who may preview which attachment', () => {
+  const EXCEL = ['294 new Order with Replacement.xlsx', 'legacy-pi.xls', 'PI.XLSX']
+  const LOCAL = ['quote.pdf', 'site.JPG', 'render.png', 'sketch.webp', 'items.csv']
+
+  test('an admin can preview a workbook', () => {
+    for (const name of EXCEL) assert.equal(canPreviewAttachment(name, true), true, name)
+  })
+
+  test('a non-admin cannot — an Excel attachment is download-only for them', () => {
+    for (const name of EXCEL) assert.equal(canPreviewAttachment(name, false), false, name)
+  })
+
+  test('every browser-rendered type previews for everyone, admin or not', () => {
+    for (const name of LOCAL) {
+      assert.equal(canPreviewAttachment(name, true),  true, name)
+      assert.equal(canPreviewAttachment(name, false), true, name)
+    }
+  })
+
+  test('the role never promotes a type the app cannot render at all', () => {
+    for (const name of ['spec.docx', 'archive.zip', 'installer.exe', 'noextension']) {
+      assert.equal(canPreviewAttachment(name, true),  false, name)
+      assert.equal(canPreviewAttachment(name, false), false, name)
+    }
+  })
+
+  test('.txt is still classified as previewable, though the shared modal offers download for it', () => {
+    // previewKindOf keeps its allow-list; the shared component decides what it
+    // can actually draw. Recorded so the divergence is deliberate, not a
+    // forgotten case.
+    assert.equal(previewKindOf('notes.txt'), 'text')
+    assert.equal(canPreviewAttachment('notes.txt', false), true)
+  })
+})
+
+// ── Responding to a clarification (20260714) ─────────────────────────────────
+// The defect this covers: an admin raising a request on a salesperson's behalf
+// left created_by AND requested_by pointing at the admin, so the old
+// isPermittedRequester rule locked the assignee — the only person who could
+// answer — out of the resubmission entirely, at BOTH the button and the RPC.
+describe('who may respond to a clarification', () => {
+  const needsClarification = (o: Partial<OrderRequest> = {}) =>
+    req({ status: 'needs_clarification', clarification_note: 'Confirm the revised product value.', ...o })
+
+  // THE REGRESSION TEST. created_by and requested_by are the admin; the
+  // salesperson is only the assignee.
+  test('the current assignee of an admin-raised request can respond', () => {
+    const r = needsClarification({ created_by: ADMIN, requested_by: ADMIN, assigned_to: ASSIGNEE })
+    assert.equal(canRespondToClarification(r, ASSIGNEE, false), true)
+  })
+
+  test('the requester can respond, by either sense of the word', () => {
+    assert.equal(canRespondToClarification(needsClarification({ requested_by: REQUESTER }), REQUESTER, false), true)
+    assert.equal(canRespondToClarification(
+      needsClarification({ created_by: REQUESTER, requested_by: ADMIN }), REQUESTER, false), true)
+  })
+
+  test('an admin retains the right', () => {
+    const r = needsClarification({ created_by: OUTSIDER, requested_by: OUTSIDER, assigned_to: OUTSIDER })
+    assert.equal(canRespondToClarification(r, ADMIN, true), true)
+  })
+
+  test('an unrelated user cannot — the widening stops at the assignee', () => {
+    assert.equal(canRespondToClarification(needsClarification(), OUTSIDER, false), false)
+  })
+
+  test('a FORMER assignee loses the right the moment the request is reassigned', () => {
+    const r = needsClarification({ created_by: ADMIN, requested_by: ADMIN, assigned_to: OUTSIDER })
+    assert.equal(canRespondToClarification(r, ASSIGNEE, false), false)
+  })
+
+  test('only a request actually awaiting clarification offers it', () => {
+    for (const status of ['submitted', 'rejected', 'converted']) {
+      assert.equal(canRespondToClarification(req({ status }), ASSIGNEE, false), false, status)
+      assert.equal(canRespondToClarification(req({ status }), ADMIN,    true),  false, status)
+    }
+  })
+
+  test('a converted request never offers it, whatever its status column says', () => {
+    const r = needsClarification({ converted_order_id: 'order-1' })
+    assert.equal(canRespondToClarification(r, ASSIGNEE, false), false)
+    assert.equal(canRespondToClarification(r, ADMIN,    true),  false)
+  })
+})
+
+describe('the response is mandatory', () => {
+  test('empty is rejected with the exact message', () => {
+    assert.equal(validateClarificationResponse(''), CLARIFICATION_RESPONSE_REQUIRED)
+    assert.equal(CLARIFICATION_RESPONSE_REQUIRED, 'Enter a response to the clarification before resubmitting.')
+  })
+
+  test('whitespace-only is rejected — trimming must not turn blank into valid', () => {
+    for (const blank of ['   ', '\t', '\n', ' \n\t ', ' '.trim()]) {
+      assert.equal(validateClarificationResponse(blank), CLARIFICATION_RESPONSE_REQUIRED, JSON.stringify(blank))
+    }
+  })
+
+  test('real text passes, including text that merely starts with whitespace', () => {
+    assert.equal(validateClarificationResponse('Updated the product value.'), null)
+    assert.equal(validateClarificationResponse('  Attached the revised PI.  '), null)
+  })
+})
+
+describe('clarification response failures name the rule that refused', () => {
+  test('a stale request is told to refresh, not to retry', () => {
+    const msg = clarificationResponseErrorMessage({
+      code: 'P0001',
+      message: 'Order request ORD-REQ-2026-0001 is no longer awaiting clarification (it is submitted)',
+    })
+    assert.equal(msg, CLARIFICATION_STALE_MESSAGE)
+    assert.match(msg, /Refresh the page/)
+  })
+
+  test('a non-admin assignee change is refused in its own words', () => {
+    assert.equal(
+      clarificationResponseErrorMessage({ code: '42501', message: 'Only an admin may change the assignee of an order request' }),
+      'Only an admin can change the assignee of an order request.',
+    )
+  })
+
+  test('a permission refusal never reads as a stale request', () => {
+    const msg = clarificationResponseErrorMessage({
+      code: '42501', message: 'You do not have permission to respond to this clarification',
+    })
+    assert.equal(msg, 'You do not have permission to respond to this clarification.')
+    assert.doesNotMatch(msg, /Refresh/)
+  })
+
+  test('a missing RPC says the server is behind, not that the file was wrong', () => {
+    assert.match(
+      clarificationResponseErrorMessage({ code: 'PGRST202', message: 'Could not find the function' }),
+      /not available on this server yet/,
+    )
+    assert.match(
+      clarificationResponseErrorMessage({ code: '', message: 'schema cache' }),
+      /not available on this server yet/,
+    )
+  })
+
+  test('only true conflict codes claim someone else is editing', () => {
+    for (const code of ['40001', '55P03']) {
+      assert.match(clarificationResponseErrorMessage({ code, message: '' }), /Someone else is changing/, code)
+    }
+    // A generic failure must NOT invent a phantom concurrent edit.
+    assert.doesNotMatch(clarificationResponseErrorMessage({ code: 'XX000', message: 'boom' }), /Someone else/)
+  })
+
+  test('the server-side "response required" refusal maps back to the client sentence', () => {
+    assert.equal(
+      clarificationResponseErrorMessage({ code: 'P0001', message: 'A response to the clarification is required' }),
+      CLARIFICATION_RESPONSE_REQUIRED,
+    )
+  })
+})
+
+describe('clarification activity reads as an exchange', () => {
+  test('the response event names its author', () => {
+    assert.equal(eventTitle('clarification_responded', 'Priya'), 'Priya responded to clarification')
+    assert.equal(titleNamesActor('clarification_responded'), true)
+  })
+
+  test('the admin request keeps its own neutral title — the two are separate events', () => {
+    assert.equal(eventTitle('clarification_requested', 'Nishant'), 'Clarification requested')
+    assert.equal(titleNamesActor('clarification_requested'), false)
+  })
+
+  test('field changes made in the same submission carry before AND after values', () => {
+    const lines = recordedChangeLines(
+      {
+        clarification_response: 'Updated the product value and attached the revised PI.',
+        changed_fields: ['total_product_value'],
+        changes: [{
+          field: 'total_product_value', label: 'Total Product Value',
+          value_type: 'currency', old_value: 240000, new_value: 225000,
+        }],
+      },
+      {},
+      fieldLabel,
+    )
+    assert.equal(lines.length, 1)
+    // Rendered in the same Indian-numbering currency format as every other
+    // amount in the product — the audit rail must not be the one place that
+    // prints a raw number.
+    assert.equal(lines[0], 'Total Product Value changed from ₹2,40,000 to ₹2,25,000')
+  })
+
+  test('a response with no field edits produces NO field-change lines', () => {
+    // The RPC records changed_fields: [] and changes: [] when only the answer was
+    // given. Nothing must invent an edit that did not happen.
+    assert.deepEqual(
+      recordedChangeLines({ clarification_response: 'Confirmed, no change needed.', changed_fields: [], changes: [] }, {}, fieldLabel),
+      [],
+    )
+  })
+})
+
+describe('respond-and-resubmit copy', () => {
+  test('the primary action names the response, not the update', () => {
+    assert.equal(REQUEST_EDIT_META.resubmit.submit, 'Respond and Resubmit')
+  })
+
+  test('the edit-mode notice points at the new label, never the old one', () => {
+    const notice = editModeNotice('edit', 'needs_clarification')
+    assert.match(notice, /Respond and Resubmit/)
+    assert.doesNotMatch(notice, /Update and Resubmit/)
+  })
+
+  test('resubmit mode states that the response is recorded too', () => {
+    assert.match(editModeNotice('resubmit', 'needs_clarification'), /records your response/)
   })
 })
 

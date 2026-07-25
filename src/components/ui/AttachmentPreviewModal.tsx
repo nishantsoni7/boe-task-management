@@ -30,8 +30,16 @@ interface Props {
 }
 
 export function AttachmentPreviewModal({ url, fileName, onClose }: Props) {
-  const ext      = getExt(url)
-  const label    = getFileTypeLabel(url)
+  // Type is read from the DISPLAY NAME when the caller supplies one, falling
+  // back to the URL exactly as before. Task attachments are stored at a path
+  // that ends in the real extension, so both sources agree there and nothing
+  // about the Task flow changes. Other callers are not so lucky: Order Request
+  // objects are stored under a generated key whose name half is truncated to 80
+  // characters, so a long filename can lose its ".xlsx" from the PATH while the
+  // recorded file_name still has it. Reading the name first makes the preview
+  // depend on the file's identity rather than on how it happens to be keyed.
+  const ext      = getExt(fileName ?? url)
+  const label    = getFileTypeLabel(fileName ?? url)
   const isImage  = (IMAGE_EXTS as readonly string[]).includes(ext)
   const isPdf    = ext === 'pdf'
   const isCsv    = CSV_EXTS.includes(ext)

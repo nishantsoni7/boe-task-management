@@ -73,6 +73,10 @@ const EVENT_TITLE: Record<string, string> = {
   request_edited:            'Request edited',
   clarification_requested:   'Clarification requested',
   clarification_resubmitted: 'Updated and resubmitted',
+  // clarification_responded is titled by eventTitle() instead, which puts the
+  // actor in front ("Priya responded to clarification"). Kept here as the
+  // neutral fallback.
+  clarification_responded:   'Responded to clarification',
   request_rejected:          'Request rejected',
   reapplication_submitted:   'Updated and reapplied',
   payment_linked:            'Payment linked',
@@ -92,6 +96,7 @@ function markerColor(row: ActivityRow): string {
     case 'request_rejected':        return colors.red
     case 'clarification_requested': return colors.blue
     case 'clarification_resubmitted':
+    case 'clarification_responded':
     case 'reapplication_submitted': return colors.blue
     case 'main_pi_replaced':
     case 'reference_attachments_changed': return colors.amber
@@ -275,6 +280,9 @@ function actorName(actor: ActivityRow['actor']): string {
 // drift into printing the name twice — or dropping it entirely.
 const ACTOR_TITLE: Record<string, (actor: string) => string> = {
   request_edited: actor => `${actor} edited the request`,
+  // A clarification is a reply to a named person's question, so the answer names
+  // its author for the same reason an edit does: it settles who said what.
+  clarification_responded: actor => `${actor} responded to clarification`,
 }
 
 export function titleNamesActor(eventType: string): boolean {
@@ -395,6 +403,16 @@ export function RequestActivityTimeline({
       }
       case 'clarification_requested':
         return asString(d.clarification_note)
+      case 'clarification_responded': {
+        // The answer leads, quoted so it reads as someone's words rather than as
+        // a system string. Any field edits made in the same submission follow
+        // beneath it, in the SAME event — one action produced one entry, and
+        // splitting it would imply two.
+        const response = asString(d.clarification_response)
+        const quoted = response ? `Response:\n“${response}”` : null
+        const lines = recordedChangeLines(d, names, fieldLabel)
+        return [quoted, ...lines].filter(Boolean).join('\n') || null
+      }
       case 'request_rejected':
         return asString(d.rejection_reason)
       case 'payment_linked': {

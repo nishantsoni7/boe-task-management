@@ -127,6 +127,14 @@ export function extOf(fileName: string): string {
   return fileName.split('.').pop()?.toLowerCase() ?? ''
 }
 
+// Is this attachment a workbook? The preview surface needs to know, because an
+// Excel attachment is the ONE type whose in-app rendering is not BOE-owned (see
+// RequestAttachmentsCard) and is therefore gated on the viewer's role. Pure.
+export function isExcelAttachmentName(fileName: string): boolean {
+  const ext = extOf(fileName)
+  return ext === 'xlsx' || ext === 'xls'
+}
+
 function allowedExtsFor(category: AttachmentCategory): readonly string[] {
   return category === 'main_pi' ? MAIN_PI_EXTS : REFERENCE_EXTS
 }

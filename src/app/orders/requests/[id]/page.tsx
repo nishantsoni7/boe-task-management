@@ -5,10 +5,16 @@
 // /orders/requests navigates here; there is no longer a full detail modal.
 //
 // The page is the RECORD — identity, exceptions needing attention, the
-// commercial figures, the request content, its attachments, its payments, and
-// its complete recorded history. The focused DECISIONS taken on it (Convert,
-// Clarify, Reject, Delete, Edit / Resubmit / Reapply, Link / Unlink a payment)
-// stay modal, because each is one deliberate act on the record in view.
+// commercial figures, the request content, its attachments and its complete
+// recorded history. The focused DECISIONS taken on it (Convert, Clarify, Reject,
+// Delete, Edit / Resubmit / Reapply, Link / Unlink a payment) stay modal,
+// because each is one deliberate act on the record in view.
+//
+// PAYMENTS are modal too, and for the same reason: the Commercial Summary states
+// what has been received, and the Payment Received figure opens the one dialog
+// that lists those payments and links another. A permanently expanded payments
+// section on the record was a page-length answer to a question most readers only
+// ask sometimes.
 //
 // Every authorization rule is the shared one (components/shared.ts), which
 // mirrors — and never widens — the server-side gate it names. Nothing here
@@ -23,13 +29,12 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
-import { ArrowLeft, CalendarCheck2, CalendarClock, CheckCircle2, MoreHorizontal } from 'lucide-react'
+import { ArrowLeft, CalendarCheck2, CalendarClock, CheckCircle2, ChevronRight, MoreHorizontal } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import { prepareAttachment } from '@/lib/orderRequestAttachments'
 import {
   RequestAttachmentsCard,
-  RequestPaymentLinkPanel,
-  RequestPaymentsCard,
+  RequestPaymentsModal,
   SectionHeader,
   StatusBadge,
   LinkedPaymentDetailsModal,
@@ -63,10 +68,12 @@ import {
   canEditAttachments,
   canEditRequest,
   canManagePayments,
+  canRespondToClarification,
   fmtAmount,
   fmtDate,
   headerActionClass,
   isPermittedRequester,
+  validateClarificationResponse,
   EMPTY_FORM,
   LEAD_SOURCE_OPTIONS,
   type AssigneeOption,
@@ -78,8 +85,8 @@ import {
 } from '../components/shared'
 
 // The desktop reading width for an operational record. Wide enough for the
-// payments table to breathe, narrow enough that the label/value rows do not
-// stretch into unreadable lines on an ultrawide monitor.
+// record's two-column workspace to breathe, narrow enough that the label/value
+// rows do not stretch into unreadable lines on an ultrawide monitor.
 const CONTENT_MAX_WIDTH = '1440px'
 
 // ── Attention banner ──────────────────────────────────────────────────────────
@@ -139,39 +146,178 @@ const FIELD_LABEL: React.CSSProperties = {
 // as a ledger rather than as four banner statistics. The arrangement is fixed by
 // .boe-record-metrics (globals.css) and collapses to one column only on a very
 // narrow phone.
-// Unavailable states ("Not linked", "—") render at body weight in muted text so
-// they can never masquerade as financial figures.
+// Unavailable states ("Not linked", "Not available", "—") render at body weight
+// in muted text so they can never masquerade as financial figures.
+//
+// One figure — Payment Received — is also the ENTRY POINT to the payments it
+// summarises, so a tile can be given an `onClick`. It then renders as a real
+// <button> rather than a div with a handler: keyboard reachable, activated by
+// Enter/Space, and carrying the global :focus-visible ring (globals.css). It
+// keeps the tile's own compact geometry so the 2×2 ledger stays symmetric — the
+// only visible additions are a chevron and the module's standard row hover.
 
-function MetricGroup({ label, value, note, valueMuted, editor }: {
+const METRIC_TILE: React.CSSProperties = {
+  background: colors.base, padding: '11px 14px', minWidth: 0,
+  display: 'flex', flexDirection: 'column', gap: '3px',
+}
+
+function MetricGroup({ label, value, note, valueMuted, valueTone, hint, editor, onClick, actionLabel }: {
   label: string
   value: string
   note?: string
   valueMuted?: boolean
+  // Semantic state of the FIGURE, for the one metric that has one (Payment
+  // Position against the 40% advance threshold). It tints the figure and adds a
+  // small dot beside the note — never the whole tile, which would turn a ledger
+  // cell into an alert. Colour is decoration only: `note` states the same
+  // verdict in words, so the tile reads identically without it.
+  valueTone?: 'danger' | 'success'
+  /** Supplementary explanation (e.g. the formula behind a derived figure),
+   *  surfaced as the tile's title. Never a substitute for `note`. */
+  hint?: string
   // Replaces the figure with a control while the record is being edited. Only
   // the two values that belong to the request itself ever pass one — a derived
-  // figure (Advance Received, Payment Position) is never editable here.
+  // figure (Payment Received, Payment Position) is never editable here.
   editor?: React.ReactNode
+  // Turns the whole tile into a button. Never combined with `editor`: while the
+  // record is being edited no other action may run against it, so the caller
+  // withholds the handler rather than the tile disabling itself.
+  onClick?: () => void
+  /** Accessible name for the button form — the figure alone would not say what
+   *  activating it does. */
+  actionLabel?: string
 }) {
-  return (
-    <div style={{
-      background: colors.base, padding: '11px 14px', minWidth: 0,
-      display: 'flex', flexDirection: 'column', gap: '3px',
+  const toneColor = valueTone === 'danger' ? colors.red : valueTone === 'success' ? colors.green : null
+
+  const figure = editor ?? (
+    <span style={{
+      fontSize: valueMuted ? '13.5px' : '19px',
+      fontWeight: valueMuted ? 500 : 700,
+      lineHeight: valueMuted ? '23px' : 1.2,
+      // A tone always wins over `valueMuted`: a figure that carries a verdict is
+      // never also greyed out as unavailable.
+      color: toneColor ?? (valueMuted ? colors.muted : colors.primary),
+      fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word',
     }}>
-      <span style={FIELD_LABEL}>{label}</span>
-      {editor ?? (
-        <span style={{
-          fontSize: valueMuted ? '13.5px' : '19px',
-          fontWeight: valueMuted ? 500 : 700,
-          lineHeight: valueMuted ? '23px' : 1.2,
-          color: valueMuted ? colors.muted : colors.primary,
-          fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word',
-        }}>
-          {value}
+      {value}
+    </span>
+  )
+  const noteLine = note && !editor
+    ? (
+      <span style={{ display: 'flex', alignItems: 'baseline', gap: '5px', fontSize: '11px', color: colors.muted, lineHeight: 1.4 }}>
+        {toneColor && (
+          <span
+            aria-hidden="true"
+            style={{
+              width: '6px', height: '6px', borderRadius: '50%',
+              background: toneColor, flexShrink: 0, alignSelf: 'center',
+            }}
+          />
+        )}
+        <span style={{ minWidth: 0 }}>{note}</span>
+      </span>
+    )
+    : null
+
+  if (onClick && !editor) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={actionLabel}
+        title={hint}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = colors.raised }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = colors.base }}
+        style={{
+          ...METRIC_TILE,
+          // The tile is a cell of the 1px divider grid, so it keeps square
+          // corners, no border of its own and the inherited page font.
+          border: 'none', borderRadius: 0, font: 'inherit', textAlign: 'left',
+          width: '100%', cursor: 'pointer',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <span style={FIELD_LABEL}>{label}</span>
+          <ChevronRight size={13} strokeWidth={2} aria-hidden="true" style={{ color: colors.tertiary, flexShrink: 0 }} />
         </span>
-      )}
-      {note && !editor && <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.4 }}>{note}</span>}
+        {figure}
+        {noteLine}
+      </button>
+    )
+  }
+
+  return (
+    <div style={METRIC_TILE} title={hint}>
+      <span style={FIELD_LABEL}>{label}</span>
+      {figure}
+      {noteLine}
     </div>
   )
+}
+
+// ── Payment Position ──────────────────────────────────────────────────────────
+// How far the money actually received has taken this request towards the
+// advance BOE requires before an order proceeds.
+//
+//   Payment Position % = Payment Received ÷ TOTAL ORDER VALUE × 100
+//
+// The denominator is total_value ("Total Order Value" — the final complete order
+// amount) and NEVER total_product_value. They are two different commercial
+// figures (20260696000000 fixed both definitions by product decision), and
+// dividing by the products-only figure would report a position higher than the
+// customer has actually paid against the order they owe.
+//
+// Derived on every render from the values already on screen. Nothing is stored:
+// there is no authoritative payment-position column, and inventing one would put
+// a figure in the database that could silently disagree with its own inputs.
+//
+// This is presentation. It changes no amount, and both inputs are read as
+// NUMBERS — never parsed back out of a formatted currency string.
+
+const ADVANCE_THRESHOLD_PCT = 40
+
+type PaymentPosition =
+  | { kind: 'unavailable'; note: string }
+  | { kind: 'percent'; display: string; met: boolean; note: string }
+
+// Trims a percentage to at most one decimal place and drops a trailing ".0", so
+// the ledger reads 20% / 37.5% / 40% / 100% rather than 20.0% / 37.5% / 40.0%.
+function formatPercent(pct: number): string {
+  return `${Number(pct.toFixed(1))}%`
+}
+
+// Not exported: a page module must only export what the router expects, and
+// this is used in exactly one place. If it ever needs unit tests, it moves to
+// components/shared.ts alongside advanceFromPayments().
+function paymentPosition(
+  received: number | null,
+  totalOrderValue: number | null | undefined,
+): PaymentPosition {
+  // A failed payments query is NOT ₹0 received — it is an unknown numerator, and
+  // reporting 0% against the threshold would be a false negative.
+  if (received == null || !Number.isFinite(received)) {
+    return { kind: 'unavailable', note: 'Payment Received unavailable' }
+  }
+  // The only guard against a divide-by-zero: a null, non-numeric, zero or
+  // negative Total Order Value has no usable denominator, so no percentage is
+  // claimed at all.
+  const denominator = Number(totalOrderValue)
+  if (totalOrderValue == null || !Number.isFinite(denominator) || denominator <= 0) {
+    return { kind: 'unavailable', note: 'Total Order Value required' }
+  }
+
+  const pct = (received / denominator) * 100
+  // Deliberately UNCAPPED. An overpayment reads as 120%, not as a comfortable
+  // 100%, because it is exactly the kind of thing that needs someone to look.
+  const met = pct >= ADVANCE_THRESHOLD_PCT
+  return {
+    kind: 'percent',
+    display: formatPercent(pct),
+    met,
+    note: met
+      ? `${ADVANCE_THRESHOLD_PCT}% advance threshold met`
+      : `Below ${ADVANCE_THRESHOLD_PCT}% advance threshold`,
+  }
 }
 
 // ── Key dates ─────────────────────────────────────────────────────────────────
@@ -418,15 +564,26 @@ function OrderRequestDetailPageInner() {
   const [form,      setForm]      = useState<RequestForm>(EMPTY_FORM)
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  // The answer to an outstanding clarification. Lives only in 'resubmit' mode
+  // and is cleared by startEdit/cancelEdit, so a draft answer can never survive
+  // into an unrelated later edit.
+  const [clarificationResponse, setClarificationResponse] = useState('')
   // Staged attachment changes. Purely local until Save succeeds — nothing here
   // has touched Storage or the database.
   const [attachmentEdits, setAttachmentEdits] = useState<AttachmentEdits>(EMPTY_ATTACHMENT_EDITS)
 
-  const [linkPanelOpen, setLinkPanelOpen] = useState(false)
+  // ── Payment Received modal ──────────────────────────────────────────────────
+  // Everything payment-related now lives in ONE dialog, opened from the Payment
+  // Received figure in the Commercial Summary. Two flags, no abstraction: is it
+  // open, and which of its two views is showing. The view is held here rather
+  // than inside the modal so the ?link=1 deep link can open straight on the
+  // suspense search, exactly as it opened the old link panel.
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+  const [paymentModalView, setPaymentModalView] = useState<'linked' | 'available'>('linked')
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   // Focus is a side effect on a DOM node, so it is requested by bumping this
   // counter and performed in the effect below — the search input does not exist
-  // yet at the moment the panel is asked to open.
+  // yet at the moment the view is asked to change.
   const [focusLinkSearch, setFocusLinkSearch] = useState(0)
 
   const [actionMessage, setActionMessage] = useState<string | null>(null)
@@ -437,11 +594,24 @@ function OrderRequestDetailPageInner() {
   // Bumped after any action that writes history, so the timeline re-reads.
   const [activityKey, setActivityKey] = useState(0)
 
-  // Opens the payment-link panel and asks for the search box to take focus.
-  // The focus itself happens in the effect below, once the input exists.
-  const openLinkPanel = () => {
-    setLinkPanelOpen(true)
-    setFocusLinkSearch(n => n + 1)
+  // Switches the open modal between its two views, and asks the search box to
+  // take focus when the suspense search comes up. The focus itself happens in
+  // the effect below, once the input exists.
+  const showPaymentView = (view: 'linked' | 'available') => {
+    setPaymentModalView(view)
+    if (view === 'available') setFocusLinkSearch(n => n + 1)
+  }
+
+  const openPaymentModal = (view: 'linked' | 'available' = 'linked') => {
+    setPaymentModalOpen(true)
+    showPaymentView(view)
+  }
+
+  // Closing always resets the view, so the modal reopens on the linked payments
+  // rather than on whatever the last session left behind.
+  const closePaymentModal = () => {
+    setPaymentModalOpen(false)
+    setPaymentModalView('linked')
   }
 
   useEffect(() => {
@@ -501,7 +671,7 @@ function OrderRequestDetailPageInner() {
 
   // The payments attached to this request, read with the viewer's own RLS by
   // order_request_id. Owned by the page rather than by the payments card,
-  // because the same rows also produce the Advance Received figure and the
+  // because the same rows also produce the Payment Received figure and the
   // "no linked advance" exception — one page must not fetch them twice.
   const loadPayments = async () => {
     setPaymentsLoading(true)
@@ -625,7 +795,7 @@ function OrderRequestDetailPageInner() {
             setConvertTarget(true)
           }
           if (link === '1' && canManagePayments(loaded, session.user.id, meIsAdmin)) {
-            openLinkPanel()
+            openPaymentModal('available')
           }
           // Keep `from` so Back still returns to the originating list tab.
           router.replace(
@@ -646,7 +816,10 @@ function OrderRequestDetailPageInner() {
   // Each mirrors, and never widens, the server-side gate named in shared.ts.
   const canReview       = !!request && isAdmin && request.status === 'submitted'
   const isRequester     = !!request && isPermittedRequester(request, currentUserId)
-  const canResubmit     = !!request && request.status === 'needs_clarification' && isRequester
+  // Widened from isRequester (created_by/requested_by) to include the CURRENT
+  // ASSIGNEE — see canRespondToClarification. An admin-raised request left the
+  // salesperson it was assigned to with no way to answer at all.
+  const canResubmit     = !!request && canRespondToClarification(request, currentUserId, isAdmin)
   const canReapply      = !!request && request.status === 'rejected' && isRequester
   const canEditNow      = !!request && canEditRequest(request, currentUserId, isAdmin)
   const canAttachments  = !!request && canEditAttachments(request, currentUserId, isAdmin)
@@ -668,10 +841,11 @@ function OrderRequestDetailPageInner() {
     if (!request) return
     setForm(formFromRequest(request))
     setAttachmentEdits(EMPTY_ATTACHMENT_EDITS)
+    setClarificationResponse('')
     setEditError(null)
     // Payment linking is a separate workflow that reloads the record when it
-    // succeeds; collapsing it keeps exactly one thing in progress at a time.
-    setLinkPanelOpen(false)
+    // succeeds; closing it keeps exactly one thing in progress at a time.
+    closePaymentModal()
     setEditMode(mode)
   }
 
@@ -682,6 +856,7 @@ function OrderRequestDetailPageInner() {
   const cancelEdit = () => {
     setEditMode(null)
     setEditError(null)
+    setClarificationResponse('')
     setAttachmentEdits(EMPTY_ATTACHMENT_EDITS)
   }
 
@@ -804,7 +979,13 @@ function OrderRequestDetailPageInner() {
   const saveEdit = async () => {
     if (!request || !editMode || savingEdit) return
 
-    const invalid = validateRequestForm(form) ?? validateAttachmentEdits(attachmentEdits)
+    // The response is validated FIRST and before any upload starts: a missing
+    // answer is the one failure that should cost nothing, and letting the
+    // attachment upload run before discovering it would leave files applied to a
+    // request that was never resubmitted.
+    const invalid = (editMode === 'resubmit' ? validateClarificationResponse(clarificationResponse) : null)
+      ?? validateRequestForm(form)
+      ?? validateAttachmentEdits(attachmentEdits)
     if (invalid) { setEditError(invalid); return }
 
     setSavingEdit(true)
@@ -822,7 +1003,9 @@ function OrderRequestDetailPageInner() {
       setAttachmentEdits(EMPTY_ATTACHMENT_EDITS)
     }
 
-    const failure = await persistRequestForm({ supabase, mode: editMode, request, form })
+    const failure = await persistRequestForm({
+      supabase, mode: editMode, request, form, clarificationResponse,
+    })
     setSavingEdit(false)
     if (failure) {
       setEditError(attachmentsApplied
@@ -834,13 +1017,14 @@ function OrderRequestDetailPageInner() {
 
     const mode = editMode
     setEditMode(null)
+    setClarificationResponse('')
     setConverted(null)
     const attachmentNote = attachmentsApplied ? ' Attachments updated.' : ''
     setActionMessage(
       mode === 'edit'
         ? `${request.request_number} updated.${attachmentNote}`
         : mode === 'resubmit'
-          ? `${request.request_number} updated and resubmitted. It is back under review.${attachmentNote}`
+          ? `Clarification response submitted. The request is back under review.${attachmentNote}`
           : `${request.request_number} updated and reapplied. It is back under review.${attachmentNote}`
     )
     await reloadAll()
@@ -899,6 +1083,16 @@ function OrderRequestDetailPageInner() {
 
   const r = request
   const advance = advanceFromPayments(payments)
+  // Payment Position reads the SAME advance figure the tile above it shows, as a
+  // number. `restricted` means the payments query failed, so the numerator is
+  // genuinely unknown and stays null — it must never collapse to ₹0, which would
+  // report a false "Below 40%".
+  const received = advance.kind === 'request_linked'
+    ? advance.received
+    : advance.kind === 'not_linked'
+      ? 0
+      : null
+  const position = paymentPosition(received, r.total_value)
   const mainPi  = attachments.find(a => a.attachment_type === 'main_pi') ?? null
 
   // ── Exceptions worth the reader's attention, in the order they matter ──
@@ -948,10 +1142,10 @@ function OrderRequestDetailPageInner() {
         body="No Main PI is attached to this request. It was submitted before Main PI attachments were required." />
     )
   }
-  // "No advance linked" is deliberately NOT a banner: the Advance Received
+  // "No advance linked" is deliberately NOT a banner: the Payment Received
   // figure in the summary strip already states it in the one place a reader
-  // looks for it, and Link Payment is one control in the action bar. Repeating
-  // the same fact and the same control three times is noise, not attention.
+  // looks for it, and it is itself the way into the payments. Repeating the
+  // same fact and the same control three times is noise, not attention.
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   // Three tiers, so prominence tracks consequence instead of being uniform:
@@ -964,7 +1158,7 @@ function OrderRequestDetailPageInner() {
   const primaryAction = canReview
     ? { label: 'Convert to Order',    onClick: () => setConvertTarget(true) }
     : canResubmit
-      ? { label: 'Update and Resubmit', onClick: () => startEdit('resubmit') }
+      ? { label: 'Respond and Resubmit', onClick: () => startEdit('resubmit') }
       : canReapply
         ? { label: 'Update and Reapply', onClick: () => startEdit('reapply') }
         : canEditNow
@@ -977,7 +1171,7 @@ function OrderRequestDetailPageInner() {
     quietActions.push({ label: 'Edit Request', onClick: () => startEdit('edit') })
   }
   if (canPayments) {
-    quietActions.push({ label: 'Link Payment', onClick: openLinkPanel })
+    quietActions.push({ label: 'Link Payment', onClick: () => openPaymentModal('available') })
   }
 
   const reviewActions: { label: string; onClick: () => void; danger?: boolean }[] = []
@@ -1134,6 +1328,59 @@ function OrderRequestDetailPageInner() {
                   </span>
                 )}
               </div>
+
+              {/* ── The clarification exchange, in the order it happened ──
+                  The question the reviewer asked, read-only and verbatim, and
+                  directly beneath it the box to answer it. Putting the two
+                  together is the point: the note is cleared from the record on
+                  resubmission, so this is the last moment the responder can see
+                  what they are answering. */}
+              {editMode === 'resubmit' && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: '10px',
+                  background: colors.raised, border: `1px solid ${colors.border}`,
+                  borderRadius: '8px', padding: '12px',
+                }}>
+                  {r.clarification_note && (
+                    <div>
+                      <div style={{
+                        fontSize: '11px', fontWeight: 700, color: colors.muted,
+                        textTransform: 'uppercase', letterSpacing: '0.04em',
+                      }}>
+                        Reviewer&rsquo;s clarification request
+                      </div>
+                      <div style={{
+                        fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6,
+                        whiteSpace: 'pre-wrap', marginTop: '5px',
+                        borderLeft: `2px solid ${colors.borderMed}`, paddingLeft: '10px',
+                      }}>
+                        {r.clarification_note}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label
+                      htmlFor="clarification-response"
+                      style={{
+                        display: 'block', fontSize: '11px', fontWeight: 700, color: colors.muted,
+                        textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '5px',
+                      }}
+                    >
+                      Response to Clarification <span style={{ color: colors.red }}>*</span>
+                    </label>
+                    <textarea
+                      id="clarification-response"
+                      value={clarificationResponse}
+                      onChange={e => setClarificationResponse(e.target.value)}
+                      disabled={savingEdit}
+                      rows={4}
+                      placeholder="Explain what was corrected or provide the information requested by the reviewer…"
+                      style={{ ...editInputStyle, resize: 'vertical', lineHeight: 1.6 }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {editError && (
                 <div style={{
                   fontSize: '12.5px', color: colors.red, lineHeight: 1.55,
@@ -1201,9 +1448,9 @@ function OrderRequestDetailPageInner() {
 
         {/* ── Main content ─────────────────────────────────────────────────────
             LEFT is the whole record, top to bottom: the commercial figures, the
-            key dates, the files, the request's own fields and its payments.
-            RIGHT is the activity history and nothing else — no ownership, no
-            status, no controls, no payments.
+            key dates, the files and the request's own fields. RIGHT is the
+            activity history and nothing else — no ownership, no status, no
+            controls, no payments.
 
             The rail STARTS LEVEL with the commercial summary rather than
             alongside the attachments: the history belongs to the entire record,
@@ -1218,10 +1465,10 @@ function OrderRequestDetailPageInner() {
             never given a fixed height, so it has no scrollbar of its own. ── */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', alignItems: 'flex-start' }}>
 
-          {/* LEFT — the record workspace: two aligned columns over three rows
+          {/* LEFT — the record workspace: two aligned columns over two rows
               (.boe-record-row / --col-main / --col-side in globals.css), so the
               figures, the dates, the files and the record's own fields read as
-              one surface rather than as five stacked bands. */}
+              one surface rather than as four stacked bands. */}
           <div style={{ flex: '999 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
             {/* ── Row 1 — what the request is worth, and when it is due ── */}
@@ -1229,11 +1476,19 @@ function OrderRequestDetailPageInner() {
 
               {/* Commercial summary — figures only in read mode; the two values
                   that belong to the request itself become inputs in place while
-                  editing. Linking is an action and lives in the action bar, so
-                  the card never carries a control. */}
+                  editing. One figure, Payment Received, is also the way into the
+                  payments modal; linking still happens there and in the action
+                  bar, never as a control sitting in this card. */}
               <div className="boe-record-col-main" style={{ ...cardStyle, display: 'flex', flexDirection: 'column' }}>
                 <div style={cardHeadStyle}><SectionHeader>Commercial Summary</SectionHeader></div>
                 <div className="boe-record-metrics" style={{ background: colors.border, flex: 1 }}>
+                  {/* NO "Excluding fabric and GST" line here, deliberately.
+                      20260696000000 fixes total_value, by product decision, as
+                      "the final complete order amount (products plus
+                      transport/packing/installation/TAXES/other charges)" — so
+                      labelling it GST-exclusive would state the opposite of what
+                      the column holds, on a financial figure. Raised for a
+                      decision rather than applied silently. */}
                   <MetricGroup
                     label="Total Order Value"
                     value={fmtAmount(r.total_value)}
@@ -1249,10 +1504,18 @@ function OrderRequestDetailPageInner() {
                       />
                     ) : undefined}
                   />
+                  {/* "Excluding fabric and GST" is BOE's standing commercial
+                      term for a products-only price, not a new claim: the
+                      showroom quotation prints "GST @ 18% extra" and "Fabric
+                      cost extra depending on selected fabric" on every document,
+                      and 20260696000000 fixes total_product_value as products
+                      only. The same line is deliberately NOT repeated under
+                      Total Order Value — see the comment on that tile. */}
                   <MetricGroup
                     label="Total Product Value"
                     value={fmtAmount(r.total_product_value)}
                     valueMuted={r.total_product_value == null}
+                    note="Excluding fabric and GST"
                     editor={editMode ? (
                       <input
                         type="number" min="0" step="0.01"
@@ -1264,32 +1527,81 @@ function OrderRequestDetailPageInner() {
                       />
                     ) : undefined}
                   />
+                  {/* Payment Received is the ENTRY POINT to the payments, not
+                      just a figure: the record no longer carries a permanent
+                      payments section, so this tile opens the one modal that
+                      lists them and — for a viewer the linkage RPCs would
+                      accept — links another. The amount and the count come from
+                      exactly the same advanceFromPayments() source as before;
+                      only the label and the affordance changed.
+
+                      Withheld while the record is being edited, so the bar's
+                      rule ("no other action may run against a record with
+                      uncommitted changes") is not quietly bypassed by a tile. */}
                   {advance.kind === 'request_linked' ? (
                     <MetricGroup
-                      label="Advance Received"
+                      label="Payment Received"
                       value={formatINR(advance.received)}
-                      note={`${advance.count} payment${advance.count !== 1 ? 's' : ''} linked`}
+                      note={`${advance.count} linked payment${advance.count !== 1 ? 's' : ''}`}
+                      onClick={editMode ? undefined : () => openPaymentModal('linked')}
+                      actionLabel="View linked payments"
                     />
                   ) : advance.kind === 'not_linked' ? (
                     <MetricGroup
-                      label="Advance Received"
+                      label="Payment Received"
                       value="Not linked"
                       valueMuted
-                      note={canPayments ? 'Use Link Payment to attach one' : 'Payments link after conversion'}
+                      note={canPayments ? 'Link a payment' : 'Payments link after conversion'}
+                      onClick={editMode ? undefined : () => openPaymentModal('linked')}
+                      actionLabel="View linked payments"
                     />
                   ) : (
-                    <MetricGroup label="Advance Received" value="—" valueMuted note="Could not be loaded" />
+                    <MetricGroup
+                      label="Payment Received"
+                      value="—"
+                      valueMuted
+                      note="Could not be loaded"
+                      onClick={editMode ? undefined : () => openPaymentModal('linked')}
+                      actionLabel="View linked payments"
+                    />
                   )}
-                  {/* Deliberately withheld before conversion: until an official
-                      Order exists there is no Order value to anchor a payment
-                      position against, and an invented percentage would be worse
-                      than none. */}
-                  <MetricGroup
-                    label="Payment Position"
-                    value="—"
-                    valueMuted
-                    note={r.converted_order_id ? 'Tracked on the Confirmed Order' : 'Available after conversion'}
-                  />
+                  {/* Payment Position — informational only. It is NOT clickable:
+                      Payment Received above it is the single entry point to the
+                      payments, and giving the ledger two doors to the same modal
+                      would only make the reader guess which one they wanted.
+
+                      Previously withheld until conversion, on the reasoning that
+                      only an official Order carried a value to divide by. The
+                      request itself carries Total Order Value, so the figure can
+                      be stated here — against that value, and never against
+                      Total Product Value.
+
+                      A CONVERTED request keeps the old treatment. Conversion
+                      moves its payments onto the Order (approved_unlinked ->
+                      approved_linked, 20260696000000 step 11), so the parked
+                      advance this figure is built from legitimately falls to
+                      zero — and printing a red "0%" for a request that was
+                      fully paid would be flatly wrong. */}
+                  {r.converted_order_id ? (
+                    <MetricGroup
+                      label="Payment Position"
+                      value="—"
+                      valueMuted
+                      note="Tracked on the Confirmed Order"
+                    />
+                  ) : (
+                    <MetricGroup
+                      label="Payment Position"
+                      value={position.kind === 'percent' ? position.display : 'Not available'}
+                      valueMuted={position.kind !== 'percent'}
+                      // Colour is the SECOND signal, never the only one — `note`
+                      // states the same verdict in words for anyone who cannot
+                      // use it, and the dot beside it is aria-hidden decoration.
+                      valueTone={position.kind === 'percent' ? (position.met ? 'success' : 'danger') : undefined}
+                      note={position.note}
+                      hint="Payment Position = Payment Received ÷ Total Order Value"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -1355,6 +1667,10 @@ function OrderRequestDetailPageInner() {
                   supabase={supabase}
                   loading={attachmentsLoading}
                   error={attachmentsError}
+                  // Gates the Excel preview only, because that one render leaves
+                  // BOE (Office Online). Everything else previews for any viewer
+                  // who can already see the row.
+                  isAdmin={isAdmin}
                   // Attachment editing follows the SAME rule as editing the request.
                   // The route and the SECURITY DEFINER RPC each enforce it again
                   // server-side — this only decides whether to offer the controls.
@@ -1492,46 +1808,11 @@ function OrderRequestDetailPageInner() {
               </div>
             </div>
 
-            {/* ── Row 3 — Linked Payments, FULL width of the workspace. It is a
-                table with its own columns and totals, so it is the one section
-                that must not sit in half a column; its internals, props and
-                behaviour are untouched by the layout above. ── */}
-            <RequestPaymentsCard
-              request={r}
-              rows={payments ?? []}
-              linkedBy={linkedBy}
-              loading={paymentsLoading}
-              error={paymentsError}
-              isAdmin={isAdmin}
-              currentUserId={currentUserId}
-              onView={setViewPayment}
-              // Editing an approved payment is Finance's workflow, and is
-              // admin-only in the database — deep-link to the row there rather
-              // than keeping a second edit form in sync with it.
-              onEdit={p => router.push(
-                p.order_id || p.order_request_id
-                  ? `/finance/received?payment=${p.id}&action=edit`
-                  : `/finance?request=${p.id}`
-              )}
-              onUnlink={setUnlinkPayment}
-            />
-
-            {/* Order-first payment linking — expands only from an explicit Link
-                Payment action, never on plain page load. */}
-            {canPayments && linkPanelOpen && (
-              <RequestPaymentLinkPanel
-                request={r}
-                supabase={supabase}
-                searchInputRef={searchInputRef}
-                // A non-admin's link search is restricted to their own
-                // submissions; an admin keeps the full suspense-ledger search.
-                ownOnlyUserId={isAdmin ? null : currentUserId}
-                onLinked={payment => {
-                  setActionMessage(`${fmtAmount(payment.amount)} from ${payment.client_name} linked to ${r.request_number}.`)
-                  void reloadAll()
-                }}
-              />
-            )}
+            {/* The payments used to occupy a permanent full-width row here. They
+                are now reached from the Payment Received figure in the
+                Commercial Summary above — see RequestPaymentsModal at the foot
+                of this file. Nothing replaces the row: the workspace simply ends
+                with the record's own fields. */}
           </div>
 
           {/* RIGHT — activity rail, and only activity. No max-width and no
@@ -1598,6 +1879,56 @@ function OrderRequestDetailPageInner() {
             queryClient.invalidateQueries({ queryKey: ['order-requests', 'total-count'] })
             setDeleted({ requestNumber, unlinkedCount })
           }}
+        />
+      )}
+
+      {/* ── Payment Received — the one payment surface on this page ──
+          Opened from the Commercial Summary figure (any viewer who can read the
+          request), from the Link Payment action, and from the ?link=1 deep link.
+          Its own two views handle linking, so nothing opens on top of it: the
+          three per-row actions each CLOSE it first, because the payment detail
+          and unlink dialogs share this exact overlay layer and would otherwise
+          arm a second Escape handler over the same backdrop. */}
+      {paymentModalOpen && (
+        <RequestPaymentsModal
+          request={r}
+          supabase={supabase}
+          rows={payments ?? []}
+          linkedBy={linkedBy}
+          loading={paymentsLoading}
+          error={paymentsError}
+          isAdmin={isAdmin}
+          currentUserId={currentUserId}
+          // Viewing is open to anyone who can already read this request; only
+          // linking is gated, by the same rule the two linkage RPCs enforce.
+          canLink={canPayments}
+          view={paymentModalView}
+          onViewChange={showPaymentView}
+          searchInputRef={searchInputRef}
+          onView={p => { closePaymentModal(); setViewPayment(p) }}
+          // Editing an approved payment is Finance's workflow, and is
+          // admin-only in the database — deep-link to the row there rather
+          // than keeping a second edit form in sync with it.
+          onEdit={p => {
+            closePaymentModal()
+            router.push(
+              p.order_id || p.order_request_id
+                ? `/finance/received?payment=${p.id}&action=edit`
+                : `/finance?request=${p.id}`
+            )
+          }}
+          onUnlink={p => { closePaymentModal(); setUnlinkPayment(p) }}
+          // Order-first payment linking. Same success path as before: report it,
+          // re-read the record, and let the refreshed rows drive both the linked
+          // list and the Payment Received figure. The modal stays open and
+          // returns to the linked payments, so the newly attached payment is
+          // visible in the list it was just added to.
+          onLinked={payment => {
+            setActionMessage(`${fmtAmount(payment.amount)} from ${payment.client_name} linked to ${r.request_number}.`)
+            setPaymentModalView('linked')
+            void reloadAll()
+          }}
+          onClose={closePaymentModal}
         />
       )}
 

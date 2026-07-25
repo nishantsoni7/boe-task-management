@@ -6,6 +6,9 @@
  * fixture is a tiny in-limit file, so `prepareAttachment` returns before any
  * image/canvas work — no DOM is needed.
  *
+ * Also covers isExcelAttachmentName, which decides which attachments take the
+ * role-gated preview path (see canPreviewAttachment in RequestPanels).
+ *
  * Run:
  *   npx tsx --test src/lib/orderRequestAttachments.test.ts
  */
@@ -16,6 +19,7 @@ import { File as NodeFile } from 'node:buffer'
 import {
   resolveUploadType,
   prepareAttachment,
+  isExcelAttachmentName,
   MAIN_PI_ACCEPT,
   REFERENCE_ACCEPT,
 } from './orderRequestAttachments'
@@ -109,3 +113,21 @@ describe('accept attribute strings', () => {
     assert.ok(!MAIN_PI_ACCEPT.includes('image/'))
   })
 })
+
+// Which attachments render off-site. Excel is the only type whose preview leaves
+// BOE (Office Online), so this predicate is what the role gate hangs on.
+describe('isExcelAttachmentName', () => {
+  for (const name of ['pi.xlsx', 'pi.xls', 'PI.XLSX', 'PI.XLS', 'a.b.c.xlsx']) {
+    test(`${name} is Excel`, () => assert.equal(isExcelAttachmentName(name), true))
+  }
+  // Every one of these renders entirely inside the browser and must never be
+  // pulled onto the role-gated path.
+  for (const name of ['quote.pdf', 'site.jpg', 'render.png', 'sketch.webp', 'items.csv', 'notes.txt', 'letter.docx', 'noext']) {
+    test(`${name} is not Excel`, () => assert.equal(isExcelAttachmentName(name), false))
+  }
+  test('a name that merely contains "xlsx" is not Excel', () => {
+    assert.equal(isExcelAttachmentName('xlsx-guide.pdf'), false)
+    assert.equal(isExcelAttachmentName('pi.xlsx.exe'), false)
+  })
+})
+
