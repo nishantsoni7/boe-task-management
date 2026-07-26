@@ -24,8 +24,10 @@ import {
   canRespondToClarification,
   clarificationResponseErrorMessage,
   convertGuardErrorMessage,
+  paymentAccountLabel,
   paymentStatusMeta,
   splitPayments,
+  sumAmounts,
   validateClarificationResponse,
   NO_APPROVED_PAYMENT_MESSAGE,
   CLARIFICATION_RESPONSE_REQUIRED,
@@ -1085,6 +1087,68 @@ describe('edit RPC arguments — what decides a field "changed"', () => {
     // ignoring it, so an assignee saving any other field depends on this.
     const r = req({ assigned_to: ASSIGNEE })
     assert.equal(buildRequestFormPayload(r.id, formFromRequest(r)).p_assigned_to, ASSIGNEE)
+  })
+})
+
+describe('payment mode reads as the account the money landed in', () => {
+  // The Convert confirmation's Payment Mode column. payment_mode alone only
+  // stores bank_transfer/cash/upi/cheque/other — the account name Finance's own
+  // form recorded is in the PAIR, so it is read from the pair or not at all.
+  test('each pair Finance can submit resolves to its account name', () => {
+    assert.equal(paymentAccountLabel('bank_transfer', 'company_account'), 'HDFC')
+    assert.equal(paymentAccountLabel('bank_transfer', 'savings_account'), 'Canara')
+    assert.equal(paymentAccountLabel('cash',          'cash_in_hand'),    'Paytm')
+    assert.equal(paymentAccountLabel('other',         'other'),           'PNB')
+  })
+
+  test('a pair the account options cannot produce falls back to the stored mode', () => {
+    // A legacy row, or one written before the account options existed. It reads
+    // as the mode it actually holds — an account name is never guessed for it.
+    assert.equal(paymentAccountLabel('upi',    'company_account'), 'UPI')
+    assert.equal(paymentAccountLabel('cheque', 'other'),           'Cheque')
+    assert.equal(paymentAccountLabel('cash',   'company_account'), 'Cash')
+  })
+
+  test('an unrecognised mode is shown verbatim rather than mapped to an account', () => {
+    assert.equal(paymentAccountLabel('neft', 'company_account'), 'neft')
+  })
+})
+
+describe('convert-modal payment totals', () => {
+  test('a total sums exactly the rows handed in, and nothing else', () => {
+    assert.equal(sumAmounts([{ amount: 100000 }, { amount: 25000 }, { amount: 500 }]), 125500)
+    assert.equal(sumAmounts([]), 0)
+  })
+
+  test('numeric strings from Supabase are coerced, not concatenated', () => {
+    assert.equal(sumAmounts([{ amount: '100000' }, { amount: '25000.5' }]), 125000.5)
+  })
+
+  test('the transferring total counts approved rows only — pending and rejected are not money', () => {
+    // Mirrors the modal's own split: only status 'approved_unlinked' transfers
+    // during conversion, so the figure under the transferring table can never
+    // include a payment Finance has not approved.
+    const rows = [
+      pay({ id: 'p-1', amount: 100000, status: 'approved_unlinked' }),
+      pay({ id: 'p-2', amount: 50000,  status: 'pending_approval' }),
+      pay({ id: 'p-3', amount: 70000,  status: 'needs_clarification' }),
+      pay({ id: 'p-4', amount: 30000,  status: 'rejected' }),
+      pay({ id: 'p-5', amount: 25000,  status: 'approved_unlinked' }),
+    ]
+    assert.equal(sumAmounts(rows.filter(p => p.status === 'approved_unlinked')), 125000)
+  })
+
+  test('the selected total follows the selection, not the whole eligible list', () => {
+    const eligible = [
+      pay({ id: 'p-1', amount: 100000 }),
+      pay({ id: 'p-2', amount: 40000  }),
+      pay({ id: 'p-3', amount: 10000  }),
+    ]
+    const selected = new Set(['p-1', 'p-3'])
+    assert.equal(sumAmounts(eligible.filter(p => selected.has(p.id))), 110000)
+    // Deselecting is the same computation, so the figure cannot go stale.
+    selected.delete('p-3')
+    assert.equal(sumAmounts(eligible.filter(p => selected.has(p.id))), 100000)
   })
 })
 

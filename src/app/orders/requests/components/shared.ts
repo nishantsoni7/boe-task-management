@@ -238,6 +238,10 @@ export type EligiblePayment = {
   client_name: string
   amount: number
   payment_date: string
+  // The account the money landed in, as the (payment_mode, received_in) pair
+  // Finance stores — read together through paymentAccountLabel, never alone.
+  payment_mode: string
+  received_in: string
   proof_note: string | null
   // Always 'approved_unlinked' for a row offered in the eligible list, but read
   // and carried for the payments ALREADY parked on the request — since 20260715
@@ -356,6 +360,43 @@ export const RECEIVED_IN_LABEL: Record<string, string> = {
   cash_in_hand:    'Paytm',
   savings_account: 'Canara',
   other:           'PNB',
+}
+
+// ── Payment mode as ONE account name ─────────────────────────────────────────
+// The account a payment landed in is not stored in one column: Finance's own
+// submit form writes a (payment_mode, received_in) PAIR, and the account name
+// the user actually picked — HDFC / PNB / Paytm / Canara — is only recoverable
+// from the pair. This mirrors PAYMENT_MODE_DB_MAP + displayPaymentMode on the
+// Finance Payment Requests page (finance/page.tsx), which owns this table and
+// is where these rows were submitted and approved, so one payment reads with
+// the same account name on both surfaces.
+//
+// A pair Finance's form cannot produce (a legacy row, or a mode written before
+// the account options existed) falls back to the raw payment_mode label rather
+// than being forced into an account it was never recorded against — the account
+// name is never guessed.
+const PAYMENT_ACCOUNT_BY_PAIR: { payment_mode: string; received_in: string; label: string }[] = [
+  { payment_mode: 'bank_transfer', received_in: 'company_account', label: 'HDFC'   },
+  { payment_mode: 'bank_transfer', received_in: 'savings_account', label: 'Canara' },
+  { payment_mode: 'cash',          received_in: 'cash_in_hand',    label: 'Paytm'  },
+  { payment_mode: 'other',         received_in: 'other',           label: 'PNB'    },
+]
+
+export function paymentAccountLabel(payment_mode: string, received_in: string): string {
+  const pair = PAYMENT_ACCOUNT_BY_PAIR.find(
+    p => p.payment_mode === payment_mode && p.received_in === received_in
+  )
+  if (pair) return pair.label
+  return PAYMENT_MODE_LABEL[payment_mode] ?? payment_mode
+}
+
+// Sums the amounts of exactly the rows handed in — never a wider set. Both
+// figures the Convert modal states (what transfers automatically, and what the
+// admin has selected) come from here, so neither can drift from the list it
+// sits under. `amount` arrives from Supabase as a numeric string on some
+// queries and a number on others, hence the coercion.
+export function sumAmounts(rows: { amount: number | string }[]): number {
+  return rows.reduce((sum, r) => sum + Number(r.amount), 0)
 }
 
 // Payment-status badges for the Payments section. Colours are the Finance

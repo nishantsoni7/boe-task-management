@@ -12,10 +12,10 @@
 // Every authorization rule, RPC, notification and error mapping is unchanged
 // from the original implementation on the list page.
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
-import { X } from 'lucide-react'
+import { AlertTriangle, X } from 'lucide-react'
 import { notifyOrders } from '@/lib/notify'
 import { formatINR } from '@/lib/currency'
 import { orderNumberErrorMessage } from '@/lib/orderNumbering'
@@ -26,6 +26,8 @@ import {
   fmtAmount,
   fmtDate,
   normalizeClientName,
+  paymentAccountLabel,
+  sumAmounts,
   useEscapeToClose,
   LEAD_SOURCE_OPTIONS,
   NO_APPROVED_PAYMENT_MESSAGE,
@@ -33,6 +35,161 @@ import {
   type EligiblePayment,
   type OrderRequest,
 } from './shared'
+
+// ── Convert modal presentation primitives ─────────────────────────────────────
+// The Convert confirmation states three different payment sets — what transfers
+// automatically, what is attached but not approved, and what the admin may
+// additionally select — and they have to read as ONE structure, because the
+// admin is comparing them. So all three go through the same frame, the same
+// header treatment, the same row height and the same column alignment, defined
+// once here at module scope rather than rebuilt on every render.
+//
+// The table is deliberately the heaviest element in the dialog: the summary card
+// above it is grouped rows on a neutral background, no per-field tiles.
+
+const SR_ONLY: React.CSSProperties = {
+  position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px',
+  overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0,
+}
+
+const CONVERT_LABEL: React.CSSProperties = {
+  fontSize: '10px', fontWeight: 700, color: colors.muted,
+  textTransform: 'uppercase', letterSpacing: '0.06em',
+}
+
+const TH: React.CSSProperties = {
+  ...CONVERT_LABEL, padding: '7px 10px', textAlign: 'left', whiteSpace: 'nowrap',
+}
+
+const TD: React.CSSProperties = {
+  padding: '8px 10px', fontSize: '12.5px', color: colors.secondary,
+  whiteSpace: 'nowrap', verticalAlign: 'top',
+}
+
+// Amounts: right aligned, heavier than the row around them, and tabular so the
+// rupee figures in a column line up digit for digit.
+const TD_AMOUNT: React.CSSProperties = {
+  ...TD, textAlign: 'right', fontWeight: 700, color: colors.primary,
+  fontVariantNumeric: 'tabular-nums',
+}
+
+function SectionHeading({ title, note }: { title: string; note?: string }) {
+  return (
+    <>
+      <h3 style={{ ...CONVERT_LABEL, margin: 0, whiteSpace: 'normal' }}>{title}</h3>
+      {note && (
+        <div style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.45, margin: '3px 0 7px' }}>
+          {note}
+        </div>
+      )}
+      {!note && <div style={{ height: '6px' }} />}
+    </>
+  )
+}
+
+// Rounded, bordered frame around one payment table. The horizontal scroll lives
+// HERE rather than on the dialog: on a narrow screen the table slides inside its
+// own frame and the rest of the dialog stays put.
+function TableFrame({ minWidth = 460, children }: { minWidth?: number; children: React.ReactNode }) {
+  return (
+    <div style={{
+      border: `1px solid ${colors.border}`, borderRadius: '8px',
+      overflow: 'hidden', background: colors.base,
+    }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', minWidth: `${minWidth}px`, borderCollapse: 'collapse' }}>
+          {children}
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// Loading and empty states for a payment section: one compact line in the same
+// frame the table would occupy, not a large dashed placeholder.
+function TableNotice({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      border: `1px solid ${colors.border}`, borderRadius: '8px',
+      background: colors.raised, padding: '10px 12px',
+      fontSize: '12px', color: colors.muted,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+// The Payment Request cell: the request number is the primary value, and the
+// client name is secondary muted text shown only where the caller says it adds
+// something. `strong` marks a selected row without relying on the tint.
+function PaymentRef({
+  payment: p,
+  showClient = false,
+  strong = false,
+  otherClient = false,
+}: {
+  payment: EligiblePayment
+  showClient?: boolean
+  strong?: boolean
+  otherClient?: boolean
+}) {
+  return (
+    <span style={{ display: 'block', minWidth: 0 }}>
+      <span style={{
+        display: 'block', fontSize: '12.5px', fontWeight: strong ? 700 : 600,
+        color: colors.primary, fontVariantNumeric: 'tabular-nums',
+      }}>
+        {p.request_number}
+        {otherClient && (
+          <span style={{
+            marginLeft: '6px', fontSize: '10px', fontWeight: 600, whiteSpace: 'nowrap',
+            color: '#9A3412', background: '#FFF7ED', border: '1px solid #FED7AA',
+            borderRadius: '4px', padding: '1px 5px',
+          }}>
+            Different client
+          </span>
+        )}
+      </span>
+      {showClient && (
+        <span style={{ display: 'block', fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+          {p.client_name}
+        </span>
+      )}
+    </span>
+  )
+}
+
+// One field in the Order information card. A value the request does not carry
+// reads as a quiet "Not provided" rather than an em dash given the weight of an
+// answer; financial values carry slightly more weight than the rest.
+function SummaryField({
+  label,
+  value,
+  emphasis = false,
+  span = false,
+}: {
+  label: string
+  value: string | null
+  emphasis?: boolean
+  span?: boolean
+}) {
+  const provided = value != null && value !== ''
+  return (
+    <div style={{ minWidth: 0, gridColumn: span ? '1 / -1' : undefined }}>
+      <div style={{ ...CONVERT_LABEL, marginBottom: '3px' }}>{label}</div>
+      <div style={{
+        fontSize: emphasis ? '14px' : '12.5px',
+        fontWeight: emphasis ? 700 : 500,
+        color: provided ? colors.primary : colors.muted,
+        fontVariantNumeric: emphasis ? 'tabular-nums' : undefined,
+        lineHeight: 1.45, wordBreak: 'break-word',
+        whiteSpace: span ? 'pre-wrap' : undefined,
+      }}>
+        {provided ? value : 'Not provided'}
+      </div>
+    </div>
+  )
+}
 
 // ── Convert to Order modal (admin only) ───────────────────────────────────────
 // Confirmation only: every value that ends up on the official Order is derived
@@ -69,7 +226,12 @@ export function ConvertModal({
   // since it depends on comparing against this specific request's client_name.
   const loadEligiblePayments = async () => {
     setLoadingPayments(true)
-    const paymentColumns = 'id, request_number, client_name, amount, payment_date, proof_note, status, submitted_by_user:users!submitted_by(full_name)'
+    // payment_mode + received_in are read as a PAIR: the account name the
+    // payment table shows (HDFC / PNB / Paytm / Canara) exists only in the
+    // combination, exactly as the Finance Payment Requests page reads it. Both
+    // datasets below share this one column list, so the two tables can never
+    // resolve the same payment to different accounts.
+    const paymentColumns = 'id, request_number, client_name, amount, payment_date, payment_mode, received_in, proof_note, status, submitted_by_user:users!submitted_by(full_name)'
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapRows = (rows: any[]): EligiblePayment[] => rows.map(p => ({
       id: p.id,
@@ -77,6 +239,8 @@ export function ConvertModal({
       client_name: p.client_name,
       amount: p.amount,
       payment_date: p.payment_date,
+      payment_mode: p.payment_mode,
+      received_in: p.received_in,
       proof_note: p.proof_note ?? null,
       status: p.status,
       submitted_by_name: p.submitted_by_user?.full_name ?? undefined,
@@ -145,7 +309,13 @@ export function ConvertModal({
   const preLinkedRejected  = preLinked.filter(p => p.status === 'rejected')
 
   const selectedList  = payments.filter(p => selected.has(p.id))
-  const selectedTotal = selectedList.reduce((sum, p) => sum + Number(p.amount), 0)
+  // Both figures sum EXACTLY the rows listed beneath them and nothing else: the
+  // transferring total covers the approved pre-linked rows only — never an
+  // undecided or rejected one, which are not money — and the selected total
+  // covers the live selection. Same helper for both, so a total can never come
+  // from a different set than the table it labels.
+  const selectedTotal   = sumAmounts(selectedList)
+  const transferTotal   = sumAmounts(preLinkedApproved)
 
   // The two conversion guards, mirrored. convert_order_request_to_order enforces
   // both under row locks and is the actual gate — this only tells the admin
@@ -166,6 +336,49 @@ export function ConvertModal({
   // Escape closes; the backdrop does not (form-modal dismissal rule). Selected
   // payments are unsaved input, so an outside click must never discard them.
   useEscapeToClose(onClose, !saving)
+
+  // ── Modality ────────────────────────────────────────────────────────────────
+  // The dialog IS the modal for as long as it is open: the page behind it does
+  // not scroll (so the reader cannot lose the dialog while scrolling a long
+  // payment table), and Tab cycles inside it, so a keyboard user cannot reach
+  // the request page underneath. Focus starts on the dialog, which is what
+  // makes the accessible name announce before anything inside it. Escape
+  // dismissal stays with useEscapeToClose above — deliberately inert while a
+  // conversion is in flight.
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    dialogRef.current?.focus()
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return
+      const dialog = dialogRef.current
+      if (!dialog) return
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')
+      ).filter(el => el.offsetParent !== null)
+      if (focusable.length === 0) return
+      const first  = focusable[0]
+      const last   = focusable[focusable.length - 1]
+      const active = document.activeElement
+      // Only the two boundaries are intercepted — every Tab in between is the
+      // browser's own, so reading order inside the dialog is untouched.
+      if (e.shiftKey && (active === first || active === dialog)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
 
   const handleConvert = async () => {
     if (saving || blockedReason) return  // the RPC is the real guard for both
@@ -233,27 +446,27 @@ export function ConvertModal({
     onConverted(result)
   }
 
-  const rowStyle: React.CSSProperties = {
-    display: 'flex', justifyContent: 'space-between', gap: '16px',
-    padding: '7px 0', borderBottom: `1px solid ${colors.border}`, fontSize: '13px',
-  }
-  const keyStyle: React.CSSProperties = {
-    color: colors.muted, fontSize: '11px', fontWeight: 600,
-    textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
-  }
-  const valStyle: React.CSSProperties = { color: colors.primary, textAlign: 'right' }
-
-  const carried: { label: string; value: string }[] = [
-    { label: 'Client',                 value: request.client_name },
-    { label: 'Requested By',           value: request.requested_by_name ?? '—' },
-    { label: 'Assignee',               value: request.assigned_to_name ?? '—' },
-    { label: 'Confirmation Date',      value: fmtDate(request.confirm_date) },
-    { label: 'Due Date',               value: fmtDate(request.due_date) },
-    { label: 'Total Product Value',    value: fmtAmount(request.total_product_value) },
-    { label: 'Total Order Value',      value: fmtAmount(request.total_value) },
-    { label: 'Lead Source',            value: LEAD_SOURCE_OPTIONS.find(o => o.value === request.lead_source)?.label ?? '—' },
-    { label: 'Notes',                  value: request.notes?.trim() || '—' },
+  // ── Order information summary ───────────────────────────────────────────────
+  // Grouped in reading order — who and what, then when, then how much — so the
+  // commercial figures sit last, immediately above the payment tables they have
+  // to be reconciled against. `null` means the request genuinely does not carry
+  // the value and reads as a quiet "Not provided"; an em dash is never given the
+  // weight of an answer.
+  const carried: { label: string; value: string | null; emphasis?: boolean; span?: boolean }[] = [
+    { label: 'Client',              value: request.client_name },
+    { label: 'Lead Source',         value: LEAD_SOURCE_OPTIONS.find(o => o.value === request.lead_source)?.label ?? null },
+    { label: 'Requested By',        value: request.requested_by_name ?? null },
+    { label: 'Assignee',            value: request.assigned_to_name ?? null },
+    { label: 'Confirmation Date',   value: request.confirm_date ? fmtDate(request.confirm_date) : null },
+    { label: 'Due Date',            value: request.due_date ? fmtDate(request.due_date) : null },
+    { label: 'Total Product Value', value: request.total_product_value == null ? null : fmtAmount(request.total_product_value), emphasis: true },
+    { label: 'Total Order Value',   value: request.total_value == null ? null : fmtAmount(request.total_value), emphasis: true },
+    { label: 'Notes',               value: request.notes?.trim() || null, span: true },
   ]
+
+  // Everything that ends up attached to the new Order, for the footer's running
+  // count — the two sets the two tables list, and nothing else.
+  const footerTotal = sumAmounts([...preLinkedApproved, ...selectedList])
 
   return (
     <div
@@ -267,54 +480,113 @@ export function ConvertModal({
       // click never closes and never discards entered data. Dismiss via ×,
       // Cancel, Escape (useEscapeToClose above), or a successful submit.
     >
-      <div style={{
-        background: colors.base,
-        border: `1px solid ${colors.border}`,
-        borderRadius: '12px',
-        width: '100%', maxWidth: '520px',
-        maxHeight: '90vh', overflowY: 'auto',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-      }}>
-        {/* Header */}
+      {/* ── Dialog: fixed header, one scrolling body, pinned footer ──
+             The dialog itself never scrolls (overflow: hidden) — the body is the
+             single scroller, so the title, the request being converted and the
+             two actions stay on screen however long the payment tables run, and
+             the page behind never scrolls (lock effect above).
+
+             880px is what the four-column payment table needs to read without
+             wrapping; it is capped at the viewport so a laptop or a phone gets
+             the same dialog, narrower, with the tables scrolling sideways inside
+             their own frames rather than the dialog. ── */}
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="convert-order-title"
+        tabIndex={-1}
+        style={{
+          background: colors.base,
+          border: `1px solid ${colors.border}`,
+          borderRadius: '12px',
+          width: '100%', maxWidth: '880px',
+          maxHeight: 'calc(100vh - 32px)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden', outline: 'none',
+        }}
+      >
+        {/* ── Header — what is being converted, and into what ── */}
         <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px', borderBottom: `1px solid ${colors.border}`,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '14px',
+          padding: '14px 20px', borderBottom: `1px solid ${colors.border}`, flexShrink: 0,
         }}>
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>Convert to Official Order</div>
-            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-              {request.request_number}
+          <div style={{ minWidth: 0 }}>
+            <h2 id="convert-order-title" style={{
+              margin: 0, fontSize: '16px', fontWeight: 700, color: colors.primary, lineHeight: 1.25,
+            }}>
+              Convert to Official Order
+            </h2>
+            <div style={{
+              fontSize: '12.5px', fontWeight: 600, color: colors.secondary, marginTop: '3px',
+              fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word',
+            }}>
+              {request.request_number} · {request.client_name}
+            </div>
+            <div style={{ fontSize: '11.5px', color: colors.tertiary, marginTop: '4px', lineHeight: 1.45 }}>
+              This request and the payments below become part of a new official Order,
+              numbered automatically when you confirm.
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             disabled={saving}
             aria-label="Close"
-            style={{ background: 'none', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', color: colors.muted, display: 'flex' }}
+            style={{
+              background: 'none', border: 'none', padding: '2px', display: 'flex', flexShrink: 0,
+              color: colors.muted, cursor: saving ? 'not-allowed' : 'pointer',
+            }}
           >
             <X size={16} />
           </button>
         </div>
 
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* ── Body — the only scroller in the dialog. Every direct child is
+               flexShrink: 0 so a child that clips its own overflow (the table
+               frames) keeps its natural height instead of being squashed. ── */}
+        <div style={{
+          flex: 1, overflowY: 'auto', overflowX: 'hidden',
+          padding: '14px 20px 18px',
+          display: 'flex', flexDirection: 'column', gap: '16px',
+        }}>
+          {/* ── 1. Conversion warning ── */}
           <div style={{
+            flexShrink: 0, display: 'flex', gap: '9px',
             fontSize: '12px', color: '#92400E',
             background: '#FFFBEB', border: '1px solid #FDE68A',
-            borderRadius: '6px', padding: '9px 12px', lineHeight: 1.5,
+            borderRadius: '8px', padding: '9px 11px', lineHeight: 1.45,
           }}>
-            An official Order number will be allocated automatically when you confirm.
-            This cannot be undone — the request will be permanently marked Converted
-            and linked to the new Order.
+            <span style={{ display: 'flex', flexShrink: 0, marginTop: '1px' }}>
+              <AlertTriangle size={14} strokeWidth={2.2} aria-hidden="true" />
+            </span>
+            <span style={{ minWidth: 0 }}>
+              <strong style={{ fontWeight: 700 }}>Permanent conversion.</strong>{' '}
+              This request will be marked Converted and linked to the newly created
+              official Order. This action cannot be reversed.
+            </span>
           </div>
 
-          <div>
-            <div style={{ ...keyStyle, marginBottom: '4px' }}>Carried into the official Order</div>
-            {carried.map(f => (
-              <div key={f.label} style={rowStyle}>
-                <span style={keyStyle}>{f.label}</span>
-                <span style={valStyle}>{f.value}</span>
-              </div>
-            ))}
+          {/* ── 2. Order information summary — two columns on desktop, one when
+                 the dialog is narrower than the pair can hold. ── */}
+          <div style={{ flexShrink: 0 }}>
+            <SectionHeading title="Order information" />
+            <div style={{
+              border: `1px solid ${colors.border}`, borderRadius: '8px',
+              background: colors.raised, padding: '13px 15px',
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              columnGap: '22px', rowGap: '11px',
+            }}>
+              {carried.map(f => (
+                <SummaryField
+                  key={f.label}
+                  label={f.label}
+                  value={f.value}
+                  emphasis={f.emphasis}
+                  span={f.span}
+                />
+              ))}
+            </div>
           </div>
 
           {/* ── The reason this conversion cannot proceed ──
@@ -324,193 +596,223 @@ export function ConvertModal({
                  saves a round trip. */}
           {blockedReason && (
             <div style={{
-              fontSize: '12px', color: '#991B1B',
+              flexShrink: 0, fontSize: '12px', color: '#991B1B',
               background: '#FEF2F2', border: '1px solid #FECACA',
-              borderRadius: '6px', padding: '9px 12px', lineHeight: 1.5,
+              borderRadius: '8px', padding: '9px 12px', lineHeight: 1.45,
             }}>
               {blockedReason}
             </div>
           )}
 
-          {/* ── Approved payments on this request — transfer automatically ── */}
-          {!loadingPayments && preLinkedApproved.length > 0 && (
-            <div>
-              <div style={{ ...keyStyle, marginBottom: '6px' }}>Approved Payments — Transfer Automatically</div>
-              <div style={{ border: '1px solid #DDD6FE', background: '#F5F3FF', borderRadius: '6px' }}>
-                {preLinkedApproved.map((p, idx) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      display: 'flex', justifyContent: 'space-between', gap: '10px',
-                      padding: '8px 10px',
-                      borderBottom: idx < preLinkedApproved.length - 1 ? '1px solid #DDD6FE' : 'none',
-                    }}
-                  >
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#5B21B6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {p.request_number}
-                      <span style={{ fontWeight: 500, color: colors.secondary }}> · {p.client_name} · {fmtDate(p.payment_date)}</span>
-                    </span>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {fmtAmount(p.amount)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
-                {preLinkedApproved.length === 1 ? 'This payment is' : 'These payments are'} approved and
-                linked to this request, and will move to the new official Order automatically.
-              </div>
-            </div>
-          )}
+          {/* ── 3. Approved payments on this request — transfer automatically ── */}
+          <div style={{ flexShrink: 0 }}>
+            <SectionHeading
+              title="Payments transferring to the official order"
+              note="These approved payments are already linked to this request and will transfer automatically."
+            />
+            {loadingPayments ? (
+              <TableNotice>Loading payments…</TableNotice>
+            ) : preLinkedApproved.length === 0 ? (
+              <TableNotice>No approved payment is linked to this request yet.</TableNotice>
+            ) : (
+              <TableFrame>
+                <thead>
+                  <tr style={{ background: colors.raised }}>
+                    <th scope="col" style={TH}>Payment Request</th>
+                    <th scope="col" style={TH}>Date</th>
+                    <th scope="col" style={TH}>Payment Mode</th>
+                    <th scope="col" style={{ ...TH, textAlign: 'right' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preLinkedApproved.map(p => (
+                    <tr key={p.id} style={{ borderTop: `1px solid ${colors.border}` }}>
+                      <td style={TD}>
+                        {/* Already linked to THIS request, so its client is the
+                            header's client — named only when it is not, which is
+                            the one case the reader needs it. */}
+                        <PaymentRef payment={p} showClient={!isClientMatch(p)} />
+                      </td>
+                      <td style={TD}>{fmtDate(p.payment_date)}</td>
+                      <td style={TD}>{paymentAccountLabel(p.payment_mode, p.received_in)}</td>
+                      <td style={TD_AMOUNT}>{fmtAmount(p.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: `1px solid ${colors.borderSoft}`, background: colors.raised }}>
+                    <th scope="row" colSpan={3} style={{ ...TD, textAlign: 'left', fontWeight: 600, color: colors.secondary }}>
+                      Total transferring
+                    </th>
+                    <td style={TD_AMOUNT}>{fmtAmount(transferTotal)}</td>
+                  </tr>
+                </tfoot>
+              </TableFrame>
+            )}
+          </div>
 
           {/* ── Payments on this request that are NOT approved ──
-                 Listed separately and never as money. The undecided ones block
-                 conversion; a rejected one does not, and stays on the request as
-                 history rather than transferring. */}
+                 Listed separately and never as money: no total, and the amounts
+                 stay muted. The undecided ones block conversion; a rejected one
+                 does not, and stays on the request as history rather than
+                 transferring. */}
           {!loadingPayments && (preLinkedUndecided.length > 0 || preLinkedRejected.length > 0) && (
-            <div>
-              <div style={{ ...keyStyle, marginBottom: '6px' }}>Linked Payments — Not Approved</div>
-              <div style={{ border: '1px solid #FED7AA', background: '#FFF7ED', borderRadius: '6px' }}>
-                {[...preLinkedUndecided, ...preLinkedRejected].map((p, idx, all) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      display: 'flex', justifyContent: 'space-between', gap: '10px',
-                      padding: '8px 10px',
-                      borderBottom: idx < all.length - 1 ? '1px solid #FED7AA' : 'none',
-                    }}
-                  >
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#9A3412', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {p.request_number}
-                      <span style={{ fontWeight: 500, color: colors.secondary }}>
-                        {' · '}{p.status === 'rejected' ? 'Rejected' : p.status === 'needs_clarification' ? 'Needs clarification' : 'Pending approval'}
-                        {' · '}{fmtDate(p.payment_date)}
-                      </span>
-                    </span>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {fmtAmount(p.amount)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
-                These are not received money and will not transfer to the official Order.
-              </div>
+            <div style={{ flexShrink: 0 }}>
+              <SectionHeading
+                title="Linked payments not approved"
+                note="These are not received money and will not transfer to the official order."
+              />
+              <TableFrame minWidth={560}>
+                <thead>
+                  <tr style={{ background: colors.raised }}>
+                    <th scope="col" style={TH}>Payment Request</th>
+                    <th scope="col" style={TH}>Status</th>
+                    <th scope="col" style={TH}>Date</th>
+                    <th scope="col" style={TH}>Payment Mode</th>
+                    <th scope="col" style={{ ...TH, textAlign: 'right' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...preLinkedUndecided, ...preLinkedRejected].map(p => (
+                    <tr key={p.id} style={{ borderTop: `1px solid ${colors.border}` }}>
+                      <td style={TD}><PaymentRef payment={p} showClient={!isClientMatch(p)} /></td>
+                      <td style={{ ...TD, color: '#9A3412', fontWeight: 600 }}>
+                        {p.status === 'rejected'
+                          ? 'Rejected'
+                          : p.status === 'needs_clarification'
+                            ? 'Needs clarification'
+                            : 'Pending approval'}
+                      </td>
+                      <td style={TD}>{fmtDate(p.payment_date)}</td>
+                      <td style={TD}>{paymentAccountLabel(p.payment_mode, p.received_in)}</td>
+                      <td style={{ ...TD_AMOUNT, color: colors.muted, fontWeight: 600 }}>{fmtAmount(p.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </TableFrame>
             </div>
           )}
 
-          {/* ── Optional: link approved payments ── */}
-          <div>
-            <div style={{ ...keyStyle, marginBottom: '6px' }}>
-              Approved Payments Available to Link{' '}
-              <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>(optional)</span>
-            </div>
+          {/* ── 4. Optional: link other approved payments ── */}
+          <div style={{ flexShrink: 0 }}>
+            <SectionHeading
+              title="Additional approved payments"
+              note="Select any other approved, unlinked payments that should be attached to the new order."
+            />
 
             {loadingPayments ? (
-              <div style={{ fontSize: '12px', color: colors.muted, padding: '10px 0' }}>Loading payments…</div>
+              <TableNotice>Loading payments…</TableNotice>
             ) : payments.length === 0 ? (
-              <div style={{
-                fontSize: '12px', color: colors.muted,
-                border: `1px dashed ${colors.border}`, borderRadius: '6px',
-                padding: '12px', textAlign: 'center',
-              }}>
-                No approved payments are waiting to be linked.
-              </div>
+              <TableNotice>No approved payments are waiting to be linked.</TableNotice>
             ) : (
               <>
-                <div style={{
-                  border: `1px solid ${colors.border}`, borderRadius: '6px',
-                  maxHeight: '220px', overflowY: 'auto',
-                }}>
-                  {sortedPayments.map((p, idx) => {
-                    const on = selected.has(p.id)
-                    const matches = isClientMatch(p)
-                    // A subtle divider where the matching group ends and the
-                    // non-matching group begins — display only, never hides
-                    // mismatched payments.
-                    const prevMatches = idx > 0 ? isClientMatch(sortedPayments[idx - 1]) : matches
-                    const showDivider = idx > 0 && prevMatches && !matches
-                    return (
-                      <div key={p.id}>
-                        {showDivider && (
-                          <div style={{
-                            padding: '4px 10px', fontSize: '10px', fontWeight: 700,
-                            color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
-                            background: colors.raised, borderBottom: `1px solid ${colors.border}`,
-                          }}>
-                            Other clients
-                          </div>
-                        )}
-                        <label
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: '10px',
-                            padding: '8px 10px', cursor: 'pointer',
-                            borderBottom: `1px solid ${colors.border}`,
-                            background: on ? 'rgba(220,31,46,0.04)' : 'transparent',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            onChange={() => toggle(p.id)}
-                            disabled={saving}
-                            style={{ cursor: 'pointer', flexShrink: 0 }}
-                          />
-                          <span style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                              <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {p.request_number}
-                                <span style={{ fontWeight: 500, color: colors.secondary }}> · {p.client_name}</span>
-                                {!matches && (
-                                  <span style={{
-                                    marginLeft: '6px', fontSize: '10px', fontWeight: 600,
-                                    color: '#9A3412', background: '#FFF7ED', border: '1px solid #FED7AA',
-                                    borderRadius: '4px', padding: '1px 5px',
-                                  }}>
-                                    Different client
-                                  </span>
-                                )}
-                              </span>
-                              <span style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                {fmtAmount(p.amount)}
-                              </span>
-                            </span>
-                            <span style={{
-                              display: 'block', fontSize: '11px', color: colors.muted,
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}>
-                              {fmtDate(p.payment_date)}
-                              {p.submitted_by_name ? ` · ${p.submitted_by_name}` : ''}
-                              {p.proof_note ? ` · ${p.proof_note}` : ''}
-                            </span>
-                          </span>
-                        </label>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between',
-                  fontSize: '12px', paddingTop: '8px',
-                  color: selected.size > 0 ? colors.primary : colors.muted,
-                }}>
-                  <span>{selected.size} payment{selected.size !== 1 ? 's' : ''} selected</span>
-                  <span style={{ fontWeight: selected.size > 0 ? 700 : 400 }}>{fmtAmount(selectedTotal)}</span>
-                </div>
+                <TableFrame minWidth={560}>
+                  <thead>
+                    <tr style={{ background: colors.raised }}>
+                      <th scope="col" style={{ ...TH, width: '32px', paddingRight: 0 }}>
+                        <span style={SR_ONLY}>Select</span>
+                      </th>
+                      <th scope="col" style={TH}>Payment Request</th>
+                      <th scope="col" style={TH}>Date</th>
+                      <th scope="col" style={TH}>Payment Mode</th>
+                      <th scope="col" style={{ ...TH, textAlign: 'right' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedPayments.map((p, idx) => {
+                      const on = selected.has(p.id)
+                      const matches = isClientMatch(p)
+                      // A subtle divider where the matching group ends and the
+                      // non-matching group begins — display only, never hides
+                      // mismatched payments.
+                      const prevMatches = idx > 0 ? isClientMatch(sortedPayments[idx - 1]) : matches
+                      const showDivider = idx > 0 && prevMatches && !matches
+                      return (
+                        <Fragment key={p.id}>
+                          {showDivider && (
+                            <tr>
+                              <td colSpan={5} style={{
+                                padding: '4px 10px', background: colors.float,
+                                borderTop: `1px solid ${colors.border}`,
+                                fontSize: '10px', fontWeight: 700, color: colors.muted,
+                                textTransform: 'uppercase', letterSpacing: '0.06em',
+                              }}>
+                                Other clients
+                              </td>
+                            </tr>
+                          )}
+                          <tr
+                            onClick={e => {
+                              // The checkbox is a real control and handles its
+                              // own click and Space; the rest of the row is a
+                              // convenience target, so a click that landed on
+                              // the input must not toggle a second time.
+                              if (saving) return
+                              if ((e.target as HTMLElement).tagName === 'INPUT') return
+                              toggle(p.id)
+                            }}
+                            style={{
+                              borderTop: `1px solid ${colors.border}`,
+                              background: on ? 'rgba(220,31,46,0.045)' : 'transparent',
+                              cursor: saving ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            <td style={{ ...TD, paddingRight: 0 }}>
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                onChange={() => toggle(p.id)}
+                                disabled={saving}
+                                aria-label={`Link ${p.request_number} — ${p.client_name}, ${fmtAmount(p.amount)}`}
+                                style={{ display: 'block', cursor: saving ? 'not-allowed' : 'pointer' }}
+                              />
+                            </td>
+                            <td style={TD}>
+                              {/* This list is the whole suspense ledger, so the
+                                  client is always worth naming. Selection is
+                                  carried by the checkbox and by the weight of
+                                  the number, never by the tint alone. */}
+                              <PaymentRef payment={p} showClient strong={on} otherClient={!matches} />
+                            </td>
+                            <td style={TD}>{fmtDate(p.payment_date)}</td>
+                            <td style={TD}>{paymentAccountLabel(p.payment_mode, p.received_in)}</td>
+                            <td style={TD_AMOUNT}>{fmtAmount(p.amount)}</td>
+                          </tr>
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: `1px solid ${colors.borderSoft}`, background: colors.raised }}>
+                      <th scope="row" colSpan={4} style={{
+                        ...TD, textAlign: 'left', fontWeight: 600,
+                        color: selected.size > 0 ? colors.secondary : colors.muted,
+                      }}>
+                        {selected.size} payment{selected.size !== 1 ? 's' : ''} selected
+                      </th>
+                      <td style={{
+                        ...TD_AMOUNT,
+                        color: selected.size > 0 ? colors.primary : colors.muted,
+                        fontWeight: selected.size > 0 ? 700 : 500,
+                      }}>
+                        {fmtAmount(selectedTotal)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </TableFrame>
 
                 {selected.size > 0 && (
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
-                    The selected payment{selected.size !== 1 ? 's' : ''} will be linked to the new official
-                    Order and marked as received.
+                  <div style={{ fontSize: '11.5px', color: colors.tertiary, marginTop: '6px', lineHeight: 1.45 }}>
+                    The selected payment{selected.size !== 1 ? 's' : ''} will be linked to the new
+                    official Order and marked as received.
                   </div>
                 )}
 
                 {mismatchedSelected.length > 0 && (
                   <div style={{
-                    fontSize: '11px', color: '#9A3412', background: '#FFF7ED',
-                    border: '1px solid #FED7AA', borderRadius: '6px',
-                    padding: '8px 10px', marginTop: '8px', lineHeight: 1.5,
+                    fontSize: '11.5px', color: '#9A3412', background: '#FFF7ED',
+                    border: '1px solid #FED7AA', borderRadius: '8px',
+                    padding: '8px 10px', marginTop: '8px', lineHeight: 1.45,
                   }}>
                     <div>
                       The recorded client on this payment does not match the client on this order request.
@@ -528,14 +830,35 @@ export function ConvertModal({
               </>
             )}
           </div>
+        </div>
 
-          {error && (
-            <div style={{ fontSize: '12px', color: colors.red, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', padding: '8px 12px' }}>
-              {error}
-            </div>
-          )}
+        {/* ── Error — outside the scroller, so it can never be scrolled away
+               from the button that produced it. ── */}
+        {error && (
+          <div style={{
+            flexShrink: 0, padding: '9px 20px', borderTop: `1px solid ${colors.border}`,
+            fontSize: '12px', color: '#991B1B', background: '#FEF2F2', lineHeight: 1.45,
+          }}>
+            {error}
+          </div>
+        )}
 
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+        {/* ── Pinned footer — the two actions stay reachable while the body
+               scrolls, with the figure they commit to stated beside them. ── */}
+        <div style={{
+          flexShrink: 0, padding: '11px 20px', borderTop: `1px solid ${colors.border}`,
+          background: colors.base, display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap',
+        }}>
+          <div style={{
+            fontSize: '11.5px', color: colors.tertiary, minWidth: 0,
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {loadingPayments
+              ? 'Checking payments…'
+              : `${transferCount} payment${transferCount !== 1 ? 's' : ''} · ${fmtAmount(footerTotal)} moving to the new Order`}
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
             <button type="button" onClick={onClose} disabled={saving} style={{
               padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
               background: 'transparent', border: `1px solid ${colors.border}`, color: colors.secondary,
@@ -549,13 +872,17 @@ export function ConvertModal({
               disabled={saving || !!blockedReason || loadingPayments}
               title={blockedReason ?? undefined}
               style={{
+                // #DC1F2E is this module's established primary-action fill (the
+                // same one the payments modal uses for Link payment) — a
+                // high-commitment action, deliberately NOT boe-btn-danger's
+                // tinted delete treatment.
                 padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
                 background: '#DC1F2E', border: 'none', color: '#fff',
                 cursor: (saving || blockedReason || loadingPayments) ? 'not-allowed' : 'pointer',
                 opacity: (saving || blockedReason || loadingPayments) ? 0.7 : 1,
               }}
             >
-              {saving ? 'Converting…' : 'Confirm & Convert'}
+              {saving ? 'Converting…' : 'Convert to Order'}
             </button>
           </div>
         </div>
