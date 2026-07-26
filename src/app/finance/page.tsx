@@ -26,7 +26,7 @@ import {
   BRAND_TAB_ACCENT,
   type TabAccent,
 } from '@/components/ui/StatusTabs'
-import { Archive, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
+import { Archive, CircleCheck, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
 import { REQUEST_STAGE_STATUSES, isRequestStageStatus } from './paymentRouting'
 import {
   EMPTY_TARGET_STATE,
@@ -1390,6 +1390,139 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   )
 }
 
+// ── Admin Review presentation primitives ─────────────────────────────────────
+// The review modal is an approval workspace, not a detail view: an admin reads
+// three facts (how much, from whom, when), checks the routing and the proof,
+// and commits one of three decisions. These primitives exist so that hierarchy
+// is expressed once — a heavy figure band at the top, quiet dense facts in the
+// middle, and one deliberate decision control — instead of every block wearing
+// the same 12px-radius card and competing for attention.
+
+// Top figure band. One hairline grid: the container paints the divider colour
+// and each cell paints over it, so the 1px rules survive the cells wrapping on
+// a narrow dialog (a per-cell borderLeft would not).
+function FigureBand({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden',
+      background: colors.border,
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: '1px',
+    }}>
+      {children}
+    </div>
+  )
+}
+
+// One cell of the figure band. `lead` carries the amount at display weight; the
+// other cells sit a step below it so the money is unmistakably the headline.
+function FigureCell({ label, value, lead }: { label: string; value: string; lead?: boolean }) {
+  return (
+    <div style={{ background: colors.raised, padding: '11px 14px', minWidth: 0 }}>
+      <div style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        {label}
+      </div>
+      <div style={{
+        marginTop: lead ? '3px' : '4px',
+        fontSize: lead ? '26px' : '15px',
+        fontWeight: lead ? 700 : 600,
+        color: colors.primary,
+        lineHeight: lead ? 1.1 : 1.35,
+        fontVariantNumeric: 'tabular-nums',
+        wordBreak: 'break-word',
+      }}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
+// The three review decisions, defined once. Order is deliberate: the outcome an
+// admin reaches for most sits first, and the destructive one last. Labels are
+// the established workflow wording and are not changed here.
+const REVIEW_DECISIONS: {
+  key: AdminAction
+  label: string
+  hint: string
+  color: string
+  tint: string
+  Icon: LucideIcon
+}[] = [
+  { key: 'approve',             label: 'Mark Payment Received', hint: 'Confirm the money has arrived',        color: colors.green, tint: colors.greenTint, Icon: CircleCheck },
+  { key: 'needs_clarification', label: 'Needs Clarification',   hint: 'Send back with a question',            color: colors.blue,  tint: colors.blueTint,  Icon: MessageCircleQuestion },
+  { key: 'reject',              label: 'Reject',                hint: 'Decline this payment request',         color: colors.red,   tint: colors.redTint,   Icon: CircleX },
+]
+
+// One decision as a full-width choice row rather than a chip in a wrapping bar.
+// Three chips labelled "Mark Payment Received" / "Needs Clarification" /
+// "Reject" cannot sit on one line in a side column, so they wrapped into an
+// uneven cluster that read as three unrelated buttons. Stacked rows give each
+// outcome equal width, room for a one-line consequence, and a selected state
+// that is obvious at a glance.
+//
+// Keyboard: these carry real radio semantics, so the group is one tab stop and
+// the arrow keys move between the three (roving tabIndex driven by the parent).
+function DecisionRow({
+  decision: d,
+  selected,
+  first,
+  tabIndex,
+  innerRef,
+  onSelect,
+  onKeyDown,
+}: {
+  decision: (typeof REVIEW_DECISIONS)[number]
+  selected: boolean
+  first: boolean
+  tabIndex: number
+  innerRef: (el: HTMLButtonElement | null) => void
+  onSelect: () => void
+  onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void
+}) {
+  const [hover, setHover] = useState(false)
+  const { Icon } = d
+  return (
+    <button
+      ref={innerRef}
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      tabIndex={tabIndex}
+      onClick={onSelect}
+      onKeyDown={onKeyDown}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%', textAlign: 'left',
+        padding: '10px 12px', cursor: 'pointer',
+        border: 'none', borderTop: first ? 'none' : `1px solid ${colors.border}`,
+        background: selected ? d.tint : hover ? colors.raised : 'transparent',
+        // The selected row is marked on its leading edge as well as by tint, so
+        // the choice survives for anyone who cannot separate the three tints.
+        boxShadow: selected ? `inset 3px 0 0 ${d.color}` : 'none',
+        transition: 'background 0.16s ease',
+      }}
+    >
+      <Icon
+        size={15}
+        strokeWidth={2.2}
+        aria-hidden="true"
+        style={{ flexShrink: 0, marginTop: '1px', color: selected ? d.color : colors.muted }}
+      />
+      <span style={{ minWidth: 0 }}>
+        <span style={{
+          display: 'block', fontSize: '13px', fontWeight: 600, lineHeight: 1.35,
+          color: selected ? d.color : colors.primary,
+        }}>
+          {d.label}
+        </span>
+        <span style={{ display: 'block', fontSize: '11.5px', color: colors.tertiary, marginTop: '2px', lineHeight: 1.4 }}>
+          {d.hint}
+        </span>
+      </span>
+    </button>
+  )
+}
+
 // ── Admin Review modal ────────────────────────────────────────────────────────
 
 type AdminReviewModalProps = {
@@ -1462,77 +1595,95 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
     onActioned()
   }
 
-  const actionBtn = (a: AdminAction, label: string, activeColor: string, activeBg: string): React.CSSProperties => {
-    const active = action === a
-    return {
-      padding: '7px 16px', fontSize: '12px', fontWeight: 600, borderRadius: '7px', cursor: 'pointer',
-      border: `1px solid ${active ? activeColor : colors.border}`,
-      background: active ? activeBg : 'transparent',
-      color: active ? activeColor : colors.secondary,
-    }
+  // The decision currently selected, resolved once — it drives the note
+  // placeholder, the footer sentence and the confirm button's colour, so all
+  // three can never describe different outcomes.
+  const selected = REVIEW_DECISIONS.find(d => d.key === action) ?? null
+
+  // Roving tabIndex for the decision radiogroup: the group is a single tab
+  // stop (the selected row, or the first when nothing is chosen yet) and the
+  // arrow keys move the selection, which is what `role="radio"` promises.
+  const decisionRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const decisionKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, i: number) => {
+    const forward  = e.key === 'ArrowDown' || e.key === 'ArrowRight'
+    const backward = e.key === 'ArrowUp'   || e.key === 'ArrowLeft'
+    if (!forward && !backward) return
+    e.preventDefault()
+    const next = (i + (forward ? 1 : -1) + REVIEW_DECISIONS.length) % REVIEW_DECISIONS.length
+    setAction(REVIEW_DECISIONS[next].key)
+    decisionRefs.current[next]?.focus()
   }
 
   const submittedLine = r.submitted_by_name
     ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
     : `Submitted ${fmtDate(r.created_at)}`
 
+  // ── Figure band — the three facts an approval actually turns on ────────────
+  // How much, from whom, and when the money arrived. Lifted out of the old
+  // summary card and given the full dialog width: they were previously sharing
+  // a card with five routing fields, which flattened the amount into just
+  // another value and left the card looking large and half-empty.
+  const top = (
+    <FigureBand>
+      <FigureCell label="Amount"       value={fmtAmount(r.amount)} lead />
+      <FigureCell label="Client"       value={r.client_name} />
+      <FigureCell label="Payment Date" value={fmtDate(r.payment_date)} />
+    </FigureBand>
+  )
+
   const left = (
     <>
-      {/* Primary summary card — amount + client lead, payment details below.
-          Same shell as the detail modal's card, with Order Number added since
-          the reviewer (unlike the read-only view) needs it alongside Payment
-          Against to judge an approve action. */}
-      <div style={{
-        border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
-        display: 'flex', flexDirection: 'column', gap: '14px',
-      }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Amount</div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: colors.primary, lineHeight: 1.1, marginTop: '4px', fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word' }}>
-              {fmtAmount(r.amount)}
-            </div>
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
-            <div style={{ fontSize: '18px', fontWeight: 600, color: colors.primary, lineHeight: 1.3, marginTop: '4px', wordBreak: 'break-word' }}>
-              {r.client_name}
-            </div>
-          </div>
-        </div>
+      {/* Routing — where this payment is aimed and how it came in. Quiet,
+          dense, and deliberately lighter than the band above it: these are
+          facts to check, not the headline. Every field the previous layout
+          showed is still here, minus the amount/client/date now in the band. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <SectionHeader>Routing</SectionHeader>
         <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px',
-          borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
+          border: `1px solid ${colors.border}`, borderRadius: '10px', background: colors.raised,
+          // Exactly two columns at every width. auto-fit would find room for a
+          // third once the dialog stacks to one column on a narrow viewport,
+          // breaking the 2×2 into a lopsided 3 + 1.
+          padding: '12px 14px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          columnGap: '18px', rowGap: '11px',
         }}>
-          <MetaItem label="Payment Date"    value={fmtDate(r.payment_date)} />
           <MetaItem label="Payment Against" value={targetLabelFor(r)} />
+          <MetaItem label="Order Number"    value={orderNoDisplay(r)} muted={!r.order_number} />
           <MetaItem label="Payment Mode"    value={displayPaymentMode(r.payment_mode, r.received_in)} />
           <MetaItem label="Received In"     value={RECEIVED_IN_LABEL[r.received_in] ?? r.received_in} />
-          <MetaItem label="Order Number"    value={orderNoDisplay(r)} muted={!r.order_number} />
         </div>
       </div>
 
-      {/* Proof and reference — same compact bordered block as the detail modal. */}
-      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0 }}>Proof</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline />
+      {/* Evidence — proof and reference as two aligned rows in one frame. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <SectionHeader>Evidence</SectionHeader>
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 12px' }}>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', width: '68px', flexShrink: 0 }}>Proof</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '9px 12px', borderTop: `1px solid ${colors.border}` }}>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', width: '68px', flexShrink: 0, paddingTop: '2px' }}>Reference</span>
+            <span style={{ fontSize: '13px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
+              {r.proof_note || 'Not provided'}
+            </span>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
-          <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
-            {r.proof_note || 'Not provided'}
-          </span>
-        </div>
       </div>
 
-      {/* Notes — only when a sales note exists */}
+      {/* Note from the salesperson — only when one exists. Quoted on a rail
+          rather than boxed, so it reads as someone's words and never competes
+          with the decision control for weight. */}
       {r.sales_note && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <SectionHeader>Notes</SectionHeader>
-          <div style={{ fontSize: '13.5px', color: colors.secondary, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <SectionHeader>Note from sales</SectionHeader>
+          <div style={{
+            borderLeft: `2px solid ${colors.borderSoft}`, paddingLeft: '11px',
+            fontSize: '13px', color: colors.secondary, lineHeight: 1.55,
+            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          }}>
             {r.sales_note}
           </div>
         </div>
@@ -1542,76 +1693,136 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
 
   const right = (
     <>
-      {/* Activity panel — same bordered shell as the detail modal. */}
-      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
-        <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
-      </div>
-
-      {/* Review panel — action selection, admin note, and the confirm/cancel
-          controls that carry out the review. Business logic (RPC call for
-          approve, status update for clarification/rejection, notifications)
-          is unchanged from before this modal's layout was reworked. */}
-      <div style={{
-        border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
-        display: 'flex', flexDirection: 'column', gap: '12px',
-      }}>
-        <SectionHeader>Review</SectionHeader>
-
-        <div>
-          <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Action</div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button style={actionBtn('approve', 'Mark Payment Received', colors.green, colors.greenTint)} onClick={() => setAction('approve')}>Mark Payment Received</button>
-            <button style={actionBtn('needs_clarification','Needs Clarification',colors.blue,  colors.blueTint)}  onClick={() => setAction('needs_clarification')}>Needs Clarification</button>
-            <button style={actionBtn('reject',             'Reject',             colors.red,   colors.redTint)}   onClick={() => setAction('reject')}>Reject</button>
-          </div>
+      {/* ── Decision — the one thing this modal exists to capture, so it is the
+             only bordered card in this column and the only element carrying a
+             tint. Business logic (approve RPC, status update for
+             clarification/rejection, notifications) is untouched: this is the
+             same three-way choice and the same admin note as before. ── */}
+      <div style={{ border: `1px solid ${colors.borderSoft}`, borderRadius: '10px', overflow: 'hidden' }}>
+        <div style={{
+          padding: '9px 12px', background: colors.raised, borderBottom: `1px solid ${colors.border}`,
+          fontSize: '10px', fontWeight: 700, color: colors.secondary, textTransform: 'uppercase', letterSpacing: '0.06em',
+        }}>
+          Decision
         </div>
 
-        {action === 'approve' && (() => {
-          // What approval actually does depends on which of the three targets
-          // the payment was raised against — and for an Order Request that is
-          // NOT "moved to Suspense", it keeps the request linkage.
-          const approvalTarget = readTargetType(r)
-          const linksToOrder = approvalTarget === 'confirmed_order'
-          return (
-            <div style={{
-              padding: '10px 12px', borderRadius: '8px',
-              background: linksToOrder ? '#F0FDF4' : '#FFF7ED',
-              border: `1px solid ${linksToOrder ? '#BBF7D0' : '#FED7AA'}`,
-              fontSize: '12px', color: linksToOrder ? '#166534' : '#9A3412',
-              lineHeight: 1.5,
-            }}>
-              {approvalTarget === 'confirmed_order'
-                ? `This payment will be linked directly to order ${r.order_number ?? orderNoDisplay(r)}.`
-                : approvalTarget === 'order_request'
-                  ? `This payment will be recorded as received and stay attached to Order Request ${r.order_request_number ?? ''}, where it counts as confirmed advance. It moves onto the Confirmed Order automatically when that request is converted.`
-                  : 'This payment will be recorded as received and moved to Suspense. No order or order number is created here — attach it to an order later from Order Requests or the Suspense list.'}
-            </div>
-          )
-        })()}
+        <div role="radiogroup" aria-label="Review decision">
+          {REVIEW_DECISIONS.map((d, i) => (
+            <DecisionRow
+              key={d.key}
+              decision={d}
+              first={i === 0}
+              selected={action === d.key}
+              tabIndex={action ? (action === d.key ? 0 : -1) : (i === 0 ? 0 : -1)}
+              innerRef={el => { decisionRefs.current[i] = el }}
+              onSelect={() => setAction(d.key)}
+              onKeyDown={e => decisionKeyDown(e, i)}
+            />
+          ))}
+        </div>
 
         {action && (
-          <Field label={`Admin Note${noteRequired ? '' : ' (optional)'}`} required={noteRequired}>
-            <textarea className="boe-input" value={adminNote} onChange={e => setAdminNote(e.target.value)}
-              placeholder={
-                action === 'approve'             ? 'Optional note for the salesperson' :
-                action === 'needs_clarification' ? 'Explain what clarification is needed' :
-                                                   'Explain why this is being rejected'
-              }
-              rows={2} style={{ width: '100%', resize: 'vertical', fontSize: '13px' }} />
-          </Field>
+          <div style={{
+            borderTop: `1px solid ${colors.border}`, padding: '12px',
+            display: 'flex', flexDirection: 'column', gap: '10px',
+          }}>
+            {action === 'approve' && (() => {
+              // What approval actually does depends on which of the three targets
+              // the payment was raised against — and for an Order Request that is
+              // NOT "moved to Suspense", it keeps the request linkage.
+              const approvalTarget = readTargetType(r)
+              const linksToOrder = approvalTarget === 'confirmed_order'
+              return (
+                <div style={{
+                  padding: '9px 11px', borderRadius: '8px',
+                  background: linksToOrder ? '#F0FDF4' : '#FFF7ED',
+                  border: `1px solid ${linksToOrder ? '#BBF7D0' : '#FED7AA'}`,
+                  fontSize: '11.5px', color: linksToOrder ? '#166534' : '#9A3412',
+                  lineHeight: 1.5,
+                }}>
+                  {approvalTarget === 'confirmed_order'
+                    ? `This payment will be linked directly to order ${r.order_number ?? orderNoDisplay(r)}.`
+                    : approvalTarget === 'order_request'
+                      ? `This payment will be recorded as received and stay attached to Order Request ${r.order_request_number ?? ''}, where it counts as confirmed advance. It moves onto the Confirmed Order automatically when that request is converted.`
+                      : 'This payment will be recorded as received and moved to Suspense. No order or order number is created here — attach it to an order later from Order Requests or the Suspense list.'}
+                </div>
+              )
+            })()}
+
+            <Field label={`Admin Note${noteRequired ? '' : ' (optional)'}`} required={noteRequired}>
+              <textarea className="boe-input" value={adminNote} onChange={e => setAdminNote(e.target.value)}
+                placeholder={
+                  action === 'approve'             ? 'Optional note for the salesperson' :
+                  action === 'needs_clarification' ? 'Explain what clarification is needed' :
+                                                     'Explain why this is being rejected'
+                }
+                rows={2} style={{ width: '100%', resize: 'vertical', fontSize: '13px' }} />
+            </Field>
+          </div>
         )}
+      </div>
 
-        {error && <ErrorBanner message={error} />}
+      {/* Activity — history, so it is rendered bare on the dialog surface. It
+          keeps its own heading, query, ordering and event text; dropping the
+          card around it is what stops it reading as a second panel of equal
+          rank to the decision above. */}
+      <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
+    </>
+  )
 
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>Cancel</button>
-          <button onClick={handleConfirm} disabled={!canConfirm || saving}
-            className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
+  // ── Commit bar ──────────────────────────────────────────────────────────────
+  // Pinned below the body so the decision is always one click away, and stating
+  // what is about to happen beside the button that does it — the amount and the
+  // outcome together, so Confirm is never an unlabelled commitment.
+  const footerNote = !action
+    ? 'Select a decision to continue.'
+    : noteRequired && !adminNote.trim()
+      ? 'A note is required for this decision.'
+      : action === 'approve'
+        ? `${fmtAmount(r.amount)} will be recorded as received.`
+        : action === 'needs_clarification'
+          ? `Returns to ${r.submitted_by_name ?? 'the salesperson'} for clarification.`
+          : 'This payment request will be rejected.'
+
+  const confirmDisabled = !canConfirm || saving
+
+  const footer = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* Errors live in the pinned bar, not the scroller, so a failure can
+          never be scrolled away from the button that produced it. */}
+      {error && <ErrorBanner message={error} />}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
+        <div style={{ fontSize: '11.5px', color: action ? colors.tertiary : colors.muted, minWidth: 0, lineHeight: 1.45 }}>
+          {footerNote}
+        </div>
+        <div style={{ display: 'flex', gap: '10px', flexShrink: 0 }}>
+          {/* boe-btn-ghost has no disabled treatment of its own, so the
+              in-flight state is stated inline rather than left looking live. */}
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '7px 16px', fontSize: '13px', opacity: saving ? 0.55 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={confirmDisabled}
+            style={{
+              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600, border: 'none',
+              // The commit button wears the chosen outcome's colour, so approve
+              // and reject are never one identical click apart.
+              background: confirmDisabled ? colors.float : (selected?.color ?? colors.amber),
+              color: confirmDisabled ? colors.muted : '#FFFFFF',
+              cursor: confirmDisabled ? 'not-allowed' : 'pointer',
+            }}
+          >
             {saving ? 'Saving…' : 'Confirm'}
           </button>
         </div>
       </div>
-    </>
+    </div>
   )
 
   return (
@@ -1619,9 +1830,16 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
       requestNumber={r.request_number}
       submittedLine={submittedLine}
       statusBadge={<StatusBadge status={r.status} />}
+      ariaLabel={`Review payment request ${r.request_number}`}
       onClose={onClose}
+      top={top}
       left={left}
       right={right}
+      footer={footer}
+      // This modal holds unsaved input (the admin note) — BOE form-modal
+      // dismissal rule: a backdrop click never discards it. Escape and × still
+      // close. See docs 05_Business_Rules.md → "Form Modal Dismissal Rule".
+      closeOnBackdropClick={false}
     />
   )
 }
