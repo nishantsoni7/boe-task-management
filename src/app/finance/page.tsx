@@ -39,6 +39,21 @@ import {
   type PaymentTargetState,
 } from './paymentTargets'
 import { PaymentTargetFields } from './components/PaymentTargetFields'
+import {
+  DEFAULT_DESTINATION_KEY,
+  buildCollectionPayload,
+  collectionDisplayFor,
+  collectionErrorFor,
+  destinationDbPair,
+  destinationFromDb,
+  EMPTY_COLLECTION_STATE,
+  paymentDestinationLabel,
+  readCollectionState,
+  readDestinationKey,
+  type CollectionState,
+  type PaymentDestinationKey,
+} from './paymentDestinations'
+import { DESTINATION_ICON, PaymentDestinationFields } from './components/PaymentDestinationFields'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 
@@ -50,8 +65,23 @@ type PaymentRequest = {
   client_name: string
   amount: number
   payment_date: string
+  // WHERE the money went. Read as a pair through paymentDestinations.ts — never
+  // one column alone, since 'cash' does not say Paytm and 'other' does not say PNB.
   payment_mode: string
   received_in: string
+  // WHO physically handled it, for the two cash destinations (20260716). A
+  // separate fact from the destination above: the account says where the money
+  // ended up, these say who is accountable for carrying it there.
+  collected_by_user_id: string | null
+  collected_from_text: string | null
+  handed_over_to_user_id: string | null
+  handed_over_at: string | null
+  collection_handover_note: string | null
+  // Resolved in the SAME list query as submitted_by_name (one join each, no
+  // per-row lookup), so a read-only view can name the people involved instead
+  // of printing the uuids it stores.
+  collected_by_name?: string
+  handed_over_to_name?: string
   proof_note: string | null
   order_number: string | null
   order_id: string | null
@@ -77,28 +107,15 @@ type FilterTab   = 'pending' | 'clarification' | 'rejected' | 'archive' | 'all'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const PAYMENT_MODE_LABEL: Record<string, string> = {
-  // legacy DB payment_mode values (for existing records in the table)
-  bank_transfer: 'Bank Transfer',
-  cash:          'Cash',
-  upi:           'UPI',
-  cheque:        'Cheque',
-  other:         'Other',
-  // UI-key values (received_in-based keys used as combined payment destination).
-  // Labels are the account/destination names shown in the UI; the underlying
-  // stored values are unchanged so existing records keep displaying correctly.
-  company_account: 'HDFC',
-  savings_account: 'Canara',
-  cash_in_hand:    'Paytm',
-  hawala:          'PNB',
-}
-
-const RECEIVED_IN_LABEL: Record<string, string> = {
-  company_account: 'HDFC',
-  cash_in_hand:    'Paytm',
-  savings_account: 'Canara',
-  other:           'PNB',
-}
+// The account a payment landed in is resolved by paymentDestinations.ts from the
+// stored (payment_mode, received_in) PAIR — the four destinations, the legacy
+// fallbacks and the pair mapping all live there now, so the form, this page's
+// read-only views and the tests read one definition.
+//
+// This page used to keep a local received_in → account map alongside it, for the
+// review modal's "Received In" row. That row is gone — the destination names the
+// account once, with what it means — and with it the last reason for a second
+// copy of the mapping here.
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
   pending_approval:    { label: 'Pending',             bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
@@ -115,51 +132,6 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
 function targetLabelFor(r: PaymentRequest): string {
   return PAYMENT_TARGET_LABEL[readTargetType(r)]
 }
-
-// Option values are received_in-style DB keys (DB-safe for that column).
-// payment_mode is derived via PAYMENT_MODE_DB_MAP below.
-const PAYMENT_MODE_OPTIONS: { label: string; value: string }[] = [
-  { label: 'HDFC',   value: 'company_account' },
-  { label: 'PNB',    value: 'hawala' },
-  { label: 'Paytm',  value: 'cash_in_hand' },
-  { label: 'Canara', value: 'savings_account' },
-]
-
-// Maps UI option value → DB-safe (payment_mode, received_in) pair.
-// DB constraints: payment_mode IN (bank_transfer|cash|upi|cheque|other)
-//                 received_in  IN (company_account|cash_in_hand|savings_account|other)
-const PAYMENT_MODE_DB_MAP: Record<string, { payment_mode: string; received_in: string }> = {
-  company_account: { payment_mode: 'bank_transfer', received_in: 'company_account' },
-  savings_account: { payment_mode: 'bank_transfer', received_in: 'savings_account' },
-  cash_in_hand:    { payment_mode: 'cash',          received_in: 'cash_in_hand'    },
-  hawala:          { payment_mode: 'other',         received_in: 'other'           },
-}
-
-// Reverse-maps existing DB column values back to a PAYMENT_MODE_OPTIONS value (for edit form init).
-function dbToUiPaymentMode(payment_mode: string, received_in: string): string {
-  for (const [key, v] of Object.entries(PAYMENT_MODE_DB_MAP)) {
-    if (v.payment_mode === payment_mode && v.received_in === received_in) return key
-  }
-  return PAYMENT_MODE_OPTIONS[0].value // fallback for legacy-only values
-}
-
-// Resolves the correct display label for a stored record's payment_mode + received_in.
-// Falls back to the legacy payment_mode label if the pair doesn't match a known UI key.
-function displayPaymentMode(payment_mode: string, received_in: string): string {
-  const uiKey = dbToUiPaymentMode(payment_mode, received_in)
-  const mapped = PAYMENT_MODE_DB_MAP[uiKey]
-  if (mapped && mapped.payment_mode === payment_mode && mapped.received_in === received_in) {
-    return PAYMENT_MODE_LABEL[uiKey] ?? uiKey
-  }
-  return PAYMENT_MODE_LABEL[payment_mode] ?? payment_mode
-}
-
-const RECEIVED_IN_OPTIONS: { label: string; value: string }[] = [
-  { label: 'Company Account', value: 'company_account' },
-  { label: 'Cash in Hand',    value: 'cash_in_hand' },
-  { label: 'Savings Account', value: 'savings_account' },
-  { label: 'Other',           value: 'other' },
-]
 
 // Tab accents come from the STATUS_META row badges above, so a status wears one
 // colour in the strip, the row, and the modal. One exception, deliberate:
@@ -238,6 +210,16 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
   if (!dbError) return ''
   const target = paymentTargetErrorMessage(dbError.message)
   if (target) return target
+  // Named BEFORE the generic 23514 branch: all three are check-constraint
+  // failures, and these two have nothing to do with order linkage.
+  if (dbError.message?.includes('finance_payment_requests_handover_pair')) {
+    return 'Record who the cash was handed over to and the handover date together, or leave both blank.'
+  }
+  // The form blocks this too (collectionErrorFor), so reaching here means a
+  // stale client or a direct API call — 20260717 is what makes the rule real.
+  if (dbError.message?.includes('finance_payment_requests_handover_not_before_payment')) {
+    return 'Handover date cannot be earlier than the payment date.'
+  }
   if (dbError.code === '23514' || dbError.message?.includes('finance_payment_requests_approved_linked_requires_order_id')) {
     return 'Select a valid order before marking this payment as linked.'
   }
@@ -403,6 +385,36 @@ function MetaItem({ label, value, muted }: { label: string; value: string; muted
   )
 }
 
+// One payment destination, read-only: icon, the account name, and what that
+// account means. The icon is decorative — it sits beside a label and a helper
+// that both stay visible, and nothing here is carried by icon or colour alone.
+//
+// A legacy pair no account matches has no icon and no helper; it still prints
+// the honest legacy label rather than being forced into an account it was never
+// recorded against.
+function PaymentDestinationLine({ payment_mode, received_in }: { payment_mode: string; received_in: string }) {
+  const d    = destinationFromDb(payment_mode, received_in)
+  const Icon = d ? DESTINATION_ICON[d.iconKey] : null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        Payment Destination
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+        {Icon && <Icon size={15} aria-hidden="true" color={colors.muted} style={{ flexShrink: 0 }} />}
+        <span style={{ fontSize: '14px', color: colors.primary, wordBreak: 'break-word', lineHeight: 1.4 }}>
+          {paymentDestinationLabel(payment_mode, received_in)}
+        </span>
+        {d && (
+          <span style={{ fontSize: '12px', color: colors.muted, wordBreak: 'break-word', lineHeight: 1.4 }}>
+            {d.helper}
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
@@ -548,6 +560,15 @@ function DetailsModal({
         ? 'New Order'
         : orderNoDisplay(r)
 
+  // The cash trail, resolved once through the shared helper so this popup and
+  // the admin review popup describe a collection identically. Null for money
+  // that arrived in an account and carries no trail — no empty panel.
+  const collectionSection = collectionDisplayFor(
+    r,
+    { collectedBy: r.collected_by_name, handedOverTo: r.handed_over_to_name },
+    fmtDate,
+  )
+
   const left = (
     <>
       {/* A. Primary summary card — amount + client lead, payment details below */}
@@ -575,8 +596,13 @@ function DetailsModal({
         }}>
           <MetaItem label="Payment Date"    value={fmtDate(r.payment_date)} />
           <MetaItem label="Payment Against" value={paymentAgainstDisplay} muted={!r.order_number} />
-          <MetaItem label="Payment Mode"    value={displayPaymentMode(r.payment_mode, r.received_in)} />
-          <MetaItem label="Received In"     value={RECEIVED_IN_LABEL[r.received_in] ?? r.received_in} />
+          {/* ONE destination row, spanning both columns, in place of the
+              Payment Mode + Received In pair that was printing the same
+              account name twice ("Paytm" over "Paytm"). Spanning is what keeps
+              the grid from ending on a lone empty cell. */}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <PaymentDestinationLine payment_mode={r.payment_mode} received_in={r.received_in} />
+          </div>
         </div>
       </div>
 
@@ -592,36 +618,63 @@ function DetailsModal({
         </div>
       )}
 
-      {/* C. Proof and reference — one compact bordered block with two
-          aligned rows. Proof uses the existing PaymentProofView (inline
-          variant, so no nested card); reference shows the proof note or a
-          muted placeholder. No large proof section, no duplication. */}
-      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0 }}>Proof</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {supabase
-              ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline />
-              : <span style={{ fontSize: '13px', color: colors.muted }}>Not attached</span>}
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
-          <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
-            {r.proof_note || 'Not provided'}
-          </span>
-        </div>
-      </div>
-
-      {/* D. Notes — only when a sales note exists */}
-      {r.sales_note && (
+      {/* C. Cash collection — only for money somebody physically carried, and
+          the reason this popup exists for a PNB payment at all: the requester
+          has to be able to SEE that a handover is still outstanding, and to see
+          it recorded once they add it. One pending state, never a pair of
+          empty rows for a recipient and a date that are absent together. */}
+      {collectionSection && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <SectionHeader>Notes</SectionHeader>
-          <div style={{ fontSize: '13.5px', color: colors.secondary, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {r.sales_note}
+          <SectionHeader>{collectionSection.title}</SectionHeader>
+          <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+            {collectionSection.rows.map((row, i) => (
+              <div
+                key={row.label}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px',
+                  borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
+                }}
+              >
+                <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>
+                  {row.label}
+                </span>
+                <span style={{ fontSize: '13.5px', color: row.muted ? colors.muted : colors.primary, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
+                  {row.value}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}
+
+      {/* D. Supporting information — proof, reference and notes as aligned rows
+          in one frame. Each empty state names the thing that is missing rather
+          than repeating a bare "Not provided" three times. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <SectionHeader>Supporting information</SectionHeader>
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0 }}>Payment proof</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {supabase
+                ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline emptyLabel="No payment proof attached" />
+                : <span style={{ fontSize: '13px', color: colors.muted }}>No payment proof attached</span>}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
+            <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
+              {r.proof_note || 'No reference provided'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>Notes</span>
+            <span style={{ fontSize: '13.5px', color: r.sales_note ? colors.secondary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+              {r.sales_note || 'No notes provided'}
+            </span>
+          </div>
+        </div>
+      </div>
     </>
   )
 
@@ -758,14 +811,18 @@ function DetailsModal({
 
 // ── New Payment Confirmation modal ────────────────────────────────────────────
 
-// Everything on the form that is NOT the target. Client name, both linkages and
-// the origin flag all live in PaymentTargetState instead, because they are one
-// decision with three shapes rather than five independent fields.
+// Everything on the form that is NOT the target and NOT the destination. Client
+// name, both linkages and the origin flag live in PaymentTargetState; the
+// destination and its cash trail live in a PaymentDestinationKey plus a
+// CollectionState — each because it is one decision with several shapes rather
+// than a handful of independent fields.
+//
+// There is no `paymentMode` / `receivedIn` here any more. The user picks ONE
+// destination and the stored pair is derived from it (destinationDbPair), the
+// same way payment_against is derived from the target.
 const EMPTY_FORM = {
   amount:          '',
   paymentDate:     '',
-  paymentMode:     PAYMENT_MODE_OPTIONS[0].value,
-  receivedIn:      RECEIVED_IN_OPTIONS[0].value, // kept for DB compat; not shown in UI
   proofNote:       '',
   salesNote:       '',
 }
@@ -796,6 +853,11 @@ function NewPaymentConfirmationModal({
     ...EMPTY_TARGET_STATE,
     manualClientName: initialClientName ?? '',
   }))
+  // Where the money went, and — for the two cash destinations — who carried it.
+  // The collector starts as the submitter, which is the whole of the typing this
+  // section is meant to avoid in the common case.
+  const [destination, setDestination] = useState<PaymentDestinationKey>(DEFAULT_DESTINATION_KEY)
+  const [collection,  setCollection]  = useState<CollectionState>({ ...EMPTY_COLLECTION_STATE, collectedBy: userId })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
@@ -812,10 +874,16 @@ function NewPaymentConfirmationModal({
   const isLinkedTarget = target.target !== 'unallocated'
   const clientName     = targetClientName(target)
 
+  // The cash trail is optional in almost every respect, so this is the ONE
+  // thing it can block on: a section that is internally inconsistent (a
+  // handover recipient with no date, or the reverse). See collectionErrorFor.
+  const collectionError = collectionErrorFor(destination, collection, form.paymentDate)
+
   const canSubmit = !!(
     isTargetComplete(target) &&
     isValidAmount(form.amount) &&
     form.paymentDate &&
+    !collectionError &&
     !attachError
   )
 
@@ -866,20 +934,15 @@ function NewPaymentConfirmationModal({
     setSaving(true)
     setError(null)
 
-    // Resolve UI payment mode to DB-safe values before any DB operation
-    const dbMode = PAYMENT_MODE_DB_MAP[form.paymentMode]
-    if (!dbMode) {
-      setError('Invalid payment mode selected. Please choose a valid option.')
-      setSaving(false)
-      return
-    }
+    // One choice, two stored columns. The pair is what the table has always
+    // held and what every other reader resolves the account name from.
+    const dbMode = destinationDbPair(destination)
 
-    // The PNB destination is mapped to payment_mode='other' / received_in='other'.
-    // Record the original intent in sales_note so the admin can see it.
-    const baseNote = form.salesNote.trim()
-    const finalSalesNote = form.paymentMode === 'hawala'
-      ? [baseNote, 'Payment mode: PNB'].filter(Boolean).join(' | ') || null
-      : baseNote || null
+    // sales_note is a note to the admin and nothing else now. The old
+    // ' | Payment mode: PNB' suffix this form used to append is gone: PNB is
+    // recorded as the destination pair, and the cash trail it was standing in
+    // for has its own columns below.
+    const finalSalesNote = form.salesNote.trim() || null
 
     // The whole target — client name, origin flag, and AT MOST ONE of the two
     // linkages — comes from one mapping (buildTargetPayload), so the "never
@@ -899,6 +962,9 @@ function NewPaymentConfirmationModal({
         payment_date:    form.paymentDate,
         payment_mode:    dbMode.payment_mode,
         received_in:     dbMode.received_in,
+        // Always all five keys. A destination that captures no cash trail sends
+        // nulls rather than omitting them, so this payload has one shape.
+        ...buildCollectionPayload(destination, collection),
         proof_note:      form.proofNote.trim() || null,
         sales_note:      finalSalesNote,
         status:          'pending_approval',
@@ -940,8 +1006,6 @@ function NewPaymentConfirmationModal({
 
     onSaved()
   }
-
-  const isHandoverMode = form.paymentMode === 'cash_in_hand' || form.paymentMode === 'hawala'
 
   return (
     <>
@@ -1034,31 +1098,27 @@ function NewPaymentConfirmationModal({
                 </Field>
               </div>
 
-              {/* Row 2: Payment Date + Payment Mode */}
+              {/* Row 2: Payment Date. Half width, so the date stays beside the
+                  amount's rhythm rather than stretching across the dialog. */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <Field label="Payment Date" required>
                   <input className="boe-input" type="date" value={form.paymentDate}
                     onChange={set('paymentDate')} style={{ width: '100%' }} />
                 </Field>
-                <Field label="Payment Mode" required>
-                  <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
-                    {PAYMENT_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </Field>
               </div>
 
-              {/* Conditional: Cash / handover note */}
-              {isHandoverMode && (
-                <Field label="Cash / handover note">
-                  <input
-                    className="boe-input"
-                    value={form.salesNote}
-                    onChange={set('salesNote')}
-                    placeholder="Who collected cash or handover detail"
-                    style={{ width: '100%' }}
-                  />
-                </Field>
-              )}
+              {/* Where the money went, and the cash trail behind it when the
+                  destination means somebody physically carried it. */}
+              <PaymentDestinationFields
+                supabase={supabase}
+                destination={destination}
+                onDestinationChange={setDestination}
+                collection={collection}
+                onCollectionChange={setCollection}
+                defaultCollectorId={userId}
+                paymentDate={form.paymentDate}
+                disabled={saving}
+              />
 
               {/* Proof row: reference input + attachment (optional) */}
               <Field label="Payment Proof / Reference">
@@ -1108,6 +1168,17 @@ function NewPaymentConfirmationModal({
                 )}
               </Field>
 
+              {/* Notes. Always offered now: it used to appear only for the two
+                  cash destinations, where it was doing double duty as the
+                  collection/handover record. That record has its own fields
+                  above, so this is once again a plain note to the admin — and
+                  it is the field an Order Request prefill lands in. */}
+              <Field label="Notes (optional)">
+                <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
+                  placeholder="Any additional context for admin"
+                  rows={2} style={{ width: '100%', resize: 'vertical' }} />
+              </Field>
+
           </div>
 
           {error && <ErrorBanner message={error} />}
@@ -1147,7 +1218,6 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   const [form, setForm] = useState({
     amount:      String(r.amount),
     paymentDate: r.payment_date,
-    paymentMode: dbToUiPaymentMode(r.payment_mode, r.received_in),
     proofNote:   r.proof_note ?? '',
     orderNumber: r.order_number ?? '',
     salesNote:   r.sales_note  ?? '',
@@ -1187,6 +1257,15 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       : null,
   }))
 
+  // The destination and its cash trail are editable in exactly the window every
+  // other field on this form is: the row is still pre-approval, which the
+  // .in('status', UNAPPROVED_STATUSES) filter below re-checks server-side and
+  // finance_payment_requests_guard_approved enforces independently. This is what
+  // makes "collect today, hand over tomorrow, record it then" work — the
+  // handover is filled in on a later visit to this same form.
+  const [destination, setDestination] = useState<PaymentDestinationKey>(() => readDestinationKey(r))
+  const [collection,  setCollection]  = useState<CollectionState>(() => readCollectionState(r))
+
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
@@ -1202,15 +1281,15 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  const canSubmit = isTargetComplete(target) && isValidAmount(form.amount) && !!form.paymentDate
+  // Same single blocking rule as the submission form, and for the same reason.
+  const collectionError = collectionErrorFor(destination, collection, form.paymentDate)
+
+  const canSubmit = isTargetComplete(target) && isValidAmount(form.amount)
+    && !!form.paymentDate && !collectionError
 
   const handleSave = async () => {
     if (!canSubmit) return
-    const editDbMode = PAYMENT_MODE_DB_MAP[form.paymentMode]
-    if (!editDbMode) {
-      setError('Invalid payment mode selected.')
-      return
-    }
+    const editDbMode = destinationDbPair(destination)
     setSaving(true)
     setError(null)
     const isCreatorReapply = !isAdmin && (r.status === 'needs_clarification' || r.status === 'rejected')
@@ -1240,6 +1319,10 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         payment_date: form.paymentDate,
         payment_mode: editDbMode.payment_mode,
         received_in:  editDbMode.received_in,
+        // All five keys, always — switching a payment off a cash destination has
+        // to CLEAR the trail it recorded, and an omitted key would leave a
+        // handover attached to a bank transfer.
+        ...buildCollectionPayload(destination, collection),
         proof_note:   form.proofNote.trim() || null,
         sales_note:   form.salesNote.trim() || null,
         ...(isCreatorReapply ? { status: 'pending_approval' } : {}),
@@ -1340,11 +1423,19 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
             onChange={set('paymentDate')} style={{ width: '100%' }} />
         </Field>
       </div>
-      <Field label="Payment Mode" required>
-        <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
-          {PAYMENT_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </Field>
+      <PaymentDestinationFields
+        supabase={supabase}
+        destination={destination}
+        onDestinationChange={setDestination}
+        collection={collection}
+        onCollectionChange={setCollection}
+        // The submitter is who collected the cash, not whoever is editing —
+        // an admin correcting someone else's request must not become the
+        // collector by opening the form.
+        defaultCollectorId={r.submitted_by}
+        paymentDate={form.paymentDate}
+        disabled={saving}
+      />
       <Field label="Payment Proof / Reference Note">
         <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
           placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
@@ -1618,6 +1709,15 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
     ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
     : `Submitted ${fmtDate(r.created_at)}`
 
+  // The cash trail, resolved once through the shared helper — the same call the
+  // requester's details popup makes. Null for money that arrived in an account
+  // and carries no trail, so an approval workspace never grows an empty panel.
+  const collectionSection = collectionDisplayFor(
+    r,
+    { collectedBy: r.collected_by_name, handedOverTo: r.handed_over_to_name },
+    fmtDate,
+  )
+
   // ── Figure band — the three facts an approval actually turns on ────────────
   // How much, from whom, and when the money arrived. Lifted out of the old
   // summary card and given the full dialog width: they were previously sharing
@@ -1649,14 +1749,78 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
         }}>
           <MetaItem label="Payment Against" value={targetLabelFor(r)} />
           <MetaItem label="Order Number"    value={orderNoDisplay(r)} muted={!r.order_number} />
-          <MetaItem label="Payment Mode"    value={displayPaymentMode(r.payment_mode, r.received_in)} />
-          <MetaItem label="Received In"     value={RECEIVED_IN_LABEL[r.received_in] ?? r.received_in} />
+          {/* ONE destination row in place of the Payment Mode + Received In
+              pair, which was printing the same account name twice ("Paytm"
+              over "Paytm") — the second only because a raw received_in was
+              being mapped back to an account by a separate local table.
+              Spanning both columns keeps the grid from ending on a lone empty
+              cell, and leaves room for the helper that says what the account
+              MEANS, which is the whole point: "PNB" alone does not tell an
+              admin that cash was involved. */}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <PaymentDestinationLine payment_mode={r.payment_mode} received_in={r.received_in} />
+          </div>
         </div>
       </div>
 
-      {/* Evidence — proof and reference as two aligned rows in one frame. */}
+      {/* Cash collection — only for money somebody physically carried, and the
+          reason this popup needs it: the destination row above says PNB, and an
+          admin about to confirm receipt has to be able to see who actually
+          holds that cash right now. Resolved through the same helper as the
+          requester's details popup, so the two surfaces can never describe one
+          collection differently. */}
+      {collectionSection && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <SectionHeader>{collectionSection.title}</SectionHeader>
+          <div style={{
+            border: `1px solid ${colors.border}`, borderRadius: '10px', background: colors.raised,
+            padding: '12px 14px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            columnGap: '18px', rowGap: '11px',
+          }}>
+            {collectionSection.rows.map(row => (
+              <div
+                key={row.label}
+                // Free text — a note, or an outside party's name — takes the
+                // full width instead of being squeezed into a half cell and
+                // wrapping to four lines. Decided on the VALUE's length rather
+                // than by matching the label, so a re-worded row keeps
+                // behaving sensibly.
+                style={row.value.length > 38 ? { gridColumn: '1 / -1' } : undefined}
+              >
+                <MetaItem label={row.label} value={row.value} muted={row.muted} />
+              </div>
+            ))}
+
+            {/* The one fact in the trail that changes what an admin should do.
+                The rows above state that the handover is pending; this states
+                the consequence of approving anyway — the post-approval freeze
+                (20260716 §3) puts all five collection columns out of the
+                requester's reach, so "record it later" stops being true the
+                moment this request is approved. Informational, never a
+                blocker: collecting today and handing over tomorrow is the
+                normal case this workflow was built for. */}
+            {collectionSection.handoverPending && (
+              <div style={{
+                gridColumn: '1 / -1',
+                padding: '9px 11px', borderRadius: '8px',
+                background: '#FFF7ED', border: '1px solid #FED7AA',
+                fontSize: '11.5px', color: '#9A3412', lineHeight: 1.5,
+              }}>
+                The cash has not been handed over yet. Approving freezes this
+                record — the requester can no longer add the handover
+                afterwards, and only an admin can correct it.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Supporting information — proof and reference as two aligned rows in
+          one frame. Named the same as the requester's popup: an admin and the
+          salesperson who submitted the request should not have to learn two
+          words for the same block. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <SectionHeader>Evidence</SectionHeader>
+        <SectionHeader>Supporting information</SectionHeader>
         <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 12px' }}>
             <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', width: '68px', flexShrink: 0 }}>Proof</span>
@@ -2212,11 +2376,15 @@ function FinancePageInner() {
       .from('finance_payment_requests')
       .select(`
         id, request_number, client_name, amount, payment_date, payment_mode,
-        received_in, proof_note, order_number, order_id,
+        received_in, collected_by_user_id, collected_from_text,
+        handed_over_to_user_id, handed_over_at, collection_handover_note,
+        proof_note, order_number, order_id,
         order_request_id, order_request_number, sales_note,
         payment_against, payment_target_type, status, submitted_by, admin_note, created_at,
         updated_at, rejected_at, clarification_requested_at,
-        submitted_by_user:users!submitted_by(full_name)
+        submitted_by_user:users!submitted_by(full_name),
+        collected_by_user:users!collected_by_user_id(full_name),
+        handed_over_to_user:users!handed_over_to_user_id(full_name)
       `)
       // Request-stage records ONLY. This replaces a .neq('approved_linked'),
       // which let approved_unlinked through and put confirmed money on the
@@ -2228,8 +2396,12 @@ function FinancePageInner() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
       ...r,
-      submitted_by_name: r.submitted_by_user?.full_name ?? undefined,
-      submitted_by_user: undefined,
+      submitted_by_name:   r.submitted_by_user?.full_name   ?? undefined,
+      collected_by_name:   r.collected_by_user?.full_name   ?? undefined,
+      handed_over_to_name: r.handed_over_to_user?.full_name ?? undefined,
+      submitted_by_user:   undefined,
+      collected_by_user:   undefined,
+      handed_over_to_user: undefined,
     }))
     setRequests(mapped)
     setListLoading(false)

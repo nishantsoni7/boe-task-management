@@ -23,6 +23,7 @@ export function PaymentProofView({
   paymentRequestId,
   renderEmpty = false,
   inline = false,
+  emptyLabel,
 }: {
   supabase: ReturnType<typeof createClient>
   paymentRequestId: string
@@ -34,6 +35,10 @@ export function PaymentProofView({
   // padding) so it can sit as a plain row inside a host container. Default
   // false preserves the standalone card used by the admin review modal.
   inline?: boolean
+  // Overrides the empty-state wording. Left unset, each variant keeps the text
+  // it has always used, so adopting the fuller "No payment proof attached"
+  // phrasing is a per-caller decision rather than a silent change everywhere.
+  emptyLabel?: string
 }) {
   const [proof,   setProof]   = useState<ProofRow | null>(null)
   const [loading, setLoading] = useState(true)
@@ -77,7 +82,11 @@ export function PaymentProofView({
 
   if (!proof) {
     if (!renderEmpty) return null
-    return <div style={{ fontSize: '13px', color: colors.muted }}>{inline ? 'Not attached' : 'No proof attached'}</div>
+    return (
+      <div style={{ fontSize: '13px', color: colors.muted }}>
+        {emptyLabel ?? (inline ? 'Not attached' : 'No proof attached')}
+      </div>
+    )
   }
 
   return (

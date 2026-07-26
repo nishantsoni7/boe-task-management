@@ -103,6 +103,17 @@ function eventLabel(row: ActivityRow): string {
       if (to === 'pending_approval')                             return 'Resubmitted for approval'
       return `Status changed from ${statusLabel(p.from_status)} to ${statusLabel(p.to_status)}`
     }
+    // The cash trail (20260716). Names come from the payload, resolved
+    // server-side at write time — the timeline never renders a uuid, and never
+    // has to join a user table that may since have changed.
+    case 'collection_details_updated': return 'Cash collection details updated'
+    case 'cash_handover_recorded': {
+      const to = typeof p.to_handed_over_to_name === 'string' ? p.to_handed_over_to_name : ''
+      // Cleared: the handover was recorded and has been taken back off. Named
+      // honestly rather than reported as a handover to nobody.
+      if (!p.to_handed_over_to_id) return 'Cash handover cleared'
+      return to ? `Cash handed over to ${to}` : 'Cash handover recorded'
+    }
     default:                   return row.event_type
   }
 }
@@ -123,6 +134,12 @@ function markerColor(row: ActivityRow): string {
   // A pre-approval correction is neither good news nor bad — it is a change the
   // reader should notice.
   if (row.event_type === 'target_changed')         return colors.amber
+  // A completed handover is the outcome the business waits for; clearing one is
+  // a change worth noticing. Colour is never the only signal — the event text
+  // above says which of the two happened.
+  if (row.event_type === 'cash_handover_recorded') {
+    return row.payload?.to_handed_over_to_id ? colors.green : colors.amber
+  }
   return colors.muted
 }
 
