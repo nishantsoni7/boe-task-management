@@ -28,6 +28,17 @@ import {
 } from '@/components/ui/StatusTabs'
 import { Archive, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
 import { REQUEST_STAGE_STATUSES, isRequestStageStatus } from './paymentRouting'
+import {
+  EMPTY_TARGET_STATE,
+  PAYMENT_TARGET_LABEL,
+  buildTargetPayload,
+  isTargetComplete,
+  paymentTargetErrorMessage,
+  readTargetType,
+  targetClientName,
+  type PaymentTargetState,
+} from './paymentTargets'
+import { PaymentTargetFields } from './components/PaymentTargetFields'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 
@@ -44,8 +55,13 @@ type PaymentRequest = {
   proof_note: string | null
   order_number: string | null
   order_id: string | null
+  // Order Request linkage. Since 20260715 a payment may carry this from the
+  // moment it is submitted, not only once Finance has approved it.
+  order_request_id: string | null
+  order_request_number: string | null
   sales_note: string | null
   payment_against: string
+  payment_target_type: string
   status: string
   submitted_by: string
   submitted_by_name?: string
@@ -54,14 +70,6 @@ type PaymentRequest = {
   updated_at: string
   rejected_at: string | null
   clarification_requested_at: string | null
-}
-
-type OrderResult = {
-  id: string
-  display_number: string
-  client_name: string
-  total_value: number | null
-  status: string
 }
 
 type AdminAction = 'approve' | 'needs_clarification' | 'reject'
@@ -100,23 +108,13 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
 }
 
-const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
-  running:            { label: 'Running',             color: '#1E40AF' },
-  on_hold:            { label: 'On Hold',             color: '#9A3412' },
-  ready_for_dispatch: { label: 'Ready for Dispatch',  color: '#5B21B6' },
-  dispatched:         { label: 'Dispatched',          color: '#166534' },
-  cancelled:          { label: 'Cancelled',           color: '#991B1B' },
+// "Payment Against" now names one of THREE submission targets (20260715). The
+// label comes from paymentTargets.ts so this page, the Order Request panel and
+// the tests all read one definition; readTargetType falls back to deriving the
+// value for a row loaded before the column existed.
+function targetLabelFor(r: PaymentRequest): string {
+  return PAYMENT_TARGET_LABEL[readTargetType(r)]
 }
-
-const PAYMENT_AGAINST_LABEL: Record<string, string> = {
-  existing_order: 'Existing Order',
-  new_order:      'New Order',
-}
-
-const PAYMENT_AGAINST_OPTIONS: { label: string; value: string }[] = [
-  { label: 'New Order',      value: 'new_order' },
-  { label: 'Existing Order', value: 'existing_order' },
-]
 
 // Option values are received_in-style DB keys (DB-safe for that column).
 // payment_mode is derived via PAYMENT_MODE_DB_MAP below.
@@ -222,14 +220,24 @@ function fmtAmount(n: number) {
 // payment, so every record reaching here is still at the request stage.
 function orderNoDisplay(r: PaymentRequest): string {
   if (r.order_number) return r.order_number
+  // A request-targeted payment names the Order Request it belongs to rather
+  // than reporting "no order created yet", which would hide the thing it IS
+  // attached to.
+  if (r.order_request_number) return `Order Request ${r.order_request_number}`
   if (r.payment_against === 'new_order') return 'New Order — no order created yet'
   return '—'
 }
 
 // Maps the approved_linked-requires-order_id CHECK constraint violation to a
 // clear message instead of surfacing the raw Postgres error.
+//
+// Target failures (20260715) are consulted FIRST and are far more specific:
+// each names the rule that refused, so "that request was already converted"
+// never collapses into a generic constraint sentence.
 function friendlyDbErrorMessage(dbError: { code?: string; message: string } | null): string {
   if (!dbError) return ''
+  const target = paymentTargetErrorMessage(dbError.message)
+  if (target) return target
   if (dbError.code === '23514' || dbError.message?.includes('finance_payment_requests_approved_linked_requires_order_id')) {
     return 'Select a valid order before marking this payment as linked.'
   }
@@ -534,9 +542,11 @@ function DetailsModal({
   // back to the existing safe helper for legacy/anomalous data.
   const paymentAgainstDisplay = r.order_number
     ? r.order_number
-    : r.payment_against === 'new_order'
-      ? 'New Order'
-      : orderNoDisplay(r)
+    : r.order_request_number
+      ? `Order Request ${r.order_request_number}`
+      : readTargetType(r) === 'unallocated'
+        ? 'New Order'
+        : orderNoDisplay(r)
 
   const left = (
     <>
@@ -748,16 +758,16 @@ function DetailsModal({
 
 // ── New Payment Confirmation modal ────────────────────────────────────────────
 
+// Everything on the form that is NOT the target. Client name, both linkages and
+// the origin flag all live in PaymentTargetState instead, because they are one
+// decision with three shapes rather than five independent fields.
 const EMPTY_FORM = {
-  clientName:      '',
   amount:          '',
   paymentDate:     '',
   paymentMode:     PAYMENT_MODE_OPTIONS[0].value,
   receivedIn:      RECEIVED_IN_OPTIONS[0].value, // kept for DB compat; not shown in UI
   proofNote:       '',
-  orderNumber:     '',
   salesNote:       '',
-  paymentAgainst:  PAYMENT_AGAINST_OPTIONS[0].value,
 }
 
 type NewPaymentModalProps = {
@@ -766,9 +776,8 @@ type NewPaymentModalProps = {
   onClose: () => void
   onSaved: () => void
   // Optional prefill, used when the form is opened from an Order Request so
-  // the salesperson does not retype what that request already knows. Both are
-  // ordinary editable field values — never a hidden linkage: a submitted
-  // payment still has to be approved before it can be attached to anything.
+  // the salesperson does not retype what that request already knows. The note
+  // and the client name are ordinary editable field values.
   initialClientName?: string
   initialSalesNote?: string
   contextLabel?: string
@@ -779,10 +788,13 @@ function NewPaymentConfirmationModal({
   initialClientName, initialSalesNote, contextLabel,
 }: NewPaymentModalProps) {
   useModalScrollLockAndEscape(onClose)
-  const [form, setForm] = useState(() => ({
-    ...EMPTY_FORM,
-    clientName: initialClientName ?? EMPTY_FORM.clientName,
-    salesNote:  initialSalesNote  ?? EMPTY_FORM.salesNote,
+  const [form, setForm] = useState(() => ({ ...EMPTY_FORM, salesNote: initialSalesNote ?? '' }))
+  // The three-way target choice. A prefilled client name only ever seeds the
+  // New Order branch — arriving from another module must never silently attach
+  // money to a record the person did not choose here.
+  const [target, setTarget] = useState<PaymentTargetState>(() => ({
+    ...EMPTY_TARGET_STATE,
+    manualClientName: initialClientName ?? '',
   }))
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
@@ -792,51 +804,19 @@ function NewPaymentConfirmationModal({
   const [attachError, setAttachError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Order search — only used when payment_against = 'existing_order'
-  const [orderQuery,     setOrderQuery]     = useState('')
-  const [orderResults,   setOrderResults]   = useState<OrderResult[]>([])
-  const [orderSearching, setOrderSearching] = useState(false)
-  const [selectedOrder,  setSelectedOrder]  = useState<OrderResult | null>(null)
-
   const set = (key: keyof typeof EMPTY_FORM) => (
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  // Order changed (selected, changed, or cleared) — Client Name always follows
-  // the order for an existing-order request; no stale value survives a change.
-  const selectOrder = (o: OrderResult | null) => {
-    setSelectedOrder(o)
-    setOrderResults([])
-    setForm(prev => ({ ...prev, clientName: o?.client_name ?? '' }))
-  }
-
-  const handleOrderSearch = async (q: string) => {
-    setOrderQuery(q)
-    selectOrder(null)
-    const trimmed = q.trim()
-    if (!trimmed) { setOrderResults([]); return }
-    setOrderSearching(true)
-    const { data } = await supabase
-      .from('orders')
-      .select('id, display_number, client_name, total_value, status')
-      .or(`display_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
-      .not('status', 'in', '(cancelled)')
-      .order('created_at', { ascending: false })
-      .limit(20)
-    setOrderResults((data ?? []) as OrderResult[])
-    setOrderSearching(false)
-  }
-
-  const isExistingOrder = form.paymentAgainst === 'existing_order'
-  const existingOrderClientName = selectedOrder?.client_name?.trim() ?? ''
+  const isLinkedTarget = target.target !== 'unallocated'
+  const clientName     = targetClientName(target)
 
   const canSubmit = !!(
-    (isExistingOrder ? existingOrderClientName : form.clientName.trim()) &&
+    isTargetComplete(target) &&
     isValidAmount(form.amount) &&
     form.paymentDate &&
-    !attachError &&
-    (!isExistingOrder || selectedOrder !== null)
+    !attachError
   )
 
   // Uploads the selected proof to the private bucket and records its metadata.
@@ -901,33 +881,36 @@ function NewPaymentConfirmationModal({
       ? [baseNote, 'Payment mode: PNB'].filter(Boolean).join(' | ') || null
       : baseNote || null
 
-    // Existing order: client_name is the order's authoritative name, never the
-    // (possibly stale/edited) form field — the DB trigger re-derives it from
-    // order_id anyway, but sending the right value directly avoids relying on
-    // that as anything but a backstop.
+    // The whole target — client name, origin flag, and AT MOST ONE of the two
+    // linkages — comes from one mapping (buildTargetPayload), so the "never
+    // both" rule is a property of the payload rather than a condition spread
+    // across four ternaries. Every value in it is re-derived server-side by
+    // finance_payment_requests_derive_target: the Order Request number is not
+    // sent at all, and the client name is overwritten from the selected record.
     //
-    // New order: no order number is reserved or allocated here. The request is
-    // saved with order_id/order_number = null; allocation happens only when an
-    // admin approves it, via approve_finance_payment_request (20260688000000).
+    // No order number is reserved or allocated here for any target. A New Order
+    // or Order Request payment approves to suspense; a Confirmed Order payment
+    // carries the Order the user picked (20260688 / 20260690).
     const { data: created, error: dbError } = await supabase
       .from('finance_payment_requests')
       .insert({
-        client_name:     isExistingOrder ? existingOrderClientName : form.clientName.trim(),
+        ...buildTargetPayload(target),
         amount:          Number(form.amount),
         payment_date:    form.paymentDate,
         payment_mode:    dbMode.payment_mode,
         received_in:     dbMode.received_in,
         proof_note:      form.proofNote.trim() || null,
-        order_number:    isExistingOrder ? (selectedOrder?.display_number ?? null) : null,
-        order_id:        isExistingOrder ? (selectedOrder?.id ?? null) : null,
         sales_note:      finalSalesNote,
-        payment_against: form.paymentAgainst,
         status:          'pending_approval',
         submitted_by:    userId,
       })
       .select('id, request_number')
       .single()
-    if (dbError || !created) { setError(dbError?.message ?? 'Failed to submit request.'); setSaving(false); return }
+    if (dbError || !created) {
+      setError(friendlyDbErrorMessage(dbError) || 'Failed to submit request.')
+      setSaving(false)
+      return
+    }
 
     const proofErr = await persistProof(created.id)
     if (proofErr) {
@@ -952,25 +935,13 @@ function NewPaymentConfirmationModal({
       event: 'finance_submitted',
       requestNumber: created.request_number,
       entityId: created.id,
-      clientName: isExistingOrder ? existingOrderClientName : form.clientName.trim(),
+      clientName,
     })
 
     onSaved()
   }
 
-  const switchPaymentAgainst = (value: string) => {
-    setForm(prev => ({ ...prev, paymentAgainst: value, clientName: '' }))
-    setSelectedOrder(null)
-    setOrderQuery('')
-    setOrderResults([])
-  }
-
   const isHandoverMode = form.paymentMode === 'cash_in_hand' || form.paymentMode === 'hawala'
-
-  const SECTION_LABEL: React.CSSProperties = {
-    fontSize: '10px', fontWeight: 700, color: colors.muted,
-    textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '10px',
-  }
 
   return (
     <>
@@ -1018,145 +989,43 @@ function NewPaymentConfirmationModal({
           display: 'flex', flexDirection: 'column', gap: '14px',
         }}>
 
-          {/* Section: Order */}
-          <div>
-            <div style={SECTION_LABEL}>Order</div>
+          {/* Section: which of the three stages is this money against? */}
+          <PaymentTargetFields
+            supabase={supabase}
+            value={target}
+            onChange={setTarget}
+            disabled={saving}
+          />
 
-            {/* Payment Against — two selectable cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-              {PAYMENT_AGAINST_OPTIONS.map(opt => {
-                const active = form.paymentAgainst === opt.value
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => switchPaymentAgainst(opt.value)}
-                    style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                      gap: '2px', padding: '8px 12px', borderRadius: '7px', cursor: 'pointer',
-                      border: active ? '1.5px solid #DC1F2E' : `1px solid ${colors.border}`,
-                      background: active ? 'rgba(220,31,46,0.04)' : colors.raised,
-                      textAlign: 'left',
-                    }}
-                  >
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: active ? '#DC1F2E' : colors.primary }}>
-                      {opt.label}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Existing Order — search + selection */}
-            {isExistingOrder && (
-              <Field label="Select Order" required>
-                {selectedOrder ? (
-                  <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '7px 10px', borderRadius: '7px',
-                    background: colors.blueTint, border: `1px solid rgba(85,133,232,0.25)`,
-                  }}>
-                    <div>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{selectedOrder.display_number}</span>
-                      <span style={{ fontSize: '12px', color: colors.secondary, marginLeft: '8px' }}>{selectedOrder.client_name}</span>
-                    </div>
-                    <button
-                      onClick={() => { selectOrder(null); setOrderQuery('') }}
-                      className="boe-btn boe-btn-ghost"
-                      style={{ padding: '2px 8px', fontSize: '11px' }}
-                    >
-                      Change
-                    </button>
-                  </div>
-                ) : null}
-                {selectedOrder && !existingOrderClientName && (
-                  <ErrorBanner message="This order has no client name on file. Correct it on the Order Details page before submitting a payment request." />
-                )}
-                {!selectedOrder && (
-                  <>
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                      background: colors.raised, border: `1px solid ${colors.border}`,
-                      borderRadius: '6px', padding: '5px 10px',
-                    }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                      </svg>
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="Search by order number or client…"
-                        value={orderQuery}
-                        onChange={e => handleOrderSearch(e.target.value)}
-                        style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary }}
-                      />
-                      {orderSearching && <span style={{ fontSize: '11px', color: colors.muted }}>Searching…</span>}
-                    </div>
-                    {orderResults.length > 0 && (
-                      <div style={{
-                        border: `1px solid ${colors.border}`, borderRadius: '7px', overflow: 'hidden',
-                        maxHeight: '180px', overflowY: 'auto', marginTop: '4px',
-                      }}>
-                        {orderResults.map((o, idx) => {
-                          const osMeta = ORDER_STATUS_META[o.status] ?? { label: o.status, color: colors.muted }
-                          return (
-                            <div
-                              key={o.id}
-                              onClick={() => selectOrder(o)}
-                              style={{
-                                padding: '8px 12px',
-                                borderBottom: idx < orderResults.length - 1 ? `1px solid ${colors.border}` : 'none',
-                                cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-                              }}
-                              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = colors.raised }}
-                              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-                            >
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{o.display_number}</span>
-                                  <span style={{ fontSize: '11px', fontWeight: 600, color: osMeta.color }}>{osMeta.label}</span>
-                                </div>
-                                <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {o.client_name}
-                                </div>
-                              </div>
-                              {o.total_value != null && (
-                                <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary, flexShrink: 0 }}>
-                                  {fmtAmount(o.total_value)}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                    {orderQuery.trim() && !orderSearching && orderResults.length === 0 && (
-                      <div style={{ fontSize: '12px', color: colors.muted, padding: '6px 0' }}>
-                        No orders found for &ldquo;{orderQuery.trim()}&rdquo;.
-                      </div>
-                    )}
-                  </>
-                )}
-              </Field>
-            )}
-          </div>
+          {/* A record was chosen but carries no client name. Submit is already
+              blocked (isTargetComplete); this says why, and where to fix it. */}
+          {isLinkedTarget && (target.selectedRequest || target.selectedOrder) && !clientName && (
+            <ErrorBanner message={target.target === 'order_request'
+              ? 'This Order Request has no client name on file. Correct it on the request before submitting a payment against it.'
+              : 'This order has no client name on file. Correct it on the Order Details page before submitting a payment request.'} />
+          )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
             {/* Row 1: Client Name + Amount */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <Field label="Client Name" required>
-                  {isExistingOrder ? (
+                  {isLinkedTarget ? (
                     <>
-                      <input className="boe-input" value={existingOrderClientName} readOnly disabled
-                        placeholder="Select an order first" style={{ width: '100%' }} />
+                      <input className="boe-input" value={clientName} readOnly disabled
+                        placeholder={target.target === 'order_request'
+                          ? 'Select an Order Request first'
+                          : 'Select an order first'}
+                        style={{ width: '100%' }} />
                       <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                        Client name is taken from the selected order.
+                        {target.target === 'order_request'
+                          ? 'Client name is taken from the selected Order Request.'
+                          : 'Client name is taken from the selected order.'}
                       </span>
                     </>
                   ) : (
-                    <input className="boe-input" value={form.clientName} onChange={set('clientName')}
+                    <input className="boe-input" value={target.manualClientName}
+                      onChange={e => setTarget(prev => ({ ...prev, manualClientName: e.target.value }))}
                       placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
                   )}
                 </Field>
@@ -1276,7 +1145,6 @@ type EditPaymentModalProps = {
 
 function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: EditPaymentModalProps) {
   const [form, setForm] = useState({
-    clientName:  r.client_name,
     amount:      String(r.amount),
     paymentDate: r.payment_date,
     paymentMode: dbToUiPaymentMode(r.payment_mode, r.received_in),
@@ -1284,10 +1152,46 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     orderNumber: r.order_number ?? '',
     salesNote:   r.sales_note  ?? '',
   })
+
+  // The target is editable here for the same reason the amount is: this modal
+  // only ever opens on a payment that is still the submitter's to correct
+  // (canManageRequest + the .in('status', UNAPPROVED_STATUSES) guard below), and
+  // picking the wrong Order Request is exactly the kind of mistake a
+  // clarification round is for. The database allows it in precisely the same
+  // window: finance_payment_requests_derive_target re-derives the target while
+  // the row is pre-approval and freezes it once approved.
+  //
+  // Seeded from the row's stored linkage. status/total_value are not part of the
+  // stored linkage and are not rendered for an already-selected record, so they
+  // are left empty rather than invented.
+  const [target, setTarget] = useState<PaymentTargetState>(() => ({
+    target: readTargetType(r),
+    manualClientName: r.client_name,
+    selectedRequest: r.order_request_id
+      ? {
+          id: r.order_request_id,
+          request_number: r.order_request_number ?? '',
+          client_name: r.client_name,
+          status: '',
+          total_value: null,
+        }
+      : null,
+    selectedOrder: r.order_id
+      ? {
+          id: r.order_id,
+          display_number: r.order_number ?? '',
+          client_name: r.client_name,
+          status: '',
+          total_value: null,
+        }
+      : null,
+  }))
+
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
-  const isExistingOrder = r.payment_against === 'existing_order'
+  const isLinkedTarget = target.target !== 'unallocated'
+  const clientName     = targetClientName(target)
 
   // Set once an approval was detected mid-edit: the request is gone from this
   // page's jurisdiction, so retrying the save can only fail the same way.
@@ -1298,7 +1202,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  const canSubmit = form.clientName.trim() && isValidAmount(form.amount) && form.paymentDate
+  const canSubmit = isTargetComplete(target) && isValidAmount(form.amount) && !!form.paymentDate
 
   const handleSave = async () => {
     if (!canSubmit) return
@@ -1309,30 +1213,34 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     }
     setSaving(true)
     setError(null)
-    // order_number stays in the payload unconditionally: this modal now only
-    // ever opens for an unapproved request, where order_number is free-form
-    // reference text and order_id is untouched. For the two approved_* states
-    // it is owned by the link/unlink RPCs — and those rows can no longer reach
-    // this form at all (canManageRequest), nor survive the status filter below.
     const isCreatorReapply = !isAdmin && (r.status === 'needs_clarification' || r.status === 'rejected')
+
+    // The linkage half comes from the SAME mapping the submission form uses, so
+    // a correction cannot produce a shape a submission could not. For the New
+    // Order target, order_number keeps its legacy meaning as free-form reference
+    // text and the field is still offered; for the two linked targets the number
+    // is authoritative and the payload's value wins.
+    const targetPayload = buildTargetPayload(target)
+    const linkage = target.target === 'unallocated'
+      ? { ...targetPayload, order_number: form.orderNumber.trim() || null }
+      : targetPayload
 
     // The status filter is the race guard: PostgREST re-evaluates it against
     // the committed row, so an approval that landed while this modal was open
     // turns the save into a zero-row no-op instead of overwriting the approved
     // record. It applies to admins too, whose RLS policy alone would allow the
     // write. Nothing protected is submitted: request_number, submitted_by,
-    // approved_by/at, created_at, order_id and the linkage columns are all
-    // absent from the payload.
+    // approved_by/at and created_at are all absent from the payload, and
+    // payment_target_type is derived server-side rather than sent.
     const { data: updated, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
-        client_name:  form.clientName.trim(),
+        ...linkage,
         amount:       Number(form.amount),
         payment_date: form.paymentDate,
         payment_mode: editDbMode.payment_mode,
         received_in:  editDbMode.received_in,
         proof_note:   form.proofNote.trim() || null,
-        order_number: form.orderNumber.trim() || null,
         sales_note:   form.salesNote.trim() || null,
         ...(isCreatorReapply ? { status: 'pending_approval' } : {}),
         updated_at:   new Date().toISOString(),
@@ -1352,7 +1260,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         event: 'finance_resubmitted',
         requestNumber: r.request_number,
         entityId: r.id,
-        clientName: form.clientName.trim(),
+        clientName,
       })
     }
 
@@ -1396,16 +1304,30 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           </div>
         </div>
       )}
+      <PaymentTargetFields
+        supabase={supabase}
+        value={target}
+        onChange={setTarget}
+        disabled={saving}
+        readOnlyNote="Changing the target moves this payment before it is approved. Switching clears the record currently selected."
+      />
       <Field label="Client Name" required>
-        {isExistingOrder ? (
+        {isLinkedTarget ? (
           <>
-            <input className="boe-input" value={form.clientName} readOnly disabled style={{ width: '100%' }} />
+            <input className="boe-input" value={clientName} readOnly disabled
+              placeholder={target.target === 'order_request'
+                ? 'Select an Order Request first'
+                : 'Select an order first'}
+              style={{ width: '100%' }} />
             <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-              Client name is taken from the selected order.
+              {target.target === 'order_request'
+                ? 'Client name is taken from the selected Order Request.'
+                : 'Client name is taken from the selected order.'}
             </span>
           </>
         ) : (
-          <input className="boe-input" value={form.clientName} onChange={set('clientName')}
+          <input className="boe-input" value={target.manualClientName}
+            onChange={e => setTarget(prev => ({ ...prev, manualClientName: e.target.value }))}
             placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
         )}
       </Field>
@@ -1428,10 +1350,16 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
           rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
-      <Field label="Order Number (optional)">
-        <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
-          placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
-      </Field>
+      {/* Free-form reference text, and only meaningful for a New Order payment.
+          For the two linked targets the number belongs to the selected record
+          and is written from it, so offering an editable field here would invite
+          a second, contradictory value. */}
+      {!isLinkedTarget && (
+        <Field label="Order Number (optional)">
+          <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
+            placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
+        </Field>
+      )}
       <Field label="Sales Note (optional)">
         <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
           placeholder="Any additional context for admin"
@@ -1577,7 +1505,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
           borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
         }}>
           <MetaItem label="Payment Date"    value={fmtDate(r.payment_date)} />
-          <MetaItem label="Payment Against" value={PAYMENT_AGAINST_LABEL[r.payment_against] ?? r.payment_against} />
+          <MetaItem label="Payment Against" value={targetLabelFor(r)} />
           <MetaItem label="Payment Mode"    value={displayPaymentMode(r.payment_mode, r.received_in)} />
           <MetaItem label="Received In"     value={RECEIVED_IN_LABEL[r.received_in] ?? r.received_in} />
           <MetaItem label="Order Number"    value={orderNoDisplay(r)} muted={!r.order_number} />
@@ -1638,19 +1566,28 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
           </div>
         </div>
 
-        {action === 'approve' && (
-          <div style={{
-            padding: '10px 12px', borderRadius: '8px',
-            background: r.payment_against === 'new_order' ? '#FFF7ED' : '#F0FDF4',
-            border: `1px solid ${r.payment_against === 'new_order' ? '#FED7AA' : '#BBF7D0'}`,
-            fontSize: '12px', color: r.payment_against === 'new_order' ? '#9A3412' : '#166534',
-            lineHeight: 1.5,
-          }}>
-            {r.payment_against === 'new_order'
-              ? 'This payment will be recorded as received and moved to Suspense. No order or order number is created here — attach it to an order later from Order Requests or the Suspense list.'
-              : `This payment will be linked directly to order ${r.order_number ?? orderNoDisplay(r)}.`}
-          </div>
-        )}
+        {action === 'approve' && (() => {
+          // What approval actually does depends on which of the three targets
+          // the payment was raised against — and for an Order Request that is
+          // NOT "moved to Suspense", it keeps the request linkage.
+          const approvalTarget = readTargetType(r)
+          const linksToOrder = approvalTarget === 'confirmed_order'
+          return (
+            <div style={{
+              padding: '10px 12px', borderRadius: '8px',
+              background: linksToOrder ? '#F0FDF4' : '#FFF7ED',
+              border: `1px solid ${linksToOrder ? '#BBF7D0' : '#FED7AA'}`,
+              fontSize: '12px', color: linksToOrder ? '#166534' : '#9A3412',
+              lineHeight: 1.5,
+            }}>
+              {approvalTarget === 'confirmed_order'
+                ? `This payment will be linked directly to order ${r.order_number ?? orderNoDisplay(r)}.`
+                : approvalTarget === 'order_request'
+                  ? `This payment will be recorded as received and stay attached to Order Request ${r.order_request_number ?? ''}, where it counts as confirmed advance. It moves onto the Confirmed Order automatically when that request is converted.`
+                  : 'This payment will be recorded as received and moved to Suspense. No order or order number is created here — attach it to an order later from Order Requests or the Suspense list.'}
+            </div>
+          )
+        })()}
 
         {action && (
           <Field label={`Admin Note${noteRequired ? '' : ' (optional)'}`} required={noteRequired}>
@@ -2057,8 +1994,9 @@ function FinancePageInner() {
       .from('finance_payment_requests')
       .select(`
         id, request_number, client_name, amount, payment_date, payment_mode,
-        received_in, proof_note, order_number, order_id, sales_note,
-        payment_against, status, submitted_by, admin_note, created_at,
+        received_in, proof_note, order_number, order_id,
+        order_request_id, order_request_number, sales_note,
+        payment_against, payment_target_type, status, submitted_by, admin_note, created_at,
         updated_at, rejected_at, clarification_requested_at,
         submitted_by_user:users!submitted_by(full_name)
       `)

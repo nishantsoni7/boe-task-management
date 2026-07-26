@@ -21,12 +21,14 @@ import { formatINR } from '@/lib/currency'
 import { orderNumberErrorMessage } from '@/lib/orderNumbering'
 import { StatusBadge } from './RequestPanels'
 import {
+  convertGuardErrorMessage,
   deleteRequestErrorMessage,
   fmtAmount,
   fmtDate,
   normalizeClientName,
   useEscapeToClose,
   LEAD_SOURCE_OPTIONS,
+  NO_APPROVED_PAYMENT_MESSAGE,
   type ConvertResult,
   type EligiblePayment,
   type OrderRequest,
@@ -67,7 +69,7 @@ export function ConvertModal({
   // since it depends on comparing against this specific request's client_name.
   const loadEligiblePayments = async () => {
     setLoadingPayments(true)
-    const paymentColumns = 'id, request_number, client_name, amount, payment_date, proof_note, submitted_by_user:users!submitted_by(full_name)'
+    const paymentColumns = 'id, request_number, client_name, amount, payment_date, proof_note, status, submitted_by_user:users!submitted_by(full_name)'
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapRows = (rows: any[]): EligiblePayment[] => rows.map(p => ({
       id: p.id,
@@ -76,6 +78,7 @@ export function ConvertModal({
       amount: p.amount,
       payment_date: p.payment_date,
       proof_note: p.proof_note ?? null,
+      status: p.status,
       submitted_by_name: p.submitted_by_user?.full_name ?? undefined,
     }))
 
@@ -132,8 +135,29 @@ export function ConvertModal({
     })
   }
 
+  // ── What is actually attached to this request, by decision state ────────────
+  // Since 20260715 a payment can be raised against a request BEFORE Finance has
+  // decided anything, so "parked on this request" is no longer the same set as
+  // "will transfer". Only approved payments transfer; the others are shown so
+  // the admin can see what they still have to decide.
+  const preLinkedApproved  = preLinked.filter(p => p.status === 'approved_unlinked')
+  const preLinkedUndecided = preLinked.filter(p => p.status === 'pending_approval' || p.status === 'needs_clarification')
+  const preLinkedRejected  = preLinked.filter(p => p.status === 'rejected')
+
   const selectedList  = payments.filter(p => selected.has(p.id))
   const selectedTotal = selectedList.reduce((sum, p) => sum + Number(p.amount), 0)
+
+  // The two conversion guards, mirrored. convert_order_request_to_order enforces
+  // both under row locks and is the actual gate — this only tells the admin
+  // before they click, and never widens what the RPC would accept. The eligible
+  // list excludes anything already parked on a request, so the two counts below
+  // cannot overlap.
+  const transferCount = preLinkedApproved.length + selected.size
+  const blockedReason =
+    loadingPayments                 ? null :
+    transferCount === 0             ? NO_APPROVED_PAYMENT_MESSAGE :
+    preLinkedUndecided.length > 0   ? `${preLinkedUndecided.length} payment request${preLinkedUndecided.length !== 1 ? 's' : ''} linked to this request ${preLinkedUndecided.length !== 1 ? 'are' : 'is'} still awaiting a finance decision. Approve or reject ${preLinkedUndecided.length !== 1 ? 'them' : 'it'} before converting.`
+                                    : null
   // Display/warning only — never blocks selection or conversion. Recomputed
   // from the live selection, so it appears and disappears exactly with
   // deselection, no separate state to keep in sync.
@@ -144,7 +168,7 @@ export function ConvertModal({
   useEscapeToClose(onClose, !saving)
 
   const handleConvert = async () => {
-    if (saving) return  // guards against double-clicks; the RPC is the real guard
+    if (saving || blockedReason) return  // the RPC is the real guard for both
     setSaving(true)
     setError(null)
 
@@ -163,14 +187,24 @@ export function ConvertModal({
         setSelected(prev => new Set(Array.from(prev).filter(id => stillEligible.has(id))))
         setError('One or more selected payments are no longer available. The list has been refreshed.')
       } else {
-        // Order numbering failures (20260703000000) get their own plain-language
-        // sentence. They are not "try again" problems — nothing about retrying
-        // fixes an unconfigured or stale Order number cycle, and the generic
-        // message below would send the admin round a loop that cannot succeed.
-        // Like STALE_PAYMENTS, the whole conversion rolled back, so no Order was
-        // created, no payment moved, and the configured number did not advance.
-        const numbering = orderNumberErrorMessage(rpcErr?.message, 'conversion')
-        setError(numbering ?? 'Could not convert this request. Please refresh and try again.')
+        // The two payment guards (20260715 §7) come first: each names a rule the
+        // admin can act on, and a retry cannot fix either. Like STALE_PAYMENTS
+        // the whole conversion rolled back — no Order, no moved payment, and the
+        // Order number cycle did not advance.
+        //
+        // Order numbering failures (20260703000000) then get their own
+        // plain-language sentence, for the same reason.
+        const guard = convertGuardErrorMessage(rpcErr?.message)
+        if (guard) {
+          // The guard was evaluated against committed state, which may be newer
+          // than what this modal is showing — re-read so the panel and the
+          // message agree.
+          await loadEligiblePayments()
+          setError(guard)
+        } else {
+          const numbering = orderNumberErrorMessage(rpcErr?.message, 'conversion')
+          setError(numbering ?? 'Could not convert this request. Please refresh and try again.')
+        }
       }
       setSaving(false)
       return
@@ -283,18 +317,33 @@ export function ConvertModal({
             ))}
           </div>
 
-          {/* ── Payments already linked to this request — transfer automatically ── */}
-          {!loadingPayments && preLinked.length > 0 && (
+          {/* ── The reason this conversion cannot proceed ──
+                 Stated ABOVE the payment lists, because it is the thing the
+                 admin has to resolve before anything below matters. The RPC
+                 enforces both rules independently under row locks; this only
+                 saves a round trip. */}
+          {blockedReason && (
+            <div style={{
+              fontSize: '12px', color: '#991B1B',
+              background: '#FEF2F2', border: '1px solid #FECACA',
+              borderRadius: '6px', padding: '9px 12px', lineHeight: 1.5,
+            }}>
+              {blockedReason}
+            </div>
+          )}
+
+          {/* ── Approved payments on this request — transfer automatically ── */}
+          {!loadingPayments && preLinkedApproved.length > 0 && (
             <div>
-              <div style={{ ...keyStyle, marginBottom: '6px' }}>Linked Payments — Transfer Automatically</div>
+              <div style={{ ...keyStyle, marginBottom: '6px' }}>Approved Payments — Transfer Automatically</div>
               <div style={{ border: '1px solid #DDD6FE', background: '#F5F3FF', borderRadius: '6px' }}>
-                {preLinked.map((p, idx) => (
+                {preLinkedApproved.map((p, idx) => (
                   <div
                     key={p.id}
                     style={{
                       display: 'flex', justifyContent: 'space-between', gap: '10px',
                       padding: '8px 10px',
-                      borderBottom: idx < preLinked.length - 1 ? '1px solid #DDD6FE' : 'none',
+                      borderBottom: idx < preLinkedApproved.length - 1 ? '1px solid #DDD6FE' : 'none',
                     }}
                   >
                     <span style={{ fontSize: '12px', fontWeight: 600, color: '#5B21B6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -308,8 +357,44 @@ export function ConvertModal({
                 ))}
               </div>
               <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
-                {preLinked.length === 1 ? 'This payment is' : 'These payments are'} linked to this
-                request and will move to the new official Order automatically.
+                {preLinkedApproved.length === 1 ? 'This payment is' : 'These payments are'} approved and
+                linked to this request, and will move to the new official Order automatically.
+              </div>
+            </div>
+          )}
+
+          {/* ── Payments on this request that are NOT approved ──
+                 Listed separately and never as money. The undecided ones block
+                 conversion; a rejected one does not, and stays on the request as
+                 history rather than transferring. */}
+          {!loadingPayments && (preLinkedUndecided.length > 0 || preLinkedRejected.length > 0) && (
+            <div>
+              <div style={{ ...keyStyle, marginBottom: '6px' }}>Linked Payments — Not Approved</div>
+              <div style={{ border: '1px solid #FED7AA', background: '#FFF7ED', borderRadius: '6px' }}>
+                {[...preLinkedUndecided, ...preLinkedRejected].map((p, idx, all) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', gap: '10px',
+                      padding: '8px 10px',
+                      borderBottom: idx < all.length - 1 ? '1px solid #FED7AA' : 'none',
+                    }}
+                  >
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#9A3412', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.request_number}
+                      <span style={{ fontWeight: 500, color: colors.secondary }}>
+                        {' · '}{p.status === 'rejected' ? 'Rejected' : p.status === 'needs_clarification' ? 'Needs clarification' : 'Pending approval'}
+                        {' · '}{fmtDate(p.payment_date)}
+                      </span>
+                    </span>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: colors.muted, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {fmtAmount(p.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
+                These are not received money and will not transfer to the official Order.
               </div>
             </div>
           )}
@@ -458,12 +543,18 @@ export function ConvertModal({
             }}>
               Cancel
             </button>
-            <button type="button" onClick={handleConvert} disabled={saving} style={{
-              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: '#DC1F2E', border: 'none', color: '#fff',
-              cursor: saving ? 'not-allowed' : 'pointer',
-              opacity: saving ? 0.7 : 1,
-            }}>
+            <button
+              type="button"
+              onClick={handleConvert}
+              disabled={saving || !!blockedReason || loadingPayments}
+              title={blockedReason ?? undefined}
+              style={{
+                padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
+                background: '#DC1F2E', border: 'none', color: '#fff',
+                cursor: (saving || blockedReason || loadingPayments) ? 'not-allowed' : 'pointer',
+                opacity: (saving || blockedReason || loadingPayments) ? 0.7 : 1,
+              }}
+            >
               {saving ? 'Converting…' : 'Confirm & Convert'}
             </button>
           </div>

@@ -44,21 +44,65 @@ function statusLabel(status: unknown): string {
   return (typeof status === 'string' && STATUS_LABEL[status]) || String(status ?? '')
 }
 
+// Which of the three submission targets the payment was raised against, read
+// from the request_submitted payload (20260715). Absent on rows written before
+// that migration, in which case the event reads as it always did.
+const TARGET_LABEL: Record<string, string> = {
+  unallocated:     'New Order',
+  order_request:   'Order Request',
+  confirmed_order: 'Confirmed Order',
+}
+
+function submittedTargetSuffix(p: Record<string, unknown>): string {
+  const target = typeof p.payment_target_type === 'string' ? p.payment_target_type : null
+  if (!target) return ''
+  const label = TARGET_LABEL[target] ?? target
+  // Name the record, not just the kind — "against Order Request ORD-REQ-…" is
+  // what makes the trail answer which one was chosen.
+  const named = p.order_request_number ?? p.order_number ?? null
+  return typeof named === 'string' && named
+    ? ` against ${label} ${named}`
+    : ` against ${label}`
+}
+
+// One side of a target change, described by what it points at rather than by a
+// column name.
+function targetSide(type: unknown, requestNumber: unknown, orderNumber: unknown): string {
+  const label = typeof type === 'string' ? (TARGET_LABEL[type] ?? type) : 'no target'
+  if (typeof requestNumber === 'string' && requestNumber) return `${label} ${requestNumber}`
+  if (typeof orderNumber === 'string' && orderNumber)     return `${label} ${orderNumber}`
+  return label
+}
+
 function eventLabel(row: ActivityRow): string {
   const p = row.payload ?? {}
   switch (row.event_type) {
-    case 'request_submitted':  return 'Payment Request submitted'
+    case 'request_submitted':  return `Payment Request submitted${submittedTargetSuffix(p)}`
+    // A pre-approval correction. Deliberately NOT called a link or an unlink:
+    // nothing has been approved yet, so no money has moved anywhere.
+    case 'target_changed':
+      return `Payment target changed from ${targetSide(p.from_target_type, p.from_order_request_number, p.from_order_number)} to ${targetSide(p.to_target_type, p.to_order_request_number, p.to_order_number)}`
     case 'order_linked':
       // from_order_request_* is present only when the link happened as an
       // automatic transfer during Order Request conversion (20260698).
       return p.from_order_request_number || p.from_order_request_id
-        ? `Linked to Order ${p.order_number ?? p.order_id ?? ''} (transferred from Order Request ${p.from_order_request_number ?? p.from_order_request_id})`
+        ? `Payment transferred to Confirmed Order ${p.order_number ?? p.order_id ?? ''} from Order Request ${p.from_order_request_number ?? p.from_order_request_id}`
         : `Linked to Order ${p.order_number ?? p.order_id ?? ''}`
     case 'order_unlinked':     return `Unlinked from Order ${p.order_number ?? p.order_id ?? ''}`
     case 'order_request_linked':   return `Linked to Order Request ${p.order_request_number ?? p.order_request_id ?? ''}`
     case 'order_request_unlinked': return `Unlinked from Order Request ${p.order_request_number ?? p.order_request_id ?? ''}`
     case 'order_link_changed': return `Order link changed from ${p.from_order_number ?? p.from_order_id ?? ''} to ${p.to_order_number ?? p.to_order_id ?? ''}`
-    case 'status_changed':     return `Status changed from ${statusLabel(p.from_status)} to ${statusLabel(p.to_status)}`
+    // The decision events. Named for what was DECIDED rather than described as a
+    // status transition, so the trail never says "received" about money that is
+    // still pending, and says "approved" plainly when it is not.
+    case 'status_changed': {
+      const to = p.to_status
+      if (to === 'approved_unlinked' || to === 'approved_linked') return 'Payment request approved'
+      if (to === 'needs_clarification')                          return 'Clarification requested'
+      if (to === 'rejected')                                     return 'Payment request rejected'
+      if (to === 'pending_approval')                             return 'Resubmitted for approval'
+      return `Status changed from ${statusLabel(p.from_status)} to ${statusLabel(p.to_status)}`
+    }
     default:                   return row.event_type
   }
 }
@@ -76,6 +120,9 @@ function markerColor(row: ActivityRow): string {
   if (row.event_type === 'order_unlinked') return colors.amber
   if (row.event_type === 'order_request_linked')   return colors.green
   if (row.event_type === 'order_request_unlinked') return colors.amber
+  // A pre-approval correction is neither good news nor bad — it is a change the
+  // reader should notice.
+  if (row.event_type === 'target_changed')         return colors.amber
   return colors.muted
 }
 

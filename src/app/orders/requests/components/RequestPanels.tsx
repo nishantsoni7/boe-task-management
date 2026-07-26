@@ -56,6 +56,8 @@ import {
   fmtDate,
   friendlyLinkError,
   paymentStatusMeta,
+  splitPayments,
+  type PaymentSplit,
   PAYMENT_MODE_LABEL,
   RECEIVED_IN_LABEL,
   STATUS_META,
@@ -740,11 +742,56 @@ export function UnlinkPaymentModal({
   )
 }
 
+// ── Approved-versus-pending summary ───────────────────────────────────────────
+// Since 20260715 a salesperson can name this request while SUBMITTING a payment,
+// so this list now holds records in four states and only one of them is money.
+// The summary states that split before the rows do, because the admin's question
+// — "does this request have a confirmed advance behind it?" — must not have to
+// be answered by reading badges down a list and adding up in their head.
+//
+// Approved is stated first and on its own line. Everything else is counted, not
+// totalled into the same figure: a pending payment is not received advance and
+// is never presented as one.
+
+function PaymentSplitSummary({ split }: { split: PaymentSplit }) {
+  const pendingParts: string[] = []
+  if (split.undecided.length > 0) {
+    pendingParts.push(`${split.undecided.length} awaiting a decision (${fmtAmount(split.undecidedTotal)} not yet confirmed)`)
+  }
+  if (split.rejected.length > 0) {
+    pendingParts.push(`${split.rejected.length} rejected`)
+  }
+
+  return (
+    <div style={{
+      border: `1px solid ${colors.border}`, borderRadius: '8px',
+      padding: '9px 11px', background: colors.raised,
+      display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Approved advance
+        </span>
+        <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums', marginLeft: 'auto' }}>
+          {fmtAmount(split.approvedTotal)}
+        </span>
+      </div>
+      <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.45 }}>
+        {split.approved.length === 0
+          ? 'No approved payment yet'
+          : `${split.approved.length} approved payment${split.approved.length !== 1 ? 's' : ''}`}
+        {pendingParts.length > 0 && ` · ${pendingParts.join(' · ')}`}
+      </div>
+    </div>
+  )
+}
+
 // ── Linked payments list ──────────────────────────────────────────────────────
-// The payments actually attached to this request, read by the detail page with
-// the viewer's own RLS on order_request_id — the only linkage an open request
-// can have. Admins and the requester see the identical list; only the available
-// actions differ.
+// Every payment attached to this request, read by the detail page with the
+// viewer's own RLS on order_request_id — pre-approval records included, which is
+// the whole point: an admin reviewing the request has to see the payments raised
+// against it BEFORE deciding whether to approve it. Admins and the requester see
+// the identical list; only the available actions differ.
 //
 // This used to be a permanently expanded panel at the bottom of the detail page.
 // It is now the DEFAULT VIEW of the Payment Received modal, opened from the
@@ -800,8 +847,11 @@ function LinkedPaymentList({
     return <div style={{ fontSize: '12.5px', color: colors.muted, lineHeight: 1.5 }}>No payments linked yet.</div>
   }
 
+  const split = splitPayments(rows)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
+      <PaymentSplitSummary split={split} />
       {rows.map(p => {
         const meta = paymentStatusMeta(p)
         return (
@@ -837,7 +887,13 @@ function LinkedPaymentList({
                 </span>
                 <PaymentMetaLine
                   parts={[
-                    p.submitted_by_name ? `Submitted by ${p.submitted_by_name}` : null,
+                    // Who raised it AND when. The submission date matters now
+                    // that a payment appears here before Finance has decided
+                    // anything: an admin has to be able to see how long a
+                    // pending payment has been sitting.
+                    p.submitted_by_name
+                      ? `Submitted by ${p.submitted_by_name} on ${fmtDate(p.created_at)}`
+                      : `Submitted ${fmtDate(p.created_at)}`,
                     linkedBy[p.id] ? `Linked by ${linkedBy[p.id]}` : null,
                   ]}
                   style={{ flex: '1 1 auto' }}
@@ -954,7 +1010,12 @@ export function RequestPaymentsModal({
   // moment the reader goes back to search for another payment.
   const [linkedNotice, setLinkedNotice] = useState<string | null>(null)
 
-  const total    = rows.reduce((sum, p) => sum + (Number.isFinite(p.amount) ? p.amount : 0), 0)
+  // The subtitle used to read "N linked · <total of every row>". With
+  // pre-approval payments now in this list that total would have presented money
+  // Finance has not confirmed as though it had arrived — so it states the
+  // APPROVED figure, and counts everything else separately.
+  const split    = splitPayments(rows)
+  const pendingCount = split.undecided.length + split.rejected.length
   const linking  = view === 'available'
   // The link view holds a typed search term, so its backdrop is inert — the BOE
   // form-modal dismissal rule (docs 05_Business_Rules.md). The read-only linked
@@ -1001,7 +1062,11 @@ export function RequestPaymentsModal({
                   : error
                     ? r.request_number
                     : rows.length > 0
-                      ? `${r.request_number} · ${rows.length} linked · ${fmtAmount(total)}`
+                      ? [
+                          r.request_number,
+                          `${split.approved.length} approved · ${fmtAmount(split.approvedTotal)}`,
+                          pendingCount > 0 ? `${pendingCount} not approved` : null,
+                        ].filter(Boolean).join(' · ')
                       : `${r.request_number} · No payments linked`}
             </div>
           </div>

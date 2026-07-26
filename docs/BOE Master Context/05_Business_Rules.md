@@ -105,6 +105,35 @@ Rules:
 
 ---
 
+## Payment Request Targets
+
+A Payment Request is always raised against **exactly one of three** stages of the sales lifecycle. They are different business stages — not three shades of one option — with different linkage, different permissions and different approval behaviour, so the submission form offers all three explicitly and never folds two together.
+
+* **New Order** — money has been received or reported, and **no Order Request and no Confirmed Order exists yet**. The client name is typed by hand. The payment stays **unallocated** until someone attaches it to a real record later.
+* **Order Request** — an Order Request already exists and has **not** been approved or converted, and the payment is the advance against that proposed order. The salesperson selects it while submitting, by searching on request number or client name.
+* **Confirmed Order** — the order is approved and carries an Order number, and the payment belongs to that Order.
+
+Rules:
+
+* **One target, never two.** A Payment Request may hold no linkage, an Order Request linkage, or a Confirmed Order linkage — never both linkages at once. Enforced in the form (switching target clears every incompatible field, including the client name), in the submission mapping, and by a database CHECK constraint.
+* **Only eligible Order Requests may be selected**, and only ones the submitter may actually use: an admin, the request's creator, the person it was requested for, or the person it is assigned to. A salesperson can never attach money to another salesperson's request. A **converted**, **rejected**, or unfinalized-draft request cannot receive a new payment request. All of this is enforced server-side, in the database, on every write path — the search filters exist to save a round trip, never as the control.
+* **Nothing the client sends about the target is trusted.** The Order Request number and the client name are **derived from the database row**, not from the payload. Selecting an Order Request takes the client name from that request; selecting a Confirmed Order takes it from that Order.
+* **The payment appears on the Order Request immediately**, with its real financial status — pending approval, needs clarification, rejected, or approved. The Order Request timeline records the association from **submission time**, not from approval.
+* **Only an approved payment is received advance.** A pending, clarification or rejected payment is shown on the request and counted separately; it is never added to the advance figure, never presented as money received, and never described with "received" wording before Finance has approved it.
+* **Approval keeps the linkage.** When an admin approves a payment raised against an Order Request, the money is confirmed received **and stays attached to that request** until the request is converted. Approval revalidates that the request still exists, is still active, and has not been converted; if it has, approval **fails with a clear error** rather than quietly turning the payment into an unallocated one.
+* **The target may be corrected before approval, and the correction is audited.** While a payment is still the submitter's to edit (pending approval, needs clarification, rejected) its target can be changed, and both the payment's own history and the affected Order Request timelines record it. Once approved, the target is frozen.
+
+## Order Request Approval Requirement
+
+**An Order Request cannot be approved or converted into a Confirmed Order unless at least one approved payment is linked to it.**
+
+* Only a **financially approved** payment counts. Pending approval, needs clarification and rejected payments do not, in any combination.
+* An Order Request also cannot be converted while a payment linked to it is **still awaiting a Finance decision**. The admin approving the order must have finished reviewing the money raised against it. A rejected payment is a decision and does not block; it stays on the request as history and never transfers.
+* The rule is enforced **inside the database function that performs the conversion**, before any Order is created and before any Order number is allocated. A refused conversion creates no Confirmed Order, does not mark the request converted, does not allocate a number, and returns a clear error. The frontend states the same rule before the click, but it is never the control.
+* On a successful conversion, approved linked payments **transfer automatically** to the new Confirmed Order and keep a record of the request they came from. Payments that were not approved do not move.
+
+---
+
 # TASK MANAGEMENT RULES
 
 ## Self Tasks

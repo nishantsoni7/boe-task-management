@@ -239,6 +239,10 @@ export type EligiblePayment = {
   amount: number
   payment_date: string
   proof_note: string | null
+  // Always 'approved_unlinked' for a row offered in the eligible list, but read
+  // and carried for the payments ALREADY parked on the request — since 20260715
+  // those can be pre-approval, and only the approved ones transfer.
+  status: string
   submitted_by_name?: string
 }
 
@@ -354,12 +358,21 @@ export const RECEIVED_IN_LABEL: Record<string, string> = {
   other:           'PNB',
 }
 
-// Payment-status badges for the Payments section. Same labels and colours the
-// Finance Received Payments page uses, so one payment reads identically on both
-// surfaces. A payment parked on a request stays approved_unlinked in the
-// database but is shown with its own label — see paymentStatusMeta below.
+// Payment-status badges for the Payments section. Colours are the Finance
+// Received Payments page's, so a payment reads with the same visual weight on
+// both surfaces.
+//
+// The two labels that DIFFER from Finance's do so deliberately. This panel is
+// where an admin decides whether an Order Request has real money behind it, and
+// the question they are answering is "is this approved or not" — so the badge
+// has to answer it in words:
+//   * 'Pending Approval' rather than Finance's terser 'Pending';
+//   * 'Approved Advance' rather than 'Awaiting Order Confirmation', which said
+//     what the payment is waiting FOR and never that it had been approved.
+// A payment parked on a request stays approved_unlinked in the database either
+// way — see paymentStatusMeta below.
 export const PAYMENT_STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  pending_approval:    { label: 'Pending',             bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
+  pending_approval:    { label: 'Pending Approval',    bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
   approved_unlinked:   { label: 'Order No. Pending',   bg: '#FFF7ED', color: '#92400E', border: '#FED7AA' },
   approved_linked:     { label: 'Received Payment',    bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
   needs_clarification: { label: 'Needs Clarification', bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
@@ -368,9 +381,71 @@ export const PAYMENT_STATUS_META: Record<string, { label: string; bg: string; co
 
 export function paymentStatusMeta(p: LinkedPayment) {
   if (p.status === 'approved_unlinked' && p.order_request_id) {
-    return { label: 'Awaiting Order Confirmation', bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' }
+    return { label: 'Approved Advance', bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' }
   }
   return PAYMENT_STATUS_META[p.status] ?? { label: p.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+}
+
+// ── Approved-versus-pending split ─────────────────────────────────────────────
+// Since 20260715 a payment can be attached to a request from the moment it is
+// SUBMITTED, so the payments panel now holds records in four different states
+// and only one of them is money. This is the one place that split is computed:
+// `approved` is confirmed advance, `undecided` is still awaiting a Finance
+// decision, `rejected` is a decision that produced no money.
+//
+// The approved definition is deliberately identical to advanceFromPayments —
+// parked on this request AND status 'approved_unlinked' — so the figure in the
+// summary strip and the figure in the payments modal can never disagree.
+//
+// Nothing here treats a pending payment as received: `approvedTotal` sums the
+// approved rows only, and `undecidedTotal` is reported separately so it can be
+// LABELLED as pending rather than folded into an advance.
+export type PaymentSplit = {
+  approved:      LinkedPayment[]
+  undecided:     LinkedPayment[]
+  rejected:      LinkedPayment[]
+  approvedTotal: number
+  undecidedTotal: number
+}
+
+const UNDECIDED_PAYMENT_STATUSES = ['pending_approval', 'needs_clarification']
+
+export function splitPayments(rows: LinkedPayment[]): PaymentSplit {
+  const parked    = rows.filter(p => p.order_request_id != null)
+  const approved  = parked.filter(p => p.status === 'approved_unlinked')
+  const undecided = parked.filter(p => UNDECIDED_PAYMENT_STATUSES.includes(p.status))
+  const rejected  = parked.filter(p => p.status === 'rejected')
+  const sum = (list: LinkedPayment[]) =>
+    list.reduce((total, p) => total + (Number.isFinite(p.amount) ? p.amount : 0), 0)
+  return {
+    approved,
+    undecided,
+    rejected,
+    approvedTotal:  sum(approved),
+    undecidedTotal: sum(undecided),
+  }
+}
+
+// ── Conversion guard failures ─────────────────────────────────────────────────
+// convert_order_request_to_order (20260715 §7) refuses two new ways, each with
+// its own greppable prefix. Both are rules the admin can act on — one says
+// "there is no confirmed advance behind this order", the other "you have not
+// finished reviewing its payments" — so neither may collapse into the generic
+// "could not convert" sentence.
+//
+// Returns null for anything else, so the caller falls through to its existing
+// STALE_PAYMENTS / order-numbering / generic handling unchanged.
+
+export const NO_APPROVED_PAYMENT_MESSAGE =
+  'At least one approved payment must be linked before this Order Request can be approved.'
+
+export function convertGuardErrorMessage(message: string | undefined | null): string | null {
+  const m = message ?? ''
+  if (m.includes('ORDER_REQUEST_NO_APPROVED_PAYMENT')) return NO_APPROVED_PAYMENT_MESSAGE
+  if (m.includes('ORDER_REQUEST_PAYMENTS_UNDECIDED')) {
+    return 'Some payments linked to this request are still awaiting a finance decision. Approve or reject each one before converting.'
+  }
+  return null
 }
 
 // ── Record header actions ─────────────────────────────────────────────────────

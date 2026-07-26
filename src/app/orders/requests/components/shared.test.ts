@@ -23,7 +23,11 @@ import {
   canPreviewAttachment,
   canRespondToClarification,
   clarificationResponseErrorMessage,
+  convertGuardErrorMessage,
+  paymentStatusMeta,
+  splitPayments,
   validateClarificationResponse,
+  NO_APPROVED_PAYMENT_MESSAGE,
   CLARIFICATION_RESPONSE_REQUIRED,
   CLARIFICATION_STALE_MESSAGE,
   getAdvanceInfo,
@@ -196,6 +200,121 @@ describe('advance received — list aggregate and detail rows must agree', () =>
     // What the list's batched query would have produced for this request.
     const aggregate = { 'req-1': { total: 150000, count: 2 } }
     assert.deepEqual(advanceFromPayments(rows), getAdvanceInfo(req(), aggregate))
+  })
+})
+
+describe('payment split — a pending payment is never advance', () => {
+  // Since 20260715 a payment can be raised against a request from submission,
+  // so the panel holds four states and only one of them is money.
+  const mixed = () => [
+    pay({ id: 'a', amount: 100000, status: 'approved_unlinked' }),
+    pay({ id: 'b', amount: 50000,  status: 'approved_unlinked' }),
+    pay({ id: 'c', amount: 900000, status: 'pending_approval' }),
+    pay({ id: 'd', amount: 300000, status: 'needs_clarification' }),
+    pay({ id: 'e', amount: 700000, status: 'rejected' }),
+  ]
+
+  test('a pending payment appears in the panel at all', () => {
+    // The panel renders every row it is given; the split only classifies them,
+    // so nothing awaiting a decision is hidden from the reviewing admin.
+    const split = splitPayments(mixed())
+    const shown = [...split.approved, ...split.undecided, ...split.rejected]
+    assert.equal(shown.length, 5)
+  })
+
+  test('only approved payments are totalled as advance', () => {
+    const split = splitPayments(mixed())
+    assert.equal(split.approved.length, 2)
+    assert.equal(split.approvedTotal, 150000)
+  })
+
+  test('pending and clarification amounts are counted apart, never added in', () => {
+    const split = splitPayments(mixed())
+    assert.equal(split.undecided.length, 2)
+    assert.equal(split.undecidedTotal, 1200000)
+    assert.notEqual(split.approvedTotal, split.approvedTotal + split.undecidedTotal)
+  })
+
+  test('a rejected payment is neither advance nor an outstanding decision', () => {
+    const split = splitPayments(mixed())
+    assert.equal(split.rejected.length, 1)
+    assert.equal(split.approved.some(p => p.id === 'e'), false)
+    assert.equal(split.undecided.some(p => p.id === 'e'), false)
+  })
+
+  test('the approved half is exactly what the advance figure is built from', () => {
+    const rows = mixed()
+    const split = splitPayments(rows)
+    assert.deepEqual(
+      advanceFromPayments(rows),
+      { kind: 'request_linked', received: split.approvedTotal, count: split.approved.length },
+    )
+  })
+
+  test('a payment that has left the request is in no bucket', () => {
+    // Post-conversion the transfer clears order_request_id, so the row no
+    // longer belongs to this request's split at all.
+    const transferred = pay({ id: 'x', status: 'approved_linked', order_request_id: null, order_id: 'order-1' })
+    const split = splitPayments([transferred])
+    assert.equal(split.approved.length + split.undecided.length + split.rejected.length, 0)
+    assert.equal(split.approvedTotal, 0)
+  })
+
+  test('an unreadable amount cannot poison the total', () => {
+    const split = splitPayments([pay({ id: 'a', amount: Number.NaN }), pay({ id: 'b', amount: 40000 })])
+    assert.equal(split.approvedTotal, 40000)
+  })
+})
+
+describe('conversion guards — mirrors convert_order_request_to_order', () => {
+  test('no approved payment produces the exact agreed sentence', () => {
+    assert.equal(
+      convertGuardErrorMessage('ORDER_REQUEST_NO_APPROVED_PAYMENT: At least one approved payment must be linked before this Order Request can be approved.'),
+      'At least one approved payment must be linked before this Order Request can be approved.',
+    )
+    assert.equal(NO_APPROVED_PAYMENT_MESSAGE, 'At least one approved payment must be linked before this Order Request can be approved.')
+  })
+
+  test('undecided linked payments get their own remedy, not the same sentence', () => {
+    const msg = convertGuardErrorMessage('ORDER_REQUEST_PAYMENTS_UNDECIDED: 2 payment request(s) linked to ORD-REQ-2026-0001 are still awaiting a finance decision.')
+    assert.match(msg as string, /awaiting a finance decision/i)
+    assert.notEqual(msg, NO_APPROVED_PAYMENT_MESSAGE)
+  })
+
+  test('an unrelated conversion failure is left to the existing handling', () => {
+    assert.equal(convertGuardErrorMessage('STALE_PAYMENTS: one or more selected payment requests…'), null)
+    assert.equal(convertGuardErrorMessage('ORDER_NUMBER_BEHIND: …'), null)
+    assert.equal(convertGuardErrorMessage(undefined), null)
+  })
+
+  test('no guard message leaks an internal token', () => {
+    for (const raw of [
+      'ORDER_REQUEST_NO_APPROVED_PAYMENT: x',
+      'ORDER_REQUEST_PAYMENTS_UNDECIDED: x',
+    ]) {
+      assert.doesNotMatch(convertGuardErrorMessage(raw) as string, /ORDER_REQUEST_|P0001|42501/)
+    }
+  })
+})
+
+describe('payment status badges — approved must read as approved', () => {
+  test('an approved request-linked payment says so', () => {
+    const meta = paymentStatusMeta(pay({ status: 'approved_unlinked', order_request_id: 'req-1' }))
+    assert.match(meta.label, /approved/i)
+    // ...and never implies the money is still unconfirmed.
+    assert.doesNotMatch(meta.label, /pending|awaiting/i)
+  })
+
+  test('a pending payment is never labelled as received', () => {
+    const meta = paymentStatusMeta(pay({ status: 'pending_approval' }))
+    assert.match(meta.label, /pending/i)
+    assert.doesNotMatch(meta.label, /received|approved/i)
+  })
+
+  test('every request-stage status has a distinct badge', () => {
+    const labels = ['pending_approval', 'needs_clarification', 'rejected', 'approved_unlinked']
+      .map(status => paymentStatusMeta(pay({ status, order_request_id: 'req-1' })).label)
+    assert.equal(new Set(labels).size, 4)
   })
 })
 

@@ -79,8 +79,13 @@ const EVENT_TITLE: Record<string, string> = {
   clarification_responded:   'Responded to clarification',
   request_rejected:          'Request rejected',
   reapplication_submitted:   'Updated and reapplied',
-  payment_linked:            'Payment linked',
-  payment_unlinked:          'Payment unlinked',
+  // "Payment request", not "payment": since 20260715 one of these can be
+  // written the moment a payment is SUBMITTED against this request, long before
+  // Finance has confirmed any money arrived. The row's own status badge in the
+  // payments panel says whether it has been approved; this title must not imply
+  // it has.
+  payment_linked:            'Payment request linked',
+  payment_unlinked:          'Payment request unlinked',
   request_converted:         'Converted to Confirmed Order',
   status_changed:            'Status changed',
 }

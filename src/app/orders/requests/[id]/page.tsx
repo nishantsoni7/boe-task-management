@@ -66,6 +66,7 @@ import {
 } from '../components/RequestInlineEdit'
 import {
   advanceFromPayments,
+  splitPayments,
   canEditAttachments,
   canEditRequest,
   canManagePayments,
@@ -1102,6 +1103,12 @@ function OrderRequestDetailPageInner() {
   const position = paymentPosition(received, r.total_value)
   const mainPi  = attachments.find(a => a.attachment_type === 'main_pi') ?? null
 
+  // Payments raised against this request that Finance has not decided yet
+  // (20260715). They are NOT advance and are never added to the figure above —
+  // they are counted so the reader knows a decision is outstanding, and so a
+  // request with money submitted against it never reads as "Not linked".
+  const awaitingCount = payments ? splitPayments(payments).undecided.length : 0
+
   // ── Exceptions worth the reader's attention, in the order they matter ──
   const isOverdue = !!r.due_date
     && !['converted', 'rejected'].includes(r.status)
@@ -1549,16 +1556,24 @@ function OrderRequestDetailPageInner() {
                     <MetricGroup
                       label="Payment Received"
                       value={formatINR(advance.received)}
-                      note={`${advance.count} linked payment${advance.count !== 1 ? 's' : ''}`}
+                      note={[
+                        `${advance.count} approved payment${advance.count !== 1 ? 's' : ''}`,
+                        awaitingCount > 0 ? `${awaitingCount} awaiting approval` : null,
+                      ].filter(Boolean).join(' · ')}
                       onClick={editMode ? undefined : () => openPaymentModal('linked')}
                       actionLabel="View linked payments"
                     />
                   ) : advance.kind === 'not_linked' ? (
                     <MetricGroup
                       label="Payment Received"
-                      value="Not linked"
+                      value={awaitingCount > 0 ? 'None approved' : 'Not linked'}
                       valueMuted
-                      note={canPayments ? 'Link a payment' : 'Payments link after conversion'}
+                      // A pending payment is NOT received advance, so the figure
+                      // stays at nothing — but the reader is told it exists
+                      // rather than being left to think nothing was submitted.
+                      note={awaitingCount > 0
+                        ? `${awaitingCount} payment${awaitingCount !== 1 ? 's' : ''} awaiting approval`
+                        : canPayments ? 'Link a payment' : 'Payments link after conversion'}
                       onClick={editMode ? undefined : () => openPaymentModal('linked')}
                       actionLabel="View linked payments"
                     />
