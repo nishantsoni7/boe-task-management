@@ -5,6 +5,7 @@ import type { Task, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { isOverdue, formatShortDate, formatDateTime, timeAgo, formatLogAction, getTaskAging } from '@/lib/ui'
 import { createClient } from '@/lib/supabase/client'
+import { MultilineText } from '@/components/ui/MultilineText'
 import { CheckCircle } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -363,13 +364,12 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
               }}>
                 Blocker Reason
               </div>
-              <p style={{
+              <MultilineText style={{
                 fontSize: '12.5px', color: colors.red,
                 margin: 0, lineHeight: 1.55,
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               }}>
                 {task.blocker_reason}
-              </p>
+              </MultilineText>
             </div>
           )}
 
@@ -390,13 +390,12 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
               border: `1px solid ${colors.border}`,
             }}>
               {task.note ? (
-                <p style={{
+                <MultilineText style={{
                   fontSize: '12.5px', color: colors.secondary,
                   lineHeight: 1.6, margin: 0,
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>
                   {task.note}
-                </p>
+                </MultilineText>
               ) : (
                 <p style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
                   No task description provided.
@@ -491,13 +490,12 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
                     </span>
                   </div>
                   {entry.note && (
-                    <p style={{
+                    <MultilineText style={{
                       fontSize: '11px', color: colors.muted,
                       margin: '0 0 3px', lineHeight: 1.5,
-                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     }}>
                       {entry.note}
-                    </p>
+                    </MultilineText>
                   )}
                   <span style={{ fontSize: '10px', color: colors.muted }}>
                     by {actorName}

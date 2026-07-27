@@ -13,6 +13,7 @@ import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
+import { MultilineText } from '@/components/ui/MultilineText'
 import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
 import { useToast, Toast } from '@/components/ui/toast'
 import { getFileTypeLabel, prepareFiles, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
@@ -1181,12 +1182,11 @@ export default function TaskDetailPage() {
                   )}
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
                     {task.note ? (
-                      <p style={{
+                      <MultilineText style={{
                         fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6, margin: 0, flex: 1,
-                        whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                       }}>
                         {task.note}
-                      </p>
+                      </MultilineText>
                     ) : (
                       <p style={{ fontSize: '12px', color: colors.muted, margin: 0, flex: 1 }}>
                         {isQuotation ? 'No notes added.' : 'No description.'}
@@ -1548,18 +1548,18 @@ export default function TaskDetailPage() {
 
               {/* Blocker (non-quotation) */}
               {!isQuotation && task.status === 'blocked' && task.blocker_reason && (
-                <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
+                <MultilineText style={{ fontSize: '11.5px', color: colors.secondary, margin: '2px 0', lineHeight: 1.5 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Blocker: </span>
                   {task.blocker_reason}
-                </p>
+                </MultilineText>
               )}
 
               {/* Latest note (non-quotation) */}
               {!isQuotation && !noteIsDuplicateOfBlocker && currentStatusNote && (
-                <p style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5, margin: '2px 0', fontWeight: 500 }}>
+                <MultilineText style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5, margin: '2px 0', fontWeight: 500 }}>
                   <span style={{ fontWeight: 700, color: statusColor }}>Reason: </span>
                   {currentStatusNote}
-                </p>
+                </MultilineText>
               )}
 
               {!isQuotation && latestNoteEntry && (
@@ -1951,7 +1951,7 @@ export default function TaskDetailPage() {
                               {/* Note text — comments read conversationally, system notes stay compact.
                                   task_copied carries its text in the heading, so skip it here. */}
                               {entry.note && entry.action !== 'task_copied' && (
-                                <p style={{
+                                <MultilineText style={{
                                   margin: isComment ? '6px 0 0' : '8px 0 0',
                                   color: isComment ? '#596273' : '#667085',
                                   fontSize: isComment ? '12.5px' : '11.5px',
@@ -1959,7 +1959,7 @@ export default function TaskDetailPage() {
                                   lineHeight: isComment ? 1.55 : 1.5,
                                 }}>
                                   {entry.note}
-                                </p>
+                                </MultilineText>
                               )}
                             </>
                           )}
