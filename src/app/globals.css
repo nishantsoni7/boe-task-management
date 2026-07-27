@@ -1401,6 +1401,52 @@ body {
   align-items: center;
 }
 
+/* ── Quotation Requests: Pending/Closed tabs + filter band ──
+   One horizontal band on desktop: tabs left, search + filters right.
+
+   The width budget is tight and worth stating, because it is what sets the
+   breakpoint. The page body is (viewport − 260px fixed sidebar − 44px padding),
+   so 976px at a 1280 viewport. The tab pair costs ~364px, the three selects
+   400px, Reset ~51px and the gaps ~30px — leaving ~130px for the search input
+   at 1280 and ~215px at 1366. Below 1280 there is no honest way to fit the
+   band on one line, so the controls drop under the tabs rather than overflow
+   the page sideways. Only the search flexes; the selects hold their width so a
+   filter label never truncates. */
+.boe-qtn-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* Never let the tab pair absorb the free space that the controls need. */
+.boe-qtn-toolbar-tabs {
+  flex-shrink: 0;
+}
+
+.boe-qtn-toolbar-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+@media (min-width: 1280px) {
+  .boe-qtn-toolbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 12px;
+  }
+  .boe-qtn-toolbar-controls {
+    flex-wrap: nowrap;
+    margin-left: auto;
+  }
+}
+
 /* ── Task detail: main + log sidebar ── */
 .boe-detail-layout {
   display: grid;
