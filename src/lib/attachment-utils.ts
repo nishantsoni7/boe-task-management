@@ -68,6 +68,46 @@ export async function prepareFiles(
   return { ready, error: null }
 }
 
+/**
+ * Run `worker` over `items` with at most `limit` in flight at once.
+ *
+ * Attachment uploads were sequential (`for (const f of files) await upload(f)`),
+ * so five files cost five round-trips end to end. Unbounded `Promise.all` is
+ * the wrong fix: it opens one connection per file, and a user attaching a dozen
+ * images would saturate the browser's per-host connection pool and starve the
+ * rest of the page. A small fixed window gets nearly all of the speedup with
+ * none of that.
+ *
+ * Results are returned in INPUT ORDER regardless of completion order, so
+ * callers can still pair a result with its file. The worker is expected to
+ * handle its own failures and report them in its return value — this helper
+ * does not catch, so a genuine throw still propagates and is not silently
+ * turned into a partial success.
+ */
+export const ATTACHMENT_UPLOAD_CONCURRENCY = 3
+
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return []
+  const width = Math.max(1, Math.min(limit, items.length))
+  const results = new Array<R>(items.length)
+  let next = 0
+
+  const runner = async () => {
+    while (true) {
+      const i = next++
+      if (i >= items.length) return
+      results[i] = await worker(items[i], i)
+    }
+  }
+
+  await Promise.all(Array.from({ length: width }, runner))
+  return results
+}
+
 // Compress a JPEG/WEBP image client-side via canvas.
 // Returns the original file unchanged when:
 //   - the file type is not compressible (PNG, GIF, PDF, etc.)

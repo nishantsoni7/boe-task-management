@@ -85,16 +85,27 @@ export async function DELETE(req: NextRequest) {
   )
 
   const activityFilter = getNotificationCategoryFilter(categoryResult.category)
-  const { error } = await supabase
+  // `.select('id')` so the response can report how many of the caller's rows
+  // were actually removed, matching the contract of /api/notifications/[id]
+  // and /delete-selected. A category with nothing in it deletes 0 rows and is
+  // still a success — that is an accurate idempotent result, not a failure.
+  const { data, error } = await supabase
     .from('notifications')
     .delete()
     .eq('user_id', user.id)
     .or(activityFilter)
+    .select('id')
 
   if (error) {
-    console.error('[notifications/delete-all] failed:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    // Message only — never the deleted rows, whose titles/bodies carry task
+    // titles and client names.
+    console.error('[notifications/delete-all] failed:', error.message)
+    return NextResponse.json({ error: 'Could not delete notifications' }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({
+    success: true,
+    category: categoryResult.category,
+    deletedCount: data?.length ?? 0,
+  })
 }

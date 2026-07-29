@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
 import { useToast, Toast } from '@/components/ui/toast'
-import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
+import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 
 
@@ -476,14 +476,18 @@ function CreateSelfTaskModal({
       if (!ok) { setSaving(false); return }
     }
 
-    // Validate attachments before creating the task
+    // Validate attachments before creating the task. The compressed result is
+    // KEPT and reused for the upload below — this used to run prepareFiles
+    // twice, canvas-compressing every image a second time for no reason.
+    let readyAttachments: File[] = []
     if (attachFiles.length) {
-      const { error: prepErr } = await prepareFiles(attachFiles)
+      const { ready, error: prepErr } = await prepareFiles(attachFiles)
       if (prepErr) {
         setAttachError(prepErr)
         setSaving(false)
         return
       }
+      readyAttachments = ready
     }
 
     const now = new Date().toISOString()
@@ -511,26 +515,33 @@ function CreateSelfTaskModal({
         action: 'created', note: 'Task created for self',
       })
 
-      // Upload attachments and link to the new task
+      // Upload attachments and link to the new task — a few at a time rather
+      // than strictly one after another, reusing the already-compressed set.
       let attachUploadFailed = false
-      if (attachFiles.length) {
-        const { ready } = await prepareFiles(attachFiles)
-        for (const file of ready) {
-          const ext  = getExt(file.name)
-          const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-          const { error: upErr } = await supabase.storage
-            .from('task-attachments')
-            .upload(path, file, { upsert: false })
-          if (upErr) { console.error('[attach upload]', upErr); attachUploadFailed = true; continue }
-          const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
-          await supabase.from('task_attachments').insert({
-            task_id:    task.id,
-            url:        urlData.publicUrl,
-            file_name:  file.name,
-            file_type:  getFileTypeLabel(file.name),
-            created_by: session.user.id,
-          })
-        }
+      if (readyAttachments.length) {
+        const outcomes = await mapWithConcurrency(
+          readyAttachments,
+          ATTACHMENT_UPLOAD_CONCURRENCY,
+          async (file) => {
+            const ext  = getExt(file.name)
+            const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+            const { error: upErr } = await supabase.storage
+              .from('task-attachments')
+              .upload(path, file, { upsert: false })
+            if (upErr) { console.error('[attach upload]', upErr); return false }
+            const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
+            const { error: metaErr } = await supabase.from('task_attachments').insert({
+              task_id:    task.id,
+              url:        urlData.publicUrl,
+              file_name:  file.name,
+              file_type:  getFileTypeLabel(file.name),
+              created_by: session.user.id,
+            })
+            if (metaErr) { console.error('[attach metadata]', metaErr.message); return false }
+            return true
+          },
+        )
+        attachUploadFailed = outcomes.some(ok => !ok)
       }
 
       onCreated(task as unknown as Task)

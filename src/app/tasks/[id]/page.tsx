@@ -16,8 +16,9 @@ import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
 import { useToast, Toast } from '@/components/ui/toast'
-import { getFileTypeLabel, prepareFiles, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
+import { getFileTypeLabel, prepareFiles, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { CircleCheckBig, UserCheck, UserRound } from 'lucide-react'
+import { perfTrack } from '@/lib/perf'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
@@ -74,6 +75,14 @@ export default function TaskDetailPage() {
   const [saving,           setSaving]          = useState(false)
   const [markingComplete,  setMarkingComplete] = useState(false)
   const [reopening,        setReopening]       = useState(false)
+  // Duplicate-submission guards for the two mutations that had none. Each is a
+  // ref (read synchronously, so a double-click is rejected in the same tick)
+  // plus state (drives the disabled button). Both write permanent activity
+  // rows and send notifications, so a duplicate run is not merely wasteful.
+  const [acknowledging,    setAcknowledging]   = useState(false)
+  const acknowledgingRef  = useRef(false)
+  const [statusUpdating,   setStatusUpdating]  = useState(false)
+  const statusUpdatingRef = useRef(false)
   const [cancelModalOpen,  setCancelModalOpen] = useState(false)
   const [cancelReason,     setCancelReason]    = useState('')
   const [cancelOtherText,  setCancelOtherText] = useState('')
@@ -141,9 +150,13 @@ export default function TaskDetailPage() {
 
   useEffect(() => {
     const init = async () => {
+      // Timings print to the console only with NEXT_PUBLIC_BOE_PERF_DEBUG=true;
+      // otherwise every call here is a no-op. See src/lib/perf.ts.
+      const perf = perfTrack('task.detail.load')
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
       setCurrentUserId(user.id)
+      perf.mark('auth')
 
       const taskId = params.id as string
 
@@ -170,6 +183,8 @@ export default function TaskDetailPage() {
           .eq('task_id', taskId)
           .order('created_at', { ascending: true }),
       ])
+
+      perf.mark('queries')
 
       if (members) setTeamMembers(members)
       if (profileData) setProfile(profileData as UserProfile)
@@ -210,6 +225,7 @@ export default function TaskDetailPage() {
       }
 
       setLoading(false)
+      perf.end()
     }
     init()
   }, [params.id, router, supabase])
@@ -255,6 +271,15 @@ export default function TaskDetailPage() {
     if (!task) return
     if (task.assigned_to !== currentUserId) return
     if (task.created_by === currentUserId) return
+    // Synchronous re-entry guard. Without it a double-click ran the whole
+    // sequence twice and wrote a SECOND pair of acknowledged/status_changed
+    // rows into the permanent activity history, plus a duplicate notification
+    // to the creator. A ref is required rather than state: both clicks land
+    // before React re-renders the button as disabled.
+    if (acknowledgingRef.current) return
+    acknowledgingRef.current = true
+    setAcknowledging(true)
+    try {
     const now = new Date().toISOString()
     const oldStatus = task.status
     const { error } = await supabase.from('tasks').update({
@@ -283,10 +308,22 @@ export default function TaskDetailPage() {
     setSelectedStatus('working')
     invalidateTaskCache(task.assigned_to)
     await loadLog(task.id)
+    } finally {
+      // Always released — no failure path may leave Acknowledge stuck disabled.
+      acknowledgingRef.current = false
+      setAcknowledging(false)
+    }
   }
 
   const applyStatusChange = async (newStatus: string, reason: string | null, attachmentUrl?: string | null) => {
     if (!task) return
+    // Same guard as acknowledge: a double-click here wrote two status_changed
+    // rows and fired two notifications for one intended change.
+    if (statusUpdatingRef.current) return
+    statusUpdatingRef.current = true
+    setStatusUpdating(true)
+    const perf = perfTrack(newStatus === 'completed' ? 'task.complete' : 'task.status.update')
+    try {
     const oldStatus = task.status
     const now = new Date().toISOString()
     const updates: Record<string, unknown> = { status: newStatus, last_update_at: now }
@@ -305,6 +342,7 @@ export default function TaskDetailPage() {
       window.alert('Failed to update task status. Please try again.')
       return
     }
+    perf.mark('update-task')
     const { error: logErr } = await supabase.from('task_activity_log').insert({
       task_id:        task.id,
       actor_id:       currentUserId,
@@ -339,10 +377,17 @@ export default function TaskDetailPage() {
     setSelectedStatus(newStatus)
     invalidateTaskCache(task.assigned_to)
     queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+    perf.mark('insert-activity')
     await loadLog(task.id)
+    perf.mark('reload-activity')
     if (newStatus === 'completed') {
       const dest = task.task_type === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'
       setTimeout(() => router.push(dest), 800)
+    }
+    } finally {
+      statusUpdatingRef.current = false
+      setStatusUpdating(false)
+      perf.end()
     }
   }
 
@@ -470,6 +515,8 @@ export default function TaskDetailPage() {
     setCommentSaving(true)
     setCommentUploadError(null)
 
+    // Phase names are static — no file names, note text, or ids are recorded.
+    const perf = perfTrack('task.comment.add')
     try {
       // Compress images + validate total size before any upload (skipped entirely for text-only)
       let readyFiles: File[] = []
@@ -481,6 +528,7 @@ export default function TaskDetailPage() {
         }
         readyFiles = ready
       }
+      perf.mark('prepare-files')
 
       const now = new Date().toISOString()
 
@@ -504,6 +552,7 @@ export default function TaskDetailPage() {
         setCommentUploadError('Could not post your update. Please try again.')
         return
       }
+      perf.mark('insert-comment')
 
       // Upload each file and capture its row so the new entry renders its attachments locally.
       // Partial-failure note: a file whose storage upload succeeds but whose metadata insert
@@ -511,32 +560,39 @@ export default function TaskDetailPage() {
       // never deletes task-attachment storage objects (public bucket, shared URLs, no GC), so
       // we do not add a delete here. We report the failure and keep/render only attachments
       // whose rows are confirmed, so the UI stays accurate.
-      const newAttachments: TaskAttachment[] = []
-      const uploadErrors: string[] = []
-      for (const file of readyFiles) {
-        const ext  = file.name.split('.').pop() ?? 'bin'
-        const path = `updates/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-        const { error: storageErr } = await supabase.storage
-          .from('task-attachments')
-          .upload(path, file, { upsert: false })
-        if (storageErr) {
-          uploadErrors.push(`${file.name}: upload failed`)
-          continue
-        }
-        const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
-        const { data: attRow, error: attErr } = await supabase.from('task_attachments').insert({
-          activity_log_id: logRow.id,
-          task_id:         task.id,
-          url:             urlData.publicUrl,
-          file_name:       file.name,
-          file_type:       getFileTypeLabel(file.name),
-          created_by:      currentUserId,
-        })
-          .select('id, task_id, activity_log_id, url, file_name, file_type, created_by, created_at')
-          .single()
-        if (attErr || !attRow) { uploadErrors.push(`${file.name}: metadata save failed`); continue }
-        newAttachments.push(attRow as TaskAttachment)
-      }
+      // A few files go up at a time instead of strictly one after another.
+      // mapWithConcurrency preserves INPUT order, so the attachments still
+      // render in the order the user picked them regardless of which upload
+      // finishes first, and per-file failures are still reported per file.
+      const results = await mapWithConcurrency(
+        readyFiles,
+        ATTACHMENT_UPLOAD_CONCURRENCY,
+        async (file): Promise<{ row: TaskAttachment | null; error: string | null }> => {
+          const ext  = file.name.split('.').pop() ?? 'bin'
+          const path = `updates/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+          const { error: storageErr } = await supabase.storage
+            .from('task-attachments')
+            .upload(path, file, { upsert: false })
+          if (storageErr) return { row: null, error: `${file.name}: upload failed` }
+
+          const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
+          const { data: attRow, error: attErr } = await supabase.from('task_attachments').insert({
+            activity_log_id: logRow.id,
+            task_id:         task.id,
+            url:             urlData.publicUrl,
+            file_name:       file.name,
+            file_type:       getFileTypeLabel(file.name),
+            created_by:      currentUserId,
+          })
+            .select('id, task_id, activity_log_id, url, file_name, file_type, created_by, created_at')
+            .single()
+          if (attErr || !attRow) return { row: null, error: `${file.name}: metadata save failed` }
+          return { row: attRow as TaskAttachment, error: null }
+        },
+      )
+      const newAttachments: TaskAttachment[] = results.flatMap(r => (r.row ? [r.row] : []))
+      const uploadErrors:  string[]          = results.flatMap(r => (r.error ? [r.error] : []))
+      perf.mark('upload-attachments')
 
       // Append the confirmed comment to the activity feed (newest-first, so prepend).
       // Actor is the current user; timestamp comes from the DB row — no re-fetch needed.
@@ -592,6 +648,7 @@ export default function TaskDetailPage() {
       // Always release Send Update — no failure path leaves it disabled until remount.
       setCommentSaving(false)
       commentSavingRef.current = false
+      perf.end()
     }
   }
 
@@ -1273,16 +1330,19 @@ export default function TaskDetailPage() {
                 <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}` }}>
                   <button
                     onClick={acknowledge}
+                    disabled={acknowledging}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                       padding: '9px 14px', borderRadius: '8px',
                       border: `1.5px solid ${colors.amber}50`,
                       background: colors.amberTint, color: colors.amber,
                       fontSize: '13px', fontWeight: 600,
-                      cursor: 'pointer', fontFamily: font.body,
+                      cursor: acknowledging ? 'not-allowed' : 'pointer',
+                      opacity: acknowledging ? 0.6 : 1,
+                      fontFamily: font.body,
                     }}
                   >
-                    Tap to Acknowledge
+                    {acknowledging ? 'Acknowledging…' : 'Tap to Acknowledge'}
                   </button>
                 </div>
               )}
@@ -1312,7 +1372,7 @@ export default function TaskDetailPage() {
                         await applyStatusChange('completed', null)
                         setMarkingComplete(false)
                       }}
-                      disabled={saving || markingComplete}
+                      disabled={saving || markingComplete || statusUpdating}
                       style={{
                         ...(isQuotation ? { width: '240px' } : {}),
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
@@ -1320,9 +1380,9 @@ export default function TaskDetailPage() {
                         border: `1.5px solid ${colors.green}`,
                         background: colors.green, color: '#ffffff',
                         fontSize: '13px', fontWeight: 700,
-                        cursor: saving || markingComplete ? 'not-allowed' : 'pointer',
+                        cursor: saving || markingComplete || statusUpdating ? 'not-allowed' : 'pointer',
                         fontFamily: font.body,
-                        opacity: saving || markingComplete ? 0.6 : 1,
+                        opacity: saving || markingComplete || statusUpdating ? 0.6 : 1,
                         transition: 'all 0.15s',
                         boxShadow: `0 2px 6px ${colors.green}38`,
                       }}
@@ -2254,16 +2314,16 @@ export default function TaskDetailPage() {
                     setSaving(false)
                     setModalOpen(false)
                   }}
-                  disabled={saving}
+                  disabled={saving || statusUpdating}
                   style={{
                     padding: '7px 18px', borderRadius: '7px',
                     border: `1.5px solid ${STATUS_COLORS[modalStatus] ?? colors.blue}`,
                     background: STATUS_COLORS[modalStatus] ?? colors.blue,
                     color: '#ffffff',
                     fontSize: '12px', fontWeight: 600,
-                    cursor: saving ? 'not-allowed' : 'pointer',
+                    cursor: saving || statusUpdating ? 'not-allowed' : 'pointer',
                     fontFamily: font.body,
-                    opacity: saving ? 0.6 : 1,
+                    opacity: saving || statusUpdating ? 0.6 : 1,
                     transition: 'all 0.15s',
                     boxShadow: `0 2px 6px ${(STATUS_COLORS[modalStatus] ?? colors.blue)}38`,
                   }}

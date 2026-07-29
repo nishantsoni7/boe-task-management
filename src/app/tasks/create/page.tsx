@@ -9,7 +9,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 import { Target, CalendarDays, FileText, Paperclip, X } from 'lucide-react'
-import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
+import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 
 const PRIORITIES = ['low', 'medium', 'high'] as const
@@ -129,14 +129,19 @@ export default function CreateTaskPage() {
       if (!ok) { setLoading(false); return }
     }
 
-    // Validate attachments before creating the task
+    // Validate attachments before creating the task. The compressed result is
+    // KEPT and reused for the upload below — this used to run prepareFiles
+    // twice, canvas-compressing every image a second time for no reason, which
+    // on a multi-image task was the single slowest step of task creation.
+    let readyAttachments: File[] = []
     if (attachFiles.length) {
-      const { error: prepErr } = await prepareFiles(attachFiles)
+      const { ready, error: prepErr } = await prepareFiles(attachFiles)
       if (prepErr) {
         setAttachError(prepErr)
         setLoading(false)
         return
       }
+      readyAttachments = ready
     }
 
     const notePayload = description.trim() || null
@@ -166,40 +171,55 @@ export default function CreateTaskPage() {
       setLoading(false)
       return
     }
-    await supabase.from('task_activity_log').insert({
-      task_id: task.id, actor_id: session.user.id,
-      action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
-    })
-    await supabase.from('notifications').insert({
-      user_id:      assigneeId,
-      task_id:      task.id,
-      type:         'task_assigned',
-      title:        'New task assigned to you',
-      body:         title.trim(),
-      is_push_sent: true,
-    })
+    // The activity row and the assignee's notification both depend only on
+    // `task.id`, which now exists, and neither depends on the other — they are
+    // separate tables with no ordering requirement between them. Running them
+    // together removes one full round-trip from every task creation. Both are
+    // still awaited, so a failure in either is still observable here.
+    const [{ error: logErr }, { error: notifErr }] = await Promise.all([
+      supabase.from('task_activity_log').insert({
+        task_id: task.id, actor_id: session.user.id,
+        action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
+      }),
+      supabase.from('notifications').insert({
+        user_id:      assigneeId,
+        task_id:      task.id,
+        type:         'task_assigned',
+        title:        'New task assigned to you',
+        body:         title.trim(),
+        is_push_sent: true,
+      }),
+    ])
+    if (logErr)   console.error('[tasks create] activity log insert failed:', logErr.message)
+    if (notifErr) console.error('[tasks create] notification insert failed:', notifErr.message)
 
-    // Upload attachments and link to the new task
-    if (attachFiles.length) {
-      const { ready } = await prepareFiles(attachFiles)
-      let anyFailed = false
-      for (const file of ready) {
-        const ext  = getExt(file.name)
-        const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-        const { error: upErr } = await supabase.storage
-          .from('task-attachments')
-          .upload(path, file, { upsert: false })
-        if (upErr) { console.error('[attach upload]', upErr); anyFailed = true; continue }
-        const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
-        await supabase.from('task_attachments').insert({
-          task_id:    task.id,
-          url:        urlData.publicUrl,
-          file_name:  file.name,
-          file_type:  getFileTypeLabel(file.name),
-          created_by: session.user.id,
-        })
-      }
-      if (anyFailed) setSubmitError('Task created, but some attachments failed to upload.')
+    // Upload attachments and link to the new task. Files go up a few at a time
+    // instead of strictly one after another; `ready` is the already-compressed
+    // set from the validation step above, not a second compression pass.
+    if (readyAttachments.length) {
+      const outcomes = await mapWithConcurrency(
+        readyAttachments,
+        ATTACHMENT_UPLOAD_CONCURRENCY,
+        async (file) => {
+          const ext  = getExt(file.name)
+          const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+          const { error: upErr } = await supabase.storage
+            .from('task-attachments')
+            .upload(path, file, { upsert: false })
+          if (upErr) { console.error('[attach upload]', upErr); return false }
+          const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
+          const { error: metaErr } = await supabase.from('task_attachments').insert({
+            task_id:    task.id,
+            url:        urlData.publicUrl,
+            file_name:  file.name,
+            file_type:  getFileTypeLabel(file.name),
+            created_by: session.user.id,
+          })
+          if (metaErr) { console.error('[attach metadata]', metaErr.message); return false }
+          return true
+        },
+      )
+      if (outcomes.some(ok => !ok)) setSubmitError('Task created, but some attachments failed to upload.')
     }
 
     // Reset form and show success — stay on page

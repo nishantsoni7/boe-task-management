@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -11,9 +11,11 @@ import { getNotificationMeta } from '@/lib/notificationMeta'
 import { timeAgo } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { Bell, CheckCheck, ExternalLink, Clock, Trash2, Check } from 'lucide-react'
+import { Bell, CheckCheck, ExternalLink, Clock, Trash2, Check, AlertTriangle } from 'lucide-react'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useNotifications } from '@/hooks/queries/useNotifications'
+import { useNotificationMutations } from '@/hooks/queries/useNotificationMutations'
+import { notificationKeys } from '@/lib/notificationCache'
 
 type FilterTab = 'all' | 'unread'
 
@@ -31,8 +33,13 @@ type LayoutComponent = React.ComponentType<{
 }>
 
 type NotificationsViewProps = {
-  /** Narrows the list to one module (e.g. 'finance'). Omit for the global/shared view. */
-  category?: NotificationCategory
+  /**
+   * Which module's notifications this view owns ('task' | 'finance' | 'order').
+   * Required: every list, count, mark-read and delete key is derived from it,
+   * and an absent category would produce a list key with no matching count key.
+   * All three host pages already pass it explicitly.
+   */
+  category: NotificationCategory
   /** The module shell to render inside — DashboardLayout for the global page, FinanceLayout for Finance's. */
   Layout: LayoutComponent
   /** Where to send the user after logging out. */
@@ -46,32 +53,49 @@ type NotificationsViewProps = {
 // delete all agree on exactly which rows belong to this view — see
 // getNotificationCategoryFilter in src/lib/notifications.ts.
 export function NotificationsView({ category, Layout, loginRedirectPath = '/login' }: NotificationsViewProps) {
-  const [loggedInId,   setLoggedInId]   = useState('')
-  const [filter,       setFilter]       = useState<FilterTab>('all')
-  const [selected,     setSelected]     = useState<Set<string>>(new Set())
-  const [markingAll,   setMarkingAll]   = useState(false)
-  const [deletingAll,  setDeletingAll]  = useState(false)
-  const [deletingBulk, setDeletingBulk] = useState(false)
+  const [loggedInId, setLoggedInId] = useState('')
+  const [filter,     setFilter]     = useState<FilterTab>('all')
+  const [selected,   setSelected]   = useState<Set<string>>(new Set())
 
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
   const { refreshKey } = useRefresh()
 
-  const listKey = useMemo(() => (category ? ['notifications', category] : ['notifications']), [category])
-  const categoryQuery = category ? `?category=${category}` : ''
-
   const { data: profile = null } = useProfile(loggedInId)
-  const { data: notifications = [], isLoading: notifLoading } = useNotifications(category)
+  const {
+    data: notifications = [],
+    isLoading: notifLoading,
+    isError: notifError,
+    error: notifErrorObj,
+  } = useNotifications(category)
+
+  // All list/count cache work lives in this hook: optimistic update, snapshot,
+  // rollback on any failure, per-id pending locks, and narrow reconciliation.
+  const {
+    markRead, markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
+    pendingDeletes, markingAll, deletingBulk, deletingAll,
+    error: mutationError, clearError,
+  } = useNotificationMutations(category)
 
   // If TQ has cached notifications, show them immediately without waiting for auth re-confirm.
   // Auth redirect (if needed) will fire from the init useEffect shortly after.
   const loading = notifLoading && notifications.length === 0
 
-  // Invalidate notifications cache when refresh is triggered from elsewhere
+  // Refresh from the layout's Refresh button / tab-visibility. Two changes from
+  // before, both about not fighting an in-flight mutation:
+  //  · the initial run is skipped — mounting already fetches, so invalidating
+  //    on mount only forced a second identical request every visit;
+  //  · only THIS module's list and count are invalidated, not the whole
+  //    ['notifications'] prefix, which also refetched the other two modules'
+  //    lists and all three badges.
+  const lastRefreshKey = useRef(refreshKey)
   useEffect(() => {
-    queryClient.invalidateQueries({ queryKey: ['notifications'] })
-  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (lastRefreshKey.current === refreshKey) return
+    lastRefreshKey.current = refreshKey
+    queryClient.invalidateQueries({ queryKey: notificationKeys.list(category),  exact: true })
+    queryClient.invalidateQueries({ queryKey: notificationKeys.count(category), exact: true })
+  }, [refreshKey, category, queryClient])
 
   // Auth check — once on mount
   useEffect(() => {
@@ -92,103 +116,56 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     })
   }, [notifications]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const unreadCount = notifications.filter(n => !n.is_read).length
-  const visible = filter === 'unread'
-    ? notifications.filter(n => !n.is_read)
-    : notifications
+  // Rows with a DELETE still in flight are hidden immediately and stay hidden
+  // even if a concurrent refetch puts them back in the cache — the server has
+  // been told to remove them, so showing them again would be a lie. If the
+  // delete fails, the mutation clears the pending id and the row returns.
+  const rows = useMemo(
+    () => (pendingDeletes.size === 0 ? notifications : notifications.filter(n => !pendingDeletes.has(n.id))),
+    [notifications, pendingDeletes],
+  )
+
+  const unreadCount = rows.filter(n => !n.is_read).length
+  const visible = filter === 'unread' ? rows.filter(n => !n.is_read) : rows
+
+  // Surfaced in the inline banner. A failed list fetch no longer renders as an
+  // empty inbox — useNotifications throws, and TanStack keeps the last good
+  // list on screen underneath this message.
+  const banner = mutationError
+    ?? (notifError
+      ? (notifErrorObj instanceof Error ? notifErrorObj.message : 'Could not load notifications.')
+      : null)
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
   }
 
-  // Every mutation invalidates the root ['notifications'] / ['notifications','count']
-  // keys rather than the scoped ones — TanStack's default fuzzy prefix match means
-  // that also covers ['notifications','finance'] / ['notifications','count','finance'],
-  // so a Finance-page action clears the global badge too, and vice versa.
-  const invalidateCounts = () => queryClient.invalidateQueries({ queryKey: ['notifications', 'count'] })
+  // ── Mutation entry points ───────────────────────────────────────────────
+  // The optimistic update / snapshot / rollback / reconcile logic all lives in
+  // useNotificationMutations; these wrappers only own local selection state.
 
-  // ── Mutation helpers — update TQ cache immediately, rollback on failure ──────
-
-  const markAllRead = async () => {
-    if (unreadCount === 0 || markingAll) return
-    setMarkingAll(true)
-    const now = new Date().toISOString()
-    const snapshot = queryClient.getQueryData<Notification[]>(listKey)
-    queryClient.setQueryData<Notification[]>(listKey,
-      old => (old ?? []).map(n => n.is_read ? n : { ...n, is_read: true, read_at: now }))
-    const res = await fetch('/api/notifications/mark-read', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ all: true, category }),
-    })
-    if (!res.ok) {
-      queryClient.setQueryData(listKey, snapshot)
-      console.error('[notifications] mark all failed:', await res.json().catch(() => null))
-    } else {
-      invalidateCounts()
-    }
-    setMarkingAll(false)
-  }
-
-  const markRead = (id: string) => {
-    const now = new Date().toISOString()
-    queryClient.setQueryData<Notification[]>(listKey,
-      old => (old ?? []).map(n => n.id === id ? { ...n, is_read: true, read_at: now } : n))
-    fetch('/api/notifications/mark-read', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    })
-      .then(res => { if (res.ok) invalidateCounts() })
-      .catch(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
-  }
-
-  const deleteSingle = (id: string) => {
-    queryClient.setQueryData<Notification[]>(listKey,
-      old => (old ?? []).filter(n => n.id !== id))
+  const handleDeleteSingle = (id: string) => {
     setSelected(prev => { const s = new Set(prev); s.delete(id); return s })
-    fetch(`/api/notifications/${id}`, { method: 'DELETE' })
-      .then(res => { if (res.ok) invalidateCounts() })
-      .catch(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
+    deleteSingle(id)
   }
 
-  const deleteSelected = async () => {
+  const handleDeleteSelected = () => {
     if (deletingBulk || selected.size === 0) return
-    setDeletingBulk(true)
     const ids = [...selected]
-    const snapshot = queryClient.getQueryData<Notification[]>(listKey)
-    queryClient.setQueryData<Notification[]>(listKey,
-      old => (old ?? []).filter(n => !selected.has(n.id)))
     setSelected(new Set())
-    const res = await fetch('/api/notifications/delete-selected', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids }),
-    })
-    if (!res.ok) {
-      queryClient.setQueryData(listKey, snapshot)
-      console.error('[notifications] delete selected failed:', await res.json().catch(() => null))
-    } else {
-      invalidateCounts()
-    }
-    setDeletingBulk(false)
+    runDeleteSelected(ids)
   }
 
-  const deleteAll = async () => {
-    if (deletingAll || notifications.length === 0) return
-    setDeletingAll(true)
-    const snapshot = queryClient.getQueryData<Notification[]>(listKey)
-    queryClient.setQueryData<Notification[]>(listKey, [])
+  const handleDeleteAll = () => {
+    if (deletingAll || rows.length === 0) return
     setSelected(new Set())
-    const res = await fetch(`/api/notifications${categoryQuery}`, { method: 'DELETE' })
-    if (!res.ok) {
-      queryClient.setQueryData(listKey, snapshot)
-      console.error('[notifications] delete all failed:', await res.json().catch(() => null))
-    } else {
-      invalidateCounts()
-    }
-    setDeletingAll(false)
+    deleteAll()
+  }
+
+  const handleMarkAllRead = () => {
+    if (unreadCount === 0 || markingAll) return
+    markAllRead()
   }
 
   const toggleSelect = (id: string) => {
@@ -237,7 +214,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
           {/* Delete selected — only shown when something is selected */}
           {selected.size > 0 && (
             <button
-              onClick={deleteSelected}
+              onClick={handleDeleteSelected}
               disabled={deletingBulk}
               style={{
                 ...toolBtn(true, true),
@@ -250,7 +227,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
           )}
 
           <button
-            onClick={markAllRead}
+            onClick={handleMarkAllRead}
             disabled={unreadCount === 0 || markingAll}
             style={{ ...toolBtn(unreadCount > 0 && !markingAll), opacity: markingAll ? 0.6 : 1 }}
           >
@@ -259,10 +236,10 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
           </button>
 
           <button
-            onClick={deleteAll}
-            disabled={deletingAll || notifications.length === 0}
+            onClick={handleDeleteAll}
+            disabled={deletingAll || rows.length === 0}
             style={{
-              ...toolBtn(notifications.length > 0 && !deletingAll, true),
+              ...toolBtn(rows.length > 0 && !deletingAll, true),
               opacity: deletingAll ? 0.6 : 1,
             }}
           >
@@ -272,6 +249,37 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
         </div>
       }
     >
+      {/* Error banner — the only user-visible signal that a notification action
+          failed. Non-disruptive: the list stays rendered underneath, and a
+          rolled-back row is already back in place by the time this shows. */}
+      {banner && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '9px',
+          marginBottom: '12px', padding: '10px 14px',
+          borderRadius: '8px',
+          background: colors.redTint,
+          border: `1px solid ${colors.red}33`,
+          maxWidth: '900px',
+        }}>
+          <AlertTriangle size={14} color={colors.red} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: '12.5px', fontWeight: 500, color: colors.red, fontFamily: font.body }}>
+            {banner}
+          </span>
+          {mutationError && (
+            <button
+              onClick={clearError}
+              title="Dismiss"
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: colors.red, fontSize: '15px', lineHeight: 1, padding: '0 2px', flexShrink: 0,
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Filter pills */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
         {(['all', 'unread'] as FilterTab[]).map(tab => (
@@ -452,9 +460,11 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
                     <span style={{ display: 'inline-block', width: '82px' }} />
                   )}
 
-                  {/* Per-row trash */}
+                  {/* Per-row trash — disabled while THIS row's DELETE is in
+                      flight, so a second click cannot fire a duplicate request. */}
                   <button
-                    onClick={e => { e.stopPropagation(); deleteSingle(n.id) }}
+                    onClick={e => { e.stopPropagation(); handleDeleteSingle(n.id) }}
+                    disabled={pendingDeletes.has(n.id)}
                     title="Delete notification"
                     style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -462,7 +472,9 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
                       background: 'transparent',
                       color: colors.muted,
                       border: `1.5px solid ${colors.border}`,
-                      cursor: 'pointer', flexShrink: 0,
+                      cursor: pendingDeletes.has(n.id) ? 'not-allowed' : 'pointer',
+                      opacity: pendingDeletes.has(n.id) ? 0.5 : 1,
+                      flexShrink: 0,
                     }}
                   >
                     <Trash2 size={12} strokeWidth={2} />

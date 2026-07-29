@@ -1,55 +1,43 @@
 import { useQuery } from '@tanstack/react-query'
+import { notificationKeys, type UnreadCountShape } from '@/lib/notificationCache'
+import type { NotificationCategory } from '@/lib/notifications'
 
-// Task Management's unread badge count — used by every module sidebar that
-// hasn't been given its own module-scoped count (NotificationsNavItem's
-// default). The endpoint defaults to `category=task` server-side when none is
-// given, so this is Task Management's own count, not a cross-module total.
-// Query key (['notifications', 'count']) and endpoint (/api/notifications?count=1)
-// are unchanged from before so TanStack Query still dedupes to ONE fetch no
-// matter how many sidebars mount it, and existing mark-read / delete mutations
-// that invalidate ['notifications', 'count'] keep it in sync.
+// Module-scoped unread badge counts. Query keys and endpoints are UNCHANGED —
+// they now just come from `notificationKeys` instead of repeated literals, so
+// these queries and the mutations that patch/invalidate them can never drift
+// apart. TanStack still dedupes to one fetch per key no matter how many
+// sidebars mount the same hook.
+//
+// Note the task key is ['notifications', 'count'] with no category suffix:
+// that is the historic key every module sidebar has read since before
+// categories existed, and notificationKeys.count('task') preserves it.
+function useUnreadCount(category: NotificationCategory): number {
+  const { data } = useQuery<UnreadCountShape>({
+    queryKey: notificationKeys.count(category),
+    queryFn: async () => {
+      const res = await fetch(`/api/notifications?count=1&category=${category}`)
+      // A failed count keeps the badge at its last known value rather than
+      // flashing 0 — a badge is ambient decoration, and showing "nothing to
+      // see" because of a network blip is worse than showing a stale number.
+      if (!res.ok) throw new Error(`Unread count request failed (HTTP ${res.status})`)
+      return res.json() as Promise<UnreadCountShape>
+    },
+    staleTime: 30 * 1000,
+  })
+  return data?.unreadCount ?? 0
+}
+
+/** Task Management's unread badge count — the default for every module sidebar. */
 export function useUnreadNotifications(): number {
-  const { data } = useQuery({
-    queryKey: ['notifications', 'count'],
-    queryFn: async () => {
-      const res = await fetch('/api/notifications?count=1&category=task')
-      if (!res.ok) return { unreadCount: 0 }
-      return res.json() as Promise<{ unreadCount: number }>
-    },
-    staleTime: 30 * 1000,
-  })
-  return data?.unreadCount ?? 0
+  return useUnreadCount('task')
 }
 
-// Finance-scoped variant of the badge count. Same endpoint and shape, narrowed
-// server-side to Finance's own types via `?category=finance`. Its query key
-// (['notifications', 'count', 'finance']) is a prefix-child of ['notifications',
-// 'count'], so the existing mark-read / delete mutations — which invalidate
-// ['notifications', 'count'] — clear this count too, no extra wiring needed.
+/** Finance-scoped unread badge count. */
 export function useUnreadFinanceNotifications(): number {
-  const { data } = useQuery({
-    queryKey: ['notifications', 'count', 'finance'],
-    queryFn: async () => {
-      const res = await fetch('/api/notifications?count=1&category=finance')
-      if (!res.ok) return { unreadCount: 0 }
-      return res.json() as Promise<{ unreadCount: number }>
-    },
-    staleTime: 30 * 1000,
-  })
-  return data?.unreadCount ?? 0
+  return useUnreadCount('finance')
 }
 
-// Orders-scoped variant of the badge count. Same shape as the Finance variant,
-// narrowed server-side to Orders' own types via `?category=order`.
+/** Orders-scoped unread badge count. */
 export function useUnreadOrderNotifications(): number {
-  const { data } = useQuery({
-    queryKey: ['notifications', 'count', 'order'],
-    queryFn: async () => {
-      const res = await fetch('/api/notifications?count=1&category=order')
-      if (!res.ok) return { unreadCount: 0 }
-      return res.json() as Promise<{ unreadCount: number }>
-    },
-    staleTime: 30 * 1000,
-  })
-  return data?.unreadCount ?? 0
+  return useUnreadCount('order')
 }

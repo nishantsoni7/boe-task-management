@@ -9,7 +9,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 import { Target, CalendarDays, FileText, Paperclip, X } from 'lucide-react'
-import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
+import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 
 const PRIORITIES = ['low', 'medium', 'high'] as const
@@ -115,14 +115,18 @@ export default function CreateSelfTaskPage() {
       if (!ok) { setLoading(false); return }
     }
 
-    // Validate attachments before creating the task
+    // Validate attachments before creating the task. The compressed result is
+    // KEPT and reused for the upload below — this used to run prepareFiles
+    // twice, canvas-compressing every image a second time for no reason.
+    let readyAttachments: File[] = []
     if (attachFiles.length) {
-      const { error: prepErr } = await prepareFiles(attachFiles)
+      const { ready, error: prepErr } = await prepareFiles(attachFiles)
       if (prepErr) {
         setAttachError(prepErr)
         setLoading(false)
         return
       }
+      readyAttachments = ready
     }
 
     const notePayload = description.trim() || null
@@ -156,27 +160,33 @@ export default function CreateSelfTaskPage() {
       action: 'created', note: 'Task created for self',
     })
 
-    // Upload attachments and link to the new task
-    if (attachFiles.length) {
-      const { ready } = await prepareFiles(attachFiles)
-      let anyFailed = false
-      for (const file of ready) {
-        const ext  = getExt(file.name)
-        const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-        const { error: upErr } = await supabase.storage
-          .from('task-attachments')
-          .upload(path, file, { upsert: false })
-        if (upErr) { console.error('[attach upload]', upErr); anyFailed = true; continue }
-        const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
-        await supabase.from('task_attachments').insert({
-          task_id:    task.id,
-          url:        urlData.publicUrl,
-          file_name:  file.name,
-          file_type:  getFileTypeLabel(file.name),
-          created_by: session.user.id,
-        })
-      }
-      if (anyFailed) setSubmitError('Task created, but some attachments failed to upload.')
+    // Upload attachments and link to the new task. A few files go up at a time
+    // rather than strictly one after another; `readyAttachments` is the
+    // already-compressed set from validation, not a second compression pass.
+    if (readyAttachments.length) {
+      const outcomes = await mapWithConcurrency(
+        readyAttachments,
+        ATTACHMENT_UPLOAD_CONCURRENCY,
+        async (file) => {
+          const ext  = getExt(file.name)
+          const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+          const { error: upErr } = await supabase.storage
+            .from('task-attachments')
+            .upload(path, file, { upsert: false })
+          if (upErr) { console.error('[attach upload]', upErr); return false }
+          const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
+          const { error: metaErr } = await supabase.from('task_attachments').insert({
+            task_id:    task.id,
+            url:        urlData.publicUrl,
+            file_name:  file.name,
+            file_type:  getFileTypeLabel(file.name),
+            created_by: session.user.id,
+          })
+          if (metaErr) { console.error('[attach metadata]', metaErr.message); return false }
+          return true
+        },
+      )
+      if (outcomes.some(ok => !ok)) setSubmitError('Task created, but some attachments failed to upload.')
     }
 
     setTitle('')

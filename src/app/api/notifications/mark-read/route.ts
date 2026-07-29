@@ -2,6 +2,7 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getNotificationCategoryFilter, resolveNotificationCategory } from '@/lib/notifications'
+import { isValidUUID } from '@/lib/ui'
 
 // Marks notifications as read. Body: { id } for a single notification, or
 // { all: true } to clear every unread one for the caller — narrowed to one
@@ -20,9 +21,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { id, all, category } = await req.json()
+  const body = await req.json().catch(() => null)
+  const { id, all, category } = (body ?? {}) as { id?: unknown; all?: unknown; category?: unknown }
   if (!all && !id) {
     return NextResponse.json({ error: 'id or all is required' }, { status: 400 })
+  }
+  // Validated before Postgres sees it — a malformed id would otherwise return a
+  // 22P02 cast error as a 500 rather than the 400 it is.
+  if (!all && !isValidUUID(id as string)) {
+    return NextResponse.json({ error: 'Invalid notification id' }, { status: 400 })
   }
 
   const supabase = createServerClient(
@@ -43,11 +50,16 @@ export async function POST(req: NextRequest) {
     query = query.eq('id', id)
   }
 
-  const { error } = await query
+  // `.select('id')` lets the response report how many of the caller's rows were
+  // actually flipped, so the client can patch its unread badge without a
+  // follow-up count request. Zero updated rows is an idempotent success — the
+  // row was already read, or was never the caller's.
+  const { data, error } = await query.select('id')
   if (error) {
-    console.error('[notifications/mark-read] update failed:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    // Message only — notification titles/bodies stay out of the logs.
+    console.error('[notifications/mark-read] update failed:', error.message)
+    return NextResponse.json({ error: 'Could not update the notification' }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, updatedCount: data?.length ?? 0 })
 }
