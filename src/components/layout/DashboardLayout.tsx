@@ -18,6 +18,7 @@ import { ViewModeBanner, ViewModeSidebarSection } from './AdminViewModeControls'
 import { MobileBottomNav } from './MobileBottomNav'
 import { NotificationsNavItem } from './NotificationsNavItem'
 import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
+import { useRecordAppOpen } from '@/hooks/useRecordAppOpen'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
 
@@ -72,10 +73,24 @@ export function DashboardLayout({
 
   const inViewMode  = !!viewAsUserId
 
+  // System Adoption: record that Task Management was opened. Fires at most once
+  // per browser session, ignores non-Task-Management routes, and cannot delay or
+  // fail this render. The server attributes it to the real signed-in user, so this
+  // is safe to run while View As is active — the admin is the one browsing.
+  useRecordAppOpen(!!profile)
+
   // Sidebar nav reflects the viewed user's role when in view mode
   const navProfile       = viewAsProfile ?? profile
   const isAdmin          = navProfile?.role === 'admin'
-  const isAdminOrManager = isAdmin || navProfile?.role === 'manager'
+
+  // Team Performance is an authorization decision, not a presentation one, so
+  // it follows the *real* signed-in user rather than `navProfile`. Viewing a
+  // manager's profile must not surface management navigation, and while
+  // impersonating anyone the entry stays hidden so View As reflects what that
+  // employee actually sees. Leaving View As restores it.
+  const realRole = profile?.role
+  const canViewTeamPerformance =
+    !inViewMode && (realRole === 'admin' || realRole === 'manager')
 
   // Resolve the real logged-in user's id fresh on every mount (matching the
   // auth-check pattern used elsewhere in the app) — not cached via React Query,
@@ -272,7 +287,7 @@ export function DashboardLayout({
           />
 
           {/* 5. Performance */}
-          {isAdminOrManager ? (
+          {canViewTeamPerformance ? (
             <CollapsibleNav
               label="Performance"
               icon={<TrendingUp size={15} strokeWidth={1.8} />}

@@ -4,7 +4,14 @@ import { NextRequest, NextResponse } from 'next/server'
 // Base columns guaranteed to exist in users table (no migration dependency)
 const BASE_COLUMNS = 'id, full_name, team, position, is_active'
 // Extended columns added by 20260608_add_employee_fields migration
-const FULL_COLUMNS  = BASE_COLUMNS + ', employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code'
+// performance_tracking_enabled (20260719000000) is included so the employee
+// configuration screen can show the real state of the Performance toggle.
+// performance_tracking_note is deliberately NOT selected here: this endpoint is
+// open to any authenticated user, and the note records management's reason for
+// holding an account out ("administrative/test account"), which ordinary
+// employees have no business reading. The note is returned only by the
+// admin-gated Team Performance coverage payload.
+const FULL_COLUMNS  = BASE_COLUMNS + ', employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code, performance_tracking_enabled'
 
 export async function GET(req: NextRequest) {
   const authHeader  = req.headers.get('authorization') ?? ''

@@ -77,6 +77,12 @@ export type UserProfile = {
   payroll_active: boolean
   employment_type: 'permanent' | 'contract' | null
   payroll_notes: string | null
+  // Performance reporting eligibility (migration 20260719000000). Separate from
+  // payroll_active on purpose: one decides whether someone is measured, the other
+  // decides whether someone is paid. Optional here because most reads of
+  // UserProfile do not select them.
+  performance_tracking_enabled?: boolean
+  performance_tracking_note?: string | null
   is_deleted?: boolean
   deleted_at?: string | null
   deleted_by?: string | null
@@ -188,6 +194,10 @@ export type PerformanceData = {
   trendAnalysis: TrendAnalysis
   eodLog:    DailyWorkLog | null
   aggregate?: PeriodAggregate      // only on weekly / monthly
+  /** False when this employee is held out of team Performance reporting. */
+  performanceTrackingEnabled?: boolean
+  /** Notice to display when excluded; null otherwise. */
+  exclusionNotice?: string | null
 }
 
 export type DailyWorkLog = {

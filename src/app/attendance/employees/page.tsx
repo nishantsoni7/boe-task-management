@@ -25,6 +25,8 @@ type EmployeeRow = Pick<
   | 'payroll_active'
   | 'employment_type'
   | 'payroll_notes'
+  | 'performance_tracking_enabled'
+  | 'performance_tracking_note'
 >
 
 type EditState = {
@@ -36,6 +38,8 @@ type EditState = {
   payroll_active: boolean
   employment_type: string
   payroll_notes: string
+  performance_tracking_enabled: boolean
+  performance_tracking_note: string
 }
 
 type AddState = {
@@ -284,10 +288,19 @@ function EditModal({
     payroll_active:            emp.payroll_active            ?? true,
     employment_type:           emp.employment_type           ?? '',
     payroll_notes:             emp.payroll_notes             ?? '',
+    // Column is NOT NULL DEFAULT true; `?? true` covers a caller that did not
+    // select it, so the checkbox never renders an employee as excluded by accident.
+    performance_tracking_enabled: emp.performance_tracking_enabled ?? true,
+    performance_tracking_note:    emp.performance_tracking_note    ?? '',
   })
   const [saving, setSaving]   = useState(false)
   const [error,  setError]    = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  // The employee list does not carry performance_tracking_note — it is admin-only
+  // and that endpoint is open to any authenticated user. So the field starts empty
+  // and is sent only once actually edited; otherwise saving the toggle would blank
+  // a reason the admin never saw.
+  const [noteTouched, setNoteTouched] = useState(false)
 
   const set = (key: keyof EditState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [key]: e.target.value }))
@@ -312,6 +325,8 @@ function EditModal({
           payroll_active:            form.payroll_active,
           employment_type:           form.employment_type,
           payroll_notes:             form.payroll_notes,
+          performance_tracking_enabled: form.performance_tracking_enabled,
+          ...(noteTouched ? { performance_tracking_note: form.performance_tracking_note } : {}),
         }),
       })
       const json = await res.json()
@@ -326,6 +341,8 @@ function EditModal({
         payroll_active:            form.payroll_active,
         employment_type:           (form.employment_type as 'permanent' | 'contract') || null,
         payroll_notes:             form.payroll_notes             || null,
+        performance_tracking_enabled: form.performance_tracking_enabled,
+        ...(noteTouched ? { performance_tracking_note: form.performance_tracking_note || null } : {}),
       })
       setTimeout(onClose, 900)
     } catch {
@@ -458,6 +475,53 @@ function EditModal({
                 placeholder="e.g. On probation, salary revision pending…"
               />
             </div>
+          </div>
+
+          {/* Performance reporting — separate from payroll on purpose: this decides
+              whether the employee is measured, not whether they are paid. */}
+          <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Performance Reporting
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                id="performance_tracking_toggle"
+                type="checkbox"
+                checked={form.performance_tracking_enabled}
+                onChange={e => setForm(f => ({ ...f, performance_tracking_enabled: e.target.checked }))}
+                style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#0369A1' }}
+              />
+              <label htmlFor="performance_tracking_toggle" style={{ fontSize: 13, color: colors.primary, cursor: 'pointer' }}>
+                Include in Performance tracking
+              </label>
+            </div>
+
+            <div style={{ fontSize: 11.5, color: colors.tertiary, lineHeight: 1.5 }}>
+              {form.performance_tracking_enabled
+                ? 'Counted in team rankings, the team average and Performance coverage.'
+                : 'Held out of every team Performance figure — rankings, team average, EOD '
+                  + 'and adoption totals. Keeps full system access, task history and View As.'}
+            </div>
+
+            {!form.performance_tracking_enabled && (
+              <div>
+                <label style={labelStyle}>Exclusion Reason</label>
+                <textarea
+                  style={{ ...inputStyle, resize: 'vertical', minHeight: 56 }}
+                  value={form.performance_tracking_note}
+                  onChange={e => {
+                    setNoteTouched(true)
+                    setForm(f => ({ ...f, performance_tracking_note: e.target.value }))
+                  }}
+                  placeholder="e.g. Administrative account, does not submit daily operational data"
+                />
+                <div style={{ fontSize: 11, color: colors.tertiary, marginTop: 4 }}>
+                  Visible to administrators only, in Performance Coverage.
+                  {!noteTouched && ' Leave blank to keep any existing reason.'}
+                </div>
+              </div>
+            )}
           </div>
 
           {error && (

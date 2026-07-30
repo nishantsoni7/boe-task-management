@@ -8,6 +8,9 @@ import { useViewAs } from '@/hooks/useViewAs'
 import type {
   UserProfile, PerformanceData, PerformanceAudit, TrendDay,
 } from '@/lib/types'
+import {
+  istToday, istDateRange, istMonthStart, istMonthEnd, istMonthStartOffset,
+} from '@/lib/istDate'
 
 // ─── Progress loader ──────────────────────────────────────────────────────────
 function PerformanceProgressLoader({ progress }: { progress: number }) {
@@ -649,97 +652,124 @@ type MonthRange =
   | { from: string; to: string; label: string; noData: false }
   | { noData: true; label: string }
 
+function monthLabel(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+}
+
 function getMonthRange(which: 'current' | 'last'): MonthRange {
-  const now = new Date()
+  // All boundaries are IST business dates. Building them from a local Date and
+  // then calling toISOString() shifted the month start back a day in IST.
+  const today = istToday()
+
   if (which === 'current') {
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-    // Effective start is the later of month-start and rollout date
+    const monthStart = istMonthStart(today)
     const from = monthStart >= ROLLOUT_DATE ? monthStart : ROLLOUT_DATE
-    const to   = now.toISOString().slice(0, 10)
-    return { from, to, label: now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }), noData: false }
-  } else {
-    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const last  = new Date(now.getFullYear(), now.getMonth(), 0)
-    const lastStr = last.toISOString().slice(0, 10)
-    const label   = first.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-    // If the entire last month ended before rollout, there's no trackable data
-    if (lastStr < ROLLOUT_DATE) return { noData: true, label }
-    const from = first.toISOString().slice(0, 10) >= ROLLOUT_DATE
-      ? first.toISOString().slice(0, 10)
-      : ROLLOUT_DATE
-    return { from, to: lastStr, label, noData: false }
+    return { from, to: today, label: monthLabel(today), noData: false }
   }
+
+  const first = istMonthStartOffset(today, 1)
+  const last  = istMonthEnd(first)
+  const label = monthLabel(first)
+  // If the entire last month ended before rollout, there's no trackable data
+  if (last < ROLLOUT_DATE) return { noData: true, label }
+  return { from: first >= ROLLOUT_DATE ? first : ROLLOUT_DATE, to: last, label, noData: false }
 }
 
 type DayStatus = 'submitted' | 'pending' | 'missed'
 type DayEntry  = { date: string; log: EodLogRow | null; status: DayStatus }
 
-function buildDayList(from: string, to: string, logs: EodLogRow[]): DayEntry[] {
-  const logMap  = new Map(logs.map(r => [r.log_date, r]))
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const list: DayEntry[] = []
-  const start = new Date(from + 'T12:00:00')
-  const end   = new Date(to   + 'T12:00:00')
-  for (let d = new Date(end); d >= start; d.setDate(d.getDate() - 1)) {
-    const dateStr = d.toISOString().slice(0, 10)
-    const log     = logMap.get(dateStr) ?? null
-    const status: DayStatus =
-      log              ? 'submitted' :
-      dateStr < todayStr ? 'missed'   :
-                           'pending'
-    list.push({ date: dateStr, log, status })
-  }
-  return list
+function buildDayList(
+  from: string,
+  to: string,
+  logs: EodLogRow[],
+  workingDates: ReadonlySet<string> | null,
+): DayEntry[] {
+  const logMap   = new Map(logs.map(r => [r.log_date, r]))
+  const todayStr = istToday()
+  // Newest first — the list is rendered as a reverse-chronological history.
+  return istDateRange(from, to)
+    .filter(date => workingDates === null || workingDates.has(date))
+    .reverse()
+    .map(date => {
+      const log = logMap.get(date) ?? null
+      const status: DayStatus =
+        log             ? 'submitted' :
+        date < todayStr ? 'missed'    :
+                          'pending'
+      return { date, log, status }
+    })
 }
 
-function MonthlyView({ token, which, perfData, viewAsUserId }: {
+function MonthlyView({ token, which, viewAsUserId }: {
   token: string
   which: 'current' | 'last'
-  perfData: PerformanceData | null
   viewAsUserId?: string | null
 }) {
   const [logs,        setLogs]        = useState<EodLogRow[]>([])
+  const [trendDays,   setTrendDays]   = useState<TrendDay[]>([])
+  const [avgScore,    setAvgScore]    = useState<number | null>(null)
   const [fetching,    setFetching]    = useState(true)
   const [selectedDay, setSelectedDay] = useState<SelectedDay | null>(null)
   const range = useMemo(() => getMonthRange(which), [which])
 
-  const trendMap = useMemo(() => {
-    const map = new Map<string, TrendDay>()
-    if (perfData?.trend) for (const d of perfData.trend) map.set(d.date, d)
-    return map
-  }, [perfData])
-
+  // Scores for this month are fetched for the month's own date range. They used
+  // to be read out of the 7-day trend the page had already loaded, which meant
+  // the average silently covered only the last week and skipped every day with
+  // no data — so a month with several dead days still averaged well.
   useEffect(() => {
-    const loadDailyLog = () => {
+    const loadMonth = () => {
       if (!token || range.noData) { setFetching(false); return }
       setFetching(true)
       const qs = new URLSearchParams({ from: range.from, to: range.to })
       if (viewAsUserId) qs.set('userId', viewAsUserId)
-      fetch(`/api/daily-log?${qs.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(r => r.json())
-        .then(d => setLogs(d.logs ?? []))
+      const auth = { headers: { Authorization: `Bearer ${token}` } }
+
+      Promise.all([
+        fetch(`/api/daily-log?${qs.toString()}`, auth)
+          .then(r => r.ok ? r.json() : { logs: [] })
+          .catch(() => ({ logs: [] })),
+        fetch(`/api/performance-metrics?${qs.toString()}`, auth)
+          .then(r => r.ok ? r.json() : { trend: [] })
+          .catch(() => ({ trend: [] })),
+      ])
+        .then(([logRes, perfRes]) => {
+          setLogs(logRes.logs ?? [])
+          setTrendDays(perfRes.trend ?? [])
+          // Read the server's average rather than recomputing it here. The
+          // server knows which days were expected working days and whether
+          // today's cutoff has passed; recomputing from `trend` would quietly
+          // disagree with the Team page for the same employee.
+          setAvgScore(perfRes.aggregate?.avgScore ?? null)
+        })
         .finally(() => setFetching(false))
     }
-    loadDailyLog()
+    loadMonth()
   }, [token, range, viewAsUserId])
 
+  const trendMap = useMemo(
+    () => new Map(trendDays.map(d => [d.date, d])),
+    [trendDays],
+  )
+
+  // The trend carries exactly the dates the server treated as expected working
+  // days, so it doubles as the working calendar here: no Sunday, holiday,
+  // pre-joining or post-exit date can appear as a "missed EOD" day. If the
+  // performance fetch failed, fall back to the whole range rather than showing
+  // an empty month.
+  const workingDates = useMemo(
+    () => trendDays.length > 0 ? new Set(trendDays.map(d => d.date)) : null,
+    [trendDays],
+  )
+
   const days = useMemo(
-    () => range.noData ? [] : buildDayList(range.from, range.to, logs),
-    [range, logs],
+    () => range.noData ? [] : buildDayList(range.from, range.to, logs, workingDates),
+    [range, logs, workingDates],
   )
 
   const submittedDays = days.filter(d => d.status === 'submitted')
   const missedDays    = days.filter(d => d.status === 'missed')
 
-  // Monthly Avg Score: mean of trendDay.breakdown.total for days within this month's range.
-  // trendMap only holds the last 7 days (from period=daily). Days outside that window are absent.
-  // We average only the days we have scores for; missed days are excluded from the average.
-  const scoredDays      = days.filter(d => trendMap.has(d.date))
-  const monthlyAvgScore = scoredDays.length > 0
-    ? Math.round(scoredDays.reduce((sum, d) => sum + trendMap.get(d.date)!.breakdown.total, 0) / scoredDays.length)
-    : null
+  const monthlyAvgScore = avgScore
 
   if (fetching) return (
     <div style={{ textAlign: 'center', padding: '60px 0', fontSize: 13, color: '#8C94A6' }}>Loading…</div>
@@ -1125,6 +1155,19 @@ export default function PerformancePage() {
     >
       <div style={{ maxWidth: 1040, margin: '0 auto', padding: '8px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+        {/* Excluded from team reporting. Shown above everything else, because the
+            reader needs to know it before they read a single figure below. The
+            page stays fully functional — only the team comparison is absent. */}
+        {perfTodayData?.exclusionNotice && (
+          <div style={{
+            padding: '10px 14px', borderRadius: 9, fontSize: 12.5, lineHeight: 1.55,
+            background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E',
+          }}>
+            <strong style={{ fontWeight: 700 }}>Not included in team Performance.</strong>{' '}
+            {perfTodayData.exclusionNotice}
+          </div>
+        )}
+
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: 4, background: '#F4F5F7', borderRadius: 10, padding: 4, alignSelf: 'flex-start' }}>
           {(['today', 'current_month', 'last_month'] as Tab[]).map(t => (
@@ -1277,12 +1320,12 @@ export default function PerformancePage() {
 
         {/* ── CURRENT MONTH TAB ── */}
         {tab === 'current_month' && token && (
-          <MonthlyView token={token} which="current" perfData={perfTodayData} viewAsUserId={viewAsUserId} />
+          <MonthlyView token={token} which="current" viewAsUserId={viewAsUserId} />
         )}
 
         {/* ── LAST MONTH TAB ── */}
         {tab === 'last_month' && token && (
-          <MonthlyView token={token} which="last" perfData={null} viewAsUserId={viewAsUserId} />
+          <MonthlyView token={token} which="last" viewAsUserId={viewAsUserId} />
         )}
 
       </div>

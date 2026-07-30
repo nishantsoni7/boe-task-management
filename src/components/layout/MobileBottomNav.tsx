@@ -202,7 +202,10 @@ export function MobileBottomNav({
           {!inViewMode && isAdminOrManager && (
             <MoreItem label="Delegate Task"     icon={Plus}    accent="#9B6FD4" onClick={() => go('/tasks/create')} />
           )}
-          {isAdminOrManager && (
+          {/* Matches the desktop rule: keyed on the real signed-in user, and
+              hidden while impersonating so View As shows what that employee
+              actually sees. */}
+          {isAdminOrManager && !inViewMode && (
             <MoreItem label="Team Performance"  icon={Users}   accent="#D94F4F" onClick={() => go('/performance/team')} />
           )}
           {isAdmin && !inViewMode && (

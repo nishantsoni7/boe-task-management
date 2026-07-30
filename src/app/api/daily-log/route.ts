@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { istToday } from '@/lib/istDate'
 
 function serviceClient() {
   return createClient(
@@ -51,7 +52,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ logs: data ?? [] })
   }
 
-  const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10)
+  // IST business date — the UTC date is still yesterday until 5:30am here.
+  const date = searchParams.get('date') ?? istToday()
   const { data, error } = await sb
     .from('daily_work_logs')
     .select('*')
@@ -77,7 +79,10 @@ export async function POST(req: NextRequest) {
 
   if (!summary?.trim()) return NextResponse.json({ error: 'Summary is required' }, { status: 400 })
 
-  const date = log_date ?? new Date().toISOString().slice(0, 10)
+  // The EOD belongs to the IST business day it was written for. Using the UTC
+  // date filed anything submitted before 5:30am IST against the previous day,
+  // which then showed as a missed EOD for the day it actually covered.
+  const date = log_date ?? istToday()
 
   const sb = serviceClient()
   const { data, error } = await sb

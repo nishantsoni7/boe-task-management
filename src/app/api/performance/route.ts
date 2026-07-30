@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { istToday } from '@/lib/istDate'
 
 function serviceClient() {
   return createClient(
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
   if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const date = searchParams.get('date') ?? new Date().toISOString().slice(0, 10)
+  const date = searchParams.get('date') ?? istToday()
 
   const sb = serviceClient()
   const { data, error } = await sb
@@ -56,7 +57,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { completed_today, in_progress, blockers, tomorrow_focus } = body
 
-  const today = new Date().toISOString().slice(0, 10)
+  // The log belongs to the IST business day. Using the UTC date filed anything
+  // saved before 5:30am IST against the previous day.
+  const today = istToday()
 
   const sb = serviceClient()
   const { data, error } = await sb

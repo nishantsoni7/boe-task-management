@@ -154,6 +154,12 @@ export default function BoeOsHomePage() {
     (effectiveProfile?.team?.toLowerCase().includes('sales') ?? false) ||
     (effectiveProfile?.team?.toLowerCase().includes('showroom') ?? false)
 
+  // Management lands on Team Performance, everyone else on their own report.
+  const performanceHref =
+    (effectiveProfile?.role === 'admin' || effectiveProfile?.role === 'manager')
+      ? '/performance/team'
+      : '/performance'
+
   const modules: ModuleDef[] = [
     ...(canSeeModule('task_management', modVis, effectiveProfile, true) ? [{
       key: 'tasks',
@@ -241,6 +247,22 @@ export default function BoeOsHomePage() {
       notificationCount: null,
       visibilityType: modVis['employee_records']?.visibility_type,
       allowedDepartment: modVis['employee_records']?.allowed_department,
+    }] : []),
+    // Gated by the existing `performance` row in app_modules (live, sort 80).
+    // Destination follows the effective profile so View As lands on the viewed
+    // user's own page; the team route is still authorized server-side against
+    // the real caller, so this grants nothing on its own.
+    ...(canSeeModule('performance', modVis, effectiveProfile, true) ? [{
+      key: 'performance',
+      title: 'Performance Management',
+      description: 'Review personal performance, EOD discipline, team execution, and employees requiring attention.',
+      href: performanceHref,
+      status: 'active' as ModuleStatus,
+      accent: '#0369A1',
+      icon: <PerformanceIcon />,
+      notificationCount: null,
+      visibilityType: modVis['performance']?.visibility_type,
+      allowedDepartment: modVis['performance']?.allowed_department,
     }] : []),
     ...(canSeeModule('finance', modVis, effectiveProfile, true) ? [{
       key: 'finance',
@@ -530,6 +552,14 @@ function ControlCenterIcon() {
       <circle cx="12" cy="12" r="3" />
       <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
       <path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07" />
+    </svg>
+  )
+}
+
+function PerformanceIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />
     </svg>
   )
 }

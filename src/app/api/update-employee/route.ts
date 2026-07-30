@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null)
   if (!body?.id) return NextResponse.json({ error: 'Missing employee id' }, { status: 400 })
 
-  const { id, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code, payroll_active, employment_type, payroll_notes } = body
+  const { id, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code, payroll_active, employment_type, payroll_notes, performance_tracking_enabled, performance_tracking_note } = body
 
   // Confirm employee exists in users table
   const { data: target, error: targetError } = await serviceClient
@@ -52,6 +52,11 @@ export async function PATCH(req: NextRequest) {
   if (payroll_active            !== undefined) patch.payroll_active            = Boolean(payroll_active)
   if (employment_type           !== undefined) patch.employment_type           = employment_type || null
   if (payroll_notes             !== undefined) patch.payroll_notes             = payroll_notes   || null
+  // Performance reporting eligibility. Deliberately distinct from payroll_active:
+  // holding someone out of the Performance report must never change what they are
+  // paid, and vice versa.
+  if (performance_tracking_enabled !== undefined) patch.performance_tracking_enabled = Boolean(performance_tracking_enabled)
+  if (performance_tracking_note    !== undefined) patch.performance_tracking_note    = performance_tracking_note || null
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
