@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Monitor, Key,
-  Package, ShieldCheck,
+  Package, ShieldCheck, ClipboardList,
   Home,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
@@ -19,6 +19,8 @@ export type AssetsView =
   // Requires an Assets & Access management permission
   | 'asset-inventory'
   | 'access-register'
+  // Requesters see their own; an admin sees everyone's, with Approve/Reject
+  | 'asset-requests'
 
 type AssetsLayoutProps = {
   profile: UserProfile | null
@@ -31,6 +33,8 @@ type AssetsLayoutProps = {
   canViewInventory: boolean
   /** Access Register nav — admin only while secret_value is plaintext. */
   canManageAccess: boolean
+  /** Asset Requests nav — an admin reviewing, or a requester tracking their own. */
+  canSeeAssetRequests: boolean
   children: React.ReactNode
 }
 
@@ -45,6 +49,9 @@ const INVENTORY_NAV: { view: AssetsView; label: string; icon: React.ReactNode } 
 const ACCESS_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
   { view: 'access-register', label: 'Access Register', icon: <ShieldCheck size={15} strokeWidth={1.8} /> }
 
+const REQUESTS_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
+  { view: 'asset-requests', label: 'Asset Requests', icon: <ClipboardList size={15} strokeWidth={1.8} /> }
+
 export function AssetsLayout({
   profile,
   activeView,
@@ -54,6 +61,7 @@ export function AssetsLayout({
   onSignOut,
   canViewInventory,
   canManageAccess,
+  canSeeAssetRequests,
   children,
 }: AssetsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -61,6 +69,7 @@ export function AssetsLayout({
 
   const managementNav = [
     ...(canViewInventory ? [INVENTORY_NAV] : []),
+    ...(canSeeAssetRequests ? [REQUESTS_NAV] : []),
     ...(canManageAccess ? [ACCESS_NAV] : []),
   ]
 

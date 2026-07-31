@@ -26,7 +26,17 @@ import styles from './permissions.module.css'
 // row-level access by team/ownership, unchanged. Same partial-enforcement
 // shape as 'sample_tracking' above (view-adjacent actions enforced, the
 // rest prepared).
-const ENFORCED_MODULE_KEYS = new Set(['sample_tracking', 'orders'])
+//
+// 'assets_access': fully enforced, unlike the two above. Every action is
+// checked in three places that agree with each other — the RLS policies on
+// assets / employee_assets (20260721000000, corrected by 20260723000000), the
+// custody RPCs assign_asset / return_asset / mark_asset_lost, which resolve
+// their action through assert_asset_custody_permission (20260725000000), and
+// the capability derivation in src/lib/permissions/assetsAccess.ts that
+// AssetsLayout gates the screen on. Granting 'assign' here really does hand
+// someone the Assign button, so the prepared-but-not-enforced warning would
+// be actively misleading on this module.
+const ENFORCED_MODULE_KEYS = new Set(['sample_tracking', 'orders', 'assets_access'])
 
 const ENFORCEMENT_COPY = {
   active: 'Permissions are enforced in this module.',

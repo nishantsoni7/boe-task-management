@@ -63,7 +63,14 @@ registerModule({
     { actionKey: 'create', displayName: 'Create' },
     { actionKey: 'edit', displayName: 'Edit' },
     { actionKey: 'delete', displayName: 'Delete' },
+    // 'manage' means the custody corrections reserved for administration —
+    // returning an asset and marking one lost. Giving an available asset to
+    // an employee was split out into its own action by 20260725000000,
+    // because handing a laptop to a colleague and writing one off are not the
+    // same decision. Custom action (is_system = false), like Sample
+    // Tracking's dispatch/receive.
     { actionKey: 'manage', displayName: 'Manage' },
+    { actionKey: 'assign', displayName: 'Assign Assets' },
   ],
 })
 
