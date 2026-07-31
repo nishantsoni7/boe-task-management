@@ -15,6 +15,13 @@ import {
   NO_ASSETS_ACCESS_CAPABILITIES,
   type AssetsAccessCapabilities,
 } from '@/lib/permissions/assetsAccess'
+import {
+  ASSET_STATUS_AFTER_RETURN,
+  ASSIGNMENT_STATUS_AFTER_RETURN,
+  acceptanceStatusKey,
+  assetDeleteBlockReason,
+  canAssignAsset,
+} from '@/lib/assets/lifecycle'
 
 // ─── DB Types ─────────────────────────────────────────────────────────────────
 
@@ -131,15 +138,6 @@ const ACCEPTANCE_STATUS_LABEL: Record<string, string> = {
   lost: 'Lost',
 }
 
-// Derives the acceptance status shown to admins from the asset's catalog
-// status plus its active employee_assets row (if any) — no new table/state.
-function acceptanceStatusKey(asset: Asset, assignment: EmployeeAsset | undefined): string {
-  if (asset.status === 'returned') return 'returned'
-  if (asset.status === 'lost') return 'lost'
-  if (assignment) return assignment.status // pending_acceptance | accepted
-  return 'available'
-}
-
 const ACCESS_STATUS_BADGE: Record<string, string> = {
   active: 'boe-badge-completed',
   disabled: 'boe-badge-urgent',
@@ -181,14 +179,15 @@ function MyAssets({ userId, supabase, isMobile }: { userId: string; supabase: Su
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
+  // Acceptance goes through accept_employee_asset (20260722000000), never a
+  // direct UPDATE: the timestamp is the database's to set, not the client's,
+  // and employees no longer hold UPDATE on employee_assets at all.
   const handleAccept = async (row: EmployeeAsset) => {
     setAcceptingId(row.id)
-    const { error: dbError } = await supabase
-      .from('employee_assets')
-      .update({ accepted_at: new Date().toISOString(), status: 'accepted' })
-      .eq('id', row.id)
+    setError(null)
+    const { error: rpcError } = await supabase.rpc('accept_employee_asset', { p_assignment_id: row.id })
     setAcceptingId(null)
-    if (dbError) { setError(dbError.message); return }
+    if (rpcError) { setError(rpcError.message); return }
     load()
   }
 
@@ -385,9 +384,12 @@ function AssetInventory({ employees, supabase, isMobile, caps }: {
     setBusyId(asset.id)
     setError(null)
     const now = new Date().toISOString()
+    // The assignment records the return event; the asset goes back on the
+    // shelf as 'available' so it can be assigned again. Setting the asset
+    // itself to 'returned' is what used to strand it permanently.
     const [{ error: e1 }, { error: e2 }] = await Promise.all([
-      supabase.from('employee_assets').update({ returned_at: now, status: 'returned' }).eq('id', assignment.id),
-      supabase.from('assets').update({ status: 'returned' }).eq('id', asset.id),
+      supabase.from('employee_assets').update({ returned_at: now, status: ASSIGNMENT_STATUS_AFTER_RETURN }).eq('id', assignment.id),
+      supabase.from('assets').update({ status: ASSET_STATUS_AFTER_RETURN }).eq('id', asset.id),
     ])
     setBusyId(null)
     if (e1 || e2) { setError((e1 ?? e2)!.message); return }
@@ -408,14 +410,34 @@ function AssetInventory({ employees, supabase, isMobile, caps }: {
     load()
   }
 
+  // Only an asset nobody has ever held may be deleted — a mistaken inventory
+  // entry. History is counted at click time with an exact count rather than
+  // read from the loaded list, which holds active assignments only. The
+  // database refuses the same thing regardless (assets_prevent_assigned_delete);
+  // this exists to say why in plain words instead of surfacing a trigger error.
   const handleDelete = async (asset: Asset) => {
-    if (activeAssignments[asset.id]) {
-      setError('This asset is assigned. Mark it returned or lost before deleting.')
-      return
-    }
-    if (!window.confirm(`Delete "${asset.asset_name}"? This cannot be undone.`)) return
     setBusyId(asset.id)
     setError(null)
+
+    const { count, error: countError } = await supabase
+      .from('employee_assets')
+      .select('id', { count: 'exact', head: true })
+      .eq('asset_id', asset.id)
+
+    if (countError) { setBusyId(null); setError(countError.message); return }
+
+    const blocked = assetDeleteBlockReason({
+      canDeleteAsset: caps.canDeleteAsset,
+      hasActiveAssignment: !!activeAssignments[asset.id],
+      assignmentHistoryCount: count ?? 0,
+    })
+    if (blocked) { setBusyId(null); setError(blocked); return }
+
+    if (!window.confirm(`Delete "${asset.asset_name}"? This cannot be undone.`)) {
+      setBusyId(null)
+      return
+    }
+
     const { error: dbError } = await supabase.from('assets').delete().eq('id', asset.id)
     setBusyId(null)
     if (dbError) { setError(dbError.message); return }
@@ -442,7 +464,7 @@ function AssetInventory({ employees, supabase, isMobile, caps }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {assets.map(asset => {
             const assignment = activeAssignments[asset.id]
-            const statusKey = acceptanceStatusKey(asset, assignment)
+            const statusKey = acceptanceStatusKey(asset.status, assignment?.status)
             return (
               <div key={asset.id} className="boe-card" style={{ padding: '14px 16px' }}>
                 <div style={{ fontWeight: 600, color: colors.primary, fontSize: '14px', marginBottom: '2px' }}>{asset.asset_name}</div>
@@ -457,7 +479,7 @@ function AssetInventory({ employees, supabase, isMobile, caps }: {
                     {ACCEPTANCE_STATUS_LABEL[statusKey] ?? statusKey}
                   </span>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {caps.canManageAssignments && asset.status === 'available' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
+                    {caps.canManageAssignments && canAssignAsset(asset.status) && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
                     {caps.canManageAssignments && asset.status === 'assigned' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Returned</button>}
                     {caps.canManageAssignments && asset.status !== 'lost' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Lost</button>}
                     {caps.canEditAsset && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>}
@@ -477,7 +499,7 @@ function AssetInventory({ employees, supabase, isMobile, caps }: {
               <tbody>
                 {assets.map(asset => {
                   const assignment = activeAssignments[asset.id]
-                  const statusKey = acceptanceStatusKey(asset, assignment)
+                  const statusKey = acceptanceStatusKey(asset.status, assignment?.status)
                   return (
                     <tr key={asset.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                       <td style={{ padding: '12px 16px' }}>
@@ -503,7 +525,7 @@ function AssetInventory({ employees, supabase, isMobile, caps }: {
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {caps.canManageAssignments && asset.status === 'available' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
+                          {caps.canManageAssignments && canAssignAsset(asset.status) && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
                           {caps.canManageAssignments && asset.status === 'assigned' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Mark Returned</button>}
                           {caps.canManageAssignments && asset.status !== 'lost' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Mark Lost</button>}
                           {caps.canEditAsset && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>}
