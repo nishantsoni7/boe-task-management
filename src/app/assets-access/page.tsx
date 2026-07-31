@@ -9,6 +9,12 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useViewAs } from '@/hooks/useViewAs'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import {
+  deriveAssetsAccessCapabilities,
+  NO_ASSETS_ACCESS_CAPABILITIES,
+  type AssetsAccessCapabilities,
+} from '@/lib/permissions/assetsAccess'
 
 // ─── DB Types ─────────────────────────────────────────────────────────────────
 
@@ -334,7 +340,12 @@ function MyAccess({ userId, supabase, isMobile }: { userId: string; supabase: Su
 
 // ─── Admin: Asset Inventory ───────────────────────────────────────────────────
 
-function AssetInventory({ employees, supabase, isMobile }: { employees: Employee[]; supabase: SupabaseClient; isMobile?: boolean }) {
+function AssetInventory({ employees, supabase, isMobile, caps }: {
+  employees: Employee[]
+  supabase: SupabaseClient
+  isMobile?: boolean
+  caps: AssetsAccessCapabilities
+}) {
   const [assets, setAssets] = useState<Asset[]>([])
   const [activeAssignments, setActiveAssignments] = useState<Record<string, EmployeeAsset>>({})
   const [loading, setLoading] = useState(true)
@@ -414,11 +425,13 @@ function AssetInventory({ employees, supabase, isMobile }: { employees: Employee
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       {error && <ErrorBanner message={error} />}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }} onClick={() => setShowCreate(true)}>
-          + Create Asset
-        </button>
-      </div>
+      {caps.canCreateAsset && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }} onClick={() => setShowCreate(true)}>
+            + Create Asset
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
@@ -444,11 +457,11 @@ function AssetInventory({ employees, supabase, isMobile }: { employees: Employee
                     {ACCEPTANCE_STATUS_LABEL[statusKey] ?? statusKey}
                   </span>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {asset.status === 'available' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
-                    {asset.status === 'assigned' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Returned</button>}
-                    {asset.status !== 'lost' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Lost</button>}
-                    <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>
-                    <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px', color: '#C13030' }} disabled={busyId === asset.id} onClick={() => handleDelete(asset)}>Delete</button>
+                    {caps.canManageAssignments && asset.status === 'available' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
+                    {caps.canManageAssignments && asset.status === 'assigned' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Returned</button>}
+                    {caps.canManageAssignments && asset.status !== 'lost' && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Lost</button>}
+                    {caps.canEditAsset && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>}
+                    {caps.canDeleteAsset && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px', color: '#C13030' }} disabled={busyId === asset.id} onClick={() => handleDelete(asset)}>Delete</button>}
                   </div>
                 </div>
               </div>
@@ -490,11 +503,11 @@ function AssetInventory({ employees, supabase, isMobile }: { employees: Employee
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {asset.status === 'available' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
-                          {asset.status === 'assigned' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Mark Returned</button>}
-                          {asset.status !== 'lost' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Mark Lost</button>}
-                          <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>
-                          <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px', color: '#C13030' }} disabled={busyId === asset.id} onClick={() => handleDelete(asset)}>Delete</button>
+                          {caps.canManageAssignments && asset.status === 'available' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
+                          {caps.canManageAssignments && asset.status === 'assigned' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Mark Returned</button>}
+                          {caps.canManageAssignments && asset.status !== 'lost' && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Mark Lost</button>}
+                          {caps.canEditAsset && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>}
+                          {caps.canDeleteAsset && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px', color: '#C13030' }} disabled={busyId === asset.id} onClick={() => handleDelete(asset)}>Delete</button>}
                         </div>
                       </td>
                     </tr>
@@ -942,13 +955,14 @@ const VIEW_META: Record<AssetsView, { title: string; subtitle: string }> = {
 export default function AssetsAccessPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [caps, setCaps] = useState<AssetsAccessCapabilities>(NO_ASSETS_ACCESS_CAPABILITIES)
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<AssetsView | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const { viewAsUserId, viewAsProfile } = useViewAs()
+  const { viewAsUserId } = useViewAs()
   const inViewMode = !!viewAsUserId
 
   useEffect(() => {
@@ -981,8 +995,15 @@ export default function AssetsAccessPage() {
       setProfile(prof)
       setEmployees((empData ?? []) as Employee[])
 
-      const effectiveRole = inViewMode ? (viewAsProfile?.role ?? 'member') : prof.role
-      setView(effectiveRole === 'admin' && !inViewMode ? 'asset-inventory' : 'my-assets')
+      // Management authority comes from Control Center → Access Control via
+      // the permission engine, not from a role literal. Resolved for the
+      // signed-in user (never the impersonated one) — View As shows another
+      // person's records, it does not lend them your authority.
+      const effective = await getEffectivePermissions(supabase, prof.id, 'assets_access').catch(() => [])
+      const resolved = deriveAssetsAccessCapabilities(prof.role, effective)
+      setCaps(resolved)
+
+      setView(resolved.canViewInventory && !inViewMode ? 'asset-inventory' : 'my-assets')
       setLoading(false)
     }
     init()
@@ -1008,7 +1029,7 @@ export default function AssetsAccessPage() {
       case 'my-access':
         return <MyAccess userId={effectiveUserId} supabase={supabase} isMobile={isMobile} />
       case 'asset-inventory':
-        return <AssetInventory employees={employees} supabase={supabase} isMobile={isMobile} />
+        return <AssetInventory employees={employees} supabase={supabase} isMobile={isMobile} caps={caps} />
       case 'access-register':
         return <AccessRegister employees={employees} supabase={supabase} isMobile={isMobile} />
     }
@@ -1022,6 +1043,8 @@ export default function AssetsAccessPage() {
       title={meta.title}
       subtitle={meta.subtitle}
       onSignOut={handleSignOut}
+      canViewInventory={caps.canViewInventory}
+      canManageAccess={caps.canManageAccess}
     >
       {renderView()}
     </AssetsLayout>

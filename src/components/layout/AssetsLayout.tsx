@@ -16,7 +16,7 @@ export type AssetsView =
   // All users
   | 'my-assets'
   | 'my-access'
-  // Admin only
+  // Requires an Assets & Access management permission
   | 'asset-inventory'
   | 'access-register'
 
@@ -27,6 +27,10 @@ type AssetsLayoutProps = {
   title: string
   subtitle?: string
   onSignOut: () => void
+  /** Asset Inventory nav — resolve_permission('assets_access', view|manage). */
+  canViewInventory: boolean
+  /** Access Register nav — admin only while secret_value is plaintext. */
+  canManageAccess: boolean
   children: React.ReactNode
 }
 
@@ -35,10 +39,11 @@ const USER_NAV: { view: AssetsView; label: string; icon: React.ReactNode }[] = [
   { view: 'my-access', label: 'My Access', icon: <Key     size={15} strokeWidth={1.8} /> },
 ]
 
-const ADMIN_NAV: { view: AssetsView; label: string; icon: React.ReactNode }[] = [
-  { view: 'asset-inventory', label: 'Asset Inventory', icon: <Package     size={15} strokeWidth={1.8} /> },
-  { view: 'access-register', label: 'Access Register', icon: <ShieldCheck size={15} strokeWidth={1.8} /> },
-]
+const INVENTORY_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
+  { view: 'asset-inventory', label: 'Asset Inventory', icon: <Package size={15} strokeWidth={1.8} /> }
+
+const ACCESS_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
+  { view: 'access-register', label: 'Access Register', icon: <ShieldCheck size={15} strokeWidth={1.8} /> }
 
 export function AssetsLayout({
   profile,
@@ -47,12 +52,17 @@ export function AssetsLayout({
   title,
   subtitle,
   onSignOut,
+  canViewInventory,
+  canManageAccess,
   children,
 }: AssetsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
 
-  const isAdmin = profile?.role === 'admin'
+  const managementNav = [
+    ...(canViewInventory ? [INVENTORY_NAV] : []),
+    ...(canManageAccess ? [ACCESS_NAV] : []),
+  ]
 
   const handleNav = (view: AssetsView) => {
     onViewChange(view)
@@ -126,17 +136,17 @@ export function AssetsLayout({
             <NavItem key={item.view} {...item} />
           ))}
 
-          {/* Admin-only section */}
-          {isAdmin && (
+          {/* Management section — permission-gated, not role-gated */}
+          {managementNav.length > 0 && (
             <>
               <div style={{
                 fontSize: '10px', fontWeight: 700, color: '#8C94A6',
                 textTransform: 'uppercase', letterSpacing: '0.06em',
                 padding: '14px 10px 6px',
               }}>
-                Admin
+                Management
               </div>
-              {ADMIN_NAV.map(item => (
+              {managementNav.map(item => (
                 <NavItem key={item.view} {...item} />
               ))}
             </>
