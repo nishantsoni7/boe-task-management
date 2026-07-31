@@ -11,6 +11,8 @@ import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav'
+import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import { useUnreadAssetNotifications } from '@/hooks/queries/useUnreadNotifications'
 
 export type AssetsView =
   // All users
@@ -24,10 +26,23 @@ export type AssetsView =
 
 type AssetsLayoutProps = {
   profile: UserProfile | null
-  activeView: AssetsView
-  onViewChange: (view: AssetsView) => void
+  /**
+   * Which sidebar entry is current. Optional because the module's sub-pages
+   * (the asset detail page, the notifications page) are routes rather than
+   * views — they highlight nothing, or highlight the list they belong to.
+   */
+  activeView?: AssetsView
+  /**
+   * How a sidebar click is handled. Optional: the single-page inventory passes
+   * its own state setter, and every sub-page omits it and gets navigation back
+   * to /assets-access?view=… instead. A sub-page must never have to reimplement
+   * the sidebar to be reachable from it.
+   */
+  onViewChange?: (view: AssetsView) => void
   title: string
   subtitle?: string
+  /** Header-right controls, matching OrdersLayout / FinanceLayout. */
+  actions?: React.ReactNode
   onSignOut: () => void
   /** Asset Inventory nav — resolve_permission('assets_access', view|manage). */
   canViewInventory: boolean
@@ -37,6 +52,9 @@ type AssetsLayoutProps = {
   canSeeAssetRequests: boolean
   children: React.ReactNode
 }
+
+/** Where a sidebar entry lives when the sidebar has to navigate rather than switch state. */
+const VIEW_HREF = (view: AssetsView) => `/assets-access?view=${view}`
 
 const USER_NAV: { view: AssetsView; label: string; icon: React.ReactNode }[] = [
   { view: 'my-assets', label: 'My Assets', icon: <Monitor size={15} strokeWidth={1.8} /> },
@@ -58,6 +76,7 @@ export function AssetsLayout({
   onViewChange,
   title,
   subtitle,
+  actions,
   onSignOut,
   canViewInventory,
   canManageAccess,
@@ -66,6 +85,7 @@ export function AssetsLayout({
 }: AssetsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
+  const unreadAssets = useUnreadAssetNotifications()
 
   const managementNav = [
     ...(canViewInventory ? [INVENTORY_NAV] : []),
@@ -73,9 +93,13 @@ export function AssetsLayout({
     ...(canManageAccess ? [ACCESS_NAV] : []),
   ]
 
+  // Without an onViewChange the sidebar navigates instead of switching local
+  // state, so the same shell works on the single-page inventory AND on the
+  // detail / notifications routes.
   const handleNav = (view: AssetsView) => {
-    onViewChange(view)
     setSidebarOpen(false)
+    if (onViewChange) onViewChange(view)
+    else router.push(VIEW_HREF(view))
   }
 
   const NavItem = ({ view, label, icon }: { view: AssetsView; label: string; icon: React.ReactNode }) => {
@@ -145,6 +169,15 @@ export function AssetsLayout({
             <NavItem key={item.view} {...item} />
           ))}
 
+          {/* Assets' own notification feed, scoped to `asset_%` types. Never
+              hidden by count — the entry is how you get to the history, not
+              just to what is unread. */}
+          <NotificationsNavItem
+            href="/assets-access/notifications"
+            count={unreadAssets}
+            onNavigate={() => setSidebarOpen(false)}
+          />
+
           {/* Management section — permission-gated, not role-gated */}
           {managementNav.length > 0 && (
             <>
@@ -187,6 +220,11 @@ export function AssetsLayout({
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
+          {actions && (
+            <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
+              {actions}
+            </div>
+          )}
         </div>
 
         {/* Page body */}

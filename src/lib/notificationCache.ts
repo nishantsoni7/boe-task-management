@@ -28,7 +28,7 @@ import type { Notification } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 
 /** Every module whose notifications live in the shared `notifications` table. */
-export const NOTIFICATION_CATEGORIES: readonly NotificationCategory[] = ['task', 'finance', 'order']
+export const NOTIFICATION_CATEGORIES: readonly NotificationCategory[] = ['task', 'finance', 'order', 'asset']
 
 export const notificationKeys = {
   /** Prefix covering every notification query (lists AND counts). Broadest possible. */

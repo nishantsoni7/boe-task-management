@@ -303,18 +303,76 @@ Expected Areas:
 
 Status:
 
-In Development
+Asset lifecycle operational. Access credentials still V1 (admin-only).
 
 Purpose:
 
-Track company assets and employee access.
+Track company assets through their whole life, and record employee access.
 
-Expected Areas:
+## Screens
 
-* Asset assignment
-* Asset returns
-* Access records
-* Administrative controls
+| Route | What it is |
+| --- | --- |
+| `/assets-access` | The module screen. Five views selected in the sidebar, deep-linkable with `?view=` |
+| `/assets-access/[id]` | One asset's own permanent page — the single source of truth for it |
+| `/assets-access/notifications` | Assets' own notification feed |
+
+Sidebar views: My Assets, My Access, Notifications · Asset Inventory, Asset
+Requests, Access Register (each permission-gated).
+
+Asset detail sections: Overview, Assignment History, Repair & Service,
+Warranty & Documents, Activity History.
+
+## Tables
+
+| Table | Holds | Mutability |
+| --- | --- | --- |
+| `assets` | The asset itself: identity, purchase, warranty, condition, current location and department | Updatable by whoever holds `edit`; every change audited |
+| `employee_assets` | ONE custody period, with its one-time acceptance | Written only by the custody functions |
+| `asset_transfers` | Every movement of custody, ever | **Append-only** — no UPDATE, no DELETE, for anyone |
+| `asset_service_records` | One repair / maintenance / inspection / upgrade event | Written only by the service functions; corrections are admin-only and audited |
+| `asset_documents` | Invoice, warranty card, supporting files | Insert + soft-delete only; never erased |
+| `asset_activity_log` | The audit trail | **Immutable** — no INSERT, UPDATE or DELETE policy for anyone, including admins |
+| `asset_change_requests` | Non-admin edit / removal requests | Insert + read; decisions only via definer functions |
+| `access_records` | Employee login / credential assignment | Admin-only while `secret_value` is plaintext |
+
+## Operations
+
+Every operation that moves an asset is ONE `SECURITY DEFINER` function that
+writes the custody row, the asset row, the movement record and the audit entry
+in a single transaction:
+
+`assign_asset` · `transfer_asset` · `return_asset` · `mark_asset_lost` ·
+`recover_lost_asset` · `send_asset_for_repair` · `complete_asset_service` ·
+`add_asset_service_record` · `correct_asset_service_record` · `retire_asset` ·
+`restore_asset` · `remove_asset_document` · `accept_employee_asset`
+
+## Permission actions (`assets_access`)
+
+| Action | Grants |
+| --- | --- |
+| `view` | Read the inventory and who holds each asset |
+| `create` | Add an asset |
+| `assign` | Give an AVAILABLE asset to an employee |
+| `edit` | Change master, warranty and document details; add historical service records |
+| `manage` | Transfer, return, mark lost, recover, repair round-trip, retire, restore |
+| `delete` | Remove an eligible, never-used asset |
+
+Admin bypasses the engine, as in every cut-over module.
+
+## Storage
+
+Private bucket `asset-documents`. The asset id is always the first path
+segment, because the storage policies read ownership from it. Files are reached
+only through short-lived signed URLs. 10 MB per file, an explicit MIME
+allow-list, and no macro-enabled Office formats or archives.
+
+## Notifications
+
+The shared `notifications` table with `asset_*` enum types and the ASSET id in
+`entity_id`. Written by `/api/assets/notify` **after** the transaction commits,
+never inside it. The feed, mark-read and delete behaviour are the shared
+`NotificationsView` — no second notification architecture.
 
 ---
 

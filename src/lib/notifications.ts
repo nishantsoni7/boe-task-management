@@ -41,6 +41,26 @@ export const FINANCE_NOTIFICATION_TYPES = [
   'finance_status_corrected',
 ] as const
 
+// Assets & Access (20260731000000). Same contract as Finance/Orders: stable
+// enum types, and `entity_id` carries the ASSET id for the deep link.
+export const ASSET_NOTIFICATION_TYPES = [
+  'asset_request_submitted',
+  'asset_request_approved',
+  'asset_request_rejected',
+  'asset_edit_request_submitted',
+  'asset_edit_request_approved',
+  'asset_edit_request_rejected',
+  'asset_assigned',
+  'asset_transferred',
+  'asset_transfer_acknowledged',
+  'asset_returned',
+  'asset_lost',
+  'asset_recovered',
+  'asset_repair_sent',
+  'asset_repair_returned',
+  'asset_warranty_expiring',
+] as const
+
 export const ORDER_NOTIFICATION_TYPES = [
   'order_submitted',
   'order_assigned',
@@ -74,9 +94,9 @@ const TASK_TITLE_OR = [
   'title.ilike.%cancellation reversed%',
 ].join(',')
 
-export type NotificationCategory = 'task' | 'finance' | 'order'
+export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset'
 
-const VALID_CATEGORIES: readonly NotificationCategory[] = ['task', 'finance', 'order']
+const VALID_CATEGORIES: readonly NotificationCategory[] = ['task', 'finance', 'order', 'asset']
 
 // Module-scoped filter. Used by every module's own unread count, notification
 // list, mark-all-read and delete-all so every one of those endpoints agrees on
@@ -89,6 +109,8 @@ export function getNotificationCategoryFilter(category: NotificationCategory): s
       return typeInList(FINANCE_NOTIFICATION_TYPES)
     case 'order':
       return typeInList(ORDER_NOTIFICATION_TYPES)
+    case 'asset':
+      return typeInList(ASSET_NOTIFICATION_TYPES)
   }
 }
 

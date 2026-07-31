@@ -74,6 +74,100 @@ Rules:
 
 This is a permanent product rule for all current and future BOE form modals. Shared modal components expose an explicit `closeOnBackdropClick` flag that defaults to the legacy behaviour; every form-modal usage must set it to `false`.
 
+Two further requirements, learned from the Assets & Access modals:
+
+* The modal must sit **above the sidebar**. `.boe-sidebar` is `position: fixed;
+  z-index: 100`, so an overlay below that leaves the navigation live and
+  clickable behind an apparently-modal dialog. Overlay 200 / dialog 201.
+* Background scrolling is locked for the lifetime of the modal, Tab and
+  Shift+Tab cannot leave the dialog, and focus returns to whatever opened it.
+
+The rule itself is code, in `src/lib/ui/modalDismissal.ts`, and is not
+re-decided inline by any component.
+
+---
+
+## Asset Ownership Rule
+
+An asset whose status is `Assigned` MUST resolve to a named custodian, and an
+asset that is not assigned must NOT claim one.
+
+Both halves matter. A row showing "Assigned" with a blank holder is an
+accountability hole; a row showing "Available — held by Priya" is worse, because
+it reads as settled. The custodian is therefore never a stored string that can
+drift out of step: it is derived from the live custody row every time it is
+shown, and a contradiction between the two is displayed **as** a contradiction
+("Assigned — custodian missing"), never smoothed over into an empty cell.
+
+Custody does not end when an asset goes for service. The person it is charged to
+stays accountable while a vendor has it; the asset's own status says where it
+physically is.
+
+---
+
+## Asset History Rule
+
+An asset's movement, custody, service and audit history is permanent.
+
+* Movement records (`asset_transfers`) and audit records
+  (`asset_activity_log`) are **append-only**. No client role holds UPDATE or
+  DELETE on them, and neither does an admin. The database refuses the write, not
+  just the UI.
+* A correction is a **new entry** that names what it corrects. History is never
+  edited in place, and never silently.
+* An asset that has ever been assigned, moved, serviced, or has a document on
+  file **cannot be deleted**. Deletion exists for a mistaken inventory entry —
+  something nobody ever held — and for nothing else.
+* Removing a document is a soft delete that is always recorded. The stored file
+  is retained.
+
+---
+
+## Asset Warranty Rule
+
+Warranty status is **derived, never stored**:
+
+| Status | Meaning |
+| --- | --- |
+| Active | An expiry date is recorded and has not passed |
+| Expiring Soon | Active, and within **30 days** of expiry |
+| Expired | An expiry date is recorded and has passed |
+| Not Available | No expiry date recorded |
+
+"Not Available" is not "Expired". Almost every asset that predates the module is
+in that state, and it is a legitimate permanent state rather than missing data.
+
+A stored status column would be a second copy of a fact that changes by itself
+every midnight, and would be wrong on any row nobody happened to touch that day.
+
+---
+
+## Asset Repair Cost Rule
+
+Service costs are `numeric(14,2)` and arrive from PostgREST as **strings**.
+Adding them with `+` concatenates rather than sums. Every total goes through
+`totalServiceCost` in `src/lib/assets/service.ts`, which parses each value,
+contributes 0 for an unreadable one rather than making the whole total `NaN`,
+and rounds to paise. All amounts display with Indian digit grouping.
+
+---
+
+## Asset Notification Rule
+
+Notifications are created for changes to **ownership, assignment, transfers,
+requests, status, loss, recovery, return, repair and warranty expiry** — and for
+nothing else. Editing a serial number or a description does not notify: it is
+already in the activity history, and notifying on it would train people to
+ignore the bell.
+
+* The actor is **never** notified about their own action. Filtering happens at
+  one place in `/api/assets/notify`, so a new event cannot forget it.
+* Duplicate rows for the same `(recipient, type, asset)` inside two minutes are
+  suppressed, so a retry or a double-click cannot double-notify. Warranty
+  reminders use a seven-day window.
+* Notifications are written **after** the transaction commits. A failed
+  notification must never roll back a movement that physically happened.
+
 ---
 
 ## Order Request Attachments

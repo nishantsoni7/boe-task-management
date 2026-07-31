@@ -437,3 +437,79 @@ Reference Documents:
 
 * BOE_GLOBAL_NAVIGATION_STANDARD.md
 * BOE_MODULE_LAYOUT_STANDARD.md
+
+---
+
+# Assets & Access — Full Asset Lifecycle
+
+Date: 1 August 2026
+
+Migrations: 20260726000000 – 20260731000000 (all applied)
+
+## Problem
+
+An asset was five columns and a custody row. That answered "who has the laptop"
+and nothing else: no purchase record, no warranty, no repair history, no
+documents, no movement history beyond the current holder, and no audit trail of
+what anybody changed. Deleting an asset could take its custody records with it,
+and the inventory list had no search and no filters.
+
+## What was built
+
+* **Individual asset page** at `/assets-access/[id]` — Overview, Assignment
+  History, Repair & Service, Warranty & Documents, Activity History.
+* **`asset_transfers`** — append-only movement history covering initial
+  assignment, employee-to-employee transfer, employee-to-location,
+  location-to-employee, return, loss, recovery, repair round-trip, retirement
+  and disposal. From/to person or place, both departments, recorded and
+  effective dates, condition, remarks, actor.
+* **`asset_service_records`** — repair / maintenance / inspection / upgrade,
+  with vendor, dates, `numeric(14,2)` cost, condition after service and next
+  service date. Total spend, count, last and next service shown per asset.
+* **Warranty and purchase columns** on `assets`, with warranty status derived
+  at display time rather than stored.
+* **`asset_documents`** + a private `asset-documents` bucket, reached only
+  through short-lived signed URLs. Removal is a recorded soft delete.
+* **Search and eight filters** on the inventory, all pure and unit-tested.
+* **Asset notifications** — fifteen `asset_*` enum types on the shared
+  `notifications` table, `/assets-access/notifications` built from the same
+  `NotificationsView` as Task Management.
+* **Activity history** extended to the new events, still immutable.
+
+## Architectural decisions
+
+* **One function per operation.** Every custody move writes the custody row,
+  the asset row, the movement record and the audit entry in one transaction.
+  Before this, "Mark Returned" was two client updates that could half-succeed.
+* **History is append-only in the database, not in the UI.** `asset_transfers`
+  and `asset_activity_log` have no UPDATE or DELETE policy for anyone,
+  including admins, and a trigger enforces it against the service role and psql
+  too. A correction is a new row.
+* **Warranty status is derived.** A stored copy would be wrong on any row
+  nobody touched that day.
+* **Notifications are written after commit**, by an API route, never inside the
+  transaction — a failed notification must not roll back a movement that
+  happened.
+* **The list lost its button strip.** Row actions are Assign and Open; every
+  other operation moved to the asset's own page, where the reader can see who
+  holds the asset before acting on it. That is also what keeps nine columns
+  inside a normal desktop width.
+* **One modal shell** for the module (`components/assets/AssetModal.tsx`),
+  raised above the sidebar's `z-index: 100` — the layering bug that left
+  navigation clickable behind a dialog.
+
+## Deliberately not built
+
+* Recurring-maintenance automation.
+* Scheduled warranty reminders — the sweep runs on inventory visits, because
+  BOE has no scheduler for application code.
+* Asset reporting / dashboards.
+* Any change to `access_records`; its `secret_value` is still plaintext, so the
+  Access Register stays admin-only.
+
+## Verification
+
+1181 automated tests pass. Migrations applied and confirmed against the remote.
+Database-level guarantees are scripted in
+`docs/Module Docs/assets-lifecycle-verification.sql`; the signed-in UI pass is
+`docs/testing/assets-lifecycle-manual-tests.md`.

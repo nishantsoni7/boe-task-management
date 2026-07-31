@@ -68,6 +68,17 @@ export type AssetAction =
   | 'request-remove'
   | 'approve-request'
   | 'reject-request'
+  // Lifecycle operations (20260730000000)
+  | 'transfer'
+  | 'recover'
+  | 'send-repair'
+  | 'complete-service'
+  | 'add-service'
+  | 'correct-service'
+  | 'retire'
+  | 'restore'
+  | 'upload-document'
+  | 'remove-document'
 
 const PERMISSION_MESSAGE: Record<AssetAction, string> = {
   'create':    'You do not have permission to add assets.',
@@ -83,6 +94,16 @@ const PERMISSION_MESSAGE: Record<AssetAction, string> = {
   'request-remove':  'You do not have permission to request removal of assets.',
   'approve-request': 'Only an administrator can approve this request.',
   'reject-request':  'Only an administrator can reject this request.',
+  'transfer':         'You do not have permission to transfer assets.',
+  'recover':          'You do not have permission to recover lost assets.',
+  'send-repair':      'You do not have permission to send assets for repair.',
+  'complete-service': 'You do not have permission to close a service record.',
+  'add-service':      'You do not have permission to add service records.',
+  'correct-service':  'Only an administrator can correct a service record.',
+  'retire':           'You do not have permission to retire assets.',
+  'restore':          'You do not have permission to restore assets.',
+  'upload-document':  'You do not have permission to add documents to assets.',
+  'remove-document':  'You do not have permission to remove asset documents.',
 }
 
 // A second open request of the same type against the same asset trips the
@@ -112,6 +133,16 @@ const GUARD_PREFIXES = [
   'ASSET_REQUEST_ORPHANED:',
   'ASSET_CUSTODY_DENIED:',
   'ASSET_CUSTODY_INVALID:',
+  // Lifecycle guards (20260729000000 / 20260730000000)
+  'ASSET_SERVICE_DENIED:',
+  'ASSET_SERVICE_INVALID:',
+  'ASSET_SERVICE_MISSING:',
+  'ASSET_DOCUMENT_DENIED:',
+  'ASSET_DOCUMENT_INVALID:',
+  'ASSET_DOCUMENT_MISSING:',
+  'ASSET_TRANSFER_IMMUTABLE:',
+  'ASSET_ACTIVITY_IMMUTABLE:',
+  'ASSET_CODE_IMMUTABLE:',
 ]
 
 function guardMessage(err: AssetErrorLike): string | null {

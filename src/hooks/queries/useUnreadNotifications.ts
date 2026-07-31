@@ -41,3 +41,8 @@ export function useUnreadFinanceNotifications(): number {
 export function useUnreadOrderNotifications(): number {
   return useUnreadCount('order')
 }
+
+/** Assets & Access-scoped unread badge count. */
+export function useUnreadAssetNotifications(): number {
+  return useUnreadCount('asset')
+}

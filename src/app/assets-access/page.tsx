@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo, useRef, useId, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useMemo, useCallback, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { AssetsLayout, type AssetsView } from '@/components/layout/AssetsLayout'
@@ -15,54 +15,52 @@ import {
   NO_ASSETS_ACCESS_CAPABILITIES,
   type AssetsAccessCapabilities,
 } from '@/lib/permissions/assetsAccess'
-// The return transition itself now lives in return_asset() (20260723000000);
-// what stays here is the display and guard logic the table branches on.
-import {
-  acceptanceStatusKey,
-  assetDeleteBlockReason,
-} from '@/lib/assets/lifecycle'
-// Permission AND asset state, decided in one place for both renderers.
-import { assetRowActions } from '@/lib/assets/actionVisibility'
 import { assetErrorMessage, logAssetFailure } from '@/lib/assets/errors'
-import { shouldCloseFormModal, resolveTrapTarget, FOCUSABLE_SELECTOR } from '@/lib/ui/modalDismissal'
+// Column lists are shared with the asset detail page so the two cannot drift
+// apart on what an asset row contains (src/lib/assets/detail.ts).
+import { ASSET_COLUMNS, EMPLOYEE_ASSET_COLUMNS } from '@/lib/assets/detail'
 import {
-  buildProposedFields,
   describeProposedChanges,
-  hasPendingRequest,
-  validateChangeRequest,
   REQUEST_STATUS_BADGE,
   REQUEST_STATUS_LABEL,
   REQUEST_TYPE_LABEL,
   type AssetChangeRequest,
 } from '@/lib/assets/changeRequests'
+// Record shapes and display vocabularies, shared with the detail page.
+import {
+  ASSET_CONDITION_LABEL,
+  ASSET_CONDITION_OPTIONS,
+  ASSET_STATUS_OPTIONS,
+  assetConditionLabel,
+  assetStatusLabel,
+  humanizeToken,
+  type Asset,
+  type EmployeeAsset,
+} from '@/lib/assets/types'
+// Search and filtering are pure functions, tested without React.
+import {
+  activeFilterCount,
+  buildAssetRows,
+  distinctValues,
+  filterAssetRows,
+  hasActiveFilters,
+  sortAssetRows,
+  EMPTY_ASSET_FILTERS,
+  type AssetFilters,
+} from '@/lib/assets/assetFilters'
+import { WARRANTY_STATUS_LABEL, WARRANTY_STATUS_OPTIONS } from '@/lib/assets/warranty'
+import { resolveInitialView } from '@/lib/assets/viewRouting'
+import { notifyAssetEvent, sweepWarrantyExpiries } from '@/lib/assets/notifyClient'
+// Create / edit / request modals are shared components: the inventory and the
+// asset detail page both offer them, and one copy is what stops the two forms
+// from drifting apart about which fields an asset has.
+import { CreateAssetModal } from '@/components/assets/AssetChangeModals'
+import { AssignAssetModal } from './[id]/AssetActionModals'
+import { AssetModal, AssetField, AssetModalActions } from '@/components/assets/AssetModal'
 
 // ─── DB Types ─────────────────────────────────────────────────────────────────
 
 type Employee = { id: string; full_name: string; role: string; team: string }
-
-type Asset = {
-  id: string
-  asset_type: string
-  asset_name: string
-  serial_no: string | null
-  specifications: string | null
-  status: string // available | assigned | returned | lost
-  created_at: string
-  updated_at: string
-}
-
-type EmployeeAsset = {
-  id: string
-  asset_id: string
-  employee_id: string
-  assigned_by: string
-  assigned_at: string
-  accepted_at: string | null
-  returned_at: string | null
-  lost_at: string | null
-  status: string // pending_acceptance | accepted | returned | lost
-  assets?: Asset | Asset[] | null
-}
 
 type AccessRecord = {
   id: string
@@ -146,22 +144,6 @@ const ASSET_STATUS_BADGE: Record<string, string> = {
   lost: 'boe-badge-urgent',
 }
 
-const ACCEPTANCE_STATUS_BADGE: Record<string, string> = {
-  pending_acceptance: 'boe-badge-pending',
-  accepted: 'boe-badge-completed',
-  available: 'boe-badge-completed',
-  returned: 'boe-badge-pending',
-  lost: 'boe-badge-urgent',
-}
-
-const ACCEPTANCE_STATUS_LABEL: Record<string, string> = {
-  pending_acceptance: 'Pending Acceptance',
-  accepted: 'Accepted',
-  available: 'Available',
-  returned: 'Returned',
-  lost: 'Lost',
-}
-
 const ACCESS_STATUS_BADGE: Record<string, string> = {
   active: 'boe-badge-completed',
   disabled: 'boe-badge-urgent',
@@ -173,12 +155,17 @@ function Badge({ status, map }: { status: string; map: Record<string, string> })
   return <span className={`boe-badge ${cls}`} style={{ fontSize: '10px', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{label}</span>
 }
 
-const ASSET_TYPE_OPTIONS = ['laptop_desktop', 'monitor', 'mouse_keyboard', 'storage', 'phone', 'other']
 const ACCESS_TYPE_OPTIONS = ['gmail', 'clickup', 'system_login', 'other']
 
 // ─── Employee: My Assets ─────────────────────────────────────────────────────
 
-function MyAssets({ userId, supabase, isMobile }: { userId: string; supabase: SupabaseClient; isMobile?: boolean }) {
+function MyAssets({ userId, acceptedByName, supabase, isMobile }: {
+  userId: string
+  /** Display name of whoever is accepting, for the acknowledgement notice. */
+  acceptedByName?: string | null
+  supabase: SupabaseClient
+  isMobile?: boolean
+}) {
   const [rows, setRows] = useState<EmployeeAsset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -189,11 +176,11 @@ function MyAssets({ userId, supabase, isMobile }: { userId: string; supabase: Su
     setError(null)
     const { data, error: dbError } = await supabase
       .from('employee_assets')
-      .select('id, asset_id, employee_id, assigned_by, assigned_at, accepted_at, returned_at, lost_at, status, assets(id, asset_type, asset_name, serial_no, specifications, status, created_at, updated_at)')
+      .select(`${EMPLOYEE_ASSET_COLUMNS}, assets(${ASSET_COLUMNS})`)
       .eq('employee_id', userId)
       .order('assigned_at', { ascending: false })
     if (dbError) setError(dbError.message)
-    setRows((data ?? []) as EmployeeAsset[])
+    setRows((data ?? []) as unknown as EmployeeAsset[])
     setLoading(false)
   }
 
@@ -212,6 +199,18 @@ function MyAssets({ userId, supabase, isMobile }: { userId: string; supabase: Su
     const { error: rpcError } = await supabase.rpc('accept_employee_asset', { p_assignment_id: row.id })
     setAcceptingId(null)
     if (rpcError) { logAssetFailure('accept', rpcError); setError(assetErrorMessage('accept', rpcError)); return }
+    // The person who handed the asset over is the one waiting to hear this.
+    const asset = singleAsset(row.assets)
+    if (asset) {
+      notifyAssetEvent({
+        event: 'asset_transfer_acknowledged',
+        assetId: asset.id,
+        assetName: asset.asset_name,
+        assetCode: asset.asset_code,
+        assignerId: row.assigned_by,
+        fromName: acceptedByName ?? null,
+      })
+    }
     load()
   }
 
@@ -363,51 +362,79 @@ function MyAccess({ userId, supabase, isMobile }: { userId: string; supabase: Su
 
 // ─── Admin: Asset Inventory ───────────────────────────────────────────────────
 
-function AssetInventory({ employees, supabase, isMobile, caps, currentUserId }: {
+// Opens the asset's own page. Only the asset name is clickable, not the whole
+// row: the row also carries Assign / Return / Edit / Delete, and a row-level
+// click would fire behind every one of them.
+function AssetNameLink({ asset, onOpen }: { asset: Asset; onOpen: () => void }) {
+  return (
+    <button
+      onClick={onOpen}
+      title={`Open ${asset.asset_code}`}
+      style={{
+        background: 'none', border: 'none', padding: 0, textAlign: 'left',
+        font: 'inherit', fontWeight: 600, color: colors.primary, cursor: 'pointer',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline' }}
+      onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
+    >
+      {asset.asset_name}
+    </button>
+  )
+}
+
+// Badge classes for the list. Status and warranty are the two things a reader
+// scans for, so both get one.
+const ASSET_STATUS_BADGE_MAP: Record<string, string> = {
+  available:    'boe-badge-completed',
+  assigned:     'boe-badge-pending',
+  under_repair: 'boe-badge-pending',
+  returned:     'boe-badge-pending',
+  lost:         'boe-badge-urgent',
+  retired:      'boe-badge-pending',
+  disposed:     'boe-badge-urgent',
+}
+
+const WARRANTY_BADGE_MAP: Record<string, string> = {
+  active:        'boe-badge-completed',
+  expiring_soon: 'boe-badge-pending',
+  expired:       'boe-badge-urgent',
+  not_available: 'boe-badge-pending',
+}
+
+function AssetInventory({ employees, supabase, isMobile, caps }: {
   employees: Employee[]
   supabase: SupabaseClient
   isMobile?: boolean
   caps: AssetsAccessCapabilities
-  currentUserId: string
 }) {
+  const router = useRouter()
   const [assets, setAssets] = useState<Asset[]>([])
-  const [activeAssignments, setActiveAssignments] = useState<Record<string, EmployeeAsset>>({})
-  const [myPendingRequests, setMyPendingRequests] = useState<AssetChangeRequest[]>([])
+  const [assignments, setAssignments] = useState<EmployeeAsset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [assigningAsset, setAssigningAsset] = useState<Asset | null>(null)
-  const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
-  const [requestingEdit, setRequestingEdit] = useState<Asset | null>(null)
-  const [requestingRemoval, setRequestingRemoval] = useState<Asset | null>(null)
-  const [busyId, setBusyId] = useState<string | null>(null)
+
+  // Filters live in ONE object so "Clear" is a single assignment that cannot
+  // forget a field, and so the whole set can be handed to a pure function that
+  // is tested without React.
+  const [filters, setFilters] = useState<AssetFilters>(EMPTY_ASSET_FILTERS)
+  const [showFilters, setShowFilters] = useState(false)
+  const setFilter = (key: keyof AssetFilters) => (value: string) =>
+    setFilters(prev => ({ ...prev, [key]: value }))
 
   const load = async () => {
     setLoading(true)
     setError(null)
     const [{ data: a, error: aErr }, { data: ea, error: eaErr }] = await Promise.all([
-      supabase.from('assets').select('id, asset_type, asset_name, serial_no, specifications, status, created_at, updated_at').order('created_at', { ascending: false }),
-      supabase.from('employee_assets').select('id, asset_id, employee_id, assigned_by, assigned_at, accepted_at, returned_at, lost_at, status').in('status', ['pending_acceptance', 'accepted']),
+      supabase.from('assets').select(ASSET_COLUMNS).order('updated_at', { ascending: false }),
+      supabase.from('employee_assets').select(EMPLOYEE_ASSET_COLUMNS).in('status', ['pending_acceptance', 'accepted']),
     ])
-    if (aErr) setError(aErr.message)
-    else if (eaErr) setError(eaErr.message)
-    setAssets((a ?? []) as Asset[])
-    const map: Record<string, EmployeeAsset> = {}
-    ;((ea ?? []) as EmployeeAsset[]).forEach(row => { map[row.asset_id] = row })
-    setActiveAssignments(map)
-
-    // Only the requester's own open requests, and only for someone who can
-    // raise them — it is what decides whether a row offers "Request Edit" or
-    // reads "Edit requested". RLS scopes the read to their own rows anyway.
-    if (caps.canRequestAssetChanges) {
-      const { data: reqs } = await supabase
-        .from('asset_change_requests')
-        .select('*')
-        .eq('status', 'pending')
-      setMyPendingRequests((reqs ?? []) as AssetChangeRequest[])
-    }
-
+    if (aErr) setError(assetErrorMessage('edit', aErr))
+    else if (eaErr) setError(assetErrorMessage('edit', eaErr))
+    setAssets((a ?? []) as unknown as Asset[])
+    setAssignments((ea ?? []) as unknown as EmployeeAsset[])
     setLoading(false)
   }
 
@@ -417,73 +444,130 @@ function AssetInventory({ employees, supabase, isMobile, caps, currentUserId }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const employeeName = (id: string) => employees.find(e => e.id === id)?.full_name ?? '—'
+  // Warranty reminders have no user action behind them — a warranty crosses the
+  // 30-day line at midnight, by itself. The sweep runs when someone who can act
+  // on the result opens the inventory; seven-day duplicate suppression on the
+  // server is what keeps that from becoming noise.
+  useEffect(() => {
+    if (caps.canViewAssetInventory) sweepWarrantyExpiries()
+  }, [caps.canViewAssetInventory])
 
-  // Custody changes go through return_asset / mark_asset_lost / assign_asset
-  // (20260723000000). Each writes employee_assets AND assets.status in one
-  // statement, so the two can never disagree, and each is authorized by
-  // 'manage' alone — no 'edit' is needed just because assets.status moves.
-  const handleMarkReturned = async (asset: Asset) => {
-    setBusyId(asset.id)
-    setError(null)
-    const { error: rpcError } = await supabase.rpc('return_asset', { p_asset_id: asset.id })
-    setBusyId(null)
-    if (rpcError) { logAssetFailure('return', rpcError); setError(assetErrorMessage('return', rpcError)); return }
-    load()
-  }
+  const employeeLookup = useCallback(
+    (id: string) => employees.find(e => e.id === id)?.full_name ?? null,
+    [employees],
+  )
 
-  const handleMarkLost = async (asset: Asset) => {
-    setBusyId(asset.id)
-    setError(null)
-    const { error: rpcError } = await supabase.rpc('mark_asset_lost', { p_asset_id: asset.id })
-    setBusyId(null)
-    if (rpcError) { logAssetFailure('mark-lost', rpcError); setError(assetErrorMessage('mark-lost', rpcError)); return }
-    load()
-  }
+  // Derived ONCE, so the table cell, the search haystack and the employee
+  // filter all agree about who holds what.
+  const rows = useMemo(
+    () => sortAssetRows(buildAssetRows(assets, assignments, employeeLookup)),
+    [assets, assignments, employeeLookup],
+  )
+  const visible = useMemo(() => filterAssetRows(rows, filters), [rows, filters])
 
-  // Only an asset nobody has ever held may be deleted — a mistaken inventory
-  // entry. History is counted at click time with an exact count rather than
-  // read from the loaded list, which holds active assignments only. The
-  // database refuses the same thing regardless (assets_prevent_assigned_delete);
-  // this exists to say why in plain words instead of surfacing a trigger error.
-  const handleDelete = async (asset: Asset) => {
-    setBusyId(asset.id)
-    setError(null)
+  const departments = useMemo(() => distinctValues(assets, 'department'), [assets])
+  const locations   = useMemo(() => distinctValues(assets, 'location'), [assets])
+  const categories  = useMemo(() => distinctValues(assets, 'asset_type'), [assets])
 
-    const { count, error: countError } = await supabase
-      .from('employee_assets')
-      .select('id', { count: 'exact', head: true })
-      .eq('asset_id', asset.id)
+  const filterCount = activeFilterCount(filters)
+  const anyFilters  = hasActiveFilters(filters)
 
-    if (countError) { setBusyId(null); logAssetFailure('delete', countError); setError(assetErrorMessage('delete', countError)); return }
+  const openAsset = (asset: Asset) => router.push(`/assets-access/${asset.id}`)
 
-    const blocked = assetDeleteBlockReason({
-      canDeleteAsset: caps.canDeleteAsset,
-      hasActiveAssignment: !!activeAssignments[asset.id],
-      assignmentHistoryCount: count ?? 0,
-    })
-    if (blocked) { setBusyId(null); setError(blocked); return }
-
-    if (!window.confirm(`Delete "${asset.asset_name}"? This cannot be undone.`)) {
-      setBusyId(null)
-      return
-    }
-
-    const { error: dbError } = await supabase.from('assets').delete().eq('id', asset.id)
-    setBusyId(null)
-    if (dbError) { logAssetFailure('delete', dbError); setError(assetErrorMessage('delete', dbError)); return }
-    load()
-  }
+  const filterSelect = (
+    label: string,
+    key: keyof AssetFilters,
+    options: { value: string; label: string }[],
+  ) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+      <span style={{
+        fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+        textTransform: 'uppercase', letterSpacing: '0.05em',
+      }}>{label}</span>
+      <select
+        className="boe-input"
+        value={filters[key]}
+        onChange={e => setFilter(key)(e.target.value)}
+        style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
+      >
+        <option value="">Any</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       {error && <ErrorBanner message={error} />}
       {notice && <SuccessBanner message={notice} />}
-      {caps.canCreateAsset && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+
+      {/* ── Search + filters ── */}
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          className="boe-input"
+          type="search"
+          value={filters.search}
+          onChange={e => setFilter('search')(e.target.value)}
+          placeholder="Search name, code, serial, brand, model, holder or location"
+          aria-label="Search assets"
+          style={{ flex: '1 1 260px', minWidth: 0, fontSize: '13px' }}
+        />
+        <button
+          className="boe-btn boe-btn-ghost"
+          style={{ padding: '8px 14px', fontSize: '12.5px' }}
+          onClick={() => setShowFilters(v => !v)}
+          aria-expanded={showFilters}
+        >
+          {showFilters ? 'Hide Filters' : 'Filters'}{filterCount > 0 ? ` (${filterCount})` : ''}
+        </button>
+        {anyFilters && (
+          <button
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '8px 14px', fontSize: '12.5px' }}
+            onClick={() => setFilters(EMPTY_ASSET_FILTERS)}
+          >
+            Clear
+          </button>
+        )}
+        {caps.canCreateAsset && (
           <button className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }} onClick={() => setShowCreate(true)}>
             + Create Asset
           </button>
+        )}
+      </div>
+
+      {showFilters && (
+        <div className="boe-card" style={{
+          padding: '14px 16px',
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, minmax(0, 1fr))',
+          gap: '12px',
+        }}>
+          {filterSelect('Category', 'category', categories.map(c => ({ value: c, label: humanizeToken(c) })))}
+          {filterSelect('Status', 'status', ASSET_STATUS_OPTIONS.map(s => ({ value: s, label: assetStatusLabel(s) })))}
+          {filterSelect('Assigned Employee', 'employeeId', employees.map(e => ({ value: e.id, label: e.full_name })))}
+          {filterSelect('Department', 'department', departments.map(d => ({ value: d, label: d })))}
+          {filterSelect('Location', 'location', locations.map(l => ({ value: l, label: l })))}
+          {filterSelect('Condition', 'condition', ASSET_CONDITION_OPTIONS.map(c => ({ value: c, label: ASSET_CONDITION_LABEL[c] })))}
+          {filterSelect('Warranty', 'warranty', WARRANTY_STATUS_OPTIONS.map(w => ({ value: w, label: WARRANTY_STATUS_LABEL[w] })))}
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+            <span style={{
+              fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+              textTransform: 'uppercase', letterSpacing: '0.05em',
+            }}>Purchased Between</span>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <input
+                type="date" className="boe-input" aria-label="Purchased from"
+                value={filters.purchasedFrom} onChange={e => setFilter('purchasedFrom')(e.target.value)}
+                style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
+              />
+              <input
+                type="date" className="boe-input" aria-label="Purchased to"
+                value={filters.purchasedTo} onChange={e => setFilter('purchasedTo')(e.target.value)}
+                style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
+              />
+            </div>
+          </label>
         </div>
       )}
 
@@ -491,41 +575,38 @@ function AssetInventory({ employees, supabase, isMobile, caps, currentUserId }: 
         <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
       ) : assets.length === 0 ? (
         <EmptyState message="No assets in inventory yet." />
+      ) : visible.length === 0 ? (
+        <EmptyState message="No assets match this search. Clear the filters to see the full inventory." />
       ) : isMobile ? (
         /* ── Mobile: cards ── */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {assets.map(asset => {
-            const assignment = activeAssignments[asset.id]
-            const statusKey = acceptanceStatusKey(asset.status, assignment?.status)
-            const rowActions = assetRowActions(caps, asset.status)
+          {visible.map(({ asset, holderLabel, warranty }) => {
+            const canAssign = caps.canAssignAsset && asset.status === 'available'
             return (
               <div key={asset.id} className="boe-card" style={{ padding: '14px 16px' }}>
-                <div style={{ fontWeight: 600, color: colors.primary, fontSize: '14px', marginBottom: '2px' }}>{asset.asset_name}</div>
-                {asset.specifications && <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '6px' }}>{asset.specifications}</div>}
+                <div style={{ fontFamily: 'monospace', fontSize: '10.5px', color: colors.muted, marginBottom: '2px' }}>{asset.asset_code}</div>
+                <div style={{ fontSize: '14px', marginBottom: '2px' }}>
+                  <AssetNameLink asset={asset} onOpen={() => openAsset(asset)} />
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '12px', color: colors.secondary, marginBottom: '10px' }}>
-                  <span style={{ textTransform: 'capitalize' }}>{asset.asset_type.replace(/_/g, ' ')}</span>
+                  <span style={{ textTransform: 'capitalize' }}>{humanizeToken(asset.asset_type)}</span>
                   {asset.serial_no && <span style={{ fontFamily: 'monospace' }}>{asset.serial_no}</span>}
-                  {assignment && <span>→ {employeeName(assignment.employee_id)}</span>}
+                  <span>→ {holderLabel}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                  <span className={`boe-badge ${ACCEPTANCE_STATUS_BADGE[statusKey] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-                    {ACCEPTANCE_STATUS_LABEL[statusKey] ?? statusKey}
-                  </span>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {rowActions.assign && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
-                    {rowActions.markReturned && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Returned</button>}
-                    {rowActions.markLost && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Lost</button>}
-                    {rowActions.edit && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>}
-                    {rowActions.remove && <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px', color: '#C13030' }} disabled={busyId === asset.id} onClick={() => handleDelete(asset)}>Delete</button>}
-                    <RequestActions
-                      asset={asset}
-                      caps={caps}
-                      currentUserId={currentUserId}
-                      pendingRequests={myPendingRequests}
-                      compact
-                      onRequestEdit={() => setRequestingEdit(asset)}
-                      onRequestRemoval={() => setRequestingRemoval(asset)}
-                    />
+                    <span className={`boe-badge ${ASSET_STATUS_BADGE_MAP[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                      {assetStatusLabel(asset.status)}
+                    </span>
+                    <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                      {WARRANTY_STATUS_LABEL[warranty]}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {canAssign && (
+                      <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>
+                    )}
+                    <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => openAsset(asset)}>Open</button>
                   </div>
                 </div>
               </div>
@@ -533,54 +614,49 @@ function AssetInventory({ employees, supabase, isMobile, caps, currentUserId }: 
           })}
         </div>
       ) : (
-        /* ── Desktop: table ── */
+        /* ── Desktop: table ──
+           Nine narrow columns and no button strip. Every operation other than
+           Assign lives on the asset's own page, which is what keeps this table
+           inside a normal desktop width instead of scrolling sideways — and
+           what lets someone see who holds an asset before acting on it. */
         <div className="boe-card" style={{ overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <TableHead cols={['Asset', 'Type', 'Serial No.', 'Assigned To', 'Acceptance Status', 'Actions']} />
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+              <TableHead cols={['Asset', 'Asset Code', 'Category', 'Current Holder', 'Status', 'Condition', 'Warranty', 'Last Updated', 'Actions']} />
               <tbody>
-                {assets.map(asset => {
-                  const assignment = activeAssignments[asset.id]
-                  const statusKey = acceptanceStatusKey(asset.status, assignment?.status)
-            const rowActions = assetRowActions(caps, asset.status)
+                {visible.map(({ asset, holderLabel, warranty }) => {
+                  const canAssign = caps.canAssignAsset && asset.status === 'available'
                   return (
                     <tr key={asset.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ fontWeight: 600, color: colors.primary }}>{asset.asset_name}</div>
-                        {asset.specifications && (
-                          <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', maxWidth: '280px', whiteSpace: 'pre-wrap' }}>
-                            {asset.specifications}
+                      <td style={{ padding: '10px 12px' }}>
+                        <AssetNameLink asset={asset} onOpen={() => openAsset(asset)} />
+                        {asset.serial_no && (
+                          <div style={{ fontSize: '11px', color: colors.muted, fontFamily: 'monospace', marginTop: '2px' }}>
+                            {asset.serial_no}
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: '12px 16px', color: colors.secondary, textTransform: 'capitalize' }}>{asset.asset_type.replace(/_/g, ' ')}</td>
-                      <td style={{ padding: '12px 16px', color: colors.secondary, fontFamily: 'monospace', fontSize: '12px' }}>{asset.serial_no ?? '—'}</td>
-                      <td style={{ padding: '12px 16px', color: colors.secondary }}>{assignment ? employeeName(assignment.employee_id) : '—'}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span className={`boe-badge ${ACCEPTANCE_STATUS_BADGE[statusKey] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-                          {ACCEPTANCE_STATUS_LABEL[statusKey] ?? statusKey}
+                      <td style={{ padding: '10px 12px', color: colors.secondary, fontFamily: 'monospace', fontSize: '11.5px', whiteSpace: 'nowrap' }}>{asset.asset_code}</td>
+                      <td style={{ padding: '10px 12px', color: colors.secondary, textTransform: 'capitalize' }}>{humanizeToken(asset.asset_type)}</td>
+                      <td style={{ padding: '10px 12px', color: colors.secondary }}>{holderLabel}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span className={`boe-badge ${ASSET_STATUS_BADGE_MAP[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                          {assetStatusLabel(asset.status)}
                         </span>
-                        {statusKey === 'accepted' && assignment?.accepted_at && (
-                          <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '3px' }}>
-                            Accepted {fmtDate(assignment.accepted_at)}
-                          </div>
-                        )}
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                          {rowActions.assign && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>}
-                          {rowActions.markReturned && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkReturned(asset)}>Mark Returned</button>}
-                          {rowActions.markLost && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => handleMarkLost(asset)}>Mark Lost</button>}
-                          {rowActions.edit && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} disabled={busyId === asset.id} onClick={() => setEditingAsset(asset)}>Edit</button>}
-                          {rowActions.remove && <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px', color: '#C13030' }} disabled={busyId === asset.id} onClick={() => handleDelete(asset)}>Delete</button>}
-                          <RequestActions
-                            asset={asset}
-                            caps={caps}
-                            currentUserId={currentUserId}
-                            pendingRequests={myPendingRequests}
-                            onRequestEdit={() => setRequestingEdit(asset)}
-                            onRequestRemoval={() => setRequestingRemoval(asset)}
-                          />
+                      <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>{assetConditionLabel(asset.condition)}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span className={`boe-badge ${WARRANTY_BADGE_MAP[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                          {WARRANTY_STATUS_LABEL[warranty]}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 12px', color: colors.muted, whiteSpace: 'nowrap' }}>{fmtDate(asset.updated_at)}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap' }}>
+                          {canAssign && (
+                            <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => setAssigningAsset(asset)}>Assign</button>
+                          )}
+                          <button className="boe-btn boe-btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }} onClick={() => openAsset(asset)}>Open</button>
                         </div>
                       </td>
                     </tr>
@@ -593,7 +669,11 @@ function AssetInventory({ employees, supabase, isMobile, caps, currentUserId }: 
       )}
 
       {showCreate && (
-        <CreateAssetModal supabase={supabase} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); load() }} />
+        <CreateAssetModal
+          supabase={supabase}
+          onClose={() => setShowCreate(false)}
+          onSaved={() => { setShowCreate(false); setNotice('Asset created.'); load() }}
+        />
       )}
       {assigningAsset && (
         <AssignAssetModal
@@ -601,362 +681,10 @@ function AssetInventory({ employees, supabase, isMobile, caps, currentUserId }: 
           employees={employees}
           supabase={supabase}
           onClose={() => setAssigningAsset(null)}
-          onSaved={() => { setAssigningAsset(null); load() }}
-        />
-      )}
-      {editingAsset && (
-        <EditAssetModal
-          asset={editingAsset}
-          supabase={supabase}
-          onClose={() => setEditingAsset(null)}
-          onSaved={() => { setEditingAsset(null); load() }}
-        />
-      )}
-      {requestingEdit && (
-        <RequestEditModal
-          asset={requestingEdit}
-          supabase={supabase}
-          onClose={() => setRequestingEdit(null)}
-          onSubmitted={() => {
-            setRequestingEdit(null)
-            setNotice('Your edit request has been submitted.')
-            load()
-          }}
-        />
-      )}
-      {requestingRemoval && (
-        <RequestRemovalModal
-          asset={requestingRemoval}
-          supabase={supabase}
-          onClose={() => setRequestingRemoval(null)}
-          onSubmitted={() => {
-            setRequestingRemoval(null)
-            setNotice('Your removal request has been submitted.')
-            load()
-          }}
+          onDone={(message) => { setAssigningAsset(null); setNotice(message); load() }}
         />
       )}
     </div>
-  )
-}
-
-// ─── Request actions on an inventory row ──────────────────────────────────────
-// Shown to any non-admin who can see the inventory. Once they have an open
-// request of that kind the button becomes a plain label, so the same person
-// cannot file the duplicate the unique index would refuse anyway.
-
-function RequestActions({
-  asset, caps, currentUserId, pendingRequests, compact, onRequestEdit, onRequestRemoval,
-}: {
-  asset: Asset
-  caps: AssetsAccessCapabilities
-  currentUserId: string
-  pendingRequests: AssetChangeRequest[]
-  compact?: boolean
-  onRequestEdit: () => void
-  onRequestRemoval: () => void
-}) {
-  if (!caps.canRequestAssetChanges) return null
-
-  const size = compact
-    ? { padding: '5px 12px', fontSize: '12px' }
-    : { padding: '4px 10px', fontSize: '11px' }
-
-  const editPending   = hasPendingRequest(pendingRequests, asset.id, currentUserId, 'edit')
-  const removePending = hasPendingRequest(pendingRequests, asset.id, currentUserId, 'remove')
-
-  const pendingLabel = (text: string) => (
-    <span style={{ ...size, color: colors.muted, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-      {text}
-    </span>
-  )
-
-  return (
-    <>
-      {editPending
-        ? pendingLabel('Edit requested')
-        : <button className="boe-btn boe-btn-ghost" style={size} onClick={onRequestEdit}>Request Edit</button>}
-      {removePending
-        ? pendingLabel('Removal requested')
-        : <button className="boe-btn boe-btn-ghost" style={size} onClick={onRequestRemoval}>Request Removal</button>}
-    </>
-  )
-}
-
-function CreateAssetModal({ supabase, onClose, onSaved }: { supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
-  const [assetType, setAssetType] = useState(ASSET_TYPE_OPTIONS[0])
-  const [assetName, setAssetName] = useState('')
-  const [serialNo, setSerialNo] = useState('')
-  const [specifications, setSpecifications] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleSave = async () => {
-    if (!assetName.trim()) { setError('Asset Name is required.'); return }
-    setSaving(true)
-    setError(null)
-    const { error: dbError } = await supabase.from('assets').insert({
-      asset_type: assetType,
-      asset_name: assetName.trim(),
-      serial_no: serialNo.trim() || null,
-      specifications: specifications.trim() || null,
-    })
-    setSaving(false)
-    // A failed create keeps the modal open with every entered value intact —
-    // the reader gets one sentence, the console gets the driver error.
-    if (dbError) { logAssetFailure('create', dbError); setError(assetErrorMessage('create', dbError)); return }
-    onSaved()
-  }
-
-  return (
-    <Modal title="Create Asset" onClose={onClose}>
-      <Field label="Asset Type">
-        <select className="boe-input" value={assetType} onChange={e => setAssetType(e.target.value)} style={{ width: '100%' }}>
-          {ASSET_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
-        </select>
-      </Field>
-      <Field label="Asset Name">
-        <input className="boe-input" value={assetName} onChange={e => setAssetName(e.target.value)} placeholder="e.g. Dell XPS 15" style={{ width: '100%' }} />
-      </Field>
-      <Field label="Serial No.">
-        <input className="boe-input" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="Optional" style={{ width: '100%' }} />
-      </Field>
-      <Field label="Specifications / Details">
-        <textarea
-          className="boe-input"
-          value={specifications}
-          onChange={e => setSpecifications(e.target.value)}
-          placeholder="Example: Intel i5, 8GB RAM, 512GB SSD, Windows 11"
-          rows={3}
-          style={{ width: '100%', resize: 'vertical' }}
-        />
-      </Field>
-      {error && <ErrorBanner message={error} />}
-      <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Create Asset" />
-    </Modal>
-  )
-}
-
-function EditAssetModal({
-  asset, supabase, onClose, onSaved,
-}: { asset: Asset; supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
-  const [assetType, setAssetType] = useState(asset.asset_type)
-  const [assetName, setAssetName] = useState(asset.asset_name)
-  const [serialNo, setSerialNo] = useState(asset.serial_no ?? '')
-  const [specifications, setSpecifications] = useState(asset.specifications ?? '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleSave = async () => {
-    if (!assetName.trim()) { setError('Asset Name is required.'); return }
-    setSaving(true)
-    setError(null)
-    const { error: dbError } = await supabase
-      .from('assets')
-      .update({
-        asset_type: assetType,
-        asset_name: assetName.trim(),
-        serial_no: serialNo.trim() || null,
-        specifications: specifications.trim() || null,
-      })
-      .eq('id', asset.id)
-    setSaving(false)
-    if (dbError) { logAssetFailure('edit', dbError); setError(assetErrorMessage('edit', dbError)); return }
-    onSaved()
-  }
-
-  return (
-    <Modal title="Edit Asset" onClose={onClose}>
-      <Field label="Asset Type">
-        <select className="boe-input" value={assetType} onChange={e => setAssetType(e.target.value)} style={{ width: '100%' }}>
-          {ASSET_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
-        </select>
-      </Field>
-      <Field label="Asset Name">
-        <input className="boe-input" value={assetName} onChange={e => setAssetName(e.target.value)} style={{ width: '100%' }} />
-      </Field>
-      <Field label="Serial No.">
-        <input className="boe-input" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="Optional" style={{ width: '100%' }} />
-      </Field>
-      <Field label="Specifications / Details">
-        <textarea
-          className="boe-input"
-          value={specifications}
-          onChange={e => setSpecifications(e.target.value)}
-          placeholder="Example: Intel i5, 8GB RAM, 512GB SSD, Windows 11"
-          rows={3}
-          style={{ width: '100%', resize: 'vertical' }}
-        />
-      </Field>
-      {error && <ErrorBanner message={error} />}
-      <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Save Changes" />
-    </Modal>
-  )
-}
-
-function AssignAssetModal({
-  asset, employees, supabase, onClose, onSaved,
-}: { asset: Asset; employees: Employee[]; supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
-  const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleSave = async () => {
-    if (!employeeId) { setError('Select an employee.'); return }
-    setSaving(true)
-    setError(null)
-    // One statement: the assignment row and assets.status move together, and
-    // assigned_by is taken from the session inside the function.
-    const { error: rpcError } = await supabase.rpc('assign_asset', {
-      p_asset_id: asset.id,
-      p_employee_id: employeeId,
-    })
-    setSaving(false)
-    if (rpcError) { logAssetFailure('assign', rpcError); setError(assetErrorMessage('assign', rpcError)); return }
-    onSaved()
-  }
-
-  return (
-    <Modal title={`Assign "${asset.asset_name}"`} onClose={onClose}>
-      <Field label="Employee">
-        <select className="boe-input" value={employeeId} onChange={e => setEmployeeId(e.target.value)} style={{ width: '100%' }}>
-          {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name} — {emp.role}</option>)}
-        </select>
-      </Field>
-      {error && <ErrorBanner message={error} />}
-      <ModalActions onClose={onClose} onSave={handleSave} saving={saving} saveLabel="Assign Asset" />
-    </Modal>
-  )
-}
-
-// ─── Request Edit ─────────────────────────────────────────────────────────────
-// Never writes to assets. It files a row in asset_change_requests and stops —
-// only an admin approving it can move the asset.
-
-function RequestEditModal({
-  asset, supabase, onClose, onSubmitted,
-}: { asset: Asset; supabase: SupabaseClient; onClose: () => void; onSubmitted: () => void }) {
-  const [assetType, setAssetType] = useState(asset.asset_type)
-  const [assetName, setAssetName] = useState(asset.asset_name)
-  const [serialNo, setSerialNo] = useState(asset.serial_no ?? '')
-  const [specifications, setSpecifications] = useState(asset.specifications ?? '')
-  const [reason, setReason] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleSubmit = async () => {
-    const proposed = buildProposedFields(
-      { asset_type: asset.asset_type, asset_name: asset.asset_name, serial_no: asset.serial_no, specifications: asset.specifications },
-      { asset_type: assetType, asset_name: assetName, serial_no: serialNo, specifications },
-    )
-    const invalid = validateChangeRequest({ type: 'edit', reason, proposed })
-    if (invalid) { setError(invalid); return }
-
-    setSaving(true)
-    setError(null)
-    // requested_by is defaulted from auth.uid() by the table and pinned by
-    // the insert policy — the client never sends it.
-    const { error: dbError } = await supabase.from('asset_change_requests').insert({
-      asset_id: asset.id,
-      asset_name_snapshot: asset.asset_name,
-      request_type: 'edit',
-      reason: reason.trim(),
-      ...proposed,
-    })
-    setSaving(false)
-    if (dbError) { logAssetFailure('request-edit', dbError); setError(assetErrorMessage('request-edit', dbError)); return }
-    onSubmitted()
-  }
-
-  return (
-    <Modal title="Request Edit" onClose={onClose}>
-      <div style={{ fontSize: '11.5px', color: colors.muted }}>
-        An administrator reviews this request before anything changes.
-      </div>
-      <Field label="Asset Type">
-        <select className="boe-input" value={assetType} onChange={e => setAssetType(e.target.value)} style={{ width: '100%' }}>
-          {ASSET_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
-        </select>
-      </Field>
-      <Field label="Asset Name">
-        <input className="boe-input" value={assetName} onChange={e => setAssetName(e.target.value)} style={{ width: '100%' }} />
-      </Field>
-      <Field label="Serial No.">
-        <input className="boe-input" value={serialNo} onChange={e => setSerialNo(e.target.value)} style={{ width: '100%' }} />
-      </Field>
-      <Field label="Specifications / Details">
-        <textarea className="boe-input" value={specifications} onChange={e => setSpecifications(e.target.value)} rows={3} style={{ width: '100%', resize: 'vertical' }} />
-      </Field>
-      <Field label="Reason (required)">
-        <textarea
-          className="boe-input"
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          placeholder="Why does this asset need changing?"
-          rows={2}
-          style={{ width: '100%', resize: 'vertical' }}
-        />
-      </Field>
-      {error && <ErrorBanner message={error} />}
-      <ModalActions onClose={onClose} onSave={handleSubmit} saving={saving} saveLabel="Submit Request" />
-    </Modal>
-  )
-}
-
-// ─── Request Removal ──────────────────────────────────────────────────────────
-// Does not delete anything. Whether the asset can eventually go is decided at
-// approval time by the custody-history rule, not here.
-
-function RequestRemovalModal({
-  asset, supabase, onClose, onSubmitted,
-}: { asset: Asset; supabase: SupabaseClient; onClose: () => void; onSubmitted: () => void }) {
-  const [reason, setReason] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleSubmit = async () => {
-    const invalid = validateChangeRequest({ type: 'remove', reason })
-    if (invalid) { setError(invalid); return }
-
-    setSaving(true)
-    setError(null)
-    const { error: dbError } = await supabase.from('asset_change_requests').insert({
-      asset_id: asset.id,
-      asset_name_snapshot: asset.asset_name,
-      request_type: 'remove',
-      reason: reason.trim(),
-    })
-    setSaving(false)
-    if (dbError) { logAssetFailure('request-remove', dbError); setError(assetErrorMessage('request-remove', dbError)); return }
-    onSubmitted()
-  }
-
-  return (
-    <Modal title="Request Removal" onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>{asset.asset_name}</div>
-        <div style={{ fontSize: '12px', color: colors.secondary, fontFamily: 'monospace' }}>{asset.serial_no ?? 'No serial number'}</div>
-      </div>
-      <div style={{
-        padding: '10px 12px', borderRadius: '8px',
-        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
-      }}>
-        This request needs administrator approval. The asset is not removed now, and
-        it cannot be removed at all if it has assignment history.
-      </div>
-      <Field label="Reason (required)">
-        <textarea
-          className="boe-input"
-          value={reason}
-          onChange={e => setReason(e.target.value)}
-          placeholder="Why should this asset be removed?"
-          rows={3}
-          style={{ width: '100%', resize: 'vertical' }}
-        />
-      </Field>
-      {error && <ErrorBanner message={error} />}
-      <ModalActions onClose={onClose} onSave={handleSubmit} saving={saving} saveLabel="Submit Request" />
-    </Modal>
   )
 }
 
@@ -1007,6 +735,17 @@ function AssetRequests({ employees, supabase, caps, isMobile }: {
     })
     setBusyId(null)
     if (rpcError) { logAssetFailure('approve-request', rpcError); setError(assetErrorMessage('approve-request', rpcError)); load(); return }
+    // An approved REMOVAL deletes the asset, so entity_id would point at a row
+    // that no longer exists. Request notifications deep-link to the Asset
+    // Requests screen instead (see getNotificationMeta), which is why the id is
+    // still safe to send: nothing follows it to a detail page.
+    notifyAssetEvent({
+      event: row.request_type === 'remove' ? 'asset_request_approved' : 'asset_edit_request_approved',
+      assetId: row.asset_id ?? '',
+      assetName: row.asset_name_snapshot,
+      requesterId: row.requested_by,
+      requestType: row.request_type,
+    })
     setNotice(row.request_type === 'remove' ? 'Removal approved. The asset has been removed.' : 'Edit approved and applied to the asset.')
     load()
   }
@@ -1120,6 +859,16 @@ function RejectRequestModal({
     })
     setSaving(false)
     if (rpcError) { logAssetFailure('reject-request', rpcError); setError(assetErrorMessage('reject-request', rpcError)); return }
+    // The note travels with the notification: a rejection the requester cannot
+    // act on is worse than no rejection notice at all.
+    notifyAssetEvent({
+      event: request.request_type === 'remove' ? 'asset_request_rejected' : 'asset_edit_request_rejected',
+      assetId: request.asset_id ?? '',
+      assetName: request.asset_name_snapshot,
+      requesterId: request.requested_by,
+      requestType: request.request_type,
+      note: note.trim() || null,
+    })
     onRejected()
   }
 
@@ -1345,125 +1094,20 @@ function EditAccessModal({
   )
 }
 
-// ─── Shared modal shell ────────────────────────────────────────────────────────
+// ─── Shared modal shell ───────────────────────────────────────────────────────
 //
-// Every modal in this module holds a form, so all of them follow the BOE Form
-// Modal Dismissal Rule: Escape, ✕, Cancel and a successful save close them —
-// a backdrop click does nothing. The rule itself lives in
-// src/lib/ui/modalDismissal.ts.
+// One implementation for the whole module, in components/assets/AssetModal.tsx.
+// It used to live here, which is how the inventory dialogs and the (later)
+// detail-page dialogs could have ended up behaving differently. Aliased rather
+// than renamed at every call site so the diff stays about behaviour.
 //
-// Layering: .boe-sidebar is `position: fixed; z-index: 100` (globals.css), and
-// this shell used to sit at 59/60 — so the overlay rendered UNDER the sidebar
-// and left the navigation live and clickable behind an apparently-modal
-// dialog. These match the Finance modal constants, the established "clears the
-// sidebar" pair. None of .boe-app-shell / .boe-main-content / .boe-page-body
-// creates a stacking context, so a fixed child at 200 really is above 100.
-const ASSETS_MODAL_OVERLAY_Z = 200
-const ASSETS_MODAL_DIALOG_Z  = 201
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const dialogRef = useRef<HTMLDivElement>(null)
-  const titleId = useId()
-
-  // Focus enters the dialog on open and returns to whatever opened it on
-  // close (the Create Asset button), so keyboard users are never dropped at
-  // the top of the document. Background scroll is locked for the lifetime of
-  // the modal, matching the Finance shell.
-  useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    dialogRef.current?.focus()
-    return () => {
-      document.body.style.overflow = prevOverflow
-      previouslyFocused?.focus?.()
-    }
-  }, [])
-
-  // Escape closes; Tab and Shift+Tab cannot leave the dialog. Capture phase so
-  // the trap runs before anything inside the dialog handles the key.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (shouldCloseFormModal('escape')) onClose()
-        return
-      }
-      if (e.key !== 'Tab') return
-
-      const root = dialogRef.current
-      if (!root) return
-
-      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-        .filter(el => el.offsetParent !== null || el === document.activeElement)
-      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
-
-      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
-      if (target === null) return
-
-      e.preventDefault()
-      if (target === 'block') { root.focus(); return }
-      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
-
-  return (
-    <>
-      {/* Overlay: no click handler at all. It exists to dim the page and to
-          swallow pointer events aimed at the sidebar and page behind it —
-          never to dismiss the form. */}
-      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: ASSETS_MODAL_OVERLAY_Z }} />
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        style={{
-          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-          width: '440px', maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
-          background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
-          zIndex: ASSETS_MODAL_DIALOG_Z, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px',
-          outline: 'none',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div id={titleId} style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>{title}</div>
-          <button
-            onClick={() => { if (shouldCloseFormModal('close-icon')) onClose() }}
-            aria-label="Close"
-            className="boe-btn boe-btn-ghost"
-            style={{ padding: '4px 10px', fontSize: '13px' }}
-          >✕</button>
-        </div>
-        {children}
-      </div>
-    </>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      <label style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
-      {children}
-    </div>
-  )
-}
-
-function ModalActions({ onClose, onSave, saving, saveLabel }: { onClose: () => void; onSave: () => void; saving: boolean; saveLabel: string }) {
-  return (
-    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-      <button onClick={() => { if (shouldCloseFormModal('cancel')) onClose() }} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
-      <button onClick={onSave} disabled={saving} className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
-        {saving ? 'Saving…' : saveLabel}
-      </button>
-    </div>
-  )
-}
-
-// ─── View meta ────────────────────────────────────────────────────────────────
+// The rules it enforces — Escape / X / Cancel close, a backdrop click does
+// nothing, a failed save keeps the form, the page behind is inert and
+// unscrollable, focus is trapped and restored — are stated once there and
+// decided in src/lib/ui/modalDismissal.ts.
+const Modal        = AssetModal
+const Field        = AssetField
+const ModalActions = AssetModalActions
 
 const VIEW_META: Record<AssetsView, { title: string; subtitle: string }> = {
   'my-assets':       { title: 'My Assets',       subtitle: 'Company devices assigned to you.' },
@@ -1475,7 +1119,19 @@ const VIEW_META: Record<AssetsView, { title: string; subtitle: string }> = {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// useSearchParams needs a Suspense boundary to render: the page reads ?view=
+// so the module's sub-pages and its notification deep links can land on a
+// specific screen. LoadingScreen is the same fallback the page shows while it
+// resolves the session, so the boundary is invisible.
 export default function AssetsAccessPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <AssetsAccessScreen />
+    </Suspense>
+  )
+}
+
+function AssetsAccessScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [caps, setCaps] = useState<AssetsAccessCapabilities>(NO_ASSETS_ACCESS_CAPABILITIES)
@@ -1484,6 +1140,8 @@ export default function AssetsAccessPage() {
   const [isMobile, setIsMobile] = useState(false)
 
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const requestedView = searchParams.get('view')
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId } = useViewAs()
   const inViewMode = !!viewAsUserId
@@ -1531,7 +1189,12 @@ export default function AssetsAccessPage() {
 
       const resolved = await refreshCapabilities(prof)
 
-      setView(resolved.canViewAssetInventory && !inViewMode ? 'asset-inventory' : 'my-assets')
+      // ?view= lets the module's sub-pages and its notification deep links land
+      // on a specific screen. It is validated against what this person may
+      // actually see: a URL is a request, not an authorization, and an
+      // unrecognised or unpermitted value falls back to the normal landing view
+      // rather than rendering a screen the reader has no rights to.
+      setView(resolveInitialView(requestedView, resolved, inViewMode))
       setLoading(false)
     }
     init()
@@ -1569,11 +1232,11 @@ export default function AssetsAccessPage() {
   const renderView = () => {
     switch (view) {
       case 'my-assets':
-        return <MyAssets userId={effectiveUserId} supabase={supabase} isMobile={isMobile} />
+        return <MyAssets userId={effectiveUserId} acceptedByName={profile.full_name} supabase={supabase} isMobile={isMobile} />
       case 'my-access':
         return <MyAccess userId={effectiveUserId} supabase={supabase} isMobile={isMobile} />
       case 'asset-inventory':
-        return <AssetInventory employees={employees} supabase={supabase} isMobile={isMobile} caps={caps} currentUserId={profile.id} />
+        return <AssetInventory employees={employees} supabase={supabase} isMobile={isMobile} caps={caps} />
       case 'access-register':
         return <AccessRegister employees={employees} supabase={supabase} isMobile={isMobile} />
       case 'asset-requests':

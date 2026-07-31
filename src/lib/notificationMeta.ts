@@ -22,7 +22,7 @@
 import type { Notification } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 
-export type NotificationCategory = 'task' | 'finance' | 'order' | 'other'
+export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'other'
 
 export type NotificationMeta = {
   category: NotificationCategory
@@ -72,6 +72,22 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   order_resubmitted:         { label: 'Resubmitted',     color: colors.blue,  bg: colors.blueTint  },
   order_rejected:            { label: 'Rejected',        color: colors.red,   bg: colors.redTint   },
   order_converted:           { label: 'Converted',       color: colors.green, bg: colors.greenTint },
+  // Assets & Access
+  asset_request_submitted:      { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },
+  asset_edit_request_submitted: { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },
+  asset_request_approved:       { label: 'Approved',       color: colors.green, bg: colors.greenTint },
+  asset_edit_request_approved:  { label: 'Approved',       color: colors.green, bg: colors.greenTint },
+  asset_request_rejected:       { label: 'Rejected',       color: colors.red,   bg: colors.redTint   },
+  asset_edit_request_rejected:  { label: 'Rejected',       color: colors.red,   bg: colors.redTint   },
+  asset_assigned:               { label: 'Assigned',       color: colors.blue,  bg: colors.blueTint  },
+  asset_transferred:            { label: 'Transferred',    color: colors.blue,  bg: colors.blueTint  },
+  asset_transfer_acknowledged:  { label: 'Accepted',       color: colors.green, bg: colors.greenTint },
+  asset_returned:               { label: 'Returned',       color: colors.green, bg: colors.greenTint },
+  asset_lost:                   { label: 'Lost',           color: colors.red,   bg: colors.redTint   },
+  asset_recovered:              { label: 'Recovered',      color: colors.green, bg: colors.greenTint },
+  asset_repair_sent:            { label: 'Sent for repair', color: colors.amber, bg: colors.amberTint },
+  asset_repair_returned:        { label: 'Back from repair', color: colors.green, bg: colors.greenTint },
+  asset_warranty_expiring:      { label: 'Warranty expiring', color: colors.amber, bg: colors.amberTint },
 }
 
 const NEUTRAL_BADGE = { label: 'Activity', color: colors.muted, bg: colors.float }
@@ -143,6 +159,33 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
       badge,
       href,
       actionLabel: 'View details',
+    }
+  }
+
+  // ── Assets & Access ────────────────────────────────────────────────────────
+  // entity_id carries the ASSET id, and every asset has its own permanent
+  // detail page — so a custody, service or warranty notification opens the
+  // record it is about.
+  //
+  // Change-request events are the deliberate exception: an APPROVED removal
+  // deletes the asset, so a link to /assets-access/<id> would open a page that
+  // no longer exists. Those point at the Asset Requests screen instead, where
+  // the decision itself is still readable.
+  if (type.startsWith('asset')) {
+    const badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
+    const isRequestEvent = type.includes('request')
+    const href = isRequestEvent
+      ? '/assets-access?view=asset-requests'
+      : n.entity_id
+        ? `/assets-access/${n.entity_id}`
+        : '/assets-access?view=asset-inventory'
+    return {
+      category: 'asset',
+      heading: 'Assets',
+      headingIsActor: false,
+      badge,
+      href,
+      actionLabel: isRequestEvent ? 'View request' : 'View asset',
     }
   }
 

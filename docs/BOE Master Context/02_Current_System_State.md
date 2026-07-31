@@ -19,7 +19,7 @@ Last Updated: June 2026 (updated after Task Cancellation implementation)
 | Sample Tracking        | In Progress    |
 | Attendance             | Early Stage    |
 | Payroll                | Early Stage    |
-| Assets & Access        | In Development |
+| Assets & Access        | Active         |
 | Employee Records       | Planned        |
 
 ---
@@ -393,17 +393,53 @@ Planned:
 
 # ASSETS & ACCESS
 
-Status: In Development
+Status: Operational (asset lifecycle complete); access credentials still V1
 
 Purpose:
 
-Track company assets and access credentials assigned to employees.
+Track company assets through their whole life — purchase, custody, movement,
+repair and retirement — and record the access credentials assigned to employees.
 
-Current Work:
+Implemented:
 
-* Employee asset allocation
-* Employee access records
-* Administrative management screens
+* **Individual asset page** — `/assets-access/[id]`, the single source of truth
+  for one asset. Five sections: Overview, Assignment History, Repair & Service,
+  Warranty & Documents, Activity History.
+* **Permanent transfer history** — every movement of custody is an append-only
+  record (`asset_transfers`): who or where it came from, who or where it went,
+  both departments, the recorded and effective handover dates, condition,
+  remarks and who performed it. Nothing is ever edited or deleted; a correction
+  is a new entry.
+* **Repair & service history** — one record per service event, with type, issue,
+  vendor, dates, cost, condition after service and the next service date. Total
+  spend, record count, last service and next service are shown per asset.
+* **Warranty and purchase details** — purchase date, price, vendor, invoice
+  number, warranty start/expiry/type/remarks. Warranty status is **derived**,
+  never stored.
+* **Asset documents** — invoice, warranty card and supporting files in a private
+  bucket, opened only through short-lived signed URLs. Removal is a soft delete
+  that is always recorded.
+* **Search and filters** on the inventory: one search box across name, code,
+  serial, brand, model, holder and location; filters for category, status,
+  assigned employee, department, location, condition, warranty status and
+  purchase-date range.
+* **Asset notifications** — the shared `notifications` table, `asset_*` types,
+  its own feed at `/assets-access/notifications` with the same read/unread,
+  mark-all-read, delete-one, delete-selected and delete-all behaviour as Task
+  Management.
+* **Activity history** — an immutable audit trail per asset. No client role
+  holds INSERT, UPDATE or DELETE on it, including admins.
+* Employee self-service: My Assets, one-time acceptance, My Access.
+* Admin-approved edit and removal requests for non-admins.
+
+Not yet done:
+
+* `access_records.secret_value` is still plaintext, so the Access Register
+  remains admin-only. Widening it waits for the credential-storage rework.
+* No recurring-maintenance automation (a next-service date is recorded and
+  displayed; nothing schedules itself).
+* Warranty-expiry reminders are produced by a sweep that runs when the inventory
+  is opened, not by a scheduler — BOE has no cron for application code.
 
 ---
 

@@ -145,24 +145,48 @@ Success Criteria:
 
 Status:
 
-In Development
+Asset lifecycle complete. Access credentials still V1.
 
 Business Goal:
 
 Track company assets and employee access rights.
 
+Delivered:
+
+* Individual asset page with the asset's full history
+* Permanent, append-only transfer and custody history
+* Repair / service records with total spend
+* Warranty and purchase details, with derived warranty status
+* Asset documents (invoice, warranty card, supporting files)
+* Inventory search and filters
+* Asset notifications, sharing the Task Management interaction model
+* Immutable per-asset activity history
+
 Current Focus:
 
-* Asset assignment
-* Asset return tracking
-* Access allocation
-* Access updates
-* Administrative controls
+* **Credential storage rework.** `access_records.secret_value` is plaintext, so
+  the Access Register is admin-only and cannot be delegated. Encrypting it (or
+  moving it to a secrets manager) is what unblocks manager access to the second
+  half of this module.
+
+Next (not started):
+
+* Scheduled warranty-expiry reminders. Today the sweep runs when someone opens
+  the inventory, because BOE has no scheduler for application code; a database
+  cron job or a Vercel cron would make the reminder time-driven instead.
+* Recurring maintenance schedules. A next-service date is recorded and shown,
+  but nothing generates the next service from it.
+* Asset reporting (spend by category, ageing). Deliberately deferred — the
+  module is operational, not analytical, and BOE avoids dashboards until a real
+  question needs one.
 
 Success Criteria:
 
-* Clear ownership of company assets.
-* Clear visibility of employee access permissions.
+* Clear ownership of company assets. **Met** — an asset can never read as
+  assigned without naming a custodian.
+* A permanent record of who held what, when. **Met.**
+* Clear visibility of employee access permissions. **Partly** — visible to
+  admins only until the credential rework.
 
 ---
 
