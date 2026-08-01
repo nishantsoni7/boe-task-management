@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, TaskPriority } from '@/lib/types'
@@ -11,11 +11,14 @@ import { useProfile } from '@/hooks/queries/useProfile'
 import { useUserNames } from '@/hooks/queries/useMyTasks'
 import { ExternalLink, Plus, Building2, User } from 'lucide-react'
 import {
-  DATE_FILTERS, PRIORITY_FILTERS, EMPTY_FILTERS,
+  DATE_FILTERS, PRIORITY_FILTERS,
   applyQuotationFilters, assignedByOptions, assignerName,
   filtersActive,
   type DateFilterKey, type QuotationFilters,
 } from './filters'
+import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
+import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
 
 const QTN_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type', 'task_type',
@@ -41,6 +44,22 @@ const GRID_COLUMNS =
 // input is the only elastic control in the band — see `.boe-qtn-toolbar`.
 const COMPACT_CONTROL: React.CSSProperties = {
   padding: '6px 8px', fontSize: '12px', flexShrink: 0, cursor: 'pointer',
+}
+
+// ─── URL-backed list state ────────────────────────────────────────────────────
+// Tab, search and the three filters live in the query string so Back from a
+// request detail returns to the same view. The filter model in ./filters.ts
+// spells "no filter" as 'all'; the URL spells it as an absent param, and the two
+// are mapped at the edges below.
+const PRIORITY_KEYS = PRIORITY_FILTERS.map(p => p.key)
+const DATE_KEYS     = DATE_FILTERS.map(d => d.key)
+
+const LIST_PARAMS = {
+  tab:        enumParam(['pending', 'closed'] as const, 'pending'),
+  assignedBy: idParam(),
+  priority:   optionParam(PRIORITY_KEYS),
+  date:       enumParam(DATE_KEYS, 'all' as DateFilterKey),
+  q:          textParam(),
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
@@ -171,15 +190,22 @@ function RequestCard({
   )
 }
 
-export default function QuotationRequestsPage() {
+function QuotationRequestsContent() {
   const [loggedInId,   setLoggedInId]   = useState('')
   const [tasks,        setTasks]        = useState<Task[]>([])
   const [loading,      setLoading]      = useState(true)
-  const [viewTab, setViewTab] = useState<'pending' | 'closed'>('pending')
-  const [filters, setFilters] = useState<QuotationFilters>(EMPTY_FILTERS)
 
-  const patchFilters = (patch: Partial<QuotationFilters>) =>
-    setFilters(f => ({ ...f, ...patch }))
+  const { state, setState } = useListUrlState(LIST_PARAMS)
+  const viewTab = state.tab
+  const filters: QuotationFilters = useMemo(() => ({
+    search:     state.q,
+    assignedBy: state.assignedBy || 'all',
+    priority:   state.priority   || 'all',
+    dateRange:  state.date,
+  }), [state])
+  const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(state.q, next => setState({ q: next }))
+
+  useListScrollRestore()
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -240,6 +266,20 @@ export default function QuotationRequestsPage() {
     return opts
   }, [tabTasks, userMap, filters.assignedBy])
 
+  // Validated against every request the user can see, not just this tab's — an
+  // assigner with rows only in Closed is still a real selection while Pending is
+  // open. Only an id matching nobody at all is dropped.
+  const allAssignerIds = useMemo(
+    () => [...new Set(tasks.map(t => t.created_by).filter(Boolean))],
+    [tasks],
+  )
+  usePruneUnknownValue(
+    !loading,
+    state.assignedBy,
+    allAssignerIds,
+    () => setState({ assignedBy: '' }),
+  )
+
   const anyFilterActive = filtersActive(filters)
 
   const visibleTasks = useMemo(() => {
@@ -295,7 +335,7 @@ export default function QuotationRequestsPage() {
               return (
                 <button
                   key={tab.key}
-                  onClick={() => setViewTab(tab.key)}
+                  onClick={() => setState({ tab: tab.key })}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '7px',
                     padding: '8px 14px',
@@ -331,8 +371,9 @@ export default function QuotationRequestsPage() {
             <input
               className="boe-input"
               type="search"
-              value={filters.search}
-              onChange={e => patchFilters({ search: e.target.value })}
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onBlur={flushSearch}
               placeholder="Search customer or quotation…"
               aria-label="Search quotation requests by customer, title or notes"
               style={{ flex: '0 1 275px', width: '275px', minWidth: '118px', padding: '6px 9px', fontSize: '12px' }}
@@ -342,7 +383,7 @@ export default function QuotationRequestsPage() {
               className="boe-input"
               aria-label="Filter by who assigned the request"
               value={filters.assignedBy}
-              onChange={e => patchFilters({ assignedBy: e.target.value })}
+              onChange={e => setState({ assignedBy: e.target.value === 'all' ? '' : e.target.value })}
               style={{ ...COMPACT_CONTROL, width: '140px' }}
             >
               {/* Short neutral label so a long full name still fits the 140px. */}
@@ -354,7 +395,10 @@ export default function QuotationRequestsPage() {
               className="boe-input"
               aria-label="Filter by priority"
               value={filters.priority}
-              onChange={e => patchFilters({ priority: e.target.value as TaskPriority | 'all' })}
+              onChange={e => {
+                const next = e.target.value as TaskPriority | 'all'
+                setState({ priority: next === 'all' ? '' : next })
+              }}
               style={{ ...COMPACT_CONTROL, width: '130px' }}
             >
               <option value="all">Any priority</option>
@@ -365,7 +409,7 @@ export default function QuotationRequestsPage() {
               className="boe-input"
               aria-label="Filter by created date"
               value={filters.dateRange}
-              onChange={e => patchFilters({ dateRange: e.target.value as DateFilterKey })}
+              onChange={e => setState({ date: e.target.value as DateFilterKey })}
               style={{ ...COMPACT_CONTROL, width: '130px' }}
             >
               {DATE_FILTERS.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
@@ -377,7 +421,13 @@ export default function QuotationRequestsPage() {
                 the empty state and the controls do not already carry. */}
             {anyFilterActive && (
               <button
-                onClick={() => setFilters(EMPTY_FILTERS)}
+                // Filters only — the selected tab is navigation, not a filter.
+                // The input is cleared alongside the URL so a keystroke still
+                // inside the debounce window cannot re-apply itself afterwards.
+                onClick={() => {
+                  setSearchInput('')
+                  setState({ q: '', assignedBy: '', priority: '', date: 'all' })
+                }}
                 title="Reset search and filters"
                 aria-label="Reset search and filters"
                 style={{
@@ -454,5 +504,15 @@ export default function QuotationRequestsPage() {
       </DashboardLayout>
 
     </>
+  )
+}
+
+// Reading the list state from the URL opts this tree into client-side
+// rendering, which needs a Suspense boundary.
+export default function QuotationRequestsPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <QuotationRequestsContent />
+    </Suspense>
   )
 }

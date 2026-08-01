@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -19,6 +19,9 @@ import {
 } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
+import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
+import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const TASK_COLUMNS = [
@@ -68,6 +71,21 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high:   { label: 'High', color: '#B06035'    },
   medium: { label: 'Med',  color: '#C07820'    },
   low:    { label: 'Low',  color: colors.muted },
+}
+
+// ─── URL-backed list state ────────────────────────────────────────────────────
+// Tab, assignee, priority and search live in the query string, so Back from a
+// task detail lands on exactly the list the user left and a filtered view can be
+// shared or reloaded. No pagination on this page — it loads the user's open
+// delegated tasks in one query.
+const PRIORITY_KEYS = ['high', 'medium', 'low'] as const
+const TAB_KEYS = TABS.map(t => t.key)
+
+const LIST_PARAMS = {
+  tab:      enumParam(TAB_KEYS, 'all' as TabKey),
+  assignee: idParam(),
+  priority: optionParam(PRIORITY_KEYS),
+  q:        textParam(),
 }
 
 // ─── Task card ────────────────────────────────────────────────────────────────
@@ -882,22 +900,28 @@ function EmptyState({ label }: { label: string }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-export default function AssignedByMePage() {
+function AssignedByMeContent() {
   const [loggedInId,        setLoggedInId]        = useState<string>('')
   const [allTasks,          setAllTasks]          = useState<Task[]>([])
   const [userId,            setUserId]            = useState<string>('')
   const [userMap,           setUserMap]           = useState<Record<string, string>>({})
   const [loading,           setLoading]           = useState(true)
-  const [activeTab,         setActiveTab]         = useState<TabKey>('all')
   const [selectedTask,      setSelectedTask]      = useState<Task | null>(null)
   const [editingTask,       setEditingTask]       = useState<Task | null>(null)
   const [showDelegateModal, setShowDelegateModal] = useState(false)
   const [delegateError,     setDelegateError]     = useState<string | null>(null)
   const [isMobile,          setIsMobile]          = useState(false)
 
-  const [search,         setSearch]         = useState('')
-  const [filterAssignee, setFilterAssignee] = useState('')
-  const [filterPriority, setFilterPriority] = useState('')
+  // Tab + filters read from and write to the URL; the search box keeps a local
+  // value so typing is not one navigation per keystroke.
+  const { state, setState } = useListUrlState(LIST_PARAMS)
+  const activeTab      = state.tab
+  const filterAssignee = state.assignee
+  const filterPriority = state.priority
+  const search         = state.q
+  const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(search, next => setState({ q: next }))
+
+  useListScrollRestore()
 
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
@@ -1025,6 +1049,13 @@ export default function AssignedByMePage() {
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [allTasks, userMap])
 
+  // A URL naming someone who no longer appears here — left the company, or has
+  // no open delegated tasks left — would otherwise show an empty list with the
+  // dropdown reading "All Assignees". Drop the filter instead, once the tasks
+  // have actually loaded.
+  const assigneeIds = useMemo(() => assigneeOptions.map(o => o.value), [assigneeOptions])
+  usePruneUnknownValue(!loading, filterAssignee, assigneeIds, () => setState({ assignee: '' }))
+
   const visibleTasks = useMemo(() => {
     let tasks = buckets[activeTab]
     if (filterAssignee) tasks = tasks.filter(t => t.assigned_to === filterAssignee)
@@ -1036,11 +1067,14 @@ export default function AssignedByMePage() {
     return tasks
   }, [buckets, activeTab, filterAssignee, filterPriority, search])
 
+  // Switching tab clears search and priority (unchanged behaviour) but keeps the
+  // assignee — one navigation, so Back still leaves the previous tab's URL.
   const handleTabChange = (key: TabKey) => {
-    setActiveTab(key)
     setSelectedTask(null)
-    setSearch('')
-    setFilterPriority('')
+    // The box is cleared alongside the URL so a keystroke still inside the
+    // debounce window cannot re-apply itself after the switch.
+    setSearchInput('')
+    setState({ tab: key, priority: '', q: '' })
   }
 
   const activeTabColor = TABS.find(t => t.key === activeTab)?.color ?? colors.secondary
@@ -1129,8 +1163,9 @@ export default function AssignedByMePage() {
                 <input
                   type="text"
                   placeholder="Find tasks…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  onBlur={flushSearch}
                   style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
                 />
               </div>
@@ -1138,7 +1173,7 @@ export default function AssignedByMePage() {
               {assigneeOptions.length > 0 && (
                 <select
                   value={filterAssignee}
-                  onChange={e => setFilterAssignee(e.target.value)}
+                  onChange={e => setState({ assignee: e.target.value })}
                   style={{ flex: '1 1 120px', minWidth: '110px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
                 >
                   <option value="">All Assignees</option>
@@ -1150,7 +1185,7 @@ export default function AssignedByMePage() {
               {/* Priority filter */}
               <select
                 value={filterPriority}
-                onChange={e => setFilterPriority(e.target.value)}
+                onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
                 style={{ flex: '1 1 100px', minWidth: '95px', padding: '6px 10px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
               >
                 <option value="">All Priority</option>
@@ -1256,5 +1291,15 @@ export default function AssignedByMePage() {
         />
       )}
     </>
+  )
+}
+
+// Reading the list state from the URL opts this tree into client-side
+// rendering, which needs a Suspense boundary.
+export default function AssignedByMePage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <AssignedByMeContent />
+    </Suspense>
   )
 }

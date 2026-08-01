@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
@@ -13,6 +13,9 @@ import {
   CheckCircle2, ExternalLink, Star,
   Search, RotateCcw,
 } from 'lucide-react'
+import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
+import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { idParam, optionParam, textParam } from '@/lib/listState'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -20,6 +23,17 @@ const TASK_COLUMNS = [
   'created_at', 'last_update_at', 'blocker_reason',
   'assigned_to', 'created_by', 'delegated_by', 'team',
 ].join(', ')
+
+// ─── URL-backed list state ────────────────────────────────────────────────────
+// Search and both filters live in the query string so Back from a task detail
+// returns to the same filtered list.
+const PRIORITY_KEYS = ['high', 'medium', 'low'] as const
+
+const LIST_PARAMS = {
+  assignee: idParam(),
+  priority: optionParam(PRIORITY_KEYS),
+  q:        textParam(),
+}
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high:   { label: 'High', color: '#B06035'    },
@@ -237,7 +251,7 @@ function EmptyState() {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-export default function AssignedByMeCompletedPage() {
+function AssignedByMeCompletedContent() {
   const { viewAsUserId } = useViewAs()
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [allTasks,     setAllTasks]     = useState<Task[]>([])
@@ -247,9 +261,13 @@ export default function AssignedByMeCompletedPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isMobile,     setIsMobile]     = useState(false)
 
-  const [search,         setSearch]         = useState('')
-  const [filterPriority, setFilterPriority] = useState('')
-  const [filterAssignee, setFilterAssignee] = useState('')
+  const { state, setState } = useListUrlState(LIST_PARAMS)
+  const filterAssignee = state.assignee
+  const filterPriority = state.priority
+  const search         = state.q
+  const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(search, next => setState({ q: next }))
+
+  useListScrollRestore()
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -314,6 +332,11 @@ export default function AssignedByMeCompletedPage() {
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [allTasks, userMap])
 
+  // An assignee id in the URL that matches nobody in this list falls back to
+  // "All Assignees" instead of showing an empty list.
+  const assigneeIds = useMemo(() => assigneeOptions.map(o => o.value), [assigneeOptions])
+  usePruneUnknownValue(!loading, filterAssignee, assigneeIds, () => setState({ assignee: '' }))
+
   const visibleTasks = useMemo(() => {
     let tasks = allTasks
     if (filterAssignee) tasks = tasks.filter(t => t.assigned_to === filterAssignee)
@@ -348,14 +371,15 @@ export default function AssignedByMeCompletedPage() {
           <input
             type="text"
             placeholder="Find tasks…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            onBlur={flushSearch}
             style={{ flex: 1, minWidth: '140px', padding: '4px 6px', background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary }}
           />
           {assigneeOptions.length > 1 && (
             <select
               value={filterAssignee}
-              onChange={e => setFilterAssignee(e.target.value)}
+              onChange={e => setState({ assignee: e.target.value })}
               style={{ padding: '4px 10px', minWidth: '130px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterAssignee ? colors.primary : colors.muted, cursor: 'pointer' }}
             >
               <option value="">All Assignees</option>
@@ -366,7 +390,7 @@ export default function AssignedByMeCompletedPage() {
           )}
           <select
             value={filterPriority}
-            onChange={e => setFilterPriority(e.target.value)}
+            onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
             style={{ padding: '4px 10px', minWidth: '110px', background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '6px', outline: 'none', fontSize: '11.5px', color: filterPriority ? colors.primary : colors.muted, cursor: 'pointer' }}
           >
             <option value="">All Priority</option>
@@ -414,5 +438,15 @@ export default function AssignedByMeCompletedPage() {
         />
       )}
     </>
+  )
+}
+
+// Reading the list state from the URL opts this tree into client-side
+// rendering, which needs a Suspense boundary.
+export default function AssignedByMeCompletedPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <AssignedByMeCompletedContent />
+    </Suspense>
   )
 }

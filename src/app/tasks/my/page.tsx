@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -22,6 +22,9 @@ import { useTopTasks } from '@/hooks/queries/useTopTasks'
 import { useToast, Toast } from '@/components/ui/toast'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
+import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
+import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { enumParam, idParam, optionParam, optionalEnumParam, textParam } from '@/lib/listState'
 
 
 function localDateStr(offsetDays = 0): string {
@@ -101,6 +104,22 @@ const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent
   { key: 'self',      label: 'Self Tasks', Icon: UserCheck,  accent: '#2E9E6B' },
   { key: 'delegated', label: 'Delegated',  Icon: Users,      accent: '#9B6FD4' },
 ]
+
+// ─── URL-backed list state ────────────────────────────────────────────────────
+// Task type, view tab, filters and search live in the query string so Back from
+// a task detail returns to the same list. `tab` is optional: the page opens with
+// no view tab selected, showing every active task.
+const PRIORITY_KEYS = ['high', 'medium', 'low'] as const
+const TYPE_KEYS = TYPE_TABS.map(t => t.key)
+const TAB_KEYS  = Object.keys(TAB_LABELS) as TabKey[]
+
+const LIST_PARAMS = {
+  type:       enumParam(TYPE_KEYS, 'all' as TaskType),
+  tab:        optionalEnumParam(TAB_KEYS),
+  assignedBy: idParam(),
+  priority:   optionParam(PRIORITY_KEYS),
+  q:          textParam(),
+}
 
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
@@ -1017,20 +1036,27 @@ function EmptyState({ label }: { label: string }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-export default function MyTasksPage() {
+function MyTasksContent() {
   const [loggedInId,   setLoggedInId]   = useState<string>('')
-  const [activeTab,    setActiveTab]    = useState<TabKey | null>(null)
-  const [taskType,     setTaskType]     = useState<TaskType>('all')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [editingTask,      setEditingTask]      = useState<Task | null>(null)
   const [showCreateModal,  setShowCreateModal]  = useState(false)
   const [isMobile,         setIsMobile]         = useState(false)
 
-  // Search + filter state
-  const [search,           setSearch]           = useState('')
-  const [filterStatus,     setFilterStatus]     = useState('')
-  const [filterPriority,   setFilterPriority]   = useState('')
-  const [filterAssignedBy, setFilterAssignedBy] = useState('')
+  // Task type, view tab, filters and search — all from the URL.
+  const { state, setState } = useListUrlState(LIST_PARAMS)
+  const taskType         = state.type
+  const activeTab        = state.tab
+  const filterAssignedBy = state.assignedBy
+  const filterPriority   = state.priority
+  const search           = state.q
+  const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(search, next => setState({ q: next }))
+
+  // Status has no control on this page — it is narrowed by the view tabs — but
+  // the filter below still reads it, so it stays local and unset.
+  const [filterStatus] = useState('')
+
+  useListScrollRestore()
 
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
@@ -1234,6 +1260,17 @@ export default function MyTasksPage() {
       : others
   }, [baseTasks, taskType, userId, userMap])
 
+  // A URL naming an assigner who no longer appears in this view (left the
+  // company, or has nothing in the selected task type) drops back to
+  // "All Assignees" rather than showing an empty list under a blank dropdown.
+  const assignerIds = useMemo(() => assignerOptions.map(o => o.value), [assignerOptions])
+  usePruneUnknownValue(
+    !tasksLoading && allTasksRaw.length > 0,
+    filterAssignedBy,
+    assignerIds,
+    () => setState({ assignedBy: '' }),
+  )
+
   const buckets = useMemo(() => {
     const sortImportantFirst = (arr: Task[]) =>
       [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
@@ -1309,12 +1346,12 @@ export default function MyTasksPage() {
   }, [buckets, activeTab, search, filterStatus, filterPriority, filterAssignedBy])
 
   function handleTabChange(key: TabKey | null) {
-    setActiveTab(key)
     setSelectedTask(null)
-    setSearch('')
-    setFilterStatus('')
-    setFilterPriority('')
-    // Note: intentionally NOT resetting filterAssignedBy here — tab changes stay within same task type
+    // The box is cleared alongside the URL so a keystroke still inside the
+    // debounce window cannot re-apply itself after the switch.
+    setSearchInput('')
+    // Note: intentionally NOT resetting assignedBy here — tab changes stay within same task type
+    setState({ tab: key, q: '', priority: '' })
   }
 
   const activeTabColor = colors.secondary
@@ -1365,13 +1402,9 @@ export default function MyTasksPage() {
               delegated: allTasks.filter(t => t.created_by !== userId && t.status !== 'completed' && t.status !== 'cancelled').length,
             }
             const handleTypeChange = (key: TaskType) => {
-              setTaskType(key)
-              setActiveTab(null)
               setSelectedTask(null)
-              setSearch('')
-              setFilterStatus('')
-              setFilterPriority('')
-              setFilterAssignedBy('')
+              setSearchInput('')
+              setState({ type: key, tab: null, q: '', priority: '', assignedBy: '' })
             }
 
             if (isMobile) {
@@ -1529,7 +1562,7 @@ export default function MyTasksPage() {
               {taskType !== 'self' && assignerOptions.length > 0 && (
                 <select
                   value={filterAssignedBy}
-                  onChange={e => setFilterAssignedBy(e.target.value)}
+                  onChange={e => setState({ assignedBy: e.target.value })}
                   style={{
                     flex: '1 1 120px', minWidth: '110px',
                     padding: '6px 10px',
@@ -1550,7 +1583,7 @@ export default function MyTasksPage() {
               {/* Priority */}
               <select
                 value={filterPriority}
-                onChange={e => setFilterPriority(e.target.value)}
+                onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
                 style={{
                   flex: '1 1 100px', minWidth: '95px',
                   padding: '6px 10px',
@@ -1577,8 +1610,9 @@ export default function MyTasksPage() {
                 <input
                   type="text"
                   placeholder="Find tasks…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  onBlur={flushSearch}
                   style={{
                     flex: 1, background: 'transparent', border: 'none',
                     outline: 'none', fontSize: '12px', color: colors.primary,
@@ -1682,5 +1716,15 @@ export default function MyTasksPage() {
       )}
       <Toast toast={toast} onDismiss={dismissToast} />
     </>
+  )
+}
+
+// Reading the list state from the URL opts this tree into client-side
+// rendering, which needs a Suspense boundary.
+export default function MyTasksPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <MyTasksContent />
+    </Suspense>
   )
 }

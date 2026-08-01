@@ -1,14 +1,17 @@
 'use client'
 
 import { useEffect, useState, useMemo, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, UserProfile } from '@/lib/types'
+import type { Task, TaskStatus, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { statusBadgeClass } from '@/lib/ui'
+import { useListUrlState } from '@/hooks/useListUrlState'
+import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { enumListParam, idParam, pageParam } from '@/lib/listState'
 
 const TASK_COLUMNS = [
   'id', 'title', 'status', 'priority', 'is_urgent',
@@ -17,6 +20,20 @@ const TASK_COLUMNS = [
 
 const TODAY_STR = new Date().toISOString().slice(0, 10)
 const PAGE_SIZE  = 50
+
+// ─── URL-backed list state ────────────────────────────────────────────────────
+// The two filters already arrived by deep link; the page number joins them, so
+// paging to 3, opening a task and pressing Back returns to page 3 rather than
+// page 1.
+const TASK_STATUSES = [
+  'pending', 'started', 'working', 'waiting', 'blocked', 'completed', 'cancelled',
+] as const satisfies readonly TaskStatus[]
+
+const LIST_PARAMS = {
+  assignedTo: idParam(),
+  status:     enumListParam(TASK_STATUSES),
+  page:       pageParam(),
+}
 
 function formatDate(d: string | null) {
   if (!d) return '—'
@@ -51,10 +68,13 @@ function ViewAllTasksContent() {
   const [loading,  setLoading]  = useState(true)
   const [fetching, setFetching] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const [page,     setPage]     = useState(1)
   const router      = useRouter()
-  const searchParams = useSearchParams()
   const supabase    = useMemo(() => createClient(), [])
+
+  const { state, setState } = useListUrlState(LIST_PARAMS, { pageKey: 'page' })
+  const page = state.page
+
+  useListScrollRestore()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -63,20 +83,10 @@ function ViewAllTasksContent() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const filterAssignedTo = searchParams.get('assignedTo') ?? null
-  const filterStatuses   = useMemo(() => {
-    const s = searchParams.get('status')
-    return s ? s.split(',').map(v => v.trim()).filter(Boolean) : null
-  }, [searchParams])
-  const filterStatusesKey = filterStatuses ? filterStatuses.join(',') : ''
-  const filterKey = `${filterAssignedTo ?? ''}|${filterStatusesKey}`
-
-  // Filters changed — jump back to page 1 (adjust during render, not in an effect)
-  const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
-  if (filterKey !== prevFilterKey) {
-    setPrevFilterKey(filterKey)
-    setPage(1)
-  }
+  const filterAssignedTo  = state.assignedTo
+  const filterStatuses    = state.status
+  const filterStatusesKey = filterStatuses.join(',')
+  const hasFilter         = !!filterAssignedTo || filterStatuses.length > 0
 
   // Auth + role guard + user directory — runs once
   useEffect(() => {
@@ -119,15 +129,15 @@ function ViewAllTasksContent() {
         .select(TASK_COLUMNS, { count: 'exact' })
         .order('is_urgent', { ascending: false })
         .order('due_date', { ascending: true, nullsFirst: false })
-      if (filterAssignedTo) query = query.eq('assigned_to', filterAssignedTo)
-      if (filterStatuses)   query = query.in('status', filterStatuses)
+      if (filterAssignedTo)          query = query.eq('assigned_to', filterAssignedTo)
+      if (filterStatuses.length > 0) query = query.in('status', filterStatuses)
 
       const { data: taskData, count } = await query.range(from, to)
       setTasks((taskData ?? []) as unknown as Task[])
       setTotal(count ?? 0)
 
       // Only needed for the "(filtered from N)" footer note when a filter is active
-      if (filterAssignedTo || filterStatuses) {
+      if (hasFilter) {
         const { count: allCount } = await supabase
           .from('tasks').select('id', { count: 'exact', head: true })
         setUnfilteredTotal(allCount ?? 0)
@@ -145,12 +155,21 @@ function ViewAllTasksContent() {
   }
 
   const filterContext = useMemo(() => {
-    if (!filterAssignedTo && !filterStatuses) return null
+    if (!hasFilter) return null
     const name = filterAssignedTo ? (userMap[filterAssignedTo] ?? 'Member') : null
-    const statusLabel = filterStatuses ? filterStatuses.join(', ') : null
+    const statusLabel = filterStatuses.length > 0 ? filterStatuses.join(', ') : null
     const parts = [name ? `Assigned to: ${name}` : null, statusLabel ? `Status: ${statusLabel}` : null].filter(Boolean)
     return parts.join(' · ')
-  }, [filterAssignedTo, filterStatuses, userMap])
+  }, [hasFilter, filterAssignedTo, filterStatusesKey, userMap]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A page number past the end of the result set — hand-typed, or left behind
+  // when the list shrank — settles on the last real page instead of showing an
+  // empty table under "Page 12 of 3".
+  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  useEffect(() => {
+    if (loading || fetching) return
+    if (page > lastPage) setState({ page: lastPage })
+  }, [loading, fetching, page, lastPage, setState])
 
   if (loading) return <LoadingScreen />
 
@@ -160,7 +179,7 @@ function ViewAllTasksContent() {
       title="View All Tasks"
       subtitle={filterContext ?? `${total} total task${total !== 1 ? 's' : ''}`}
       onSignOut={handleLogout}
-      actions={filterAssignedTo || filterStatuses ? (
+      actions={hasFilter ? (
         <a href="/performance/team" style={{
           fontSize: 12, fontWeight: 600, color: '#8C94A6', textDecoration: 'none',
           border: '1px solid #EEF0F4', padding: '6px 14px', borderRadius: 7,
@@ -356,7 +375,7 @@ function ViewAllTasksContent() {
       {total > PAGE_SIZE && (
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', fontSize: '13px', marginTop: '12px' }}>
           <button
-            onClick={() => setPage(p => p - 1)}
+            onClick={() => setState({ page: page - 1 })}
             disabled={page <= 1 || fetching}
             style={{
               padding: '6px 14px', borderRadius: '7px', fontSize: '13px',
@@ -371,7 +390,7 @@ function ViewAllTasksContent() {
             Page {page} of {Math.ceil(total / PAGE_SIZE)}
           </span>
           <button
-            onClick={() => setPage(p => p + 1)}
+            onClick={() => setState({ page: page + 1 })}
             disabled={page >= Math.ceil(total / PAGE_SIZE) || fetching}
             style={{
               padding: '6px 14px', borderRadius: '7px', fontSize: '13px',
