@@ -88,6 +88,17 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   asset_repair_sent:            { label: 'Sent for repair', color: colors.amber, bg: colors.amberTint },
   asset_repair_returned:        { label: 'Back from repair', color: colors.green, bg: colors.greenTint },
   asset_warranty_expiring:      { label: 'Warranty expiring', color: colors.amber, bg: colors.amberTint },
+  asset_edited:                 { label: 'Updated',        color: colors.blue,  bg: colors.blueTint  },
+  asset_warranty_updated:       { label: 'Warranty',       color: colors.blue,  bg: colors.blueTint  },
+  asset_service_added:          { label: 'Service logged', color: colors.blue,  bg: colors.blueTint  },
+  asset_document_uploaded:      { label: 'Document',       color: colors.blue,  bg: colors.blueTint  },
+  asset_retired:                { label: 'Retired',        color: colors.amber, bg: colors.amberTint },
+  asset_disposed:               { label: 'Disposed',       color: colors.red,   bg: colors.redTint   },
+  asset_restored:               { label: 'Restored',       color: colors.green, bg: colors.greenTint },
+  access_granted:               { label: 'Access granted', color: colors.green, bg: colors.greenTint },
+  access_updated:               { label: 'Access updated', color: colors.blue,  bg: colors.blueTint  },
+  access_revoked:               { label: 'Access revoked', color: colors.red,   bg: colors.redTint   },
+  access_restored:              { label: 'Access restored', color: colors.green, bg: colors.greenTint },
 }
 
 const NEUTRAL_BADGE = { label: 'Activity', color: colors.muted, bg: colors.float }
@@ -159,6 +170,23 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
       badge,
       href,
       actionLabel: 'View details',
+    }
+  }
+
+  // ── Access Register ────────────────────────────────────────────────────────
+  // Access records have no detail route, so entity_id is stored for traceability
+  // and the link goes to the register itself. Building `/assets-access/<id>`
+  // from an access id would open the ASSET detail page on an id no asset has —
+  // a link that resolves to "this asset does not exist". Note `access_*` does
+  // not match the `asset` prefix tested below, so this branch is reached.
+  if (type.startsWith('access_')) {
+    return {
+      category: 'asset',
+      heading: 'Access',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: '/assets-access?view=access-register',
+      actionLabel: 'View access',
     }
   }
 

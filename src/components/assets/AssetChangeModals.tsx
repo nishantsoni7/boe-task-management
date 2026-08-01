@@ -17,6 +17,12 @@ import {
   validateChangeRequest,
 } from '@/lib/assets/changeRequests'
 import { notifyAssetEvent } from '@/lib/assets/notifyClient'
+import {
+  assetEditSummary,
+  changedAssetFields,
+  editDeservesNotification,
+  type AssetEditableValues,
+} from '@/lib/assets/assetNotifications'
 
 // Create / edit an asset, and the request-an-admin-to-do-it counterparts.
 //
@@ -175,9 +181,31 @@ export function CreateAssetModal({
 
 // ─── Edit ─────────────────────────────────────────────────────────────────────
 
+/** The form's values as the DATABASE names them — the shape the rules use. */
+function formAsAssetValues(form: AssetFormState): AssetEditableValues {
+  return {
+    asset_type:     form.assetType,
+    asset_name:     form.assetName.trim(),
+    serial_no:      form.serialNo.trim() || null,
+    specifications: form.specifications.trim() || null,
+    brand:          form.brand.trim() || null,
+    model:          form.model.trim() || null,
+    description:    form.description.trim() || null,
+    condition:      form.condition || null,
+    location:       form.location.trim() || null,
+  }
+}
+
 export function EditAssetModal({
-  asset, supabase, onClose, onSaved,
-}: { asset: Asset; supabase: SupabaseClient; onClose: () => void; onSaved: () => void }) {
+  asset, supabase, currentEmployeeId, onClose, onSaved,
+}: {
+  asset: Asset
+  supabase: SupabaseClient
+  /** The custodian to notify, when the edit is one worth notifying about. */
+  currentEmployeeId?: string | null
+  onClose: () => void
+  onSaved: () => void
+}) {
   const { form, set } = useAssetForm({
     assetType:      asset.asset_type,
     assetName:      asset.asset_name,
@@ -213,6 +241,23 @@ export function EditAssetModal({
       .eq('id', asset.id)
     setSaving(false)
     if (dbError) { logAssetFailure('edit', dbError); setError(assetErrorMessage('edit', dbError)); return }
+
+    // THE METADATA RULE, finally at a call site. editDeservesNotification has
+    // existed and been tested since the module shipped but was never called, so
+    // every direct edit was silent — including one that moved an asset's
+    // condition or location out from under the person holding it. A corrected
+    // serial number or a reworded description still says nothing.
+    const changed = changedAssetFields(asset, formAsAssetValues(form))
+    if (editDeservesNotification(changed)) {
+      notifyAssetEvent({
+        event: 'asset_edited',
+        assetId: asset.id,
+        assetName: asset.asset_name,
+        assetCode: asset.asset_code,
+        toEmployeeId: currentEmployeeId ?? null,
+        note: assetEditSummary(changed),
+      })
+    }
     onSaved()
   }
 

@@ -888,7 +888,25 @@ function RejectRequestModal({
 
 // ─── Admin: Access Register ───────────────────────────────────────────────────
 
-function AccessRegister({ employees, supabase, isMobile }: { employees: Employee[]; supabase: SupabaseClient; isMobile?: boolean }) {
+/**
+ * The system an access record is for, as a reader would name it.
+ *
+ * The register stores a machine token ('system_login'), so a notification that
+ * quoted it raw would read "system_login access was revoked".
+ */
+function accessLabel(row: { access_type: string }): string {
+  return humanizeToken(row.access_type)
+}
+
+function AccessRegister({
+  employees, supabase, isMobile, actorName,
+}: {
+  employees: Employee[]
+  supabase: SupabaseClient
+  isMobile?: boolean
+  /** Signed-in user's display name, for "revoked by …". */
+  actorName?: string | null
+}) {
   const [rows, setRows] = useState<AccessRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -927,6 +945,18 @@ function AccessRegister({ employees, supabase, isMobile }: { employees: Employee
       .eq('id', row.id)
     setBusyId(null)
     if (dbError) { setError(dbError.message); return }
+    // Losing or regaining access to a company system is the clearest case in
+    // the module of something the person it happens to must be told. The actor
+    // is excluded server-side by id, so an admin toggling their OWN access
+    // record is told nothing.
+    notifyAssetEvent({
+      event: newStatus === 'active' ? 'access_restored' : 'access_revoked',
+      assetId: row.id,
+      assetName: accessLabel(row),
+      accessHolderId: row.employee_id,
+      accessLabel: accessLabel(row),
+      actorName: actorName ?? null,
+    })
     load()
   }
 
@@ -1018,15 +1048,28 @@ function CreateAccessModal({
     setSaving(true)
     setError(null)
     const { data: { user } } = await supabase.auth.getUser()
-    const { error: dbError } = await supabase.from('access_records').insert({
+    // `select('id')` so the new row's id can be the notification's entity_id —
+    // an insert that returns nothing leaves the notification unable to name the
+    // record it is about.
+    const { data: created, error: dbError } = await supabase.from('access_records').insert({
       employee_id: employeeId,
       access_type: accessType,
       username: username.trim(),
       secret_value: secret || null,
       updated_by: user?.id,
-    })
+    }).select('id').maybeSingle()
     setSaving(false)
     if (dbError) { setError(dbError.message); return }
+    // The person who now holds the credentials. The secret itself never travels
+    // in a notification — only the fact that access exists and its username.
+    notifyAssetEvent({
+      event: 'access_granted',
+      assetId: (created as { id: string } | null)?.id ?? '',
+      assetName: humanizeToken(accessType),
+      accessHolderId: employeeId,
+      accessLabel: humanizeToken(accessType),
+      toName: username.trim() || null,
+    })
     onSaved()
   }
 
@@ -1077,6 +1120,15 @@ function EditAccessModal({
       .eq('id', row.id)
     setSaving(false)
     if (dbError) { setError(dbError.message); return }
+    // Their username or password just changed under them — the one case where
+    // not telling someone guarantees a failed login they cannot explain.
+    notifyAssetEvent({
+      event: 'access_updated',
+      assetId: row.id,
+      assetName: accessLabel(row),
+      accessHolderId: row.employee_id,
+      accessLabel: accessLabel(row),
+    })
     onSaved()
   }
 
@@ -1238,7 +1290,7 @@ function AssetsAccessScreen() {
       case 'asset-inventory':
         return <AssetInventory employees={employees} supabase={supabase} isMobile={isMobile} caps={caps} />
       case 'access-register':
-        return <AccessRegister employees={employees} supabase={supabase} isMobile={isMobile} />
+        return <AccessRegister employees={employees} supabase={supabase} isMobile={isMobile} actorName={profile.full_name} />
       case 'asset-requests':
         return <AssetRequests employees={employees} supabase={supabase} caps={caps} isMobile={isMobile} />
     }

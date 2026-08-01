@@ -384,6 +384,13 @@ body {
 .boe-badge-blocked   { background: rgba(217,79,79,0.1);     color: #C13030; }
 .boe-badge-completed { background: rgba(69,168,112,0.1);    color: #2E8A58; }
 
+/* Urgent — the same red as .boe-badge-blocked, under the name several modules
+   already use. This class was referenced by Assets & Access (LOST / DISPOSED
+   status, expired warranty), asset change requests and admin/members long
+   before it was defined, so those badges rendered with NO background at all:
+   the most urgent state on a page was the least visible thing on it. */
+.boe-badge-urgent    { background: rgba(217,79,79,0.1);     color: #C13030; }
+
 /* ─────────────────────────────────────────────────────
    SECTION LABEL
 ───────────────────────────────────────────────────── */

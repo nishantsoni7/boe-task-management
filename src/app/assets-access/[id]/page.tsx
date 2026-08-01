@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { ChevronLeft, MoreHorizontal } from 'lucide-react'
 import { AssetsLayout } from '@/components/layout/AssetsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -49,6 +49,18 @@ import {
   activeDocuments, formatFileSize,
   ASSET_DOCUMENT_BUCKET, ASSET_DOCUMENT_SIGNED_URL_SECONDS,
 } from '@/lib/assets/documents'
+import {
+  ASSET_ACTION_LABEL,
+  assetActionLayout,
+  assetDetailTabCounts,
+  assetSummaryDate,
+  hasOverflowActions,
+  hasWarrantyDetails,
+  optionalText,
+  type AssetActionAvailability,
+  type AssetActionKey,
+  type AssetActionLayout,
+} from '@/lib/assets/detailView'
 import { assetErrorMessage, logAssetFailure } from '@/lib/assets/errors'
 import {
   AddServiceRecordModal, AssignAssetModal, CompleteServiceModal, MarkLostModal,
@@ -65,16 +77,23 @@ import type { AssetDocumentType } from '@/lib/assets/types'
 // The single source of truth for one asset: what it is, who holds it, and
 // everything that has ever happened to it.
 //
-// Five sections, one operational page — not a dashboard. Every number on it is
+// The page is a RECORD, read top-down in one pass: identity and state in the
+// summary card, then the five histories behind tabs. Every number on it is
 // derived from records the database actually holds (movement rows, service
 // rows, documents, audit rows); nothing is inferred by diffing the current row
 // against anything, and nothing is stored twice.
 //
-// The ACTIONS live here rather than on the inventory list, deliberately. An
-// asset has eleven possible operations at various points in its life; a list
-// row cannot carry them without becoming a menu, and a person about to
-// transfer a laptop wants to see who has it and what condition it is in first.
-// The list keeps only Assign, the one operation that needs no context.
+// ACTION HIERARCHY. An asset has eighteen possible operations across its life
+// and a flat row of eighteen buttons gives none of them meaning. So the surface
+// carries only the CUSTODY MOVES that are legal right now — the ones that
+// answer "what happens to this asset next" — and everything else lives in More
+// Actions, with the irreversible operations below a divider at the bottom. The
+// split itself is a pure function (lib/assets/detailView.ts) whose test proves
+// no action can silently fall out of every group.
+//
+// Nothing here decides authorization. `can` below is permission AND state, both
+// required, exactly as before; the layout helper is handed the result and only
+// arranges it.
 //
 // Activity history is READ-ONLY on this page because it is read-only in the
 // database: asset_activity_log has no INSERT, UPDATE or DELETE policy for
@@ -135,6 +154,17 @@ const TONE_COLOR: Record<string, string> = {
   critical: '#C13030',
 }
 
+/** BOE red, the module's one accent. Used for primary, active and destructive. */
+const BOE_RED = '#DC1F2E'
+const DANGER_TEXT = '#B42318'
+
+/**
+ * Above the sidebar (z-100, globals.css) so the menu panel is never clipped by
+ * it, and below the modal shell (z-200/201, AssetModal.tsx) so an open dialog
+ * still covers everything including this.
+ */
+const MENU_Z = 150
+
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
@@ -175,7 +205,45 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
-function DetailField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+/**
+ * One white card with a titled header strip. The header carries an optional
+ * control on the right, which is how a section states its own empty-state
+ * action without a second row of buttons at the top of the page.
+ */
+function Card({
+  title, action, children, bodyStyle,
+}: {
+  title: string
+  action?: React.ReactNode
+  children: React.ReactNode
+  bodyStyle?: React.CSSProperties
+}) {
+  return (
+    <section className="boe-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '10px', padding: '11px 16px', borderBottom: `1px solid ${colors.border}`,
+        background: colors.raised,
+      }}>
+        <SectionTitle>{title}</SectionTitle>
+        {action}
+      </div>
+      <div style={{ padding: '14px 16px', ...bodyStyle }}>{children}</div>
+    </section>
+  )
+}
+
+/**
+ * Label above value.
+ *
+ * A null/blank value renders as a muted dash rather than the words "Not
+ * recorded": on a record where half the optional columns are legitimately empty,
+ * the sentence repeated fifteen times is the loudest thing on the page.
+ */
+function DetailField({
+  label, value, mono,
+}: { label: string; value: string | null | undefined; mono?: boolean }) {
+  const shown = optionalText(value)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
       <div style={{
@@ -185,12 +253,57 @@ function DetailField({ label, value, mono }: { label: string; value: string; mon
         {label}
       </div>
       <div style={{
-        fontSize: '13px', color: colors.primary,
-        fontFamily: mono ? 'monospace' : undefined,
+        fontSize: '13px', color: shown ? colors.primary : colors.muted,
+        fontFamily: mono && shown ? 'monospace' : undefined,
         whiteSpace: 'pre-wrap', wordBreak: 'break-word',
       }}>
-        {value}
+        {shown ?? '—'}
       </div>
+    </div>
+  )
+}
+
+/** Label left, value right — the shape the narrow side column reads best in. */
+function SideFact({
+  label, value, mono, strong,
+}: { label: string; value: string | null | undefined; mono?: boolean; strong?: boolean }) {
+  const shown = optionalText(value)
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+      gap: '12px', fontSize: '12px',
+    }}>
+      <span style={{ color: colors.muted, flexShrink: 0 }}>{label}</span>
+      <span style={{
+        color: shown ? colors.primary : colors.muted,
+        fontWeight: strong ? 700 : 500,
+        fontFamily: mono && shown ? 'monospace' : undefined,
+        textAlign: 'right', wordBreak: 'break-word', minWidth: 0,
+      }}>
+        {shown ?? '—'}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * What a section says when it holds nothing.
+ *
+ * The ACTION is offered only when the caller passes one — i.e. only when the
+ * viewer holds the permission to add the thing. Telling someone to upload an
+ * invoice they may not upload is worse than saying nothing.
+ */
+function EmptyState({
+  message, actionLabel, onAction,
+}: { message: string; actionLabel?: string; onAction?: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+      <div style={{ fontSize: '12px', color: colors.muted }}>{message}</div>
+      {actionLabel && onAction && (
+        <button type="button" className="boe-record-action" style={{ minHeight: '30px', padding: '6px 12px', fontSize: '12px' }} onClick={onAction}>
+          {actionLabel}
+        </button>
+      )}
     </div>
   )
 }
@@ -220,6 +333,146 @@ function Banner({ kind, message }: { kind: 'error' | 'success'; message: string 
       fontSize: '12px',
     }}>
       {message}
+    </div>
+  )
+}
+
+// ─── More Actions ─────────────────────────────────────────────────────────────
+
+/**
+ * The overflow menu for everything that is not a custody move.
+ *
+ * Keyboard behaviour is the WAI-ARIA menu-button pattern: the trigger opens on
+ * click or Enter/Space, focus lands on the first item, Up/Down/Home/End move
+ * between items, Escape closes and returns focus to the trigger, and Tab or a
+ * click anywhere outside closes it. Renders nothing at all when the viewer has
+ * no overflow action — an empty trigger would be a control that does nothing.
+ */
+function MoreActionsMenu({
+  layout, onSelect,
+}: {
+  layout: AssetActionLayout
+  onSelect: (key: AssetActionKey) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef    = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const itemRefs   = useRef<(HTMLButtonElement | null)[]>([])
+
+  const items: { key: AssetActionKey; danger: boolean }[] = [
+    ...layout.more.map(key => ({ key, danger: false })),
+    ...layout.danger.map(key => ({ key, danger: true })),
+  ]
+  const dividerAt = layout.more.length
+
+  const close = useCallback((returnFocus: boolean) => {
+    setOpen(false)
+    if (returnFocus) triggerRef.current?.focus()
+  }, [])
+
+  // Outside click and Escape. Both are registered only while the menu is open,
+  // so a closed menu costs nothing and cannot swallow an Escape meant for a
+  // modal underneath it.
+  useEffect(() => {
+    if (!open) return
+    const onPointer = (e: MouseEvent | TouchEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(true) }
+    }
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('touchstart', onPointer)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('touchstart', onPointer)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [open, close])
+
+  useEffect(() => {
+    if (open) itemRefs.current[0]?.focus()
+  }, [open])
+
+  if (items.length === 0) return null
+
+  const focusItem = (index: number) => {
+    const bounded = (index + items.length) % items.length
+    itemRefs.current[bounded]?.focus()
+  }
+
+  const onMenuKeyDown = (e: React.KeyboardEvent, index: number) => {
+    if (e.key === 'ArrowDown')      { e.preventDefault(); focusItem(index + 1) }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); focusItem(index - 1) }
+    else if (e.key === 'Home')      { e.preventDefault(); focusItem(0) }
+    else if (e.key === 'End')       { e.preventDefault(); focusItem(items.length - 1) }
+    else if (e.key === 'Tab')       { setOpen(false) }
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={e => {
+          if (e.key === 'ArrowDown' && !open) { e.preventDefault(); setOpen(true) }
+        }}
+        aria-label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="boe-record-action boe-record-action--icon"
+        style={{ background: open ? colors.float : undefined }}
+      >
+        <MoreHorizontal size={15} strokeWidth={2} />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label="More actions"
+          style={{
+            position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: MENU_Z,
+            background: colors.base, border: `1px solid ${colors.border}`,
+            borderRadius: '9px', boxShadow: '0 8px 24px rgba(16,24,40,0.14)',
+            minWidth: '218px', padding: '4px 0', overflow: 'hidden',
+          }}
+        >
+          {items.map((item, index) => (
+            <div key={item.key}>
+              {/* The divider is what separates record-keeping from the
+                  operations that end an asset's life. Decorative, so it is
+                  hidden from assistive technology rather than announced. */}
+              {index === dividerAt && dividerAt > 0 && (
+                <div aria-hidden="true" style={{ height: '1px', background: colors.border, margin: '4px 0' }} />
+              )}
+              <button
+                ref={el => { itemRefs.current[index] = el }}
+                type="button"
+                role="menuitem"
+                // Focus the TRIGGER before dispatching. The menu item is about
+                // to unmount, and AssetModal records document.activeElement on
+                // mount so it can restore focus on close — with the item gone
+                // that record would be <body>, and closing the dialog would
+                // drop a keyboard user at the top of the page.
+                onClick={() => { triggerRef.current?.focus(); setOpen(false); onSelect(item.key) }}
+                onKeyDown={e => onMenuKeyDown(e, index)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '9px 14px', background: 'none', border: 'none',
+                  font: 'inherit', fontSize: '13px', cursor: 'pointer',
+                  color: item.danger ? DANGER_TEXT : colors.secondary,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = item.danger ? '#FEF3F2' : colors.raised }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
+              >
+                {ASSET_ACTION_LABEL[item.key]}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -255,6 +508,7 @@ export default function AssetDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -361,6 +615,15 @@ export default function AssetDetailPage() {
   const liveDocuments   = useMemo(() => activeDocuments(documents), [documents])
   const warranty        = asset ? warrantyStatus(asset.warranty_expiry_date) : 'not_available'
 
+  // Counts come from the lists already in state — no second round trip, and no
+  // badge that can disagree with the tab it sits on.
+  const counts = useMemo(
+    () => assetDetailTabCounts({
+      transfers, assignments, services, activeDocuments: liveDocuments, activity,
+    }),
+    [transfers, assignments, services, liveDocuments, activity],
+  )
+
   const afterAction = (message: string) => {
     setModal(null)
     setNotice(message)
@@ -390,7 +653,8 @@ export default function AssetDetailPage() {
 
   // ── Which actions this person may take on this asset, right now ────────────
   // Permission AND state, both required — a button must never appear for
-  // something the database will refuse.
+  // something the database will refuse. UNCHANGED from before the redesign;
+  // only where the resulting control is rendered has moved.
   const status = asset?.status ?? ''
   const can = {
     assign:       caps.canAssignAsset && status === 'available',
@@ -444,20 +708,77 @@ export default function AssetDetailPage() {
     router.push('/assets-access?view=asset-inventory')
   }
 
-  const ActionButton = ({
-    label, onClick, danger,
-  }: { label: string; onClick: () => void; danger?: boolean }) => (
-    <button
-      onClick={onClick}
-      className={`boe-btn ${danger ? 'boe-btn-ghost' : 'boe-btn-ghost'}`}
-      style={{
-        padding: '6px 14px', fontSize: '12px',
-        ...(danger ? { color: '#C13030', borderColor: 'rgba(217,79,79,0.4)' } : {}),
-      }}
-    >
-      {label}
-    </button>
-  )
+  // The action key → what it opens. Every entry is the same modal, the same
+  // props and the same confirmation the flat button row used to trigger.
+  const runAction = (key: AssetActionKey) => {
+    switch (key) {
+      case 'assign':             setModal({ kind: 'assign' }); break
+      case 'transfer':           setModal({ kind: 'transfer' }); break
+      case 'markReturned':       setModal({ kind: 'return' }); break
+      case 'closeService':       if (openService) setModal({ kind: 'complete-service', record: openService }); break
+      case 'recover':            setModal({ kind: 'recover' }); break
+      case 'restore':            setModal({ kind: 'restore' }); break
+      case 'sendRepair':         setModal({ kind: 'send-repair' }); break
+      case 'addService':         setModal({ kind: 'add-service' }); break
+      case 'warranty':           setModal({ kind: 'warranty' }); break
+      case 'uploadInvoice':      setModal({ kind: 'upload', docType: 'invoice' }); break
+      case 'uploadWarrantyCard': setModal({ kind: 'upload', docType: 'warranty_card' }); break
+      case 'edit':               setModal({ kind: 'edit' }); break
+      case 'requestEdit':        setModal({ kind: 'request-edit' }); break
+      case 'requestRemoval':     setModal({ kind: 'request-removal' }); break
+      case 'markLost':           setModal({ kind: 'lost' }); break
+      case 'retire':             setModal({ kind: 'retire', dispose: false }); break
+      case 'dispose':            setModal({ kind: 'retire', dispose: true }); break
+      case 'delete':             void handleDelete(); break
+    }
+  }
+
+  const availability: AssetActionAvailability = {
+    assign:             can.assign,
+    transfer:           can.transfer,
+    markReturned:       can.markReturned,
+    closeService:       can.closeService,
+    recover:            can.recover,
+    restore:            can.restore,
+    sendRepair:         can.sendRepair,
+    addService:         can.addService,
+    warranty:           can.warranty,
+    uploadInvoice:      can.documents,
+    uploadWarrantyCard: can.documents,
+    edit:               can.edit,
+    requestEdit:        can.request,
+    requestRemoval:     can.request,
+    markLost:           can.markLost,
+    retire:             can.retire,
+    dispose:            can.retire,
+    delete:             can.remove,
+  }
+  const actions = assetActionLayout(availability)
+
+  // Roving focus across the tab strip — Left/Right move and select, Home/End
+  // jump to the ends, exactly as a tablist is expected to behave.
+  const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
+    const move = (next: number) => {
+      e.preventDefault()
+      const bounded = (next + TABS.length) % TABS.length
+      setTab(TABS[bounded].key)
+      tabRefs.current[bounded]?.focus()
+    }
+    if (e.key === 'ArrowRight')     move(index + 1)
+    else if (e.key === 'ArrowLeft') move(index - 1)
+    else if (e.key === 'Home')      move(0)
+    else if (e.key === 'End')       move(TABS.length - 1)
+  }
+
+  const tabCount = (key: TabKey): number | null => {
+    switch (key) {
+      case 'assignments': return counts.assignments
+      case 'service':     return counts.service
+      case 'warranty':    return counts.documents
+      case 'activity':    return counts.activity
+      default:            return null
+    }
+  }
 
   const body = () => {
     if (!caps.canViewAssetInventory) {
@@ -468,106 +789,177 @@ export default function AssetDetailPage() {
       return <Panel message="This asset does not exist, or you do not have access to it." />
     }
 
+    const summaryDate = assetSummaryDate(asset, openAssignment)
+
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {error && <Banner kind="error" message={error} />}
         {notice && <Banner kind="success" message={notice} />}
 
-        {/* ── Header ── */}
-        <div className="boe-card" style={{ padding: isMobile ? '16px' : '20px 24px' }}>
-          <div style={{ fontFamily: 'monospace', fontSize: '12px', color: colors.muted, marginBottom: '4px' }}>
-            {asset.asset_code}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-            <div style={{ fontSize: isMobile ? '17px' : '19px', fontWeight: 700, color: colors.primary }}>
-              {asset.asset_name}
+        {/* ── Asset summary ──
+            Identity, state and the state-relevant moves, in one card. This is
+            the only place the asset's name and code appear at full size; the
+            layout header above it deliberately carries neither. */}
+        <section className="boe-card" style={{ padding: isMobile ? '16px' : '18px 22px' }}>
+          <div style={{
+            display: 'flex', gap: '16px', flexWrap: 'wrap',
+            alignItems: 'flex-start', justifyContent: 'space-between',
+          }}>
+            <div style={{ minWidth: 0, flex: '1 1 300px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '5px' }}>
+                <span style={{ fontFamily: 'monospace', fontSize: '12px', color: colors.muted, letterSpacing: '0.02em' }}>
+                  {asset.asset_code}
+                </span>
+                <span className={`boe-badge ${STATUS_BADGE[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                  {assetStatusLabel(asset.status)}
+                </span>
+                <span className={`boe-badge ${WARRANTY_BADGE[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                  Warranty: {WARRANTY_STATUS_LABEL[warranty]}
+                </span>
+              </div>
+              <h1 style={{
+                fontSize: isMobile ? '18px' : '21px', fontWeight: 700,
+                color: colors.primary, margin: 0, lineHeight: 1.2, wordBreak: 'break-word',
+              }}>
+                {asset.asset_name}
+              </h1>
             </div>
-            <span className={`boe-badge ${STATUS_BADGE[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-              {assetStatusLabel(asset.status)}
-            </span>
-            <span className={`boe-badge ${WARRANTY_BADGE[warranty]}`} style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-              Warranty: {WARRANTY_STATUS_LABEL[warranty]}
-            </span>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', fontSize: '12.5px', color: colors.secondary }}>
-            <span style={{ textTransform: 'capitalize' }}>{humanizeToken(asset.asset_type)}</span>
-            <span>
-              <span style={{ color: colors.muted }}>
-                {custody.kind === 'employee' ? 'Held by ' : custody.kind === 'location' ? 'Location ' : ''}
-              </span>
-              {custody.label}
-            </span>
-            {asset.department && <span><span style={{ color: colors.muted }}>Department </span>{asset.department}</span>}
+
+            {/* Primary custody moves, then everything else behind one trigger.
+                The FIRST primary is the dominant action for this state; the
+                rest sit beside it as quiet buttons. */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {actions.primary.map((key, index) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => runAction(key)}
+                  className={index === 0 ? 'boe-record-action boe-record-action--primary' : 'boe-record-action'}
+                >
+                  {ASSET_ACTION_LABEL[key]}
+                </button>
+              ))}
+              {hasOverflowActions(actions) && <MoreActionsMenu layout={actions} onSelect={runAction} />}
+            </div>
           </div>
 
-          {/* Actions. Destructive ones are visually distinct and each opens a
-              modal that states what it will do — the modal IS the confirmation,
-              so ordinary saves never carry an extra dialog on top. */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '14px' }}>
-            {can.assign       && <ActionButton label="Assign Asset"      onClick={() => setModal({ kind: 'assign' })} />}
-            {can.transfer     && <ActionButton label="Transfer Asset"    onClick={() => setModal({ kind: 'transfer' })} />}
-            {can.markReturned && <ActionButton label="Mark Returned"     onClick={() => setModal({ kind: 'return' })} />}
-            {can.recover      && <ActionButton label="Record Recovery"   onClick={() => setModal({ kind: 'recover' })} />}
-            {can.sendRepair   && <ActionButton label="Send for Repair"   onClick={() => setModal({ kind: 'send-repair' })} />}
-            {can.closeService && openService && (
-              <ActionButton label="Record Return from Service" onClick={() => setModal({ kind: 'complete-service', record: openService })} />
-            )}
-            {can.addService   && <ActionButton label="Add Repair / Service" onClick={() => setModal({ kind: 'add-service' })} />}
-            {can.warranty     && <ActionButton label="Add Warranty Details" onClick={() => setModal({ kind: 'warranty' })} />}
-            {can.documents    && <ActionButton label="Upload Invoice"    onClick={() => setModal({ kind: 'upload', docType: 'invoice' })} />}
-            {can.documents    && <ActionButton label="Upload Warranty Card" onClick={() => setModal({ kind: 'upload', docType: 'warranty_card' })} />}
-            {can.restore      && <ActionButton label="Restore to Service" onClick={() => setModal({ kind: 'restore' })} />}
-            {can.edit         && <ActionButton label="Edit Asset"        onClick={() => setModal({ kind: 'edit' })} />}
-            {can.request      && <ActionButton label="Request Edit"      onClick={() => setModal({ kind: 'request-edit' })} />}
-            {can.request      && <ActionButton label="Request Removal"   onClick={() => setModal({ kind: 'request-removal' })} />}
-            {can.markLost     && <ActionButton label="Mark Lost" danger   onClick={() => setModal({ kind: 'lost' })} />}
-            {can.retire       && <ActionButton label="Retire Asset" danger onClick={() => setModal({ kind: 'retire', dispose: false })} />}
-            {can.retire       && <ActionButton label="Dispose Asset" danger onClick={() => setModal({ kind: 'retire', dispose: true })} />}
-            {can.remove       && <ActionButton label="Delete Asset" danger  onClick={handleDelete} />}
+          {/* The eight facts a reader is here for.
+              A FIXED four-column grid, not auto-fit: eight divides evenly by
+              four, so the strip is always two full rows. auto-fit chose five,
+              six or seven columns depending on the width and left the last row
+              holding a single orphaned fact beside four empty cells. */}
+          <div style={{
+            marginTop: '16px', paddingTop: '14px', borderTop: `1px solid ${colors.border}`,
+            display: 'grid', gap: '14px 20px',
+            gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
+          }}>
+            <DetailField label="Category"   value={humanizeToken(asset.asset_type)} />
+            <DetailField label="Serial No." value={asset.serial_no} mono />
+            <DetailField label="Custodian"  value={custody.label} />
+            <DetailField label="Department" value={asset.department} />
+            <DetailField label="Condition"  value={asset.condition ? assetConditionLabel(asset.condition) : null} />
+            <DetailField label="Warranty"   value={WARRANTY_STATUS_LABEL[warranty]} />
+            <DetailField label={summaryDate.label} value={fmtDate(summaryDate.iso)} />
+            <DetailField label="Last Updated" value={fmtDate(asset.updated_at)} />
           </div>
+        </section>
+
+        {/* ── Tabs ──
+            Counts come from loaded rows only. The strip scrolls horizontally
+            rather than wrapping, so the page itself never scrolls sideways on a
+            phone. */}
+        <div
+          role="tablist"
+          aria-label="Asset record sections"
+          style={{
+            display: 'flex', gap: '6px', flexWrap: 'nowrap',
+            overflowX: 'auto', overflowY: 'hidden',
+            borderBottom: `1px solid ${colors.border}`, paddingBottom: '8px',
+            scrollbarWidth: 'thin',
+          }}
+        >
+          {TABS.map((t, index) => {
+            const active = tab === t.key
+            const count = tabCount(t.key)
+            return (
+              <button
+                key={t.key}
+                ref={el => { tabRefs.current[index] = el }}
+                role="tab"
+                id={`asset-tab-${t.key}`}
+                aria-selected={active}
+                aria-controls={`asset-panel-${t.key}`}
+                tabIndex={active ? 0 : -1}
+                onClick={() => setTab(t.key)}
+                onKeyDown={e => onTabKeyDown(e, index)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '7px',
+                  padding: '6px 14px', borderRadius: '20px',
+                  fontSize: '12px', fontWeight: 600,
+                  border: `1.5px solid ${active ? BOE_RED : colors.border}`,
+                  background: active ? BOE_RED : colors.base,
+                  color: active ? '#fff' : colors.secondary,
+                  cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                {t.label}
+                {count !== null && (
+                  <span style={{
+                    fontFamily: 'monospace', fontSize: '10.5px', lineHeight: 1,
+                    padding: '3px 6px', borderRadius: '10px',
+                    background: active ? 'rgba(255,255,255,0.22)' : colors.float,
+                    color: active ? '#fff' : colors.tertiary,
+                  }}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
 
-        {/* ── Tabs ── */}
-        <div style={{
-          display: 'flex', gap: '6px', flexWrap: 'wrap',
-          borderBottom: `1px solid ${colors.border}`, paddingBottom: '8px',
-        }} role="tablist">
-          {TABS.map(t => (
-            <button
-              key={t.key}
-              role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => setTab(t.key)}
-              style={{
-                padding: '6px 14px', borderRadius: '20px',
-                fontSize: '12px', fontWeight: 600,
-                border: `1.5px solid ${tab === t.key ? colors.blue : colors.border}`,
-                background: tab === t.key ? colors.blue : 'transparent',
-                color: tab === t.key ? '#fff' : colors.secondary,
-                cursor: 'pointer', whiteSpace: 'nowrap',
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div
+          role="tabpanel"
+          id={`asset-panel-${tab}`}
+          aria-labelledby={`asset-tab-${tab}`}
+          /* Focusable so Tab out of the strip lands in the panel it selected.
+             The focus ring is deliberately NOT suppressed. */
+          tabIndex={0}
+        >
+          {tab === 'overview' && (
+            <OverviewTab
+              asset={asset}
+              custody={custody}
+              openAssignment={openAssignment}
+              names={names}
+              serviceSummary={serviceSummary}
+              documents={liveDocuments}
+              activity={orderedActivity}
+              can={{ warranty: can.warranty, documents: can.documents, addService: can.addService }}
+              onAction={runAction}
+              onOpenDocument={openDocument}
+              onShowTab={setTab}
+            />
+          )}
+          {tab === 'assignments' && <AssignmentsTab transfers={transfers} assignments={assignments} employeeName={employeeName} isMobile={isMobile} />}
+          {tab === 'service'     && <ServiceTab services={services} summary={serviceSummary} names={names} isMobile={isMobile} />}
+          {tab === 'warranty'    && (
+            <WarrantyTab
+              asset={asset}
+              documents={liveDocuments}
+              names={names}
+              canManage={can.documents}
+              canEditWarranty={can.warranty}
+              onOpenDocument={openDocument}
+              onRemoveDocument={(d) => setModal({ kind: 'remove-document', id: d.id, fileName: d.file_name })}
+              onUploadOther={() => setModal({ kind: 'upload', docType: 'other' })}
+              onUploadInvoice={() => setModal({ kind: 'upload', docType: 'invoice' })}
+              onAddWarranty={() => setModal({ kind: 'warranty' })}
+              isMobile={isMobile}
+            />
+          )}
+          {tab === 'activity'    && <ActivityTab rows={orderedActivity} names={names} isMobile={isMobile} />}
         </div>
-
-        {tab === 'overview'    && <OverviewTab asset={asset} custodyLabel={custody.label} openAssignment={openAssignment} names={names} isMobile={isMobile} serviceTotal={serviceSummary.totalCost} />}
-        {tab === 'assignments' && <AssignmentsTab transfers={transfers} assignments={assignments} employeeName={employeeName} isMobile={isMobile} />}
-        {tab === 'service'     && <ServiceTab services={services} summary={serviceSummary} names={names} isMobile={isMobile} />}
-        {tab === 'warranty'    && (
-          <WarrantyTab
-            asset={asset}
-            documents={liveDocuments}
-            names={names}
-            canManage={can.documents}
-            onOpenDocument={openDocument}
-            onRemoveDocument={(d) => setModal({ kind: 'remove-document', id: d.id, fileName: d.file_name })}
-            onUploadOther={() => setModal({ kind: 'upload', docType: 'other' })}
-            isMobile={isMobile}
-          />
-        )}
-        {tab === 'activity'    && <ActivityTab rows={orderedActivity} names={names} isMobile={isMobile} />}
       </div>
     )
   }
@@ -579,22 +971,43 @@ export default function AssetDetailPage() {
     <AssetsLayout
       profile={profile}
       activeView="asset-inventory"
-      title={asset?.asset_name ?? 'Asset'}
-      subtitle={asset ? `${asset.asset_code} · Asset detail and full history.` : 'Asset detail.'}
+      title="Asset Record"
       onSignOut={signOut}
       canViewInventory={caps.canViewAssetInventory}
       canManageAccess={caps.canManageAccess}
       canSeeAssetRequests={caps.canReviewAssetRequests || caps.canRequestAssetChanges}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <button
-          onClick={backToInventory}
-          className="boe-btn boe-btn-ghost"
-          style={{ alignSelf: 'flex-start', padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
-          <ArrowLeft size={14} strokeWidth={1.8} />
-          Back to Asset Inventory
-        </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* Breadcrumb, not a banner. One line back to the list, with the code
+            of the record you are on — the asset's name and status live in the
+            summary card below and are not repeated here. */}
+        <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+          <button
+            onClick={backToInventory}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '3px',
+              background: 'none', border: 'none', padding: '2px 4px 2px 0',
+              font: 'inherit', fontSize: '12px', fontWeight: 600,
+              color: colors.tertiary, cursor: 'pointer', borderRadius: '5px',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = colors.primary }}
+            onMouseLeave={e => { e.currentTarget.style.color = colors.tertiary }}
+          >
+            <ChevronLeft size={14} strokeWidth={2} aria-hidden="true" />
+            Asset Inventory
+          </button>
+          {asset && (
+            <>
+              <span aria-hidden="true" style={{ color: colors.muted, fontSize: '12px' }}>/</span>
+              <span style={{
+                fontFamily: 'monospace', fontSize: '12px', color: colors.muted,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {asset.asset_code}
+              </span>
+            </>
+          )}
+        </nav>
         {body()}
       </div>
 
@@ -636,13 +1049,22 @@ export default function AssetDetailPage() {
         />
       )}
       {asset && modal?.kind === 'add-service' && (
-        <AddServiceRecordModal asset={asset} supabase={supabase} onClose={() => setModal(null)} onDone={afterAction} />
+        <AddServiceRecordModal
+          asset={asset} supabase={supabase} currentEmployeeId={currentEmployeeId}
+          onClose={() => setModal(null)} onDone={afterAction}
+        />
       )}
       {asset && modal?.kind === 'warranty' && (
-        <WarrantyDetailsModal asset={asset} supabase={supabase} onClose={() => setModal(null)} onDone={afterAction} />
+        <WarrantyDetailsModal
+          asset={asset} supabase={supabase} currentEmployeeId={currentEmployeeId}
+          onClose={() => setModal(null)} onDone={afterAction}
+        />
       )}
       {asset && modal?.kind === 'upload' && (
-        <UploadDocumentModal asset={asset} supabase={supabase} docType={modal.docType} onClose={() => setModal(null)} onDone={afterAction} />
+        <UploadDocumentModal
+          asset={asset} supabase={supabase} docType={modal.docType} currentEmployeeId={currentEmployeeId}
+          onClose={() => setModal(null)} onDone={afterAction}
+        />
       )}
       {modal?.kind === 'remove-document' && (
         <RemoveDocumentModal
@@ -658,7 +1080,7 @@ export default function AssetDetailPage() {
       )}
       {asset && modal?.kind === 'edit' && (
         <EditAssetModal
-          asset={asset} supabase={supabase}
+          asset={asset} supabase={supabase} currentEmployeeId={currentEmployeeId}
           onClose={() => setModal(null)}
           onSaved={() => afterAction('Asset details updated.')}
         />
@@ -683,93 +1105,275 @@ export default function AssetDetailPage() {
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
 
+/**
+ * Two columns: the record on the left, its standing summaries on the right.
+ *
+ * The split is flex-wrap on a shared basis rather than a media query, because
+ * the column that matters is the CONTENT width — which changes when the sidebar
+ * is present and when it is not — and a viewport query cannot see that. Below
+ * roughly 720px of content the two columns become one stack in source order,
+ * which is also the order a reader wants on a phone: custody first.
+ */
 function OverviewTab({
-  asset, custodyLabel, openAssignment, names, isMobile, serviceTotal,
+  asset, custody, openAssignment, names, serviceSummary, documents, activity,
+  can, onAction, onOpenDocument, onShowTab,
 }: {
   asset: Asset
-  custodyLabel: string
+  custody: ReturnType<typeof describeCustody>
   openAssignment: EmployeeAsset | null
   names: Record<string, string | undefined>
-  isMobile: boolean
-  serviceTotal: number
+  serviceSummary: ReturnType<typeof summarizeService>
+  documents: AssetDocument[]
+  activity: AssetActivityEntry[]
+  can: { warranty: boolean; documents: boolean; addService: boolean }
+  onAction: (key: AssetActionKey) => void
+  onOpenDocument: (doc: AssetDocument) => void
+  onShowTab: (tab: TabKey) => void
 }) {
-  const grid = {
-    padding: isMobile ? '16px' : '20px 24px',
-    display: 'grid',
-    gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))',
-    gap: '16px 24px',
-  } as const
+  const warranty = warrantyStatus(asset.warranty_expiry_date)
+  const warrantyDetail = warrantyDetailLine(asset.warranty_expiry_date)
+  const recentActivity = activity.slice(0, 3)
+  const hasFreeText =
+    optionalText(asset.description) !== null || optionalText(asset.specifications) !== null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <SectionTitle>Identification</SectionTitle>
-        <div className="boe-card" style={grid}>
-          <DetailField label="Asset Code"   value={asset.asset_code} mono />
-          <DetailField label="Category"     value={humanizeToken(asset.asset_type)} />
-          <DetailField label="Serial No."   value={asset.serial_no ?? 'Not recorded'} mono />
-          <DetailField label="Brand"        value={asset.brand ?? 'Not recorded'} />
-          <DetailField label="Model"        value={asset.model ?? 'Not recorded'} />
-          <DetailField label="Condition"    value={assetConditionLabel(asset.condition)} />
-          <DetailField label="Description"  value={asset.description ?? 'Not recorded'} />
-          <DetailField label="Specifications" value={asset.specifications ?? 'Not recorded'} />
-        </div>
-      </div>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'flex-start' }}>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <SectionTitle>Current Position</SectionTitle>
-        <div className="boe-card" style={grid}>
-          <DetailField label="Status"           value={assetStatusLabel(asset.status)} />
-          <DetailField label="Current Custodian" value={custodyLabel} />
-          <DetailField label="Department"       value={asset.department ?? 'Not recorded'} />
-          <DetailField label="Location"         value={asset.location ?? 'Not recorded'} />
-          <DetailField label="Created"          value={fmtDate(asset.created_at)} />
-          <DetailField label="Last Updated"     value={fmtDate(asset.updated_at)} />
-        </div>
-      </div>
+      {/* ── Main column (65%) ──
+          The bases are PROPORTIONAL to the grow factors (455:245 = 65:35).
+          flex distributes only the FREE space by the grow factor, so bases of
+          420/280 skewed the result to 61/39; with proportional bases the split
+          is exactly 65/35 at every width, and the wrap point is unchanged
+          (455 + 245 + 14 gap ≈ the previous 420 + 280 + 14). */}
+      <div style={{ flex: '65 1 455px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <SectionTitle>Purchase &amp; Warranty</SectionTitle>
-        <div className="boe-card" style={grid}>
-          <DetailField label="Purchase Date"   value={fmtDate(asset.purchase_date)} />
-          <DetailField label="Purchase Price"  value={fmtMoney(asset.purchase_price)} />
-          <DetailField label="Vendor"          value={asset.vendor ?? 'Not recorded'} />
-          <DetailField label="Invoice Number"  value={asset.invoice_number ?? 'Not recorded'} />
-          <DetailField label="Warranty Status" value={WARRANTY_STATUS_LABEL[warrantyStatus(asset.warranty_expiry_date)]} />
-          <DetailField
-            label="Total Repair / Service Spend"
-            value={formatINR(serviceTotal)}
-          />
-        </div>
-      </div>
-
-      {openAssignment && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <SectionTitle>Current Custody</SectionTitle>
-          <div className="boe-card" style={grid}>
-            <DetailField label="Assigned To"   value={names[openAssignment.employee_id] ?? 'Unknown employee'} />
-            <DetailField label="Assigned By"   value={names[openAssignment.assigned_by] ?? 'Unknown employee'} />
-            <DetailField label="Assigned Date" value={fmtDate(openAssignment.assigned_at)} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              <div style={{
-                fontSize: '10.5px', fontWeight: 600, color: colors.muted,
-                textTransform: 'uppercase', letterSpacing: '0.05em',
-              }}>
-                Acceptance
-              </div>
-              <div>
+        {/* A. Current custody — the question the page is opened to answer. */}
+        <Card title="Current Custody">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: colors.primary, wordBreak: 'break-word' }}>
+                {custody.label}
+              </span>
+              <span className={`boe-badge ${STATUS_BADGE[asset.status] ?? 'boe-badge-pending'}`} style={{ fontSize: '10px' }}>
+                {assetStatusLabel(asset.status)}
+              </span>
+              {openAssignment && (
                 <span
                   className={`boe-badge ${ACCEPTANCE_META[openAssignment.status]?.cls ?? 'boe-badge-pending'}`}
-                  style={{ fontSize: '10px', whiteSpace: 'nowrap' }}
+                  style={{ fontSize: '10px' }}
                 >
                   {ACCEPTANCE_META[openAssignment.status]?.label ?? humanizeToken(openAssignment.status)}
                 </span>
-              </div>
+              )}
             </div>
-            <DetailField label="Accepted Date" value={fmtDate(openAssignment.accepted_at)} />
+
+            {/* A contradiction between the asset's status and its custody rows
+                is surfaced, never smoothed over — describeCustody() reports it
+                and this is where a reader sees it. */}
+            {custody.inconsistent && (
+              <div role="alert" style={{
+                padding: '8px 10px', borderRadius: '7px', fontSize: '11.5px',
+                background: 'rgba(217,79,79,0.08)', color: DANGER_TEXT,
+              }}>
+                This asset&rsquo;s status and its custody records disagree. Review the assignment history.
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gap: '12px 20px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+              <DetailField label="Department" value={asset.department} />
+              <DetailField label="Location"   value={asset.location} />
+              {openAssignment ? (
+                <>
+                  <DetailField label="Assigned Date" value={fmtDate(openAssignment.assigned_at)} />
+                  <DetailField label="Assigned By"   value={names[openAssignment.assigned_by] ?? null} />
+                  <DetailField label="Accepted Date" value={openAssignment.accepted_at ? fmtDate(openAssignment.accepted_at) : null} />
+                </>
+              ) : (
+                <DetailField label="Condition" value={asset.condition ? assetConditionLabel(asset.condition) : null} />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        </Card>
+
+        {/* B. Asset information.
+            Category, Condition and Last Updated are deliberately ABSENT: the
+            summary strip above states all three and never scrolls away, so
+            repeating them here was the same fact twice on one screen. */}
+        <Card title="Asset Information">
+          <div style={{ display: 'grid', gap: '13px 20px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+            <DetailField label="Brand"   value={asset.brand} />
+            <DetailField label="Model"   value={asset.model} />
+            <DetailField label="Created" value={fmtDate(asset.created_at)} />
+          </div>
+        </Card>
+
+        {/* C. Description & specifications — free text, so it gets its own
+            full-width card rather than a cell in a grid. Rendered only when
+            there is text to show: a titled card containing two dashes is a
+            paragraph of vertical space spent saying nothing. */}
+        {hasFreeText && (
+          <Card title="Description &amp; Specifications">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '13px' }}>
+              <DetailField label="Description"    value={asset.description} />
+              <DetailField label="Specifications" value={asset.specifications} />
+            </div>
+          </Card>
+        )}
+
+        {/* D. Latest activity — a preview of rows already loaded, never a
+            second query. Absent entirely when there is no history. */}
+        {recentActivity.length > 0 && (
+          <Card
+            title="Latest Activity"
+            action={
+              <button
+                type="button"
+                onClick={() => onShowTab('activity')}
+                style={{
+                  background: 'none', border: 'none', padding: 0, font: 'inherit',
+                  fontSize: '11.5px', fontWeight: 600, color: colors.tertiary, cursor: 'pointer',
+                }}
+              >
+                View all ({activity.length})
+              </button>
+            }
+          >
+            <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '11px' }}>
+              {recentActivity.map(entry => (
+                <li key={entry.id} style={{ display: 'flex', gap: '10px' }}>
+                  <span aria-hidden="true" style={{
+                    width: '7px', height: '7px', borderRadius: '50%', marginTop: '5px', flexShrink: 0,
+                    background: TONE_COLOR[assetActivityTone(entry.event_type)] ?? colors.muted,
+                  }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px' }}>
+                      <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
+                        {assetActivityTitle(entry.event_type)}
+                      </span>
+                      <span style={{ fontSize: '11px', color: colors.muted }}>{fmtDateTime(entry.event_at)}</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px' }}>{entry.summary}</div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </Card>
+        )}
+      </div>
+
+      {/* ── Side column (35%) ── */}
+      <div style={{ flex: '35 1 245px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+        {/* A. Warranty. The empty state appears only when NOTHING has been
+            recorded — an asset with a start date but no expiry still reads as
+            'not_available' and must not have its data hidden behind a CTA. */}
+        <Card title="Warranty">
+          {!hasWarrantyDetails(asset) ? (
+            <EmptyState
+              message="No warranty recorded for this asset."
+              actionLabel={can.warranty ? ASSET_ACTION_LABEL.warranty : undefined}
+              onAction={can.warranty ? () => onAction('warranty') : undefined}
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span className={`boe-badge ${WARRANTY_BADGE[warranty]}`} style={{ fontSize: '10px' }}>
+                  {WARRANTY_STATUS_LABEL[warranty]}
+                </span>
+                {warrantyDetail && <span style={{ fontSize: '11.5px', color: colors.muted }}>{warrantyDetail}</span>}
+              </div>
+              <SideFact label="Start"  value={asset.warranty_start_date ? fmtDate(asset.warranty_start_date) : null} />
+              <SideFact label="Expiry" value={asset.warranty_expiry_date ? fmtDate(asset.warranty_expiry_date) : null} />
+              <SideFact label="Type"   value={asset.warranty_type} />
+            </div>
+          )}
+        </Card>
+
+        {/* B. Repair & service. Totals only when there is something to total. */}
+        <Card title="Repair &amp; Service">
+          {serviceSummary.recordCount === 0 ? (
+            <EmptyState
+              message="No repair or service history yet."
+              actionLabel={can.addService ? ASSET_ACTION_LABEL.addService : undefined}
+              onAction={can.addService ? () => onAction('addService') : undefined}
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+              <SideFact label="Total services" value={String(serviceSummary.recordCount)} strong />
+              <SideFact label="Total spend"    value={formatINR(serviceSummary.totalCost)} strong />
+              <SideFact label="Last service"   value={serviceSummary.lastServiceDate ? fmtDate(serviceSummary.lastServiceDate) : null} />
+              <SideFact label="Next service"   value={serviceSummary.upcomingServiceDate ? fmtDate(serviceSummary.upcomingServiceDate) : null} />
+              {serviceSummary.openRecordCount > 0 && (
+                <div style={{ fontSize: '11.5px', color: '#B45309' }}>
+                  {serviceSummary.openRecordCount} record{serviceSummary.openRecordCount === 1 ? '' : 's'} still open.
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+
+        {/* C. Documents. */}
+        <Card
+          title="Documents"
+          action={documents.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => onShowTab('warranty')}
+              style={{
+                background: 'none', border: 'none', padding: 0, font: 'inherit',
+                fontSize: '11.5px', fontWeight: 600, color: colors.tertiary, cursor: 'pointer',
+              }}
+            >
+              View all ({documents.length})
+            </button>
+          ) : undefined}
+        >
+          {documents.length === 0 ? (
+            <EmptyState
+              message="No documents on file."
+              actionLabel={can.documents ? ASSET_ACTION_LABEL.uploadInvoice : undefined}
+              onAction={can.documents ? () => onAction('uploadInvoice') : undefined}
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {documents.slice(0, 3).map(d => (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => onOpenDocument(d)}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer',
+                  }}
+                >
+                  <div style={{
+                    fontSize: '12px', fontWeight: 600, color: colors.primary,
+                    wordBreak: 'break-word',
+                  }}>
+                    {d.file_name}
+                  </div>
+                  <div style={{ fontSize: '11px', color: colors.muted }}>
+                    {ASSET_DOCUMENT_TYPE_LABEL[d.doc_type] ?? humanizeToken(d.doc_type)}
+                    {' · '}{formatFileSize(d.file_size)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* D. The purchase facts a reader checks but does not read down. */}
+        <Card title="Quick Facts">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+            <SideFact label="Asset code"     value={asset.asset_code} mono />
+            <SideFact label="Serial no."     value={asset.serial_no} mono />
+            <SideFact label="Purchase date"  value={asset.purchase_date ? fmtDate(asset.purchase_date) : null} />
+            <SideFact label="Purchase price" value={parseCost(asset.purchase_price) === null ? null : fmtMoney(asset.purchase_price)} />
+            <SideFact label="Vendor"         value={asset.vendor} />
+            <SideFact label="Invoice no."    value={asset.invoice_number} />
+          </div>
+        </Card>
+      </div>
     </div>
   )
 }
@@ -989,15 +1593,19 @@ function ServiceTab({
 // ─── Warranty & documents ─────────────────────────────────────────────────────
 
 function WarrantyTab({
-  asset, documents, names, canManage, onOpenDocument, onRemoveDocument, onUploadOther, isMobile,
+  asset, documents, names, canManage, canEditWarranty,
+  onOpenDocument, onRemoveDocument, onUploadOther, onUploadInvoice, onAddWarranty, isMobile,
 }: {
   asset: Asset
   documents: AssetDocument[]
   names: Record<string, string | undefined>
   canManage: boolean
+  canEditWarranty: boolean
   onOpenDocument: (doc: AssetDocument) => void
   onRemoveDocument: (doc: AssetDocument) => void
   onUploadOther: () => void
+  onUploadInvoice: () => void
+  onAddWarranty: () => void
   isMobile: boolean
 }) {
   const status = warrantyStatus(asset.warranty_expiry_date)
@@ -1007,47 +1615,73 @@ function WarrantyTab({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <SectionTitle>Warranty</SectionTitle>
-        <div className="boe-card" style={{
-          padding: isMobile ? '16px' : '20px 24px',
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))',
-          gap: '16px 24px',
-        }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <div style={{
-              fontSize: '10.5px', fontWeight: 600, color: colors.muted,
-              textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>
-              Status
-            </div>
-            <div>
-              <span className={`boe-badge ${WARRANTY_BADGE[status]}`} style={{ fontSize: '10px' }}>
-                {WARRANTY_STATUS_LABEL[status]}
-              </span>
-              {detail && <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>{detail}</div>}
-            </div>
+        {!hasWarrantyDetails(asset) ? (
+          <div className="boe-card" style={{ padding: isMobile ? '16px' : '20px 24px' }}>
+            <EmptyState
+              message="No warranty has been recorded for this asset."
+              actionLabel={canEditWarranty ? ASSET_ACTION_LABEL.warranty : undefined}
+              onAction={canEditWarranty ? onAddWarranty : undefined}
+            />
           </div>
-          <DetailField label="Warranty Start"  value={fmtDate(asset.warranty_start_date)} />
-          <DetailField label="Warranty Expiry" value={fmtDate(asset.warranty_expiry_date)} />
-          <DetailField label="Warranty Type"   value={asset.warranty_type ?? 'Not recorded'} />
-          <DetailField label="Vendor"          value={asset.vendor ?? 'Not recorded'} />
-          <DetailField label="Invoice Number"  value={asset.invoice_number ?? 'Not recorded'} />
-          <DetailField label="Remarks"         value={asset.warranty_remarks ?? 'Not recorded'} />
-        </div>
+        ) : (
+          <div className="boe-card" style={{
+            padding: isMobile ? '16px' : '20px 24px',
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+            gap: '16px 24px',
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{
+                fontSize: '10.5px', fontWeight: 600, color: colors.muted,
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>
+                Status
+              </div>
+              <div>
+                <span className={`boe-badge ${WARRANTY_BADGE[status]}`} style={{ fontSize: '10px' }}>
+                  {WARRANTY_STATUS_LABEL[status]}
+                </span>
+                {detail && <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>{detail}</div>}
+              </div>
+            </div>
+            <DetailField label="Warranty Start"  value={asset.warranty_start_date ? fmtDate(asset.warranty_start_date) : null} />
+            <DetailField label="Warranty Expiry" value={asset.warranty_expiry_date ? fmtDate(asset.warranty_expiry_date) : null} />
+            <DetailField label="Warranty Type"   value={asset.warranty_type} />
+            <DetailField label="Vendor"          value={asset.vendor} />
+            <DetailField label="Invoice Number"  value={asset.invoice_number} />
+            <DetailField label="Remarks"         value={asset.warranty_remarks} />
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
           <SectionTitle>Documents</SectionTitle>
-          {canManage && (
-            <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={onUploadOther}>
+          {/* Header control only once there is a list to add to. While the
+              section is empty the empty state carries the single call to
+              action, rather than two upload buttons stacked on each other. */}
+          {canManage && documents.length > 0 && (
+            <button
+              type="button"
+              className="boe-record-action"
+              style={{ minHeight: '30px', padding: '6px 12px', fontSize: '12px' }}
+              onClick={onUploadOther}
+            >
               Upload Supporting Document
             </button>
           )}
         </div>
 
         {documents.length === 0 ? (
-          <Panel message="No documents on file yet. Upload the invoice or warranty card to keep them with the asset." />
+          <div className="boe-card" style={{ padding: isMobile ? '16px' : '20px 24px' }}>
+            <EmptyState
+              message="No documents on file yet. The invoice and warranty card are kept with the asset once uploaded."
+              actionLabel={canManage ? ASSET_ACTION_LABEL.uploadInvoice : undefined}
+              // The INVOICE handler, not onUploadOther — the label says Invoice
+              // and the stored doc_type must agree with it.
+              onAction={canManage ? onUploadInvoice : undefined}
+            />
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {documents.map(d => (
@@ -1066,13 +1700,19 @@ function WarrantyTab({
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={() => onOpenDocument(d)}>
+                  <button
+                    type="button"
+                    className="boe-record-action"
+                    style={{ minHeight: '30px', padding: '6px 12px', fontSize: '12px' }}
+                    onClick={() => onOpenDocument(d)}
+                  >
                     Open
                   </button>
                   {canManage && (
                     <button
-                      className="boe-btn boe-btn-ghost"
-                      style={{ padding: '5px 12px', fontSize: '12px', color: '#C13030', borderColor: 'rgba(217,79,79,0.4)' }}
+                      type="button"
+                      className="boe-record-action boe-record-action--danger"
+                      style={{ minHeight: '30px', padding: '6px 12px', fontSize: '12px' }}
                       onClick={() => onRemoveDocument(d)}
                     >
                       Remove

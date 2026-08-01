@@ -587,7 +587,9 @@ export function CompleteServiceModal({
 
 // ─── Add a historical service record ──────────────────────────────────────────
 
-export function AddServiceRecordModal({ asset, supabase, onClose, onDone }: CommonProps) {
+export function AddServiceRecordModal({
+  asset, supabase, currentEmployeeId, onClose, onDone,
+}: CommonProps & { currentEmployeeId: string | null }) {
   const [serviceType, setServiceType] = useState<string>('repair')
   const [issue, setIssue] = useState('')
   const [description, setDescription] = useState('')
@@ -618,8 +620,17 @@ export function AddServiceRecordModal({ asset, supabase, onClose, onDone }: Comm
       p_next_service_date: nextServiceDate || null,
     }))
     if (!ok) return
-    // No notification: recording a service that already happened changes
-    // nothing about who holds the asset or where it is.
+    // The person holding it is told a service was logged against it. Nobody
+    // else is related: an asset on the shelf resolves to no recipient and
+    // writes nothing.
+    notifyAssetEvent({
+      event: 'asset_service_added',
+      assetId: asset.id,
+      assetName: asset.asset_name,
+      assetCode: asset.asset_code,
+      toEmployeeId: currentEmployeeId,
+      vendor: vendor.trim() || null,
+    })
     onDone('Service record added.')
   }
 
@@ -685,7 +696,9 @@ export function AddServiceRecordModal({ asset, supabase, onClose, onDone }: Comm
 // sides of every field that moved — including a separate warranty_updated
 // entry. An RPC here would only add a second door to the same room.
 
-export function WarrantyDetailsModal({ asset, supabase, onClose, onDone }: CommonProps) {
+export function WarrantyDetailsModal({
+  asset, supabase, currentEmployeeId, onClose, onDone,
+}: CommonProps & { currentEmployeeId: string | null }) {
   const [purchaseDate, setPurchaseDate] = useState(asset.purchase_date ?? '')
   const [purchasePrice, setPurchasePrice] = useState(
     asset.purchase_price === null || asset.purchase_price === undefined ? '' : String(asset.purchase_price),
@@ -721,9 +734,17 @@ export function WarrantyDetailsModal({ asset, supabase, onClose, onDone }: Commo
       })
       .eq('id', asset.id))
     if (!ok) return
-    // Purchase and warranty paperwork is metadata: it changes nothing about
-    // ownership, so it produces an audit entry and no notification. The
-    // expiring-soon reminder is raised by the warranty sweep instead.
+    // The warranty COVER on an asset is not paperwork to the person holding it
+    // — it decides whether a fault costs them a repair request or a purchase
+    // order. The custodian is told; the expiring-soon reminder still comes from
+    // the sweep separately.
+    notifyAssetEvent({
+      event: 'asset_warranty_updated',
+      assetId: asset.id,
+      assetName: asset.asset_name,
+      assetCode: asset.asset_code,
+      toEmployeeId: currentEmployeeId,
+    })
     onDone('Warranty and purchase details saved.')
   }
 
@@ -772,8 +793,8 @@ export function WarrantyDetailsModal({ asset, supabase, onClose, onDone }: Commo
 // ─── Upload a document ────────────────────────────────────────────────────────
 
 export function UploadDocumentModal({
-  asset, supabase, docType, onClose, onDone,
-}: CommonProps & { docType: AssetDocumentType }) {
+  asset, supabase, docType, currentEmployeeId, onClose, onDone,
+}: CommonProps & { docType: AssetDocumentType; currentEmployeeId: string | null }) {
   const [file, setFile] = useState<File | null>(null)
   const { saving, error, setError, run } = useSubmit('upload-document')
 
@@ -818,6 +839,16 @@ export function UploadDocumentModal({
     })
 
     if (!ok) return
+    // The custodian is told a document now sits on their asset — an invoice or
+    // warranty card is what they will be asked for when something breaks.
+    notifyAssetEvent({
+      event: 'asset_document_uploaded',
+      assetId: asset.id,
+      assetName: asset.asset_name,
+      assetCode: asset.asset_code,
+      toEmployeeId: currentEmployeeId,
+      documentKind: docType,
+    })
     onDone(`${label} uploaded.`)
   }
 
@@ -900,6 +931,15 @@ export function RetireAssetModal({
       p_remarks: remarks.trim() || null,
     }))
     if (!ok) return
+    // Retirement is blocked while an assignment is open, so there is never a
+    // custodian left to tell. 'admins' preserves the module's existing
+    // responsibility model — BOE has no designated-reviewer column.
+    notifyAssetEvent({
+      event: dispose ? 'asset_disposed' : 'asset_retired',
+      assetId: asset.id,
+      assetName: asset.asset_name,
+      assetCode: asset.asset_code,
+    })
     onDone(dispose ? 'Asset marked disposed.' : 'Asset retired from service.')
   }
 
@@ -938,6 +978,12 @@ export function RestoreAssetModal({ asset, supabase, onClose, onDone }: CommonPr
       p_remarks: remarks.trim() || null,
     }))
     if (!ok) return
+    notifyAssetEvent({
+      event: 'asset_restored',
+      assetId: asset.id,
+      assetName: asset.asset_name,
+      assetCode: asset.asset_code,
+    })
     onDone('Asset restored and available again.')
   }
 

@@ -33,6 +33,18 @@ export const ASSET_NOTIFICATION_EVENTS = [
   'asset_repair_sent',
   'asset_repair_returned',
   'asset_warranty_expiring',
+  // Added 20260802000000 — see that migration for why each exists.
+  'asset_edited',
+  'asset_warranty_updated',
+  'asset_service_added',
+  'asset_document_uploaded',
+  'asset_retired',
+  'asset_disposed',
+  'asset_restored',
+  'access_granted',
+  'access_updated',
+  'access_revoked',
+  'access_restored',
 ] as const
 
 export type AssetNotifyEvent = typeof ASSET_NOTIFICATION_EVENTS[number]
@@ -53,6 +65,8 @@ export type RecipientRole =
   | 'requester'
   /** Whoever opened the assignment being acknowledged. */
   | 'assigner'
+  /** The employee an access record belongs to. */
+  | 'access_holder'
 
 export type AssetNotifyContext = {
   /** Asset name, for the notification title. */
@@ -73,6 +87,25 @@ export type AssetNotifyContext = {
   requestType?: string | null
   /** Free-text note an admin left when rejecting. */
   note?: string | null
+  /** 'invoice' | 'warranty_card' | 'other' — which document was attached. */
+  documentKind?: string | null
+  /** The system an access record is for, e.g. "Canva". */
+  accessLabel?: string | null
+  /** Display name of the person taking the action, for access events. */
+  actorName?: string | null
+}
+
+/** Document type → the words used in a notification title. */
+const DOCUMENT_KIND_LABEL: Record<string, string> = {
+  invoice:       'Invoice',
+  warranty_card: 'Warranty card',
+  other:         'Supporting document',
+}
+
+/** The access record's subject line: the system, named. */
+function accessSubject(ctx: AssetNotifyContext): string {
+  const label = ctx.accessLabel?.trim()
+  return label && label !== '' ? label : 'A company system'
 }
 
 function subject(ctx: AssetNotifyContext): string {
@@ -174,6 +207,68 @@ export function assetNotification(
         : `in ${days} day${days === 1 ? '' : 's'}`
       return { recipients: ['admins'], title: `Warranty for ${s} expires ${when}.` }
     }
+
+    // ── Master details ──────────────────────────────────────────────────────
+    // The CURRENT CUSTODIAN only. An edit that moved this asset's status,
+    // location, department, condition or warranty dates changes what the person
+    // holding it is accountable for; nobody else has an action to take, and
+    // broadcasting master-data edits to every admin is exactly how a bell stops
+    // being read. An asset nobody holds resolves to no recipient and writes
+    // nothing — which is correct, not a gap.
+    case 'asset_edited':
+      return { recipients: ['new_custodian'], title: `${s} was updated.` }
+
+    case 'asset_warranty_updated':
+      return { recipients: ['new_custodian'], title: `Warranty details for ${s} were updated.` }
+
+    // ── Service history ─────────────────────────────────────────────────────
+    case 'asset_service_added':
+      return {
+        recipients: ['new_custodian'],
+        title: ctx.vendor
+          ? `A service record was added for ${s} (${ctx.vendor}).`
+          : `A service record was added for ${s}.`,
+      }
+
+    // ── Documents ───────────────────────────────────────────────────────────
+    case 'asset_document_uploaded': {
+      const kind = DOCUMENT_KIND_LABEL[ctx.documentKind ?? ''] ?? 'Document'
+      return { recipients: ['new_custodian'], title: `${kind} added to ${s}.` }
+    }
+
+    // ── End of life ─────────────────────────────────────────────────────────
+    // 'admins', preserving the module's existing responsibility model rather
+    // than inventing an assignment one: BOE has no designated-reviewer column,
+    // any admin may act on these, and retirement is blocked while an assignment
+    // is open — so there is no custodian left to tell.
+    case 'asset_retired':
+      return { recipients: ['admins'], title: `${s} was retired.` }
+
+    case 'asset_disposed':
+      return { recipients: ['admins'], title: `${s} was disposed.` }
+
+    case 'asset_restored':
+      return { recipients: ['admins'], title: `${s} was restored to service.` }
+
+    // ── Access Register ─────────────────────────────────────────────────────
+    // One recipient throughout: the employee whose access it is. Nobody else is
+    // directly related to someone else's credentials.
+    case 'access_granted':
+      return { recipients: ['access_holder'], title: `${accessSubject(ctx)} access was assigned to you.` }
+
+    case 'access_updated':
+      return { recipients: ['access_holder'], title: `Your ${accessSubject(ctx)} access details were updated.` }
+
+    case 'access_revoked':
+      return {
+        recipients: ['access_holder'],
+        title: ctx.actorName
+          ? `Your ${accessSubject(ctx)} access was revoked by ${ctx.actorName}.`
+          : `Your ${accessSubject(ctx)} access was revoked.`,
+      }
+
+    case 'access_restored':
+      return { recipients: ['access_holder'], title: `Your ${accessSubject(ctx)} access was restored.` }
   }
 }
 
@@ -196,9 +291,68 @@ export function assetNotificationBody(
       return ctx.note ? `Reason: ${ctx.note}` : null
     case 'asset_repair_returned':
       return ctx.vendor ? `Serviced by ${ctx.vendor}` : null
+    case 'asset_edited':
+      // Names the fields that moved, so the reader knows whether it concerns
+      // them without opening the record.
+      return ctx.note ? `Changed: ${ctx.note}` : null
+    case 'access_granted':
+      return ctx.toName ? `Username: ${ctx.toName}` : null
     default:
       return null
   }
+}
+
+/**
+ * The final recipient list for one notification: real ids, actor removed,
+ * each person once.
+ *
+ * Extracted from /api/assets/notify so the three rules that decide whether a
+ * person is told anything can be asserted directly. All three are the kind that
+ * fail silently — a duplicate sends two rows nobody reports, and a missing
+ * actor-exclusion sends someone a notification about their own click, which
+ * reads as a bug in the app rather than in this list.
+ *
+ * ORDER IS PRESERVED (first occurrence wins) so a notification's recipients are
+ * deterministic and a test can assert them without sorting.
+ *
+ * The actor is compared BY ID. Never by name: two employees share a display
+ * name far more often than two share a uuid, and a name comparison would
+ * silently drop a real recipient.
+ */
+export function resolveRecipients(
+  candidates: readonly (string | null | undefined)[],
+  actorUserId: string | null | undefined,
+): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const id of candidates) {
+    if (!id) continue                 // null, undefined and '' are not people
+    if (actorUserId && id === actorUserId) continue
+    if (seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+/**
+ * The value to store in notifications.entity_id, or null when there is no
+ * record to point at.
+ *
+ * entity_id is a UUID column. An empty string is therefore not "no entity" to
+ * Postgres — it is a malformed uuid, and it fails the whole INSERT with a
+ * 22P02, losing the notification for every recipient in the batch. Callers
+ * legitimately produce one: an approved REMOVAL request nulls asset_id, and
+ * `row.asset_id ?? ''` then sends ''.
+ *
+ * Whitespace is trimmed rather than passed through, because ' <uuid> ' is
+ * equally malformed and equally silent.
+ */
+export function normalizeNotificationEntityId(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = (value ?? '').trim()
+  return trimmed === '' ? null : trimmed
 }
 
 /**
@@ -216,4 +370,54 @@ const NOTIFIABLE_FIELDS = new Set([
 
 export function editDeservesNotification(changedFields: readonly string[]): boolean {
   return changedFields.some(f => NOTIFIABLE_FIELDS.has(f))
+}
+
+/** The master-detail columns the Edit Asset form can move. */
+export type AssetEditableValues = {
+  asset_type: string
+  asset_name: string
+  serial_no: string | null
+  specifications: string | null
+  brand: string | null
+  model: string | null
+  description: string | null
+  condition: string | null
+  location: string | null
+}
+
+/**
+ * Which columns this edit actually moved, by DATABASE field name.
+ *
+ * Database names, not form names, because editDeservesNotification is expressed
+ * in database columns — two vocabularies for the same fact is how a rule about
+ * `condition` ends up never matching a form field called `conditionAfter`.
+ *
+ * A field absent from `before` counts as null, so an asset row that predates a
+ * column reads as "was empty, now set" rather than as unchanged.
+ */
+export function changedAssetFields(
+  before: Partial<Record<keyof AssetEditableValues, string | null | undefined>>,
+  next: AssetEditableValues,
+): string[] {
+  return (Object.keys(next) as (keyof AssetEditableValues)[])
+    .filter(key => (before[key] ?? null) !== (next[key] ?? null))
+}
+
+/** Notification-worthy field name → the words the notification body uses. */
+const FIELD_LABEL: Record<string, string> = {
+  status: 'Status', location: 'Location', department: 'Department', condition: 'Condition',
+  warranty_expiry_date: 'Warranty expiry', warranty_start_date: 'Warranty start',
+}
+
+/**
+ * The body line for an edit notification: the notification-worthy fields that
+ * moved, named for a reader. Null when none of them did — which is also when
+ * editDeservesNotification says not to notify at all, so the two agree.
+ *
+ * Fields that changed but are NOT notification-worthy are deliberately left
+ * out: the body explains why the reader was told, and "Brand" never is.
+ */
+export function assetEditSummary(changedFields: readonly string[]): string | null {
+  const named = changedFields.filter(f => FIELD_LABEL[f]).map(f => FIELD_LABEL[f])
+  return named.length > 0 ? named.join(', ') : null
 }

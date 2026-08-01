@@ -16,6 +16,10 @@ import type { AssetNotifyEvent } from './assetNotifications'
 
 export type AssetNotifyPayload = {
   event: AssetNotifyEvent
+  /**
+   * The record the notification is about — an ASSET id for `asset_*`, an
+   * ACCESS RECORD id for `access_*`. Becomes entity_id.
+   */
   assetId: string
   assetName: string
   assetCode?: string | null
@@ -23,6 +27,8 @@ export type AssetNotifyPayload = {
   fromEmployeeId?: string | null
   assignerId?: string | null
   requesterId?: string | null
+  /** The employee an access record belongs to. */
+  accessHolderId?: string | null
   toName?: string | null
   fromName?: string | null
   toLocation?: string | null
@@ -30,6 +36,9 @@ export type AssetNotifyPayload = {
   daysToExpiry?: number | null
   requestType?: string | null
   note?: string | null
+  documentKind?: string | null
+  accessLabel?: string | null
+  actorName?: string | null
 }
 
 export function notifyAssetEvent(payload: AssetNotifyPayload): void {

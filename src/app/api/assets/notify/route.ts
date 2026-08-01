@@ -5,6 +5,8 @@ import {
   assetNotification,
   assetNotificationBody,
   isAssetNotifyEvent,
+  normalizeNotificationEntityId,
+  resolveRecipients,
   type AssetNotifyContext,
   type AssetNotifyEvent,
   type RecipientRole,
@@ -51,6 +53,8 @@ type RequestBody = {
   assignerId?: string | null
   /** Who raised the change request. */
   requesterId?: string | null
+  /** The employee an access record belongs to. */
+  accessHolderId?: string | null
   toName?: string | null
   fromName?: string | null
   toLocation?: string | null
@@ -58,6 +62,9 @@ type RequestBody = {
   daysToExpiry?: number | null
   requestType?: string | null
   note?: string | null
+  documentKind?: string | null
+  accessLabel?: string | null
+  actorName?: string | null
 }
 
 export async function POST(req: NextRequest) {
@@ -97,6 +104,9 @@ export async function POST(req: NextRequest) {
     daysToExpiry: typeof payload.daysToExpiry === 'number' ? payload.daysToExpiry : null,
     requestType:  payload.requestType ?? null,
     note:         payload.note ?? null,
+    documentKind: payload.documentKind ?? null,
+    accessLabel:  payload.accessLabel ?? null,
+    actorName:    payload.actorName ?? null,
   }
 
   const { recipients, title } = assetNotification(event, ctx)
@@ -118,24 +128,29 @@ export async function POST(req: NextRequest) {
       case 'previous_custodian': return [payload.fromEmployeeId]
       case 'assigner':           return [payload.assignerId]
       case 'requester':          return [payload.requesterId]
+      case 'access_holder':      return [payload.accessHolderId]
     }
   }
 
-  const userIds = new Set<string>()
-  for (const role of recipients) {
-    for (const id of await resolve(role)) {
-      // RULE 1, applied in ONE place: the actor is never told about their own
-      // action. A new event cannot forget this because no event does it itself.
-      if (id && id !== user.id) userIds.add(id)
-    }
-  }
+  const candidates: (string | null | undefined)[] = []
+  for (const role of recipients) candidates.push(...await resolve(role))
 
-  if (userIds.size === 0) return NextResponse.json({ skipped: true })
+  // RULES 1–3, applied in ONE place and tested as a pure function: drop nulls,
+  // never tell the actor about their own action, and tell each person once
+  // however many roles they occupy. A new event cannot forget any of them
+  // because no event does this itself.
+  const userIds = resolveRecipients(candidates, user.id)
 
-  const rows: NotifRow[] = [...userIds].map(id => ({
+  if (userIds.length === 0) return NextResponse.json({ skipped: true })
+
+  // Blank means "no record to point at" — see normalizeNotificationEntityId
+  // for why an empty string cannot simply be passed through to a uuid column.
+  const entityId = normalizeNotificationEntityId(payload.assetId)
+
+  const rows: NotifRow[] = userIds.map(id => ({
     user_id: id,
     task_id: null,
-    entity_id: payload.assetId ?? null,
+    entity_id: entityId,
     type: event,
     title,
     body,

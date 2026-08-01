@@ -59,6 +59,21 @@ export const ASSET_NOTIFICATION_TYPES = [
   'asset_repair_sent',
   'asset_repair_returned',
   'asset_warranty_expiring',
+  // 20260802000000. The `access_*` values belong to this list on purpose: the
+  // module — and its notifications page — is "Assets & Access", one feed for
+  // both halves. A separate category would give the Access Register its own
+  // bell and its own unread count for three mutations.
+  'asset_edited',
+  'asset_warranty_updated',
+  'asset_service_added',
+  'asset_document_uploaded',
+  'asset_retired',
+  'asset_disposed',
+  'asset_restored',
+  'access_granted',
+  'access_updated',
+  'access_revoked',
+  'access_restored',
 ] as const
 
 export const ORDER_NOTIFICATION_TYPES = [
