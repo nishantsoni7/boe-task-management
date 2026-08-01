@@ -26,16 +26,38 @@
  * with fixtures, and the fixtures were never 1000 rows long. Only reconciling the
  * rendered page against raw database counts exposed it.
  *
- * PAGINATION REQUIRES A TOTAL ORDER
+ * WHAT STABLE ORDERING DOES AND DOES NOT GUARANTEE
  *
- * `range()` maps to LIMIT/OFFSET. Without a deterministic ORDER BY, Postgres does
- * not promise a stable row order between the two requests, so rows can be
- * silently skipped or duplicated across page boundaries. Every caller must order
- * by something unique — the primary key is always safe.
+ * `range()` maps to LIMIT/OFFSET, so every caller MUST supply a deterministic
+ * `ORDER BY` on a unique column — the primary key is always safe. Without one,
+ * Postgres makes no promise about row order between two requests and pages can
+ * overlap or leave gaps for no reason at all.
  *
- * Ordering by `id` is fine for the Performance routes specifically: they group
- * rows into maps and both order-sensitive consumers (`dueDateAsOf` and
- * `buildDailyRiskSeries`) sort by `created_at` themselves.
+ * **A unique ORDER BY is necessary but NOT sufficient.** OFFSET pagination reads
+ * each page in a separate transaction, so it is not a database snapshot:
+ *
+ *   - A row INSERTED between two pages shifts every later row one position
+ *     forward. If it lands before the current offset, one row is skipped.
+ *   - A row DELETED between two pages shifts every later row one position back,
+ *     which can return the same row twice.
+ *   - `id` here is `gen_random_uuid()`, so a new row lands at a *random* ordinal
+ *     position rather than at the end. Concurrent writes can therefore disturb
+ *     any page boundary, not just the last one.
+ *
+ * The practical effect is bounded: at worst a handful of rows across a page
+ * boundary, against the 3,100 rows the un-paged version was silently discarding.
+ * This reduces truncation risk by orders of magnitude; it does not make the read
+ * transactionally consistent.
+ *
+ * Keyset pagination (`.gt('id', lastSeenId)`) would be immune to both cases. It
+ * is deliberately not used yet: it would change every call site's query shape,
+ * and the reporting windows here are historical, so concurrent writes inside them
+ * are rare. Revisit if these reads ever move onto live, actively-mutating ranges.
+ *
+ * Ordering by `id` rather than by a natural column is fine for the Performance
+ * routes specifically: they group rows into maps, and both order-sensitive
+ * consumers (`dueDateAsOf` and `buildDailyRiskSeries`) sort by `created_at`
+ * themselves.
  */
 
 /** PostgREST's server-side ceiling on rows per response for this project. */
@@ -78,15 +100,36 @@ function isTransient(message: string): boolean {
   return /terminated|fetch failed|network|ECONNRESET|ETIMEDOUT|socket hang up|timeout/i.test(message)
 }
 
-export type PagedFetchResult<T> = {
-  rows: T[]
-  /** First error encountered, or null. */
-  error: string | null
-  /** True when PAGED_FETCH_ROW_CAP stopped the read before the data ran out. */
-  truncated: boolean
-  /** How many round trips it took — asserted by the query-shape guard. */
-  requests: number
-}
+/**
+ * The result of a paged read, as a discriminated union.
+ *
+ * The failure branch carries **no `rows` property at all**, so
+ * `result.rows` is a compile error until `result.ok` has been narrowed. That is
+ * the point: the previous shape returned `{ rows, error }` together, and a caller
+ * who forgot to check `error` would have silently computed from a partial read —
+ * reintroducing, in a new place, exactly the class of defect this file exists to
+ * prevent. Partial rows are now discarded rather than handed back.
+ *
+ * `truncated` lives on the success branch because it is a *complete* read of a
+ * capped window, not a failure — but callers must still reject it before using the
+ * rows. `unwrapPagedRows` does both checks in one call.
+ */
+export type PagedFetchResult<T> =
+  | {
+      ok: true
+      rows: T[]
+      /** True when PAGED_FETCH_ROW_CAP stopped the read before the data ran out. */
+      truncated: boolean
+      pages: number
+      attempts: number
+    }
+  | {
+      ok: false
+      /** The failing page's error message. Rows are deliberately not returned. */
+      error: string
+      pages: number
+      attempts: number
+    }
 
 /**
  * Read every row a query matches, one page at a time.
@@ -108,11 +151,15 @@ export async function fetchAllRows<T>(
 ): Promise<PagedFetchResult<T>> {
   const rows: T[] = []
   let from = 0
-  let requests = 0
+  /** Distinct [from, to] windows requested. Retries of the same window do not count. */
+  let pages = 0
+  /** Every call to makePage, retries included. Always >= pages. */
+  let attempts = 0
 
   for (;;) {
     let data: T[] | null = null
     let error: { message: string } | null = null
+    pages++
 
     for (let attempt = 0; attempt <= TRANSIENT_RETRIES; attempt++) {
       // A thrown fetch failure is caught too: supabase-js surfaces most as `error`,
@@ -125,22 +172,65 @@ export async function fetchAllRows<T>(
         data = null
         error = { message: thrown instanceof Error ? thrown.message : String(thrown) }
       }
-      requests++
+      attempts++
 
       if (!error || !isTransient(error.message) || attempt === TRANSIENT_RETRIES) break
       await new Promise(r => setTimeout(r, RETRY_DELAY_MS))
     }
 
-    if (error) return { rows, error: error.message, truncated: false, requests }
+    // Rows read so far are dropped on purpose — see PagedFetchResult.
+    if (error) return { ok: false, error: error.message, pages, attempts }
 
     const page = data ?? []
     rows.push(...page)
 
     // A short page means the data ran out. This is the normal exit.
-    if (page.length < pageSize) return { rows, error: null, truncated: false, requests }
+    if (page.length < pageSize) return { ok: true, rows, truncated: false, pages, attempts }
 
-    if (rows.length >= rowCap) return { rows, error: null, truncated: true, requests }
+    if (rows.length >= rowCap) return { ok: true, rows, truncated: true, pages, attempts }
 
     from += pageSize
   }
+}
+
+/**
+ * Error thrown by `unwrapPagedRows`, carrying enough to build a route's message
+ * without leaking a database string into a user-facing response by accident: the
+ * caller decides what to surface, and `detail` is intended for the server log.
+ */
+export class PagedReadError extends Error {
+  constructor(
+    /** Which read failed, in the owner's language — e.g. 'activity log'. */
+    readonly label: string,
+    readonly reason: 'read_failed' | 'row_cap_exceeded',
+    /** Underlying message. Server-side only. */
+    readonly detail: string,
+  ) {
+    super(`${label}: ${reason} — ${detail}`)
+    this.name = 'PagedReadError'
+  }
+}
+
+/**
+ * The single supported way to get rows out of a paged read.
+ *
+ * Rejects both failure modes — a failed page and a capped read — so no route can
+ * compute from an incomplete set. Throws rather than returning, because every
+ * caller's correct response is the same (refuse) and a returned sentinel is one
+ * more thing to forget to check.
+ *
+ * Both Performance routes go through this, which is what makes their truncation
+ * behaviour identical by construction rather than by two similar-looking blocks.
+ */
+export function unwrapPagedRows<T>(label: string, result: PagedFetchResult<T>): T[] {
+  if (!result.ok) {
+    throw new PagedReadError(label, 'read_failed', result.error)
+  }
+  if (result.truncated) {
+    throw new PagedReadError(
+      label, 'row_cap_exceeded',
+      `exceeded the ${PAGED_FETCH_ROW_CAP}-row read cap after ${result.pages} pages`,
+    )
+  }
+  return result.rows
 }

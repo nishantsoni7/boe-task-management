@@ -49,7 +49,7 @@ import {
   type WorkingDayContext,
 } from '@/lib/performanceCalendar'
 import { EXCLUDED_SELF_NOTICE } from '@/lib/performanceEligibility'
-import { fetchAllRows } from '@/lib/supabasePaging'
+import { fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
 import {
   istToday, istDateOf, istDayStartUtc, istDayEndUtc, istAddDays,
 } from '@/lib/istDate'
@@ -159,16 +159,17 @@ async function fetchWindow(
       .range(from, to)),
   ])
 
-  // Thrown rather than returned: this helper's contract is a Map, and swallowing a
-  // failed read would silently produce a window with missing days — the same class
-  // of bug the paging fixes. GET turns this into a 500.
-  const readError = openRes.error ?? closedRes.error ?? activityRes.error ?? eodRes.error
-  if (readError) throw new Error(`performance window read failed: ${readError}`)
-
-  const open     = openRes.rows
-  const closed   = closedRes.rows
-  const activity = activityRes.rows
-  const eods     = eodRes.rows
+  // `unwrapPagedRows` rejects BOTH a failed page and a capped read, matching the
+  // Team Performance route exactly — the two now share one checker rather than two
+  // similar-looking blocks. Previously this checked only `error`, so a capped read
+  // would have produced a window with missing days and scored it as real.
+  //
+  // Thrown rather than returned: this helper's contract is a Map, and there is no
+  // partial Map that would be safe to hand back. GET turns this into a generic 500.
+  const open     = unwrapPagedRows('open tasks',      openRes)
+  const closed   = unwrapPagedRows('completed tasks', closedRes)
+  const activity = unwrapPagedRows('activity log',    activityRes)
+  const eods     = unwrapPagedRows('EOD logs',        eodRes)
 
   // ── Per-day risk state ──────────────────────────────────────────────────────
   const riskTasks: RiskTask[] = [...open, ...closed].map(t => ({

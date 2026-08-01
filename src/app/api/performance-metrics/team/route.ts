@@ -74,7 +74,9 @@ import {
   type AppOpenRecord,
 } from '@/lib/performanceAdoption'
 import { ATTENDANCE_LIMITATION_NOTE } from '@/lib/performanceAttendance'
-import { fetchAllRows, PAGED_FETCH_ROW_CAP } from '@/lib/supabasePaging'
+import {
+  fetchAllRows, unwrapPagedRows, PagedReadError, PAGED_FETCH_ROW_CAP,
+} from '@/lib/supabasePaging'
 import { istToday, istDateOf, istDayStartUtc, istDayEndUtc, istMinutesOfDay } from '@/lib/istDate'
 
 function sb() {
@@ -306,33 +308,49 @@ export async function GET(req: NextRequest) {
       .limit(1),
   ])
 
-  const err = activeRes.error ?? completedRes.error ?? activityRes.error
-           ?? eodRes.error ?? createdRes.error
-  if (err) return NextResponse.json({ error: `data: ${err}` }, { status: 500 })
-
-  // A paged read that hit the row cap would under-report, which is the exact
-  // failure this route was built to stop hiding. Refuse rather than mislead.
-  const capped = [
-    ['tasks', activeRes], ['completed tasks', completedRes],
-    ['activity log', activityRes], ['EOD logs', eodRes], ['created tasks', createdRes],
-  ].find(([, r]) => (r as { truncated: boolean }).truncated)
-  if (capped) {
-    return NextResponse.json({
-      error: `data: ${capped[0]} exceeded the ${PAGED_FETCH_ROW_CAP}-row read cap for this period; narrow the date range`,
-    }, { status: 500 })
+  // Every paged read is unwrapped through `unwrapPagedRows`, which rejects BOTH a
+  // failed page and a capped read. Reading `.rows` directly is now a type error
+  // until `ok` is narrowed, so there is no longer a path that computes from a
+  // partial set — which is the failure this whole route exists to stop hiding.
+  let activeTasks:    ActiveTaskRow[]
+  let completedTasks: CompletedTaskRow[]
+  let activityLogs:   ActivityRow[]
+  let eodLogs:        EodRow[]
+  let createdTasks:   CreatedTaskRow[]
+  try {
+    activeTasks    = unwrapPagedRows('tasks',          activeRes)
+    completedTasks = unwrapPagedRows('completed tasks', completedRes)
+    activityLogs   = unwrapPagedRows('activity log',    activityRes)
+    eodLogs        = unwrapPagedRows('EOD logs',        eodRes)
+    createdTasks   = unwrapPagedRows('created tasks',   createdRes)
+  } catch (e) {
+    if (e instanceof PagedReadError) {
+      console.error('team performance read failed:', e.message)
+      // Wording preserved from before this refactor so the two failure modes read
+      // exactly as they did: a capped read tells the owner how to proceed, a failed
+      // read does not pretend to.
+      return NextResponse.json({
+        error: e.reason === 'row_cap_exceeded'
+          ? `data: ${e.label} exceeded the ${PAGED_FETCH_ROW_CAP}-row read cap for this period; narrow the date range`
+          : `data: ${e.detail}`,
+      }, { status: 500 })
+    }
+    throw e
   }
 
-  const activeTasks    = activeRes.rows
-  const completedTasks = completedRes.rows
-  const activityLogs   = activityRes.rows
-  const eodLogs        = eodRes.rows
-  const createdTasks   = createdRes.rows
-  const appOpenRows    = appOpenRes.rows
-  const eOpens         = appOpenRes.error
+  // Adoption is unwrapped separately and deliberately NON-fatally. If
+  // performance_app_opens is missing or unreadable the page must still render every
+  // score, ranking and briefing item — a supplementary metric failing has no
+  // business taking down the report. A capped adoption read is treated the same as
+  // a failed one: omitted entirely, never partially believed.
+  let appOpenRows: AppOpenRow[] = []
+  let eOpens: string | null = null
+  try {
+    appOpenRows = unwrapPagedRows('app opens', appOpenRes)
+  } catch (e) {
+    eOpens = e instanceof PagedReadError ? e.message : String(e)
+  }
 
-  // Adoption is deliberately NOT fatal. If performance_app_opens is missing or
-  // unreadable the page must still render every score, ranking and briefing item
-  // — a supplementary metric failing has no business taking down the report.
   const adoptionError = eOpens ?? eFirstOpen?.message ?? null
   if (adoptionError) {
     console.error('performance_app_opens read failed; adoption omitted:', adoptionError)

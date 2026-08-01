@@ -145,12 +145,86 @@ describe('team endpoint query shape', () => {
   test('26b. a failed adoption read does not fail the request', () => {
     assert.ok(source.includes('adoptionAvailable'),
       'the adoption-availability flag has gone')
-    // The fatal error check must not include the adoption errors.
-    const fatal = source.match(/const err = [^\n]*/)?.[0] ?? ''
-    assert.equal(fatal.includes('eOpens'), false,
+
+    // Adoption must be unwrapped in its OWN try/catch, separately from the five
+    // score-bearing reads, so a failure sets eOpens instead of returning a 500.
+    assert.match(source, /unwrapPagedRows\('app opens', appOpenRes\)/,
+      'the adoption read is no longer unwrapped')
+    assert.match(source, /catch \(e\) \{\s*\n\s*eOpens =/,
+      'an adoption read failure must be captured into eOpens, not rethrown')
+
+    // And the fatal block must not mention the adoption results at all.
+    const fatalBlock = source.slice(
+      source.indexOf('let activeTasks:'),
+      source.indexOf('let appOpenRows'),
+    )
+    assert.ok(fatalBlock.length > 0, 'the fatal unwrap block has moved or gone')
+    assert.equal(fatalBlock.includes('appOpenRes'), false,
       'an adoption read failure is being treated as fatal — the page would 500 over a supplementary metric')
-    assert.equal(fatal.includes('eFirstOpen'), false,
-      'an adoption read failure is being treated as fatal')
+    assert.equal(fatalBlock.includes('eFirstOpen'), false,
+      'the first-ever-open lookup is being treated as fatal')
+  })
+
+  // ── Truncation must be rejected, not computed from ────────────────────────────
+  test('7. every score-bearing paged read is unwrapped, so truncation cannot pass', () => {
+    for (const label of ['tasks', 'completed tasks', 'activity log', 'EOD logs', 'created tasks']) {
+      assert.ok(source.includes(`unwrapPagedRows('${label}',`),
+        `the '${label}' read is not going through unwrapPagedRows — a capped or failed read could reach the calculations`)
+    }
+    assert.ok(source.includes('PagedReadError'),
+      'the route no longer distinguishes a paged read failure')
+    assert.ok(source.includes('row_cap_exceeded'),
+      'the route no longer reports a capped read differently from a failed one')
+  })
+
+  test('no paged result has its rows read without going through the unwrapper', () => {
+    // `.rows` on the union is a compile error until `ok` is narrowed, so this is a
+    // belt-and-braces check that nobody added a cast to work around it.
+    for (const v of ['activeRes', 'completedRes', 'activityRes', 'eodRes', 'createdRes', 'appOpenRes']) {
+      assert.equal(source.includes(`${v}.rows`), false,
+        `${v}.rows is read directly — use unwrapPagedRows so truncation is rejected`)
+      assert.equal(source.includes(`${v}.error`), false,
+        `${v}.error is read directly — the unwrapper owns that decision now`)
+    }
+  })
+})
+
+// ── Personal Performance route: the same defensive behaviour ──────────────────
+describe('personal performance route', () => {
+  const PERSONAL = join(process.cwd(), 'src/app/api/performance-metrics/route.ts')
+  const personal = readFileSync(PERSONAL, 'utf8')
+
+  test('6. every paged read is unwrapped, so a truncated read is refused', () => {
+    // Before this change the route checked only `error` and would have scored a
+    // window with missing days if a read had ever been capped.
+    for (const label of ['open tasks', 'completed tasks', 'activity log', 'EOD logs']) {
+      assert.ok(personal.includes(`unwrapPagedRows('${label}',`),
+        `the '${label}' read is not going through unwrapPagedRows`)
+    }
+    for (const v of ['openRes', 'closedRes', 'activityRes', 'eodRes']) {
+      assert.equal(personal.includes(`${v}.rows`), false, `${v}.rows is read directly`)
+      assert.equal(personal.includes(`${v}.error`), false, `${v}.error is read directly`)
+    }
+  })
+
+  test('a read failure becomes a 500 without leaking database detail', () => {
+    // fetchWindow's contract is a Map; there is no partial Map that would be safe,
+    // so it throws and GET converts that into a generic response.
+    assert.match(personal, /catch \(e\) \{[\s\S]{0,200}?Failed to load performance data/,
+      'the window fetch failure no longer produces a generic 500')
+    const body = personal.match(/error: 'Failed to load performance data'/)
+    assert.ok(body, 'the user-facing message has changed')
+    // The detail belongs in the log, not the response.
+    assert.match(personal, /console\.error\('performance-metrics window fetch failed:'/)
+  })
+
+  test('all four personal reads are paged in the first place', () => {
+    const calls = personal.match(/fetchAllRows</g) ?? []
+    assert.equal(calls.length, 4,
+      'the personal route should page exactly its four windowed reads')
+    // Each must carry a deterministic order for LIMIT/OFFSET paging to be sane.
+    const ordered = personal.match(/\.order\('id'\)/g) ?? []
+    assert.ok(ordered.length >= 4, 'every paged read needs a stable unique ordering')
   })
 })
 
