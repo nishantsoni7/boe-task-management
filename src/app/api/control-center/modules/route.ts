@@ -13,8 +13,11 @@ async function adminClient(req: NextRequest) {
   const { data: { user } } = await svc.auth.getUser(token)
   if (!user) return null
 
-  const { data: p } = await svc.from('users').select('role').eq('id', user.id).single()
-  if (p?.role !== 'admin') return null
+  // Deactivating or soft-deleting a member does not revoke their Supabase
+  // session, so role alone is not enough. is_deleted is treated as nullable
+  // (as /api/admin-members already does), so only an explicit true rejects.
+  const { data: p } = await svc.from('users').select('role, is_active, is_deleted').eq('id', user.id).single()
+  if (!p || p.role !== 'admin' || p.is_active !== true || p.is_deleted === true) return null
 
   return svc
 }
