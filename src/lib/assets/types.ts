@@ -7,11 +7,14 @@
 // one of them is null. "Not recorded" is a permanent, legitimate state and the
 // UI must render it rather than treat it as missing data.
 
+// The six states an asset may rest at. 'returned' is deliberately absent: a
+// return closes the CUSTODY period (employee_assets.status = 'returned') and
+// puts the asset itself back to 'available'. 20260801000100 removed the value
+// from the assets_status_known CHECK, so the database now refuses it too.
 export type AssetStatus =
   | 'available'
   | 'assigned'
   | 'under_repair'
-  | 'returned' // legacy resting state; nothing writes it since 20260722000000
   | 'lost'
   | 'retired'
   | 'disposed'
@@ -166,6 +169,10 @@ export type AssetEmployee = {
 // One place per vocabulary, so a status reads the same on the list, the detail
 // header, the timeline and a filter dropdown.
 
+// 'returned' keeps a label but is not a status any asset can hold
+// (20260801000100). It stays here only so that a historical value read from
+// anywhere — an old activity payload, a hand-written query — still renders as
+// a word rather than a raw token.
 export const ASSET_STATUS_LABEL: Record<string, string> = {
   available:    'Available',
   assigned:     'Assigned',
@@ -176,9 +183,15 @@ export const ASSET_STATUS_LABEL: Record<string, string> = {
   disposed:     'Disposed',
 }
 
-/** Statuses offered as filters, in the order an operator thinks about them. */
-export const ASSET_STATUS_OPTIONS: readonly string[] = [
-  'available', 'assigned', 'under_repair', 'returned', 'lost', 'retired', 'disposed',
+/**
+ * Statuses offered as filters, in the order an operator thinks about them.
+ *
+ * 'returned' is not offered: the database refuses it, so the filter could only
+ * ever return an empty list and read as "there are no returned assets" when
+ * the truth is that there is no such thing.
+ */
+export const ASSET_STATUS_OPTIONS: readonly AssetStatus[] = [
+  'available', 'assigned', 'under_repair', 'lost', 'retired', 'disposed',
 ]
 
 export const ASSET_CONDITION_LABEL: Record<string, string> = {

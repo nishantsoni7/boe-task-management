@@ -21,6 +21,7 @@ import {
   acceptanceStatusKey,
   assetDeleteBlockReason,
 } from './lifecycle'
+import { ASSET_STATUS_OPTIONS } from './types'
 
 describe('return lifecycle', () => {
   test('a normal return puts the asset back to available, not returned', () => {
@@ -43,6 +44,48 @@ describe('return lifecycle', () => {
   test('assigned and lost assets are not assignable', () => {
     assert.equal(canAssignAsset('assigned'), false)
     assert.equal(canAssignAsset('lost'), false)
+  })
+})
+
+// The database half of this rule is the assets_status_known CHECK, replaced by
+// 20260801000100 to drop 'returned'. These lock the app's vocabulary to that
+// list, so a status the database would refuse can never be offered in the UI.
+const DB_ALLOWED_ASSET_STATUSES = [
+  'available', 'assigned', 'under_repair', 'lost', 'retired', 'disposed',
+] as const
+
+describe('asset-master statuses (20260801000100)', () => {
+  test('a return leaves the asset at available — the whole reason returned is not a status', () => {
+    assert.equal(ASSET_STATUS_AFTER_RETURN, 'available')
+    assert.ok(
+      (DB_ALLOWED_ASSET_STATUSES as readonly string[]).includes(ASSET_STATUS_AFTER_RETURN),
+      'the post-return status must be one the database accepts',
+    )
+  })
+
+  test('returned is not offered as an asset status anywhere in the UI', () => {
+    assert.ok(
+      !ASSET_STATUS_OPTIONS.includes('returned' as never),
+      'returned is a custody event, not a state an asset can rest in',
+    )
+  })
+
+  test('every status the UI offers is one the database will accept', () => {
+    for (const status of ASSET_STATUS_OPTIONS) {
+      assert.ok(
+        (DB_ALLOWED_ASSET_STATUSES as readonly string[]).includes(status),
+        `${status} is offered by the UI but is not in the assets_status_known CHECK`,
+      )
+    }
+  })
+
+  test('the UI offers every status the database allows — no state is unreachable', () => {
+    for (const status of DB_ALLOWED_ASSET_STATUSES) {
+      assert.ok(
+        (ASSET_STATUS_OPTIONS as readonly string[]).includes(status),
+        `${status} exists in the database but cannot be filtered for`,
+      )
+    }
   })
 })
 
