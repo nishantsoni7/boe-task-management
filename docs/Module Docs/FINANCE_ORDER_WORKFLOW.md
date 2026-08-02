@@ -1,0 +1,437 @@
+# Finance, Quotation, Order Request & Confirmed Order — Workflow and Current State
+
+Last updated: 2 August 2026
+
+This document is two things:
+
+1. **A current-state map** of every surface in the Quotation → Order Request →
+   Confirmed Order → Payment chain, verified against the code and the migration
+   files rather than against comments.
+2. **A per-requirement status matrix** for the end-to-end testing and hardening
+   pass, so what was implemented, what already existed, and what is deferred are
+   all separable.
+
+> **Scope honesty.** This pass was carried out with repository access only.
+> No authenticated browser session, no production or staging database
+> connection, and no production-role accounts were available. **No test records
+> were created, and no browser acceptance run was performed.** Everything marked
+> *Implemented* below is verified by TypeScript, ESLint and the unit test suite;
+> everything requiring a live database is marked *Blocked — no DB access* and
+> has an executable SQL assertion script prepared for it. See
+> `docs/testing/finance-orders-quotation-acceptance.md`.
+
+---
+
+## 1. Current-state map
+
+### 1.1 Pages
+
+| Route | File | Purpose |
+| --- | --- | --- |
+| `/finance` | `src/app/finance/page.tsx` | Payment Requests (pre-approval stage only) |
+| `/finance/received` | `src/app/finance/received/ReceivedPaymentsView.tsx` | Received Payments (both approved statuses) |
+| `/finance/received/linked` · `/unlinked` | `src/app/finance/received/*/page.tsx` | Routed views of the same ledger |
+| `/orders` | `src/app/orders/page.tsx` | Orders dashboard |
+| `/orders/all` | `src/app/orders/all/page.tsx` | Confirmed Order list |
+| `/orders/[id]` | `src/app/orders/[id]/page.tsx` | Confirmed Order detail |
+| `/orders/requests` | `src/app/orders/requests/page.tsx` | Order Request list + create |
+| `/orders/requests/[id]` | `src/app/orders/requests/[id]/page.tsx` | Order Request detail + convert |
+| `/tasks/quotation-requests` | `src/app/tasks/quotation-requests/page.tsx` | Quotation Requests |
+| `/admin/control-center/action-queue` | `.../action-queue/page.tsx` | Admin pending-decision queue |
+
+### 1.2 Tables
+
+| Table | Created by | Notes |
+| --- | --- | --- |
+| `orders` | `20260655` | Confirmed Orders. Permanent — no DELETE policy, `orders_prevent_delete` trigger. |
+| `order_activity_log` | `20260656` | Append-only. No DELETE policy. |
+| `order_requests` | `20260680000000` | Pre-order. `request_number` immutable by trigger. |
+| `order_request_activity` | `20260680000000` | Append-only, written only by a definer trigger. |
+| `order_request_attachments` | `20260711000000` | Private bucket, Main PI mandatory. |
+| `finance_payment_requests` | `20260628000200` | **All five payment statuses live in this one table.** There is no separate received-payments table. |
+| `finance_payment_request_activity_log` | `20260674` | Append-only. |
+| `payment_proof_attachments` | `20260672` | |
+| `order_change_requests` | **`20260804000000` (new)** | Proposed amendments and cancellations. |
+| `tasks` (`task_type='quotation_request'`) | `20260652` | **Quotation Requests are a task type, not a module.** |
+
+### 1.3 Key RPCs
+
+`convert_order_request_to_order`, `finalize_order_request`, `edit_order_request`,
+`reject_order_request`, `reapply_order_request`, `request_order_request_clarification`,
+`respond_to_clarification`, `admin_delete_order_request`,
+`approve_finance_payment_request`, `link_finance_payment_to_order`,
+`link_finance_payment_to_order_request`, `unlink_finance_payment_from_order`,
+`unlink_finance_payment_from_order_request`, `set_next_confirmed_order_number`,
+`get_confirmed_order_number_cycle`, `execute_test_data_cleanup`.
+
+**Added by this pass:** `amend_order`, `cancel_order`,
+`approve_order_change_request`, `reject_order_change_request`,
+`order_linked_payment_total`, plus the internal `apply_order_amendment`,
+`cancel_order_with_audit`, `assert_order_amender`, `in_order_amendment`.
+
+### 1.4 Statuses
+
+* **`orders.status`** — `running`, `on_hold`, `ready_for_dispatch`, `dispatched`,
+  `cancelled`. (`requested` was retired in `20260702000000`; conversion *is* the
+  approval, so an Order is born at `running`.)
+* **`order_requests.status`** — `submitted`, `needs_clarification`, `rejected`,
+  `converted`.
+* **`finance_payment_requests.status`** — `pending_approval`,
+  `needs_clarification`, `rejected`, `approved_unlinked`, `approved_linked`.
+
+---
+
+## 2. Confirmed defects found
+
+### D1 — Operations could rewrite any Order field *(Priority A · fixed)*
+
+`orders_operations_update` (`20260655`) grants `UPDATE` on `public.orders` to
+every operations-team member **with no column restriction**. Its own comment
+claims "update status/notes"; the policy permits rewriting `total_value`,
+`client_name`, `requested_by`, `assigned_to` — anything on the row, silently and
+with no audit entry.
+
+**Fixed** by `orders_guard_amendable_columns` (`20260804000000` §1), which
+splits the columns into frozen / commercial / operational tiers and refuses a
+commercial change outside an amendment. Because it is a trigger, it holds for
+the **service role and direct SQL** too, not only for PostgREST.
+
+### D2 — An Order's commercial terms were immutable *(Priority C · fixed)*
+
+The only `orders` mutation anywhere in the application was
+`update({ status })`. There was **no path at all** — for anyone, admin
+included — to correct an order value, client name, confirm/due date or lead
+source after conversion. The only remedy was direct SQL against production,
+which leaves no actor, no reason and no history.
+
+**Fixed** by `amend_order()` and the `order_change_requests` proposal flow.
+
+### D3 — No amount was constrained in the database *(Priority A · fixed)*
+
+`finance_payment_requests.amount` is an unconstrained `numeric not null`, and
+all four order-value columns are unconstrained `numeric(12,2)`. The only thing
+preventing a negative or zero receipt was `isValidAmount()` in
+`src/lib/currency.ts` — **a client-side function**. Anything reaching PostgREST
+without that form (a service-role route, a crafted request, an import script,
+psql) could write `amount = -50000`, and every derived figure absorbs it
+silently: the Order detail Received/Pending/Completion band, the advance on an
+Order Request, and the conversion rule's "at least one approved payment" count.
+
+**Fixed** by five `CHECK` constraints (`20260805000000`), added `NOT VALID` so
+the deployment cannot fail on a legacy row, with a survey script to run before
+validating.
+
+### D4 — Cancelling an Order said nothing about the money *(Priority C · fixed)*
+
+Cancellation was a plain `update({ status: 'cancelled' })` behind a yes/no
+dialog. It recorded **no reason**, and — the operationally dangerous part —
+never told the person clicking it that money had been received against the
+order. Linked payments stayed `approved_linked`, the Payment Summary kept
+reporting "Received ₹X", and nothing anywhere recorded that a settlement was
+outstanding.
+
+**Fixed** by `cancel_order()` / `cancel_order_with_audit()`, which require a
+reason and write `received_at_cancellation` into the activity log **even when it
+is zero** — "no money had been received" is itself a fact worth being able to
+prove. The cancel dialog reads the true received total through a `SECURITY
+DEFINER` function, so a salesperson is not shown a figure narrowed by their own
+RLS scope.
+
+### D5 — Quotation Requests are entirely disconnected from Order Requests *(open)*
+
+A Quotation Request is a `tasks` row with `task_type = 'quotation_request'`
+(`20260652`). There is **no** foreign key, no conversion RPC, and no reference
+column linking it to `order_requests` or `orders`. A quotation cannot become an
+Order Request through the system; the connection exists only in people's heads.
+
+Duplicate-conversion protection is therefore **not applicable** — there is no
+conversion to protect. Documented, not built: creating that link is a product
+decision about whether the quotation *is* the pre-order artifact or a separate
+stage, and building it speculatively would risk a second competing pre-order
+entity next to `order_requests`.
+
+### D6 — Order activity entries are written client-side *(open, low)*
+
+`StatusControl` writes its `order_activity_log` row from the browser, in a
+second round trip after the status update. If that insert fails the status
+change is silently unlogged, and `order_activity_log_operations_insert` lets an
+operations user post arbitrary events. Cancellation no longer has this problem —
+`cancel_order_with_audit` writes both in one transaction — but the other four
+transitions still do. Recommended as the next small task (§6).
+
+---
+
+## 3. What was implemented
+
+### 3.1 The amendment model
+
+**Two doors, one apply path.**
+
+```
+admin ─────────────► amend_order() ─────────┐
+                                            ├─► apply_order_amendment() ─► orders
+everyone else ─► order_change_requests ─────┘         │
+                        │                             └─► order_activity_log
+                        └─► approve_order_change_request()
+```
+
+* **`NULL` means "leave this field alone."** Both doors `COALESCE` every
+  proposed value against the stored one. The deliberate consequence: **neither
+  door can blank a field back to `NULL`**, so a form submitting an empty box can
+  never silently erase a due date. Clearing a field is not offered rather than
+  half-offered through a sentinel.
+* **An amendment that changes nothing is refused** (`ORDER_AMENDMENT_NO_CHANGE`),
+  because an audit row saying nothing happened is worse than no row.
+* **The diff is built from what the database stored**, not from the arguments,
+  so a value equal to the one already there never appears in the audit row as
+  though it were a change.
+* **A reason is mandatory** on both doors and on cancellation.
+* **A closed Order (`dispatched` / `cancelled`) refuses amendment**, at the
+  database, in the insert policy, and in the UI.
+* **`FOR UPDATE` on the Order** — two amendments racing serialize, so the
+  "before" values in the audit log are the ones actually replaced.
+* **Approval is atomic with its effect.** Every refusal raises and rolls the
+  whole transaction back, so no request is ever marked `approved` without the
+  change having landed.
+* **`order_change_requests` has no `UPDATE` and no `DELETE` policy, for anyone
+  including admins.** A client cannot move a request to approved, cannot write
+  `reviewed_by`/`reviewed_at`, and cannot erase a decision.
+* **One open request of each type per Order per person** (partial unique index).
+  The UI disables the button rather than letting the insert die on a constraint.
+
+**Why a GUC rather than "exempt admins" in the guard:** an exemption for a *role*
+audits nothing — it would let an admin's ordinary PostgREST `PATCH` rewrite the
+order value with no activity row, which is precisely the state D2 describes. A
+GUC is a *context*: set only by `apply_order_amendment()`, only after the actor
+is validated, only in the same transaction that writes the audit row,
+transaction-local, and unsettable from any client. Same idiom as
+`in_test_data_cleanup()` (`20260705000000`).
+
+### 3.2 Cancellation
+
+Cancellation is separated from amendment because it is not a change of terms.
+
+* Requires a reason.
+* Records `received_at_cancellation` in the activity log.
+* **Touches no payment.** Payments linked to a cancelled Order stay linked and
+  stay `approved_linked`: the money genuinely arrived, and *a cancellation is
+  not a refund*. Refunding is a separate deliberate act by whoever moves funds.
+* A dispatched Order cannot be cancelled; a cancelled one cannot be cancelled
+  twice.
+* Non-admins get `request_type = 'cancel'`, because cancelling is the one
+  lifecycle move a salesperson has a legitimate reason to ask for and no
+  authority to make (`allowedTransitions()` returns `[]` for them).
+
+### 3.3 Calculation definitions *(as implemented today)*
+
+| Figure | Definition | Where |
+| --- | --- | --- |
+| Gross received | `sum(amount)` over `status = 'approved_linked'` for the Order | `order_linked_payment_total()`; Order detail page |
+| Pending | `total_value − gross received`, floored at 0 for display | Order detail page |
+| Completion | `round(gross received / total_value × 100)` | Order detail page |
+
+Pending and rejected payments are **excluded** from every one of these. Refund,
+reversal, net-received and overpayment are **not yet modelled** — see §4.
+
+---
+
+## 4. Deferred, with reasons
+
+These are specified rather than built. Each was deferred because it needs a
+product decision or a data model that should not be guessed at, not because it
+is unimportant.
+
+### 4.1 Refunds, reversals and customer credit *(Priority C · deferred)*
+
+The prompt asks these be distinguished rather than collapsed into "refund":
+
+| Event | Meaning | Correct model |
+| --- | --- | --- |
+| Refund | Money returned to the customer | New signed record referencing the original payment |
+| Data-entry error | The payment never happened | **Void** the original, not a refund |
+| Bank reversal / bounce | Money arrived then left | Reversal record; original stays visible |
+| Wrong allocation | Right money, wrong order | **Relink**, which already exists |
+| Wrong amount or date | Right event, wrong facts | **Correction**, with before/after |
+
+**Recommended shape:** a `finance_payment_adjustments` table — one row per
+adjustment, `adjustment_type` in (`refund`, `void`, `reversal`, `correction`),
+`original_payment_id`, amount, date, mode/destination, reason, supporting
+document, requested_by, approved_by, status, timestamps. Then:
+
+```
+gross received  = Σ approved_linked payments
+refund total    = Σ approved refunds
+reversal total  = Σ approved reversals + voids
+net received    = gross received − refund total − reversal total
+balance due     = current order value − net received
+overpayment     = max(net received − current order value, 0)
+```
+
+**Why not implemented now:** it must not be a negative `amount` row in
+`finance_payment_requests`. That would be the fastest route and the wrong one —
+it corrupts every existing count and sum, including the conversion rule's
+"at least one approved payment", and it is exactly what the new
+`finance_payment_requests_amount_positive` constraint now forbids. The
+constraint was added deliberately **before** the refund work so the wrong shape
+is closed off first.
+
+Customer credit (money retained against a cancelled order for a future one) is
+a further state on top of this and should not be designed before the adjustment
+table exists.
+
+### 4.2 Dispatch readiness gate *(Priority C · deferred)*
+
+Requirements 13.2–13.4 (invoice, dispatch document, e-way bill, vehicle number,
+transporter, vehicle type, freight, dispatch date, shipping and billing
+address) are **entirely absent today** — `ready_for_dispatch → dispatched` is a
+plain status update with no data requirement whatsoever.
+
+`orders` carries no address columns, no dispatch columns and no dispatch
+document category. Building this needs: new columns or a `order_dispatch`
+table, a storage category in the existing attachment infrastructure, a
+server-side transition guard, and a "Not Applicable + reason" path for
+documents that genuinely do not apply. That is a phase of its own, and half of
+it would be worse than none — a dispatch gate that validates four of nine
+fields trains people to trust a check that does not hold.
+
+**Future Transport Module integration point:** keep transporter, vehicle type
+and freight as plain columns on the dispatch record now, and add a nullable
+`transport_record_id` FK later. Do not create transport tables speculatively.
+
+### 4.3 Fabric and finish *(deferred)*
+
+Requirement 11. No fabric or finish field, column or attachment category
+exists. Once built it should follow the amendment model in §3.1 when
+manufacturing has already received the order.
+
+### 4.4 Post-approval correction requests for **payments** *(deferred)*
+
+Requirement 7.5. Approval is currently a hard wall in Finance:
+`canManageRequest()` returns false for both approved statuses and there is **no
+request-an-edit path** for a salesperson. The Order-side equivalent now exists
+(`order_change_requests`); the Finance-side equivalent should reuse the same
+shape but is a separate table and a separate phase, and it overlaps heavily
+with the adjustment model in §4.1 — building them in the wrong order would
+produce two competing correction workflows.
+
+### 4.5 Missing-document double confirmation *(deferred)*
+
+Requirement 9.2. Today the **Main PI is mandatory** and enforced in the
+database (exactly one, verified at finalization), which covers the most
+important half. What is missing is the **two-step confirmation when no
+*reference* attachment — drawing, specification, client document — is present**.
+This is a contained UI change and is the cheapest item on this list; it was
+sequenced after the Priority A items per §22.
+
+### 4.6 Sales Manager team visibility *(open question)*
+
+`orders_sales_select` scopes to `requested_by = auth.uid() OR assigned_to =
+auth.uid()` — correct for a Sales Executive, and it means a **Sales Manager
+currently sees only their own records**, not their team's. Whether managers
+should see team records is a permission-model decision (the permission engine
+in `20260660` is the right place for it, not a hardcoded `role = 'manager'`
+policy). Flagged, not changed.
+
+### 4.7 Conversion payment prerequisite *(verified, unchanged)*
+
+`convert_order_request_to_order` requires **at least one approved linked
+payment**, and refuses while any linked payment is still awaiting a Finance
+decision. This is a documented business rule
+(`05_Business_Rules.md` → "Order Request Approval Requirement") and was
+**deliberately left exactly as it is**.
+
+**Conflict worth raising with the Product Owner:** this makes a zero-advance or
+credit order impossible to enter. If those occur in practice, the correct
+remedy is a narrow admin override requiring a reason and a permanent audit
+entry — *not* weakening the database rule. Not built, because inventing an
+override for a rule the owner may still want absolute would be the wrong
+default.
+
+---
+
+## 5. Requirement status matrix
+
+| § | Requirement | Status |
+| --- | --- | --- |
+| 7.1 | Payment against no sales record | **Verified existing** — `unallocated` target |
+| 7.2 | Payment against Order Request | **Verified existing** — `20260698`/`20260699`/`20260715` |
+| 7.3 | Payment against Confirmed Order | **Verified existing**; cancelled-order handling **deferred** (§4.1) |
+| 7.4 | Edit/delete before approval | **Verified existing** — `20260700` |
+| 7.5 | Post-approval correction requests | **Deferred** (§4.4) |
+| 7.6 | Clarification and rejection | **Verified existing** |
+| 7.7 | Race conditions | **Partially verified** — new RPCs use `FOR UPDATE`; existing paths reviewed, not executed (no DB access) |
+| 8.1 | Partial payments / totals | **Partially existing** — gross only; net/refund/overpayment **deferred** (§4.1) |
+| 8.2 | Advance before finalization | **Verified existing** (code review only) |
+| 8.3 | Overpayment | **Documented only** — survey query added; no separate display |
+| 8.4 | Underpayment | **Verified existing** — no full-payment dispatch block introduced |
+| 8.5 | Refunds | **Deferred with spec** (§4.1) |
+| 8.6 | Reversal / correction taxonomy | **Documented only** (§4.1) |
+| 8.7 | Customer credit | **Deferred with spec** (§4.1) |
+| 9.1 | Order Request creation | **Verified existing** |
+| 9.2 | Missing-document protection | **Partially existing** — Main PI mandatory; double confirmation **deferred** (§4.5) |
+| 9.3 | Edit/delete before approval | **Verified existing** |
+| 9.4 | Post-lock amendment | **Verified existing** for requests (clarification/reapply flow) |
+| 9.5 | Conversion | **Verified existing, unchanged** (§4.7) |
+| 10.1 | Order-number integrity | **Verified existing** — `20260703`/`20260704`, immutable by trigger |
+| 10.2 | Amendments to confirmed fields | **Implemented** (§3.1) — commercial fields; product/fabric/dispatch fields **deferred** |
+| 10.3 | Order amount changes | **Implemented** — payments untouched, balance recalculates, revision audited |
+| 10.4 | Controlled cancellation | **Implemented** (§3.2) — reason + money position; refund/credit **deferred** |
+| 10.5 | Reopening cancelled orders | **Not added**, per the prompt's safer default |
+| 11 | Fabric and finish | **Deferred** (§4.3) |
+| 12 | Status flow | **Verified existing**; transition graph is client-side — see risk R2 |
+| 13 | Dispatch requirements | **Deferred with spec** (§4.2) |
+| 14 | Quotation workflow | **Defect documented** (D5) — no link to Order Requests exists |
+| 15 | Permissions matrix | **Partially verified**; Sales Manager scope **open** (§4.6) |
+| 16 | Audit and notifications | **Implemented** for amendments/cancellation; notifications **deferred** (Action Queue used instead) |
+| 17 | Amounts and calculations | **Implemented** — DB constraints + `parseMoney` with 44 unit tests |
+| 18 | Automated tests | **Implemented** — 44 new unit tests + 2 SQL assertion scripts |
+| 19 | Database verification | **Implemented** — 2 new migrations, 2 assertion scripts; **not applied** (no DB access) |
+| 20 | Manual acceptance test | **Blocked** — no authenticated access; checklist written |
+| 21 | Documentation | **Implemented** — this file + business rules |
+
+---
+
+## 6. Remaining risks
+
+**R1 — Neither migration has been applied.** `20260804000000` and
+`20260805000000` are written and reviewed but have never run against any
+database. The UI shipped alongside them **will fail** until they are applied:
+`amend_order` and `order_change_requests` do not exist yet. Apply the
+migrations **before** deploying the application code.
+
+**R2 — The status transition graph is client-side only.** `TRANSITION_GRAPH` and
+`allowedTransitions()` live in `src/app/orders/[id]/page.tsx`. RLS permits any
+operations-team member to set `status` to any value the CHECK accepts, so
+`dispatched → running` is refused by the UI and accepted by the database. The
+new guard covers *commercial* columns; `status` is deliberately outside it. This
+should become a database-side transition guard.
+
+**R3 — Reassignment is now blocked for everyone.** `assigned_to` and
+`requested_by` are in the guarded tier, and `amend_order` does not offer them.
+No UI existed to change them before, so nothing regressed in practice — but if
+reassigning an Order to another salesperson is a real need, it must be added to
+the amend door rather than by loosening the guard.
+
+**R4 — `NOT VALID` constraints are not yet validated.** They enforce on new
+writes immediately, but existing rows are unproven until the survey script is
+run and the `VALIDATE CONSTRAINT` statements are executed.
+
+**R5 — Overpayment is still silent.** Nothing detects or displays a receipt
+above the order value. The survey script in
+`financial_amount_invariants_assertions.sql` will list existing cases.
+
+---
+
+## 7. Recommended next small task
+
+**Apply the two migrations, run the two assertion scripts, then build the
+missing-document double confirmation (§4.5).**
+
+Migrations first because the UI depends on them; the assertion scripts because
+they are the only execution these changes have had; then §4.5 because it is the
+smallest remaining requirement with a real operational cost (missing drawings)
+and it needs no new data model.
+
+After that, the adjustment/refund table (§4.1) — it unblocks §8.1, §8.3, §8.5,
+§8.7 and §7.5 together, and every one of those is currently waiting on the same
+missing model.
