@@ -288,6 +288,21 @@ export type ProposedOrderFields = {
   proposed_notes:               string | null
 }
 
+// What the Order held when the request was filed, captured server-side by
+// capture_order_change_baseline (20260806000000). Never sent by a client — a
+// requester who could supply their own baseline could suppress the staleness
+// check that approval depends on. Present here so the review UI can show an
+// admin what the requester was actually looking at.
+export type BaselineOrderFields = {
+  baseline_client_name:         string | null
+  baseline_total_value:         number | null
+  baseline_total_product_value: number | null
+  baseline_confirm_date:        string | null
+  baseline_due_date:            string | null
+  baseline_lead_source:         string | null
+  baseline_notes:               string | null
+}
+
 export function toProposedFields(payload: AmendmentPayload): ProposedOrderFields {
   return {
     proposed_client_name:         payload.p_client_name,
@@ -318,7 +333,7 @@ export type OrderChangeRequest = {
   reviewed_at: string | null
   review_note: string | null
   created_at: string
-} & ProposedOrderFields
+} & ProposedOrderFields & Partial<BaselineOrderFields>
 
 export const CHANGE_REQUEST_TYPE_LABEL: Record<OrderChangeRequestType, string> = {
   edit:   'Change to Order',
@@ -353,6 +368,70 @@ export function hasPendingChangeRequest(
 /** A reviewed request can never be reviewed again. */
 export function canReviewChangeRequest(request: Pick<OrderChangeRequest, 'status'>): boolean {
   return request.status === 'pending'
+}
+
+/**
+ * One line per proposed field, as `Label: baseline → proposed`.
+ *
+ * The baseline half is what makes this reviewable rather than merely readable:
+ * "Total Order Value: ₹2,50,000 → ₹3,00,000" tells an admin what is being
+ * replaced, and — when the order has moved since — that the request was written
+ * against a figure that is no longer current. Requests filed before
+ * 20260806000000 carry no baseline, so those fall back to showing the proposal
+ * alone rather than inventing a "from" value.
+ */
+export function describeProposal(request: OrderChangeRequest): string[] {
+  const pairs: [AmendableField, unknown, unknown][] = [
+    ['client_name',         request.baseline_client_name,         request.proposed_client_name],
+    ['total_product_value', request.baseline_total_product_value, request.proposed_total_product_value],
+    ['total_value',         request.baseline_total_value,         request.proposed_total_value],
+    ['confirm_date',        request.baseline_confirm_date,        request.proposed_confirm_date],
+    ['due_date',            request.baseline_due_date,            request.proposed_due_date],
+    ['lead_source',         request.baseline_lead_source,         request.proposed_lead_source],
+    ['notes',               request.baseline_notes,               request.proposed_notes],
+  ]
+
+  return pairs
+    .filter(([, , proposed]) => proposed !== null && proposed !== undefined)
+    .map(([field, baseline, proposed]) => {
+      const label = AMENDABLE_FIELD_LABEL[field]
+      const to = displayValue(field, proposed)
+      return baseline === undefined
+        ? `${label}: ${to}`
+        : `${label}: ${displayValue(field, baseline)} → ${to}`
+    })
+}
+
+/**
+ * Which proposed fields no longer match the Order — the client-side mirror of
+ * the staleness gate in approve_order_change_request.
+ *
+ * Advisory only. The database re-derives this under a row lock and is what
+ * actually refuses; this exists so an admin sees the conflict on the page
+ * instead of discovering it by having their approval rejected.
+ */
+export function staleProposalFields(
+  request: OrderChangeRequest,
+  order: AmendableOrder,
+): string[] {
+  const pairs: [AmendableField, unknown, unknown, unknown][] = [
+    ['client_name',         request.proposed_client_name,         request.baseline_client_name,         order.client_name],
+    ['total_product_value', request.proposed_total_product_value, request.baseline_total_product_value, order.total_product_value],
+    ['total_value',         request.proposed_total_value,         request.baseline_total_value,         order.total_value],
+    ['confirm_date',        request.proposed_confirm_date,        request.baseline_confirm_date,        order.confirm_date],
+    ['due_date',            request.proposed_due_date,            request.baseline_due_date,            order.due_date],
+    ['lead_source',         request.proposed_lead_source,         request.baseline_lead_source,         order.lead_source],
+    ['notes',               request.proposed_notes,               request.baseline_notes,               order.notes],
+  ]
+
+  return pairs
+    // A request with no baseline predates the column and cannot be judged
+    // stale here. The database applies the same rule.
+    .filter(([, proposed, baseline, current]) =>
+      proposed !== null && proposed !== undefined &&
+      baseline !== undefined &&
+      (baseline ?? null) !== (current ?? null))
+    .map(([field]) => AMENDABLE_FIELD_LABEL[field])
 }
 
 // ── Who sees which door ───────────────────────────────────────────────────────
@@ -466,6 +545,12 @@ export function amendmentErrorMessage(message: string | null | undefined): strin
   }
   if (m.includes('ORDER_CHANGE_REQUEST_REVIEWED')) {
     return 'This request has already been reviewed by someone else. Refresh to see the decision.'
+  }
+  // Checked before ORDER_CHANGE_REQUEST_MISSING for the same reason
+  // ORDER_DISPATCHED is checked before ORDER_CLOSED: both share a prefix, and
+  // the specific message is the actionable one.
+  if (m.includes('ORDER_CHANGE_REQUEST_STALE')) {
+    return 'This order changed after the request was raised, so approving it would undo the newer values. Review the order as it stands now, then ask for a fresh request if the change is still wanted.'
   }
   if (m.includes('ORDER_CHANGE_REQUEST_MISSING')) {
     return 'This request no longer exists. Refresh the list.'

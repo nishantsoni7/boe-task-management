@@ -127,13 +127,20 @@ begin
   assert v_err like '42501|ORDER_FIELD_FROZEN%',
     'created_by must be frozen, got: ' || v_err;
 
+  -- notes joined the guarded tier in 20260806000000 §5, so that the trigger
+  -- and the column grants agree about it. It is a change to what the order
+  -- says and now earns an actor and a reason like every other term.
+  v_err := pg_temp.fails_with(format(
+    $q$update public.orders set notes = 'sneaked in' where id = %L$q$, v_order));
+  assert v_err like '42501|ORDER_AMENDMENT_REQUIRED%',
+    'a raw notes update must be refused, got: ' || v_err;
+
   -- ALLOWED, and this half matters as much as the refusals. Operational
-  -- movement must not have been broken by the guard.
+  -- movement must not have been broken by the guard. `status` is the ONLY
+  -- column left outside it.
   update public.orders set status = 'on_hold' where id = v_order;
-  update public.orders set notes  = 'operational note' where id = v_order;
-  assert (select status = 'on_hold' and notes = 'operational note'
-          from public.orders where id = v_order),
-    'status and notes must remain freely updatable';
+  assert (select status = 'on_hold' from public.orders where id = v_order),
+    'status must remain freely updatable';
 
   -- A no-op rewrite of a guarded column is not a change and must not raise.
   update public.orders
@@ -510,6 +517,134 @@ begin
   ), 'order_change_requests must carry no UPDATE or DELETE policy';
 
   raise notice 'F. privileges OK';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- G. 20260806000000 — privileges are the PRIMARY control
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- The review finding this section exists for: before 20260806, the ONLY thing
+-- standing between an operations user and total_value was a trigger reading a
+-- session variable. These assertions are about the privilege layer, which
+-- Postgres checks before RLS and before any trigger runs.
+do $$
+declare v_cols text;
+begin
+  -- authenticated may update EXACTLY ONE column.
+  select string_agg(column_name, ',' order by column_name) into v_cols
+    from information_schema.column_privileges
+   where table_schema = 'public' and table_name = 'orders'
+     and grantee = 'authenticated' and privilege_type = 'UPDATE';
+
+  assert v_cols = 'status',
+    'authenticated must hold UPDATE on `status` and nothing else, got: ' || coalesce(v_cols, '<none>');
+
+  -- ...and no table-wide UPDATE that would make the column grant moot.
+  assert not exists (
+    select 1 from information_schema.role_table_grants
+     where table_schema = 'public' and table_name = 'orders'
+       and grantee in ('authenticated', 'anon') and privilege_type = 'UPDATE'
+  ), 'no client role may hold table-wide UPDATE on orders';
+
+  -- A Confirmed Order is permanent. 20260705 dropped the DELETE policy but
+  -- left the grants; a row-level BEFORE DELETE trigger never fires on TRUNCATE.
+  assert not exists (
+    select 1 from information_schema.role_table_grants
+     where table_schema = 'public' and table_name = 'orders'
+       and grantee in ('authenticated', 'anon')
+       and privilege_type in ('DELETE', 'TRUNCATE')
+  ), 'no client role may hold DELETE or TRUNCATE on orders';
+
+  -- anon holds no write privilege at all.
+  assert not exists (
+    select 1 from information_schema.role_table_grants
+     where table_schema = 'public' and table_name = 'orders'
+       and grantee = 'anon'
+       and privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE')
+  ), 'anon must hold no write privilege on orders';
+
+  -- service_role keeps its grants on purpose: existing service routes depend on
+  -- them, and the 20260804 trigger is the layer that covers that role.
+  assert exists (
+    select 1 from information_schema.role_table_grants
+     where table_schema = 'public' and table_name = 'orders'
+       and grantee = 'service_role' and privilege_type = 'UPDATE'
+  ), 'service_role must retain UPDATE; the trigger is what guards it';
+
+  -- Every amendment function pins pg_temp last, so a temp table cannot shadow
+  -- a relation inside a SECURITY DEFINER body.
+  assert not exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in (
+        'in_order_amendment', 'orders_guard_amendable_columns',
+        'apply_order_amendment', 'order_linked_payment_total',
+        'cancel_order_with_audit', 'assert_order_amender', 'amend_order',
+        'cancel_order', 'approve_order_change_request',
+        'reject_order_change_request', 'capture_order_change_baseline')
+      and not (coalesce(array_to_string(p.proconfig, ','), '') like '%search_path=public, pg_temp%')
+  ), 'every amendment function must set search_path = public, pg_temp';
+
+  raise notice 'G. privileges and search_path OK';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- H. 20260806000000 — baseline capture and stale-approval refusal
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare
+  v_order uuid;
+  v_req   uuid;
+  v_err   text;
+begin
+  v_order := pg_temp.new_order();
+
+  -- The baseline is captured server-side and OVERWRITES whatever the client
+  -- sent. A requester who could supply their own baseline could suppress the
+  -- staleness gate simply by echoing the current value back.
+  insert into public.order_change_requests
+    (order_id, order_number_snapshot, request_type, requested_by, reason,
+     proposed_total_value, baseline_total_value)
+  values (v_order, 'QA', 'edit', current_setting('test.sales_a')::uuid,
+          'Client added two chairs', 300000, 999999)   -- forged baseline
+  returning id into v_req;
+
+  assert (select baseline_total_value = 250000 and baseline_client_name = 'QA-AMEND client'
+          from public.order_change_requests where id = v_req),
+    'the baseline must be captured from the order, never accepted from the client';
+
+  -- The clobbering scenario. An admin amends directly, THEN opens the older
+  -- request. Approving it would silently undo the newer figure.
+  perform pg_temp.act_as('test.admin_id');
+  perform public.amend_order(v_order, 'Client also added a wardrobe', p_total_value => 400000);
+
+  v_err := pg_temp.fails_with(format(
+    $q$select public.approve_order_change_request(%L)$q$, v_req));
+  assert v_err like '40001|ORDER_CHANGE_REQUEST_STALE%',
+    'approving a request raised against a superseded value must be refused, got: ' || v_err;
+
+  -- Refused, not auto-rejected: a human decides whether the proposal still
+  -- makes sense against the new figure.
+  assert (select status = 'pending' from public.order_change_requests where id = v_req),
+    'a stale request must stay pending';
+  assert (select total_value = 400000 from public.orders where id = v_order),
+    'the newer value must survive the refused approval';
+
+  -- Staleness is per-field. A request proposing total_value is NOT stale
+  -- because somebody moved the due date.
+  insert into public.order_change_requests
+    (order_id, order_number_snapshot, request_type, requested_by, reason, proposed_total_value)
+  values (v_order, 'QA', 'edit', current_setting('test.sales_b')::uuid, 'fresh', 450000)
+  returning id into v_req;
+
+  perform public.amend_order(v_order, 'Date slipped', p_due_date => date '2026-12-01');
+
+  perform public.approve_order_change_request(v_req);
+  assert (select total_value = 450000 from public.orders where id = v_order),
+    'unrelated movement must not block an approval';
+
+  raise notice 'H. baseline capture and staleness OK';
 end $$;
 
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;

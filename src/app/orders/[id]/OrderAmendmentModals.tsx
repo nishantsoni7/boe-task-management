@@ -27,7 +27,8 @@ import {
   validateAmendment,
   toProposedFields,
   amendmentErrorMessage,
-  describeAmendment,
+  describeProposal,
+  staleProposalFields,
   isLeadSource,
   type AmendableField,
   type AmendableOrder,
@@ -68,6 +69,17 @@ function AmendableFieldset({
 }) {
   return (
     <>
+      {/* Stated once, at the top, because it is the one rule about this form
+          that is not guessable from looking at it: an emptied box means "leave
+          this alone", NOT "clear it". Both database doors COALESCE every value
+          against the stored one, so clearing a field is not possible from here
+          at all — saying so is honest, and a hint per field would be noise. */}
+      <OrderModalNotice>
+        Every field starts at its current value. Change only what should change —
+        <strong> emptying a box leaves that value as it is</strong>, and no field can be
+        cleared from this form.
+      </OrderModalNotice>
+
       {AMENDABLE_FIELDS.map(({ key, label, kind }) => {
         const error = fieldError?.field === key ? fieldError.error : undefined
         const common = {
@@ -77,12 +89,7 @@ function AmendableFieldset({
             onChange(key, e.target.value),
         }
         return (
-          <OrderField
-            key={key}
-            label={label}
-            error={error}
-            hint={error ? undefined : 'Leave unchanged to keep the current value'}
-          >
+          <OrderField key={key} label={label} error={error}>
             {kind === 'lead_source' ? (
               <select className="boe-input" style={{ width: '100%' }} {...common}>
                 <option value="">—</option>
@@ -426,9 +433,11 @@ export function CancelOrderModal({
 // ── 4. Review a change request — admin ────────────────────────────────────────
 
 export function ReviewChangeRequestModal({
-  request, supabase, onClose, onDone,
+  request, order, supabase, onClose, onDone,
 }: {
   request: OrderChangeRequest
+  /** The Order as it stands NOW — used to flag a proposal the world has moved past. */
+  order: AmendableOrder | null
   supabase: SupabaseClient
   onClose: () => void
   onDone: () => void
@@ -437,26 +446,15 @@ export function ReviewChangeRequestModal({
   const [saving, setSaving] = useState<'approve' | 'reject' | null>(null)
   const [error, setError]   = useState('')
 
-  // The proposed columns rendered through the same describeAmendment the
-  // activity timeline uses, so an admin reads a pending change in the exact
-  // words the audit row will later carry. `from` is not known here — the
-  // request stores only what is proposed — so the current value is shown
-  // separately by the caller rather than invented.
-  const lines = describeAmendment({
-    changes: Object.fromEntries(
-      ([
-        ['client_name',         request.proposed_client_name],
-        ['total_product_value', request.proposed_total_product_value],
-        ['total_value',         request.proposed_total_value],
-        ['confirm_date',        request.proposed_confirm_date],
-        ['due_date',            request.proposed_due_date],
-        ['lead_source',         request.proposed_lead_source],
-        ['notes',               request.proposed_notes],
-      ] as [string, unknown][])
-        .filter(([, v]) => v !== null && v !== undefined)
-        .map(([k, v]) => [k, { from: null, to: v }]),
-    ),
-  }).map(l => l.replace('— → ', ''))
+  // `baseline → proposed`, so the admin reads what is being replaced rather
+  // than a bare list of new values. The baseline is captured server-side at
+  // request time (20260806000000).
+  const lines = describeProposal(request)
+
+  // Advisory mirror of the staleness gate in approve_order_change_request. The
+  // database re-derives this under a row lock and is what actually refuses;
+  // showing it here means the conflict is visible before the click.
+  const stale = order ? staleProposalFields(request, order) : []
 
   const decide = async (decision: 'approve' | 'reject') => {
     if (saving) return
@@ -506,15 +504,25 @@ export function ReviewChangeRequestModal({
           and is not refunded by this action.
         </OrderModalNotice>
       ) : (
-        <OrderField label="Proposed">
-          {lines.length === 0 ? (
-            <div style={{ fontSize: '13px', color: colors.muted }}>Nothing proposed.</div>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: colors.primary, lineHeight: 1.7 }}>
-              {lines.map(l => <li key={l}>{l}</li>)}
-            </ul>
+        <>
+          {stale.length > 0 && (
+            <OrderModalNotice tone="warning">
+              <strong>This order has changed since the request was raised</strong>
+              {' '}({stale.join(', ')}). Approving would replace the newer values with what
+              was proposed against the old ones, so the database will refuse it. Reject this
+              request and ask for a fresh one if the change is still wanted.
+            </OrderModalNotice>
           )}
-        </OrderField>
+          <OrderField label="Proposed">
+            {lines.length === 0 ? (
+              <div style={{ fontSize: '13px', color: colors.muted }}>Nothing proposed.</div>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: colors.primary, lineHeight: 1.7 }}>
+                {lines.map(l => <li key={l}>{l}</li>)}
+              </ul>
+            )}
+          </OrderField>
+        </>
       )}
 
       <OrderField label="Review note" hint="Optional. Stored with the decision.">
