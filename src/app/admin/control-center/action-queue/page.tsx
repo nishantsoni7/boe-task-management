@@ -17,6 +17,7 @@ type QueueCategory =
   | 'finance_needs_clarification'
   | 'finance_suspense'
   | 'order_request_conversion'
+  | 'order_change_request'
 
 type ActionQueueItem = {
   id: string
@@ -35,6 +36,7 @@ const CATEGORY_META: Record<QueueCategory, { label: string; actionLabel: string 
   finance_needs_clarification: { label: 'Needs clarification', actionLabel: 'Review clarification' },
   finance_suspense:            { label: 'Suspense payment',    actionLabel: 'Link suspense payment' },
   order_request_conversion:    { label: 'Order Request',       actionLabel: 'Convert Order Request' },
+  order_change_request:        { label: 'Order change',        actionLabel: 'Review change request' },
 }
 
 // Deep-links into the destination page's existing tab/record/modal query-param
@@ -50,6 +52,11 @@ function buildHref(category: QueueCategory, id: string): string {
     case 'finance_needs_clarification': return `/finance?tab=clarification&request=${id}`
     case 'finance_suspense':            return `/finance/received?payment=${id}&action=link`
     case 'order_request_conversion':    return `/orders/requests/${id}?from=pending&action=convert`
+    // The Order detail page owns the Review dialog, and its Change Requests
+    // card is where the pending row already lives — so this links to the Order,
+    // not to the request. `id` here is therefore the ORDER's id, which is why
+    // the row below reads order_id rather than the request's own.
+    case 'order_change_request':        return `/orders/${id}`
   }
 }
 
@@ -88,6 +95,17 @@ type OrderRequestRow = {
   created_by_user: { full_name: string } | null
 }
 
+type OrderChangeRequestRow = {
+  id: string
+  order_id: string
+  order_number_snapshot: string
+  request_type: 'edit' | 'cancel'
+  proposed_total_value: number | null
+  created_at: string
+  order: { client_name: string } | null
+  requested_by_user: { full_name: string } | null
+}
+
 export default function ActionQueuePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -101,7 +119,9 @@ export default function ActionQueuePage() {
   const loadQueue = async () => {
     setError('')
 
-    const [pendingApprovalRes, needsClarificationRes, suspenseRes, orderRequestsRes] = await Promise.all([
+    const [
+      pendingApprovalRes, needsClarificationRes, suspenseRes, orderRequestsRes, changeRequestsRes,
+    ] = await Promise.all([
       supabase
         .from('finance_payment_requests')
         .select('id, request_number, client_name, amount, status, created_at, updated_at, clarification_requested_at, approved_at, submitted_by_user:users!submitted_by(full_name)')
@@ -125,10 +145,22 @@ export default function ActionQueuePage() {
         // Only finalized submissions are actionable; upload-stage drafts
         // (finalized_at IS NULL) have no verified Main PI and are not yet real.
         .not('finalized_at', 'is', null),
+      // Pending amendments and cancellations raised against Confirmed Orders
+      // (20260804000000). order_change_requests_select already scopes this to
+      // admins (and to a requester's own rows), so no role filter is needed
+      // here — but this page is admin-only anyway.
+      supabase
+        .from('order_change_requests')
+        .select(`
+          id, order_id, order_number_snapshot, request_type, proposed_total_value, created_at,
+          order:orders!order_id(client_name),
+          requested_by_user:users!requested_by(full_name)
+        `)
+        .eq('status', 'pending'),
     ])
 
     // Handle partial failure honestly rather than silently rendering an empty queue.
-    const failures = [pendingApprovalRes, needsClarificationRes, suspenseRes, orderRequestsRes]
+    const failures = [pendingApprovalRes, needsClarificationRes, suspenseRes, orderRequestsRes, changeRequestsRes]
       .filter(r => r.error)
       .map(r => r.error?.message)
     if (failures.length > 0) {
@@ -194,6 +226,29 @@ export default function ActionQueuePage() {
         amount: r.total_value,
         pendingSince: r.created_at,
         href: buildHref('order_request_conversion', r.id),
+      })
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const r of ((changeRequestsRes.data ?? []) as any[]) as OrderChangeRequestRow[]) {
+      combined.push({
+        id: `order_change_request:${r.id}`,
+        category: 'order_change_request',
+        actionLabel: r.request_type === 'cancel'
+          ? 'Review cancellation request'
+          : CATEGORY_META.order_change_request.actionLabel,
+        // The Order's live client name, not a snapshot: an amendment may itself
+        // be proposing a new one, and the queue should show what the Order says
+        // today. The order number rides in the client column's place only when
+        // the join is unavailable.
+        clientName: r.order?.client_name ?? r.order_number_snapshot,
+        ownerName: r.requested_by_user?.full_name ?? null,
+        module: 'Orders',
+        // Null for a cancellation, and for an edit that proposes no new value —
+        // the queue shows a dash rather than implying ₹0 was requested.
+        amount: r.proposed_total_value,
+        pendingSince: r.created_at,
+        href: buildHref('order_change_request', r.order_id),
       })
     }
 
