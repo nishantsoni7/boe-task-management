@@ -228,6 +228,49 @@ Rules:
 
 ---
 
+## Confirmed Order Amendment Rule
+
+A Confirmed Order is a permanent operational record. Its **commercial terms** — client name, total order value, total product value, confirm date, due date, lead source — are not ordinary editable fields, and no role may change them by an ordinary update.
+
+* **The terms move only through an amendment**, which always records **who** changed **what**, **from what to what**, and **why**. This is enforced by a database trigger, not by hiding a form: a raw `PATCH`, a service-role route and direct SQL are all refused with `ORDER_AMENDMENT_REQUIRED`. An admin's raw update is refused too — an exemption for a role would audit nothing, which is the exact problem the rule exists to solve.
+* **Two doors, one effect.** An admin amends directly. Everyone else who can see the Order **proposes** a change, and an admin's approval is what applies it. Both write the same audit entry, so an amendment reads identically regardless of who initiated it.
+* **A reason is mandatory**, on every door, including cancellation.
+* **An empty field means "leave this one alone", never "blank it".** Neither door can clear a stored value back to nothing, so a form submitted with an empty box can never silently erase an order's due date. Clearing a field is deliberately not offered rather than half-offered.
+* **An amendment that changes nothing is refused.** An audit entry recording that nothing happened is worse than no entry.
+* **A decision can never be un-made.** `order_change_requests` carries no UPDATE and no DELETE policy for anyone, admins included. A client cannot move a request to approved, write the reviewer fields, or erase a decision — only the review functions can.
+* **Approval is atomic with its effect.** A refused amendment leaves the request pending; no request is ever marked approved without the change having landed.
+* **One open request of each type per Order per person.** A reviewed request never blocks the next one.
+* **A closed Order — dispatched or cancelled — accepts no amendment**, and no new change request may be filed against it.
+* **The creation record (`created_by`, `created_at`) is frozen absolutely**, amendment context included, alongside the order number and the source-request provenance that already were.
+* **`status` is deliberately outside this rule.** Day-to-day operational movement through the lifecycle is not an amendment and must not require one.
+
+---
+
+## Order Cancellation Rule
+
+Cancelling is not a change of terms, and it is not a refund.
+
+* **A reason is mandatory.**
+* **The money position is stated before the decision, and recorded with it.** The total approved money received against the Order is shown in the cancellation dialog and written into the activity log — **including when it is zero**, because "no money had been received" is itself a fact worth being able to prove later.
+* **Cancellation touches no payment.** Linked payments stay linked and stay approved. The money genuinely arrived; returning it is a separate, deliberate act by whoever moves funds. A cancellation must never be allowed to look like a refund has happened.
+* **Where money was received, a settlement — a refund or a credit toward a future order — remains outstanding** and must stay visible as such.
+* **A dispatched Order cannot be cancelled.** A cancelled Order cannot be cancelled again, and is never deleted — it stays searchable as history.
+* **A salesperson may request a cancellation but never perform one**, because cancelling an Order with money on it is a decision that needs the person who can see the money.
+
+---
+
+## Financial Amount Rule
+
+Money is never negative, and a receipt is never zero.
+
+* **A payment amount is strictly positive.** A zero-amount payment is not a real event, and would still be counted as "an approved payment exists" by the conversion rule.
+* **An order value is never negative.** Zero is legitimate — an Order may not have been priced yet.
+* Both are enforced by database `CHECK` constraints. The client-side `isValidAmount()` is a form convenience and **never the control**.
+* **A refund is not a negative payment.** Reversing money must never be modelled as a negative row in the payments table: it corrupts every existing count and sum, including the conversion rule. Refunds, voids, reversals and corrections are distinct events and belong in their own record. See `docs/Module Docs/FINANCE_ORDER_WORKFLOW.md` §4.1.
+* **Financial totals derive only from approved records.** Pending, clarification and rejected payments are counted separately and are never presented as money received.
+
+---
+
 # TASK MANAGEMENT RULES
 
 ## Self Tasks
