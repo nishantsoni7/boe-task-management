@@ -19,9 +19,13 @@ What *has* been verified, and how:
 | Check | Command | Result |
 | --- | --- | --- |
 | TypeScript | `npx tsc --noEmit` | Clean, no output |
-| ESLint | `npx eslint src/lib/orders src/components/orders "src/app/orders/[id]" src/app/admin/control-center/action-queue` | Clean, no output |
-| Unit tests (new) | `npx tsx --test src/lib/orders/amendments.test.ts` | 44 pass, 0 fail |
-| Unit tests (finance, regression) | `npx tsx --test src/app/finance/*.test.ts` | see §5 |
+| Build | `npx next build` | ✓ Compiled successfully in 14.2s |
+| ESLint (changed files) | `npx eslint src/lib/orders src/components/orders "src/app/orders/[id]" src/app/admin/control-center/action-queue` | Clean, no output |
+| ESLint (all) | `npx eslint src` | 2 errors — both pre-existing on `main`, in `admin/control-center/`, untouched by this branch |
+| Unit tests (amendments) | `npx tsx --test src/lib/orders/amendments.test.ts` | **56 pass, 0 fail** |
+| Unit tests (full suite) | `npx tsx --test $(find src -name "*.test.ts" -o -name "*.test.tsx")` | **1384 pass, 0 fail, 275 suites, 6.96s** |
+| Invalid-row survey | `supabase db query --linked` | **0 invalid rows** on all five constrained columns. Table sizes: `finance_payment_requests` 6, `orders` 0, `order_requests` 2 |
+| Grant audit | `supabase db query --linked` | Confirmed `authenticated` + `anon` held table-wide `UPDATE/DELETE/TRUNCATE` on `orders` — the finding behind `20260806000000` |
 
 ---
 
@@ -37,7 +41,26 @@ What *has* been verified, and how:
    npx supabase db push --dry-run
    ```
 
-   Review the plan, then push. `20260804000000` before `20260805000000`.
+   **Executed 2026-08-02. It reports THREE pending migrations, not three of
+   ours:**
+
+   ```
+   • 20260803000000_asset_permanent_delete.sql   <-- NOT this branch
+   • 20260804000000_order_amendments.sql
+   • 20260805000000_financial_amount_invariants.sql
+   ```
+
+   *(`20260806000000_order_amendment_hardening.sql` was added after that run and
+   will appear as a fourth.)*
+
+   `20260803000000` is **untracked work from a different in-flight session** and
+   adds a destructive `permanently_delete_asset()`. `db push` applies everything
+   pending with no per-file selection, so pushing this branch means pushing that
+   too. **This is why nothing has been applied.** Resolve with the owner of the
+   assets work first.
+
+   Order is otherwise correct and collision-free:
+   `20260804` → `20260805` → `20260806`.
 
 2. **Run the two assertion scripts** (both end in `ROLLBACK`; edit the UUIDs at
    the top of each first):
@@ -101,9 +124,12 @@ Fill in *Actual* and *Pass/Fail* when run.
 | # | Steps | Expected | Actual | P/F |
 | --- | --- | --- | --- | --- |
 | 1.1 | As Operations, open a Confirmed Order and change status `running → on_hold` | Succeeds. The guard covers commercial columns only. | | |
-| 1.2 | As Operations, `PATCH /rest/v1/orders?id=eq.<id>` with `{"total_value": 999999}` (bypassing the UI) | **Refused**, `ORDER_AMENDMENT_REQUIRED`, 42501 | | |
+| 1.2 | As Operations, `PATCH /rest/v1/orders?id=eq.<id>` with `{"total_value": 999999}` (bypassing the UI) | **Refused at the privilege layer** — `42501 permission denied for table orders` (column grant), *not* `ORDER_AMENDMENT_REQUIRED`. The trigger message now only appears for the service role and direct SQL. | | |
 | 1.3 | Same PATCH as Admin | **Refused** — an admin's raw PATCH is refused too; that is the point | | |
-| 1.4 | Same PATCH with `{"created_by": "<other uuid>"}` | **Refused**, `ORDER_FIELD_FROZEN` | | |
+| 1.4 | Same PATCH with `{"notes": "x"}` | **Refused** — `notes` joined the guarded tier in `20260806000000` | | |
+| 1.5 | Service-role PATCH with `{"total_value": 999999}` | **Refused**, `ORDER_AMENDMENT_REQUIRED` — service_role keeps its grants, so the trigger is what catches it | | |
+| 1.6 | Service-role PATCH with `{"created_by": "<other uuid>"}` | **Refused**, `ORDER_FIELD_FROZEN` | | |
+| 1.7 | `DELETE /rest/v1/orders?id=eq.<id>` as Admin | **Refused** — no DELETE policy *and* no DELETE grant | | |
 
 1.2–1.4 are the only scenarios here that need a REST client rather than the UI,
 and they are the ones proving the fix holds when the UI is bypassed.
@@ -149,6 +175,17 @@ and they are the ones proving the fix holds when the UI is bypassed.
 | 4.5 | Cancel again | **Refused** — "already been cancelled" | | |
 | 4.6 | Cancel a `dispatched` Order | Cancelled is not offered; if forced via RPC, `ORDER_DISPATCHED` | | |
 | 4.7 | Sales A → **Request Cancellation** | Dialog shows the same received figure (read through the definer function, so it is the true total) and files a request; **Order stays active** | | |
+
+### 4.4b Stale approval — the clobbering case
+
+| # | Steps | Expected | Actual | P/F |
+| --- | --- | --- | --- | --- |
+| 4b.1 | Sales A raises a change request proposing Total Order Value ₹3,00,000 (current ₹2,50,000) | Request pending; order unchanged | | |
+| 4b.2 | Admin amends the same Order directly to ₹4,00,000 | Applied and audited | | |
+| 4b.3 | Admin opens Sales A's request | Review dialog shows an amber **"This order has changed since the request was raised (Total Order Value)"** notice | | |
+| 4b.4 | Admin clicks **Approve & Apply** anyway | **Refused**, `ORDER_CHANGE_REQUEST_STALE`; the request stays **pending**; the order stays ₹4,00,000 | | |
+| 4b.5 | Sales B raises a request proposing a value, Admin then amends only the **Due Date**, then approves | **Succeeds** — staleness is per-field, and unrelated movement must not block | | |
+| 4b.6 | Inspect `order_change_requests.baseline_total_value` for 4b.1 | Equals the value at filing time (₹2,50,000), regardless of what the client sent | | |
 
 ### 4.5 Action Queue
 
