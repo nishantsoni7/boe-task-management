@@ -483,6 +483,8 @@ export default function OrderDetailPage() {
         id, order_id, order_number_snapshot, request_type, requested_by, reason,
         proposed_client_name, proposed_total_value, proposed_total_product_value,
         proposed_confirm_date, proposed_due_date, proposed_lead_source, proposed_notes,
+        baseline_client_name, baseline_total_value, baseline_total_product_value,
+        baseline_confirm_date, baseline_due_date, baseline_lead_source, baseline_notes,
         status, reviewed_by, reviewed_at, review_note, created_at,
         requester:users!requested_by(full_name)
       `)
@@ -973,6 +975,7 @@ export default function OrderDetailPage() {
       {reviewing && (
         <ReviewChangeRequestModal
           request={reviewing}
+          order={amendableOrder ?? null}
           supabase={supabase}
           onClose={() => setReviewing(null)}
           onDone={afterChange}
