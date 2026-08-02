@@ -13,6 +13,8 @@ import {
   canRequestOrderChange,
   isAmendableStatus,
   describeAmendment,
+  describeProposal,
+  staleProposalFields,
   amendmentErrorMessage,
   EMPTY_AMENDMENT_PAYLOAD,
   AMENDABLE_FIELDS,
@@ -363,6 +365,119 @@ describe('describeAmendment', () => {
   })
 })
 
+// ── Proposal rendering and staleness (20260806000000) ─────────────────────────
+
+// A full request row, baseline captured server-side at filing time against the
+// `order` fixture above.
+const proposal = (over: Partial<OrderChangeRequest> = {}): OrderChangeRequest => ({
+  id: 'req-1',
+  order_id: 'order-1',
+  order_number_snapshot: '0017',
+  request_type: 'edit',
+  requested_by: 'user-1',
+  reason: 'Client added two chairs',
+  status: 'pending',
+  reviewed_by: null,
+  reviewed_at: null,
+  review_note: null,
+  created_at: '2026-08-01T10:00:00Z',
+  proposed_client_name: null,
+  proposed_total_value: 300000,
+  proposed_total_product_value: null,
+  proposed_confirm_date: null,
+  proposed_due_date: null,
+  proposed_lead_source: null,
+  proposed_notes: null,
+  baseline_client_name: order.client_name,
+  baseline_total_value: order.total_value,
+  baseline_total_product_value: order.total_product_value,
+  baseline_confirm_date: order.confirm_date,
+  baseline_due_date: order.due_date,
+  baseline_lead_source: order.lead_source,
+  baseline_notes: order.notes,
+  ...over,
+})
+
+describe('describeProposal', () => {
+  test('shows baseline → proposed, so the admin sees what is being replaced', () => {
+    assert.deepEqual(describeProposal(proposal()), [
+      'Total Order Value: ₹2,50,000 → ₹3,00,000',
+    ])
+  })
+
+  test('only proposed fields appear', () => {
+    const lines = describeProposal(proposal({ proposed_due_date: '2026-09-01' }))
+    assert.equal(lines.length, 2)
+    assert.ok(lines.some(l => l.startsWith('Total Order Value')))
+    assert.ok(lines.some(l => l === 'Due Date: 2026-08-15 → 2026-09-01'))
+  })
+
+  test('a request filed before baselines existed shows the proposal alone', () => {
+    // Pre-20260806 rows carry no baseline. Showing "— → ₹3,00,000" would
+    // claim the old value was empty, which is worse than saying less.
+    const legacy = proposal({ baseline_total_value: undefined })
+    assert.deepEqual(describeProposal(legacy), ['Total Order Value: ₹3,00,000'])
+  })
+
+  test('a null baseline is a real value and renders as an em dash', () => {
+    const lines = describeProposal(proposal({
+      proposed_notes: 'Added', baseline_notes: null,
+    }))
+    assert.ok(lines.includes('Notes: — → Added'))
+  })
+
+  test('a cancellation proposes nothing', () => {
+    const cancel = proposal({ request_type: 'cancel', proposed_total_value: null })
+    assert.deepEqual(describeProposal(cancel), [])
+  })
+})
+
+describe('staleProposalFields', () => {
+  test('nothing is stale while the order still matches the baseline', () => {
+    assert.deepEqual(staleProposalFields(proposal(), order), [])
+  })
+
+  test('a field changed since filing is reported stale', () => {
+    // The clobbering scenario: admin amended to 400000 after the request.
+    const moved = { ...order, total_value: 400000 }
+    assert.deepEqual(staleProposalFields(proposal(), moved), ['Total Order Value'])
+  })
+
+  test('a change to a field this request does not propose is not stale', () => {
+    // Granularity matters: refusing on unrelated movement would train admins
+    // to re-submit blindly, which is the failure this check exists to prevent.
+    const moved = { ...order, due_date: '2026-12-01' }
+    assert.deepEqual(staleProposalFields(proposal(), moved), [])
+  })
+
+  test('several stale fields are all reported', () => {
+    const req = proposal({ proposed_client_name: 'New Name', proposed_due_date: '2026-09-01' })
+    const moved = { ...order, total_value: 400000, client_name: 'Renamed', due_date: '2026-10-10' }
+    assert.deepEqual(
+      staleProposalFields(req, moved).sort(),
+      ['Client Name', 'Due Date', 'Total Order Value'].sort(),
+    )
+  })
+
+  test('null-to-null is not a change', () => {
+    const sparse: AmendableOrder = { ...order, notes: null }
+    const req = proposal({ proposed_notes: 'Added', baseline_notes: null })
+    assert.deepEqual(staleProposalFields(req, sparse), [])
+  })
+
+  test('a value going from null to set IS a change', () => {
+    const req = proposal({ proposed_notes: 'Added', baseline_notes: null })
+    assert.deepEqual(staleProposalFields(req, { ...order, notes: 'Someone wrote this' }), ['Notes'])
+  })
+
+  test('a legacy request with no baseline is never judged stale here', () => {
+    // The database applies the same rule — it cannot compare against a
+    // baseline that was never captured.
+    const legacy = proposal({ baseline_total_value: undefined })
+    assert.deepEqual(staleProposalFields(legacy, { ...order, total_value: 999 }), [])
+  })
+})
+
 // ── Error mapping ─────────────────────────────────────────────────────────────
 
 describe('amendmentErrorMessage', () => {
@@ -376,6 +491,7 @@ describe('amendmentErrorMessage', () => {
       ['ORDER_DISPATCHED: ...',                'already been dispatched'],
       ['ORDER_VALUE_NEGATIVE: ...',            'cannot be negative'],
       ['ORDER_CHANGE_REQUEST_REVIEWED: ...',   'already been reviewed'],
+      ['ORDER_CHANGE_REQUEST_STALE: ...',      'changed after the request was raised'],
       ['ORDER_FIELD_FROZEN: ...',              'creation record'],
     ]
     for (const [raw, fragment] of cases) {
