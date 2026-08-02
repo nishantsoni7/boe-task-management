@@ -9,6 +9,22 @@ import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
+import {
+  AmendOrderModal,
+  RequestOrderChangeModal,
+  CancelOrderModal,
+  ReviewChangeRequestModal,
+} from './OrderAmendmentModals'
+import {
+  canAmendOrderDirectly,
+  canRequestOrderChange,
+  hasPendingChangeRequest,
+  describeAmendment,
+  CHANGE_REQUEST_TYPE_LABEL,
+  CHANGE_REQUEST_STATUS_LABEL,
+  type OrderChangeRequest,
+  type AmendedActivityPayload,
+} from '@/lib/orders/amendments'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -130,6 +146,8 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
   // 20260681000000 but never labelled here, so it rendered as its raw
   // event_type; it is the Order-side record of where this Order came from.
   order_created_from_request: 'Order created from request',
+  // Written by apply_order_amendment() (20260804000000).
+  order_amended:    'Order amended',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -207,9 +225,19 @@ function ActivityDot({ event_type }: { event_type: string }) {
     payment_unlinked: colors.amber,
     note_added:       colors.muted,
     order_created_from_request: colors.green,
+    order_amended:    colors.amber,
   }
   const c = colorMap[event_type] ?? colors.muted
   return <div style={{ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, marginTop: 5 }} />
+}
+
+// An amendment is the one event whose detail is a LIST, not a sentence: it can
+// move seven fields at once and every before/after pair matters. Rendering it
+// as prose would either lose values or produce an unreadable run-on, so it gets
+// its own branch below rather than being squeezed into activityDescription.
+function amendmentLines(entry: ActivityEntry): string[] {
+  if (entry.event_type !== 'order_amended') return []
+  return describeAmendment(entry.payload as AmendedActivityPayload)
 }
 
 function activityDescription(entry: ActivityEntry): string {
@@ -217,7 +245,20 @@ function activityDescription(entry: ActivityEntry): string {
   if (event_type === 'status_changed') {
     const from = STATUS_META[payload.from as string]?.label ?? payload.from
     const to   = STATUS_META[payload.to   as string]?.label ?? payload.to
-    return `${from} → ${to}`
+    const base = `${from} → ${to}`
+    // cancel_order_with_audit adds a reason and the money position. Both belong
+    // next to the transition, not hidden behind a details link.
+    const reason = typeof payload.reason === 'string' && payload.reason.trim() !== ''
+      ? ` · ${payload.reason.trim()}`
+      : ''
+    const received = payload.to === 'cancelled' && payload.received_at_cancellation != null
+      ? ` · ₹${Number(payload.received_at_cancellation).toLocaleString('en-IN')} received at cancellation`
+      : ''
+    return base + reason + received
+  }
+  if (event_type === 'order_amended') {
+    const reason = (payload as AmendedActivityPayload).reason
+    return typeof reason === 'string' ? reason : ''
   }
   if (event_type === 'payment_linked') {
     const amt = payload.amount ? '₹' + Number(payload.amount).toLocaleString('en-IN') : ''
@@ -231,78 +272,29 @@ function activityDescription(entry: ActivityEntry): string {
   return ''
 }
 
-// ── Cancel Confirmation Dialog ────────────────────────────────────────────────
-
-function CancelConfirmDialog({
-  onConfirm,
-  onDismiss,
-}: {
-  onConfirm: () => void
-  onDismiss: () => void
-}) {
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '16px',
-      }}
-      onClick={e => { if (e.target === e.currentTarget) onDismiss() }}
-    >
-      <div style={{
-        background: colors.base, border: `1px solid ${colors.border}`,
-        borderRadius: '12px', width: '100%', maxWidth: '380px',
-        boxShadow: '0 8px 40px rgba(0,0,0,0.18)', padding: '24px',
-      }}>
-        <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, marginBottom: '10px' }}>
-          Cancel this order?
-        </div>
-        <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6, marginBottom: '24px' }}>
-          Are you sure you want to cancel this order?
-          <br />
-          This action will change the order status to Cancelled.
-        </div>
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onDismiss}
-            style={{
-              padding: '8px 16px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: 'transparent', border: `1px solid ${colors.border}`,
-              color: colors.secondary, cursor: 'pointer',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            style={{
-              padding: '8px 18px', borderRadius: '7px', fontSize: '13px', fontWeight: 600,
-              background: colors.red, border: 'none', color: '#fff', cursor: 'pointer',
-            }}
-          >
-            Yes, Cancel Order
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Status Dropdown ───────────────────────────────────────────────────────────
+//
+// Cancellation left this component in 20260804000000. It used to be a plain
+// `update({ status: 'cancelled' })` behind a yes/no dialog, which recorded no
+// reason and — the real problem — never told the person clicking it how much
+// money was already sitting on the order. It now routes to CancelOrderModal,
+// which reads the received total through a SECURITY DEFINER function and calls
+// cancel_order(). Every OTHER transition is still a plain update: those are
+// operational moves, and `status` is deliberately outside the amendment guard.
 
 function StatusControl({
   order,
   profile,
   onStatusChanged,
+  onRequestCancel,
 }: {
   order: Order
   profile: UserProfile
   onStatusChanged: (newStatus: string) => void
+  onRequestCancel: () => void
 }) {
   const [open,           setOpen]           = useState(false)
   const [saving,         setSaving]         = useState(false)
-  const [pendingCancel,  setPendingCancel]  = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
   const targets = allowedTransitions(profile, order.status)
@@ -334,10 +326,9 @@ function StatusControl({
 
   const handleSelect = (newStatus: OrderStatus) => {
     setOpen(false)
-    if (newStatus === 'cancelled') {
-      setPendingCancel(true)
-      return
-    }
+    // Cancelling is not a status change like the others: it needs a reason and
+    // it needs the money position stated first. The page owns that dialog.
+    if (newStatus === 'cancelled') { onRequestCancel(); return }
     doStatusChange(newStatus)
   }
 
@@ -397,13 +388,6 @@ function StatusControl({
           </>
         )}
       </div>
-
-      {pendingCancel && (
-        <CancelConfirmDialog
-          onConfirm={() => { setPendingCancel(false); doStatusChange('cancelled') }}
-          onDismiss={() => setPendingCancel(false)}
-        />
-      )}
     </>
   )
 }
@@ -422,6 +406,13 @@ export default function OrderDetailPage() {
   // has to still be enabled. The RPC is admin-gated and simply errors for anyone
   // else, so a non-admin silently gets false — which is the right answer anyway.
   const [cleanupEnabled, setCleanupEnabled] = useState(false)
+  // Amendment surface (20260804000000). `changeRequests` holds what RLS lets
+  // this reader see: their own requests, or all of them for an admin.
+  const [changeRequests, setChangeRequests] = useState<OrderChangeRequest[]>([])
+  const [amendOpen,      setAmendOpen]      = useState(false)
+  const [requestOpen,    setRequestOpen]    = useState(false)
+  const [cancelOpen,     setCancelOpen]     = useState(false)
+  const [reviewing,      setReviewing]      = useState<OrderChangeRequest | null>(null)
 
   const router     = useRouter()
   const params     = useParams()
@@ -482,6 +473,27 @@ export default function OrderDetailPage() {
       actor_name: a.actor?.full_name ?? undefined,
     }))
     setActivity(mappedActivity)
+
+    // Change requests. Not filtered to 'pending' here: a reader needs to see
+    // that their last request was rejected, not just that they have none open.
+    const { data: cData } = await supabase
+      .from('order_change_requests')
+      .select(`
+        id, order_id, order_number_snapshot, request_type, requested_by, reason,
+        proposed_client_name, proposed_total_value, proposed_total_product_value,
+        proposed_confirm_date, proposed_due_date, proposed_lead_source, proposed_notes,
+        status, reviewed_by, reviewed_at, review_note, created_at,
+        requester:users!requested_by(full_name)
+      `)
+      .eq('order_id', id)
+      .order('created_at', { ascending: false })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setChangeRequests(((cData ?? []) as any[]).map(c => ({
+      ...c,
+      requested_by_name: c.requester?.full_name ?? undefined,
+      requester: undefined,
+    })) as OrderChangeRequest[])
   }
 
   useEffect(() => {
@@ -516,6 +528,39 @@ export default function OrderDetailPage() {
   }
 
   const canCleanUp = cleanupEnabled && !!order?.is_test_data
+
+  // Which amendment door this reader gets. Both are re-decided by the database
+  // (assert_order_amender / the INSERT policy); these only choose the button.
+  // View As never lends authority, so an admin previewing someone else's view
+  // does not keep the direct door — same rule the cleanup button already uses.
+  const actingAsAdmin = profile?.role === 'admin' && !viewAsUserId
+  const canAmend   = order ? canAmendOrderDirectly(actingAsAdmin ? profile : { role: 'member' }, order) : false
+  const canRequest = order ? canRequestOrderChange(actingAsAdmin ? profile : { role: 'member' }, order) : false
+
+  const myPendingEdit = !!(order && profile) &&
+    hasPendingChangeRequest(changeRequests, order.id, profile.id, 'edit')
+  const myPendingCancel = !!(order && profile) &&
+    hasPendingChangeRequest(changeRequests, order.id, profile.id, 'cancel')
+
+  const pendingRequests = changeRequests.filter(r => r.status === 'pending')
+
+  const amendableOrder = order && {
+    id: order.id,
+    display_number: order.display_number,
+    status: order.status,
+    client_name: order.client_name,
+    total_value: order.total_value,
+    total_product_value: order.total_product_value,
+    confirm_date: order.confirm_date,
+    due_date: order.due_date,
+    lead_source: order.lead_source,
+    notes: order.notes,
+  }
+
+  const afterChange = () => {
+    setAmendOpen(false); setRequestOpen(false); setCancelOpen(false); setReviewing(null)
+    loadOrder()
+  }
 
   if (pageLoading) return <LoadingScreen />
 
@@ -583,11 +628,49 @@ export default function OrderDetailPage() {
               <StatusControl
                 order={order}
                 profile={profile}
+                onRequestCancel={() => setCancelOpen(true)}
                 onStatusChanged={newStatus => {
                   setOrder(o => o ? { ...o, status: newStatus } : o)
                   loadOrder()
                 }}
               />
+            )}
+
+            {/* The amendment door. An admin gets Amend Order; everyone else who
+                can see the Order gets Request a Change, disabled once they
+                already have one open — the partial unique index would refuse a
+                second, and saying so before the click beats a constraint
+                violation after it. */}
+            {canAmend && (
+              <button
+                onClick={() => setAmendOpen(true)}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600 }}
+              >
+                Amend Order
+              </button>
+            )}
+            {canRequest && (
+              <button
+                onClick={() => setRequestOpen(true)}
+                disabled={myPendingEdit}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, opacity: myPendingEdit ? 0.55 : 1 }}
+                title={myPendingEdit ? 'You already have a change request awaiting review' : undefined}
+              >
+                {myPendingEdit ? 'Change Requested' : 'Request a Change'}
+              </button>
+            )}
+            {canRequest && (
+              <button
+                onClick={() => setCancelOpen(true)}
+                disabled={myPendingCancel}
+                className="boe-btn boe-btn-ghost"
+                style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, opacity: myPendingCancel ? 0.55 : 1 }}
+                title={myPendingCancel ? 'You already have a cancellation request awaiting review' : undefined}
+              >
+                {myPendingCancel ? 'Cancellation Requested' : 'Request Cancellation'}
+              </button>
             )}
             {/* A Confirmed Order has no destructive action. It is permanent
                 business history, enforced by the database (20260705000000):
@@ -762,6 +845,58 @@ export default function OrderDetailPage() {
           )}
         </SectionCard>
 
+        {/* ── Change requests ──
+            Rendered only when there is something to show, so an Order nobody
+            has ever asked to change carries no empty card. An admin sees every
+            request; everyone else sees their own — that split is RLS's, not
+            this component's. */}
+        {changeRequests.length > 0 && (
+          <SectionCard title={`Change Requests (${pendingRequests.length} pending)`}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {changeRequests.map(r => (
+                <div
+                  key={r.id}
+                  style={{
+                    display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap',
+                    padding: '10px 12px', borderRadius: '8px',
+                    background: r.status === 'pending' ? colors.raised : 'transparent',
+                    border: `1px solid ${colors.border}`,
+                  }}
+                >
+                  <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>
+                      {CHANGE_REQUEST_TYPE_LABEL[r.request_type]}
+                      <span style={{ fontWeight: 500, color: colors.muted }}>
+                        {' · '}{CHANGE_REQUEST_STATUS_LABEL[r.status]}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12.5px', color: colors.secondary, marginTop: '3px', whiteSpace: 'pre-wrap' }}>
+                      {r.reason}
+                    </div>
+                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
+                      {r.requested_by_name ? `${r.requested_by_name} · ` : ''}{fmtDateTime(r.created_at)}
+                    </div>
+                    {r.review_note && (
+                      <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '4px', fontStyle: 'italic' }}>
+                        Review note: {r.review_note}
+                      </div>
+                    )}
+                  </div>
+                  {actingAsAdmin && r.status === 'pending' && (
+                    <button
+                      onClick={() => setReviewing(r)}
+                      className="boe-btn boe-btn-primary"
+                      style={{ padding: '6px 14px', fontSize: '12px', flexShrink: 0 }}
+                    >
+                      Review
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        )}
+
         {/* ── Activity timeline ── */}
         <SectionCard title="Activity">
           {activity.length === 0 ? (
@@ -785,6 +920,14 @@ export default function OrderDetailPage() {
                         {activityDescription(entry)}
                       </div>
                     )}
+                    {amendmentLines(entry).length > 0 && (
+                      <ul style={{
+                        margin: '4px 0 0', paddingLeft: '16px',
+                        fontSize: '12px', color: colors.secondary, lineHeight: 1.65,
+                      }}>
+                        {amendmentLines(entry).map(line => <li key={line}>{line}</li>)}
+                      </ul>
+                    )}
                     <div style={{ fontSize: '11px', color: colors.muted, marginTop: '3px' }}>
                       {entry.actor_name ? `${entry.actor_name} · ` : ''}{fmtDateTime(entry.created_at)}
                     </div>
@@ -796,6 +939,44 @@ export default function OrderDetailPage() {
         </SectionCard>
 
       </div>
+
+      {/* ── Amendment dialogs ──
+          Only one is ever open: each is opened from a control that the others'
+          conditions exclude, and every one closes through afterChange, which
+          also re-reads the Order so the page and the database agree. */}
+      {amendOpen && amendableOrder && (
+        <AmendOrderModal
+          order={amendableOrder}
+          supabase={supabase}
+          onClose={() => setAmendOpen(false)}
+          onDone={afterChange}
+        />
+      )}
+      {requestOpen && amendableOrder && (
+        <RequestOrderChangeModal
+          order={amendableOrder}
+          supabase={supabase}
+          onClose={() => setRequestOpen(false)}
+          onDone={afterChange}
+        />
+      )}
+      {cancelOpen && amendableOrder && (
+        <CancelOrderModal
+          order={amendableOrder}
+          supabase={supabase}
+          isAdmin={actingAsAdmin}
+          onClose={() => setCancelOpen(false)}
+          onDone={afterChange}
+        />
+      )}
+      {reviewing && (
+        <ReviewChangeRequestModal
+          request={reviewing}
+          supabase={supabase}
+          onClose={() => setReviewing(null)}
+          onDone={afterChange}
+        />
+      )}
 
     </OrdersLayout>
   )
