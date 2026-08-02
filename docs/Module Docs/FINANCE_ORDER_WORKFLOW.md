@@ -150,6 +150,93 @@ decision about whether the quotation *is* the pre-order artifact or a separate
 stage, and building it speculatively would risk a second competing pre-order
 entity next to `order_requests`.
 
+### D6b — The amendment guard was the *only* control on commercial columns *(Priority A · fixed in `20260806000000`)*
+
+Found by reviewing `20260804000000` rather than by writing it, and confirmed
+against the live database:
+
+```
+information_schema.role_table_grants, public.orders
+  authenticated : SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER
+  anon          : SELECT INSERT UPDATE DELETE TRUNCATE REFERENCES TRIGGER
+```
+
+Supabase's blanket `grant all on all tables` default, never narrowed for this
+table. RLS decides *which rows* may be updated; `orders_operations_update` says
+"any row, for anyone on the operations team". **Nothing said which columns.** So
+`20260804`'s trigger — which refuses a commercial change unless a
+transaction-local GUC is set — was not defence in depth. It was the only depth.
+
+The GUC is not reachable today: no function anywhere takes a GUC name as a
+parameter, and PostgREST cannot issue a bare `SET`. That is not the point. A
+session variable is a *coordination signal* between a definer function and its
+own trigger; it must never be the thing that decides whether a write is allowed,
+because it only has to become settable once — one future RPC forwarding a
+parameter into `set_config`, one SQL-execution path — and the protection is gone
+silently.
+
+**Fixed** by making a privilege the primary control:
+
+```sql
+revoke update, delete, truncate, references, trigger
+  on public.orders from authenticated, anon;
+grant update (status) on public.orders to authenticated;
+```
+
+Checked by Postgres before RLS and before any trigger, and not overridable by
+anything a client can put in a transaction. The `20260804` trigger keeps the job
+it is actually suited to: catching the **service role** and direct SQL, which
+hold their own grants.
+
+`DELETE` and `TRUNCATE` went with it. `20260705 §2` dropped the DELETE *policy*
+and added a row trigger to make Confirmed Orders permanent, but left the DELETE
+and TRUNCATE *grants* — and **a row-level `BEFORE DELETE` trigger never fires on
+`TRUNCATE`**, so the grant was a hole straight through that guarantee.
+
+### D6c — An approved change request could silently clobber a newer amendment *(Priority A · fixed in `20260806000000`)*
+
+`order_change_requests` stored only the *proposed* values, and approval applied
+them with no reference to what the requester had been looking at:
+
+1. Order value is ₹2,50,000. Sales raises "make it ₹3,00,000".
+2. Admin amends directly to ₹4,00,000 (client added a wardrobe).
+3. Admin approves the request from step 1.
+4. Value is silently ₹3,00,000. The wardrobe is gone and nothing says a decision
+   was reversed.
+
+Both amendments are individually audited, so it is not *invisible* — but it is
+not **detected**, and the approver is given no reason to look.
+
+**Fixed** by a server-captured baseline (a `BEFORE INSERT` trigger, so a client
+cannot forge it and thereby opt out of the check) plus a staleness gate in
+`approve_order_change_request`. Comparison is **per proposed field**: a request
+proposing a new value is not stale because somebody else moved the due date —
+refusing on that would train admins to re-submit blindly, which is the failure
+this prevents. A stale request is **refused, not auto-rejected**; it stays
+pending so a human decides whether the proposal still makes sense.
+
+### D7 — Any authenticated user can create a Confirmed Order directly *(open, Priority A)*
+
+`orders_sales_insert` (`20260655`) permits `INSERT` where
+`requested_by = auth.uid()`, and `authenticated` holds the table INSERT grant.
+That lets a client create an Order outright — bypassing the Order Request →
+conversion → numbering path, and burning a real number from the display-number
+cycle via `orders_assign_display_number`.
+
+The policy is **vestigial**: it was written when sales inserted their own rows at
+status `requested`, a status `20260702000000` retired. Not fixed here because
+closing it changes *who can create an Order*, which is a different blast radius
+from the amendment work and needs its own end-to-end conversion test. **This is
+the recommended next fix.**
+
+### D8 — The blanket grant pattern is project-wide *(open)*
+
+`public.orders` was narrowed because this branch is about Order integrity. Every
+other table in `public` still carries the same default
+`GRANT ALL TO anon, authenticated`, with RLS as the sole gate and no column
+restriction anywhere in the project (`grep` for `grant update (` returns
+nothing). A project-wide privilege audit is a separate task.
+
 ### D6 — Order activity entries are written client-side *(open, low)*
 
 `StatusControl` writes its `order_activity_log` row from the browser, in a
@@ -393,11 +480,33 @@ default.
 
 ## 6. Remaining risks
 
-**R1 — Neither migration has been applied.** `20260804000000` and
-`20260805000000` are written and reviewed but have never run against any
-database. The UI shipped alongside them **will fail** until they are applied:
-`amend_order` and `order_change_requests` do not exist yet. Apply the
-migrations **before** deploying the application code.
+**R1 — None of the three migrations has been applied.** `20260804000000`,
+`20260805000000` and `20260806000000` are written and reviewed but have never
+run against any database. The UI shipped alongside them **will fail** until they
+are applied: `amend_order` and `order_change_requests` do not exist yet. Apply
+the migrations **before** deploying the application code.
+
+**R1b — `supabase db push` would also apply an unrelated, uncommitted
+migration.** The dry-run reports three pending files, and the first is
+`20260803000000_asset_permanent_delete.sql` — untracked work belonging to a
+different in-flight session, which adds a destructive
+`permanently_delete_asset()` capability. `db push` has no per-file selection, so
+applying this branch's migrations means applying that one too. **That is why
+nothing has been applied**, and it must be resolved with the owner of the assets
+work before any push.
+
+**R1c — Column privileges and the amendment guard must stay in step.** After
+`20260806000000`, `status` is the only column a client role may update on
+`orders`. Any future feature that needs to write another column from the client
+must go through the amendment path — granting the column back would re-open
+D6b silently, because the trigger alone never was sufficient.
+
+**R1d — Legacy change requests carry no baseline.** Rows created between
+`20260804000000` and `20260806000000` have `baseline_*` NULL and are therefore
+exempt from the staleness gate. In practice there are none (the feature has
+never been deployed), but the code path exists and both the SQL and the
+TypeScript treat a missing baseline as "cannot judge" rather than "not stale by
+default".
 
 **R2 — The status transition graph is client-side only.** `TRANSITION_GRAPH` and
 `allowedTransitions()` live in `src/app/orders/[id]/page.tsx`. RLS permits any
@@ -422,15 +531,45 @@ above the order value. The survey script in
 
 ---
 
-## 7. Recommended next small task
+## 7. Operations permissions — the exact allowed fields
 
-**Apply the two migrations, run the two assertion scripts, then build the
-missing-document double confirmation (§4.5).**
+After `20260806000000`, for every client role (`authenticated`, `anon`):
 
-Migrations first because the UI depends on them; the assertion scripts because
-they are the only execution these changes have had; then §4.5 because it is the
-smallest remaining requirement with a real operational cost (missing drawings)
-and it needs no new data model.
+| Column | Client UPDATE? | Enforced by |
+| --- | --- | --- |
+| `status` | **Yes**, `authenticated` only | `GRANT UPDATE (status)`, then RLS (`orders_admin_update` / `orders_operations_update`) |
+| `notes` | No | privilege, then the amendment guard |
+| `client_name` | No | privilege, then the amendment guard |
+| `total_value`, `total_product_value` | No | privilege, then the amendment guard |
+| `confirm_date`, `due_date`, `lead_source` | No | privilege, then the amendment guard |
+| `requested_by`, `assigned_to` | No | privilege, then the amendment guard |
+| `created_by`, `created_at` | No — **frozen, amendment included** | privilege, then the guard's frozen tier |
+| `display_number` | No | privilege, plus `orders_protect_display_number` (`20260703`) |
+| `source_order_request_id`, `source_request_number` | No | privilege, plus `orders_protect_source_request` (`20260701`) |
+| `is_test_data` | No | privilege, plus `orders_protect_test_data` (`20260706`) |
+
+An Operations user can therefore perform status transitions and **nothing else**.
+Billing details, payment linkage, cancellation metadata and amendment records
+are not columns on `orders` at all — they live in `finance_payment_requests`,
+`order_activity_log` and `order_change_requests`, none of which grants Operations
+any write path.
+
+`status` transition *validity* is still client-side only — see risk R2.
+
+## 8. Recommended next small task
+
+**Resolve R1b, apply the three migrations, run the assertion scripts, then close
+D7.**
+
+R1b first, because it is a blocker rather than a task: `db push` would carry an
+unrelated session's destructive assets migration with it.
+
+Then D7 — an authenticated user creating a Confirmed Order directly, bypassing
+conversion and burning an order number — because it is a Priority A hole in the
+same table this branch just hardened, and leaving it open undercuts the rest.
+
+Then the missing-document double confirmation (§4.5): smallest remaining
+requirement with a real operational cost, and it needs no new data model.
 
 After that, the adjustment/refund table (§4.1) — it unblocks §8.1, §8.3, §8.5,
 §8.7 and §7.5 together, and every one of those is currently waiting on the same
