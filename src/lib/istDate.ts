@@ -59,6 +59,31 @@ export function formatMinutesOfDay(minutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+/**
+ * The UTC instant of an IST wall-clock time on a business date.
+ *
+ * The inverse of `istMinutesOfDay` + `formatMinutesOfDay`, and the same
+ * conversion the fingerprint import performs on machine times — an attendance
+ * correction typed as "10:07" must land on exactly the instant an imported
+ * 10:07 punch would. Returns null for anything that is not a valid HH:MM.
+ */
+export function istClockToUtc(date: string, clock: string): string | null {
+  const parts = clock.trim().match(/^(\d{1,2}):(\d{2})$/)
+  if (!parts) return null
+  const hours   = Number(parts[1])
+  const minutes = Number(parts[2])
+  if (hours > 23 || minutes > 59) return null
+
+  const dayStart = Date.parse(`${date}T00:00:00.000Z`)
+  if (isNaN(dayStart)) return null
+  return new Date(dayStart - IST_OFFSET_MS + (hours * 60 + minutes) * 60_000).toISOString()
+}
+
+/** An instant as an IST 24-hour clock label, e.g. "10:07". */
+export function istClockOf(instant: Date | string | number): string {
+  return formatMinutesOfDay(istMinutesOfDay(instant))
+}
+
 /** Shift a business date by whole days. Negative goes back. */
 export function istAddDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00.000Z`) + days * DAY_MS).toISOString().slice(0, 10)

@@ -14,6 +14,7 @@ import {
   istDateOf, istToday, istDayStartUtc, istDayEndUtc,
   istAddDays, istDateRange, istLastNDays,
   istMonthStart, istMonthEnd, istMonthStartOffset,
+  istClockToUtc, istClockOf,
 } from './istDate'
 
 describe('istDateOf', () => {
@@ -143,5 +144,37 @@ describe('month boundaries', () => {
     const first = istMonthStartOffset('2026-07-30', 1)
     assert.equal(first, '2026-06-01')
     assert.equal(istMonthEnd(first), '2026-06-30')
+  })
+})
+
+describe('IST wall-clock conversion', () => {
+  test('an IST clock time maps to the instant the fingerprint import would store', () => {
+    // The import computes Date.UTC(y, m-1, d, hh, mm - 330) for a machine time.
+    const imported = new Date(Date.UTC(2026, 6, 21, 10, 7 - 330)).toISOString()
+    assert.equal(istClockToUtc('2026-07-21', '10:07'), imported)
+  })
+
+  test('a time before 05:30 IST lands on the previous UTC day', () => {
+    assert.equal(istClockToUtc('2026-07-21', '01:00'), '2026-07-20T19:30:00.000Z')
+  })
+
+  test('round-trips with istClockOf', () => {
+    for (const clock of ['00:00', '09:05', '10:15', '18:30', '23:59']) {
+      assert.equal(istClockOf(istClockToUtc('2026-07-21', clock)!), clock)
+    }
+  })
+
+  test('single-digit hours are accepted', () => {
+    assert.equal(istClockToUtc('2026-07-21', '9:05'), istClockToUtc('2026-07-21', '09:05'))
+  })
+
+  test('anything that is not a valid HH:MM returns null', () => {
+    for (const bad of ['', '25:00', '10:60', '10', 'ten', '10:5', '10:07:30']) {
+      assert.equal(istClockToUtc('2026-07-21', bad), null, `"${bad}" must be rejected`)
+    }
+  })
+
+  test('an invalid date returns null', () => {
+    assert.equal(istClockToUtc('not-a-date', '10:00'), null)
   })
 })
