@@ -146,3 +146,40 @@ export function describeProposedChanges(request: AssetChangeRequest): string[] {
 export function canReviewRequest(request: Pick<AssetChangeRequest, 'status'>): boolean {
   return request.status === 'pending'
 }
+
+/**
+ * May this reviewer APPROVE this particular request?
+ *
+ * Reviewing is not a back door. Holding the review right ('manage', or admin)
+ * gets someone the queue and the Reject button; approving additionally needs
+ * the authority the approval would exercise, because approving is what
+ * actually moves the asset. Mirrors approve_asset_change_request()
+ * (20260810000000 §6d), which re-checks all of this server-side.
+ *
+ *   edit   → an edit is performed, so 'edit' is required
+ *   remove → the asset master row is DELETED, so ADMIN is required
+ *
+ * Removal is deliberately NOT gated on the assets_access 'delete' permission.
+ * 20260803000000 §3 fixed that rule: 'delete' is grantable to a non-admin and
+ * covers the ordinary, policy-governed delete of a never-assigned inventory
+ * mistake, while erasing an asset master record through an approval stays with
+ * the administrator. The approval RPC is SECURITY DEFINER and so never passes
+ * through the assets_delete policy at all — gating on 'delete' here would
+ * invent a privilege path rather than mirror one.
+ *
+ * Note this answers permission only. Whether the request is still pending is
+ * canReviewRequest()'s question, and both have to be yes.
+ */
+export function canApproveChangeRequest(input: {
+  requestType: AssetChangeRequestType
+  /** Signed-in actor's users.role — never an impersonated one. */
+  isAdmin: boolean
+  /** Holds the review right at all: admin, or assets_access 'manage'. */
+  canReviewAssetRequests: boolean
+  /** Holds assets_access 'edit'. */
+  canEditAsset: boolean
+}): boolean {
+  if (!input.canReviewAssetRequests) return false
+  if (input.requestType === 'remove') return input.isAdmin
+  return input.isAdmin || input.canEditAsset
+}

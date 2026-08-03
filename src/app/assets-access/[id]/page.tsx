@@ -604,6 +604,19 @@ export default function AssetDetailPage() {
     [assignments],
   )
 
+  // Is this an asset the signed-in person holds or has held?
+  //
+  // Someone with no management grant may open the record of THEIR OWN
+  // equipment and nothing else. The check reads the assignment rows that came
+  // back, which for such a person RLS has already narrowed to their own
+  // (employee_assets_own_select) — so an asset id typed into the URL that is
+  // not theirs yields an empty list and no access. This is a rendering
+  // decision on top of a database boundary, never in place of one.
+  const holdsThisAsset = useMemo(
+    () => !!profile && assignments.some(r => r.employee_id === profile.id),
+    [assignments, profile],
+  )
+
   const custody = useMemo(
     () => (asset ? describeCustody(asset, openAssignment, employeeName) : null),
     [asset, openAssignment, employeeName],
@@ -649,7 +662,13 @@ export default function AssetDetailPage() {
 
   if (authLoading || loading || !profile) return <LoadingScreen />
 
-  const backToInventory = () => router.push('/assets-access?view=asset-inventory')
+  // Back to the list this record was reached from. An employee has no
+  // inventory to return to, so their crumb points at their own assets —
+  // sending them to ?view=asset-inventory would only bounce off
+  // resolveInitialView and land there anyway, one redirect later.
+  const listView = caps.canViewAssetInventory ? 'asset-inventory' : 'my-assets'
+  const listLabel = caps.canViewAssetInventory ? 'Asset Inventory' : 'My Assets'
+  const backToInventory = () => router.push(`/assets-access?view=${listView}`)
 
   // ── Which actions this person may take on this asset, right now ────────────
   // Permission AND state, both required — a button must never appear for
@@ -781,8 +800,11 @@ export default function AssetDetailPage() {
   }
 
   const body = () => {
-    if (!caps.canViewAssetInventory) {
-      return <Panel message="You do not have permission to view asset details." />
+    // Inventory managers see any asset; everyone else sees only what they
+    // hold or have held. Both branches are backed by assets_select, which
+    // returns nothing outside them however this page is reached.
+    if (!caps.canViewAssetInventory && !holdsThisAsset) {
+      return <Panel message="This asset does not exist, or you do not have access to it." />
     }
     if (error && !asset) return <Panel message={error} />
     if (!asset || !custody) {
@@ -970,12 +992,13 @@ export default function AssetDetailPage() {
   return (
     <AssetsLayout
       profile={profile}
-      activeView="asset-inventory"
+      activeView={listView}
       title="Asset Record"
       onSignOut={signOut}
       canViewInventory={caps.canViewAssetInventory}
       canManageAccess={caps.canManageAccess}
       canSeeAssetRequests={caps.canReviewAssetRequests || caps.canRequestAssetChanges}
+      canReviewAssetRequests={caps.canReviewAssetRequests}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {/* Breadcrumb, not a banner. One line back to the list, with the code
@@ -994,7 +1017,7 @@ export default function AssetDetailPage() {
             onMouseLeave={e => { e.currentTarget.style.color = colors.tertiary }}
           >
             <ChevronLeft size={14} strokeWidth={2} aria-hidden="true" />
-            Asset Inventory
+            {listLabel}
           </button>
           {asset && (
             <>
