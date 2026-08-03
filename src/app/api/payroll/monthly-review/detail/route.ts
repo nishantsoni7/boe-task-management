@@ -8,6 +8,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
 import { fetchAttendanceForPeriod, fetchHolidaysForPeriod } from '@/lib/payroll/store'
+import { toSignedAdjustments, type StoredAdjustment } from '@/lib/payroll/adjustments'
 import { isSkip } from '@/lib/payroll/types'
 import type { EngineEmployee, EnginePendingAdjustment } from '@/lib/payroll/types'
 
@@ -85,11 +86,9 @@ export async function GET(req: NextRequest) {
     ])
     attendance  = att
     holidays    = hols
-    adjustments = (adjResult.data ?? []).map(a => ({
-      id:          a.id,
-      amount:      a.adjustment_type === 'deduction' ? -a.amount : a.amount,
-      description: a.description,
-    }))
+    // Same conversion the generation path uses, so a preview and the payroll it
+    // previews cannot read an adjustment differently.
+    adjustments = toSignedAdjustments((adjResult.data ?? []) as StoredAdjustment[])
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }

@@ -11,6 +11,7 @@ import type {
   EnginePendingAdjustment,
   EngineResult,
 } from './types'
+import { toSignedAdjustments, type StoredAdjustment } from './adjustments'
 
 // Callers pass a service-role client in; we accept any schema parameterisation.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -102,20 +103,50 @@ export async function fetchHolidaysForPeriod(
 
 // ─── Pending adjustments ──────────────────────────────────────────────────────
 
+/**
+ * Pending manual adjustments for one employee in one period.
+ *
+ * Two things here are deliberate and were both wrong before:
+ *
+ *  * `adjustment_type` is selected and the row is converted through
+ *    `toSignedAdjustment`. Since migration 20260636 the stored `amount` is
+ *    always positive and the direction lives in `adjustment_type`, so reading
+ *    `amount` raw made every manual deduction increase net salary.
+ *
+ *  * The period scope. `/api/payroll/adjustments` records the month it belongs
+ *    to in `payroll_year`/`payroll_month` and never sets `applied_in_period_id`,
+ *    so matching "applied_in_period_id is null" alone pulled an employee's
+ *    adjustments from *every* month into *every* payroll run. A row is in scope
+ *    when it is explicitly scheduled into this period, or when it is unscheduled
+ *    and stamped with this period's month.
+ *
+ * Adjustments this period has ALREADY consumed are included too. Generation
+ * marks them 'applied', and a 'pending'-only read meant the second run for a
+ * period silently dropped them: the employee's manual deduction vanished from
+ * net salary. Because every correction triggers a recalculation, that turned
+ * from a rare regeneration quirk into something that fired on each save. A row
+ * applied by THIS period is still owed by this period, so it is re-read; a row
+ * applied by a different period is not.
+ */
 export async function fetchPendingAdjustments(
   svc: Svc,
   employeeId: string,
   periodId: string,
+  month: number,
+  year: number,
 ): Promise<EnginePendingAdjustment[]> {
   const { data, error } = await svc
     .from('payroll_pending_adjustments')
-    .select('id, amount, description')
+    .select('id, adjustment_type, amount, description')
     .eq('employee_id', employeeId)
-    .eq('status', 'pending')
-    .or(`applied_in_period_id.eq.${periodId},applied_in_period_id.is.null`)
+    .or(
+      `and(status.eq.pending,applied_in_period_id.eq.${periodId}),` +
+      `and(status.eq.pending,applied_in_period_id.is.null,payroll_year.eq.${year},payroll_month.eq.${month}),` +
+      `and(status.eq.applied,applied_in_period_id.eq.${periodId})`,
+    )
 
   if (error) throw new Error(`fetchPendingAdjustments: ${error.message}`)
-  return (data ?? []) as EnginePendingAdjustment[]
+  return toSignedAdjustments((data ?? []) as StoredAdjustment[])
 }
 
 // ─── payroll_generation row ───────────────────────────────────────────────────
@@ -250,15 +281,23 @@ export async function setPeriodStatus(
   if (error) throw new Error(`setPeriodStatus: ${error.message}`)
 }
 
+/**
+ * Record which period and result consumed these adjustments.
+ *
+ * `applied_in_period_id` is stamped so a re-run of the SAME period can find its
+ * own applied rows again (see fetchPendingAdjustments). Without it an applied
+ * adjustment became invisible to every later run and dropped out of net salary.
+ */
 export async function markAdjustmentsApplied(
   svc: Svc,
   adjustmentIds: string[],
   resultId: string,
+  periodId: string,
 ): Promise<void> {
   if (adjustmentIds.length === 0) return
   const { error } = await svc
     .from('payroll_pending_adjustments')
-    .update({ status: 'applied', payroll_result_id: resultId })
+    .update({ status: 'applied', payroll_result_id: resultId, applied_in_period_id: periodId })
     .in('id', adjustmentIds)
   if (error) throw new Error(`markAdjustmentsApplied: ${error.message}`)
 }

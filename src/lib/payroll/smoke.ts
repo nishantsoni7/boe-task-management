@@ -176,7 +176,7 @@ async function run() {
   for (const employee of employees) {
     const [attendance, adjustments] = await Promise.all([
       fetchAttendanceForPeriod(svc, employee.id, period.payroll_month, period.payroll_year),
-      fetchPendingAdjustments(svc, employee.id, periodId),
+      fetchPendingAdjustments(svc, employee.id, periodId, period.payroll_month, period.payroll_year),
     ])
 
     const outcome = generatePayrollForEmployee(employee, period, attendance, holidays, adjustments)
@@ -188,7 +188,7 @@ async function run() {
     }
 
     const resultId = await writeEngineResult(svc, gen1Id, outcome)
-    await markAdjustmentsApplied(svc, outcome.applied_adjustment_ids, resultId)
+    await markAdjustmentsApplied(svc, outcome.applied_adjustment_ids, resultId, periodId)
     outcomes1.push({ employee_id: employee.id, status: 'generated', payroll_result_id: resultId })
   }
 
@@ -277,7 +277,7 @@ async function run() {
   for (const employee of employees) {
     const [attendance, adjustments] = await Promise.all([
       fetchAttendanceForPeriod(svc, employee.id, periodForRegen.payroll_month, periodForRegen.payroll_year),
-      fetchPendingAdjustments(svc, employee.id, periodId),
+      fetchPendingAdjustments(svc, employee.id, periodId, periodForRegen.payroll_month, periodForRegen.payroll_year),
     ])
 
     const outcome = generatePayrollForEmployee(employee, periodForRegen, attendance, holidays, adjustments)
@@ -289,7 +289,7 @@ async function run() {
     }
 
     const resultId = await writeEngineResult(svc, gen2Id, outcome)
-    await markAdjustmentsApplied(svc, outcome.applied_adjustment_ids, resultId)
+    await markAdjustmentsApplied(svc, outcome.applied_adjustment_ids, resultId, periodId)
     outcomes2.push({ employee_id: employee.id, status: 'generated', payroll_result_id: resultId })
   }
 

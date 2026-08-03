@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
       // Per-employee fetches run in parallel — attendance and adjustments are independent
       const [attendance, adjustments] = await Promise.all([
         fetchAttendanceForPeriod(svc, employee.id, period.payroll_month, period.payroll_year),
-        fetchPendingAdjustments(svc, employee.id, payroll_period_id),
+        fetchPendingAdjustments(svc, employee.id, payroll_period_id, period.payroll_month, period.payroll_year),
       ])
 
       const outcome = generatePayrollForEmployee(
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
       }
 
       const resultId = await writeEngineResult(svc, generationId, outcome)
-      await markAdjustmentsApplied(svc, outcome.applied_adjustment_ids, resultId)
+      await markAdjustmentsApplied(svc, outcome.applied_adjustment_ids, resultId, payroll_period_id)
 
       outcomes.push({ employee_id: employee.id, status: 'generated', payroll_result_id: resultId })
     } catch (e) {
