@@ -20,6 +20,7 @@ import { assetErrorMessage, logAssetFailure } from '@/lib/assets/errors'
 // apart on what an asset row contains (src/lib/assets/detail.ts).
 import { ASSET_COLUMNS, EMPLOYEE_ASSET_COLUMNS } from '@/lib/assets/detail'
 import {
+  canApproveChangeRequest,
   describeProposedChanges,
   REQUEST_STATUS_BADGE,
   REQUEST_STATUS_LABEL,
@@ -54,7 +55,7 @@ import { notifyAssetEvent, sweepWarrantyExpiries } from '@/lib/assets/notifyClie
 // Create / edit / request modals are shared components: the inventory and the
 // asset detail page both offer them, and one copy is what stops the two forms
 // from drifting apart about which fields an asset has.
-import { CreateAssetModal } from '@/components/assets/AssetChangeModals'
+import { CreateAssetModal, RequestEditModal } from '@/components/assets/AssetChangeModals'
 import { AssignAssetModal } from './[id]/AssetActionModals'
 import { AssetModal, AssetField, AssetModalActions } from '@/components/assets/AssetModal'
 
@@ -159,17 +160,26 @@ const ACCESS_TYPE_OPTIONS = ['gmail', 'clickup', 'system_login', 'other']
 
 // ─── Employee: My Assets ─────────────────────────────────────────────────────
 
-function MyAssets({ userId, acceptedByName, supabase, isMobile }: {
+function MyAssets({ userId, acceptedByName, supabase, isMobile, canRequest }: {
   userId: string
   /** Display name of whoever is accepting, for the acknowledgement notice. */
   acceptedByName?: string | null
   supabase: SupabaseClient
   isMobile?: boolean
+  /**
+   * Offer "Request Modification". False while impersonating: a request is
+   * filed as the SIGNED-IN actor, and View As is for reading someone else's
+   * screen, not for filing paperwork in their name.
+   */
+  canRequest?: boolean
 }) {
+  const router = useRouter()
   const [rows, setRows] = useState<EmployeeAsset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [acceptingId, setAcceptingId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [requesting, setRequesting] = useState<Asset | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -216,9 +226,15 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile }: {
 
   if (loading) return <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
 
+  // The employee's own record, opened from their own list. RLS decides what
+  // comes back: assets_select's own-assignment branch is what makes this legal
+  // for someone who cannot see the inventory, and it reaches nothing else.
+  const openAsset = (asset: Asset) => router.push(`/assets-access/${asset.id}`)
+
   return (
     <div>
       {error && <ErrorBanner message={error} />}
+      {notice && <SuccessBanner message={notice} />}
       {rows.length === 0
         ? <EmptyState message="No assets assigned to you yet." />
         : isMobile ? (
@@ -228,7 +244,11 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile }: {
               const asset = singleAsset(row.assets)
               return (
                 <div key={row.id} className="boe-card" style={{ padding: '14px 16px' }}>
-                  <div style={{ fontWeight: 600, color: colors.primary, fontSize: '14px', marginBottom: '4px' }}>{asset?.asset_name ?? '—'}</div>
+                  <div style={{ fontSize: '14px', marginBottom: '4px' }}>
+                    {asset
+                      ? <AssetNameLink asset={asset} onOpen={() => openAsset(asset)} />
+                      : <span style={{ fontWeight: 600, color: colors.primary }}>—</span>}
+                  </div>
                   {asset?.specifications && (
                     <div style={{ fontSize: '11px', color: colors.muted, marginBottom: '8px' }}>{asset.specifications}</div>
                   )}
@@ -237,13 +257,20 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile }: {
                     {asset?.serial_no && <span style={{ fontFamily: 'monospace' }}>{asset.serial_no}</span>}
                     <span>{fmtDate(row.assigned_at)}</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                     <Badge status={row.status} map={ASSET_STATUS_BADGE} />
-                    {row.status === 'pending_acceptance' && (
-                      <button className="boe-btn boe-btn-primary" style={{ padding: '6px 14px', fontSize: '12px' }} disabled={acceptingId === row.id} onClick={() => handleAccept(row)}>
-                        {acceptingId === row.id ? 'Accepting…' : 'Accept Asset'}
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {canRequest && asset && (
+                        <button className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setRequesting(asset)}>
+                          Request Modification
+                        </button>
+                      )}
+                      {row.status === 'pending_acceptance' && (
+                        <button className="boe-btn boe-btn-primary" style={{ padding: '6px 14px', fontSize: '12px' }} disabled={acceptingId === row.id} onClick={() => handleAccept(row)}>
+                          {acceptingId === row.id ? 'Accepting…' : 'Accept Asset'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
@@ -261,7 +288,9 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile }: {
                     return (
                       <tr key={row.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                         <td style={{ padding: '12px 16px' }}>
-                          <div style={{ fontWeight: 600, color: colors.primary }}>{asset?.asset_name ?? '—'}</div>
+                          {asset
+                            ? <AssetNameLink asset={asset} onOpen={() => openAsset(asset)} />
+                            : <div style={{ fontWeight: 600, color: colors.primary }}>—</div>}
                           {asset?.specifications && (
                             <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px', maxWidth: '280px', whiteSpace: 'pre-wrap' }}>
                               {asset.specifications}
@@ -273,11 +302,18 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile }: {
                         <td style={{ padding: '12px 16px', color: colors.muted, fontSize: '12px' }}>{fmtDate(row.assigned_at)}</td>
                         <td style={{ padding: '12px 16px' }}><Badge status={row.status} map={ASSET_STATUS_BADGE} /></td>
                         <td style={{ padding: '12px 16px' }}>
-                          {row.status === 'pending_acceptance' && (
-                            <button className="boe-btn boe-btn-primary" style={{ padding: '5px 12px', fontSize: '11px' }} disabled={acceptingId === row.id} onClick={() => handleAccept(row)}>
-                              {acceptingId === row.id ? 'Accepting…' : 'Accept Asset'}
-                            </button>
-                          )}
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {row.status === 'pending_acceptance' && (
+                              <button className="boe-btn boe-btn-primary" style={{ padding: '5px 12px', fontSize: '11px' }} disabled={acceptingId === row.id} onClick={() => handleAccept(row)}>
+                                {acceptingId === row.id ? 'Accepting…' : 'Accept Asset'}
+                              </button>
+                            )}
+                            {canRequest && asset && (
+                              <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '11px' }} onClick={() => setRequesting(asset)}>
+                                Request Modification
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -288,6 +324,18 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile }: {
           </div>
         )
       }
+
+      {/* Files a row in asset_change_requests and stops. Nothing about the
+          asset moves until a reviewer approves it — and the INSERT policy
+          allows this asset only because it is one this employee holds. */}
+      {requesting && (
+        <RequestEditModal
+          asset={requesting}
+          supabase={supabase}
+          onClose={() => setRequesting(null)}
+          onSubmitted={() => { setRequesting(null); setNotice('Your request has been submitted for review.') }}
+        />
+      )}
     </div>
   )
 }
@@ -690,13 +738,16 @@ function AssetInventory({ employees, supabase, isMobile, caps }: {
 
 // ─── Asset Requests ───────────────────────────────────────────────────────────
 // One screen for both audiences: a requester sees their own requests and what
-// happened to them; an admin sees everyone's, with Approve / Reject on the
-// pending ones. RLS decides which rows arrive, not this component.
+// happened to them; a reviewer sees everyone's, with Reject on the pending ones
+// and Approve on the ones they hold the authority to grant. RLS decides which
+// rows arrive, not this component.
 
-function AssetRequests({ employees, supabase, caps, isMobile }: {
+function AssetRequests({ employees, supabase, caps, isAdmin, isMobile }: {
   employees: Employee[]
   supabase: SupabaseClient
   caps: AssetsAccessCapabilities
+  /** The SIGNED-IN actor's role. Approving a removal is admin-only. */
+  isAdmin: boolean
   isMobile?: boolean
 }) {
   const [rows, setRows] = useState<AssetChangeRequest[]>([])
@@ -786,9 +837,16 @@ function AssetRequests({ employees, supabase, caps, isMobile }: {
 
         {caps.canReviewAssetRequests && row.status === 'pending' && (
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button className="boe-btn boe-btn-primary" style={{ padding: '5px 14px', fontSize: '12px' }} disabled={busyId === row.id} onClick={() => handleApprove(row)}>
-              {busyId === row.id ? 'Working…' : 'Approve'}
-            </button>
+            {canApproveChangeRequest({
+              requestType: row.request_type,
+              isAdmin,
+              canReviewAssetRequests: caps.canReviewAssetRequests,
+              canEditAsset: caps.canEditAsset,
+            }) && (
+              <button className="boe-btn boe-btn-primary" style={{ padding: '5px 14px', fontSize: '12px' }} disabled={busyId === row.id} onClick={() => handleApprove(row)}>
+                {busyId === row.id ? 'Working…' : 'Approve'}
+              </button>
+            )}
             <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 14px', fontSize: '12px', color: '#C13030' }} disabled={busyId === row.id} onClick={() => setRejecting(row)}>
               Reject
             </button>
@@ -1166,7 +1224,7 @@ const VIEW_META: Record<AssetsView, { title: string; subtitle: string }> = {
   'my-access':       { title: 'My Access',       subtitle: 'Login and access records assigned to you.' },
   'asset-inventory': { title: 'Asset Inventory', subtitle: 'All company assets and their assignment status.' },
   'access-register': { title: 'Access Register', subtitle: 'All employee login and access records.' },
-  'asset-requests':  { title: 'Asset Requests',  subtitle: 'Edit and removal requests awaiting an administrator.' },
+  'asset-requests':  { title: 'Asset Requests',  subtitle: 'Change and removal requests, and what was decided.' },
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -1284,7 +1342,15 @@ function AssetsAccessScreen() {
   const renderView = () => {
     switch (view) {
       case 'my-assets':
-        return <MyAssets userId={effectiveUserId} acceptedByName={profile.full_name} supabase={supabase} isMobile={isMobile} />
+        return (
+          <MyAssets
+            userId={effectiveUserId}
+            acceptedByName={profile.full_name}
+            supabase={supabase}
+            isMobile={isMobile}
+            canRequest={caps.canRequestAssetChanges && !inViewMode}
+          />
+        )
       case 'my-access':
         return <MyAccess userId={effectiveUserId} supabase={supabase} isMobile={isMobile} />
       case 'asset-inventory':
@@ -1292,7 +1358,15 @@ function AssetsAccessScreen() {
       case 'access-register':
         return <AccessRegister employees={employees} supabase={supabase} isMobile={isMobile} actorName={profile.full_name} />
       case 'asset-requests':
-        return <AssetRequests employees={employees} supabase={supabase} caps={caps} isMobile={isMobile} />
+        return (
+          <AssetRequests
+            employees={employees}
+            supabase={supabase}
+            caps={caps}
+            isAdmin={profile.role === 'admin'}
+            isMobile={isMobile}
+          />
+        )
     }
   }
 
@@ -1307,6 +1381,7 @@ function AssetsAccessScreen() {
       canViewInventory={caps.canViewAssetInventory}
       canManageAccess={caps.canManageAccess}
       canSeeAssetRequests={caps.canReviewAssetRequests || caps.canRequestAssetChanges}
+      canReviewAssetRequests={caps.canReviewAssetRequests}
     >
       {renderView()}
     </AssetsLayout>

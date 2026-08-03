@@ -44,12 +44,22 @@ type AssetsLayoutProps = {
   /** Header-right controls, matching OrdersLayout / FinanceLayout. */
   actions?: React.ReactNode
   onSignOut: () => void
-  /** Asset Inventory nav — resolve_permission('assets_access', view|manage). */
+  /**
+   * Asset Inventory nav — a MANAGEMENT grant on assets_access
+   * (create|assign|edit|delete|manage), never the plain 'view' every employee
+   * holds. See src/lib/permissions/assetsAccess.ts.
+   */
   canViewInventory: boolean
   /** Access Register nav — admin only while secret_value is plaintext. */
   canManageAccess: boolean
-  /** Asset Requests nav — an admin reviewing, or a requester tracking their own. */
+  /** Asset Requests nav — a reviewer, or a requester tracking their own. */
   canSeeAssetRequests: boolean
+  /**
+   * Whether that entry belongs to Management (a reviewer sees everyone's
+   * queue) or to My Records (a requester sees only their own). An ordinary
+   * employee must not be shown a Management section at all.
+   */
+  canReviewAssetRequests: boolean
   children: React.ReactNode
 }
 
@@ -70,6 +80,10 @@ const ACCESS_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
 const REQUESTS_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
   { view: 'asset-requests', label: 'Asset Requests', icon: <ClipboardList size={15} strokeWidth={1.8} /> }
 
+/** The same screen from the requester's side: only the rows they filed. */
+const MY_REQUESTS_NAV: { view: AssetsView; label: string; icon: React.ReactNode } =
+  { view: 'asset-requests', label: 'My Requests', icon: <ClipboardList size={15} strokeWidth={1.8} /> }
+
 export function AssetsLayout({
   profile,
   activeView,
@@ -81,16 +95,25 @@ export function AssetsLayout({
   canViewInventory,
   canManageAccess,
   canSeeAssetRequests,
+  canReviewAssetRequests,
   children,
 }: AssetsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
   const unreadAssets = useUnreadAssetNotifications()
 
+  // Management is for people who act on OTHER people's records. An ordinary
+  // employee holding only 'view' must see no such section — the requests entry
+  // they get is their own filing cabinet, and it belongs under My Records.
   const managementNav = [
     ...(canViewInventory ? [INVENTORY_NAV] : []),
-    ...(canSeeAssetRequests ? [REQUESTS_NAV] : []),
+    ...(canReviewAssetRequests ? [REQUESTS_NAV] : []),
     ...(canManageAccess ? [ACCESS_NAV] : []),
+  ]
+
+  const ownNav = [
+    ...USER_NAV,
+    ...(canSeeAssetRequests && !canReviewAssetRequests ? [MY_REQUESTS_NAV] : []),
   ]
 
   // Without an onViewChange the sidebar navigates instead of switching local
@@ -165,7 +188,7 @@ export function AssetsLayout({
           }}>
             My Records
           </div>
-          {USER_NAV.map(item => (
+          {ownNav.map(item => (
             <NavItem key={item.view} {...item} />
           ))}
 

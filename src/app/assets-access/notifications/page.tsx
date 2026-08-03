@@ -44,6 +44,7 @@ function AssetsNotificationsLayout({
       canViewInventory={caps.canViewAssetInventory}
       canManageAccess={caps.canManageAccess}
       canSeeAssetRequests={caps.canReviewAssetRequests || caps.canRequestAssetChanges}
+      canReviewAssetRequests={caps.canReviewAssetRequests}
     >
       {children}
     </AssetsLayout>

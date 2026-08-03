@@ -21,6 +21,7 @@ import {
   validateChangeRequest,
   describeProposedChanges,
   canReviewRequest,
+  canApproveChangeRequest,
   type AssetChangeRequest,
 } from './changeRequests'
 
@@ -169,5 +170,59 @@ describe('canReviewRequest', () => {
   test('an already-reviewed request cannot be processed twice', () => {
     assert.equal(canReviewRequest({ status: 'approved' }), false)
     assert.equal(canReviewRequest({ status: 'rejected' }), false)
+  })
+})
+
+// ─── canApproveChangeRequest ─────────────────────────────────────────────────
+// Mirrors approve_asset_change_request() (20260810000000 §6d). Holding the
+// review right is the queue and the Reject button; APPROVING needs the
+// authority the approval exercises.
+
+describe('canApproveChangeRequest', () => {
+  const admin        = { isAdmin: true,  canReviewAssetRequests: true,  canEditAsset: true  }
+  const manageOnly   = { isAdmin: false, canReviewAssetRequests: true,  canEditAsset: false }
+  const manageAndEdit= { isAdmin: false, canReviewAssetRequests: true,  canEditAsset: true  }
+  const editOnly     = { isAdmin: false, canReviewAssetRequests: false, canEditAsset: true  }
+  const employee     = { isAdmin: false, canReviewAssetRequests: false, canEditAsset: false }
+
+  test('no review right, no approval — whatever else is held', () => {
+    assert.equal(canApproveChangeRequest({ requestType: 'edit',   ...employee }), false)
+    assert.equal(canApproveChangeRequest({ requestType: 'remove', ...employee }), false)
+    // 'edit' without 'manage' never even reaches the queue.
+    assert.equal(canApproveChangeRequest({ requestType: 'edit',   ...editOnly }), false)
+    assert.equal(canApproveChangeRequest({ requestType: 'remove', ...editOnly }), false)
+  })
+
+  test("a 'manage'-only reviewer may approve nothing — the queue and Reject only", () => {
+    assert.equal(canApproveChangeRequest({ requestType: 'edit',   ...manageOnly }), false)
+    assert.equal(canApproveChangeRequest({ requestType: 'remove', ...manageOnly }), false)
+  })
+
+  test("adding 'edit' unlocks edit approvals, and nothing else", () => {
+    assert.equal(canApproveChangeRequest({ requestType: 'edit',   ...manageAndEdit }), true)
+    assert.equal(canApproveChangeRequest({ requestType: 'remove', ...manageAndEdit }), false)
+  })
+
+  test('REMOVAL APPROVAL IS ADMIN-ONLY', () => {
+    // Deleting an asset master row is not the grantable assets_access 'delete'
+    // permission (20260803000000 §3), and the approval RPC is SECURITY DEFINER
+    // so it never passes the assets_delete policy. Only the admin says yes.
+    assert.equal(canApproveChangeRequest({ requestType: 'remove', ...admin }), true)
+
+    // Every non-admin shape, including one holding delete-level authority.
+    for (const canEditAsset of [true, false]) {
+      assert.equal(
+        canApproveChangeRequest({
+          requestType: 'remove', isAdmin: false, canReviewAssetRequests: true, canEditAsset,
+        }),
+        false,
+        `non-admin reviewer, canEditAsset=${canEditAsset}`,
+      )
+    }
+  })
+
+  test('an admin approves both kinds', () => {
+    assert.equal(canApproveChangeRequest({ requestType: 'edit',   ...admin }), true)
+    assert.equal(canApproveChangeRequest({ requestType: 'remove', ...admin }), true)
   })
 })

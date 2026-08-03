@@ -25,7 +25,12 @@ export function isAssetsView(value: unknown): value is AssetsView {
 /** May this person open this view at all? */
 export function canOpenView(view: AssetsView, caps: AssetsAccessCapabilities): boolean {
   switch (view) {
-    // Everyone has their own records.
+    // Everyone in the module has their own records, and these two screens
+    // ONLY ever show them: both queries are .eq('employee_id', <the signed-in
+    // user>) and both are additionally scoped to auth.uid() by RLS. They are
+    // also the terminal fallback for every unpermitted request below, so they
+    // stay openable unconditionally — refusing them would leave an
+    // unauthorized ?view= with nowhere to land.
     case 'my-assets':
     case 'my-access':
       return true
