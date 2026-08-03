@@ -63,7 +63,7 @@ import {
 } from '@/lib/assets/detailView'
 import { assetErrorMessage, logAssetFailure } from '@/lib/assets/errors'
 import {
-  AddServiceRecordModal, AssignAssetModal, CompleteServiceModal, MarkLostModal,
+  AddServiceRecordModal, AssignAssetModal, CompleteServiceModal, DeleteAssetModal, MarkLostModal,
   RecoverAssetModal, RemoveDocumentModal, RestoreAssetModal, RetireAssetModal,
   ReturnAssetModal, SendForRepairModal, TransferAssetModal, UploadDocumentModal,
   WarrantyDetailsModal,
@@ -486,6 +486,7 @@ type ModalKind =
   | { kind: 'remove-document'; id: string; fileName: string }
   | { kind: 'retire'; dispose: boolean } | { kind: 'restore' }
   | { kind: 'edit' } | { kind: 'request-edit' } | { kind: 'request-removal' }
+  | { kind: 'delete' }
 
 export default function AssetDetailPage() {
   const params = useParams<{ id: string }>()
@@ -689,42 +690,34 @@ export default function AssetDetailPage() {
     retire:       caps.canManageAssetCustody && !['retired', 'disposed'].includes(status) && !openAssignment,
     restore:      caps.canManageAssetCustody && ['retired', 'disposed'].includes(status),
     edit:         caps.canEditAsset,
-    remove:       caps.canDeleteAsset,
+    // Permanent deletion is admin-only (20260803000000), so the menu item is
+    // not offered to a non-admin who happens to hold assets_access.delete.
+    remove:       caps.canDeleteAsset && profile.role === 'admin',
     request:      caps.canRequestAssetChanges,
   }
 
-  // Only an asset nobody has ever held may be deleted — a mistaken inventory
-  // entry. History is counted at click time with an exact count rather than
-  // read from what is on screen. The database refuses the same thing regardless
-  // (assets_prevent_assigned_delete, now covering movement, service and
-  // document history too); this exists to say why in plain words instead of
-  // surfacing a trigger error.
-  const handleDelete = async () => {
+  // Permanent deletion is an administrator's decision and erases the asset
+  // together with its assignment, custody, service, warranty and activity
+  // history — permanently_delete_asset (20260803000000) does all of it in one
+  // transaction. History no longer blocks; an OPEN assignment still does,
+  // because somebody is holding the asset right now.
+  //
+  // This guard exists to say why in plain words rather than surfacing a
+  // definer-function error. The RPC re-checks the same rule server-side, which
+  // is what actually holds.
+  const openDelete = () => {
     if (!asset) return
     setError(null)
     setNotice(null)
 
-    const { count, error: countError } = await supabase
-      .from('employee_assets')
-      .select('id', { count: 'exact', head: true })
-      .eq('asset_id', asset.id)
-
-    if (countError) { logAssetFailure('delete', countError); setError(assetErrorMessage('delete', countError)); return }
-
     const blocked = assetDeleteBlockReason({
       canDeleteAsset: caps.canDeleteAsset,
+      isAdmin: profile.role === 'admin',
       hasActiveAssignment: !!openAssignment,
-      assignmentHistoryCount: count ?? 0,
     })
     if (blocked) { setError(blocked); return }
 
-    // A destructive action that leaves no form to fill in still needs a
-    // confirmation, and this one is genuinely irreversible.
-    if (!window.confirm(`Delete "${asset.asset_name}"? This cannot be undone.`)) return
-
-    const { error: dbError } = await supabase.from('assets').delete().eq('id', asset.id)
-    if (dbError) { logAssetFailure('delete', dbError); setError(assetErrorMessage('delete', dbError)); return }
-    router.push('/assets-access?view=asset-inventory')
+    setModal({ kind: 'delete' })
   }
 
   // The action key → what it opens. Every entry is the same modal, the same
@@ -748,7 +741,7 @@ export default function AssetDetailPage() {
       case 'markLost':           setModal({ kind: 'lost' }); break
       case 'retire':             setModal({ kind: 'retire', dispose: false }); break
       case 'dispose':            setModal({ kind: 'retire', dispose: true }); break
-      case 'delete':             void handleDelete(); break
+      case 'delete':             openDelete(); break
     }
   }
 
@@ -1120,6 +1113,15 @@ export default function AssetDetailPage() {
           asset={asset} supabase={supabase}
           onClose={() => setModal(null)}
           onSubmitted={() => afterAction('Your removal request has been submitted for approval.')}
+        />
+      )}
+      {/* Not afterAction: there is no longer a record to reload, so the only
+          sensible next screen is the inventory this asset has left. */}
+      {asset && modal?.kind === 'delete' && (
+        <DeleteAssetModal
+          asset={asset} supabase={supabase}
+          onClose={() => setModal(null)}
+          onDone={() => backToInventory()}
         />
       )}
     </AssetsLayout>

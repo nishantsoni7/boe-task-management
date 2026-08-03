@@ -112,36 +112,56 @@ describe('acceptanceStatusKey', () => {
   })
 })
 
-describe('assetDeleteBlockReason', () => {
-  const base = { canDeleteAsset: true, hasActiveAssignment: false, assignmentHistoryCount: 0 }
+// The database half — that the purge actually removes every dependent row and
+// leaves unrelated records alone — is scripted in
+// supabase/tests/asset_permanent_delete_assertions.sql, because only a live
+// project can assert it.
+describe('assetDeleteBlockReason (20260803000000)', () => {
+  const base = { canDeleteAsset: true, isAdmin: true, hasActiveAssignment: false }
 
-  test('a never-assigned asset may be deleted by someone holding delete', () => {
+  test('an admin may permanently delete a never-assigned asset', () => {
     assert.equal(assetDeleteBlockReason(base), null)
   })
 
-  test('an asset with any history is blocked, even after return', () => {
-    const reason = assetDeleteBlockReason({ ...base, assignmentHistoryCount: 1 })
-    assert.match(reason ?? '', /assignment history/i)
+  test('assignment history no longer blocks — that is the whole point of the purge', () => {
+    // Before 20260803000000 this returned "…custody record is permanent." The
+    // history is now erased WITH the asset rather than standing in its way.
+    assert.equal(assetDeleteBlockReason(base), null)
   })
 
-  test('history blocks deletion no matter how old the custody was', () => {
-    assert.notEqual(assetDeleteBlockReason({ ...base, assignmentHistoryCount: 7 }), null)
-  })
-
-  test('a currently-assigned asset is blocked, with the more specific reason', () => {
-    const reason = assetDeleteBlockReason({ ...base, hasActiveAssignment: true, assignmentHistoryCount: 1 })
+  test('a currently-assigned asset is still blocked, with an actionable reason', () => {
+    const reason = assetDeleteBlockReason({ ...base, hasActiveAssignment: true })
     assert.match(reason ?? '', /currently assigned/i)
+    assert.match(reason ?? '', /returned or lost/i)
   })
 
-  test('a manager (no delete permission) is blocked even for a never-assigned asset', () => {
+  test('a non-admin holding assets_access.delete is refused', () => {
+    const reason = assetDeleteBlockReason({ ...base, isAdmin: false })
+    assert.match(reason ?? '', /administrator/i)
+  })
+
+  test('an admin without the delete permission is refused', () => {
     const reason = assetDeleteBlockReason({ ...base, canDeleteAsset: false })
-    assert.match(reason ?? '', /permission/i)
+    assert.match(reason ?? '', /administrator/i)
   })
 
-  test('permission is checked before history, so a manager never sees history detail', () => {
+  test('authority is checked before state, so a non-admin never sees custody detail', () => {
     const reason = assetDeleteBlockReason({
-      canDeleteAsset: false, hasActiveAssignment: true, assignmentHistoryCount: 3,
+      canDeleteAsset: false, isAdmin: false, hasActiveAssignment: true,
     })
-    assert.match(reason ?? '', /permission/i)
+    assert.match(reason ?? '', /administrator/i)
+    assert.doesNotMatch(reason ?? '', /currently assigned/i)
+  })
+
+  test('no refusal ever tells the reader that history is permanent', () => {
+    const inputs = [
+      base,
+      { ...base, hasActiveAssignment: true },
+      { ...base, isAdmin: false },
+      { ...base, canDeleteAsset: false },
+    ]
+    for (const input of inputs) {
+      assert.doesNotMatch(assetDeleteBlockReason(input) ?? '', /custody record is permanent/i)
+    }
   })
 })

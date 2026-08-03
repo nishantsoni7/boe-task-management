@@ -1001,3 +1001,53 @@ export function RestoreAssetModal({ asset, supabase, onClose, onDone }: CommonPr
     </AssetModal>
   )
 }
+
+// ─── Delete permanently ───────────────────────────────────────────────────────
+//
+// The only action in this module that erases rather than records, and the only
+// one an administrator alone may take — public.permanently_delete_asset
+// (20260803000000) re-checks that server-side and removes the asset together
+// with every record that belongs solely to it, in one transaction.
+//
+// Same modal shell, same destructive styling and same one-sentence failure slot
+// as every dialog above: a different-looking dialog for the most consequential
+// action would be the wrong kind of special.
+//
+// No notification is dispatched. Every asset_* recipient rule in
+// assetNotifications.ts deep-links to /assets-access/<id>, and after this there
+// is no id left to open.
+
+export function DeleteAssetModal({ asset, supabase, onClose, onDone }: CommonProps) {
+  const { saving, error, run } = useSubmit('delete')
+
+  const submit = async () => {
+    const ok = await run(() => supabase.rpc('permanently_delete_asset', {
+      p_asset_id: asset.id,
+    }))
+    if (!ok) return
+    onDone(`“${asset.asset_name}” has been permanently deleted.`)
+  }
+
+  return (
+    <AssetModal title="Delete Asset Permanently" onClose={onClose}>
+      <div style={{ fontSize: '12px', color: colors.secondary }}>
+        {asset.asset_code ? `${asset.asset_name} (${asset.asset_code})` : asset.asset_name}
+      </div>
+      <div style={{
+        padding: '10px 12px', borderRadius: '8px',
+        background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '11.5px',
+      }}>
+        Permanently delete this asset? The asset and its complete assignment, custody,
+        service, warranty, and activity history will be erased. This action cannot be undone.
+      </div>
+      {error && <AssetModalError message={error} />}
+      <AssetModalActions
+        onClose={onClose}
+        onSave={submit}
+        saving={saving}
+        saveLabel="Delete Permanently"
+        destructive
+      />
+    </AssetModal>
+  )
+}

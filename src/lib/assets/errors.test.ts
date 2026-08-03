@@ -101,7 +101,26 @@ describe('assetErrorMessage', () => {
 
   test('a bare marker with no sentence falls back rather than showing an empty message', () => {
     const msg = assetErrorMessage('delete', { code: '42501', message: 'ASSET_DELETE_BLOCKED:' })
-    assert.equal(msg, 'You do not have permission to delete assets.')
+    assert.equal(msg, 'Only an administrator can permanently delete an asset.')
+  })
+
+  test('the permanent-delete guards reach the reader as their own sentences', () => {
+    // permanently_delete_asset (20260803000000). A non-admin must be told that
+    // the action is reserved, not that "something went wrong".
+    assert.equal(
+      assetErrorMessage('delete', {
+        code: '42501',
+        message: 'ASSET_DELETE_DENIED: Only an administrator can permanently delete an asset',
+      }),
+      'Only an administrator can permanently delete an asset.',
+    )
+    assert.equal(
+      assetErrorMessage('delete', {
+        code: '42501',
+        message: 'ASSET_DELETE_MISSING: This asset no longer exists',
+      }),
+      'This asset no longer exists.',
+    )
   })
 
   test('a pending migration is reported as unavailable, never as "no permission"', () => {
