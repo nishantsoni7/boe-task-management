@@ -24,6 +24,7 @@ import {
   fetchAttendanceForPeriod,
   fetchHolidaysForPeriod,
   fetchPendingAdjustments,
+  fetchCurrentCorrections,
   createGenerationRow,
   writeEngineResult,
   markAdjustmentsApplied,
@@ -127,18 +128,23 @@ export async function POST(req: NextRequest) {
 
   for (const employee of employees) {
     try {
-      // Per-employee fetches run in parallel — attendance and adjustments are independent
-      const [attendance, adjustments] = await Promise.all([
+      // Per-employee fetches run in parallel — attendance, corrections and
+      // adjustments are independent
+      const [attendance, adjustments, corrections] = await Promise.all([
         fetchAttendanceForPeriod(svc, employee.id, period.payroll_month, period.payroll_year),
         fetchPendingAdjustments(svc, employee.id, payroll_period_id, period.payroll_month, period.payroll_year),
+        fetchCurrentCorrections(svc, employee.id, period.payroll_month, period.payroll_year),
       ])
 
+      // Approved manual corrections outrank the raw biometric record, so a
+      // regeneration re-applies them instead of reverting to the machine values.
       const outcome = generatePayrollForEmployee(
         employee,
         period,
         attendance,
         holidays,
         adjustments,
+        corrections,
       )
 
       if (isSkip(outcome)) {

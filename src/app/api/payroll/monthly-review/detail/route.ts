@@ -7,7 +7,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
-import { fetchAttendanceForPeriod, fetchHolidaysForPeriod } from '@/lib/payroll/store'
+import { fetchAttendanceForPeriod, fetchHolidaysForPeriod, fetchCurrentCorrections } from '@/lib/payroll/store'
 import { toSignedAdjustments, type StoredAdjustment } from '@/lib/payroll/adjustments'
 import { isSkip } from '@/lib/payroll/types'
 import type { EngineEmployee, EnginePendingAdjustment } from '@/lib/payroll/types'
@@ -70,11 +70,13 @@ export async function GET(req: NextRequest) {
 
   let attendance:   Awaited<ReturnType<typeof fetchAttendanceForPeriod>>
   let holidays:     Awaited<ReturnType<typeof fetchHolidaysForPeriod>>
+  let corrections:  Awaited<ReturnType<typeof fetchCurrentCorrections>> = []
   let adjustments:  EnginePendingAdjustment[] = []
   try {
-    const [att, hols, adjResult] = await Promise.all([
+    const [att, hols, corr, adjResult] = await Promise.all([
       fetchAttendanceForPeriod(svc, employee.id, month, year),
       fetchHolidaysForPeriod(svc, month, year),
+      fetchCurrentCorrections(svc, employee.id, month, year),
       svc
         .from('payroll_pending_adjustments')
         .select('id, adjustment_type, amount, description')
@@ -86,6 +88,7 @@ export async function GET(req: NextRequest) {
     ])
     attendance  = att
     holidays    = hols
+    corrections = corr
     // Same conversion the generation path uses, so a preview and the payroll it
     // previews cannot read an adjustment differently.
     adjustments = toSignedAdjustments((adjResult.data ?? []) as StoredAdjustment[])
@@ -93,7 +96,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
 
-  const outcome = generatePayrollForEmployee(employee, previewPeriod, attendance, holidays, adjustments)
+  // The preview must show the same figures the generated payroll will, so it
+  // applies the same manual corrections.
+  const outcome = generatePayrollForEmployee(employee, previewPeriod, attendance, holidays, adjustments, corrections)
 
   if (isSkip(outcome)) {
     return NextResponse.json({
@@ -134,11 +139,13 @@ export async function GET(req: NextRequest) {
       net_salary:                outcome.net_salary,
     },
     deduction_lines: (() => {
-      const attByDate = new Map(attendance.map(a => [a.attendance_date, a]))
+      // Effective punches, not raw ones: a corrected day must read the way
+      // payroll counted it.
+      const dayByDate = new Map(outcome.day_results.map(d => [d.date, d]))
       return outcome.deduction_lines.map(line => ({
         ...line,
-        check_in_at:  attByDate.get(line.line_date)?.check_in_at  ?? null,
-        check_out_at: attByDate.get(line.line_date)?.check_out_at ?? null,
+        check_in_at:  dayByDate.get(line.line_date)?.check_in_at  ?? null,
+        check_out_at: dayByDate.get(line.line_date)?.check_out_at ?? null,
       }))
     })(),
     adjustments: adjustments.map(a => ({

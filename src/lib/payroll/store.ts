@@ -11,6 +11,7 @@ import type {
   EnginePendingAdjustment,
   EngineResult,
 } from './types'
+import type { AttendanceDayCorrection } from '../attendance/corrections'
 import { toSignedAdjustments, type StoredAdjustment } from './adjustments'
 
 // Callers pass a service-role client in; we accept any schema parameterisation.
@@ -76,6 +77,45 @@ export async function fetchAttendanceForPeriod(
 
   if (error) throw new Error(`fetchAttendanceForPeriod: ${error.message}`)
   return (data ?? []) as EngineAttendanceRecord[]
+}
+
+// ─── Attendance corrections (manual override layer) ───────────────────────────
+
+export type StoredCorrection = AttendanceDayCorrection & {
+  id: string
+  remark: string
+  corrected_by: string
+  corrected_at: string
+}
+
+/**
+ * The active corrections for one employee-month.
+ *
+ * Only `is_current` rows are returned: superseded versions stay in the table as
+ * history and must never reach the calculation.
+ */
+export async function fetchCurrentCorrections(
+  svc: Svc,
+  employeeId: string,
+  month: number,
+  year: number,
+): Promise<StoredCorrection[]> {
+  const mm        = String(month).padStart(2, '0')
+  const nextMonth = month === 12 ? 1 : month + 1
+  const nextYear  = month === 12 ? year + 1 : year
+  const start     = `${year}-${mm}-01`
+  const end       = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
+
+  const { data, error } = await svc
+    .from('attendance_day_corrections')
+    .select('id, attendance_date, corrected_check_in_at, corrected_check_out_at, day_treatment, waive_late_arrival, waive_early_checkout, waive_missing_punch, remark, corrected_by, corrected_at')
+    .eq('user_id', employeeId)
+    .eq('is_current', true)
+    .gte('attendance_date', start)
+    .lt('attendance_date', end)
+
+  if (error) throw new Error(`fetchCurrentCorrections: ${error.message}`)
+  return (data ?? []) as StoredCorrection[]
 }
 
 // ─── Holidays ─────────────────────────────────────────────────────────────────

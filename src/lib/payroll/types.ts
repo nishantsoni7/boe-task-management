@@ -29,6 +29,11 @@ export type EngineHoliday = {
   holiday_date: string   // ISO date
 }
 
+// The manual override layer. Re-exported from the attendance module so payroll
+// callers have one import for engine inputs, while the resolution rules stay
+// where attendance owns them.
+export type { AttendanceDayCorrection, DayTreatment } from '../attendance/corrections'
+
 // ─── Per-day classification ───────────────────────────────────────────────────
 
 export type DayClassification =
@@ -38,7 +43,8 @@ export type DayClassification =
   | 'half_day'
   | 'full_absent'
   | 'missing_punch'   // one punch present, one missing — isolated deduction source
-  | 'holiday'         // Sunday or payroll_holidays entry — excluded from all calculations
+  | 'weekly_off'      // Sunday — excluded from all calculations
+  | 'holiday'         // payroll_holidays entry — excluded from all calculations
   | 'pre_joining'     // before joining_date — excluded
 
 export type DeductionType =
@@ -56,6 +62,21 @@ export type DayResult = {
   classification: DayClassification
   effective_hours_worked: number      // post-lunch-deduction hours; 0 for absent/missing/excluded
   deduction_lines: PendingDeductionLine[]
+  // The punches the classification was made from — corrected values when a
+  // manual correction applies to the date, raw machine values otherwise.
+  check_in_at: string | null
+  check_out_at: string | null
+  raw_check_in_at: string | null
+  raw_check_out_at: string | null
+  is_corrected: boolean
+}
+
+// One calendar day as the engine finally settled it: the classification, the
+// effective punches, and every deduction line that landed on the date after
+// leave absorption. This is what both result tabs read — the Deductions tab
+// takes the days that carry a deduction, Days Considered takes the rest.
+export type EngineDay = DayResult & {
+  total_deduction_amount: number
 }
 
 // A deduction line before it is written to the database
@@ -147,6 +168,10 @@ export type EngineResult = {
 
   // Deduction lines to be written to payroll_deduction_lines
   deduction_lines: PendingDeductionLine[]
+
+  // Every calendar day in the period, settled. Not persisted — it is the
+  // day-level view the Payroll Result Detail tabs are built from.
+  day_results: EngineDay[]
 
   // Adjustment ids that were applied — engine marks these 'applied' after writing result
   applied_adjustment_ids: string[]

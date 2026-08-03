@@ -1,9 +1,20 @@
 // GET /api/payroll/results/detail?period_id=...&employee_id=...
-// Returns one employee payroll result with deduction lines and adjustments.
+// Returns one employee payroll result with deduction lines and adjustments,
+// plus the day-level view both result tabs are built from.
 // Admin only.
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { generatePayrollForEmployee } from '@/lib/payroll/engine'
+import { isSkip } from '@/lib/payroll/types'
+import type { EngineEmployee } from '@/lib/payroll/types'
+import {
+  fetchAttendanceForPeriod,
+  fetchHolidaysForPeriod,
+  fetchCurrentCorrections,
+} from '@/lib/payroll/store'
+import { toDeductionDays, toConsideredDays, isCorrectableDay } from '@/lib/payroll/resultTabs'
+import { canCorrectAttendance } from '@/lib/payroll/correctionRules'
 
 export async function GET(req: NextRequest) {
   const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
@@ -29,6 +40,15 @@ export async function GET(req: NextRequest) {
     .single()
   if (callerProfile?.role !== 'admin')
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Period — needed for the lock state and to run the day-level view
+  const { data: period, error: periodErr } = await svc
+    .from('payroll_periods')
+    .select('id, payroll_month, payroll_year, status, locked_at')
+    .eq('id', periodId)
+    .single()
+
+  if (periodErr || !period) return NextResponse.json({ error: 'Payroll period not found' }, { status: 404 })
 
   // Fetch the payroll result row
   const { data: result, error: resultErr } = await svc
@@ -78,7 +98,31 @@ export async function GET(req: NextRequest) {
 
   const u = result.users as unknown as { full_name: string; employee_code: string | null } | null
 
+  // ── Day-level view ──────────────────────────────────────────────────────────
+  // The stored result holds the totals and the deduction ledger; it does not
+  // hold what each date was classified as. That is recomputed here from the same
+  // inputs and the same engine the generation used. `stale` reports the one case
+  // where the two can disagree — attendance changed after the last generation —
+  // instead of quietly showing a day view that the money no longer matches.
+  const dayView = await buildDayView(svc, {
+    employeeId,
+    month: period.payroll_month,
+    year:  period.payroll_year,
+    storedTotalDeductions: result.total_deductions,
+  })
+
+  const permission = canCorrectAttendance(callerProfile.role, period.status)
+
   return NextResponse.json({
+    period: {
+      id:            period.id,
+      payroll_month: period.payroll_month,
+      payroll_year:  period.payroll_year,
+      status:        period.status,
+      locked_at:     period.locked_at ?? null,
+    },
+    can_edit:     permission.allowed,
+    edit_blocked: permission.allowed ? null : permission.message,
     result: {
       id:                       result.id,
       employee_id:              result.employee_id,
@@ -98,5 +142,97 @@ export async function GET(req: NextRequest) {
       deduction_lines:          lines ?? [],
       adjustments:              adjustments ?? [],
     },
+    ...dayView,
   })
+}
+
+// ─── Day-level view ───────────────────────────────────────────────────────────
+
+type DayViewInput = {
+  employeeId: string
+  month: number
+  year: number
+  storedTotalDeductions: number | null
+}
+
+async function buildDayView(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  svc: any,
+  { employeeId, month, year, storedTotalDeductions }: DayViewInput,
+) {
+  const empty = {
+    deduction_days:  [],
+    considered_days: [],
+    corrections:     [],
+    correctable_dates: [],
+    stale: false,
+    day_view_error: null as string | null,
+  }
+
+  const { data: emp } = await svc
+    .from('users')
+    .select('id, monthly_salary, payroll_active, joining_date, employment_type')
+    .eq('id', employeeId)
+    .single()
+
+  if (!emp) return { ...empty, day_view_error: 'Employee not found.' }
+
+  try {
+    const [attendance, holidays, corrections] = await Promise.all([
+      fetchAttendanceForPeriod(svc, employeeId, month, year),
+      fetchHolidaysForPeriod(svc, month, year),
+      fetchCurrentCorrections(svc, employeeId, month, year),
+    ])
+
+    const outcome = generatePayrollForEmployee(
+      emp as EngineEmployee,
+      // Always 'draft' here: the engine refuses to calculate a locked period,
+      // and a locked payroll still has to show its day breakdown. Nothing in
+      // this path writes, so running it costs the lock nothing.
+      { id: 'day-view', payroll_month: month, payroll_year: year, status: 'draft' },
+      attendance,
+      holidays,
+      // Adjustments do not affect classification or deduction lines, and this
+      // view never reports money the stored result does not already hold.
+      [],
+      corrections,
+    )
+
+    if (isSkip(outcome)) return { ...empty, day_view_error: `Payroll skipped: ${outcome.reason}` }
+
+    const rawByDate = new Map(attendance.map(a => [a.attendance_date, a]))
+
+    return {
+      deduction_days:  toDeductionDays(outcome.day_results),
+      considered_days: toConsideredDays(outcome.day_results),
+      correctable_dates: outcome.day_results.filter(isCorrectableDay).map(d => d.date),
+      corrections: corrections.map(c => ({
+        attendance_date: c.attendance_date,
+        remark:          c.remark,
+        day_treatment:   c.day_treatment,
+        corrected_at:    c.corrected_at,
+        corrected_check_in_at:  c.corrected_check_in_at,
+        corrected_check_out_at: c.corrected_check_out_at,
+        waive_late_arrival:   c.waive_late_arrival,
+        waive_early_checkout: c.waive_early_checkout,
+        waive_missing_punch:  c.waive_missing_punch,
+        raw_check_in_at:  rawByDate.get(c.attendance_date)?.check_in_at  ?? null,
+        raw_check_out_at: rawByDate.get(c.attendance_date)?.check_out_at ?? null,
+      })),
+      // Deduction totals are compared, not net salary: this run deliberately
+      // omits adjustments, which net salary includes. A mismatch means
+      // attendance moved after the last generation and the stored money is out
+      // of date — worth saying so rather than showing a day view that silently
+      // disagrees with the totals above it.
+      stale: storedTotalDeductions != null
+        && !sameMoney(Number(storedTotalDeductions), outcome.total_deductions),
+      day_view_error: null,
+    }
+  } catch (e) {
+    return { ...empty, day_view_error: String(e) }
+  }
+}
+
+function sameMoney(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.005
 }

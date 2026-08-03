@@ -12,6 +12,8 @@ import type {
   EngineSkip,
   EngineResult,
   DayResult,
+  EngineDay,
+  DayClassification,
   MonthlyAggregates,
   PayrollRates,
   LeaveState,
@@ -20,6 +22,17 @@ import type {
   PendingAdjustmentsSummary,
 } from './types'
 import { classifyAttendanceDay } from '../attendance/classification'
+import {
+  resolveEffectiveAttendance,
+  waivedDeductionTypes,
+  type AttendanceDayCorrection,
+  type WaivableDeductionType,
+} from '../attendance/corrections'
+
+// A forced full day is paid as the standard working day; a forced half day
+// mirrors the hours the half-day deduction line already uses.
+const FULL_DAY_HOURS = 8.5
+const HALF_DAY_HOURS = 4.25
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
@@ -27,6 +40,12 @@ import { classifyAttendanceDay } from '../attendance/classification'
  * Generate payroll for one employee in one period.
  * All database I/O (fetching inputs, writing outputs) is handled by the caller.
  * This function is pure: given inputs, it returns a result or a skip reason.
+ *
+ * `corrections` is the manual override layer. Where a correction exists for a
+ * date it replaces the raw biometric punches for every downstream step —
+ * classification, deductions, aggregates and totals — without the raw record
+ * being altered. Omitting the argument runs payroll on raw attendance alone,
+ * which is what every caller did before corrections existed.
  */
 export function generatePayrollForEmployee(
   employee: EngineEmployee,
@@ -34,6 +53,7 @@ export function generatePayrollForEmployee(
   attendanceRecords: EngineAttendanceRecord[],
   holidays: EngineHoliday[],
   pendingAdjustments: EnginePendingAdjustment[],
+  corrections: AttendanceDayCorrection[] = [],
 ): EngineOutcome {
   // Step 1 — Guard checks
   const skip = runGuards(employee, period)
@@ -46,7 +66,7 @@ export function generatePayrollForEmployee(
   const calendar = buildWorkingDayCalendar(employee, period, holidays)
 
   // Step 4 — Classify each working day and produce per-day deduction lines
-  const dayResults = classifyAttendanceDays(calendar.workingDays, attendanceRecords, rates)
+  const dayResults = classifyAttendanceDays(calendar.workingDays, attendanceRecords, rates, corrections)
 
   // Step 5 — Aggregate across all working days
   const aggregates = aggregateMonthlyTotals(dayResults, calendar)
@@ -88,6 +108,9 @@ export function generatePayrollForEmployee(
     netSalary: netSalaryFinal,
     pendingAdjustments,
     paidLeaveAvailable,
+    excludedDays: calendar.excludedDays,
+    attendanceRecords,
+    corrections,
   })
 }
 
@@ -116,9 +139,18 @@ function computeRates(monthlySalary: number): PayrollRates {
 
 // ─── Step 3: Working-day calendar ────────────────────────────────────────────
 
+type ExcludedDay = {
+  date: string
+  reason: Extract<DayClassification, 'weekly_off' | 'holiday' | 'pre_joining'>
+}
+
 type CalendarResult = {
   workingDays: string[]           // ISO dates in scope for this employee
   fullMonthWorkingDays: number    // denominator for paid leave proration (ignores joining_date)
+  // Dates the calculation deliberately skips, with the reason. Carried only so
+  // the day-level view can show a weekly off as a weekly off rather than as a
+  // gap — no aggregate reads this.
+  excludedDays: ExcludedDay[]
 }
 
 function buildWorkingDayCalendar(
@@ -143,9 +175,12 @@ function buildWorkingDayCalendar(
   // Exclude Sundays (UTC day-of-week = 0) and holidays.
   // UTC construction is correct here because dates are date-only values —
   // day-of-week is the same in IST and UTC for any given calendar date.
+  const excludedDays: ExcludedDay[] = []
   const nonSundayNonHoliday = allDays.filter(date => {
     const dow = new Date(`${date}T00:00:00Z`).getUTCDay()
-    return dow !== 0 && !holidaySet.has(date)
+    if (dow === 0)            { excludedDays.push({ date, reason: 'weekly_off' }); return false }
+    if (holidaySet.has(date)) { excludedDays.push({ date, reason: 'holiday' });    return false }
+    return true
   })
 
   const fullMonthWorkingDays = nonSundayNonHoliday.length
@@ -153,9 +188,13 @@ function buildWorkingDayCalendar(
   // Exclude dates before joining_date. ISO date strings sort lexicographically.
   const workingDays = employee.joining_date == null
     ? nonSundayNonHoliday
-    : nonSundayNonHoliday.filter(date => date >= employee.joining_date!)
+    : nonSundayNonHoliday.filter(date => {
+        if (date >= employee.joining_date!) return true
+        excludedDays.push({ date, reason: 'pre_joining' })
+        return false
+      })
 
-  return { workingDays, fullMonthWorkingDays }
+  return { workingDays, fullMonthWorkingDays, excludedDays }
 }
 
 // ─── Step 6: Paid leave entitlement ──────────────────────────────────────────
@@ -187,20 +226,66 @@ function classifyAttendanceDays(
   workingDays: string[],
   attendanceRecords: EngineAttendanceRecord[],
   rates: PayrollRates,
+  corrections: AttendanceDayCorrection[],
 ): DayResult[] {
   const byDate = new Map(attendanceRecords.map(r => [r.attendance_date, r]))
-  return workingDays.map(date => classifySingleDay(date, byDate.get(date), rates))
+  const correctionByDate = new Map(corrections.map(c => [c.attendance_date, c]))
+  return workingDays.map(date =>
+    classifySingleDay(date, byDate.get(date), rates, correctionByDate.get(date)),
+  )
 }
 
 function classifySingleDay(
   date: string,
   record: EngineAttendanceRecord | undefined,
   rates: PayrollRates,
+  correction?: AttendanceDayCorrection,
 ): DayResult {
-  const classified = classifyAttendanceDay(record)
+  // The raw record is kept alongside the effective one so the day-level view
+  // can show the admin what the machine said next to what payroll used.
+  const provenance = {
+    raw_check_in_at:  record?.check_in_at  ?? null,
+    raw_check_out_at: record?.check_out_at ?? null,
+    is_corrected:     correction != null,
+  }
+
+  const effective = resolveEffectiveAttendance(record, correction)
+  const punches = { check_in_at: effective.check_in_at, check_out_at: effective.check_out_at }
+
+  // A day treatment other than 'auto' settles the day outright: the admin has
+  // stated the outcome, so no punch-derived deduction line is produced for it.
+  // The half-day and absent deductions still follow, because those are raised
+  // from the monthly aggregates in assembleResult, not from here.
+  if (correction && correction.day_treatment !== 'auto') {
+    const forced: Record<'full_day' | 'half_day' | 'absent', { classification: DayClassification; hours: number }> = {
+      full_day: { classification: 'full_present', hours: FULL_DAY_HOURS },
+      half_day: { classification: 'half_day',     hours: HALF_DAY_HOURS },
+      absent:   { classification: 'full_absent',  hours: 0 },
+    }
+    const { classification, hours } = forced[correction.day_treatment]
+    return {
+      date,
+      classification,
+      effective_hours_worked: hours,
+      deduction_lines: [],
+      ...punches,
+      ...provenance,
+    }
+  }
+
+  const waivedTypes = waivedDeductionTypes(correction)
+  const isWaived = (type: string) => waivedTypes.has(type as WaivableDeductionType)
+  const classified = classifyAttendanceDay(punches)
 
   if (classified.classification === 'full_absent') {
-    return { date, classification: 'full_absent', effective_hours_worked: 0, deduction_lines: [] }
+    return {
+      date,
+      classification: 'full_absent',
+      effective_hours_worked: 0,
+      deduction_lines: [],
+      ...punches,
+      ...provenance,
+    }
   }
 
   // Missing punch: exactly one punch present → 2h fixed deduction.
@@ -234,7 +319,9 @@ function classifySingleDay(
       date,
       classification: 'missing_punch',
       effective_hours_worked: 0,
-      deduction_lines: missingLines,
+      deduction_lines: missingLines.filter(l => !isWaived(l.deduction_type)),
+      ...punches,
+      ...provenance,
     }
   }
 
@@ -252,7 +339,7 @@ function classifySingleDay(
     const inMin  = check_in_minutes!
     const outMin = check_out_minutes!
 
-    if (inMin > LATE_THRESHOLD) {
+    if (inMin > LATE_THRESHOLD && !isWaived('late_arrival')) {
       const lateHours = roundDeductionHours(inMin - SCHEDULED_IN)
       if (lateHours > 0) {
         deduction_lines.push({
@@ -264,7 +351,7 @@ function classifySingleDay(
       }
     }
 
-    if (outMin < SCHEDULED_OUT) {
+    if (outMin < SCHEDULED_OUT && !isWaived('early_checkout')) {
       const earlyHours = roundDeductionHours(SCHEDULED_OUT - outMin)
       if (earlyHours > 0) {
         deduction_lines.push({
@@ -277,7 +364,14 @@ function classifySingleDay(
     }
   }
 
-  return { date, classification, effective_hours_worked, deduction_lines }
+  return {
+    date,
+    classification,
+    effective_hours_worked,
+    deduction_lines,
+    ...punches,
+    ...provenance,
+  }
 }
 
 // ─── Step 5: Monthly aggregation ─────────────────────────────────────────────
@@ -453,6 +547,9 @@ type AssembleParams = {
   netSalary: number
   pendingAdjustments: EnginePendingAdjustment[]
   paidLeaveAvailable: number
+  excludedDays: ExcludedDay[]
+  attendanceRecords: EngineAttendanceRecord[]
+  corrections: AttendanceDayCorrection[]
 }
 
 const HOURLY_DEDUCTION_TYPES = new Set<string>([
@@ -497,6 +594,7 @@ function assembleResult(p: AssembleParams): EngineResult {
   const deduction_lines: PendingDeductionLine[] = [...absentLines, ...halfDayLines, ...hourlyLines]
 
   return {
+    day_results: buildDayResults(p, deduction_lines),
     payroll_period_id:        p.period.id,
     employee_id:              p.employee.id,
 
@@ -525,4 +623,58 @@ function assembleResult(p: AssembleParams): EngineResult {
     applied_adjustment_ids:   p.pendingAdjustments.map(adj => adj.id),
     generated_at:             new Date().toISOString(),
   }
+}
+
+// ─── Day-level view ───────────────────────────────────────────────────────────
+
+/**
+ * Every calendar day of the period, in date order, with the deduction lines
+ * that finally landed on it.
+ *
+ * The lines are regrouped from the assembled `deduction_lines` rather than from
+ * each day's own lines, so what a date shows and what the payroll ledger holds
+ * cannot drift apart: absent and half-day lines are raised during assembly, and
+ * leave absorption zeroes amounts there too.
+ */
+function buildDayResults(p: AssembleParams, finalLines: PendingDeductionLine[]): EngineDay[] {
+  const linesByDate = new Map<string, PendingDeductionLine[]>()
+  for (const line of finalLines) {
+    const existing = linesByDate.get(line.line_date)
+    if (existing) existing.push(line)
+    else linesByDate.set(line.line_date, [line])
+  }
+
+  const rawByDate        = new Map(p.attendanceRecords.map(r => [r.attendance_date, r]))
+  const correctionByDate = new Map(p.corrections.map(c => [c.attendance_date, c]))
+
+  const workedDays: EngineDay[] = p.dayResults.map(day => {
+    const lines = linesByDate.get(day.date) ?? []
+    return {
+      ...day,
+      deduction_lines: lines,
+      total_deduction_amount: lines.reduce((sum, l) => sum + l.amount_deducted, 0),
+    }
+  })
+
+  // Sundays, company holidays and pre-joining dates carry no calculation, but
+  // they are still part of what the month was made of.
+  const excluded: EngineDay[] = p.excludedDays.map(({ date, reason }) => {
+    const raw        = rawByDate.get(date)
+    const correction = correctionByDate.get(date)
+    const effective  = resolveEffectiveAttendance(raw, correction)
+    return {
+      date,
+      classification: reason,
+      effective_hours_worked: 0,
+      deduction_lines: [],
+      total_deduction_amount: 0,
+      check_in_at:      effective.check_in_at,
+      check_out_at:     effective.check_out_at,
+      raw_check_in_at:  raw?.check_in_at  ?? null,
+      raw_check_out_at: raw?.check_out_at ?? null,
+      is_corrected:     correction != null,
+    }
+  })
+
+  return [...workedDays, ...excluded].sort((a, b) => a.date.localeCompare(b.date))
 }
