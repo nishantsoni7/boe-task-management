@@ -88,7 +88,7 @@ const PERMISSION_MESSAGE: Record<AssetAction, string> = {
   'assign':    'You do not have permission to assign assets.',
   'return':    'You do not have permission to return assets.',
   'mark-lost': 'You do not have permission to mark assets as lost.',
-  'delete':    'You do not have permission to delete assets.',
+  'delete':    'Only an administrator can permanently delete an asset.',
   'accept':    'This assignment is not yours to accept, or it has already been accepted.',
   'request-edit':    'You do not have permission to request changes to assets.',
   'request-remove':  'You do not have permission to request removal of assets.',
@@ -124,6 +124,9 @@ const UNKNOWN_MESSAGE  = 'Something went wrong. Please try again.'
 // machine marker, not something a reader should ever see.
 const GUARD_PREFIXES = [
   'ASSET_DELETE_BLOCKED:',
+  // Permanent deletion (20260803000000)
+  'ASSET_DELETE_DENIED:',
+  'ASSET_DELETE_MISSING:',
   'ASSET_ACCEPT_DENIED:',
   'ASSET_ACCEPT_INVALID:',
   'ASSET_ACCEPT_CONFLICT:',

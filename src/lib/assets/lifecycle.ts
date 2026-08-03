@@ -52,29 +52,36 @@ export function acceptanceStatusKey(
 export type AssetDeleteGuardInput = {
   /** From the permission engine — 'delete' on assets_access. */
   canDeleteAsset: boolean
+  /** The signed-in person is an administrator. */
+  isAdmin: boolean
   /** An assignment in pending_acceptance or accepted right now. */
   hasActiveAssignment: boolean
-  /** Every employee_assets row ever written for this asset, any status. */
-  assignmentHistoryCount: number
 }
 
 /**
- * Why this asset may not be deleted, or null if it may be.
+ * Why this asset may not be permanently deleted, or null if it may be.
  *
- * Mirrors the database guarantee: the assets_delete policy decides who may
- * ask, and the assets_prevent_assigned_delete trigger refuses any asset that
- * has ever been assigned. Deletion is for mistaken inventory entries only —
- * never a way to erase custody records.
+ * Mirrors public.permanently_delete_asset (20260803000000): an administrator
+ * may erase an asset outright — including its assignment, custody, service,
+ * warranty and activity history — and nobody else may.
+ *
+ * HISTORY IS NO LONGER A BLOCK. It was, up to 20260802000000, because the only
+ * delete available was the ordinary one that would have stranded or destroyed
+ * those records piecemeal. The purge function removes them together in one
+ * transaction, so "this asset has assignment history" stopped being a reason
+ * and became the warning the confirmation dialog states.
+ *
+ * An OPEN assignment still blocks, and deliberately: somebody is holding the
+ * asset right now, which is a fact about the present, not the past, and Mark
+ * Returned or Mark Lost is one click away. Retire/dispose remain the reversible
+ * route for an asset that is simply out of service.
  */
 export function assetDeleteBlockReason(input: AssetDeleteGuardInput): string | null {
-  if (!input.canDeleteAsset) {
-    return 'You do not have permission to delete assets.'
+  if (!input.canDeleteAsset || !input.isAdmin) {
+    return 'Only an administrator can permanently delete an asset.'
   }
   if (input.hasActiveAssignment) {
     return 'This asset is currently assigned. Mark it returned or lost before deleting.'
-  }
-  if (input.assignmentHistoryCount > 0) {
-    return 'This asset has assignment history and cannot be deleted. Its custody record is permanent.'
   }
   return null
 }
