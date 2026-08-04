@@ -56,6 +56,7 @@ import {
 import { DESTINATION_ICON, PaymentDestinationFields } from './components/PaymentDestinationFields'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -2418,7 +2419,7 @@ function FinancePageInner() {
 
       const { data: me } = await supabase
         .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code')
+        .select(USER_PROFILE_COLUMNS)
         .eq('id', uid)
         .single()
 

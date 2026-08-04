@@ -8,6 +8,7 @@ import { colors } from '@/lib/tokens'
 import { PayrollLayout } from '@/components/layout/PayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ export default function PayrollMonthlyReviewPage() {
 
       const { data: prof } = await supabase
         .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing')
+        .select(USER_PROFILE_COLUMNS)
         .eq('id', session.user.id)
         .single()
 

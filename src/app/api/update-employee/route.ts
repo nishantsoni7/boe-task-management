@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const ALLOWED_ROLES = ['admin', 'manager']
+// Admin only. This route writes monthly_salary and payroll_notes among other
+// employee-master fields, so a manager holding it meant a manager could set any
+// employee's pay — which payroll then snapshots at generation time. The only
+// screen that calls it (attendance Employee Master) is admin-gated already.
+const ALLOWED_ROLES = ['admin']
 
 export async function PATCH(req: NextRequest) {
   const authHeader  = req.headers.get('authorization') ?? ''
@@ -24,7 +28,7 @@ export async function PATCH(req: NextRequest) {
     .single()
 
   if (!callerProfile || !ALLOWED_ROLES.includes(callerProfile.role)) {
-    return NextResponse.json({ error: 'Forbidden: admin or manager role required' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const body = await req.json().catch(() => null)

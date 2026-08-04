@@ -9,6 +9,7 @@ import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   AmendOrderModal,
   RequestOrderChangeModal,
@@ -505,7 +506,7 @@ export default function OrderDetailPage() {
 
       const { data: me } = await supabase
         .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code')
+        .select(USER_PROFILE_COLUMNS)
         .eq('id', session.user.id)
         .single()
 

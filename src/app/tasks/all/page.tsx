@@ -12,6 +12,7 @@ import { statusBadgeClass } from '@/lib/ui'
 import { useListUrlState } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { enumListParam, idParam, pageParam } from '@/lib/listState'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 const TASK_COLUMNS = [
   'id', 'title', 'status', 'priority', 'is_urgent',
@@ -95,7 +96,7 @@ function ViewAllTasksContent() {
       if (!session) { router.push('/login'); return }
 
       const { data: profileData } = await supabase
-        .from('users').select('*').eq('id', session.user.id).single()
+        .from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
       if (!profileData) { router.push('/login'); return }
 
       const p = profileData as UserProfile
