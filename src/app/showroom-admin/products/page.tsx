@@ -30,6 +30,7 @@ import {
   PRODUCT_LIST_PATH, PRODUCT_RETURN_MARKER_KEY,
   productEditHref, resolveCategorySelection, type ProductReturnMarker,
 } from '@/lib/showroom/productNav'
+import { productListEmptyState } from '@/lib/showroom/emptyState'
 import { ProductTable } from './ProductTable'
 import {
   downloadPlainQrImage,
@@ -385,6 +386,14 @@ function ShowroomProductsContent() {
   // user out of the category they are browsing.
   const filtersActive = !!q || status !== 'active' || sort !== DEFAULT_SORT
 
+  // Sort is excluded here even though it counts towards `filtersActive`: it
+  // enables the Clear control, but re-ordering rows cannot remove any, so it
+  // must not turn "this category is empty" into "your filters are too narrow".
+  const emptyState = productListEmptyState({
+    hasSearch: !!q,
+    statusFiltered: status !== 'active',
+  })
+
   // No category can be chosen. Either the counts request failed — in which case
   // the categories are unknown, not absent, and saying "add one" would be a lie
   // — or the catalogue genuinely has none yet. Checked before `loading`, which
@@ -495,10 +504,9 @@ function ShowroomProductsContent() {
 
           <div ref={resultsRef} style={{ scrollMarginTop: '16px' }}>
             {total === 0 ? (
-              <EmptyState
-                message="No products match your filters"
-                hint="Try a different search term or status — or pick another category in the sidebar."
-              />
+              // An empty category and a search that missed are different
+              // situations; productListEmptyState() decides which this is.
+              <EmptyState {...emptyState} />
             ) : (
               <>
                 <ProductTable

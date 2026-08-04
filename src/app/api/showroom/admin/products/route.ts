@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 import { fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
 import { tallyByCategory } from '@/lib/showroom/productCounts'
+import {
+  LOOKUP_RESULT_LIMIT,
+  lookupOrExpression,
+  normalizeLookupQuery,
+} from '@/lib/showroom/productLookup'
 
 function serviceClient() {
   return createClient(
@@ -138,7 +143,46 @@ async function categoryCounts(client: ReturnType<typeof serviceClient>) {
   return tallyByCategory(unwrapPagedRows('showroom product counts', result), categoryNames)
 }
 
+// Global product lookup: find ONE product by code or name, across every
+// category, for the sidebar's jump-to control.
+//
+// Deliberately narrow. Four explicit columns — never LIST_COLUMNS, never `*` —
+// so pricing (`mrp`), activity, imagery and timestamps stay out of a response
+// whose only job is to name a product and route to it. No status filter, no
+// sort control, no count and no paging: this locates a product, it does not
+// browse the catalogue.
+async function productLookup(
+  client: ReturnType<typeof serviceClient>,
+  rawQuery: string | null,
+  rawLimit: string | null,
+) {
+  const q = normalizeLookupQuery(rawQuery)
+  // A blank term would match every row. Answer with nothing rather than with
+  // the whole catalogue.
+  if (!q) return { products: [] }
+
+  // The client's limit is a ceiling to negotiate DOWN, never up: `limit=5000`
+  // cannot turn this into a bulk export.
+  const asked = Number.parseInt(rawLimit ?? '', 10)
+  const limit = Number.isFinite(asked) && asked > 0
+    ? Math.min(asked, LOOKUP_RESULT_LIMIT)
+    : LOOKUP_RESULT_LIMIT
+
+  const { data, error } = await client
+    .from('showroom_products')
+    .select('id, product_code, name, category')
+    .or(lookupOrExpression(escapeSearchTerm(q)))
+    // Inactive products are findable on purpose: "where did BOE-1042 go" is
+    // exactly the question asked about a product that was deactivated.
+    .order('product_code', { ascending: true })
+    .limit(limit)
+
+  if (error) throw new Error(error.message)
+  return { products: data ?? [] }
+}
+
 // GET /api/showroom/admin/products
+//   • `lookup=1&q=…`   → up to 8 code/name matches across every category.
 //   • `counts=1`       → sidebar badges only: catalog total + per-category counts.
 //   • No `page` param  → every product, including inactive (legacy shape).
 //     The Categories page depends on this to count products per category.
@@ -148,6 +192,15 @@ export async function GET(req: NextRequest) {
   if (!client) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const sp = req.nextUrl.searchParams
+
+  if (sp.get('lookup') === '1') {
+    try {
+      return NextResponse.json(await productLookup(client, sp.get('q'), sp.get('limit')))
+    } catch (err) {
+      console.error('[showroom-product-lookup]', err)
+      return NextResponse.json({ error: 'Product lookup failed' }, { status: 500 })
+    }
+  }
 
   if (sp.get('counts') === '1') {
     try {

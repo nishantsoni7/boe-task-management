@@ -10,6 +10,7 @@ import { useViewAs } from '@/hooks/useViewAs'
 import { createClient } from '@/lib/supabase/client'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 import { ProductMasterNav } from '@/components/layout/ProductMasterNav'
+import { ProductLookup } from '@/components/layout/ProductLookup'
 import { useShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
 import { isProductRoute, productCategoryHref, resolveParentClick } from '@/lib/showroom/productNav'
 
@@ -154,6 +155,12 @@ export function ShowroomAdminLayout({
               onParentClick={handleProductParentClick}
               onSelectCategory={name => navTo(productCategoryHref(name))}
             />
+          )}
+          {/* Directly under Product Master, because it answers the question the
+              category list cannot: "which category is BOE-1042 in?". navTo, so
+              picking a result closes the mobile drawer like any other entry. */}
+          {canManageProducts && (
+            <ProductLookup enabled={canManageProducts} onOpenProduct={navTo} />
           )}
           {canManageProducts && (
             <NavItem
