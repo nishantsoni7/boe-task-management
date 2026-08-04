@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useEffect, useState, useMemo, useCallback, Suspense } from 'react'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
+import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile, ShowroomProduct, ShowroomCategory } from '@/lib/types'
 import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
@@ -9,6 +10,12 @@ import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors } from '@/lib/tokens'
 import { useViewAs } from '@/hooks/useViewAs'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { ProductImagePanel } from '../../ProductImagePanel'
+import { useRefreshShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
+import {
+  PRODUCT_RETURN_MARKER_KEY, parseReturnMarker, productEditHref,
+  resolveProductBack, sanitizeListSearch, type ProductReturnMarker,
+} from '@/lib/showroom/productNav'
 
 type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
 const teamFallback = (team?: string | null) =>
@@ -72,6 +79,31 @@ const FORM_CSS = `
   padding-top: 16px;
   border-top: 1px solid var(--fc-border);
 }
+
+/* ── Edit layout: form left, product image right ──
+   Desktop uses the full page width instead of a 780px column: the form takes
+   ~63% and the image panel ~37%, which is the space the old fixed column was
+   throwing away. minmax(0, …) on both tracks stops a long spec value from
+   pushing the grid wider than the page. */
+.product-edit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+/* Sticky under the module's own sticky page header, so the image stays in view
+   for the whole scroll through specifications and dimensions. */
+.product-image-panel {
+  position: sticky;
+  top: 92px;
+}
+
+/* Below the two-column threshold the image goes above the form — seeing the
+   product first is the point, and a 37% column would be unreadable here. */
+@media (max-width: 1023px) {
+  .product-edit-layout { grid-template-columns: minmax(0, 1fr); }
+  .product-image-panel { position: static; order: -1; }
+}
 @media (max-width: 520px) {
   .product-field-grid { grid-template-columns: 1fr; }
   .form-actions       { flex-direction: column-reverse; }
@@ -79,7 +111,18 @@ const FORM_CSS = `
 }
 `
 
+// `useSearchParams` (the `from=` breadcrumb) opts the tree into client-side
+// rendering, so the form lives below a Suspense boundary — same pattern as the
+// list page.
 export default function EditProductPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <EditProductContent />
+    </Suspense>
+  )
+}
+
+function EditProductContent() {
   const params      = useParams()
   const productCode = decodeURIComponent(params.product_code as string)
 
@@ -100,10 +143,55 @@ export default function EditProductPage() {
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
   const [categories,      setCategories]      = useState<ShowroomCategory[]>([])
   const [categoriesError, setCategoriesError]  = useState('')
+  const [imageIndex,      setImageIndex]      = useState(0)
 
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const supabase     = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
+  const refreshNavCounts = useRefreshShowroomProductCounts()
+
+  // The list view this product was opened from, carried in `from=` so Back can
+  // rebuild it when browser history has nothing to go back to.
+  const listSearch    = sanitizeListSearch(searchParams.get('from'))
+  const fromCategory  = new URLSearchParams(listSearch).get('category') ?? ''
+
+  // Read once, at mount: the marker records that the LIST navigated here, and
+  // that is true only for this arrival.
+  const [returnMarker] = useState<ProductReturnMarker | null>(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      return parseReturnMarker(window.sessionStorage.getItem(PRODUCT_RETURN_MARKER_KEY))
+    } catch {
+      return null
+    }
+  })
+
+  // Cleared separately so the read above stays pure: a later reload, bookmark or
+  // shared link of the same URL must not inherit this arrival's marker.
+  useEffect(() => {
+    try {
+      window.sessionStorage.removeItem(PRODUCT_RETURN_MARKER_KEY)
+    } catch {
+      // Storage unavailable — nothing was read either, so nothing to clear.
+    }
+  }, [])
+
+  // The control says "Back to products", so it must land on Product Master —
+  // never wherever history happens to point. `history.back()` is used only when
+  // the list itself opened this product, because there it restores filters,
+  // page and scroll natively. Every other entry path — a bookmark, a new tab, a
+  // link from elsewhere in BOE — becomes a plain internal navigation. Ordinary
+  // browser Back is untouched.
+  const goBack = useCallback(() => {
+    const target = resolveProductBack({
+      marker: returnMarker,
+      from: listSearch,
+      productCategory: product?.category ?? null,
+    })
+    if (target.action === 'back') router.back()
+    else router.push(target.href)
+  }, [router, listSearch, product, returnMarker])
 
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
@@ -237,9 +325,13 @@ export default function EditProductPage() {
       setError(data.error ?? 'Failed to update product')
       setSaving(false)
     } else if (data.product.product_code !== productCode) {
-      // Code changed — move to the new URL so further edits/refreshes target the right record.
-      router.replace(`/showroom-admin/products/${encodeURIComponent(data.product.product_code)}/edit`)
+      // Code changed — move to the new URL so further edits/refreshes target the
+      // right record. `from=` rides along so Back still knows where to return.
+      refreshNavCounts()
+      router.replace(productEditHref(data.product.product_code, listSearch))
     } else {
+      // A category change moves two sidebar badges.
+      refreshNavCounts()
       setSuccess('Product updated')
       setProduct(data.product)
       setSaving(false)
@@ -252,14 +344,36 @@ export default function EditProductPage() {
     <ShowroomAdminLayout
       profile={profile}
       title="Edit Product"
+      subtitle={product ? `${product.product_code} · ${product.category}` : undefined}
+      activeProductCategory={fromCategory || product?.category || ''}
       onSignOut={handleSignOut}
     >
       <style>{FORM_CSS}</style>
       <div style={{
-        maxWidth: '780px',
         '--fc-base': colors.base,
         '--fc-border': colors.border,
       } as React.CSSProperties & Record<'--fc-base' | '--fc-border', string>}>
+
+        <button
+          type="button"
+          onClick={goBack}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: 13, color: colors.tertiary,
+            background: 'transparent', border: 'none', padding: 0,
+            cursor: 'pointer', marginBottom: 14,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = colors.primary }}
+          onMouseLeave={e => { e.currentTarget.style.color = colors.tertiary }}
+        >
+          <ArrowLeft size={14} strokeWidth={2.5} />
+          Back to products
+        </button>
+
+        {/* Two columns on desktop: the form card, then the image panel below.
+            The card keeps its original indentation so this stays a wrapper
+            rather than a rewrite of the whole form. */}
+        <div className="product-edit-layout">
 
         <div className="form-card">
 
@@ -375,7 +489,7 @@ export default function EditProductPage() {
               <div className="form-actions">
                 <button
                   type="button"
-                  onClick={() => router.push('/showroom-admin/products')}
+                  onClick={goBack}
                   style={cancelBtnStyle}
                 >
                   Cancel
@@ -391,6 +505,18 @@ export default function EditProductPage() {
 
             </form>
           )}
+        </div>
+
+        {/* Image column — reads the same `images` state the form edits, so a
+            pasted URL previews immediately. */}
+        <aside className="product-image-panel">
+          <ProductImagePanel
+            images={images}
+            selectedIndex={imageIndex}
+            onSelect={setImageIndex}
+            alt={name || product?.name || code}
+          />
+        </aside>
         </div>
       </div>
     </ShowroomAdminLayout>
