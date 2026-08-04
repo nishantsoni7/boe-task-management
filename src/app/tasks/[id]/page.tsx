@@ -16,7 +16,13 @@ import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
 import { useToast, Toast } from '@/components/ui/toast'
-import { getFileTypeLabel, prepareFiles, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
+import { getFileTypeLabel, compressImageFile, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
+import {
+  type PendingAttachment,
+  attachmentRowsForSubmit, attachmentStatusLabel, createAttachmentQueue,
+  failureSummary, submissionGate, submitButtonLabel,
+} from '@/lib/tasks/commentAttachments'
+import { canMarkComplete, canPostUpdate } from '@/lib/tasks/taskDetailAccess'
 import { CircleCheckBig, UserCheck, UserRound } from 'lucide-react'
 import { perfTrack } from '@/lib/perf'
 
@@ -92,11 +98,18 @@ export default function TaskDetailPage() {
   const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
 
   const [commentNote,        setCommentNote]        = useState('')
-  const [commentFiles,       setCommentFiles]       = useState<File[]>([])
   const [commentSaving,      setCommentSaving]      = useState(false)
   const commentSavingRef = useRef(false)  // synchronous re-entry guard (double-click protection)
   const [commentUploadError, setCommentUploadError] = useState<string | null>(null)
   const [commentDropActive,  setCommentDropActive]  = useState(false)
+  // True only while Send Update is blocked on bytes still moving, so the button
+  // can say "Uploading attachment…" rather than implying the update is saving.
+  const [commentWaitingUploads, setCommentWaitingUploads] = useState(false)
+
+  // Files upload the moment they are picked, so the Send Update click no longer
+  // carries the bytes. The queue (see createAttachmentQueue) is the authority on
+  // what is attached; this state is its published mirror, for rendering only.
+  const [commentAttachments, setCommentAttachments] = useState<PendingAttachment[]>([])
 
   const [editingActivityId,  setEditingActivityId]  = useState<string | null>(null)
   const [editActivityNote,   setEditActivityNote]   = useState('')
@@ -140,6 +153,30 @@ export default function TaskDetailPage() {
   const params      = useParams()
   const supabase    = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
+  const taskId      = params.id as string
+
+  // ── Background attachment uploads ───────────────────────────────────────────
+  // One queue per task for the page's lifetime. Created here rather than per
+  // click so its concurrency cap and prepare gate actually span every file the
+  // user adds.
+  const attachmentQueue = useMemo(() => createAttachmentQueue({
+    taskId,
+    compress:     compressImageFile,
+    upload:       (path, file) =>
+      supabase.storage.from('task-attachments').upload(path, file, { upsert: false }),
+    publicUrl:    (path) =>
+      supabase.storage.from('task-attachments').getPublicUrl(path).data.publicUrl,
+    deleteObject: async (path) => {
+      // Storage policy `auth_delete` lets the uploader remove their own object,
+      // so this succeeds for whoever queued it. A failure only leaves an
+      // unreferenced object — logged, never surfaced.
+      const { error } = await supabase.storage.from('task-attachments').remove([path])
+      if (error) console.error('[attachment cleanup] delete failed:', error.message)
+    },
+    onChange:     setCommentAttachments,
+    concurrency:  ATTACHMENT_UPLOAD_CONCURRENCY,
+    track:        () => perfTrack('task.attachment.upload'),
+  }), [taskId, supabase])
 
   // After any task mutation, invalidate My Tasks + Today's Focus caches so navigating back shows fresh data
   const invalidateTaskCache = (assignedTo: string) => {
@@ -343,7 +380,10 @@ export default function TaskDetailPage() {
       return
     }
     perf.mark('update-task')
-    const { error: logErr } = await supabase.from('task_activity_log').insert({
+    // Read the inserted row back so the feed can be updated locally. The audit
+    // record is still written before the user is told the change succeeded —
+    // only the *display* refresh changes.
+    const { data: logRow, error: logErr } = await supabase.from('task_activity_log').insert({
       task_id:        task.id,
       actor_id:       currentUserId,
       action:         'status_changed',
@@ -352,6 +392,8 @@ export default function TaskDetailPage() {
       note:           reason ?? null,
       attachment_url: attachmentUrl ?? null,
     })
+      .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url')
+      .single()
     if (logErr) console.error('[applyStatusChange] activity log insert failed:', logErr.message)
     {
       const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
@@ -378,8 +420,22 @@ export default function TaskDetailPage() {
     invalidateTaskCache(task.assigned_to)
     queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
     perf.mark('insert-activity')
-    await loadLog(task.id)
-    perf.mark('reload-activity')
+    // Prepend the row we just wrote instead of re-reading the entire activity
+    // log plus every attachment of the task — two round trips that returned
+    // data we already had. A status change never alters attachments, so nothing
+    // else on screen goes stale. `loadLog` is the fallback if the read-back
+    // failed, so the feed is never left missing an entry.
+    if (logRow) {
+      setLog(prev => [{
+        ...(logRow as unknown as LogEntry),
+        actor_name:     profile?.full_name,
+        attachment_url: logRow.attachment_url ?? null,
+        attachments:    [],
+      }, ...prev])
+    } else {
+      await loadLog(task.id)
+    }
+    perf.mark('append-activity')
     if (newStatus === 'completed') {
       const dest = task.task_type === 'quotation_request' ? '/tasks/quotation-requests' : '/tasks/my'
       setTimeout(() => router.push(dest), 800)
@@ -455,14 +511,27 @@ export default function TaskDetailPage() {
   }
 
   // Shared entry point for browse, drag-and-drop, and paste — keeps validation/behavior identical
-  // no matter how a file gets into the upload flow.
+  // no matter how a file gets into the upload flow. Upload starts HERE, not at submit:
+  // the queue begins moving bytes as soon as a file is accepted.
   const addCommentFiles = (incoming: File[]) => {
     if (incoming.length === 0) return
     const { accepted, rejectedNames } = filterAcceptedFiles(incoming)
-    if (accepted.length > 0) setCommentFiles(prev => [...prev, ...accepted])
+    // The queue itself drops a file it already holds, so a repeated paste or a
+    // drop carrying the same file twice cannot start two uploads for one file.
+    attachmentQueue.add(accepted)
     setCommentUploadError(
       rejectedNames.length > 0 ? `Unsupported file type: ${rejectedNames.join(', ')}` : null,
     )
+  }
+
+  const removeCommentAttachment = (id: string) => {
+    attachmentQueue.remove(id)
+    setCommentUploadError(null)
+  }
+
+  const retryCommentAttachment = (id: string) => {
+    attachmentQueue.retry(id)
+    setCommentUploadError(null)
   }
 
   const handleCommentDragOver = (e: React.DragEvent) => {
@@ -509,7 +578,14 @@ export default function TaskDetailPage() {
   const saveComment = async () => {
     if (!task || commentSavingRef.current) return   // synchronous guard blocks double-submit
     const hasNote = !!commentNote.trim()
-    if (!hasNote && commentFiles.length === 0) return
+
+    const preGate = submissionGate(attachmentQueue.items(), hasNote)
+    if (!preGate.ok) {
+      // `empty` is a no-op (nothing typed, nothing attached); a failed upload
+      // gets an explanation instead of a silent dead click.
+      if (preGate.message) setCommentUploadError(preGate.message)
+      return
+    }
 
     commentSavingRef.current = true
     setCommentSaving(true)
@@ -518,17 +594,23 @@ export default function TaskDetailPage() {
     // Phase names are static — no file names, note text, or ids are recorded.
     const perf = perfTrack('task.comment.add')
     try {
-      // Compress images + validate total size before any upload (skipped entirely for text-only)
-      let readyFiles: File[] = []
-      if (commentFiles.length > 0) {
-        const { ready, error: sizeError } = await prepareFiles(commentFiles)
-        if (sizeError) {
-          setCommentUploadError(sizeError)   // text + files preserved; finally releases the button
-          return
-        }
-        readyFiles = ready
+      // Wait only for bytes still in flight. Files that already finished are not
+      // touched again, and a text-only update never enters this branch at all.
+      if (attachmentQueue.hasPending()) {
+        setCommentWaitingUploads(true)
+        await attachmentQueue.settleAll()
+        setCommentWaitingUploads(false)
       }
-      perf.mark('prepare-files')
+      perf.mark('await-uploads')
+
+      // Re-check against the settled list: an upload may have failed while the
+      // user was typing, and submitting would then drop a file silently.
+      const readyAttachments = attachmentQueue.items()
+      const gate = submissionGate(readyAttachments, hasNote)
+      if (!gate.ok) {
+        setCommentUploadError(gate.message)   // text + attachments preserved
+        return
+      }
 
       const now = new Date().toISOString()
 
@@ -554,45 +636,35 @@ export default function TaskDetailPage() {
       }
       perf.mark('insert-comment')
 
-      // Upload each file and capture its row so the new entry renders its attachments locally.
-      // Partial-failure note: a file whose storage upload succeeds but whose metadata insert
-      // fails leaves an orphaned storage object. This is pre-existing behaviour — the project
-      // never deletes task-attachment storage objects (public bucket, shared URLs, no GC), so
-      // we do not add a delete here. We report the failure and keep/render only attachments
-      // whose rows are confirmed, so the UI stays accurate.
-      // A few files go up at a time instead of strictly one after another.
-      // mapWithConcurrency preserves INPUT order, so the attachments still
-      // render in the order the user picked them regardless of which upload
-      // finishes first, and per-file failures are still reported per file.
-      const results = await mapWithConcurrency(
-        readyFiles,
-        ATTACHMENT_UPLOAD_CONCURRENCY,
-        async (file): Promise<{ row: TaskAttachment | null; error: string | null }> => {
-          const ext  = file.name.split('.').pop() ?? 'bin'
-          const path = `updates/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-          const { error: storageErr } = await supabase.storage
-            .from('task-attachments')
-            .upload(path, file, { upsert: false })
-          if (storageErr) return { row: null, error: `${file.name}: upload failed` }
-
-          const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
-          const { data: attRow, error: attErr } = await supabase.from('task_attachments').insert({
-            activity_log_id: logRow.id,
-            task_id:         task.id,
-            url:             urlData.publicUrl,
-            file_name:       file.name,
-            file_type:       getFileTypeLabel(file.name),
-            created_by:      currentUserId,
-          })
-            .select('id, task_id, activity_log_id, url, file_name, file_type, created_by, created_at')
-            .single()
-          if (attErr || !attRow) return { row: null, error: `${file.name}: metadata save failed` }
-          return { row: attRow as TaskAttachment, error: null }
-        },
-      )
-      const newAttachments: TaskAttachment[] = results.flatMap(r => (r.row ? [r.row] : []))
-      const uploadErrors:  string[]          = results.flatMap(r => (r.error ? [r.error] : []))
-      perf.mark('upload-attachments')
+      // The bytes are already in storage, so linking them to the new comment is
+      // one bulk insert rather than a round trip per file. Row order matches the
+      // order the user picked the files, which is the order they render in.
+      //
+      // Partial-failure note: if this insert fails the objects stay in storage
+      // unreferenced. The comment itself is already recorded, so we surface the
+      // failure and render only what is confirmed rather than rolling back a
+      // permanent activity row.
+      let newAttachments: TaskAttachment[] = []
+      let uploadErrors: string[] = []
+      const rows = attachmentRowsForSubmit(readyAttachments, {
+        taskId:      task.id,
+        activityLogId: logRow.id,
+        userId:      currentUserId,
+        fileTypeOf:  getFileTypeLabel,
+      })
+      if (rows.length > 0) {
+        const { data: attRows, error: attErr } = await supabase
+          .from('task_attachments')
+          .insert(rows)
+          .select('id, task_id, activity_log_id, url, file_name, file_type, created_by, created_at')
+        if (attErr || !attRows) {
+          console.error('[saveComment] attachment metadata insert failed:', attErr?.message)
+          uploadErrors = ['Attachments could not be linked to this update.']
+        } else {
+          newAttachments = attRows as TaskAttachment[]
+        }
+      }
+      perf.mark('link-attachments')
 
       // Append the confirmed comment to the activity feed (newest-first, so prepend).
       // Actor is the current user; timestamp comes from the DB row — no re-fetch needed.
@@ -604,10 +676,11 @@ export default function TaskDetailPage() {
       }
       setLog(prev => [newEntry, ...prev])
 
-      // The comment (the required record) is confirmed — clear the inputs now. Per-file
-      // attachment failures are surfaced but do not roll back or block the posted comment.
+      // The comment (the required record) is confirmed — clear the inputs once.
+      // The objects are now referenced by task_attachments, so the queue is
+      // dropped without deleting anything from storage.
       setCommentNote('')
-      setCommentFiles([])
+      attachmentQueue.clear()
       setCommentUploadError(uploadErrors.length > 0 ? uploadErrors.join(' · ') : null)
 
       // Non-urgent side effects, off the interaction's critical path. Each is fire-and-forget
@@ -647,6 +720,7 @@ export default function TaskDetailPage() {
     } finally {
       // Always release Send Update — no failure path leaves it disabled until remount.
       setCommentSaving(false)
+      setCommentWaitingUploads(false)
       commentSavingRef.current = false
       perf.end()
     }
@@ -834,6 +908,10 @@ export default function TaskDetailPage() {
   const showCancelButton = (isCreator || isAdmin) && task.status !== 'completed' && task.status !== 'cancelled'
   const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at && task.status !== 'cancelled' && task.task_type !== 'quotation_request'
   const isActiveTask     = task.status !== 'completed' && task.status !== 'cancelled'
+  // The two gates on the interactions optimised here, kept where a test can
+  // reach them so the optimisation cannot quietly widen either. Same rules.
+  const mayPostUpdate    = canPostUpdate(task, currentUserId)
+  const mayMarkComplete  = canMarkComplete(task, currentUserId)
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
     : isAssignee                    ? 'Assigned To Me'
@@ -1358,7 +1436,7 @@ export default function TaskDetailPage() {
                     justifyContent: isQuotation ? 'center' : 'flex-start',
                   }}
                 >
-                  {isAssignee && !isUnacknowledged && (
+                  {mayMarkComplete && (
                     <button
                       className={isQuotation ? undefined : 'boe-task-action-primary'}
                       onClick={async () => {
@@ -1643,7 +1721,7 @@ export default function TaskDetailPage() {
             )}
 
             {/* ─ C. Conversation ─ */}
-            {(isCreator || isAssignee) && task.status !== 'completed' && task.status !== 'cancelled' && (
+            {mayPostUpdate && (
               <div className="boe-card" style={{
                 padding: '16px 20px',
                 display: 'flex', flexDirection: 'column', gap: '10px',
@@ -1697,8 +1775,8 @@ export default function TaskDetailPage() {
                         position: 'absolute', bottom: '9px', right: '10px',
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         width: '28px', height: '28px', borderRadius: '50%',
-                        background: commentFiles.length > 0 ? colors.blueTint : '#ffffff',
-                        border: `1.5px solid ${commentFiles.length > 0 ? colors.blue + '55' : colors.border}`,
+                        background: commentAttachments.length > 0 ? colors.blueTint : '#ffffff',
+                        border: `1.5px solid ${commentAttachments.length > 0 ? colors.blue + '55' : colors.border}`,
                         fontSize: '13px', cursor: 'pointer', userSelect: 'none',
                         transition: 'all 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                       }}
@@ -1719,22 +1797,48 @@ export default function TaskDetailPage() {
                   <p style={{ fontSize: '10px', color: colors.muted, margin: 0 }}>
                     Drop files here, paste copied files, or browse
                   </p>
-                  {/* Selected files list */}
-                  {commentFiles.length > 0 && (
+                  {/* Selected files list — each row shows its own upload state, because
+                      uploading starts on selection rather than on submit. */}
+                  {commentAttachments.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {commentFiles.map((f, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {commentAttachments.map(a => (
+                        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontSize: '10.5px', color: colors.blue, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            📎 {f.name} <span style={{ color: colors.muted }}>({(f.size / 1024).toFixed(0)} KB)</span>
+                            📎 {a.fileName} <span style={{ color: colors.tertiary }}>({(a.size / 1024).toFixed(0)} KB)</span>
                           </span>
+                          <span
+                            role="status"
+                            title={a.error ?? undefined}
+                            style={{
+                              fontSize: '10px', fontWeight: 600, flexShrink: 0,
+                              color: a.status === 'failed' ? colors.red
+                                   : a.status === 'uploaded' ? colors.green
+                                   : colors.secondary,
+                            }}
+                          >
+                            {a.status === 'uploaded' ? '✓ ' : ''}{attachmentStatusLabel(a)}
+                          </span>
+                          {a.status === 'failed' && (
+                            <button
+                              type="button"
+                              onClick={() => retryCommentAttachment(a.id)}
+                              style={{
+                                background: 'none', border: `1px solid ${colors.blue}`, borderRadius: '5px',
+                                cursor: 'pointer', color: colors.blue, fontSize: '10px', fontWeight: 600,
+                                padding: '1px 6px', flexShrink: 0, fontFamily: font.body,
+                              }}
+                            >
+                              Retry
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => setCommentFiles(prev => prev.filter((_, j) => j !== i))}
+                            onClick={() => removeCommentAttachment(a.id)}
                             style={{
                               background: 'none', border: 'none', cursor: 'pointer',
-                              color: colors.muted, fontSize: '12px', padding: '0 2px', flexShrink: 0,
+                              color: colors.tertiary, fontSize: '12px', padding: '0 2px', flexShrink: 0,
                             }}
-                            aria-label={`Remove ${f.name}`}
+                            aria-label={`Remove ${a.fileName}`}
                           >
                             ✕
                           </button>
@@ -1742,15 +1846,22 @@ export default function TaskDetailPage() {
                       ))}
                     </div>
                   )}
-                  {commentUploadError && (
-                    <p style={{ fontSize: '10.5px', color: colors.red, margin: 0 }}>{commentUploadError}</p>
+                  {(commentUploadError ?? failureSummary(commentAttachments)) && (
+                    <p style={{ fontSize: '10.5px', color: colors.red, margin: 0 }}>
+                      {commentUploadError ?? failureSummary(commentAttachments)}
+                    </p>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ flex: 1 }} />
                     <span style={{ fontSize: '10px', color: colors.muted, flexShrink: 0 }}>{commentNote.length}/1000</span>
                     <button
                       onClick={saveComment}
-                      disabled={commentSaving}
+                      // Blocked only by an in-flight submit or a failed upload —
+                      // an upload still running is waited on, not a barrier.
+                      disabled={commentSaving || commentAttachments.some(a => a.status === 'failed')}
+                      title={commentAttachments.some(a => a.status === 'failed')
+                        ? 'Retry or remove the failed attachment first'
+                        : undefined}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: '5px',
                         padding: '6px 18px', borderRadius: '7px',
@@ -1764,7 +1875,11 @@ export default function TaskDetailPage() {
                         flexShrink: 0,
                       }}
                     >
-                      {commentSaving ? (isQuotation ? 'Adding…' : 'Sending…') : (isQuotation ? 'Add Update' : 'Send Update')}
+                      {submitButtonLabel({
+                        saving: commentSaving,
+                        waitingForUploads: commentWaitingUploads,
+                        isQuotation,
+                      })}
                     </button>
                   </div>
                 </div>

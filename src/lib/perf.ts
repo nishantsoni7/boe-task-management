@@ -27,6 +27,7 @@ export type PerfAction =
   | 'task.edit'
   | 'task.comment.add'
   | 'task.comment.delete'
+  | 'task.attachment.upload'
   | 'task.status.update'
   | 'task.complete'
   | 'task.restore'
