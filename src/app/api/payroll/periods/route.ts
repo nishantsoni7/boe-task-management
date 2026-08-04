@@ -176,14 +176,77 @@ export async function GET(req: NextRequest) {
     outOfDate = computeOutOfDate(generatedPeriods, lastGeneratedAt, attendanceRows ?? [])
   }
 
+  // ── Finalisation trail ────────────────────────────────────────────────────
+  // The dashboard needs two facts per period: what the last finalisation event
+  // was (for "Last Activity") and, separately, the last time it was reopened
+  // after being locked — with who did it and why. Both come from the same
+  // append-only table, so the page never has a second source of truth for them.
+  const { latestEvent, latestUnlock } = await fetchStatusEvents(svc, (periods ?? []).map(p => p.id))
+
   const result = (periods ?? []).map(p => ({
     ...p,
     out_of_date: outOfDate[p.id] ?? false,
     generated_employees: latestGen[p.id]?.employee_count ?? null,
     last_generated_at:   latestGen[p.id]?.completed_at ?? null,
+    last_status_event:   latestEvent[p.id]  ?? null,
+    last_unlock:         latestUnlock[p.id] ?? null,
   }))
 
   return NextResponse.json({ periods: result })
+}
+
+export type PayrollStatusEvent = {
+  event: 'locked' | 'unlocked'
+  actor_name: string | null
+  reason: string | null
+  created_at: string
+}
+
+/**
+ * The latest status event, and the latest unlock, for each of these periods.
+ *
+ * Degrades to empty rather than failing the whole dashboard: the finalisation
+ * trail is added by migration 20260811000000, and a payroll list that 500s
+ * because that migration has not been applied yet would take out generation,
+ * locking and results along with it. Nothing here feeds a calculation.
+ */
+async function fetchStatusEvents(
+  svc: Svc,
+  periodIds: string[],
+): Promise<{
+  latestEvent:  Record<string, PayrollStatusEvent>
+  latestUnlock: Record<string, PayrollStatusEvent>
+}> {
+  const latestEvent:  Record<string, PayrollStatusEvent> = {}
+  const latestUnlock: Record<string, PayrollStatusEvent> = {}
+  if (periodIds.length === 0) return { latestEvent, latestUnlock }
+
+  const { data, error } = await svc
+    .from('payroll_period_status_events')
+    .select('payroll_period_id, event, actor_name, reason, created_at')
+    .in('payroll_period_id', periodIds)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('[payroll/periods] status events unavailable:', error.message)
+    return { latestEvent, latestUnlock }
+  }
+
+  // Rows arrive newest-first, so the first hit per period is the latest one.
+  for (const row of data ?? []) {
+    const e: PayrollStatusEvent = {
+      event:      row.event,
+      actor_name: row.actor_name ?? null,
+      reason:     row.reason ?? null,
+      created_at: row.created_at,
+    }
+    if (!latestEvent[row.payroll_period_id]) latestEvent[row.payroll_period_id] = e
+    if (e.event === 'unlocked' && !latestUnlock[row.payroll_period_id]) {
+      latestUnlock[row.payroll_period_id] = e
+    }
+  }
+
+  return { latestEvent, latestUnlock }
 }
 
 // POST /api/payroll/periods
