@@ -6,13 +6,17 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { PayrollLayout } from '@/components/layout/PayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { colors } from '@/lib/tokens'
 import { periodLabel } from '@/lib/payroll/months'
 import {
-  payrollRowActions,
-  PAYROLL_ACTION_LABELS,
+  payrollAttention,
   type PayrollPeriodAction,
 } from '@/lib/payroll/periodActions'
+import {
+  PAYROLL_ROW_CSS,
+  PayrollAttentionIndicator,
+  PayrollAttentionModal,
+  PayrollRowActionBar,
+} from './PayrollRowActions'
 import { CreatePeriodModal } from './CreatePeriodModal'
 import { UnlockPayrollModal } from './UnlockPayrollModal'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -107,6 +111,10 @@ export default function PayrollPage() {
   const [unlockTarget, setUnlockTarget] = useState<PayrollPeriodRow | null>(null)
   const [unlocking,    setUnlocking]    = useState(false)
   const [unlockError,  setUnlockError]  = useState<string | null>(null)
+
+  // The row whose Attention icon was clicked. Held here, like the other two
+  // dialogs, so the cell itself stays a stateless button.
+  const [attentionTarget, setAttentionTarget] = useState<PayrollPeriodRow | null>(null)
 
   const [highlightedPeriodId, setHighlightedPeriodId] = useState<string | null>(null)
 
@@ -296,6 +304,17 @@ export default function PayrollPage() {
     }
   }
 
+  // The popup's primary action is the row's own action, started from where the
+  // warning was read. It routes through the same handlers — the dialog adds no
+  // second path to generation or unlocking.
+  const handleAttentionAction = (action: PayrollPeriodAction) => {
+    const period = attentionTarget
+    if (!period) return
+    setAttentionTarget(null)
+    if (action === 'unlock') { setUnlockError(null); setUnlockTarget(period); return }
+    if (action === 'regenerate' || action === 'generate') void handleGenerate(period)
+  }
+
   const closeCreate = () => {
     setCreateOpen(false)
     setCreateError(null)
@@ -365,8 +384,12 @@ export default function PayrollPage() {
         </div>
       )}
 
+      {/* Row hover, the Attention icon and the no-wrap action cell — colocated
+          with the components they style, rendered once for the whole table. */}
+      <style>{PAYROLL_ROW_CSS}</style>
+
       {/* Operational summary */}
-      <div className="boe-kpi-grid">
+      <div className="boe-kpi-grid" style={{ marginBottom: 12 }}>
         <SummaryTile
           label="Current Period"
           value={summary.current ? periodLabel(summary.current.payroll_month, summary.current.payroll_year) : '—'}
@@ -417,7 +440,9 @@ export default function PayrollPage() {
           // Horizontal overflow is contained here, so the page itself never
           // scrolls sideways on a narrow screen.
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+            {/* Narrower than before: the Attention column is now one icon wide,
+                so the table reaches a phone without the card scrolling. */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
                   {['Payroll Period', 'Status', 'Employees Included', 'Last Activity', 'Attention', 'Actions'].map(h => (
@@ -438,10 +463,12 @@ export default function PayrollPage() {
                   return (
                     <tr
                       key={p.id}
+                      className="boe-payroll-row"
                       style={{
                         borderBottom: i < periods.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-                        background: p.id === highlightedPeriodId ? 'rgba(232,160,48,0.14)' : 'transparent',
-                        transition: 'background 0.6s ease',
+                        // Inline wins over the hover rule, which is what keeps a
+                        // freshly created row highlighted while the cursor is on it.
+                        ...(p.id === highlightedPeriodId ? { background: 'rgba(232,160,48,0.14)' } : null),
                       }}
                     >
                       <td style={{ padding: '12px 16px', fontSize: 13.5, fontWeight: 500, color: '#111318', whiteSpace: 'nowrap' }}>
@@ -461,12 +488,15 @@ export default function PayrollPage() {
                           </>
                         ) : '—'}
                       </td>
-                      <td style={{ padding: '12px 16px', minWidth: 200 }}>
-                        <AttentionCell period={p} />
+                      <td style={{ padding: '12px 16px' }}>
+                        <PayrollAttentionIndicator
+                          detail={attentionOf(p)}
+                          onOpen={() => setAttentionTarget(p)}
+                        />
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <ActionButtons
-                          period={p}
+                        <PayrollRowActionBar
+                          status={p.status}
                           isBusy={!!busy[p.id]}
                           onGenerate={() => handleGenerate(p)}
                           onLock={() => handleLock(p)}
@@ -493,6 +523,23 @@ export default function PayrollPage() {
         />
       )}
 
+      {attentionTarget && attentionOf(attentionTarget) && (
+        <PayrollAttentionModal
+          detail={attentionOf(attentionTarget)!}
+          periodLabel={periodLabel(attentionTarget.payroll_month, attentionTarget.payroll_year)}
+          lastGeneratedLabel={formatDateTime(attentionTarget.last_generated_at)}
+          reopened={attentionTarget.last_unlock
+            ? {
+                actorName: attentionTarget.last_unlock.actor_name,
+                at:        formatDateTime(attentionTarget.last_unlock.created_at),
+                reason:    attentionTarget.last_unlock.reason,
+              }
+            : null}
+          onAct={handleAttentionAction}
+          onClose={() => setAttentionTarget(null)}
+        />
+      )}
+
       {unlockTarget && (
         <UnlockPayrollModal
           periodLabel={periodLabel(unlockTarget.payroll_month, unlockTarget.payroll_year)}
@@ -516,9 +563,15 @@ function SummaryTile({
   label, value, meta, tone,
 }: { label: string; value: string; meta: string; tone?: 'amber' }) {
   return (
-    <div className={`boe-kpi${tone === 'amber' ? ' boe-kpi-amber' : ''}`}>
+    // Tightened here rather than in .boe-kpi: that class is every module's KPI
+    // card, and this page is not entitled to shorten them all. The grid still
+    // stretches its rows, so the four cards stay equal height.
+    <div
+      className={`boe-kpi${tone === 'amber' ? ' boe-kpi-amber' : ''}`}
+      style={{ padding: '9px 12px' }}
+    >
       <span className="boe-kpi-label">{label}</span>
-      <span className="boe-kpi-value" style={{ fontSize: value.length > 8 ? 18 : 28 }}>{value}</span>
+      <span className="boe-kpi-value" style={{ fontSize: value.length > 8 ? 16 : 23 }}>{value}</span>
       <span className="boe-kpi-meta">{meta}</span>
     </div>
   )
@@ -527,99 +580,18 @@ function SummaryTile({
 // ─── Attention ────────────────────────────────────────────────────────────────
 
 /**
- * Everything about this period that an admin should look at before acting.
+ * What this row's Attention icon stands for, or null for a period with nothing
+ * outstanding.
  *
- * Kept out of the Last Activity column on purpose: a staleness warning is not a
- * timestamp, and reading the two as one line was how "generated an hour ago"
- * ended up looking like part of the warning.
+ * The warning text itself no longer sits in the cell: a two-line staleness note
+ * beside a one-line neighbour is what made the rows uneven, and it crowded out
+ * the actions. The wording lives in payrollAttention() and is shown in the
+ * popup the icon opens.
  */
-function AttentionCell({ period }: { period: PayrollPeriodRow }) {
-  const notes: React.ReactNode[] = []
-
-  if (period.out_of_date) {
-    notes.push(
-      <div key="stale" style={{ fontSize: 11.5, fontWeight: 600, color: '#B45309', lineHeight: 1.45 }}>
-        {period.status === 'locked'
-          ? 'Attendance was updated after this payroll was locked.'
-          : 'Needs regeneration — attendance updated after payroll generation.'}
-      </div>,
-    )
-  }
-
-  if (period.last_unlock) {
-    notes.push(
-      <div key="unlock" style={{ fontSize: 11.5, color: colors.secondary, lineHeight: 1.45 }}>
-        <div style={{ fontWeight: 600, color: '#1D4ED8' }}>Unlocked after finalization</div>
-        <div style={{ color: '#6B7280', marginTop: 2 }}>
-          {period.last_unlock.actor_name ?? 'Unknown admin'} · {formatDateTime(period.last_unlock.created_at)}
-        </div>
-        {period.last_unlock.reason && (
-          <div style={{ color: '#4A5261', marginTop: 2 }}>“{period.last_unlock.reason}”</div>
-        )}
-      </div>,
-    )
-  }
-
-  if (notes.length === 0) {
-    return <span style={{ fontSize: 12.5, color: '#8C94A6' }}>—</span>
-  }
-
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxWidth: 280 }}>{notes}</div>
-}
-
-// ─── ActionButtons ────────────────────────────────────────────────────────────
-
-type ActionButtonsProps = {
-  period: PayrollPeriodRow
-  isBusy: boolean
-  onGenerate: () => void
-  onLock: () => void
-  onUnlock: () => void
-  onViewResults: () => void
-}
-
-function ActionButtons({ period, isBusy, onGenerate, onLock, onUnlock, onViewResults }: ActionButtonsProps) {
-  const { primary, secondary } = payrollRowActions(period.status)
-
-  const run: Record<PayrollPeriodAction, () => void> = {
-    view:       onViewResults,
-    generate:   onGenerate,
-    regenerate: onGenerate,
-    lock:       onLock,
-    unlock:     onUnlock,
-  }
-
-  // Only the two engine actions are long-running, so only they show progress
-  // and only they are blocked while one is in flight.
-  const isRunning = (a: PayrollPeriodAction) => a === 'generate' || a === 'regenerate'
-
-  const button = (action: PayrollPeriodAction, kind: 'primary' | 'secondary') => {
-    const busy = isBusy && isRunning(action)
-    return (
-      <button
-        key={action}
-        onClick={run[action]}
-        disabled={isBusy && isRunning(action)}
-        className={`boe-btn ${kind === 'primary' ? 'boe-btn-primary' : 'boe-btn-ghost'}`}
-        style={{
-          whiteSpace: 'nowrap',
-          ...(action === 'unlock' ? { color: '#B45309', borderColor: 'rgba(232,160,48,0.4)' } : null),
-          // Regeneration is the action that clears the staleness warning — same
-          // button, just drawn to the eye rather than adding a second one.
-          ...(action === 'regenerate' && period.out_of_date
-            ? { color: '#B45309', borderColor: 'rgba(180,83,9,0.5)' }
-            : null),
-        }}
-      >
-        {busy ? 'Working…' : PAYROLL_ACTION_LABELS[action]}
-      </button>
-    )
-  }
-
-  return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-      {button(primary, 'primary')}
-      {secondary.map(a => button(a, 'secondary'))}
-    </div>
-  )
+function attentionOf(period: PayrollPeriodRow) {
+  return payrollAttention({
+    status:     period.status,
+    outOfDate:  period.out_of_date,
+    reopened:   period.last_unlock != null,
+  })
 }
