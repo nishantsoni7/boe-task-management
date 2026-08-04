@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 // Returns today's date string (YYYY-MM-DD) in IST (UTC+5:30)
 function todayIST(): string {
@@ -8,17 +8,14 @@ function todayIST(): string {
   return ist.toISOString().slice(0, 10)
 }
 
+// Company-wide headcount for today: how many are present, still clocked in, or
+// absent. Aggregate rather than per-person, but it is still a statement about
+// the workforce and belongs to the admin attendance dashboard, so it is gated
+// the same way as the rest of that screen.
 export async function GET(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  const { data: { user }, error: authErr } = await svc.auth.getUser(token)
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requireAdmin(req)
+  if (isResponse(auth)) return auth
+  const svc = auth.svc
 
   const today = todayIST()
 

@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 // Returns YYYY-MM-DD date range for a given year+month
 function monthRange(year: number, month: number): { from: string; to: string } {
@@ -21,17 +21,14 @@ function hoursWorked(checkIn: string | null, checkOut: string | null): number {
   return diff > 0 ? Math.round((diff / 36e5) * 100) / 100 : 0
 }
 
+// Whole-company attendance summary: every active employee's present, absent,
+// late, half-day and missing-punch counts for a month, by name. There is no
+// per-employee form of this route and no way to scope it to one person, so it
+// is admin-only. It previously required nothing beyond a valid session.
 export async function GET(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  const { data: { user }, error: authErr } = await svc.auth.getUser(token)
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await requireAdmin(req)
+  if (isResponse(auth)) return auth
+  const svc = auth.svc
 
   const { searchParams } = new URL(req.url)
   const yearParam  = searchParams.get('year')

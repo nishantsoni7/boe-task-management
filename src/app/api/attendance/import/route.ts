@@ -2,7 +2,10 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 
-const ALLOWED_ROLES = ['admin', 'manager']
+// Admin only — see the note in ../preview/route.ts. The import writes every
+// employee's raw attendance and the correction log that payroll is computed
+// from; it is the most privileged write in the module.
+const ALLOWED_ROLES = ['admin']
 
 // ─── XLS parser ───────────────────────────────────────────────────────────────
 
@@ -259,7 +262,7 @@ export async function POST(req: NextRequest) {
   const { data: callerProfile } = await svc
     .from('users').select('role').eq('id', user.id).single()
   if (!callerProfile || !ALLOWED_ROLES.includes(callerProfile.role)) {
-    return NextResponse.json({ error: 'Forbidden: admin or manager role required' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   // Read file from multipart form

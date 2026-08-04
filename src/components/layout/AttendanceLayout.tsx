@@ -53,12 +53,23 @@ export function AttendanceLayout({
     setSidebarOpen(false)
   }
 
-  const navItems = [
-    { label: 'Attendance Dashboard', path: '/attendance',          icon: <LayoutDashboard size={15} strokeWidth={1.8} /> },
-    { label: 'Employee Master',      path: '/attendance/employees', icon: <Users size={15} strokeWidth={1.8} /> },
-    { label: 'Attendance Upload',    path: '/attendance/upload',   icon: <Upload size={15} strokeWidth={1.8} /> },
-    { label: 'Attendance Records',   path: '/attendance/records',  icon: <ClipboardList size={15} strokeWidth={1.8} /> },
-  ]
+  // This layout is shared with /my-payroll, which an ordinary employee opens.
+  // Every /attendance destination is an admin surface, so showing them to a
+  // non-admin only produces links that bounce off the module guard. Hiding them
+  // is a usability fix, never the control — the guard, the API routes and RLS
+  // are what actually refuse the access.
+  const isAdmin = profile?.role === 'admin'
+
+  const navItems = isAdmin
+    ? [
+        { label: 'Attendance Dashboard', path: '/attendance',           icon: <LayoutDashboard size={15} strokeWidth={1.8} /> },
+        { label: 'Employee Master',      path: '/attendance/employees', icon: <Users size={15} strokeWidth={1.8} /> },
+        { label: 'Attendance Upload',    path: '/attendance/upload',    icon: <Upload size={15} strokeWidth={1.8} /> },
+        { label: 'Attendance Records',   path: '/attendance/records',   icon: <ClipboardList size={15} strokeWidth={1.8} /> },
+      ]
+    : [
+        { label: 'My Payroll',           path: '/my-payroll',           icon: <ClipboardList size={15} strokeWidth={1.8} /> },
+      ]
 
   return (
     <div className="boe-app-shell">
@@ -120,7 +131,7 @@ export function AttendanceLayout({
           })}
 
           {/* Holiday Management — admin only */}
-          {profile?.role === 'admin' && (
+          {isAdmin && (
             <button
               className={`boe-nav-item${pathname.startsWith('/attendance/holidays') ? ' active' : ''}`}
               onClick={() => navTo('/attendance/holidays')}
