@@ -25,6 +25,7 @@ import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { PROOF_BUCKET } from '@/lib/paymentProof'
 import type { UserProfile } from '@/lib/types'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ── Types mirroring the RPC payloads ─────────────────────────────────────────
 
@@ -165,7 +166,7 @@ function TestDataCleanupInner() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
       const { data: me } = await supabase
-        .from('users').select('*').eq('id', session.user.id).single()
+        .from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
       setProfile(me as UserProfile)
       await loadSettings()
     }

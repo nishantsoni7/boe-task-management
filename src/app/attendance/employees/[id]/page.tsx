@@ -7,6 +7,7 @@ import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import Link from 'next/link'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -110,25 +111,28 @@ export default function EmployeeDetailPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      // Fetch current user profile and target employee profile in parallel.
-      // attendance_records is fetched via API (service role) to bypass RLS.
-      const [{ data: me }, { data: emp }] = await Promise.all([
+      // The caller's own profile comes straight from the table; the TARGET
+      // employee's does not. This card shows monthly_salary and payroll_notes,
+      // which `authenticated` no longer holds a SELECT grant on — so those
+      // fields arrive through an admin-verified service-role route instead.
+      // attendance_records likewise comes from an API, to bypass RLS.
+      const [{ data: me }, empRes] = await Promise.all([
         supabase
           .from('users')
-          .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code')
+          .select(USER_PROFILE_COLUMNS)
           .eq('id', session.user.id)
           .single(),
-        supabase
-          .from('users')
-          .select('id, full_name, team, position, role, employee_code, fingerprint_employee_code, is_active, joining_date, monthly_salary, payroll_active, employment_type, payroll_notes')
-          .eq('id', id)
-          .single(),
+        fetch(`/api/admin/employee-profile?employee_id=${id}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }),
       ])
 
       setProfile(me as UserProfile)
 
-      if (!emp) { setNotFound(true); setLoading(false); return }
-      setEmployee(emp as EmployeeDetail)
+      if (!empRes.ok) { setNotFound(true); setLoading(false); return }
+      const empJson = await empRes.json()
+      if (!empJson.employee) { setNotFound(true); setLoading(false); return }
+      setEmployee(empJson.employee as EmployeeDetail)
 
       // Use the service-role API so RLS does not block reading other employees' records.
       const recsRes = await fetch(`/api/attendance/employee-records?employee_id=${id}`, {

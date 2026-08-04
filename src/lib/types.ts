@@ -70,13 +70,18 @@ export type UserProfile = {
   // Employee Master V1 fields (nullable — backfilled gradually)
   employee_code: string | null
   joining_date: string | null
-  monthly_salary: number | null
+  // Admin-only HR fields. Optional because `authenticated` holds no SELECT grant
+  // on the underlying columns (migration 20260813000000): a browser profile
+  // fetch can never populate them, and a query that asks for them fails outright.
+  // They are present only on objects built by an admin-verified server route
+  // (/api/admin/employee-profile, /api/employee-list for an admin caller).
+  monthly_salary?: number | null
+  payroll_notes?: string | null
   office_timing: string | null
   fingerprint_employee_code: string | null
   // Payroll configuration fields (V2)
   payroll_active: boolean
   employment_type: 'permanent' | 'contract' | null
-  payroll_notes: string | null
   // Performance reporting eligibility (migration 20260719000000). Separate from
   // payroll_active on purpose: one decides whether someone is measured, the other
   // decides whether someone is paid. Optional here because most reads of

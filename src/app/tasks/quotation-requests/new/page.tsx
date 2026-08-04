@@ -10,6 +10,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { Paperclip, X, Info } from 'lucide-react'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // Every quotation request is assigned to this user (resolved by email at init).
 const DEFAULT_QUOTATION_OWNER = 'admin@bestofexports.com'
@@ -53,7 +54,7 @@ export default function NewQuotationRequestPage() {
         if (!session) { router.push('/login'); return }
 
         const [{ data: profileData }, { data: ownerData }] = await Promise.all([
-          supabase.from('users').select('*').eq('id', session.user.id).single(),
+          supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
           supabase.from('users').select('id').eq('email', DEFAULT_QUOTATION_OWNER).single(),
         ])
 

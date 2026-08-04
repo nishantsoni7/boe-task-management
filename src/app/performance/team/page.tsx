@@ -28,6 +28,7 @@ import {
   adoptionRate, withinWindowRate, avgFirstOpenLabel, hasAdoptionData,
 } from '@/lib/performanceAdoption'
 import { formatMinutesOfDay } from '@/lib/istDate'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ─── Progress loader ──────────────────────────────────────────────────────────
 function TeamProgressLoader({ progress }: { progress: number }) {
@@ -1619,7 +1620,7 @@ export default function TeamPerformancePage() {
   const goToFullReport = useCallback(async (userId: string) => {
     const { data: full } = await supabase
       .from('users')
-      .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code, payroll_active, employment_type, payroll_notes')
+      .select(USER_PROFILE_COLUMNS)
       .eq('id', userId)
       .single()
     if (full) enterViewMode(userId, full as UserProfile)

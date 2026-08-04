@@ -11,6 +11,7 @@ import { useViewAs } from '@/hooks/useViewAs'
 import { Target, CalendarDays, FileText, Paperclip, X } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 const PRIORITIES = ['low', 'medium', 'high'] as const
 
@@ -51,7 +52,7 @@ export default function CreateSelfTaskPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { router.push('/login'); return }
         if (viewAsUserId) { router.push('/dashboard'); return }
-        const { data } = await supabase.from('users').select('*').eq('id', session.user.id).single()
+        const { data } = await supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
         if (data) setProfile(data as UserProfile)
       } finally {
         setInitDone(true)

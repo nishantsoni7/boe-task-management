@@ -11,7 +11,14 @@ const BASE_COLUMNS = 'id, full_name, team, position, is_active'
 // holding an account out ("administrative/test account"), which ordinary
 // employees have no business reading. The note is returned only by the
 // admin-gated Team Performance coverage payload.
-const FULL_COLUMNS  = BASE_COLUMNS + ', employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code, performance_tracking_enabled'
+//
+// monthly_salary is likewise NOT in the list every caller gets. This route runs
+// on the service role, so RLS and the column grants that protect public.users
+// from a browser do not apply here — the route itself is the boundary, and it
+// was returning every employee's salary to any authenticated caller. It is now
+// added only for an admin, verified server-side below.
+const FULL_COLUMNS  = BASE_COLUMNS + ', employee_code, joining_date, office_timing, fingerprint_employee_code, performance_tracking_enabled'
+const ADMIN_COLUMNS = FULL_COLUMNS + ', monthly_salary'
 
 export async function GET(req: NextRequest) {
   const authHeader  = req.headers.get('authorization') ?? ''
@@ -27,12 +34,16 @@ export async function GET(req: NextRequest) {
   const { data: { user: caller }, error: callerError } = await serviceClient.auth.getUser(callerToken)
   if (callerError || !caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: callerProfile } = await serviceClient
+    .from('users').select('role').eq('id', caller.id).single()
+  const columns = callerProfile?.role === 'admin' ? ADMIN_COLUMNS : FULL_COLUMNS
+
   // Try with employee fields first. If the migration hasn't been applied yet the
   // columns won't exist and Supabase returns an error — fall back to base columns
   // so users always appear in the list.
   const full = await serviceClient
     .from('users')
-    .select(FULL_COLUMNS)
+    .select(columns)
     .or('is_deleted.eq.false,is_deleted.is.null')
     .order('full_name')
 

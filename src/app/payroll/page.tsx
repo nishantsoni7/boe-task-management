@@ -15,6 +15,7 @@ import {
 } from '@/lib/payroll/periodActions'
 import { CreatePeriodModal } from './CreatePeriodModal'
 import { UnlockPayrollModal } from './UnlockPayrollModal'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -139,7 +140,7 @@ export default function PayrollPage() {
 
       const { data: prof } = await supabase
         .from('users')
-        .select('*')
+        .select(USER_PROFILE_COLUMNS)
         .eq('id', session.user.id)
         .single()
 

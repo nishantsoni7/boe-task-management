@@ -11,6 +11,7 @@ import { useViewAs } from '@/hooks/useViewAs'
 import { Target, CalendarDays, FileText, Paperclip, X } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, mapWithConcurrency, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 const PRIORITIES = ['low', 'medium', 'high'] as const
 
@@ -56,7 +57,7 @@ export default function CreateTaskPage() {
         if (viewAsUserId) { router.push('/dashboard'); return }
 
         const [{ data: profileData }, { data: allUsers }] = await Promise.all([
-          supabase.from('users').select('*').eq('id', session.user.id).single(),
+          supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
           supabase.from('users')
             .select('id, full_name, team, role, email, phone, is_active, created_at')
             .eq('is_active', true).order('full_name'),

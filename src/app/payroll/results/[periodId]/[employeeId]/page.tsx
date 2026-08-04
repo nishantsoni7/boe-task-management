@@ -16,6 +16,7 @@ import {
   type CorrectionDayContext,
   type CorrectionPayload,
 } from './AttendanceCorrectionModal'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -309,7 +310,7 @@ export default function PayrollResultDetailPage() {
 
       const { data: prof } = await supabase
         .from('users')
-        .select('*')
+        .select(USER_PROFILE_COLUMNS)
         .eq('id', session.user.id)
         .single()
 

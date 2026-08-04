@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -121,7 +122,7 @@ export default function MyPayrollDetailPage() {
 
       const { data: prof } = await supabase
         .from('users')
-        .select('*')
+        .select(USER_PROFILE_COLUMNS)
         .eq('id', session.user.id)
         .single()
 

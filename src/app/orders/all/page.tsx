@@ -8,6 +8,7 @@ import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
 import { Activity, CircleX, Layers, PackageCheck, PauseCircle, Truck, type LucideIcon } from 'lucide-react'
+import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -241,7 +242,7 @@ export default function AllOrdersPage() {
 
       const { data: me } = await supabase
         .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at, employee_code, joining_date, monthly_salary, office_timing, fingerprint_employee_code')
+        .select(USER_PROFILE_COLUMNS)
         .eq('id', session.user.id)
         .single()
 
