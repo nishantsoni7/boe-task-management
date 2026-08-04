@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 function monthRange(year: number, month: number): { from: string; to: string } {
   const from = `${year}-${String(month).padStart(2, '0')}-01`
@@ -54,26 +54,23 @@ function calcLateMinutes(checkIn: string | null, shiftStartMins: number | null):
   return diff > 0 ? diff : null
 }
 
+// Service-role route. `employee_id` was previously trusted as given, so any
+// authenticated caller could read any employee's month of punches, lateness and
+// penalties. The id is now authorised against the bearer token first.
 export async function GET(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  const { data: { user }, error: authErr } = await svc.auth.getUser(token)
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const { searchParams } = new URL(req.url)
-  const employeeId = searchParams.get('employee_id')
+  const requested  = searchParams.get('employee_id')
   const yearParam  = searchParams.get('year')
   const monthParam = searchParams.get('month')
 
-  if (!employeeId || !yearParam || !monthParam) {
+  if (!requested || !yearParam || !monthParam) {
     return NextResponse.json({ error: 'employee_id, year, and month are required' }, { status: 400 })
   }
+
+  const auth = await requireSelfOrAdmin(req, requested)
+  if (isResponse(auth)) return auth
+  const { caller, employeeId } = auth
+  const svc = caller.svc
 
   const year  = parseInt(yearParam,  10)
   const month = parseInt(monthParam, 10)

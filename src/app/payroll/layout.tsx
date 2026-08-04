@@ -21,11 +21,14 @@ export default function PayrollGuard({ children }: { children: React.ReactNode }
         supabase.from('app_modules').select('visibility_type, allowed_department').eq('module_key', 'payroll').single(),
       ])
 
-      // Admin always has access; otherwise defer to Control Center's setting.
-      const allowed = !!profile && (
-        profile.role === 'admin' ||
-        canAccessModule(mod?.visibility_type, mod?.allowed_department, profile, false)
-      )
+      // /payroll is salary administration for the whole company, so it is
+      // admin-only. Control Center's visibility setting can still HIDE it, but
+      // flipping it to `live` or a department must never be able to grant an
+      // employee payroll access — that is a navigation control, not an
+      // authorization one. Employees reach their own payslip at /my-payroll.
+      const allowed = !!profile
+        && profile.role === 'admin'
+        && canAccessModule(mod?.visibility_type, mod?.allowed_department, profile, true)
 
       if (!allowed) {
         router.replace('/coming-soon')

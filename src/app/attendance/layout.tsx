@@ -21,12 +21,16 @@ export default function AttendanceGuard({ children }: { children: React.ReactNod
         supabase.from('app_modules').select('visibility_type, allowed_department').eq('module_key', 'attendance').single(),
       ])
 
-      // Admin and manager always have access; otherwise defer to Control Center's setting.
-      const allowed = !!profile && (
-        profile.role === 'admin' ||
-        profile.role === 'manager' ||
-        canAccessModule(mod?.visibility_type, mod?.allowed_department, profile, false)
-      )
+      // Every screen under /attendance reads other people's punches, so the
+      // module is admin-only. Control Center's visibility setting can still
+      // HIDE it (`hidden`), but it can no longer open it: a toggle meant for
+      // navigation must not be able to hand an employee the company's
+      // attendance. Row access is enforced by RLS and by the API routes
+      // regardless of what this guard decides — see
+      // supabase/migrations/20260812000000_attendance_payroll_isolation.sql.
+      const allowed = !!profile
+        && profile.role === 'admin'
+        && canAccessModule(mod?.visibility_type, mod?.allowed_department, profile, true)
 
       if (!allowed) {
         router.replace('/coming-soon')

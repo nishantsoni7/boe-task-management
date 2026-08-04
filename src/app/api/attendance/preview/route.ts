@@ -2,7 +2,11 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 
-const ALLOWED_ROLES = ['admin', 'manager']
+// Admin only. This route reads every employee's stored punches for the month in
+// the uploaded file and returns the before/after diff, so it is team attendance
+// visibility, not just an upload. BOE grants that to admins; holding the
+// manager role is not, by itself, a grant over colleagues' attendance.
+const ALLOWED_ROLES = ['admin']
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -242,7 +246,7 @@ export async function POST(req: NextRequest) {
   const { data: callerProfile } = await svc
     .from('users').select('role').eq('id', user.id).single()
   if (!callerProfile || !ALLOWED_ROLES.includes(callerProfile.role)) {
-    return NextResponse.json({ error: 'Forbidden: admin or manager role required' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   let fileBuffer: Buffer

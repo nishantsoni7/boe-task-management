@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 const PAGE_SIZE = 50
 
@@ -8,20 +8,27 @@ function formatTimeCSV(iso: string): string {
   return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
 }
 
+// Service-role route: RLS does not apply, so the identity check below is the
+// entire boundary. Before it existed, omitting `employee_id` returned every
+// employee's punches — and `format=csv` returned the whole company's attendance,
+// with names, as a downloadable file, to any authenticated caller.
+//
+// An admin may query anyone, or everyone. A non-admin is pinned to their own
+// user id whatever the query string says, so a cross-employee export is not
+// refused so much as impossible to express.
 export async function GET(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  const { data: { user }, error: authErr } = await svc.auth.getUser(token)
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const { searchParams } = new URL(req.url)
-  const employeeId = searchParams.get('employee_id')
+  const requested = searchParams.get('employee_id')
+
+  const auth = await requireSelfOrAdmin(req, requested)
+  if (isResponse(auth)) return auth
+  const { caller } = auth
+  const svc = caller.svc
+
+  // Admin: honour the filter as given (null = every employee). Non-admin: their
+  // own rows only, regardless of what arrived.
+  const employeeId = caller.isAdmin ? requested : caller.id
+
   const fromDate   = searchParams.get('from')
   const toDate     = searchParams.get('to')
   const format     = searchParams.get('format')

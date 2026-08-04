@@ -1,26 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 // Returns all attendance records for one employee (unpaginated).
 // Used by the employee detail page for summary card computation.
-// Uses service role to bypass RLS.
+//
+// Runs on the service role, so RLS is not the boundary here — the identity
+// check is. `employee_id` used to be taken straight from the query string with
+// no check at all, which made this route a full read of any employee's
+// attendance for anyone holding a valid token. It is now authorised first, and
+// the query is constrained to the id that survived that check, never the raw
+// parameter.
 export async function GET(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  const { data: { user }, error: authErr } = await svc.auth.getUser(token)
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const { searchParams } = new URL(req.url)
-  const employeeId = searchParams.get('employee_id')
-  if (!employeeId) return NextResponse.json({ error: 'employee_id required' }, { status: 400 })
+  const requested = searchParams.get('employee_id')
 
-  const { data, error } = await svc
+  const auth = await requireSelfOrAdmin(req, requested)
+  if (isResponse(auth)) return auth
+  const { caller, employeeId } = auth
+
+  const { data, error } = await caller.svc
     .from('attendance_records')
     .select('id, attendance_date, check_in_at, check_out_at, status')
     .eq('user_id', employeeId)
