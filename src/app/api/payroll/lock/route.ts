@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   const { data: callerProfile } = await svc
     .from('users')
-    .select('role')
+    .select('role, full_name')
     .eq('id', caller.id)
     .single()
   if (callerProfile?.role !== 'admin') {
@@ -49,12 +49,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Only generated periods can be locked' }, { status: 422 })
   }
 
+  const previousStatus = period.status as 'draft' | 'generated'
+
   const { error: updateErr } = await svc
     .from('payroll_periods')
     .update({ status: 'locked', locked_at: new Date().toISOString(), locked_by: caller.id })
     .eq('id', payroll_period_id)
 
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
+
+  // Record the lock in the append-only status trail, so a lock/unlock/re-lock
+  // cycle reads as a sequence rather than as whatever locked_at happens to hold
+  // now — those two columns are overwritten by each new lock, this is not.
+  //
+  // Best-effort: locked_at / locked_by already record that this lock happened,
+  // so a failure here is logged rather than failing a lock that has landed. The
+  // unlock route treats its own audit write as mandatory instead, because there
+  // no column records it.
+  const { error: eventErr } = await svc
+    .from('payroll_period_status_events')
+    .insert({
+      payroll_period_id,
+      event:           'locked',
+      previous_status: previousStatus,
+      new_status:      'locked',
+      actor_id:        caller.id,
+      actor_name:      (callerProfile as { full_name?: string | null } | null)?.full_name ?? null,
+    })
+  if (eventErr) console.error('[payroll/lock] status event insert:', eventErr.message)
 
   return NextResponse.json({ success: true })
 }

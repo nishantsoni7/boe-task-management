@@ -130,7 +130,9 @@ export default function PayrollResultsPage() {
     const label = period
       ? `${MONTHS[period.payroll_month - 1]} ${period.payroll_year}`
       : 'this period'
-    if (!confirm(`Lock payroll for ${label}? This cannot be undone.\n\nEmployees who have not yet reviewed will no longer be able to do so.`)) return
+    // No longer claims the lock is permanent: an admin can reopen a locked
+    // period from the Payroll dashboard, with a recorded reason.
+    if (!confirm(`Lock payroll for ${label}?\n\nEmployees who have not yet reviewed will no longer be able to do so. An admin can reopen the period later with a stated reason.`)) return
 
     setLocking(true)
     setLockError(null)
