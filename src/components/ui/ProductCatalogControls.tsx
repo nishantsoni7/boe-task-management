@@ -24,7 +24,6 @@ export const STATUS_OPTIONS = [
 
 export type SortValue   = (typeof SORT_OPTIONS)[number]['value']
 export type StatusValue = (typeof STATUS_OPTIONS)[number]['value']
-export type CategoryCount = { name: string; count: number }
 
 const controlStyle: React.CSSProperties = {
   height: '36px',
@@ -40,58 +39,9 @@ const controlStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-// ── Category chips ────────────────────────────────────────────────────────────
-// Chips (not a dropdown) because the catalog runs a handful of admin-managed
-// categories; they stay one tap away and wrap instead of overflowing.
-
-export function CategoryChips({
-  categories, selected, allCount, disabled, onSelect,
-}: {
-  categories: CategoryCount[]
-  selected: string
-  allCount: number
-  disabled: boolean
-  onSelect: (category: string) => void
-}) {
-  const chips = [{ name: '', label: 'All Products', count: allCount },
-    ...categories.map(c => ({ name: c.name, label: c.name, count: c.count }))]
-
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-      {chips.map(chip => {
-        const active = chip.name === selected
-        return (
-          <button
-            key={chip.name || '__all__'}
-            onClick={() => onSelect(chip.name)}
-            disabled={disabled}
-            aria-pressed={active}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '7px',
-              fontSize: '12.5px', fontWeight: active ? 600 : 500,
-              color: active ? '#fff' : colors.secondary,
-              background: active ? '#1A2035' : colors.base,
-              border: `1.5px solid ${active ? '#1A2035' : colors.border}`,
-              borderRadius: '999px',
-              padding: '7px 13px',
-              cursor: disabled ? 'default' : 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {chip.label}
-            <span style={{
-              fontSize: '11px', fontWeight: 600,
-              fontFamily: font.mono,
-              color: active ? 'rgba(255,255,255,0.75)' : colors.muted,
-            }}>
-              {chip.count}
-            </span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
+// The category tab strip that used to live here is gone: category is sidebar
+// navigation now (see `@/components/layout/ProductMasterNav`), not a filter the
+// content page owns, so there is no "All Products" chip to render.
 
 // ── Search + status + sort ────────────────────────────────────────────────────
 

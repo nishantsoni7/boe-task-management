@@ -2,18 +2,28 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { ClipboardList, QrCode, Package, Tag, Home, X } from 'lucide-react'
+import { ClipboardList, QrCode, Tag, Home, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { useViewAs } from '@/hooks/useViewAs'
 import { createClient } from '@/lib/supabase/client'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { ProductMasterNav } from '@/components/layout/ProductMasterNav'
+import { useShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
+import { isProductRoute, productCategoryHref, resolveParentClick } from '@/lib/showroom/productNav'
 
 type ShowroomAdminLayoutProps = {
   profile: UserProfile | null
   title: string
   subtitle?: string
+  /**
+   * Stored name of the Product Master category to highlight. Passed in rather
+   * than read here: only the Product Master routes carry it, and both of them
+   * already sit inside the `<Suspense>` boundary `useSearchParams` needs — the
+   * shell must not drag that requirement onto every other page in the module.
+   */
+  activeProductCategory?: string
   onSignOut: () => void
   children: React.ReactNode
 }
@@ -22,7 +32,9 @@ type ModVisRow = { visibility_type: string; allowed_department: string[] | null 
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
-export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, children }: ShowroomAdminLayoutProps) {
+export function ShowroomAdminLayout({
+  profile, title, subtitle, activeProductCategory: activeCategory = '', onSignOut, children,
+}: ShowroomAdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
   const router   = useRouter()
@@ -55,6 +67,29 @@ export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, child
   const navTo = (path: string) => {
     router.push(path)
     setSidebarOpen(false)
+  }
+
+  // Product Master sub-navigation ─────────────────────────────────────────────
+  const productCounts = useShowroomProductCounts(canManageProducts)
+  const onProductRoute = isProductRoute(pathname)
+
+  // Open whenever the user is inside Product Master, and closable from there.
+  // Adjusted during render (not in an effect) so entering or leaving the module
+  // never shows the wrong state for a frame.
+  const [productNavOpen, setProductNavOpen] = useState(onProductRoute)
+  const [prevOnProductRoute, setPrevOnProductRoute] = useState(onProductRoute)
+  if (onProductRoute !== prevOnProductRoute) {
+    setPrevOnProductRoute(onProductRoute)
+    setProductNavOpen(onProductRoute)
+  }
+
+  const handleProductParentClick = () => {
+    const result = resolveParentClick({
+      onProductRoute,
+      firstCategory: productCounts.categories[0]?.name ?? null,
+    })
+    if (result.action === 'toggle') setProductNavOpen(open => !open)
+    else navTo(result.href)
   }
 
   return (
@@ -110,11 +145,14 @@ export function ShowroomAdminLayout({ profile, title, subtitle, onSignOut, child
             onClick={() => navTo('/showroom-admin/qr')}
           />
           {canManageProducts && (
-            <NavItem
-              label="Product Master"
-              icon={<Package size={15} strokeWidth={1.8} />}
-              active={pathname.startsWith('/showroom-admin/products')}
-              onClick={() => navTo('/showroom-admin/products')}
+            <ProductMasterNav
+              categories={productCounts.categories}
+              totalCount={productCounts.total}
+              activeCategory={activeCategory}
+              active={onProductRoute}
+              expanded={productNavOpen}
+              onParentClick={handleProductParentClick}
+              onSelectCategory={name => navTo(productCategoryHref(name))}
             />
           )}
           {canManageProducts && (

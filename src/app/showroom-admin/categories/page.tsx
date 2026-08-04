@@ -10,6 +10,7 @@ import { colors, font } from '@/lib/tokens'
 import { Tag, PlusCircle, Pencil, Trash2, Check, X } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { useRefreshShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
 
 type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
 const teamFallback = (team?: string | null) =>
@@ -38,6 +39,9 @@ export default function ShowroomCategoriesPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
+  // Adding, renaming or deleting a category changes the Product Master sidebar
+  // entries — without this the badges stay stale until the query goes cold.
+  const refreshNavCounts = useRefreshShowroomProductCounts()
 
   const loadData = async (token: string) => {
     const [catRes, prodRes] = await Promise.all([
@@ -116,6 +120,7 @@ export default function ShowroomCategoriesPage() {
     } else {
       setNewName('')
       setNotice('Category added.')
+      refreshNavCounts()
       await loadData(session.access_token)
     }
     setAdding(false)
@@ -156,6 +161,7 @@ export default function ShowroomCategoriesPage() {
     setEditName('')
     setNotice('Category updated.')
     setSavingEdit(false)
+    refreshNavCounts()
     await loadData(session.access_token)
   }
 
@@ -182,6 +188,7 @@ export default function ShowroomCategoriesPage() {
     setDeleteTarget(null)
     setDeleteBusy(false)
     setNotice('Category deleted.')
+    refreshNavCounts()
     await loadData(session.access_token)
   }
 

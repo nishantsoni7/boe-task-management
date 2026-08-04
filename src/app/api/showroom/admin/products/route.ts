@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
+import { tallyByCategory } from '@/lib/showroom/productCounts'
 
 function serviceClient() {
   return createClient(
@@ -101,7 +103,43 @@ function filterOps({ search, category, status }: Filters): FilterOp[] {
   return ops
 }
 
+// Sidebar counts: the catalog total and one count per active category, under the
+// same rule the Product Master list defaults to — active products only, so a
+// badge never promises rows the list will not show.
+//
+// Exactly TWO database round trips, whatever the category count: the category
+// names, then one paged read of the products' category column. The obvious
+// shape — a head count per category — is an N+1 that grows with the catalogue,
+// which is why it is not used here.
+async function categoryCounts(client: ReturnType<typeof serviceClient>) {
+  // Active categories only, matching GET /api/showroom/admin/categories (which
+  // needs ?all=1 to include deactivated ones). A deactivated category must not
+  // reappear as a sidebar entry.
+  const { data: categoryRows, error } = await client
+    .from('showroom_categories')
+    .select('name')
+    .eq('is_active', true)
+    .order('name', { ascending: true })
+  if (error) throw new Error(error.message)
+
+  const categoryNames = (categoryRows ?? []).map(r => r.name as string)
+
+  // Paged: PostgREST silently caps a plain read at 1000 rows, which would
+  // under-count every badge without any error once the catalogue grows past it.
+  const result = await fetchAllRows<{ id: string; category: string | null }>((from, to) =>
+    client
+      .from('showroom_products')
+      .select('id, category')
+      .eq('is_active', true)
+      .order('id', { ascending: true })
+      .range(from, to),
+  )
+
+  return tallyByCategory(unwrapPagedRows('showroom product counts', result), categoryNames)
+}
+
 // GET /api/showroom/admin/products
+//   • `counts=1`       → sidebar badges only: catalog total + per-category counts.
 //   • No `page` param  → every product, including inactive (legacy shape).
 //     The Categories page depends on this to count products per category.
 //   • With `page`      → server-side search/filter/sort/pagination for Product Master.
@@ -110,6 +148,17 @@ export async function GET(req: NextRequest) {
   if (!client) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const sp = req.nextUrl.searchParams
+
+  if (sp.get('counts') === '1') {
+    try {
+      return NextResponse.json(await categoryCounts(client))
+    } catch (err) {
+      // The underlying message can carry schema detail; log it and hand the
+      // client something it can show.
+      console.error('[showroom-product-counts]', err)
+      return NextResponse.json({ error: 'Failed to load product counts' }, { status: 500 })
+    }
+  }
 
   if (!sp.has('page')) {
     const { data, error } = await client
@@ -156,37 +205,26 @@ export async function GET(req: NextRequest) {
     return query
   }
 
-  // Category chips, the "All Products" count and the catalog-wide active/inactive
-  // split depend only on `search` + `status` — never on which category tab is
-  // selected, the sort order, or the page number. The client tracks that scope
-  // and only asks for this block again when search or status actually changed
-  // (or a mutation bumped its refresh key); `meta=0` means "nothing in that
-  // scope moved, skip the aggregate queries and keep what I already have."
+  // The catalog-wide active/inactive split depends on nothing the controls can
+  // change — not the category, the search, the sort or the page. It only moves
+  // when a product is created, deleted or toggled, so the client asks for it on
+  // the first load and again after a mutation; `meta=0` means "keep what I
+  // already have, skip these counts."
+  //
+  // Per-category counts are NOT here: they belong to the sidebar, which is
+  // mounted on every showroom-admin page, and are served by the `counts=1`
+  // branch above.
   const skipMeta = sp.get('meta') === '0'
 
   const loadMeta = async () => {
-    // Chip names come from the categories table (the same source the create/edit
-    // forms use); each count reflects the active search + status so the chips
-    // agree with the list. Category count is small and admin-managed, so one
-    // count per category stays cheap.
-    const { data: categoryRows } = await client
-      .from('showroom_categories')
-      .select('name')
-      .order('name', { ascending: true })
-    const categoryNames = (categoryRows ?? []).map(r => r.name as string)
-
-    const [allRes, catalogRes, inactiveRes, ...categoryCounts] = await Promise.all([
-      countQuery({ ...filters, category: '' }),
+    const [catalogRes, inactiveRes] = await Promise.all([
       client.from('showroom_products').select('id', { count: 'exact', head: true }),
       client.from('showroom_products').select('id', { count: 'exact', head: true }).eq('is_active', false),
-      ...categoryNames.map(name => countQuery({ ...filters, category: name })),
     ])
 
     return {
-      allCount:      allRes.count ?? 0,
       catalogTotal:  catalogRes.count ?? 0,
       inactiveTotal: inactiveRes.count ?? 0,
-      categories:    categoryNames.map((name, i) => ({ name, count: categoryCounts[i]?.count ?? 0 })),
     }
   }
 
@@ -218,7 +256,9 @@ export async function GET(req: NextRequest) {
     total,
     page,
     pageSize: PRODUCTS_PER_PAGE,
-    ...(meta ?? {}),
+    // Nested rather than spread so the client can tell "recomputed" from
+    // "skipped" without inspecting individual fields.
+    ...(meta ? { meta } : {}),
   })
 }
 

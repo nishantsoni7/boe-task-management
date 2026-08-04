@@ -9,6 +9,8 @@ import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors } from '@/lib/tokens'
 import { useViewAs } from '@/hooks/useViewAs'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { useRefreshShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
+import { productCategoryHref } from '@/lib/showroom/productNav'
 
 type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
 const teamFallback = (team?: string | null) =>
@@ -99,6 +101,7 @@ export default function NewProductPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
+  const refreshNavCounts = useRefreshShowroomProductCounts()
 
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
@@ -200,7 +203,10 @@ export default function NewProductPage() {
       return
     }
 
-    router.push('/showroom-admin/products')
+    // Land on the new product's own category rather than the bare list, which
+    // would resolve to whichever category happens to be first.
+    refreshNavCounts()
+    router.push(productCategoryHref(category.trim()))
   }
 
   if (loadingAuth) return <LoadingScreen />

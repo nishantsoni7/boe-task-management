@@ -7,23 +7,30 @@ import type { UserProfile } from '@/lib/types'
 import type { ShowroomProduct } from '@/lib/types'
 import { AlertBanner, EmptyState, LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
-import { colors, font } from '@/lib/tokens'
-import { Package, PlusCircle, Pencil, QrCode, X, Printer, Trash2, Download } from 'lucide-react'
+import { colors } from '@/lib/tokens'
+import { PlusCircle, X, Printer, Trash2, Download } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 import { useToast, Toast } from '@/components/ui/toast'
 import {
-  CategoryChips,
   ProductToolbar,
   ProductPagination,
   PRODUCTS_PER_PAGE,
   SORT_OPTIONS,
   STATUS_OPTIONS,
-  type CategoryCount,
   type SortValue,
   type StatusValue,
 } from '@/components/ui/ProductCatalogControls'
+import {
+  useShowroomProductCounts, useRefreshShowroomProductCounts,
+} from '@/hooks/queries/useShowroomProductCounts'
+import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import {
+  PRODUCT_LIST_PATH, PRODUCT_RETURN_MARKER_KEY,
+  productEditHref, resolveCategorySelection, type ProductReturnMarker,
+} from '@/lib/showroom/productNav'
+import { ProductTable } from './ProductTable'
 import {
   downloadPlainQrImage,
   productQrFileNameFor,
@@ -36,7 +43,7 @@ type ModVisRow = { visibility_type: string; allowed_department: string[] | null 
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
-const LIST_PATH = '/showroom-admin/products'
+const LIST_PATH = PRODUCT_LIST_PATH
 const DEFAULT_SORT: SortValue = 'code_asc'
 const SEARCH_DEBOUNCE_MS = 220
 
@@ -57,10 +64,8 @@ function ShowroomProductsContent() {
   const [profile,   setProfile]   = useState<UserProfile | null>(null)
   const [products,  setProducts]  = useState<ShowroomProduct[]>([])
   const [total,         setTotal]         = useState(0)
-  const [allCount,      setAllCount]      = useState(0)
   const [catalogTotal,  setCatalogTotal]  = useState(0)
   const [inactiveTotal, setInactiveTotal] = useState(0)
-  const [categories,    setCategories]    = useState<CategoryCount[]>([])
   const [loading,   setLoading]   = useState(true)
   const [fetching,  setFetching]  = useState(false)
   const [error,     setError]     = useState('')
@@ -77,6 +82,34 @@ function ShowroomProductsContent() {
   const searchParams = useSearchParams()
   const supabase     = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
+
+  // Same query the sidebar badges read — TanStack serves both from one fetch.
+  // Needed here for the category order, which is what "no category in the URL"
+  // resolves to.
+  const navCounts        = useShowroomProductCounts(!!profile)
+  const refreshNavCounts = useRefreshShowroomProductCounts()
+
+  // Returning from a product restores where the user was in the list.
+  useListScrollRestore()
+
+  // Opening a product leaves a one-shot note saying the LIST performed this
+  // navigation, so the product's Back control knows the entry behind it is this
+  // list and can use real history (which restores scroll). Written here rather
+  // than on every render: it must mean "the list just handed off", not "a list
+  // was open at some point".
+  const listSearch = searchParams.toString()
+  const openProduct = useCallback((code: string) => {
+    try {
+      window.sessionStorage.setItem(
+        PRODUCT_RETURN_MARKER_KEY,
+        JSON.stringify({ search: listSearch } satisfies ProductReturnMarker),
+      )
+    } catch {
+      // Storage disabled (Safari private mode) — Back falls back to an ordinary
+      // navigation, which is the safe branch anyway.
+    }
+    router.push(productEditHref(code, listSearch))
+  }, [router, listSearch])
 
   const resultsRef = useRef<HTMLDivElement>(null)
   const reqSeq     = useRef(0)
@@ -170,22 +203,55 @@ function ShowroomProductsContent() {
     if (!effectiveHasAccess) router.replace('/modules')
   }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 
-  // Category chips, the "All Products" count and the active/inactive split
-  // depend only on search + status (never on which category tab, sort order,
-  // or page is selected) and change again after a mutation (reload()). So a
-  // request that only changes category/sort/page tells the API to skip
-  // recomputing that block (`meta=0`) and this component just keeps the
-  // values it already has, instead of paying for it on every request.
+  // The catalog-wide active/inactive split changes only when a product is
+  // created, deleted or toggled — never when a control moves. So every request
+  // except the first after a mutation tells the API to skip it (`meta=0`) and
+  // this component keeps the numbers it already has.
   const metaKeyRef = useRef<string | null>(null)
+
+  // ── Which category is this? ────────────────────────────────────────────────
+  // Product Master is always one category — there is no all-products view. The
+  // bare route, a bookmark for a category that has since been renamed, deleted
+  // or deactivated, a differently-cased URL and a malformed one all end up on a
+  // real category instead of a permanently empty list.
+  //
+  // `replace`, never `push`, so none of this adds a history entry; and the value
+  // written is always a stored name, so the next render resolves to `ok` and the
+  // redirect cannot repeat.
+  const categoryNames = useMemo(
+    () => navCounts.categories.map(c => c.name),
+    [navCounts.categories],
+  )
+  const resolution = resolveCategorySelection({
+    requested: category,
+    available: categoryNames,
+    ready: !!profile && navCounts.ready,
+  })
+  const resolvedStatus   = resolution.status
+  const resolvedCategory = 'category' in resolution ? resolution.category : ''
+
+  useEffect(() => {
+    if (resolvedStatus === 'normalize') {
+      // Same category, different spelling — the page number still means something.
+      updateParams({ category: resolvedCategory }, 'replace')
+    } else if (resolvedStatus === 'select') {
+      updateParams({ category: resolvedCategory, page: null }, 'replace')
+    }
+  }, [resolvedStatus, resolvedCategory, updateParams])
 
   // Fetch the current page whenever the profile is confirmed or any catalog
   // control changes. A sequence guard plus abort means a slow earlier response
   // can never overwrite a newer one.
+  //
+  // Gated on a resolved category: firing while the URL still holds an unknown
+  // (or no) category would spend a request on a view the user is about to be
+  // redirected away from — and, with no category, would flash the whole
+  // catalogue, which is the one screen this module must never show.
   useEffect(() => {
-    if (!profile) return
+    if (!profile || resolvedStatus !== 'ok') return
     const seq = ++reqSeq.current
     const controller = new AbortController()
-    const metaKey = `${q}|${status}|${refreshKey}`
+    const metaKey = String(refreshKey)
     const skipMeta = metaKeyRef.current === metaKey
 
     const run = async () => {
@@ -214,11 +280,9 @@ function ShowroomProductsContent() {
           setTotal(data.total ?? 0)
           // Omitted (meta was skipped) means the previous values still hold —
           // only overwrite when the server actually recomputed this block.
-          if (Array.isArray(data.categories)) {
-            setAllCount(data.allCount ?? 0)
-            setCatalogTotal(data.catalogTotal ?? 0)
-            setInactiveTotal(data.inactiveTotal ?? 0)
-            setCategories(data.categories as CategoryCount[])
+          if (data.meta) {
+            setCatalogTotal(data.meta.catalogTotal ?? 0)
+            setInactiveTotal(data.meta.inactiveTotal ?? 0)
             metaKeyRef.current = metaKey
           }
           setError('')
@@ -237,7 +301,7 @@ function ShowroomProductsContent() {
     run()
     return () => controller.abort()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, q, category, status, sort, page, refreshKey])
+  }, [profile, resolvedStatus, q, category, status, sort, page, refreshKey])
 
   const lastPage = Math.max(1, Math.ceil(total / PRODUCTS_PER_PAGE))
 
@@ -253,7 +317,8 @@ function ShowroomProductsContent() {
     router.replace('/login')
   }
 
-  const reload = () => setRefreshKey(k => k + 1)
+  // A mutation moves both the list and the sidebar badges.
+  const reload = () => { setRefreshKey(k => k + 1); refreshNavCounts() }
 
   const handleToggleActive = async (product: ShowroomProduct) => {
     setTogglingId(product.id)
@@ -316,11 +381,43 @@ function ShowroomProductsContent() {
     if (top < 0) resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const filtersActive = !!q || !!category || status !== 'active' || sort !== DEFAULT_SORT
+  // Category is navigation, not a filter — "Clear filters" must not drop the
+  // user out of the category they are browsing.
+  const filtersActive = !!q || status !== 'active' || sort !== DEFAULT_SORT
+
+  // No category can be chosen. Either the counts request failed — in which case
+  // the categories are unknown, not absent, and saying "add one" would be a lie
+  // — or the catalogue genuinely has none yet. Checked before `loading`, which
+  // never clears here because there is nothing to fetch.
+  if (resolvedStatus === 'none') {
+    return (
+      <ShowroomAdminLayout
+        profile={profile}
+        title="Product Master"
+        onSignOut={handleSignOut}
+      >
+        {navCounts.failed ? (
+          <AlertBanner variant="red">
+            Couldn&apos;t load product categories. Refresh the page to try again.
+          </AlertBanner>
+        ) : (
+          <EmptyState
+            message="No categories yet"
+            hint="Add a category under Categories, then add products to it."
+          />
+        )}
+      </ShowroomAdminLayout>
+    )
+  }
 
   if (loading) {
     return (
-      <ShowroomAdminLayout profile={profile} title="Product Master" onSignOut={handleSignOut}>
+      <ShowroomAdminLayout
+        profile={profile}
+        title="Product Master"
+        activeProductCategory={category}
+        onSignOut={handleSignOut}
+      >
         <TableSkeleton />
       </ShowroomAdminLayout>
     )
@@ -334,7 +431,10 @@ function ShowroomProductsContent() {
     <ShowroomAdminLayout
       profile={profile}
       title="Product Master"
-      subtitle={`${catalogTotal - inactiveTotal} active · ${inactiveTotal} inactive`}
+      subtitle={category
+        ? `${category} · ${total} product${total === 1 ? '' : 's'}`
+        : `${catalogTotal - inactiveTotal} active · ${inactiveTotal} inactive`}
+      activeProductCategory={category}
       onSignOut={handleSignOut}
     >
       {qrProduct && (
@@ -350,10 +450,9 @@ function ShowroomProductsContent() {
         />
       )}
       {/* Header row — title/subtitle already sit above in ShowroomAdminLayout's
-          sticky header, so this row is just the primary action, right-aligned.
-          Kept tight to the category tabs below it — this row's own height
-          already reads as the section break; it doesn't need extra margin too. */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '6px' }}>
+          sticky header, and the category now lives in the sidebar, so this row
+          is just the primary action, right-aligned. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '10px' }}>
         <button
           onClick={() => router.push('/showroom-admin/products/new')}
           className="boe-btn boe-btn-primary"
@@ -382,14 +481,6 @@ function ShowroomProductsContent() {
         />
       ) : (
         <>
-          <CategoryChips
-            categories={categories}
-            selected={category}
-            allCount={allCount}
-            disabled={fetching}
-            onSelect={next => updateParams({ category: next || null, page: null })}
-          />
-
           <ProductToolbar
             searchInput={searchInput}
             status={status}
@@ -399,14 +490,14 @@ function ShowroomProductsContent() {
             onSearchChange={setSearchInput}
             onStatusChange={next => updateParams({ status: next === 'active' ? null : next, page: null })}
             onSortChange={next => updateParams({ sort: next === DEFAULT_SORT ? null : next, page: null })}
-            onClear={() => updateParams({ q: null, category: null, status: null, sort: null, page: null })}
+            onClear={() => updateParams({ q: null, status: null, sort: null, page: null })}
           />
 
           <div ref={resultsRef} style={{ scrollMarginTop: '16px' }}>
             {total === 0 ? (
               <EmptyState
                 message="No products match your filters"
-                hint="Try a different search term, category or status — or clear the filters."
+                hint="Try a different search term or status — or pick another category in the sidebar."
               />
             ) : (
               <>
@@ -414,7 +505,9 @@ function ShowroomProductsContent() {
                   products={products}
                   fetching={fetching}
                   togglingId={togglingId}
-                  onEdit={code => router.push(`/showroom-admin/products/${code}/edit`)}
+                  // The list's exact state rides along, so Back from the edit
+                  // page can rebuild this view even without browser history.
+                  onEdit={openProduct}
                   onToggle={handleToggleActive}
                   onPrintQr={setQrProduct}
                   onDelete={setDeleteTarget}
@@ -474,225 +567,6 @@ function TableSkeleton() {
         </div>
       ))}
     </div>
-  )
-}
-
-// ── Product table ─────────────────────────────────────────────────────────────
-
-function ProductTable({
-  products, fetching, togglingId, onEdit, onToggle, onPrintQr, onDelete,
-}: {
-  products: ShowroomProduct[]
-  fetching: boolean
-  togglingId: string | null
-  onEdit: (code: string) => void
-  onToggle: (p: ShowroomProduct) => void
-  onPrintQr: (p: ShowroomProduct) => void
-  onDelete: (p: ShowroomProduct) => void
-}) {
-  if (products.length === 0) return null
-
-  return (
-    <div>
-      {/* The previous rows stay on screen while the next page loads — dimmed and
-          inert rather than replaced by a skeleton, so the table never blanks. */}
-      <div style={{
-        background: colors.base,
-        border: `1.5px solid ${colors.border}`,
-        borderRadius: '10px',
-        overflow: 'hidden',
-        opacity: fetching ? 0.55 : 1,
-        pointerEvents: fetching ? 'none' : undefined,
-        transition: 'opacity 120ms ease',
-      }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                {['Image', 'Product Code', 'Product Name', 'Category', 'MRP', 'Status', 'Actions'].map(h => (
-                  <th key={h} style={{
-                    padding: '8px 16px', textAlign: h === 'MRP' ? 'right' : 'left',
-                    fontSize: '10px', fontWeight: 600, color: colors.muted,
-                    textTransform: 'uppercase', letterSpacing: '0.05em',
-                    whiteSpace: 'nowrap',
-                  }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {products.map(product => (
-                <ProductRow
-                  key={product.id}
-                  product={product}
-                  toggling={togglingId === product.id}
-                  onEdit={() => onEdit(product.product_code)}
-                  onToggle={() => onToggle(product)}
-                  onPrintQr={() => onPrintQr(product)}
-                  onDelete={() => onDelete(product)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Thumbnail with a safe fallback: hides the broken-image icon and shows a
-// neutral placeholder box if the URL is missing or fails to load.
-function ProductThumb({ src, alt }: { src: string | null; alt: string }) {
-  const [errored, setErrored] = useState(false)
-
-  const showImage = !!src && !errored
-
-  return (
-    <div style={{
-      width: 56, height: 56, borderRadius: '8px', flexShrink: 0,
-      background: colors.raised,
-      border: `1px solid ${colors.border}`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      overflow: 'hidden',
-    }}>
-      {showImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          decoding="async"
-          onError={() => setErrored(true)}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        />
-      ) : (
-        <Package size={20} color={colors.muted} strokeWidth={1.5} />
-      )}
-    </div>
-  )
-}
-
-function ProductRow({
-  product, toggling, onEdit, onToggle, onPrintQr, onDelete,
-}: {
-  product: ShowroomProduct
-  toggling: boolean
-  onEdit: () => void
-  onToggle: () => void
-  onPrintQr: () => void
-  onDelete: () => void
-}) {
-  return (
-    <tr style={{
-      borderBottom: `1px solid ${colors.border}`,
-      opacity: product.is_active ? 1 : 0.6,
-    }}>
-      {/* Image */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle' }}>
-        <ProductThumb src={product.images?.[0] ?? product.image_url ?? null} alt={product.name} />
-      </td>
-
-      {/* Product Code */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-        <span style={{
-          fontSize: '12px', fontWeight: 600,
-          color: '#1A2035',
-          background: 'rgba(26,32,53,0.06)',
-          borderRadius: '5px', padding: '4px 9px',
-          whiteSpace: 'nowrap',
-        }}>
-          {product.product_code}
-        </span>
-      </td>
-
-      {/* Product Name */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', minWidth: '160px' }}>
-        <span style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary }}>
-          {product.name}
-        </span>
-      </td>
-
-      {/* Category */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-        <span style={{ fontSize: '12px', color: colors.tertiary }}>
-          {product.category}
-        </span>
-      </td>
-
-      {/* MRP */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
-        <span style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary, fontFamily: font.body }}>
-          ₹{Number(product.mrp).toLocaleString('en-IN')}
-        </span>
-      </td>
-
-      {/* Status */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-        <button
-          onClick={onToggle}
-          disabled={toggling}
-          style={{
-            fontSize: '11px', fontWeight: 600,
-            color: product.is_active ? '#166534' : colors.muted,
-            background: product.is_active ? '#F0FDF4' : colors.float,
-            border: `1px solid ${product.is_active ? '#BBF7D0' : colors.border}`,
-            borderRadius: '999px',
-            padding: '4px 12px',
-            cursor: toggling ? 'default' : 'pointer',
-            opacity: toggling ? 0.6 : 1,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {toggling ? '…' : product.is_active ? 'Active' : 'Inactive'}
-        </button>
-      </td>
-
-      {/* Actions */}
-      <td style={{ padding: '10px 16px', verticalAlign: 'middle' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <IconButton onClick={onPrintQr} title="Print QR label" variant="neutral">
-            <QrCode size={14} strokeWidth={1.8} />
-          </IconButton>
-          <IconButton onClick={onEdit} title="Edit product" variant="neutral">
-            <Pencil size={14} strokeWidth={1.8} />
-          </IconButton>
-          <IconButton onClick={onDelete} title="Delete product" variant="red">
-            <Trash2 size={14} strokeWidth={1.8} />
-          </IconButton>
-        </div>
-      </td>
-    </tr>
-  )
-}
-
-function IconButton({
-  onClick, title, variant, children,
-}: {
-  onClick: () => void
-  title: string
-  variant: 'neutral' | 'red'
-  children: React.ReactNode
-}) {
-  const palette = variant === 'red'
-    ? { color: colors.red, background: colors.redTint, border: 'rgba(217,79,79,0.2)' }
-    : { color: colors.secondary, background: colors.float, border: colors.border }
-
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: 28, height: 28, flexShrink: 0,
-        color: palette.color,
-        background: palette.background,
-        border: `1px solid ${palette.border}`,
-        borderRadius: '6px',
-        cursor: 'pointer',
-      }}
-    >
-      {children}
-    </button>
   )
 }
 
