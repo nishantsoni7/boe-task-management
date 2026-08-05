@@ -132,7 +132,12 @@ export function ItemUpdateModal({
       <div onKeyDown={onKeyDown} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {error && <MeetingModalError message={error} />}
 
-        {/* What we said last time, before what we say now. */}
+        {/* What is on record right now — the commitment this entry replaces.
+            It must be `item.latest_update`, NOT the `previousUpdate` prop: the
+            prop is "what the CURRENT update replaced", which is the right thing
+            on a table row (where the current value is shown directly above it)
+            and the wrong thing here, one step too far back. Opening this dialog
+            to write the third update was showing the first. */}
         <div style={{
           padding: '10px 12px', borderRadius: '8px',
           background: colors.raised, border: `1px solid ${colors.border}`,
@@ -141,11 +146,18 @@ export function ItemUpdateModal({
             fontSize: '10px', fontWeight: 700, color: colors.muted,
             textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px',
           }}>
-            Previous update
+            Standing commitment
           </div>
-          <div style={{ fontSize: '12.5px', color: previousUpdate ? colors.secondary : colors.muted, lineHeight: 1.45 }}>
-            {previousUpdate ?? 'No update recorded yet — this is the first.'}
+          <div style={{ fontSize: '12.5px', color: item.latest_update ? colors.secondary : colors.muted, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+            {item.latest_update ?? 'No update recorded yet — this is the first.'}
           </div>
+          {/* One step further back, for the reader who wants the direction of
+              travel rather than just the last line. */}
+          {previousUpdate && (
+            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '6px', lineHeight: 1.4 }}>
+              <span style={{ fontWeight: 600 }}>Before that: </span>{previousUpdate}
+            </div>
+          )}
           {item.next_follow_up_date && (
             <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '6px' }}>
               Committed follow-up: {formatMeetingDate(item.next_follow_up_date)}
