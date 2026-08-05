@@ -69,6 +69,7 @@ export default function BoeOsHomePage() {
   const [orderNotif, setOrderNotif] = useState<number | null>(null)
   const [modVis,      setModVis]      = useState<Record<string, ModVisRow>>({})
   const [ordersAllowed, setOrdersAllowed] = useState(false)
+  const [meetingsAllowed, setMeetingsAllowed] = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -89,6 +90,7 @@ export default function BoeOsHomePage() {
         financeNotifsRes,
         orderNotifsRes,
         ordersAllowedRes,
+        meetingsAllowedRes,
       ] = await Promise.all([
         supabase
           .from('users')
@@ -118,6 +120,11 @@ export default function BoeOsHomePage() {
         // Order Management: gated by the permission engine (Control Center →
         // Access Control), not app_modules — see src/app/orders/layout.tsx.
         hasPermission(supabase, uid, 'orders', 'view').catch(() => false),
+        // Meetings: same model as Order Management — the permission engine
+        // decides, not app_modules, so the module is deny-by-default. These are
+        // confidential management reviews; a 'live' app_modules row would put
+        // the card in front of everyone.
+        hasPermission(supabase, uid, 'meetings', 'view').catch(() => false),
       ])
 
       if (profileData) setProfile(profileData as UserProfile)
@@ -134,6 +141,7 @@ export default function BoeOsHomePage() {
       setFinanceNotif(financeNotifsRes != null ? (financeNotifsRes.unreadCount ?? 0) : null)
       setOrderNotif(orderNotifsRes != null ? (orderNotifsRes.unreadCount ?? 0) : null)
       setOrdersAllowed(ordersAllowedRes === true)
+      setMeetingsAllowed(meetingsAllowedRes === true)
       setLoading(false)
     }
     init()
@@ -275,6 +283,18 @@ export default function BoeOsHomePage() {
       notificationCount: financeNotif,
       visibilityType: modVis['finance']?.visibility_type,
       allowedDepartment: modVis['finance']?.allowed_department,
+    }] : []),
+    ...((isAdminFallback || meetingsAllowed) ? [{
+      key: 'meetings',
+      title: 'Meetings',
+      description: 'Run New Order and Repair Order reviews, record SKU updates, and track follow-ups.',
+      href: '/meetings',
+      status: 'active' as ModuleStatus,
+      accent: '#7C2D12',
+      icon: <MeetingsIcon />,
+      notificationCount: null,
+      visibilityType: modVis['meetings']?.visibility_type,
+      allowedDepartment: modVis['meetings']?.allowed_department,
     }] : []),
     ...((isAdminFallback || ordersAllowed) ? [{
       key: 'orders',
@@ -578,6 +598,16 @@ function OrdersIcon() {
       <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
       <rect x="9" y="3" width="6" height="4" rx="1" />
       <line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="13" y2="16" />
+    </svg>
+  )
+}
+
+function MeetingsIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="17" rx="2" />
+      <line x1="3" y1="9" x2="21" y2="9" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="16" y1="2" x2="16" y2="6" />
+      <path d="M8 13h5M8 17h8" />
     </svg>
   )
 }

@@ -158,6 +158,27 @@ registerModule({
   ],
 })
 
+// Meetings owns its own source file (src/lib/permissions/meetings.ts derives
+// its capabilities), but the registration stays here with the rest of the
+// catalog so `npm run permissions:check` still sees one complete list.
+// Mirrors the seed in supabase/migrations/20260814000000_create_meetings_module.sql.
+registerModule({
+  moduleKey: 'meetings',
+  displayName: 'Meetings',
+  description: 'Structured order-review meetings, SKU updates, and follow-ups.',
+  actions: [
+    { actionKey: 'view', displayName: 'View' },
+    { actionKey: 'create', displayName: 'Create' },
+    { actionKey: 'edit', displayName: 'Edit' },
+    { actionKey: 'delete', displayName: 'Delete' },
+    { actionKey: 'export', displayName: 'Export' },
+    // 'manage' is what separates a manager from an attendee: it grants sight of
+    // every meeting in the company, and the authority to complete or reopen
+    // one. See src/lib/permissions/meetings.ts.
+    { actionKey: 'manage', displayName: 'Manage' },
+  ],
+})
+
 // Order Requests (/orders/requests) is not a separate module — it lives
 // under the same /orders route tree and inherits this module's 'view'
 // permission via the shared src/app/orders/layout.tsx guard.
