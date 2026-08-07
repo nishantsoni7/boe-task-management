@@ -1,6 +1,6 @@
 -- Orders — make PRIVILEGES the primary control, and stop stale amendments.
 --
--- Three findings from the review of 20260804000000. All three are defects in
+-- Three findings from the review of 20260816000000. All three are defects in
 -- that migration, not new features.
 --
 -- ── Finding 1: the GUC was the only thing protecting commercial columns ──────
@@ -100,7 +100,7 @@ grant update (status) on public.orders to authenticated;
 revoke insert on public.orders from anon;
 
 comment on table public.orders is
-  'Confirmed Orders. Client roles hold UPDATE on the `status` column ONLY (20260806000000); every other column moves exclusively through amend_order() / approve_order_change_request(). No client role holds DELETE or TRUNCATE — a Confirmed Order is permanent business history.';
+  'Confirmed Orders. Client roles hold UPDATE on the `status` column ONLY (20260818000000); every other column moves exclusively through amend_order() / approve_order_change_request(). No client role holds DELETE or TRUNCATE — a Confirmed Order is permanent business history.';
 
 -- ── 2. Baseline capture ──────────────────────────────────────────────────────
 --
