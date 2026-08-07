@@ -53,7 +53,7 @@ export function ProductImagePanel({ images, selectedIndex, onSelect, alt }: Prod
   const candidate = urls[index]
   const primary = candidate && !broken.includes(candidate) ? candidate : undefined
 
-  // The preview renders around 400px wide, so it asks for 384 (1x) / 828 (2x)
+  // The preview renders around 400px wide, so it asks for 384 (1x) / 750 (2x)
   // at quality 55 instead of pulling down the full stored image. The original is
   // untouched — this only changes what this box requests.
   const source = previewSource(primary)

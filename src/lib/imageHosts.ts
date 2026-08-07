@@ -124,16 +124,21 @@ export const THUMB_QUALITY = 35
  *
  * The preview sits in the ~1/2.7 column of `.product-edit-layout`, so it renders
  * around 400px wide on a normal desktop. 384 is the largest allowed width at or
- * below that (it is the top of `images.imageSizes`), and 828 is the next allowed
- * width up, used only as the high-DPI candidate.
+ * below that (it is the top of `images.imageSizes`); 750 is the high-DPI
+ * candidate.
  *
- * 828 is a ceiling, not a demand: the optimizer resizes `withoutEnlargement`, so
- * a source narrower than that comes back at its own width rather than upscaled.
- * A 768px stored image therefore lands at 768 — genuine 2x for a 384 slot —
- * while a much larger original is still cut down to 828.
+ * The 2x width has to stay UNDER the stored images, not above them. Any display
+ * with a devicePixelRatio over 1 — which includes ordinary 125%/150% Windows
+ * scaling, not just Retina — picks the 2x candidate, so that is the width most
+ * people actually download. An earlier 828 sat above the 768px the images are
+ * stored at, and because the optimizer resizes `withoutEnlargement` it capped at
+ * 768 and returned the original bytes unchanged: measured on production, 828
+ * gave 29,100 bytes for a 29,100-byte original, i.e. no saving at all for most
+ * users. 750 resizes for real (12,354 bytes, −58%) and, against the ~800px a
+ * DPR-2 screen wants for this box, is close enough to stay crisp.
  */
 export const PREVIEW_WIDTH_1X = 384
-export const PREVIEW_WIDTH_2X = 828
+export const PREVIEW_WIDTH_2X = 750
 
 /**
  * Quality for the edit preview. Higher than a thumbnail because this is the

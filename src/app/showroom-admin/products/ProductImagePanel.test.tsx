@@ -18,6 +18,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ProductImagePanel, usableImages } from './ProductImagePanel'
+import { PREVIEW_WIDTH_2X } from '@/lib/imageHosts'
 
 const A = 'https://cdn.test/chair-front.jpg'
 const B = 'https://cdn.test/chair-side.jpg'
@@ -137,7 +138,18 @@ describe('the preview asks for a preview-sized image', () => {
     assert.ok(srcSet, 'expected a srcSet on the preview')
     const value = srcSet[1] ?? srcSet[2]
     assert.match(value, /w=384[^,]*1x/)
-    assert.match(value, /w=828[^,]*2x/)
+    assert.match(value, /w=750[^,]*2x/)
+  })
+
+  test('the 2x width stays below the stored image width, or it saves nothing', () => {
+    // Anything at or above the ~768px these images are stored at makes the
+    // optimizer cap at the source and hand back the original bytes — and since
+    // any devicePixelRatio over 1 picks the 2x candidate, that is what most
+    // people would download. This is the guard on that regression.
+    assert.ok(
+      PREVIEW_WIDTH_2X < 768,
+      `2x width ${PREVIEW_WIDTH_2X} is not below the stored image width`,
+    )
   })
 
   test('it asks for a much smaller width than a full-size original', () => {
