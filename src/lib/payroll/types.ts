@@ -79,12 +79,57 @@ export type EngineDay = DayResult & {
   total_deduction_amount: number
 }
 
-// A deduction line before it is written to the database
+/**
+ * Why a line that a rule charged for ends up costing nothing.
+ *
+ * Only one reason exists today: the month's paid-leave allowance covered it.
+ * The field is what keeps a ₹0 line VISIBLE — before it existed, an absorbed
+ * day was indistinguishable from a day with no deduction and fell out of both
+ * Payroll Result Detail tabs entirely.
+ */
+export type DeductionWaiver = 'paid_leave'
+
+/**
+ * How a deduction line reached its amount, in the engine's own numbers.
+ *
+ * This exists so the Payroll Result Detail popup can explain a deduction
+ * without recomputing it. The UI formats these values and writes the sentence
+ * around them; it never multiplies anything. `gross_amount = units × rate` by
+ * construction, and `amount_deducted` equals it unless `waived_by` is set.
+ */
+export type DeductionExplanation = {
+  /** What the rule charged, before any waiver. */
+  gross_amount: number
+  /** How many units the rule charged for. */
+  units: number
+  unit: 'hours' | 'days'
+  /** The rate those units were multiplied by. */
+  rate: number
+  rate_basis: 'per_hour' | 'per_day' | 'half_day'
+  // ── Clock facts, IST minutes past midnight. Present only where the clock is
+  //    what the rule turns on (late arrival, early departure).
+  /** The boundary lateness or earliness was measured from. */
+  scheduled_minutes?: number
+  /** End of the grace period, where one applies. */
+  grace_end_minutes?: number
+  /** The punch the rule read. */
+  actual_minutes?: number
+  /** Minutes past (or short of) the scheduled boundary, before rounding. */
+  minutes_beyond?: number
+}
+
+// A deduction line before it is written to the database.
+//
+// `waived_by` and `explain` are engine-only: writeEngineResult names its columns
+// explicitly, so neither is persisted, and the day-level view that reads them is
+// recomputed from the same inputs on every request.
 export type PendingDeductionLine = {
   line_date: string
   deduction_type: DeductionType
   hours_deducted: number
   amount_deducted: number   // monetary; set to 0 if absorbed by leave
+  waived_by?: DeductionWaiver
+  explain?: DeductionExplanation
 }
 
 // ─── Monthly aggregates ───────────────────────────────────────────────────────
