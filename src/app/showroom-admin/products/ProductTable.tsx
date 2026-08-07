@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Package, Pencil, QrCode, Trash2 } from 'lucide-react'
 import type { ShowroomProduct } from '@/lib/types'
 import { colors, font } from '@/lib/tokens'
+import { thumbSource } from '@/lib/imageHosts'
 
 // The Product Master results table, lifted out of the page so its rendering
 // contract — every row still offering Print QR, Edit, Delete and the status
@@ -72,16 +73,43 @@ export function ProductTable({
   )
 }
 
+/** CSS size of a list thumbnail. Mirrored into the img's width/height. */
+const THUMB_BOX = 56
+
 // Thumbnail with a safe fallback: hides the broken-image icon and shows a
 // neutral placeholder box if the URL is missing or fails to load.
+//
+// The box is 56px, so the bytes should be too. `thumbSource` routes an
+// allowlisted host through Next's optimizer at 64/128px and quality 35 — a
+// couple of kilobytes instead of whatever the original weighs — and hands back
+// any other URL untouched, so an unconfigured host renders exactly as it did
+// before rather than breaking.
 export function ProductThumb({ src, alt }: { src: string | null; alt: string }) {
-  const [errored, setErrored] = useState(false)
+  // Two retreats, in order: optimized → original → placeholder.
+  //
+  // The middle step is the one that matters. Optimizing means Next fetches the
+  // image server-side, which nothing did before — so a host the browser can
+  // reach but the server cannot would turn every working thumbnail into a
+  // placeholder. Falling back to the origin URL first makes that failure cost
+  // the saving instead of the image.
+  const [failed, setFailed] = useState<{ optimized: boolean; original: boolean }>(
+    { optimized: false, original: false },
+  )
+  // A row component is reused as pages change, so the retreat state has to be
+  // tied to the URL it was recorded for.
+  const [seenSrc, setSeenSrc] = useState(src)
+  if (seenSrc !== src) {
+    setSeenSrc(src)
+    setFailed({ optimized: false, original: false })
+  }
 
-  const showImage = !!src && !errored
+  const source = thumbSource(src)
+  const useOptimized = !!source?.optimized && !failed.optimized
+  const showImage = !!source && !failed.original
 
   return (
     <div style={{
-      width: 56, height: 56, borderRadius: '8px', flexShrink: 0,
+      width: THUMB_BOX, height: THUMB_BOX, borderRadius: '8px', flexShrink: 0,
       background: colors.raised,
       border: `1px solid ${colors.border}`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -90,11 +118,27 @@ export function ProductThumb({ src, alt }: { src: string | null; alt: string }) 
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={src}
+          // `key` forces a real reload when the retreat changes the URL —
+          // without it React patches src in place and the browser may not
+          // re-request after an error.
+          key={useOptimized ? 'optimized' : 'original'}
+          src={useOptimized ? source.src : source.original}
+          srcSet={useOptimized ? source.srcSet : undefined}
           alt={alt}
+          // Intrinsic size stated up front so the row reserves its space before
+          // any byte of the image arrives.
+          width={THUMB_BOX}
+          height={THUMB_BOX}
           loading="lazy"
           decoding="async"
-          onError={() => setErrored(true)}
+          onError={() => setFailed(prev => useOptimized
+            // The optimizer could not produce it — try the origin directly,
+            // which is exactly what this row did before optimization existed.
+            ? { ...prev, optimized: true }
+            // The origin itself is unreachable or not an image: a genuinely
+            // broken URL, so show the neutral placeholder rather than a
+            // broken-image icon.
+            : { ...prev, original: true })}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       ) : (

@@ -241,6 +241,103 @@ export function parseReturnMarker(raw: string | null | undefined): ProductReturn
   }
 }
 
+// ── Previous / next product ───────────────────────────────────────────────────
+
+/**
+ * Params that identify a *sequence* of products — the list view the user is
+ * stepping through.
+ *
+ * Deliberately {@link PRODUCT_LIST_PARAM_KEYS} minus `page`: paging is a window
+ * onto one ordering, not a different ordering, so the product after the last row
+ * of page 1 is the first row of page 2. Dropping `page` is also what lets every
+ * product in a category share one cached sequence instead of one per page.
+ */
+export const PRODUCT_SEQUENCE_PARAM_KEYS = ['q', 'category', 'status', 'sort'] as const
+
+/**
+ * The sequence context for a product being edited, as a search string.
+ *
+ * Prefers the list state the product was opened from (`from=`), so Previous/Next
+ * walk the same filtered, sorted run of products the user was browsing. A
+ * product reached without that breadcrumb — a bookmark, a new tab, the sidebar
+ * lookup — falls back to its own category at Product Master's defaults, which is
+ * the ordering the list would show if that category were opened fresh.
+ *
+ * Returns '' when neither is available. There is no all-products sequence for
+ * the same reason there is no all-products list: a category is always required.
+ */
+export function productSequenceSearch(input: {
+  from: string | null | undefined
+  productCategory: string | null | undefined
+}): string {
+  const source = new URLSearchParams(sanitizeListSearch(input.from))
+  const out = new URLSearchParams()
+  for (const key of PRODUCT_SEQUENCE_PARAM_KEYS) {
+    const value = source.get(key)
+    if (value) out.set(key, value)
+  }
+
+  if (!out.get('category')) {
+    const fallback = (input.productCategory ?? '').trim()
+    if (!fallback) return ''
+    // Only the category carries over. A `q=` or `sort=` from some other view
+    // would describe a run this product was never part of.
+    return new URLSearchParams({ category: fallback }).toString()
+  }
+
+  return out.toString()
+}
+
+export type ProductNeighbors = {
+  /** Code of the product before this one, or null at the start of the run. */
+  previous: string | null
+  /** Code of the product after this one, or null at the end of the run. */
+  next: string | null
+  /** 1-based position in the run; null when this product is not in it. */
+  position: number | null
+  /** How many products the run holds. */
+  total: number
+}
+
+const NO_NEIGHBORS: ProductNeighbors = { previous: null, next: null, position: null, total: 0 }
+
+// Codes are stored upper-cased (every write path calls .toUpperCase()), but a
+// URL can be typed or shared in any case and `productCode` is read from the URL
+// verbatim. Folding both sides is what stops `/boe-sr-002/edit` from looking
+// like a product that is not in its own sequence.
+const foldCode = (code: string) => code.trim().toUpperCase()
+
+/**
+ * Where Previous and Next point, given the ordered run of product codes.
+ *
+ * `codes` arrives already in the list's own order — same filters, same sort,
+ * same `product_code` tiebreaker — so this only has to locate the current
+ * product in it. The two boundaries fall out of that: the first product has no
+ * Previous, the last has no Next, and a lone product has neither.
+ *
+ * A code that is not in the run yields no neighbours rather than a guess. That
+ * covers the honest cases (the run was truncated at the server's cap, the
+ * product was renamed or filtered out under the user) where any answer other
+ * than "none" would send the user somewhere they never asked to go.
+ */
+export function resolveProductNeighbors(
+  codes: readonly string[],
+  currentCode: string,
+): ProductNeighbors {
+  const target = foldCode(currentCode ?? '')
+  if (!target || codes.length === 0) return NO_NEIGHBORS
+
+  const index = codes.findIndex(code => foldCode(code) === target)
+  if (index === -1) return NO_NEIGHBORS
+
+  return {
+    previous: index > 0 ? codes[index - 1] : null,
+    next:     index < codes.length - 1 ? codes[index + 1] : null,
+    position: index + 1,
+    total:    codes.length,
+  }
+}
+
 // ── Parent nav entry ──────────────────────────────────────────────────────────
 
 export type ParentClickResult = { action: 'toggle' } | { action: 'navigate'; href: string }

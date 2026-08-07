@@ -176,6 +176,34 @@ describe('row content', () => {
     )
   })
 
+  test('an image on an unlisted host is loaded directly, never through the optimizer', () => {
+    // Product images are pasted URLs on hosts nobody enumerated. An unlisted one
+    // must render exactly as it always did.
+    const markup = renderToStaticMarkup(table([product()], spies().handlers))
+    assert.match(markup, /src="https:\/\/cdn\.test\/chair\.jpg"/)
+    assert.doesNotMatch(markup, /_next\/image/)
+  })
+
+  test('an image on the real product host is resized through the optimizer', () => {
+    // bestofexports.com is where every stored product image actually lives, so
+    // this is the path that runs in production.
+    const real = product({ images: ['https://bestofexports.com/wp-content/uploads/chair.webp'] })
+    const markup = renderToStaticMarkup(table([real], spies().handlers))
+    assert.match(markup, /_next\/image/)
+    assert.match(markup, /w=64/)
+    assert.match(markup, /q=35/)
+    // and a 2x candidate for retina
+    assert.match(markup, /w=128/)
+  })
+
+  test('a thumbnail reserves its box before the image arrives', () => {
+    // Explicit intrinsic size — no reflow when the row finally paints.
+    const markup = renderToStaticMarkup(table([product()], spies().handlers))
+    assert.match(markup, /width="56"/)
+    assert.match(markup, /height="56"/)
+    assert.match(markup, /loading="lazy"/)
+  })
+
   test('an empty result set renders nothing rather than an empty shell', () => {
     assert.equal(table([], spies().handlers), null)
   })

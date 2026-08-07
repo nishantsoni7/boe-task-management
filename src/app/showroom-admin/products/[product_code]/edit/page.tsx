@@ -11,10 +11,14 @@ import { colors } from '@/lib/tokens'
 import { useViewAs } from '@/hooks/useViewAs'
 import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
 import { ProductImagePanel } from '../../ProductImagePanel'
+import { ProductStepper } from '../../ProductStepper'
 import { useRefreshShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
+import { useShowroomCategories } from '@/hooks/queries/useShowroomCategories'
+import { useShowroomProductSequence } from '@/hooks/queries/useShowroomProductSequence'
 import {
   PRODUCT_RETURN_MARKER_KEY, parseReturnMarker, productEditHref,
-  resolveProductBack, sanitizeListSearch, type ProductReturnMarker,
+  productSequenceSearch, resolveProductBack, resolveProductNeighbors,
+  sanitizeListSearch, type ProductReturnMarker,
 } from '@/lib/showroom/productNav'
 
 type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
@@ -23,6 +27,41 @@ const teamFallback = (team?: string | null) =>
 
 type SpecRow = { attr: string; val: string }
 type DimState = { width: string; depth: string; height: string; unit: string }
+
+const EMPTY_DIMS: DimState = { width: '', depth: '', height: '', unit: 'inches' }
+
+type FormValues = {
+  code: string
+  name: string
+  category: string
+  description: string
+  specs: SpecRow[]
+  images: string[]
+  dims: DimState
+  mrp: string
+}
+
+/**
+ * The form's contents, reduced to what a save would actually send.
+ *
+ * Normalised through the very same functions the submit handler uses, so
+ * "unsaved changes" tracks the *record*, not the typing: adding a blank spec
+ * row, padding a field with a space or lower-casing a code the form will
+ * upper-case anyway all leave this string untouched. Comparing two of them is
+ * the whole dirty check.
+ */
+function formSnapshot(v: FormValues): string {
+  return JSON.stringify({
+    code: v.code.trim().toUpperCase(),
+    name: v.name.trim(),
+    category: v.category.trim(),
+    description: v.description.trim(),
+    specs: specsToJson(v.specs),
+    images: v.images.map(u => u.trim()).filter(Boolean),
+    dims: buildDims(v.dims),
+    mrp: v.mrp.trim(),
+  })
+}
 
 const FORM_CSS = `
 .form-card {
@@ -134,16 +173,20 @@ function EditProductContent() {
   const [description, setDescription] = useState('')
   const [specs,       setSpecs]       = useState<SpecRow[]>([{ attr: '', val: '' }])
   const [images,      setImages]      = useState<string[]>([''])
-  const [dims,        setDims]        = useState<DimState>({ width: '', depth: '', height: '', unit: 'inches' })
+  const [dims,        setDims]        = useState<DimState>(EMPTY_DIMS)
   const [mrp,         setMrp]         = useState('')
-  const [loading,     setLoading]     = useState(true)
+  // Which product the form currently holds. `loading` is derived from it rather
+  // than stored, so it cannot fall out of step with the code in the URL.
+  const [loadedCode,  setLoadedCode]  = useState<string | null>(null)
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
   const [success,     setSuccess]     = useState('')
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
-  const [categories,      setCategories]      = useState<ShowroomCategory[]>([])
-  const [categoriesError, setCategoriesError]  = useState('')
   const [imageIndex,      setImageIndex]      = useState(0)
+  // The form as it was when it loaded (or was last saved). Anything different is
+  // an unsaved edit — see `dirty` below.
+  const [baseline,        setBaseline]        = useState<string | null>(null)
+  const [pendingStep,     setPendingStep]     = useState<string | null>(null)
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -151,10 +194,33 @@ function EditProductContent() {
   const { viewAsUserId, viewAsProfile } = useViewAs()
   const refreshNavCounts = useRefreshShowroomProductCounts()
 
+  // Cached across the whole run of products — stepping to the next product no
+  // longer re-fetches the category list it already has.
+  const categoryQuery = useShowroomCategories(!!profile)
+
   // The list view this product was opened from, carried in `from=` so Back can
   // rebuild it when browser history has nothing to go back to.
   const listSearch    = sanitizeListSearch(searchParams.get('from'))
   const fromCategory  = new URLSearchParams(listSearch).get('category') ?? ''
+
+  // Previous/Next changes `product_code` without remounting this component, so
+  // everything tied to the *old* product has to be dropped the moment the URL
+  // moves on. Otherwise the previous product's form stays on screen while the
+  // next one loads and — worse — its baseline stays with it, so the incoming
+  // product would look edited before anyone touched it.
+  //
+  // Adjusted during render rather than in an effect: the stale form must never
+  // be painted, not even for one frame.
+  if (loadedCode !== null && loadedCode !== productCode) {
+    setLoadedCode(null)
+    setBaseline(null)
+    setError('')
+    setSuccess('')
+    setImageIndex(0)
+  }
+
+  /** The form does not yet hold the product the URL asks for. */
+  const loading = loadedCode !== productCode
 
   // Read once, at mount: the marker records that the LIST navigated here, and
   // that is true only for this arrival.
@@ -193,6 +259,47 @@ function EditProductContent() {
     else router.push(target.href)
   }, [router, listSearch, product, returnMarker])
 
+  // ── Previous / next ─────────────────────────────────────────────────────────
+  // The run the user is stepping through: the list view this product was opened
+  // from, or — for a bookmark or a sidebar lookup, which carry no breadcrumb —
+  // the product's own category at Product Master's defaults.
+  const sequenceSearch = productSequenceSearch({
+    from: listSearch,
+    productCategory: product?.category ?? null,
+  })
+  const sequence  = useShowroomProductSequence(sequenceSearch, !!profile)
+  const neighbors = useMemo(
+    () => resolveProductNeighbors(sequence.codes, productCode),
+    [sequence.codes, productCode],
+  )
+
+  // Warm both neighbours' routes so a click renders immediately instead of
+  // waiting on the route bundle. Only the two adjacent products — never the run
+  // — so this stays two prefetches regardless of how large the category is.
+  useEffect(() => {
+    for (const code of [neighbors.previous, neighbors.next]) {
+      if (code) router.prefetch(productEditHref(code, listSearch))
+    }
+  }, [neighbors.previous, neighbors.next, listSearch, router])
+
+  const dirty = baseline !== null && baseline !== formSnapshot({
+    code, name, category, description, specs, images, dims, mrp,
+  })
+
+  // `targetCode`, not `productCode`: the outer `productCode` is the product
+  // being edited, and shadowing it here would make the two easy to confuse.
+  const stepTo = useCallback((targetCode: string) => {
+    router.push(productEditHref(targetCode, listSearch))
+  }, [router, listSearch])
+
+  // Stepping away with edits in the form would destroy them silently, and
+  // Previous/Next is designed to be clicked quickly. Ask once, and only when
+  // there is genuinely something to lose.
+  const requestStep = useCallback((targetCode: string) => {
+    if (dirty) { setPendingStep(targetCode); return }
+    stepTo(targetCode)
+  }, [dirty, stepTo])
+
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
     const effectiveHasAccess = viewAsProfile.role === 'admin' ||
@@ -201,11 +308,20 @@ function EditProductContent() {
   }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 
   useEffect(() => {
+    // Guards against a superseded response: two quick steps must not let the
+    // slower one win and land the user on a product they navigated past.
+    let current = true
+
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const [{ data: p }, { data: mod }] = await Promise.all([
+      // The product is requested alongside the access check, not after it. It
+      // does not depend on the answer — only on having a session — and its own
+      // API re-checks access anyway, so nothing is exposed by asking early. What
+      // it saves is a whole round trip on the critical path, which is the cost
+      // paid on every single step through Previous/Next.
+      const [{ data: p }, { data: mod }, res] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, position, is_active, created_at')
@@ -216,65 +332,84 @@ function EditProductContent() {
           .select('visibility_type, allowed_department')
           .eq('module_key', 'showroom_qr')
           .single(),
+        fetch(`/api/showroom/admin/products/${encodeURIComponent(productCode)}`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        }),
       ])
+
+      // Superseded — the user stepped on again before this settled. Two rapid
+      // clicks must not let the slower response win and land the user on a
+      // product they already navigated past.
+      if (!current) return
 
       setShowroomMod(mod ?? null)
       const profile = p as UserProfile | null
       const hasAccess = !!profile && (profile.role === 'admin' ||
         canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team)))
+      // Leaving — the product response is simply dropped unread.
       if (!hasAccess) { router.replace('/modules'); return }
       setProfile(profile)
 
-      const [res, catRes] = await Promise.all([
-        fetch(`/api/showroom/admin/products/${encodeURIComponent(productCode)}`, {
-          headers: { 'Authorization': `Bearer ${session.access_token}` },
-        }),
-        fetch('/api/showroom/admin/categories', {
-          headers: { 'Authorization': `Bearer ${session.access_token}` },
-        }),
-      ])
-      if (!res.ok) { setError('Product not found'); setLoading(false); return }
+      // Settled, even though it failed: the skeleton gives way to the error.
+      if (!res.ok) { setError('Product not found'); setLoadedCode(productCode); return }
       const data = await res.json()
+      if (!current) return
       const found = data.product as ShowroomProduct | undefined
-      if (!found) { setError('Product not found'); setLoading(false); return }
-
-      if (catRes.ok) {
-        const catData = await catRes.json()
-        const loadedCategories: ShowroomCategory[] = Array.isArray(catData?.categories) ? catData.categories : []
-        // A product may carry a category that's been renamed/deactivated since —
-        // keep it selectable in the dropdown so the form doesn't silently blank it out.
-        const hasCurrent = loadedCategories.some(c => c.name === found.category)
-        setCategories(hasCurrent || !found.category ? loadedCategories : [
-          { id: `current-${found.category}`, name: found.category, slug: found.category, is_active: true, created_at: '' },
-          ...loadedCategories,
-        ])
-      } else {
-        setCategoriesError('Failed to load categories')
-      }
+      if (!found) { setError('Product not found'); setLoadedCode(productCode); return }
 
       setProduct(found)
+
+      // Populate images: prefer new images[] array, fall back to legacy image_url
+      const loadedImages = found.images?.length ? found.images : found.image_url ? [found.image_url] : ['']
+      const loadedSpecs  = jsonToSpecs(found.specifications)
+      const loadedDims: DimState = found.dimensions ? {
+        width:  found.dimensions.width  != null ? String(found.dimensions.width)  : '',
+        depth:  found.dimensions.depth  != null ? String(found.dimensions.depth)  : '',
+        height: found.dimensions.height != null ? String(found.dimensions.height) : '',
+        unit:   found.dimensions.unit ?? 'inches',
+      } : EMPTY_DIMS
+
       setCode(found.product_code)
       setName(found.name)
       setCategory(found.category)
       setDescription(found.description ?? '')
-      setSpecs(jsonToSpecs(found.specifications))
-      // Populate images: prefer new images[] array, fall back to legacy image_url
-      const loadedImages = found.images?.length ? found.images : found.image_url ? [found.image_url] : ['']
+      setSpecs(loadedSpecs)
       setImages(loadedImages.length ? loadedImages : [''])
-      if (found.dimensions) {
-        setDims({
-          width:  found.dimensions.width  != null ? String(found.dimensions.width)  : '',
-          depth:  found.dimensions.depth  != null ? String(found.dimensions.depth)  : '',
-          height: found.dimensions.height != null ? String(found.dimensions.height) : '',
-          unit:   found.dimensions.unit ?? 'inches',
-        })
-      }
+      setDims(loadedDims)
       setMrp(String(found.mrp))
-      setLoading(false)
+
+      // Recorded from the same values the form was just given, so "unsaved
+      // changes" means the user typed something — not that loading normalised a
+      // field on the way in.
+      setBaseline(formSnapshot({
+        code: found.product_code,
+        name: found.name,
+        category: found.category,
+        description: found.description ?? '',
+        specs: loadedSpecs,
+        images: loadedImages.length ? loadedImages : [''],
+        dims: loadedDims,
+        mrp: String(found.mrp),
+      }))
+      // Last, so the form is fully populated before it is shown.
+      setLoadedCode(productCode)
     }
     init()
+    return () => { current = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productCode])
+
+  // A product may carry a category that's been renamed/deactivated since — keep
+  // it selectable in the dropdown so the form doesn't silently blank it out.
+  const categoryOptions = useMemo<ShowroomCategory[]>(() => {
+    const loaded = categoryQuery.categories
+    const current = product?.category
+    if (!current || loaded.some(c => c.name === current)) return loaded
+    return [
+      { id: `current-${current}`, name: current, slug: current, is_active: true, created_at: '' },
+      ...loaded,
+    ]
+  }, [categoryQuery.categories, product?.category])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -334,11 +469,61 @@ function EditProductContent() {
       refreshNavCounts()
       setSuccess('Product updated')
       setProduct(data.product)
+      // Saved — what is on screen is now what is stored, so Previous/Next stops
+      // asking about it.
+      setBaseline(formSnapshot({ code, name, category, description, specs, images, dims, mrp }))
       setSaving(false)
     }
   }
 
-  if (loading) return <LoadingScreen />
+  // Back and Previous/Next, identical in both states. Kept mounted while the
+  // next product loads so a run of edits is a run of clicks on a control that
+  // stays put — a stepper that disappears for every load cannot be clicked
+  // twice in a row.
+  const navHeader = (
+    <>
+      <button
+        type="button"
+        onClick={goBack}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          fontSize: 13, color: colors.tertiary,
+          background: 'transparent', border: 'none', padding: 0,
+          cursor: 'pointer', marginBottom: 14,
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = colors.primary }}
+        onMouseLeave={e => { e.currentTarget.style.color = colors.tertiary }}
+      >
+        <ArrowLeft size={14} strokeWidth={2.5} />
+        Back to products
+      </button>
+
+      {/* Step to the neighbouring product without going through the list. Sits
+          under Back — same row of "where am I" controls, above the form it
+          navigates between. */}
+      <ProductStepper neighbors={neighbors} onNavigate={requestStep} />
+    </>
+  )
+
+  // A skeleton *inside* the module shell, not a full-screen loader: stepping
+  // through products would otherwise tear down the sidebar and header on every
+  // click and rebuild them a moment later, which reads as a flash rather than as
+  // progress.
+  if (loading) {
+    return (
+      <ShowroomAdminLayout
+        profile={profile}
+        title="Edit Product"
+        subtitle={productCode}
+        activeProductCategory={fromCategory}
+        onSignOut={handleSignOut}
+      >
+        <style>{FORM_CSS}</style>
+        {navHeader}
+        <FormSkeleton />
+      </ShowroomAdminLayout>
+    )
+  }
 
   return (
     <ShowroomAdminLayout
@@ -354,21 +539,15 @@ function EditProductContent() {
         '--fc-border': colors.border,
       } as React.CSSProperties & Record<'--fc-base' | '--fc-border', string>}>
 
-        <button
-          type="button"
-          onClick={goBack}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            fontSize: 13, color: colors.tertiary,
-            background: 'transparent', border: 'none', padding: 0,
-            cursor: 'pointer', marginBottom: 14,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.color = colors.primary }}
-          onMouseLeave={e => { e.currentTarget.style.color = colors.tertiary }}
-        >
-          <ArrowLeft size={14} strokeWidth={2.5} />
-          Back to products
-        </button>
+        {navHeader}
+
+        {pendingStep && (
+          <DiscardChangesModal
+            targetCode={pendingStep}
+            onCancel={() => setPendingStep(null)}
+            onDiscard={() => { const code = pendingStep; setPendingStep(null); stepTo(code) }}
+          />
+        )}
 
         {/* Two columns on desktop: the form card, then the image panel below.
             The card keeps its original indentation so this stays a wrapper
@@ -387,9 +566,9 @@ function EditProductContent() {
               <AlertBanner variant="green">{success}</AlertBanner>
             </div>
           )}
-          {categoriesError && (
+          {categoryQuery.failed && (
             <div style={{ marginBottom: '20px' }}>
-              <AlertBanner variant="red">{categoriesError}</AlertBanner>
+              <AlertBanner variant="red">Failed to load categories</AlertBanner>
             </div>
           )}
 
@@ -426,7 +605,7 @@ function EditProductContent() {
                       style={inputStyle}
                     >
                       <option value="">Select category</option>
-                      {categories.map(c => (
+                      {categoryOptions.map(c => (
                         <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
                     </select>
@@ -520,6 +699,96 @@ function EditProductContent() {
         </div>
       </div>
     </ShowroomAdminLayout>
+  )
+}
+
+// ── Loading + confirmation ─────────────────────────────────────────────────
+
+/** Placeholder in the shape of the edit layout, so nothing jumps on arrival. */
+function FormSkeleton() {
+  const bar = (width: string | number, height = 14) => (
+    <div style={{ width, height, borderRadius: '4px', background: colors.raised }} />
+  )
+  return (
+    <div className="product-edit-layout">
+      <div style={{
+        background: colors.base,
+        border: `1.5px solid ${colors.border}`,
+        borderRadius: '16px', padding: '28px',
+        display: 'flex', flexDirection: 'column', gap: '18px',
+      }}>
+        {bar(120, 13)}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {bar(80, 11)}
+              {bar('100%', 36)}
+            </div>
+          ))}
+        </div>
+        {bar('100%', 90)}
+        {bar(120, 13)}
+        {bar('100%', 36)}
+      </div>
+      <div className="product-image-panel">
+        <div style={{
+          background: colors.base,
+          border: `1.5px solid ${colors.border}`,
+          borderRadius: '16px', padding: '16px',
+          display: 'flex', flexDirection: 'column', gap: '12px',
+        }}>
+          {bar(90, 13)}
+          <div style={{ width: '100%', aspectRatio: '1 / 1', borderRadius: '12px', background: colors.raised }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The one gate on Previous/Next, and only when the form actually differs from
+ * what is stored. Naming the destination matters: the user clicked a product
+ * code, so the question is about *that* step, not about some abstract navigation.
+ */
+function DiscardChangesModal({
+  targetCode, onCancel, onDiscard,
+}: {
+  targetCode: string
+  onCancel: () => void
+  onDiscard: () => void
+}) {
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onCancel() }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '20px',
+      }}
+    >
+      <div style={{
+        background: '#fff', borderRadius: '14px', width: '100%', maxWidth: 400,
+        padding: '28px 28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+      }}>
+        <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary, marginBottom: '10px' }}>
+          Unsaved changes
+        </div>
+        <p style={{ fontSize: '13.5px', color: colors.secondary, marginBottom: '20px', lineHeight: 1.55 }}>
+          This product has edits you haven&apos;t saved. Opening{' '}
+          <strong style={{ color: colors.primary }}>{targetCode}</strong> will discard them.
+        </p>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} style={cancelBtnStyle}>Stay and keep editing</button>
+          <button
+            onClick={onDiscard}
+            style={{ ...primaryBtnStyle, cursor: 'pointer' }}
+          >
+            Discard and open
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
