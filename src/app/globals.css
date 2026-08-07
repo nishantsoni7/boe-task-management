@@ -1398,6 +1398,67 @@ body {
   }
 }
 
+/* ── Payroll result detail: audit workspace + summary rail ──
+   Same 70/30 idiom as .members-workspace. The left column is the day-level
+   audit table, which is the widest thing on the page; the right rail carries
+   the payroll outcome and stays put while the table is scrolled.
+   Below 1024 the rail moves ABOVE the table (order: -1) — on a phone the
+   answer should come before the evidence. */
+.payroll-detail-page {
+  max-width: 1400px;
+}
+
+.payroll-detail-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.37fr);
+  gap: 18px;
+}
+
+.payroll-detail-main {
+  min-width: 0;
+}
+
+.payroll-detail-aside {
+  min-width: 0;
+}
+
+/* Sticky lives on the inner node: the grid item itself stretches to the row
+   height, which is what gives the sticky child room to travel. */
+.payroll-detail-aside-inner {
+  position: sticky;
+  top: 76px;
+  max-height: calc(100vh - 92px);
+  overflow-y: auto;
+}
+
+@media (max-width: 1024px) {
+  .payroll-detail-workspace {
+    grid-template-columns: 1fr;
+  }
+  .payroll-detail-aside {
+    order: -1;
+  }
+  .payroll-detail-aside-inner {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+    /* Stacked, the rail keeps a reading width — a label/value pair stretched
+       across a full tablet row puts too much space between the two. */
+    max-width: 520px;
+  }
+}
+
+/* ── Payroll ledger table (result detail) ──
+   A ledger, not a data grid: no vertical rules, hairline row separators, and a
+   hover tint quiet enough that it reads as tracking rather than selection. */
+.payroll-ledger tbody tr {
+  transition: background 0.12s;
+}
+
+.payroll-ledger tbody tr:hover {
+  background: rgba(0,0,0,0.016);
+}
+
 /* ── Showroom product catalog toolbar: search/status/sort/clear ──
    Desktop proportions ≈ 35% / 25% / 40% search/status/sort so full sort
    labels ("Product code A–Z", "MRP high to low") never truncate. */
