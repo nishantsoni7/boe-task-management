@@ -1,6 +1,6 @@
 -- Financial amount invariant assertions
 -- ===========================================================================
--- Covers 20260805000000_financial_amount_invariants.sql.
+-- Covers 20260817000000_financial_amount_invariants.sql.
 --
 -- TWO PARTS, and they are used at different moments:
 --
@@ -122,12 +122,32 @@ begin
   assert v_err like '23514|%orders_total_value_non_negative%',
     'a negative order value must be refused, got: ' || v_err;
 
+  -- Refused by `orders_total_product_value_check`, an inline column constraint
+  -- that has existed since 20260696000000. 20260817000000 briefly added a
+  -- second, identical one; 20260821000000 dropped that duplicate. The assertion
+  -- names neither — what matters is that a negative product value is refused by
+  -- SOME check constraint, not which one holds the line.
   v_err := pg_temp.fails_with(format(
     $q$insert into public.orders (client_name, created_by, status, total_product_value)
        values ('QA invariant neg product', %L, 'running', -1)$q$,
     current_setting('test.sales_a')));
-  assert v_err like '23514|%orders_total_product_value_non_negative%',
+  assert v_err like '23514|%total_product_value%',
     'a negative product value must be refused, got: ' || v_err;
+
+  -- Exactly one non-negativity constraint per column — no duplicates left.
+  assert (select count(*) from pg_constraint
+           where conrelid = 'public.orders'::regclass and contype = 'c'
+             and pg_get_constraintdef(oid) ilike '%total_product_value%') = 1,
+    'orders.total_product_value must carry exactly one CHECK';
+
+  -- The two constraints this branch genuinely added are VALIDATED, so they
+  -- cover existing rows and not merely new writes.
+  assert (select convalidated from pg_constraint
+           where conname = 'finance_payment_requests_amount_positive'),
+    'the payment amount constraint must be validated';
+  assert (select convalidated from pg_constraint
+           where conname = 'orders_total_value_non_negative'),
+    'the order value constraint must be validated';
 
   raise notice 'PART 2: amount invariants OK';
 end $$;
