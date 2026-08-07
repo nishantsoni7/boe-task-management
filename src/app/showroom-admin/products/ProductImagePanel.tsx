@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Package } from 'lucide-react'
 import { colors } from '@/lib/tokens'
+import { previewSource } from '@/lib/imageHosts'
 
 // The product's own image, shown beside the edit form so the person changing a
 // price or a spec can see what they are editing. Reads the same `images` array
@@ -41,12 +42,22 @@ export function ProductImagePanel({ images, selectedIndex, onSelect, alt }: Prod
   // A URL that 404s or is half-typed shows the empty state rather than a broken
   // image icon — same treatment the list thumbnails give it.
   const [broken, setBroken] = useState<string[]>([])
+  // URLs whose optimized variant failed. They fall back to the original before
+  // ever being called broken, so a preview can lose the saving without losing
+  // the image — same retreat the list thumbnails use.
+  const [unoptimized, setUnoptimized] = useState<string[]>([])
 
   const urls = usableImages(images)
   // A removed or not-yet-typed image must never leave the panel blank.
   const index = selectedIndex >= 0 && selectedIndex < urls.length ? selectedIndex : 0
   const candidate = urls[index]
   const primary = candidate && !broken.includes(candidate) ? candidate : undefined
+
+  // The preview renders around 400px wide, so it asks for 384 (1x) / 828 (2x)
+  // at quality 55 instead of pulling down the full stored image. The original is
+  // untouched — this only changes what this box requests.
+  const source = previewSource(primary)
+  const usePreview = !!source?.optimized && !!primary && !unoptimized.includes(primary)
 
   return (
     <div style={{
@@ -70,13 +81,27 @@ export function ProductImagePanel({ images, selectedIndex, onSelect, alt }: Prod
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',
       }}>
-        {primary ? (
+        {primary && source ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={primary}
+            // Changing the key forces a real reload when the retreat swaps the
+            // URL; React would otherwise patch src in place after an error.
+            key={usePreview ? 'preview' : 'original'}
+            src={usePreview ? source.src : source.original}
+            srcSet={usePreview ? source.srcSet : undefined}
             alt={alt}
             decoding="async"
-            onError={() => setBroken(list => list.includes(primary) ? list : [...list, primary])}
+            onError={() => {
+              // Optimized first, original second, empty state last. Only a
+              // genuinely unloadable image reaches `broken`.
+              if (usePreview) {
+                setUnoptimized(list => list.includes(primary) ? list : [...list, primary])
+                return
+              }
+              setBroken(list => list.includes(primary) ? list : [...list, primary])
+            }}
+            // The square frame above already reserves this box, so the image
+            // cannot move the layout as it arrives whatever its aspect ratio.
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
           />
         ) : (

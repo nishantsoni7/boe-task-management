@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { imageRemotePatterns, THUMB_QUALITY } from "./src/lib/imageHosts";
+import { imageRemotePatterns, PREVIEW_QUALITY, THUMB_QUALITY } from "./src/lib/imageHosts";
 
 const nextConfig: NextConfig = {
   turbopack: {
@@ -23,9 +23,9 @@ const nextConfig: NextConfig = {
     remotePatterns: imageRemotePatterns(),
 
     // Required from Next 16: a quality not on this list is refused with a 400.
-    // 35 is what list thumbnails ask for; 75 is Next's default, kept so an
-    // ordinary <Image> elsewhere still works.
-    qualities: [THUMB_QUALITY, 75],
+    // 35 is what list thumbnails ask for, 55 the edit-page preview; 75 is Next's
+    // default, kept so an ordinary <Image> elsewhere still works.
+    qualities: [THUMB_QUALITY, PREVIEW_QUALITY, 75],
 
     // A resized thumbnail is derived from an immutable original, so re-deriving
     // it hourly buys nothing. 31 days keeps repeat visits and page-to-page

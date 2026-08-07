@@ -41,6 +41,10 @@ const imageSources = (markup: string) =>
 const thumbnailCount = (markup: string) =>
   [...markup.matchAll(/aria-label="Show image \d+"/g)].length
 
+/** Query params of a rendered URL, with the markup's `&amp;` escaping undone. */
+const queryOf = (url: string) =>
+  new URLSearchParams(url.replace(/&amp;/g, '&').split('?')[1] ?? '')
+
 describe('usableImages', () => {
   test('drops blanks, whitespace-only rows and duplicates, keeping order', () => {
     assert.deepEqual(usableImages([' ', A, '', B, A, null, undefined, '   ']), [A, B])
@@ -107,6 +111,53 @@ describe('a product with several images', () => {
   test('a selection stranded by a removed image still shows something', () => {
     // The user was on image 3 and deleted rows until only one is left.
     assert.equal(imageSources(render([A], 2))[0], A)
+  })
+})
+
+describe('the preview asks for a preview-sized image', () => {
+  // A real stored product image. bestofexports.com is where every one of them
+  // lives, so this is the path that runs in production.
+  const REAL = 'https://bestofexports.com/wp-content/uploads/2025/05/Alba-Chair.webp'
+
+  test('the large preview goes through the optimizer, not straight to the original', () => {
+    const src = imageSources(render([REAL]))[0]
+    assert.match(src, /^\/_next\/image/)
+    assert.equal(queryOf(src).get('url'), REAL)
+  })
+
+  test('it requests roughly the rendered width, not the full original', () => {
+    const params = queryOf(imageSources(render([REAL]))[0])
+    assert.equal(params.get('w'), '384')
+    assert.equal(params.get('q'), '55')
+  })
+
+  test('a 2x candidate is offered for high-DPI screens', () => {
+    const markup = render([REAL])
+    const srcSet = markup.match(/srcSet="([^"]*)"|srcset="([^"]*)"/)
+    assert.ok(srcSet, 'expected a srcSet on the preview')
+    const value = srcSet[1] ?? srcSet[2]
+    assert.match(value, /w=384[^,]*1x/)
+    assert.match(value, /w=828[^,]*2x/)
+  })
+
+  test('it asks for a much smaller width than a full-size original', () => {
+    // The guard that matters: the preview must never be the width of the stored
+    // image. 384 is well under the 768+ these images are stored at.
+    const w = Number(queryOf(imageSources(render([REAL]))[0]).get('w'))
+    assert.ok(w <= 384, `preview requested ${w}px`)
+  })
+
+  test('an image on an unlisted host is still loaded directly, never broken', () => {
+    // The existing safety property is unchanged: no optimizer, no regression.
+    const src = imageSources(render([A]))[0]
+    assert.equal(src, A)
+    assert.doesNotMatch(src, /_next\/image/)
+  })
+
+  test('the thumbnail strip is left exactly as it was', () => {
+    // Out of scope for this change — the strip still loads its own URLs.
+    const sources = imageSources(render([A, B, C]))
+    assert.deepEqual(sources.slice(1), [A, B, C])
   })
 })
 
