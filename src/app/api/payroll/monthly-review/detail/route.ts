@@ -2,10 +2,11 @@
 //
 // Runs the payroll engine in preview mode for one employee and returns
 // day-level classification results alongside the monthly summary.
-// Admin only.
+// Payroll module access required — admin, or a member named in Control Center →
+// Module Visibility → Custom. Same decision the launcher and PayrollGuard use.
 
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
 import { fetchAttendanceForPeriod, fetchHolidaysForPeriod, fetchCurrentCorrections } from '@/lib/payroll/store'
 import { toSignedAdjustments, type StoredAdjustment } from '@/lib/payroll/adjustments'
@@ -18,24 +19,9 @@ type EmployeeRow = EngineEmployee & {
 }
 
 export async function GET(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
-
-  const { data: { user: caller }, error: authErr } = await svc.auth.getUser(token)
-  if (authErr || !caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: callerProfile } = await svc
-    .from('users')
-    .select('role')
-    .eq('id', caller.id)
-    .single()
-  if (callerProfile?.role !== 'admin')
-    return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 })
+  const auth = await requireModuleAccess(req, 'payroll')
+  if (isResponse(auth)) return auth
+  const svc = auth.svc
 
   const yearParam       = req.nextUrl.searchParams.get('year')
   const monthParam      = req.nextUrl.searchParams.get('month')

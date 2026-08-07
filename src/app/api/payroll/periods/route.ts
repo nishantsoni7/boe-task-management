@@ -1,9 +1,11 @@
 // GET /api/payroll/periods
 // Returns all payroll periods with latest generation metadata.
-// Admin only.
+// GET needs Payroll module access (admin, or a member named in Control Center →
+// Module Visibility → Custom). POST — creating a period — stays admin-only.
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = SupabaseClient<any, any, any>
@@ -93,25 +95,9 @@ export function computeOutOfDate(
 }
 
 export async function GET(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
-
-  const { data: { user: caller }, error: authErr } = await svc.auth.getUser(token)
-  if (authErr || !caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: callerProfile } = await svc
-    .from('users')
-    .select('role')
-    .eq('id', caller.id)
-    .single()
-  if (callerProfile?.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  const auth = await requireModuleAccess(req, 'payroll')
+  if (isResponse(auth)) return auth
+  const svc = auth.svc
 
   const { data: periods, error: periodsErr } = await svc
     .from('payroll_periods')

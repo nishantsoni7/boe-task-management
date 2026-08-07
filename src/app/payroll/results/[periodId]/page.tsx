@@ -116,7 +116,12 @@ export default function PayrollResultsPage() {
         .eq('id', session.user.id)
         .single()
 
-      if (!prof || prof.role !== 'admin') { router.push('/dashboard'); return }
+      // Module access is decided once, by the route guard in
+      // src/app/{attendance,payroll}/layout.tsx, through
+      // src/lib/moduleAccess.ts. A second 'is this an admin?' here is what let
+      // the launcher and the route disagree; admin-only ACTIONS on this page
+      // are gated where they are rendered, and again in their API routes.
+      if (!prof) { router.push('/coming-soon'); return }
       setProfile(prof)
 
       await loadData(session.access_token)
@@ -159,7 +164,10 @@ export default function PayrollResultsPage() {
   if (loading) return <LoadingScreen />
 
   const isLocked    = period?.status === 'locked'
-  const canLock     = period?.status === 'generated'
+  // Locking a period is admin work even for someone Control Center granted the
+  // Payroll module to — /api/payroll/lock enforces the same line, so showing
+  // the button to anyone else would only ever produce a 403.
+  const canLock     = period?.status === 'generated' && profile?.role === 'admin'
   const periodLabel = period
     ? `${MONTHS[period.payroll_month - 1]} ${period.payroll_year}`
     : ''

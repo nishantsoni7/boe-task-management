@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { canAccessModule } from '@/lib/moduleAccess'
+import { resolveModuleAccess } from '@/lib/moduleAccess'
 
 export default function PayrollGuard({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState(false)
@@ -17,18 +17,26 @@ export default function PayrollGuard({ children }: { children: React.ReactNode }
       if (!session) { router.replace('/login'); return }
 
       const [{ data: profile }, { data: mod }] = await Promise.all([
-        supabase.from('users').select('role, team').eq('id', session.user.id).single(),
-        supabase.from('app_modules').select('visibility_type, allowed_department').eq('module_key', 'payroll').single(),
+        supabase.from('users').select('id, role, team').eq('id', session.user.id).single(),
+        supabase
+          .from('app_modules')
+          .select('visibility_type, allowed_department, allowed_user_ids')
+          .eq('module_key', 'payroll')
+          .single(),
       ])
 
-      // /payroll is salary administration for the whole company, so it is
-      // admin-only. Control Center's visibility setting can still HIDE it, but
-      // flipping it to `live` or a department must never be able to grant an
-      // employee payroll access — that is a navigation control, not an
-      // authorization one. Employees reach their own payslip at /my-payroll.
-      const allowed = !!profile
-        && profile.role === 'admin'
-        && canAccessModule(mod?.visibility_type, mod?.allowed_department, profile, true)
+      // One decision, shared with /modules and with the payroll API routes —
+      // see src/lib/moduleAccess.ts. /payroll is salary administration for the
+      // whole company, so `payroll` is an explicit-grant module there: flipping
+      // the module to `live` or to a department cannot hand an employee the
+      // payroll ledger, and a non-admin gets in only by being named in Control
+      // Center → Module Visibility → Custom. Employees still reach their own
+      // payslip at /my-payroll without any of this.
+      //
+      // Opening the module is not the same as running it: generation, locking,
+      // unlocking, adjustments and attendance corrections stay admin-only in
+      // their API routes and in canCorrectAttendance().
+      const allowed = !!profile && resolveModuleAccess('payroll', mod, profile, false)
 
       if (!allowed) {
         router.replace('/coming-soon')

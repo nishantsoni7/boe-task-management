@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await svc
     .from('app_modules')
-    .select('id, module_key, module_name, description, route_path, visibility_type, allowed_department, sort_order')
+    .select('id, module_key, module_name, description, route_path, visibility_type, allowed_department, allowed_user_ids, sort_order')
     .order('sort_order')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

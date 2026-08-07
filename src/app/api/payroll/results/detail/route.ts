@@ -1,10 +1,12 @@
 // GET /api/payroll/results/detail?period_id=...&employee_id=...
 // Returns one employee payroll result with deduction lines and adjustments,
 // plus the day-level view both result tabs are built from.
-// Admin only.
+// Payroll module access required — admin, or a member named in Control Center →
+// Module Visibility → Custom. Correcting attendance stays admin-only, and
+// `can_edit` below reports that separately.
 
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
 import { isSkip } from '@/lib/payroll/types'
 import type { EngineEmployee } from '@/lib/payroll/types'
@@ -17,29 +19,14 @@ import { toDeductionDays, toConsideredDays, isCorrectableDay } from '@/lib/payro
 import { canCorrectAttendance } from '@/lib/payroll/correctionRules'
 
 export async function GET(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const periodId   = req.nextUrl.searchParams.get('period_id')
   const employeeId = req.nextUrl.searchParams.get('employee_id')
   if (!periodId || !employeeId)
     return NextResponse.json({ error: 'period_id and employee_id are required' }, { status: 400 })
 
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
-
-  const { data: { user: caller }, error: authErr } = await svc.auth.getUser(token)
-  if (authErr || !caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: callerProfile } = await svc
-    .from('users')
-    .select('role')
-    .eq('id', caller.id)
-    .single()
-  if (callerProfile?.role !== 'admin')
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const auth = await requireModuleAccess(req, 'payroll')
+  if (isResponse(auth)) return auth
+  const svc = auth.svc
 
   // Period — needed for the lock state and to run the day-level view
   const { data: period, error: periodErr } = await svc
@@ -111,7 +98,7 @@ export async function GET(req: NextRequest) {
     storedTotalDeductions: result.total_deductions,
   })
 
-  const permission = canCorrectAttendance(callerProfile.role, period.status)
+  const permission = canCorrectAttendance(auth.role, period.status)
 
   return NextResponse.json({
     period: {

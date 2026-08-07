@@ -105,6 +105,16 @@ export type PayrollRowActionBarProps = {
   status: PeriodStatus
   /** True while a generation for this row is in flight. */
   isBusy: boolean
+  /**
+   * Whether the viewer may run payroll, not merely read it.
+   *
+   * Control Center can grant a named member access to the Payroll module; that
+   * lets them open the results, not generate, lock or unlock a period. Those
+   * stay admin-only in their API routes, so a member who saw the buttons would
+   * only ever be shown a 403 — the row drops them instead. Defaults to true so
+   * the existing admin call sites and the row tests are unchanged.
+   */
+  canManage?: boolean
   onGenerate: () => void
   onLock: () => void
   onUnlock: () => void
@@ -112,9 +122,13 @@ export type PayrollRowActionBarProps = {
 }
 
 export function PayrollRowActionBar({
-  status, isBusy, onGenerate, onLock, onUnlock, onViewResults,
+  status, isBusy, canManage = true, onGenerate, onLock, onUnlock, onViewResults,
 }: PayrollRowActionBarProps) {
-  const { primary, secondary } = payrollRowActions(status)
+  const resolved = payrollRowActions(status)
+  // A draft has nothing to read and nothing a non-admin may do, so it offers
+  // no control at all rather than a View button that opens an empty period.
+  const primary   = canManage ? resolved.primary : 'view'
+  const secondary = canManage ? resolved.secondary : []
 
   const run: Record<PayrollPeriodAction, () => void> = {
     view:       onViewResults,
@@ -168,6 +182,11 @@ export function PayrollRowActionBar({
         <Icon size={15} strokeWidth={2} aria-hidden="true" />
       </button>
     )
+  }
+
+  // Nothing to show: a read-only viewer looking at a draft period.
+  if (!canManage && status === 'draft') {
+    return <span style={{ fontSize: 12.5, color: '#A9AFBD' }}>—</span>
   }
 
   return (

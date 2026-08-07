@@ -152,12 +152,15 @@ export default function PayrollPage() {
         .eq('id', session.user.id)
         .single()
 
-      // This page is the admin period-management dashboard (generate/lock
-      // periods, every employee's data) — not a page any non-admin should
-      // land on, even if Payroll's Control Center visibility is 'live'.
-      // There's no employee-facing payslip view at this route yet, so
-      // Payroll's app_modules row is kept admin_only until one exists.
-      if (!prof || prof.role !== 'admin') {
+      // Nothing to re-decide here: PayrollGuard (src/app/payroll/layout.tsx)
+      // wraps this route and has already resolved module access through
+      // src/lib/moduleAccess.ts. Restating it as `role === 'admin'` was exactly
+      // the second opinion that sent every non-admin to /coming-soon while the
+      // launcher was still showing them the card.
+      //
+      // The period ACTIONS on this page — Generate, Lock, Unlock — remain
+      // admin-only, in the UI below and in their API routes.
+      if (!prof) {
         router.push('/coming-soon')
         return
       }
@@ -326,6 +329,11 @@ export default function PayrollPage() {
     router.replace('/login')
   }
 
+  // Running payroll is admin work; PayrollGuard has already decided whether the
+  // module opens at all. See src/lib/moduleAccess.ts and the API routes for
+  // generate / lock / unlock, which enforce the same line server-side.
+  const isPayrollAdmin = profile?.role === 'admin'
+
   // ── Operational summary ───────────────────────────────────────────────────
   // Every figure below is derived from the list already fetched above — no
   // extra query, no extra round trip.
@@ -343,9 +351,11 @@ export default function PayrollPage() {
     <PayrollLayout
       profile={profile}
       title="Payroll"
-      subtitle="Manage monthly payroll generation, review, locking, and corrections."
+      subtitle={isPayrollAdmin
+        ? 'Manage monthly payroll generation, review, locking, and corrections.'
+        : 'Review monthly payroll results.'}
       onSignOut={handleSignOut}
-      actions={
+      actions={isPayrollAdmin ? (
         <button
           className="boe-btn boe-btn-primary"
           onClick={() => { setCreateError(null); setCreateInfo(null); setCreateOpen(true) }}
@@ -353,7 +363,7 @@ export default function PayrollPage() {
         >
           Create Payroll Period
         </button>
-      }
+      ) : undefined}
     >
       {error && (
         <div role="alert" style={{
@@ -498,6 +508,7 @@ export default function PayrollPage() {
                         <PayrollRowActionBar
                           status={p.status}
                           isBusy={!!busy[p.id]}
+                          canManage={isPayrollAdmin}
                           onGenerate={() => handleGenerate(p)}
                           onLock={() => handleLock(p)}
                           onUnlock={() => { setUnlockError(null); setUnlockTarget(p) }}

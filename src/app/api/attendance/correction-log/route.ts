@@ -1,22 +1,16 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 const PAGE_SIZE = 50
 
 export async function GET(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
-  const { data: { user }, error: authErr } = await svc.auth.getUser(token)
-  if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { data: me } = await svc.from('users').select('role').eq('id', user.id).single()
-  if (!me || me.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // The correction audit trail is part of the Attendance module and is gated
+  // exactly like the rest of it — see src/lib/moduleAccess.ts. It is read-only;
+  // writing a correction is still admin-only in
+  // /api/payroll/attendance-correction.
+  const auth = await requireModuleAccess(req, 'attendance')
+  if (isResponse(auth)) return auth
+  const svc = auth.svc
 
   const { searchParams } = new URL(req.url)
   const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
