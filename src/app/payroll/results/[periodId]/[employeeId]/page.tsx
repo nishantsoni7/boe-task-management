@@ -2,13 +2,12 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { TrendingDown, CalendarCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { PayrollLayout } from '@/components/layout/PayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { StatusTabs, accentFromBadge, type StatusTab } from '@/components/ui/StatusTabs'
 import { istClockOf } from '@/lib/istDate'
+import { periodLabel } from '@/lib/payroll/months'
 import { resolveMachineRecord } from '@/lib/payroll/correctionContext'
 import type { DayTreatment } from '@/lib/attendance/corrections'
 import {
@@ -123,14 +122,44 @@ function fmtDate(s: string): string {
   return new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-/** Date-only values are formatted from their parts — parsing them as UTC shifts the day in IST. */
-function fmtDayDate(iso: string): string {
+/**
+ * Date-only values are formatted from their parts — parsing them as UTC shifts
+ * the day in IST. Split so a row can emphasise the date and mute the weekday
+ * while the two stay on one line; the joined form is used in prose.
+ *
+ * "01 July, Wed" — day first, full month, weekday last. No year: the payroll
+ * month is stated once in the page header.
+ */
+function dayDateParts(iso: string): { date: string; weekday: string } {
   const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })
+  const local = new Date(y, m - 1, d)
+  return {
+    date:    local.toLocaleDateString('en-IN', { day: '2-digit', month: 'long' }),
+    weekday: local.toLocaleDateString('en-IN', { weekday: 'short' }),
+  }
+}
+
+function fmtDayDate(iso: string): string {
+  const { date, weekday } = dayDateParts(iso)
+  return `${date}, ${weekday}`
+}
+
+function DayDateCell({ iso }: { iso: string }) {
+  const { date, weekday } = dayDateParts(iso)
+  return (
+    <>
+      <span style={{ color: '#111318', fontWeight: 600 }}>{date}</span>
+      <span style={{ color: '#8C94A6', fontWeight: 400 }}>, {weekday}</span>
+    </>
+  )
 }
 
 function fmtPunches(checkIn: string | null, checkOut: string | null): string {
   return `${checkIn ? istClockOf(checkIn) : '—'} → ${checkOut ? istClockOf(checkOut) : '—'}`
+}
+
+function fmtCount(n: number | null): string {
+  return n != null ? String(n) : '—'
 }
 
 function fmtHours(h: number): string {
@@ -163,23 +192,37 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
   pre_joining:            'Before Joining',
 }
 
-// Green for a fully paid, fully present day; muted for the paid-but-not-worked
-// ones; amber where the day is only partly counted.
-function classificationTone(classification: string): { bg: string; color: string; border: string } {
+// Day classification is written as plain secondary text, not a badge — a table
+// where every row carries a coloured pill reads as noise rather than as signal.
+// Three tones only: green for a fully paid, fully worked day, amber for any
+// exception, muted for the paid-but-not-worked ones. Red is reserved for the
+// money column so the deduction amounts stay the fastest thing to scan.
+function classificationTone(classification: string): string {
   switch (classification) {
     case 'full_present':
-      return { bg: 'rgba(5,150,105,0.10)',  color: '#059669', border: 'rgba(5,150,105,0.28)' }
+      return '#059669'
     case 'present_with_shortfall':
     case 'short_present':
     case 'missing_punch':
-      return { bg: 'rgba(217,119,6,0.10)',  color: '#B45309', border: 'rgba(217,119,6,0.28)' }
-    case 'half_day':
-      return { bg: 'rgba(124,58,237,0.10)', color: '#7C3AED', border: 'rgba(124,58,237,0.28)' }
     case 'full_absent':
-      return { bg: 'rgba(220,38,38,0.09)',  color: '#DC2626', border: 'rgba(220,38,38,0.26)' }
+      return '#B45309'
+    // Half day keeps the module's own purple, muted to text weight.
+    case 'half_day':
+      return '#7C5CD6'
     default:
-      return { bg: 'rgba(140,148,166,0.12)', color: '#6B7280', border: 'rgba(140,148,166,0.3)' }
+      return '#8C94A6'
   }
+}
+
+function DayStatus({ classification }: { classification: string }) {
+  return (
+    <div style={{
+      fontSize: 11.5, fontWeight: 500, marginTop: 3,
+      color: classificationTone(classification),
+    }}>
+      {CLASSIFICATION_LABELS[classification] ?? classification}
+    </div>
+  )
 }
 
 function Pill({ tone, children }: { tone: { bg: string; color: string }; children: React.ReactNode }) {
@@ -230,28 +273,143 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+// ── Summary rail primitives ───────────────────────────────────────────────────
+
+function SummaryLine({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      padding: '10px 20px', borderBottom: '1px solid rgba(0,0,0,0.04)',
+      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+      gap: 12, padding: '5px 0',
     }}>
-      <span style={{ fontSize: 13, color: '#6B7280' }}>{label}</span>
-      <span style={{ fontSize: 13.5, fontWeight: highlight ? 700 : 500, color: highlight ? '#111318' : '#3D4455', fontVariantNumeric: 'tabular-nums' }}>
+      <span style={{ fontSize: 12.5, color: '#6B7280' }}>{label}</span>
+      <span style={{
+        fontSize: 13.5, fontWeight: 600, color: tone ?? '#3D4455',
+        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+      }}>
         {value}
       </span>
     </div>
   )
 }
 
-const TH: React.CSSProperties = {
-  padding: '8px 14px', textAlign: 'left',
-  fontSize: 11, fontWeight: 700, color: '#8C94A6',
-  textTransform: 'uppercase', letterSpacing: '0.05em',
+function SummaryGroup({ title }: { title: string }) {
+  return (
+    <div style={{
+      fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+      letterSpacing: '0.09em', color: '#8C94A6', marginBottom: 3,
+    }}>
+      {title}
+    </div>
+  )
 }
 
-const TD: React.CSSProperties = { padding: '9px 14px', fontSize: 13, color: '#3D4455', verticalAlign: 'top' }
+function SummaryDivider() {
+  return <div style={{ height: 1, background: 'rgba(0,0,0,0.07)', margin: '15px 0 12px' }} />
+}
 
+const TH: React.CSSProperties = {
+  padding: '10px 16px', textAlign: 'left',
+  fontSize: 10.5, fontWeight: 700, color: '#8C94A6',
+  textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap',
+}
+
+const TD: React.CSSProperties = { padding: '10px 16px', fontSize: 13, color: '#3D4455', verticalAlign: 'top' }
+
+// The header rule is deliberately heavier than the row rules, so the head reads
+// as the table's edge and the body reads as one continuous ledger.
+const THEAD_ROW: React.CSSProperties = { borderBottom: '1px solid rgba(0,0,0,0.10)' }
+const ROW_DIVIDER = '1px solid rgba(0,0,0,0.045)'
+
+/** First line of a stacked attendance cell — the punch pair. */
+const PUNCH_LINE: React.CSSProperties = {
+  fontSize: 13, fontWeight: 500, color: '#3D4455', fontVariantNumeric: 'tabular-nums',
+}
+
+// ── Aggregate (total) row ─────────────────────────────────────────────────────
+// Lives inside the table, in <tfoot>, so it inherits the same <colgroup> as the
+// rows above it and its figure lands in the very same column. Rendering it as a
+// sibling <div> below the table — which is what it used to be — pushed it to the
+// card's right edge, one column adrift from the numbers it totals.
+const TFOOT_CELL: React.CSSProperties = {
+  padding: '13px 16px 14px',
+  borderTop: '1px solid rgba(0,0,0,0.11)',
+  background: 'rgba(0,0,0,0.012)',
+}
+
+const TFOOT_LABEL: React.CSSProperties = {
+  ...TFOOT_CELL, fontSize: 13, fontWeight: 600, color: '#3D4455', whiteSpace: 'nowrap',
+}
+
+const TFOOT_VALUE: React.CSSProperties = {
+  ...TFOOT_CELL, fontSize: 14, fontWeight: 700, textAlign: 'right',
+  fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+}
+
+// ── Result tabs ───────────────────────────────────────────────────────────────
+// Local to this page rather than the shared StatusTabs. That component is the
+// list-navigation strip for Payment Requests, Received Payments, Order Requests
+// and Confirmed Orders; restyling it to suit one payroll screen would restyle
+// four unrelated modules. The switching contract here is identical — same keys,
+// same onSelect — so behaviour is unchanged.
+//
+// Text tabs, not buttons or pills: quiet inactive state, a 2px indicator and a
+// weight change on the active one, and a count badge that is tinted only while
+// its tab is active so the inactive one never reads as an alert.
+
+type ResultTab = { key: TabKey; label: string; count: number; accent: string; tint: string }
+
+function ResultTabs({
+  tabs, active, onSelect,
+}: {
+  tabs: ResultTab[]
+  active: TabKey
+  onSelect: (key: TabKey) => void
+}) {
+  return (
+    <div style={{
+      display: 'flex', gap: 4, padding: '0 10px',
+      borderBottom: '1px solid rgba(0,0,0,0.09)',
+    }}>
+      {tabs.map(({ key, label, count, accent, tint }) => {
+        const isActive = active === key
+        return (
+          <button
+            key={key}
+            onClick={() => onSelect(key)}
+            aria-pressed={isActive}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              height: 42, padding: '0 12px', flexShrink: 0,
+              border: 'none', background: 'transparent',
+              borderBottom: `2px solid ${isActive ? accent : 'transparent'}`,
+              marginBottom: -1,
+              fontSize: 13, fontWeight: isActive ? 700 : 500,
+              color: isActive ? '#111318' : '#6B7384',
+              cursor: 'pointer', whiteSpace: 'nowrap',
+              transition: 'color 0.12s',
+            }}
+            onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#3D4455' }}
+            onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#6B7384' }}
+          >
+            {label}
+            <span style={{
+              minWidth: 19, height: 19, padding: '0 6px', borderRadius: 999,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              background: isActive ? tint : 'rgba(0,0,0,0.05)',
+              color: isActive ? accent : '#6B7384',
+              fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+            }}>
+              {count}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Deliberately quiet: on an audit table the amounts and the day statuses are
+// what should catch the eye, not the action that sits on every single row.
 function EditButton({ onClick, disabled, title }: { onClick: () => void; disabled: boolean; title?: string }) {
   return (
     <button
@@ -259,14 +417,113 @@ function EditButton({ onClick, disabled, title }: { onClick: () => void; disable
       disabled={disabled}
       title={title}
       style={{
-        fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
-        border: '1px solid rgba(79,111,208,0.3)', background: 'transparent',
-        color: disabled ? '#A9AFBD' : '#4F6FD0',
+        fontSize: 12, fontWeight: 600, padding: '0 10px', borderRadius: 6,
+        minHeight: 30, minWidth: 44, border: 'none', background: 'transparent',
+        color: disabled ? '#A9AFBD' : '#6B7280',
         cursor: disabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+        transition: 'background 0.12s, color 0.12s',
+      }}
+      onMouseEnter={e => {
+        if (disabled) return
+        e.currentTarget.style.background = 'rgba(79,111,208,0.08)'
+        e.currentTarget.style.color = '#4F6FD0'
+      }}
+      onMouseLeave={e => {
+        if (disabled) return
+        e.currentTarget.style.background = 'transparent'
+        e.currentTarget.style.color = '#6B7280'
       }}
     >
       Edit
     </button>
+  )
+}
+
+// ── Payroll summary rail ──────────────────────────────────────────────────────
+// Two blocks only: the money, then the attendance behind it. Identity and record
+// state live in the page header, and the day counts the tabs already carry are
+// not repeated here.
+//
+// One gross figure, not two. computeGrossSalary() in lib/payroll/engine.ts returns
+// employee.monthly_salary unchanged, so gross_salary and monthly_salary are equal
+// by definition rather than by coincidence in one result; the row is labelled
+// "Gross Salary" to match the results list and the rest of the payroll module.
+
+function PayrollSummaryCard({ result }: { result: DetailResult }) {
+  const deductions  = result.total_deductions ?? 0
+  const adjustments = result.pending_adjustment_total ?? 0
+
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 12,
+      border: '1px solid rgba(0,0,0,0.08)', overflow: 'hidden',
+    }}>
+      <SectionHeader title="Payroll Summary" />
+
+      <div style={{ padding: '16px 18px 18px' }}>
+        {/* Reads as a calculation, top to bottom: what was earned, what came
+            off, then the result under a rule. Net Payable is the strongest
+            figure on the page and shares the right edge with the lines above
+            it, so all four amounts sit on one column. */}
+        <SummaryLine label="Gross Salary" value={fmt(result.gross_salary)} />
+        <SummaryLine
+          label="Deductions"
+          value={deductions > 0 ? `−${fmt(result.total_deductions)}` : fmt(result.total_deductions)}
+          tone={deductions > 0 ? '#DC2626' : undefined}
+        />
+        <SummaryLine
+          label="Adjustments"
+          value={`${adjustments > 0 ? '+' : ''}${fmt(result.pending_adjustment_total)}`}
+          tone={adjustments === 0 ? undefined : adjustments > 0 ? '#16A34A' : '#DC2626'}
+        />
+        {/* Detail only when there is something to detail — a zero-adjustment
+            state says nothing the line above has not already said. */}
+        {result.adjustments.map(adj => (
+          <div key={adj.id} style={{
+            display: 'flex', justifyContent: 'space-between', gap: 10,
+            fontSize: 11.5, color: '#8C94A6', padding: '1px 0 3px 10px',
+          }}>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {adj.description}
+            </span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+              {(adj.amount ?? 0) > 0 ? '+' : ''}{fmt(adj.amount)}
+            </span>
+          </div>
+        ))}
+
+        {/* The rule reads as the line you draw under a column before totalling
+            it, so it sits tight above the result rather than centred in space. */}
+        <div style={{ height: 1, background: 'rgba(0,0,0,0.13)', margin: '11px 0 9px' }} />
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'baseline', gap: 10,
+        }}>
+          <span style={{
+            fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+            letterSpacing: '0.09em', color: '#6B7384',
+          }}>
+            Net Payable
+          </span>
+          {/* Body font, not the display face — this is an accounting figure. */}
+          <span style={{
+            fontSize: 27, fontWeight: 700, lineHeight: 1.05, color: '#111318',
+            fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+          }}>
+            {fmt(result.net_salary)}
+          </span>
+        </div>
+
+        <SummaryDivider />
+        <SummaryGroup title="Attendance" />
+        <SummaryLine label="Working Days" value={fmtCount(result.working_days_in_month)} />
+        <SummaryLine label="Present"      value={fmtCount(result.days_present)} />
+        <SummaryLine label="Absent"       value={fmtCount(result.days_absent)} />
+        {result.half_day_count != null && result.half_day_count > 0 && (
+          <SummaryLine label="Half Days"  value={String(result.half_day_count)} />
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -410,20 +667,20 @@ export default function PayrollResultDetailPage() {
 
   const canEdit = data?.can_edit ?? false
 
-  const tabs: StatusTab<TabKey>[] = [
+  const tabs: ResultTab[] = [
     {
       key: 'deductions',
       label: 'Deductions',
-      Icon: TrendingDown,
-      accent: accentFromBadge({ bg: 'rgba(220,38,38,0.08)', color: '#DC2626', border: 'rgba(220,38,38,0.18)' }),
       count: data?.deduction_days.length ?? 0,
+      accent: '#DC2626',
+      tint:   'rgba(220,38,38,0.10)',
     },
     {
       key: 'considered',
       label: 'Days Considered',
-      Icon: CalendarCheck,
-      accent: accentFromBadge({ bg: 'rgba(5,150,105,0.09)', color: '#059669', border: 'rgba(5,150,105,0.2)' }),
       count: data?.considered_days.length ?? 0,
+      accent: '#059669',
+      tint:   'rgba(5,150,105,0.11)',
     },
   ]
 
@@ -431,16 +688,15 @@ export default function PayrollResultDetailPage() {
     <PayrollLayout
       profile={profile}
       title="Payroll Result Detail"
-      subtitle={result ? `${result.employee_name} — ${result.employee_code ?? ''}` : 'Loading…'}
       onSignOut={handleSignOut}
     >
-      {/* Back link */}
-      <div style={{ marginBottom: 20 }}>
+      {/* Back link — secondary, and kept to a single tight line. */}
+      <div style={{ marginBottom: 16 }}>
         <button
           onClick={() => router.push(`/payroll/results/${periodId}`)}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: '#6B7280', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4,
+            color: '#8C94A6', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4,
             padding: 0,
           }}
         >
@@ -459,26 +715,29 @@ export default function PayrollResultDetailPage() {
       )}
 
       {result && data && (
-        <div style={{ maxWidth: 760 }}>
+        <div className="payroll-detail-page">
 
-          {/* Employee summary */}
-          <div style={card}>
-            <SectionHeader title="Employee" />
-            <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#111318' }}>{result.employee_name}</div>
-                {result.employee_code && (
-                  <div style={{ fontSize: 12.5, color: '#8C94A6', marginTop: 2 }}>{result.employee_code}</div>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <StatusBadge status={result.status} />
-                {result.generated_at && (
-                  <span style={{ fontSize: 11.5, color: '#8C94A6' }}>
-                    Generated {fmtDate(result.generated_at)}
-                  </span>
-                )}
-              </div>
+          {/* The one place the employee is named. Sits directly on the page
+              background — identity does not need a card around it. */}
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#111318', letterSpacing: '-0.015em' }}>
+              {result.employee_name}
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap',
+              marginTop: 6, fontSize: 13, color: '#8C94A6',
+            }}>
+              {result.employee_code && <span>{result.employee_code}</span>}
+              {result.employee_code && <span aria-hidden>·</span>}
+              {/* The month the salary is for — more use here than any other date,
+                  so it outranks both the code beside it and the generated date. */}
+              <span style={{ color: '#111318', fontWeight: 600, fontSize: 13.5 }}>
+                {periodLabel(data.period.payroll_month, data.period.payroll_year)}
+              </span>
+              <StatusBadge status={result.status} />
+              {result.generated_at && (
+                <span style={{ fontSize: 12.5 }}>Generated {fmtDate(result.generated_at)}</span>
+              )}
             </div>
           </div>
 
@@ -501,8 +760,9 @@ export default function PayrollResultDetailPage() {
               background: 'rgba(85,133,232,0.09)', color: '#3B63B8',
               border: '1px solid rgba(85,133,232,0.3)', fontSize: 13,
             }}>
-              Attendance has changed since this payroll was generated. The day breakdown below
-              reflects the current attendance; the totals do not. Regenerate payroll for this period.
+              Attendance for this month changed after this payroll was generated. The day rows
+              below are up to date; the salary figures are not. Regenerate payroll for this period
+              to bring them back in line.
             </div>
           )}
 
@@ -532,109 +792,51 @@ export default function PayrollResultDetailPage() {
             </div>
           )}
 
-          {/* Salary breakdown */}
-          <div style={card}>
-            <SectionHeader title="Salary Breakdown" />
-            <Row label="Monthly Salary (CTC)"  value={fmt(result.monthly_salary)} />
-            <Row label="Working Days in Month" value={result.working_days_in_month != null ? String(result.working_days_in_month) : '—'} />
-            <Row label="Days Present"          value={result.days_present != null ? String(result.days_present) : '—'} />
-            <Row label="Days Absent"           value={result.days_absent  != null ? String(result.days_absent)  : '—'} />
-            {result.half_day_count != null && result.half_day_count > 0 && (
-              <Row label="Half Days"           value={String(result.half_day_count)} />
-            )}
-            <Row label="Gross Salary"          value={fmt(result.gross_salary)} highlight />
-          </div>
+          {/* Audit workspace (left) + payroll summary rail (right).
+              Below 1024 this stacks and the rail moves above the table. */}
+          <div className="payroll-detail-workspace">
 
-          {/* ── The two result tabs ─────────────────────────────────────────── */}
-          <div style={card}>
-            <StatusTabs
-              tabs={tabs}
-              active={tab}
-              onSelect={setTab}
-              summary={tab === 'deductions' ? 'Dates that reduced salary' : 'Dates counted as paid'}
-            />
+            <div className="payroll-detail-main">
 
-            {tab === 'deductions' ? (
-              <DeductionsTab
-                days={data.deduction_days}
-                totalDeductions={result.total_deductions}
-                corrections={correctionsByDate}
-                canEdit={canEdit}
-                editHint={data.edit_blocked}
-                onEdit={setEditingDate}
-              />
-            ) : (
-              <ConsideredTab
-                days={data.considered_days}
-                corrections={correctionsByDate}
-                correctableDates={correctableDates}
-                canEdit={canEdit}
-                editHint={data.edit_blocked}
-                onEdit={setEditingDate}
-              />
-            )}
-          </div>
+              {/* ── The two result tabs ───────────────────────────────────── */}
+              {/* No caption sentence: the tab labels already say what each list
+                  is, and the sentence competed with them for attention. */}
+              <div style={{ ...card, marginBottom: 0 }}>
+                <ResultTabs
+                  tabs={tabs}
+                  active={tab}
+                  onSelect={setTab}
+                />
 
-          {/* Adjustments */}
-          <div style={card}>
-            <SectionHeader title="Adjustments" />
-            {result.adjustments.length === 0 ? (
-              <div style={{ padding: '20px', fontSize: 13, color: '#8C94A6' }}>No adjustments applied.</div>
-            ) : (
-              <>
-                {result.adjustments.map((adj, i) => (
-                  <div key={adj.id} style={{
-                    padding: '10px 20px',
-                    borderBottom: i < result.adjustments.length - 1 ? '1px solid rgba(0,0,0,0.04)' : 'none',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
-                  }}>
-                    <span style={{ fontSize: 13, color: '#3D4455' }}>{adj.description}</span>
-                    <span style={{
-                      fontSize: 13.5, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-                      color: (adj.amount ?? 0) >= 0 ? '#16A34A' : '#DC2626',
-                    }}>
-                      {(adj.amount ?? 0) >= 0 ? '+' : ''}{fmt(adj.amount)}
-                    </span>
-                  </div>
-                ))}
-                <div style={{
-                  padding: '12px 20px', borderTop: '1px solid rgba(0,0,0,0.06)',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#3D4455' }}>Total Adjustments</span>
-                  <span style={{
-                    fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-                    color: (result.pending_adjustment_total ?? 0) >= 0 ? '#16A34A' : '#DC2626',
-                  }}>
-                    {(result.pending_adjustment_total ?? 0) >= 0 ? '+' : ''}{fmt(result.pending_adjustment_total)}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Net salary */}
-          <div style={{
-            ...card,
-            background: 'linear-gradient(135deg, #1E293B 0%, #334155 100%)',
-            border: 'none',
-          }}>
-            <div style={{
-              padding: '20px 24px', display: 'flex', gap: 14,
-              justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap',
-            }}>
-              <div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>
-                  Net Salary
-                </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                  Gross − Deductions + Adjustments
-                </div>
+                {tab === 'deductions' ? (
+                  <DeductionsTab
+                    days={data.deduction_days}
+                    totalDeductions={result.total_deductions}
+                    corrections={correctionsByDate}
+                    canEdit={canEdit}
+                    editHint={data.edit_blocked}
+                    onEdit={setEditingDate}
+                  />
+                ) : (
+                  <ConsideredTab
+                    days={data.considered_days}
+                    corrections={correctionsByDate}
+                    correctableDates={correctableDates}
+                    canEdit={canEdit}
+                    editHint={data.edit_blocked}
+                    onEdit={setEditingDate}
+                  />
+                )}
               </div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
-                {fmt(result.net_salary)}
-              </div>
+
             </div>
+
+            <aside className="payroll-detail-aside">
+              <div className="payroll-detail-aside-inner">
+                <PayrollSummaryCard result={result} />
+              </div>
+            </aside>
+
           </div>
 
         </div>
@@ -673,14 +875,23 @@ function DeductionsTab({
   return (
     <>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table className="payroll-ledger" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+          {/* Fixed proportions so the amount and action columns never shift as
+              the reason text changes length from row to row. */}
+          <colgroup>
+            <col style={{ width: '17%' }} />
+            <col style={{ width: '30%' }} />
+            <col style={{ width: '27%' }} />
+            <col style={{ width: '17%' }} />
+            <col style={{ width: '9%'  }} />
+          </colgroup>
           <thead>
-            <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)', background: 'rgba(0,0,0,0.015)' }}>
+            <tr style={THEAD_ROW}>
               <th style={TH}>Date</th>
-              <th style={TH}>Reason</th>
-              <th style={TH}>Considered</th>
-              <th style={{ ...TH, textAlign: 'right' }}>Amount</th>
-              <th style={TH} aria-label="Actions" />
+              <th style={TH}>Attendance Issue</th>
+              <th style={TH}>Attendance</th>
+              <th style={{ ...TH, textAlign: 'right' }}>Deduction</th>
+              <th style={{ ...TH, textAlign: 'right' }} aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -689,20 +900,24 @@ function DeductionsTab({
               // One row per DATE. The reasons stack inside it, so a date with
               // two deductions carries one Edit action, not two.
               return (
-                <tr key={day.date} style={{ borderBottom: i < days.length - 1 ? '1px solid rgba(0,0,0,0.04)' : 'none' }}>
+                <tr key={day.date} style={{ borderBottom: i < days.length - 1 ? ROW_DIVIDER : 'none' }}>
                   <td style={{ ...TD, whiteSpace: 'nowrap' }}>
-                    {fmtDayDate(day.date)}
+                    <DayDateCell iso={day.date} />
                     {day.is_corrected && <CorrectedBadge remark={correction?.remark} />}
                   </td>
                   <td style={TD}>
                     {day.lines.map((l, j) => (
                       <div key={j} style={{ marginTop: j > 0 ? 3 : 0 }}>
-                        <span style={{ color: '#DC2626', fontWeight: 500 }}>
+                        {/* Neutral: red is reserved for the money column, so the
+                            amounts stay the fastest thing to find on the row. */}
+                        <span style={{ color: '#3D4455', fontWeight: 500 }}>
                           {DEDUCTION_LABELS[l.deduction_type] ?? l.deduction_type}
                         </span>
-                        <span style={{ color: '#8C94A6', marginLeft: 6, fontVariantNumeric: 'tabular-nums' }}>
-                          {fmtHours(l.hours_deducted)}
-                        </span>
+                        {l.hours_deducted > 0 && (
+                          <span style={{ color: '#8C94A6', fontVariantNumeric: 'tabular-nums' }}>
+                            {' · '}{fmtHours(l.hours_deducted)}
+                          </span>
+                        )}
                       </div>
                     ))}
                     {correction && (
@@ -711,13 +926,10 @@ function DeductionsTab({
                       </div>
                     )}
                   </td>
-                  <td style={{ ...TD, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: '#6B7280' }}>
-                    {fmtPunches(day.check_in_at, day.check_out_at)}
-                    <div style={{ marginTop: 3 }}>
-                      <Pill tone={classificationTone(day.classification)}>
-                        {CLASSIFICATION_LABELS[day.classification] ?? day.classification}
-                      </Pill>
-                    </div>
+                  {/* Punches over status, stacked — one compact cell, no badge. */}
+                  <td style={{ ...TD, whiteSpace: 'nowrap' }}>
+                    <div style={PUNCH_LINE}>{fmtPunches(day.check_in_at, day.check_out_at)}</div>
+                    <DayStatus classification={day.classification} />
                   </td>
                   <td style={{ ...TD, textAlign: 'right', color: '#DC2626', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                     −{fmt(day.total_amount)}
@@ -733,17 +945,18 @@ function DeductionsTab({
               )
             })}
           </tbody>
+          <tfoot>
+            <tr>
+              <td style={TFOOT_LABEL} colSpan={3}>Total Deductions</td>
+              {/* Same sign convention as the rows, so the column reads as one
+                  continuous run of figures down to the total. */}
+              <td style={{ ...TFOOT_VALUE, color: '#DC2626' }}>
+                −{fmt(totalDeductions)}
+              </td>
+              <td style={TFOOT_CELL} />
+            </tr>
+          </tfoot>
         </table>
-      </div>
-
-      <div style={{
-        padding: '12px 20px', borderTop: '1px solid rgba(0,0,0,0.06)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#3D4455' }}>Total Deductions</span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>
-          {fmt(totalDeductions)}
-        </span>
       </div>
     </>
   )
@@ -770,14 +983,23 @@ function ConsideredTab({
   return (
     <>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table className="payroll-ledger" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+          {/* Date and Action match the Deductions tab exactly, so switching tabs
+              does not move those columns. */}
+          <colgroup>
+            <col style={{ width: '17%' }} />
+            <col style={{ width: '35%' }} />
+            <col style={{ width: '22%' }} />
+            <col style={{ width: '17%' }} />
+            <col style={{ width: '9%'  }} />
+          </colgroup>
           <thead>
-            <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)', background: 'rgba(0,0,0,0.015)' }}>
+            <tr style={THEAD_ROW}>
               <th style={TH}>Date</th>
-              <th style={TH}>Status</th>
-              <th style={TH}>Punches</th>
+              <th style={TH}>Attendance</th>
+              <th style={TH}>Worked</th>
               <th style={{ ...TH, textAlign: 'right' }}>Payable</th>
-              <th style={TH} aria-label="Actions" />
+              <th style={{ ...TH, textAlign: 'right' }} aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -785,28 +1007,25 @@ function ConsideredTab({
               const correction = corrections.get(day.date)
               const editable = canEdit && correctableDates.has(day.date)
               return (
-                <tr key={day.date} style={{ borderBottom: i < days.length - 1 ? '1px solid rgba(0,0,0,0.04)' : 'none' }}>
+                <tr key={day.date} style={{ borderBottom: i < days.length - 1 ? ROW_DIVIDER : 'none' }}>
                   <td style={{ ...TD, whiteSpace: 'nowrap' }}>
-                    {fmtDayDate(day.date)}
+                    <DayDateCell iso={day.date} />
                     {day.is_corrected && <CorrectedBadge remark={correction?.remark} />}
                   </td>
-                  <td style={TD}>
-                    <Pill tone={classificationTone(day.classification)}>
-                      {CLASSIFICATION_LABELS[day.classification] ?? day.classification}
-                    </Pill>
+                  {/* Same compact stacked cell as the Deductions tab. */}
+                  <td style={{ ...TD, whiteSpace: 'nowrap' }}>
+                    <div style={PUNCH_LINE}>{fmtPunches(day.check_in_at, day.check_out_at)}</div>
+                    <DayStatus classification={day.classification} />
                     {correction && (
-                      <div style={{ fontSize: 11.5, color: '#6B7280', marginTop: 5, fontStyle: 'italic' }}>
+                      <div style={{ fontSize: 11.5, color: '#6B7280', marginTop: 4, fontStyle: 'italic', whiteSpace: 'normal' }}>
                         {correction.remark}
                       </div>
                     )}
                   </td>
                   <td style={{ ...TD, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: '#6B7280' }}>
-                    {fmtPunches(day.check_in_at, day.check_out_at)}
-                    {day.effective_hours_worked > 0 && (
-                      <div style={{ fontSize: 11.5, marginTop: 2 }}>{fmtHours(day.effective_hours_worked)} worked</div>
-                    )}
+                    {day.effective_hours_worked > 0 ? fmtHours(day.effective_hours_worked) : '—'}
                   </td>
-                  <td style={{ ...TD, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: day.payable_day_value > 0 ? '#059669' : '#8C94A6' }}>
+                  <td style={{ ...TD, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: day.payable_day_value > 0 ? '#3D4455' : '#8C94A6' }}>
                     {day.payable_day_value > 0 ? `${day.payable_day_value}d` : '—'}
                   </td>
                   <td style={{ ...TD, textAlign: 'right' }}>
@@ -822,17 +1041,14 @@ function ConsideredTab({
               )
             })}
           </tbody>
+          <tfoot>
+            <tr>
+              <td style={TFOOT_LABEL} colSpan={3}>Payable Days Counted</td>
+              <td style={{ ...TFOOT_VALUE, color: '#111318' }}>{payableTotal}d</td>
+              <td style={TFOOT_CELL} />
+            </tr>
+          </tfoot>
         </table>
-      </div>
-
-      <div style={{
-        padding: '12px 20px', borderTop: '1px solid rgba(0,0,0,0.06)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#3D4455' }}>Payable Days Counted</span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#059669', fontVariantNumeric: 'tabular-nums' }}>
-          {payableTotal}
-        </span>
       </div>
     </>
   )
