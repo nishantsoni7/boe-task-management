@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
-
-function monthRange(year: number, month: number): { from: string; to: string } {
-  const from = `${year}-${String(month).padStart(2, '0')}-01`
-  const lastDay = new Date(year, month, 0).getDate()
-  const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-  return { from, to }
-}
+import { requireSelfOrModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
 
 // Hours between two ISO timestamps, rounded to 2 decimal places. Returns null if either is missing.
 function hoursWorked(checkIn: string | null, checkOut: string | null): number | null {
@@ -14,12 +8,6 @@ function hoursWorked(checkIn: string | null, checkOut: string | null): number | 
   const diff = new Date(checkOut).getTime() - new Date(checkIn).getTime()
   if (diff <= 0) return null
   return Math.round((diff / 36e5) * 100) / 100
-}
-
-// attendance_date is YYYY-MM-DD; parse as local midnight to get the correct day-of-week
-function isSunday(dateStr: string): boolean {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  return new Date(y, m - 1, d).getDay() === 0
 }
 
 // Parse office_timing text (e.g. "9:00 AM", "09:30", "9 AM") → minutes from midnight, or null.
@@ -67,7 +55,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'employee_id, year, and month are required' }, { status: 400 })
   }
 
-  const auth = await requireSelfOrAdmin(req, requested)
+  const auth = await requireSelfOrModuleAccess(req, 'attendance', requested)
   if (isResponse(auth)) return auth
   const { caller, employeeId } = auth
   const svc = caller.svc
@@ -80,9 +68,9 @@ export async function GET(req: NextRequest) {
 
   const { from, to } = monthRange(year, month)
 
-  const [empRes, recRes, allDatesRes, holRes] = await Promise.all([
+  const [empRes, recRes, holRes] = await Promise.all([
     svc.from('users')
-      .select('id, full_name, employee_code, office_timing')
+      .select('id, full_name, employee_code, office_timing, joining_date, exit_date')
       .eq('id', employeeId)
       .single(),
     svc.from('attendance_records')
@@ -91,11 +79,6 @@ export async function GET(req: NextRequest) {
       .gte('attendance_date', from)
       .lte('attendance_date', to)
       .order('attendance_date', { ascending: true }),
-    // Working dates = all dates any employee has a record; used to identify absent days
-    svc.from('attendance_records')
-      .select('attendance_date')
-      .gte('attendance_date', from)
-      .lte('attendance_date', to),
     // Public holidays for the month
     svc.from('payroll_holidays')
       .select('holiday_date')
@@ -105,30 +88,31 @@ export async function GET(req: NextRequest) {
 
   if (empRes.error)      return NextResponse.json({ error: empRes.error.message },      { status: 500 })
   if (recRes.error)      return NextResponse.json({ error: recRes.error.message },      { status: 500 })
-  if (allDatesRes.error) return NextResponse.json({ error: allDatesRes.error.message }, { status: 500 })
   if (holRes.error)      return NextResponse.json({ error: holRes.error.message },      { status: 500 })
   if (!empRes.data)      return NextResponse.json({ error: 'Employee not found' },      { status: 404 })
 
   const shiftStartMins = parseShiftStartMinutes(empRes.data.office_timing)
 
-  const holidayDates = new Set((holRes.data ?? []).map(h => h.holiday_date))
-
-  // Working dates = all dates any employee was scanned this month, excluding Sundays and holidays
-  const workingDates = new Set<string>()
-  for (const row of allDatesRes.data ?? []) {
-    if (!isSunday(row.attendance_date) && !holidayDates.has(row.attendance_date)) {
-      workingDates.add(row.attendance_date)
-    }
-  }
+  // The month's working days come from the CALENDAR — every date except
+  // Sundays, company holidays and dates outside this employee's employment.
+  //
+  // It used to be "every date SOMEBODY was scanned on", which quietly dropped
+  // any working day with no punches anywhere in the company, and dropped the
+  // whole month before an import. A date with no punches is an absence and has
+  // to be shown as one; it is not an absence of a date. Same calendar
+  // buildWorkingDayCalendar() gives the payroll engine.
+  const workingDates = workingDatesInMonth(year, month, {
+    holidays:    (holRes.data ?? []).map(h => h.holiday_date),
+    joiningDate: empRes.data.joining_date ?? null,
+    exitDate:    empRes.data.exit_date ?? null,
+  })
 
   // Index this employee's records by date
   const recByDate = new Map<string, typeof recRes.data[number]>()
   for (const r of recRes.data ?? []) recByDate.set(r.attendance_date, r)
 
   // Build full day list: existing records + synthetic absent rows for missing working days
-  const allDates = [...workingDates].sort()
-
-  const records = allDates.map(date => {
+  const records = workingDates.map(date => {
     const r = recByDate.get(date)
 
     // No record for this working day → absent

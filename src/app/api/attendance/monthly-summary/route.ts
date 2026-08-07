@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
-
-// Returns YYYY-MM-DD date range for a given year+month
-function monthRange(year: number, month: number): { from: string; to: string } {
-  const from = `${year}-${String(month).padStart(2, '0')}-01`
-  const lastDay = new Date(year, month, 0).getDate()
-  const to   = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-  return { from, to }
-}
-
-// attendance_date is YYYY-MM-DD; parse as local midnight to get the correct day-of-week
-function isSunday(dateStr: string): boolean {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  return new Date(y, m - 1, d).getDay() === 0
-}
+import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
 
 function hoursWorked(checkIn: string | null, checkOut: string | null): number {
   if (!checkIn || !checkOut) return 0
@@ -26,7 +13,7 @@ function hoursWorked(checkIn: string | null, checkOut: string | null): number {
 // per-employee form of this route and no way to scope it to one person, so it
 // is admin-only. It previously required nothing beyond a valid session.
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin(req)
+  const auth = await requireModuleAccess(req, 'attendance')
   if (isResponse(auth)) return auth
   const svc = auth.svc
 
@@ -73,16 +60,18 @@ export async function GET(req: NextRequest) {
 
   if (holErr) return NextResponse.json({ error: holErr.message }, { status: 500 })
 
-  const holidayDates = new Set((holidays ?? []).map(h => h.holiday_date))
-
-  // Working dates = all dates that appear in any record for this month,
-  // excluding Sundays and public holidays.
-  const workingDates = new Set<string>()
-  for (const rec of records ?? []) {
-    if (!isSunday(rec.attendance_date) && !holidayDates.has(rec.attendance_date)) {
-      workingDates.add(rec.attendance_date)
-    }
-  }
+  // The month's working days come from the CALENDAR, not from the records.
+  //
+  // This used to be "every date some employee was scanned on", which meant a
+  // working day nobody punched simply did not exist: it was never counted as an
+  // absence, and it silently shrank `total_records` — the denominator behind
+  // every attendance figure on this screen. A month with no import yet reported
+  // zero days rather than a month nobody has been marked present for. Same
+  // calendar the payroll engine builds, so the two screens agree about what the
+  // month was made of.
+  const workingDates = workingDatesInMonth(year, month, {
+    holidays: (holidays ?? []).map(h => h.holiday_date),
+  })
 
   // Index each employee's records by date for O(1) lookup
   const byEmployeeByDate = new Map<string, Map<string, typeof records[number]>>()
@@ -155,7 +144,7 @@ export async function GET(req: NextRequest) {
       absent,
       late,
       missing_punch,
-      total_records: workingDates.size, // denominator = total working days this month
+      total_records: workingDates.length, // denominator = total working days this month
       hours_worked:  Math.round(hours * 100) / 100,
     }
   })

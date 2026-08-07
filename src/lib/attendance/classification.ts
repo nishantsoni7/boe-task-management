@@ -2,6 +2,15 @@
 // Pure classification logic only — no payroll deductions, no monetary values.
 // Extracted from src/lib/payroll/engine.ts classifySingleDay() without behaviour change.
 
+import {
+  GRACE_END_MINUTES,
+  SCHEDULED_OUT_MINUTES,
+  LUNCH_IN_BEFORE_MINUTES,
+  LUNCH_OUT_AFTER_MINUTES,
+  LUNCH_HOURS,
+  PRESENCE_THRESHOLD_HOURS,
+} from './scheduleRules'
+
 export type AttendanceClassification =
   | 'full_present'
   | 'present_with_shortfall'
@@ -72,22 +81,22 @@ export function classifyAttendanceDay(
   // Lunch deduction: subtract 1h if check_in < 14:00 AND check_out > 13:00 (IST)
   const inMin  = istMinutes(record.check_in_at)
   const outMin = istMinutes(record.check_out_at)
-  const lunchDeducted = inMin < 14 * 60 && outMin > 13 * 60
-  const effectiveHours = rawHours - (lunchDeducted ? 1 : 0)
+  const lunchDeducted = inMin < LUNCH_IN_BEFORE_MINUTES && outMin > LUNCH_OUT_AFTER_MINUTES
+  const effectiveHours = rawHours - (lunchDeducted ? LUNCH_HOURS : 0)
 
   // Office-timing override: punch-in ≤ 10:15 IST and punch-out ≥ 18:30 IST → full day,
   // even if effective hours fall slightly below 7.5 after lunch deduction.
-  const onOfficeTiming = inMin <= 10 * 60 + 15 && outMin >= 18 * 60 + 30
+  const onOfficeTiming = inMin <= GRACE_END_MINUTES && outMin >= SCHEDULED_OUT_MINUTES
 
   // Classify by effective hours (office-timing takes priority)
   let classification: AttendanceClassification
-  if (onOfficeTiming || effectiveHours >= 7.5) {
+  if (onOfficeTiming || effectiveHours >= PRESENCE_THRESHOLD_HOURS.full_present) {
     classification = 'full_present'
-  } else if (effectiveHours >= 5) {
+  } else if (effectiveHours >= PRESENCE_THRESHOLD_HOURS.present_with_shortfall) {
     classification = 'present_with_shortfall'
-  } else if (effectiveHours >= 3.75) {
+  } else if (effectiveHours >= PRESENCE_THRESHOLD_HOURS.half_day) {
     classification = 'half_day'
-  } else if (effectiveHours >= 2) {
+  } else if (effectiveHours >= PRESENCE_THRESHOLD_HOURS.short_present) {
     classification = 'short_present'
   } else {
     return { ...absent }
