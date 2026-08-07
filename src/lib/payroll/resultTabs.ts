@@ -1,10 +1,23 @@
 // Payroll Result Detail — what belongs in which tab.
 //
 // One rule, applied once, so the two tabs cannot both claim a date or both
-// disown it: a date sits in Deductions when it actually reduced the salary,
-// and in Days Considered otherwise. "Actually reduced" means a deduction line
-// with money on it — a line whose amount was absorbed by paid leave costs the
-// employee nothing and would be misleading under a red heading.
+// disown it: a date sits in Deductions when a payroll rule fired on it, and in
+// Days Considered when it was counted as paid or present.
+//
+// The bug this rule replaces
+// --------------------------
+// "Deductions" used to mean `total_deduction_amount > 0`. That looked right and
+// was not: when the month's paid leave absorbed an absent day, the engine set
+// that line's amount to 0, so the date failed this test — and `full_absent` is
+// not in PAID_CLASSIFICATIONS either, so it failed the Days Considered test too.
+// The date fell out of BOTH tabs and simply disappeared from the payroll detail.
+// It was reproducible across employees and months (21 July 2026 for one
+// employee, 29 July for four others, 16 June, 14 May …) and it hid exactly the
+// thing an employee most needs to see: the day the company paid for them.
+//
+// So a date now also belongs in Deductions when a rule charged for it and paid
+// leave cancelled the charge. Those lines carry `waived_by: 'paid_leave'` and
+// ₹0, and they add nothing to any total.
 //
 // The tabs are a view over the engine's day-level output; nothing here
 // recalculates anything.
@@ -43,9 +56,17 @@ export type ConsideredDay = {
   check_out_at: string | null
 }
 
-/** True when the date cost the employee money. */
+/** True when a line on this date was covered by the month's paid leave. */
+export function isCompanyPaidLine(line: PendingDeductionLine): boolean {
+  return line.waived_by === 'paid_leave'
+}
+
+/**
+ * True when a payroll rule fired on this date — whether the employee paid for
+ * it or the company did.
+ */
 export function isDeductionDay(day: EngineDay): boolean {
-  return day.total_deduction_amount > 0
+  return day.total_deduction_amount > 0 || day.deduction_lines.some(isCompanyPaidLine)
 }
 
 /**
@@ -82,7 +103,9 @@ export function toDeductionDays(days: EngineDay[]): DeductionDay[] {
   return days.filter(isDeductionDay).map(day => ({
     date: day.date,
     classification: day.classification,
-    lines: day.deduction_lines.filter(l => l.amount_deducted > 0),
+    // A ₹0 line survives only when paid leave is the reason it is ₹0. Any other
+    // zero-amount line is noise on an audit table.
+    lines: day.deduction_lines.filter(l => l.amount_deducted > 0 || isCompanyPaidLine(l)),
     total_amount: day.total_deduction_amount,
     is_corrected: day.is_corrected,
     check_in_at: day.check_in_at,

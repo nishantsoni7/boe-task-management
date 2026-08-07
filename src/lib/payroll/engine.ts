@@ -28,11 +28,22 @@ import {
   type AttendanceDayCorrection,
   type WaivableDeductionType,
 } from '../attendance/corrections'
-
-// A forced full day is paid as the standard working day; a forced half day
-// mirrors the hours the half-day deduction line already uses.
-const FULL_DAY_HOURS = 8.5
-const HALF_DAY_HOURS = 4.25
+import {
+  SCHEDULED_IN_MINUTES,
+  GRACE_END_MINUTES,
+  SCHEDULED_OUT_MINUTES,
+  FULL_DAY_HOURS,
+  HALF_DAY_HOURS,
+  MISSING_PUNCH_HOURS,
+  PER_DAY_DIVISOR,
+  PER_HOUR_DIVISOR,
+  ROUNDING_BLOCK_MINUTES,
+  ROUNDING_BLOCK_HOURS,
+  PAID_LEAVE_TIERS,
+  HALF_DAYS_PER_PAID_LEAVE,
+  HOURS_PER_PAID_LEAVE,
+  WEEKLY_OFF_DAY,
+} from './rules'
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
@@ -132,9 +143,72 @@ function runGuards(employee: EngineEmployee, period: EnginePeriod): EngineSkip |
 // ─── Step 2: Monetary rates ───────────────────────────────────────────────────
 
 function computeRates(monthlySalary: number): PayrollRates {
-  const per_day_rate = monthlySalary / 26
-  const per_hour_rate = per_day_rate / 8.5
+  const per_day_rate = monthlySalary / PER_DAY_DIVISOR
+  const per_hour_rate = per_day_rate / PER_HOUR_DIVISOR
   return { per_day_rate, per_hour_rate }
+}
+
+// ─── Deduction line builders ─────────────────────────────────────────────────
+// Every line is built through one of these, so `explain` cannot be forgotten on
+// one branch and present on another — the Payroll Result Detail popup reads it
+// on every line it shows.
+
+function hourlyLine(
+  date: string,
+  type: PendingDeductionLine['deduction_type'],
+  hours: number,
+  rates: PayrollRates,
+  clock?: { scheduled_minutes: number; grace_end_minutes?: number; actual_minutes: number; minutes_beyond: number },
+): PendingDeductionLine {
+  const amount = hours * rates.per_hour_rate
+  return {
+    line_date: date,
+    deduction_type: type,
+    hours_deducted: hours,
+    amount_deducted: amount,
+    explain: {
+      gross_amount: amount,
+      units: hours,
+      unit: 'hours',
+      rate: rates.per_hour_rate,
+      rate_basis: 'per_hour',
+      ...clock,
+    },
+  }
+}
+
+function dayLine(
+  date: string,
+  type: 'absent' | 'half_day',
+  rates: PayrollRates,
+): PendingDeductionLine {
+  const isHalf = type === 'half_day'
+  const rate   = isHalf ? rates.per_day_rate / 2 : rates.per_day_rate
+  return {
+    line_date: date,
+    deduction_type: type,
+    hours_deducted: isHalf ? HALF_DAY_HOURS : FULL_DAY_HOURS,
+    amount_deducted: rate,
+    explain: {
+      gross_amount: rate,
+      units: isHalf ? 0.5 : 1,
+      unit: 'days',
+      rate: isHalf ? rates.per_day_rate / 2 : rates.per_day_rate,
+      rate_basis: isHalf ? 'half_day' : 'per_day',
+    },
+  }
+}
+
+/**
+ * The same line, charged to the company instead of the employee.
+ *
+ * The amount goes to zero and the reason is recorded; `explain.gross_amount`
+ * keeps what the rule would have cost, which is what makes the popup able to
+ * show the allowance as a subtraction rather than as a number that simply
+ * never appeared.
+ */
+function waivedByPaidLeave(line: PendingDeductionLine): PendingDeductionLine {
+  return { ...line, amount_deducted: 0, waived_by: 'paid_leave' }
 }
 
 // ─── Step 3: Working-day calendar ────────────────────────────────────────────
@@ -178,7 +252,7 @@ function buildWorkingDayCalendar(
   const excludedDays: ExcludedDay[] = []
   const nonSundayNonHoliday = allDays.filter(date => {
     const dow = new Date(`${date}T00:00:00Z`).getUTCDay()
-    if (dow === 0)            { excludedDays.push({ date, reason: 'weekly_off' }); return false }
+    if (dow === WEEKLY_OFF_DAY) { excludedDays.push({ date, reason: 'weekly_off' }); return false }
     if (holidaySet.has(date)) { excludedDays.push({ date, reason: 'holiday' });    return false }
     return true
   })
@@ -201,9 +275,12 @@ function buildWorkingDayCalendar(
 
 function computePaidLeaveEntitlement(daysPresent: number): number {
   // BOE rule: leave earned is based on actual days present in the month.
-  if (daysPresent <= 10) return 0
-  if (daysPresent <= 15) return 0.5
-  return 1
+  // The bands are stated once, in ./rules — the same values the rule cards on
+  // Payroll Result Detail are written from.
+  for (const tier of PAID_LEAVE_TIERS) {
+    if (daysPresent >= tier.min_days_present) return tier.leave
+  }
+  return 0
 }
 
 // ─── Grace period rounding ────────────────────────────────────────────────────
@@ -216,8 +293,8 @@ function computePaidLeaveEntitlement(daysPresent: number): number {
 //  31  → 1.0h |  38 → 1.0h  |  47 → 1.0h
 //  61  → 1.5h |  67 → 1.5h  |  91 → 2.0h
 function roundDeductionHours(minutesFromScheduled: number): number {
-  if (minutesFromScheduled <= 15) return 0
-  return Math.ceil(minutesFromScheduled / 30) * 0.5
+  if (minutesFromScheduled <= GRACE_END_MINUTES - SCHEDULED_IN_MINUTES) return 0
+  return Math.ceil(minutesFromScheduled / ROUNDING_BLOCK_MINUTES) * ROUNDING_BLOCK_HOURS
 }
 
 // ─── Step 4: Classify attendance days ────────────────────────────────────────
@@ -291,26 +368,21 @@ function classifySingleDay(
   // Missing punch: exactly one punch present → 2h fixed deduction.
   // When punch-out is missing but punch-in exists, also apply late arrival if applicable.
   if (classified.classification === 'missing_punch') {
-    const missingLines: PendingDeductionLine[] = [{
-      line_date: date,
-      deduction_type: classified.missing_punch_type!,
-      hours_deducted: 2,
-      amount_deducted: 2 * rates.per_hour_rate,
-    }]
+    const missingLines: PendingDeductionLine[] = [
+      hourlyLine(date, classified.missing_punch_type!, MISSING_PUNCH_HOURS, rates),
+    ]
 
     if (classified.missing_punch_type === 'missing_punch_out') {
       const inMin = classified.check_in_minutes!
-      const SCHEDULED_IN  = 10 * 60       // 10:00 IST
-      const LATE_THRESHOLD = 10 * 60 + 15 // 10:15 IST — grace period end
-      if (inMin > LATE_THRESHOLD) {
-        const lateHours = roundDeductionHours(inMin - SCHEDULED_IN)
+      if (inMin > GRACE_END_MINUTES) {
+        const lateHours = roundDeductionHours(inMin - SCHEDULED_IN_MINUTES)
         if (lateHours > 0) {
-          missingLines.push({
-            line_date: date,
-            deduction_type: 'late_arrival',
-            hours_deducted: lateHours,
-            amount_deducted: lateHours * rates.per_hour_rate,
-          })
+          missingLines.push(hourlyLine(date, 'late_arrival', lateHours, rates, {
+            scheduled_minutes:  SCHEDULED_IN_MINUTES,
+            grace_end_minutes:  GRACE_END_MINUTES,
+            actual_minutes:     inMin,
+            minutes_beyond:     inMin - SCHEDULED_IN_MINUTES,
+          }))
         }
       }
     }
@@ -333,33 +405,30 @@ function classifySingleDay(
   const deduction_lines: PendingDeductionLine[] = []
   const isNearFullDay = classification === 'full_present' || classification === 'present_with_shortfall'
   if (!on_office_timing && isNearFullDay) {
-    const SCHEDULED_IN   = 10 * 60       // 10:00 IST — scheduled start
-    const LATE_THRESHOLD = 10 * 60 + 15  // 10:15 IST — grace period end
-    const SCHEDULED_OUT  = 18 * 60 + 30  // 18:30 IST — scheduled end / early-checkout boundary
     const inMin  = check_in_minutes!
     const outMin = check_out_minutes!
 
-    if (inMin > LATE_THRESHOLD && !isWaived('late_arrival')) {
-      const lateHours = roundDeductionHours(inMin - SCHEDULED_IN)
+    if (inMin > GRACE_END_MINUTES && !isWaived('late_arrival')) {
+      const lateHours = roundDeductionHours(inMin - SCHEDULED_IN_MINUTES)
       if (lateHours > 0) {
-        deduction_lines.push({
-          line_date: date,
-          deduction_type: 'late_arrival',
-          hours_deducted: lateHours,
-          amount_deducted: lateHours * rates.per_hour_rate,
-        })
+        deduction_lines.push(hourlyLine(date, 'late_arrival', lateHours, rates, {
+          scheduled_minutes: SCHEDULED_IN_MINUTES,
+          grace_end_minutes: GRACE_END_MINUTES,
+          actual_minutes:    inMin,
+          minutes_beyond:    inMin - SCHEDULED_IN_MINUTES,
+        }))
       }
     }
 
-    if (outMin < SCHEDULED_OUT && !isWaived('early_checkout')) {
-      const earlyHours = roundDeductionHours(SCHEDULED_OUT - outMin)
+    if (outMin < SCHEDULED_OUT_MINUTES && !isWaived('early_checkout')) {
+      const earlyHours = roundDeductionHours(SCHEDULED_OUT_MINUTES - outMin)
       if (earlyHours > 0) {
-        deduction_lines.push({
-          line_date: date,
-          deduction_type: 'early_checkout',
-          hours_deducted: earlyHours,
-          amount_deducted: earlyHours * rates.per_hour_rate,
-        })
+        deduction_lines.push(hourlyLine(date, 'early_checkout', earlyHours, rates, {
+          scheduled_minutes: SCHEDULED_OUT_MINUTES,
+          grace_end_minutes: SCHEDULED_OUT_MINUTES - (GRACE_END_MINUTES - SCHEDULED_IN_MINUTES),
+          actual_minutes:    outMin,
+          minutes_beyond:    SCHEDULED_OUT_MINUTES - outMin,
+        }))
       }
     }
   }
@@ -456,8 +525,8 @@ function applyLeaveAbsorption(
   }
 
   // Stage 2: absorb two half-days (leave must not yet be used)
-  if (paid_leave_used === 0 && paidLeaveAvailable >= 1 && remaining_half_days >= 2) {
-    remaining_half_days -= 2
+  if (paid_leave_used === 0 && paidLeaveAvailable >= 1 && remaining_half_days >= HALF_DAYS_PER_PAID_LEAVE) {
+    remaining_half_days -= HALF_DAYS_PER_PAID_LEAVE
     paid_leave_used = 1
   }
 
@@ -469,7 +538,7 @@ function applyLeaveAbsorption(
 
   // Stage 3: absorb hourly deductions (leave must not yet be used)
   if (paid_leave_used === 0) {
-    const threshold = paidLeaveAvailable * 8.5
+    const threshold = paidLeaveAvailable * HOURS_PER_PAID_LEAVE
     if (total_hourly_hours > 0 && total_hourly_hours <= threshold) {
       leave_absorbed_deductions = true
       paid_leave_used = paidLeaveAvailable
@@ -561,35 +630,34 @@ const HOURLY_DEDUCTION_TYPES = new Set<string>([
 ])
 
 function assembleResult(p: AssembleParams): EngineResult {
-  // Hourly deduction lines (missing punch, late arrival, short hours)
+  // Hourly deduction lines (missing punch, late arrival, short hours).
+  // Stage 3 of leave absorption zeroes every one of them at once.
   const hourlyLines: PendingDeductionLine[] = p.dayResults.flatMap(day =>
-    day.deduction_lines.map(line => {
-      if (p.leaveState.leave_absorbed_deductions && HOURLY_DEDUCTION_TYPES.has(line.deduction_type)) {
-        return { ...line, amount_deducted: 0 }
-      }
-      return line
-    }),
+    day.deduction_lines.map(line =>
+      p.leaveState.leave_absorbed_deductions && HOURLY_DEDUCTION_TYPES.has(line.deduction_type)
+        ? waivedByPaidLeave(line)
+        : line,
+    ),
   )
 
   // Absent-day deduction lines — one per full_absent day.
-  // The first `remaining_absent_days` carry the monetary deduction; absorbed days get amount=0.
+  // The first `remaining_absent_days` carry the monetary deduction; the rest were
+  // covered by the month's paid leave and are marked as such rather than merely
+  // zeroed. That mark is what keeps the day on the Deductions tab: a ₹0 line with
+  // no reason attached is indistinguishable from a day that had no deduction at
+  // all, and the date used to vanish from the payroll detail entirely.
   const absentDays = p.dayResults.filter(d => d.classification === 'full_absent')
-  const absentLines: PendingDeductionLine[] = absentDays.map((day, i) => ({
-    line_date: day.date,
-    deduction_type: 'absent',
-    hours_deducted: 8.5,
-    amount_deducted: i < p.leaveState.remaining_absent_days ? p.rates.per_day_rate : 0,
-  }))
+  const absentLines: PendingDeductionLine[] = absentDays.map((day, i) => {
+    const line = dayLine(day.date, 'absent', p.rates)
+    return i < p.leaveState.remaining_absent_days ? line : waivedByPaidLeave(line)
+  })
 
-  // Half-day deduction lines — one per half_day.
-  // The first `remaining_half_days` carry the monetary deduction; absorbed ones get amount=0.
+  // Half-day deduction lines — one per half_day, same rule.
   const halfDays = p.dayResults.filter(d => d.classification === 'half_day')
-  const halfDayLines: PendingDeductionLine[] = halfDays.map((day, i) => ({
-    line_date: day.date,
-    deduction_type: 'half_day',
-    hours_deducted: 4.25,
-    amount_deducted: i < p.leaveState.remaining_half_days ? p.rates.per_day_rate / 2 : 0,
-  }))
+  const halfDayLines: PendingDeductionLine[] = halfDays.map((day, i) => {
+    const line = dayLine(day.date, 'half_day', p.rates)
+    return i < p.leaveState.remaining_half_days ? line : waivedByPaidLeave(line)
+  })
 
   const deduction_lines: PendingDeductionLine[] = [...absentLines, ...halfDayLines, ...hourlyLines]
 

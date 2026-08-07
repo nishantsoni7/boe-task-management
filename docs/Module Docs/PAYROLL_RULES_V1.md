@@ -2,13 +2,39 @@
 
 **Version:** 1.1  
 **Date:** 2026-06-07  
-**Status:** Confirmed rules — ready for implementation planning
+**Status:** Business brief — superseded by the code where the two differ
+
+---
+
+> ## ⚠ This document is no longer the source of truth
+>
+> It is the brief the engine was built from. The engine has since moved, and this
+> document has not. **`src/lib/payroll/rules.ts` is now authoritative** — it holds
+> the constants `src/lib/payroll/engine.ts` calculates with, and the
+> "How Attendance & Payroll Is Calculated" section on Payroll Result Detail is
+> generated from it, so what an employee reads and what the engine charges cannot
+> drift apart.
+>
+> Known divergences, verified against the code and the generated payrolls in the
+> database on 2026-08-08:
+>
+> | Rule | This document | The engine |
+> |---|---|---|
+> | Per-day salary | Monthly ÷ **30** | Monthly ÷ **26** (`PER_DAY_DIVISOR`) |
+> | Present / half-day bands | "exactly 4 hours = half day" | Effective-hour bands: ≥7.5 full, ≥5 present-with-shortfall, ≥3.75 half day, ≥2 short present, below that absent |
+> | Paid leave | "1 per month" | Earned by attendance: ≥16 days present → 1, 11–15 → 0.5, ≤10 → 0 |
+> | Office-timing override | not described | In by 10:15 **and** out by 18:30 is a full day regardless of hours |
+> | Short-hours deduction | "hourly deductions applied for any shortfall below 8.5 hours" | Not implemented as a standalone line; a short day is settled by its classification or by a late/early line |
+>
+> Every payroll figure in the database was produced by the engine, not by this
+> table. Do not "fix" the code to match the document without a business decision
+> to change the rule and a plan for the months already generated.
 
 ---
 
 ## Purpose
 
-This document defines the rules and logic for calculating monthly employee payroll based on attendance records. It is the single source of truth for the Phase 1 payroll module. All confirmed rules below are agreed upon. Open questions at the end must be resolved before coding begins.
+This document defines the rules and logic for calculating monthly employee payroll based on attendance records. It was the single source of truth for the Phase 1 payroll module. Read it for intent; read `src/lib/payroll/rules.ts` for what actually happens.
 
 ---
 
