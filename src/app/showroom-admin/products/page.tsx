@@ -87,7 +87,15 @@ function ShowroomProductsContent() {
   // Same query the sidebar badges read — TanStack serves both from one fetch.
   // Needed here for the category order, which is what "no category in the URL"
   // resolves to.
-  const navCounts        = useShowroomProductCounts(!!profile)
+  //
+  // Started at mount rather than after the profile check. It used to wait for
+  // it, which put three requests in a row on the critical path — profile, then
+  // counts, then the products themselves — when only the last of those actually
+  // depends on the one before it. The API authorises the request on its own, and
+  // the page still refuses to *act* on the result until the profile confirms
+  // access (`ready` below), so this changes what runs in parallel, not who is
+  // allowed to see what.
+  const navCounts        = useShowroomProductCounts(true)
   const refreshNavCounts = useRefreshShowroomProductCounts()
 
   // Returning from a product restores where the user was in the list.

@@ -70,6 +70,24 @@ const isSortKey = (v: string | null): v is SortKey => !!v && v in SORT_MAP
 type StatusFilter = 'all' | 'active' | 'inactive'
 type Filters = { search: string; category: string; status: StatusFilter }
 
+// Read once, here, so the paged list and the Previous/Next sequence below can
+// never disagree about what the user is looking at. A drift between the two
+// would not fail loudly — it would quietly step to the wrong product.
+function readFilters(sp: URLSearchParams): Filters {
+  const rawStatus = sp.get('status')
+  return {
+    search:   (sp.get('q') ?? '').trim(),
+    category: (sp.get('category') ?? '').trim(),
+    // Product Master defaults to Active — no/invalid `status` means Active, not
+    // All. Only an explicit `status=all` shows both; `status=inactive` shows
+    // only inactive.
+    status:   rawStatus === 'all' ? 'all' : rawStatus === 'inactive' ? 'inactive' : 'active',
+  }
+}
+
+const readSort = (sp: URLSearchParams) =>
+  SORT_MAP[isSortKey(sp.get('sort')) ? (sp.get('sort') as SortKey) : DEFAULT_SORT]
+
 // PostgREST splits `or()` on commas and reads parentheses as grouping, so an
 // unescaped term like "chair, oak (teak)" would corrupt the filter. Wrapping the
 // value in double quotes makes those literal.
@@ -143,6 +161,55 @@ async function categoryCounts(client: ReturnType<typeof serviceClient>) {
   return tallyByCategory(unwrapPagedRows('showroom product counts', result), categoryNames)
 }
 
+// Ceiling on one Previous/Next run.
+//
+// A run is product codes only (~15 bytes each), so the whole 1000 is around
+// 15 KB — smaller than a single product photo, fetched once per filter context
+// and reused for every step through it. PostgREST caps an unranged read at 1000
+// rows anyway, so this is the natural boundary rather than an arbitrary one.
+//
+// A filtered category larger than this reports `truncated`, and products past
+// the cap get no Previous/Next rather than a wrong one.
+const SEQUENCE_LIMIT = 1000
+
+// Previous/Next ordering: the product codes of one Product Master view, in the
+// order that view shows them.
+//
+// Codes ONLY — never LIST_COLUMNS. This answers "what comes after BOE-SR-002
+// here", so it carries no pricing, no imagery and no timestamps, and the whole
+// run costs about as much as one table row of the list it describes.
+//
+// Kept ABOVE productLookup on purpose: lookupRoute.test.ts reads the lookup
+// helper as the source between its declaration and the GET comment below, so a
+// helper inserted after it would be scanned as if it were part of the lookup.
+async function productSequence(
+  client: ReturnType<typeof serviceClient>,
+  sp: URLSearchParams,
+) {
+  const filters = readFilters(sp)
+  // A category is required, exactly as it is for the list: there is no
+  // all-products view, so there is no all-products run to step through.
+  if (!filters.category) return { codes: [], truncated: false }
+
+  let query = client.from('showroom_products').select('product_code')
+  for (const op of filterOps(filters)) {
+    query = op.kind === 'eq' ? query.eq(op.column, op.value) : query.or(op.expression)
+  }
+
+  const sort = readSort(sp)
+  let sorted = query.order(sort.column, { ascending: sort.ascending })
+  // Same tiebreaker the list applies, so the run and the table agree on the
+  // order of two products the sort cannot separate. Without it, Next could step
+  // to a product the user did not see beside the current one.
+  if (sort.column !== 'product_code') sorted = sorted.order('product_code', { ascending: true })
+
+  const { data, error } = await sorted.limit(SEQUENCE_LIMIT)
+  if (error) throw new Error(error.message)
+
+  const codes = (data ?? []).map(r => r.product_code as string)
+  return { codes, truncated: codes.length === SEQUENCE_LIMIT }
+}
+
 // Global product lookup: find ONE product by code or name, across every
 // category, for the sidebar's jump-to control.
 //
@@ -183,6 +250,7 @@ async function productLookup(
 
 // GET /api/showroom/admin/products
 //   • `lookup=1&q=…`   → up to 8 code/name matches across every category.
+//   • `sequence=1`     → ordered product codes for one list view (Previous/Next).
 //   • `counts=1`       → sidebar badges only: catalog total + per-category counts.
 //   • No `page` param  → every product, including inactive (legacy shape).
 //     The Categories page depends on this to count products per category.
@@ -199,6 +267,15 @@ export async function GET(req: NextRequest) {
     } catch (err) {
       console.error('[showroom-product-lookup]', err)
       return NextResponse.json({ error: 'Product lookup failed' }, { status: 500 })
+    }
+  }
+
+  if (sp.get('sequence') === '1') {
+    try {
+      return NextResponse.json(await productSequence(client, sp))
+    } catch (err) {
+      console.error('[showroom-product-sequence]', err)
+      return NextResponse.json({ error: 'Failed to load product order' }, { status: 500 })
     }
   }
 
@@ -223,19 +300,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ products: data ?? [] })
   }
 
-  const page    = Math.max(1, parseInt(sp.get('page') ?? '1', 10) || 1)
-  const sortKey = isSortKey(sp.get('sort')) ? (sp.get('sort') as SortKey) : DEFAULT_SORT
-  const sort    = SORT_MAP[sortKey]
-  const rawStatus = sp.get('status')
-  // Product Master defaults to Active — no/invalid `status` means Active, not
-  // All. Only an explicit `status=all` shows both; `status=inactive` shows only
-  // inactive. The legacy no-`page` branch above (used by the Categories page)
-  // never reaches this and is unaffected.
-  const filters: Filters = {
-    search:   (sp.get('q') ?? '').trim(),
-    category: (sp.get('category') ?? '').trim(),
-    status:   rawStatus === 'all' ? 'all' : rawStatus === 'inactive' ? 'inactive' : 'active',
-  }
+  const page = Math.max(1, parseInt(sp.get('page') ?? '1', 10) || 1)
+  const sort = readSort(sp)
+  // The legacy no-`page` branch above (used by the Categories page) never
+  // reaches this and is unaffected.
+  const filters = readFilters(sp)
 
   const from = (page - 1) * PRODUCTS_PER_PAGE
   const to   = from + PRODUCTS_PER_PAGE - 1

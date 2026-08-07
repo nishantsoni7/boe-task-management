@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { imageRemotePatterns, THUMB_QUALITY } from "./src/lib/imageHosts";
 
 const nextConfig: NextConfig = {
   turbopack: {
@@ -8,6 +9,29 @@ const nextConfig: NextConfig = {
   // directory. Bundling it breaks those paths. Mark it external so Next.js
   // leaves it as a node_modules require at runtime.
   serverExternalPackages: ['pdfkit'],
+
+  images: {
+    // Showroom product images are pasted URLs rather than uploads, so the hosts
+    // the optimizer may fetch from are an explicit allowlist — see
+    // src/lib/imageHosts.ts, which also decides, on the client, whether a given
+    // URL may be sent to the optimizer. Both halves read the same values, so
+    // they cannot disagree and produce a 400.
+    //
+    // In practice that list is BOE's own site, where every stored product image
+    // lives; NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS extends it. A host that is not on
+    // it is not broken — the thumbnail simply loads the original, as before.
+    remotePatterns: imageRemotePatterns(),
+
+    // Required from Next 16: a quality not on this list is refused with a 400.
+    // 35 is what list thumbnails ask for; 75 is Next's default, kept so an
+    // ordinary <Image> elsewhere still works.
+    qualities: [THUMB_QUALITY, 75],
+
+    // A resized thumbnail is derived from an immutable original, so re-deriving
+    // it hourly buys nothing. 31 days keeps repeat visits and page-to-page
+    // returns on cache instead of re-downloading and re-encoding.
+    minimumCacheTTL: 2678400,
+  },
 };
 
 export default nextConfig;

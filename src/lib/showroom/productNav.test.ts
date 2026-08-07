@@ -27,9 +27,11 @@ import {
   productCategoryHref,
   productEditHref,
   productListHref,
+  productSequenceSearch,
   resolveCategorySelection,
   resolveParentClick,
   resolveProductBack,
+  resolveProductNeighbors,
   sanitizeListSearch,
 } from './productNav'
 
@@ -383,6 +385,172 @@ describe('resolving the category in the URL', () => {
       assert.ok('category' in first)
       const second = resolve('category' in first ? first.category : '')
       assert.equal(second.status, 'ok', `${requested} did not settle`)
+    }
+  })
+})
+
+describe('the sequence a product is stepped through', () => {
+  test('the list view it was opened from — search, status and sort all kept', () => {
+    const search = productSequenceSearch({
+      from: 'q=oak&category=Wooden Chairs&status=all&sort=mrp_desc&page=4',
+      productCategory: 'Wooden Chairs',
+    })
+    const params = new URLSearchParams(search)
+    assert.equal(params.get('q'), 'oak')
+    assert.equal(params.get('category'), 'Wooden Chairs')
+    assert.equal(params.get('status'), 'all')
+    assert.equal(params.get('sort'), 'mrp_desc')
+  })
+
+  test('page is dropped — the run spans the whole view, not one page of it', () => {
+    // This is what lets Next step from the last row of page 1 to the first row
+    // of page 2, and what lets every product in a category share one cached run.
+    const search = productSequenceSearch({
+      from: 'category=Bar Chairs&page=7',
+      productCategory: 'Bar Chairs',
+    })
+    assert.equal(new URLSearchParams(search).get('page'), null)
+    assert.equal(
+      search,
+      productSequenceSearch({ from: 'category=Bar Chairs&page=2', productCategory: 'Bar Chairs' }),
+      'two pages of one view must produce the same run',
+    )
+  })
+
+  test("without a breadcrumb it falls back to the product's own category at defaults", () => {
+    assert.equal(
+      productSequenceSearch({ from: null, productCategory: 'Lounge Chairs' }),
+      'category=Lounge+Chairs',
+    )
+  })
+
+  test('the fallback carries the category alone — no stale search or sort', () => {
+    // `from` has no category, so it describes some other view; replaying its `q`
+    // against this product's category would describe a run it was never in.
+    assert.equal(
+      productSequenceSearch({ from: 'q=teak&sort=mrp_desc', productCategory: 'Dummy' }),
+      'category=Dummy',
+    )
+  })
+
+  test('with no category at all there is no run — never the whole catalogue', () => {
+    assert.equal(productSequenceSearch({ from: null, productCategory: null }), '')
+    assert.equal(productSequenceSearch({ from: '', productCategory: '  ' }), '')
+    assert.equal(productSequenceSearch({ from: 'q=oak', productCategory: '' }), '')
+  })
+
+  test('a hostile breadcrumb cannot inject a param into the run', () => {
+    const search = productSequenceSearch({
+      from: 'category=Dummy&redirect=https://evil.test&meta=0&limit=99999',
+      productCategory: 'Dummy',
+    })
+    assert.equal(search, 'category=Dummy')
+  })
+})
+
+describe('previous and next product', () => {
+  // One category as Product Master orders it by default (code ascending).
+  const RUN = ['BOE-SR-001', 'BOE-SR-002', 'BOE-SR-003', 'BOE-SR-004']
+
+  test('a product in the middle has both neighbours', () => {
+    assert.deepEqual(resolveProductNeighbors(RUN, 'BOE-SR-002'), {
+      previous: 'BOE-SR-001',
+      next:     'BOE-SR-003',
+      position: 2,
+      total:    4,
+    })
+  })
+
+  test('the first product has no previous', () => {
+    const n = resolveProductNeighbors(RUN, 'BOE-SR-001')
+    assert.equal(n.previous, null)
+    assert.equal(n.next, 'BOE-SR-002')
+    assert.equal(n.position, 1)
+  })
+
+  test('the last product has no next', () => {
+    const n = resolveProductNeighbors(RUN, 'BOE-SR-004')
+    assert.equal(n.previous, 'BOE-SR-003')
+    assert.equal(n.next, null)
+    assert.equal(n.position, 4)
+  })
+
+  test('a lone product in its category has neither', () => {
+    assert.deepEqual(resolveProductNeighbors(['BOE-SR-001'], 'BOE-SR-001'), {
+      previous: null, next: null, position: 1, total: 1,
+    })
+  })
+
+  test('stepping forward then back returns to where it started', () => {
+    // FLOW 1: open 002, Next to 003, Previous is 002 again.
+    const forward = resolveProductNeighbors(RUN, 'BOE-SR-002').next
+    assert.equal(forward, 'BOE-SR-003')
+    assert.equal(resolveProductNeighbors(RUN, forward!).previous, 'BOE-SR-002')
+  })
+
+  test('walking Next from the first product visits every product exactly once', () => {
+    // FLOW 2: several steps without returning to the list.
+    const visited: string[] = []
+    let code: string | null = RUN[0]
+    while (code) {
+      visited.push(code)
+      code = resolveProductNeighbors(RUN, code).next
+      assert.ok(visited.length <= RUN.length, 'walk did not terminate')
+    }
+    assert.deepEqual(visited, RUN)
+  })
+
+  test('the run order is followed verbatim, not re-sorted', () => {
+    // A `sort=mrp_desc` run arrives in price order, and Next must honour that
+    // rather than fall back to code order.
+    const byPrice = ['BOE-SR-004', 'BOE-SR-001', 'BOE-SR-003', 'BOE-SR-002']
+    assert.equal(resolveProductNeighbors(byPrice, 'BOE-SR-001').next, 'BOE-SR-003')
+    assert.equal(resolveProductNeighbors(byPrice, 'BOE-SR-001').previous, 'BOE-SR-004')
+  })
+
+  test('the same run and product always give the same answer', () => {
+    const first = resolveProductNeighbors(RUN, 'BOE-SR-003')
+    for (let i = 0; i < 3; i++) {
+      assert.deepEqual(resolveProductNeighbors(RUN, 'BOE-SR-003'), first)
+    }
+  })
+
+  test('a URL in the wrong case still finds its place in the run', () => {
+    // Codes are stored upper-cased but `product_code` is read from the URL as
+    // typed, so a shared lower-case link must not look like a missing product.
+    const n = resolveProductNeighbors(RUN, 'boe-sr-002')
+    assert.equal(n.previous, 'BOE-SR-001')
+    assert.equal(n.next, 'BOE-SR-003')
+  })
+
+  test('surrounding whitespace does not hide a product from its own run', () => {
+    assert.equal(resolveProductNeighbors(RUN, ' BOE-SR-002 ').next, 'BOE-SR-003')
+  })
+
+  test('a product outside the run gets no neighbours rather than a guess', () => {
+    // The truncated-run case, and the filtered-out case: any answer other than
+    // "none" would step the user somewhere they never browsed.
+    assert.deepEqual(resolveProductNeighbors(RUN, 'BOE-XX-999'), {
+      previous: null, next: null, position: null, total: 0,
+    })
+  })
+
+  test('an empty or unloaded run offers nothing', () => {
+    assert.deepEqual(resolveProductNeighbors([], 'BOE-SR-001'), {
+      previous: null, next: null, position: null, total: 0,
+    })
+  })
+
+  test('a blank product code is not matched against a blank entry', () => {
+    assert.equal(resolveProductNeighbors(RUN, '').position, null)
+    assert.equal(resolveProductNeighbors(['', 'BOE-SR-001'], '').position, null)
+  })
+
+  test('every neighbour returned is a real member of the run', () => {
+    for (const code of RUN) {
+      const { previous, next } = resolveProductNeighbors(RUN, code)
+      if (previous) assert.ok(RUN.includes(previous), previous)
+      if (next)     assert.ok(RUN.includes(next), next)
     }
   })
 })
