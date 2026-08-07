@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeftRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { canAccessModule } from '@/lib/moduleAccess'
+import { resolveModuleAccess } from '@/lib/moduleAccess'
 import { hasPermission } from '@/lib/permissions/resolver'
 import type { UserProfile } from '@/lib/types'
 
@@ -79,7 +79,7 @@ export function ModuleSwitchButton({
         // Finance access follows the same module-visibility rule used by FinanceGuard.
         const { data: financeModule, error } = await supabase
           .from('app_modules')
-          .select('visibility_type, allowed_department')
+          .select('visibility_type, allowed_department, allowed_user_ids')
           .eq('module_key', 'finance')
           .single()
 
@@ -88,12 +88,7 @@ export function ModuleSwitchButton({
           return
         }
 
-        const allowed = canAccessModule(
-          financeModule.visibility_type,
-          financeModule.allowed_department,
-          profile,
-          true
-        )
+        const allowed = resolveModuleAccess('finance', financeModule, profile, true)
 
         updateVisibility(allowed)
       } catch {

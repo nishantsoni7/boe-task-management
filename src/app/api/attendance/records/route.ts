@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { requireSelfOrModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 const PAGE_SIZE = 50
 
@@ -20,14 +20,15 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const requested = searchParams.get('employee_id')
 
-  const auth = await requireSelfOrAdmin(req, requested)
+  const auth = await requireSelfOrModuleAccess(req, 'attendance', requested)
   if (isResponse(auth)) return auth
-  const { caller } = auth
+  const { caller, canReadAll } = auth
   const svc = caller.svc
 
-  // Admin: honour the filter as given (null = every employee). Non-admin: their
-  // own rows only, regardless of what arrived.
-  const employeeId = caller.isAdmin ? requested : caller.id
+  // Module access (admin, or a member Control Center named): honour the filter
+  // as given, null = every employee. Everyone else: their own rows only,
+  // regardless of what arrived.
+  const employeeId = canReadAll ? requested : caller.id
 
   const fromDate   = searchParams.get('from')
   const toDate     = searchParams.get('to')

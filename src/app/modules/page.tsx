@@ -8,7 +8,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
 import DailyQuoteLoader from '@/components/DailyQuoteLoader'
 import { useViewAs } from '@/hooks/useViewAs'
-import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { resolveModuleAccess } from '@/lib/moduleAccess'
 import { hasPermission } from '@/lib/permissions/resolver'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -39,8 +39,16 @@ const STATUS_LABEL: Record<ModuleStatus, { label: string; color: string; bg: str
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 // ── Visibility resolver — used by /modules to evaluate app_modules DB rules ──
+//
+// The SAME function the route guards and the module APIs call, so a card is
+// never shown to somebody the route would bounce to /coming-soon. See
+// src/lib/moduleAccess.ts.
 
-type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+type ModVisRow = {
+  visibility_type: string
+  allowed_department: string[] | null
+  allowed_user_ids: string[] | null
+}
 
 function canSeeModule(
   key: string,
@@ -48,13 +56,7 @@ function canSeeModule(
   effectiveProfile: UserProfile | null,
   fallback: boolean,
 ): boolean {
-  const mod = modVis[key]
-  return canAccessModule(
-    mod?.visibility_type as ModuleVisibilityType | undefined,
-    mod?.allowed_department,
-    effectiveProfile,
-    fallback,
-  )
+  return resolveModuleAccess(key, modVis[key], effectiveProfile, fallback)
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -99,7 +101,7 @@ export default function BoeOsHomePage() {
           .single(),
         supabase
           .from('app_modules')
-          .select('module_key, visibility_type, allowed_department')
+          .select('module_key, visibility_type, allowed_department, allowed_user_ids')
           .order('sort_order'),
         // Task Management: same unread count the /notifications page shows
         fetch('/api/notifications?count=1&category=task')
@@ -371,6 +373,9 @@ const VIS_BADGE: Record<string, { color: string; bg: string; label: (dept?: stri
       ? `${dept.map(d => `${d.charAt(0).toUpperCase()}${d.slice(1)}`).join('/')} Only`
       : 'Dept Only',
   },
+  // No member count here — how many colleagues share a module is Control
+  // Center's business, not something to print on every employee's launcher.
+  custom:          { color: '#5B21B6', bg: '#F5F3FF', label: () => 'Custom' },
   hidden:          { color: '#4B5563', bg: '#F3F4F6', label: () => 'Hidden' },
 }
 

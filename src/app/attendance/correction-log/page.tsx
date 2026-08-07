@@ -142,7 +142,12 @@ export default function CorrectionLogPage() {
         .eq('id', session.user.id)
         .single()
 
-      if (!prof || prof.role !== 'admin') { router.push('/dashboard'); return }
+      // Module access is decided once, by the route guard in
+      // src/app/{attendance,payroll}/layout.tsx, through
+      // src/lib/moduleAccess.ts. A second 'is this an admin?' here is what let
+      // the launcher and the route disagree; admin-only ACTIONS on this page
+      // are gated where they are rendered, and again in their API routes.
+      if (!prof) { router.push('/coming-soon'); return }
       setProfile(prof as UserProfile)
       setToken(session.access_token)
       setLoading(false)

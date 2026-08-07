@@ -13,13 +13,19 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ─── Module cards ─────────────────────────────────────────────────────────────
 
+// Importing the machine export writes raw attendance, so /api/attendance/import
+// admits admin and manager only. A member Control Center granted the module to
+// can read every screen here but must not be shown a card that ends in a 403.
+const IMPORT_ROLES = ['admin', 'manager']
+
+const UPLOAD_CARD = {
+  title: 'Upload Monthly Attendance',
+  description: 'Import monthly attendance data from fingerprint machine Excel export.',
+  dotColor: '#8B5CF6',
+  href: '/attendance/upload',
+}
+
 const ACTIVE_CARDS = [
-  {
-    title: 'Upload Monthly Attendance',
-    description: 'Import monthly attendance data from fingerprint machine Excel export.',
-    dotColor: '#8B5CF6',
-    href: '/attendance/upload',
-  },
   {
     title: 'Monthly Attendance Review',
     description: 'Per-employee attendance summary: present, half-day, absent, late, and missing punch counts.',
@@ -133,7 +139,7 @@ export default function AttendancePage() {
           Modules
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 28 }}>
-          {ACTIVE_CARDS.map(card => (
+          {(IMPORT_ROLES.includes(profile?.role ?? '') ? [UPLOAD_CARD, ...ACTIVE_CARDS] : ACTIVE_CARDS).map(card => (
             <Link key={card.title} href={card.href} style={{ textDecoration: 'none' }}>
               <div style={{
                 background: colors.base,
