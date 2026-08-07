@@ -1,6 +1,6 @@
 -- Order amendment assertions
 -- ===========================================================================
--- Covers 20260804000000_order_amendments.sql:
+-- Covers 20260816000000_order_amendments.sql:
 --
 --   A. the commercial-column guard, including what it deliberately allows
 --   B. amend_order()  — the admin's direct door
@@ -127,7 +127,7 @@ begin
   assert v_err like '42501|ORDER_FIELD_FROZEN%',
     'created_by must be frozen, got: ' || v_err;
 
-  -- notes joined the guarded tier in 20260806000000 §5, so that the trigger
+  -- notes joined the guarded tier in 20260818000000 §5, so that the trigger
   -- and the column grants agree about it. It is a change to what the order
   -- says and now earns an actor and a reason like every other term.
   v_err := pg_temp.fails_with(format(
@@ -209,8 +209,12 @@ begin
   assert pg_temp.amend_events(v_order) = 1, 'exactly one audit row must be written';
 
   -- The audit row records BOTH sides of every field that moved, and only those.
-  assert (select payload -> 'changes' -> 'total_value' ->> 'from' = '250000'
-                 and payload -> 'changes' -> 'total_value' ->> 'to' = '300000'
+  -- Compared as NUMERIC, not as text: total_value is numeric(12,2), so it
+  -- serialises into the payload as 250000.00 and a text comparison against
+  -- '250000' fails on the scale rather than on the value. (Found by running
+  -- this script — the first version compared strings and failed here.)
+  assert (select (payload -> 'changes' -> 'total_value' ->> 'from')::numeric = 250000
+                 and (payload -> 'changes' -> 'total_value' ->> 'to')::numeric = 300000
                  and payload -> 'changes' ? 'due_date'
                  and not (payload -> 'changes' ? 'client_name')
                  and payload ->> 'reason' = 'Client added two chairs'
@@ -228,8 +232,11 @@ begin
   assert v_payload -> 'changes' ? 'total_value',
     'the return value must report what changed';
 
-  -- A closed Order is closed to amendment.
-  update public.orders set status = 'dispatched' where id = v_order;
+  -- A closed Order is closed to amendment. Reached through the graph rather
+  -- than in one hop: since 20260819000000 `running -> dispatched` is not a
+  -- legal transition, and this fixture must not depend on it being one.
+  update public.orders set status = 'ready_for_dispatch' where id = v_order;
+  update public.orders set status = 'dispatched'         where id = v_order;
   v_err := pg_temp.fails_with(format(
     $q$select public.amend_order(%L, 'too late', p_total_value => 400000)$q$, v_order));
   assert v_err like '42501|ORDER_CLOSED%',
@@ -520,7 +527,7 @@ begin
 end $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- G. 20260806000000 — privileges are the PRIMARY control
+-- G. 20260818000000 — privileges are the PRIMARY control
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- The review finding this section exists for: before 20260806, the ONLY thing
@@ -590,7 +597,7 @@ begin
 end $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- H. 20260806000000 — baseline capture and stale-approval refusal
+-- H. 20260818000000 — baseline capture and stale-approval refusal
 -- ═══════════════════════════════════════════════════════════════════════════
 do $$
 declare
@@ -645,6 +652,143 @@ begin
     'unrelated movement must not block an approval';
 
   raise notice 'H. baseline capture and staleness OK';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- I. 20260819000000 — creation goes through conversion only (D7)
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare v_err text;
+begin
+  set local role authenticated;
+  perform pg_temp.act_as('test.sales_a');
+
+  -- The hole this closes: a signed-in user POSTing straight into public.orders,
+  -- bypassing the Order Request path and burning a display number on the way.
+  v_err := pg_temp.fails_with(format(
+    $q$insert into public.orders (client_name, requested_by, status, total_value)
+       values ('QA direct create', %L, 'running', 1)$q$,
+    current_setting('test.sales_a')));
+  assert v_err like '42501|%permission denied%',
+    'a salesperson must not be able to create an Order, got: ' || v_err;
+
+  -- ...and an admin cannot either. The privilege is gone for every client role,
+  -- so orders_admin_insert can no longer be satisfied.
+  perform pg_temp.act_as('test.admin_id');
+  v_err := pg_temp.fails_with(
+    $q$insert into public.orders (client_name, status, total_value)
+       values ('QA admin direct create', 'running', 1)$q$);
+  assert v_err like '42501|%permission denied%',
+    'an admin must not be able to create an Order directly either, got: ' || v_err;
+
+  reset role;
+
+  -- No client role holds INSERT at all.
+  assert not exists (
+    select 1 from information_schema.role_table_grants
+     where table_schema = 'public' and table_name = 'orders'
+       and grantee in ('authenticated', 'anon') and privilege_type = 'INSERT'
+  ), 'no client role may hold INSERT on orders';
+
+  -- The vestigial policy is gone; the conversion path is intact and definer.
+  assert not exists (
+    select 1 from pg_policies
+     where schemaname = 'public' and tablename = 'orders'
+       and policyname = 'orders_sales_insert'
+  ), 'orders_sales_insert must be dropped';
+
+  assert exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'convert_order_request_to_order'
+       and p.prosecdef and pg_get_userbyid(p.proowner) = 'postgres'
+  ), 'the conversion RPC must remain SECURITY DEFINER owned by postgres';
+
+  raise notice 'I. order creation locked to conversion OK';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- J. 20260819000000 — status transitions are a database rule (R2)
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare
+  v_order uuid;
+  v_err   text;
+begin
+  v_order := pg_temp.new_order();          -- starts 'running'
+  perform pg_temp.act_as('test.admin_id');
+
+  -- Legal moves, as admin.
+  update public.orders set status = 'on_hold'            where id = v_order;
+  update public.orders set status = 'running'            where id = v_order;
+  update public.orders set status = 'ready_for_dispatch' where id = v_order;
+
+  -- Illegal by the graph, for everyone.
+  v_err := pg_temp.fails_with(format(
+    $q$update public.orders set status = 'on_hold' where id = %L$q$, v_order));
+  assert v_err like '42501|ORDER_STATUS_TRANSITION_INVALID%',
+    'ready_for_dispatch -> on_hold must be refused, got: ' || v_err;
+
+  -- Cancellation cannot be reached by a bare status update, even by an admin.
+  -- This is the one that matters: cancel_order() records a reason and the money
+  -- received, and a generic UPDATE bypassed both.
+  v_err := pg_temp.fails_with(format(
+    $q$update public.orders set status = 'cancelled' where id = %L$q$, v_order));
+  assert v_err like '42501|ORDER_CANCEL_PATH_REQUIRED%',
+    'a bare cancellation must be refused, got: ' || v_err;
+
+  -- ...but the audited path works, and lands on the same value.
+  perform public.cancel_order(v_order, 'QA — audited cancellation path');
+  assert (select status = 'cancelled' from public.orders where id = v_order),
+    'cancel_order() must still cancel';
+
+  -- Terminal means terminal: a cancelled Order can never be dispatched.
+  v_err := pg_temp.fails_with(format(
+    $q$update public.orders set status = 'dispatched' where id = %L$q$, v_order));
+  assert v_err like '42501|ORDER_STATUS_TRANSITION_INVALID%',
+    'a cancelled order must never move to dispatched, got: ' || v_err;
+
+  -- A dispatched Order is terminal too.
+  v_order := pg_temp.new_order();
+  update public.orders set status = 'ready_for_dispatch' where id = v_order;
+  update public.orders set status = 'dispatched'         where id = v_order;
+  v_err := pg_temp.fails_with(format(
+    $q$update public.orders set status = 'running' where id = %L$q$, v_order));
+  assert v_err like '42501|ORDER_STATUS_TRANSITION_INVALID%',
+    'a dispatched order must not return to running, got: ' || v_err;
+
+  -- Role gate. A salesperson has no status authority at all.
+  v_order := pg_temp.new_order();
+  perform pg_temp.act_as('test.sales_a');
+  v_err := pg_temp.fails_with(format(
+    $q$update public.orders set status = 'on_hold' where id = %L$q$, v_order));
+  assert v_err like '42501|ORDER_STATUS_FORBIDDEN%',
+    'a salesperson must not change status, got: ' || v_err;
+
+  -- Operations may do the three operational moves and NOT dispatch.
+  -- Skipped rather than guessed at when no operations user is configured.
+  if exists (select 1 from public.users where team = 'operations' and is_active) then
+    perform set_config('request.jwt.claims', json_build_object(
+      'sub', (select id from public.users where team = 'operations' and is_active
+               and role <> 'admin' limit 1),
+      'role', 'authenticated')::text, true);
+
+    if current_setting('request.jwt.claims', true) like '%sub%' then
+      update public.orders set status = 'on_hold' where id = v_order;
+      update public.orders set status = 'running' where id = v_order;
+      update public.orders set status = 'ready_for_dispatch' where id = v_order;
+
+      v_err := pg_temp.fails_with(format(
+        $q$update public.orders set status = 'dispatched' where id = %L$q$, v_order));
+      assert v_err like '42501|ORDER_STATUS_FORBIDDEN%',
+        'operations must not dispatch, got: ' || v_err;
+
+      raise notice 'J. operations role gate exercised';
+    end if;
+  else
+    raise notice 'J. NOTE: no active non-admin operations user — operations gate NOT exercised';
+  end if;
+
+  raise notice 'J. status transition enforcement OK';
 end $$;
 
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;

@@ -147,7 +147,7 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
   // 20260681000000 but never labelled here, so it rendered as its raw
   // event_type; it is the Order-side record of where this Order came from.
   order_created_from_request: 'Order created from request',
-  // Written by apply_order_amendment() (20260804000000).
+  // Written by apply_order_amendment() (20260816000000).
   order_amended:    'Order amended',
 }
 
@@ -275,7 +275,7 @@ function activityDescription(entry: ActivityEntry): string {
 
 // ── Status Dropdown ───────────────────────────────────────────────────────────
 //
-// Cancellation left this component in 20260804000000. It used to be a plain
+// Cancellation left this component in 20260816000000. It used to be a plain
 // `update({ status: 'cancelled' })` behind a yes/no dialog, which recorded no
 // reason and — the real problem — never told the person clicking it how much
 // money was already sitting on the order. It now routes to CancelOrderModal,
@@ -407,7 +407,7 @@ export default function OrderDetailPage() {
   // has to still be enabled. The RPC is admin-gated and simply errors for anyone
   // else, so a non-admin silently gets false — which is the right answer anyway.
   const [cleanupEnabled, setCleanupEnabled] = useState(false)
-  // Amendment surface (20260804000000). `changeRequests` holds what RLS lets
+  // Amendment surface (20260816000000). `changeRequests` holds what RLS lets
   // this reader see: their own requests, or all of them for an admin.
   const [changeRequests, setChangeRequests] = useState<OrderChangeRequest[]>([])
   const [amendOpen,      setAmendOpen]      = useState(false)

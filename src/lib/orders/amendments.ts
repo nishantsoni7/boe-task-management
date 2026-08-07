@@ -2,7 +2,7 @@
 // both have to satisfy, kept out of the pages so they can be tested.
 //
 // Storage, authorization and the audit row live in
-// supabase/migrations/20260804000000_order_amendments.sql. Everything here is
+// supabase/migrations/20260816000000_order_amendments.sql. Everything here is
 // client-side shaping and pre-validation: the database re-checks all of it, and
 // the definer functions (amend_order, approve_order_change_request) are the only
 // things that can actually move an Order.
@@ -289,7 +289,7 @@ export type ProposedOrderFields = {
 }
 
 // What the Order held when the request was filed, captured server-side by
-// capture_order_change_baseline (20260806000000). Never sent by a client — a
+// capture_order_change_baseline (20260818000000). Never sent by a client — a
 // requester who could supply their own baseline could suppress the staleness
 // check that approval depends on. Present here so the review UI can show an
 // admin what the requester was actually looking at.
@@ -377,7 +377,7 @@ export function canReviewChangeRequest(request: Pick<OrderChangeRequest, 'status
  * "Total Order Value: ₹2,50,000 → ₹3,00,000" tells an admin what is being
  * replaced, and — when the order has moved since — that the request was written
  * against a figure that is no longer current. Requests filed before
- * 20260806000000 carry no baseline, so those fall back to showing the proposal
+ * 20260818000000 carry no baseline, so those fall back to showing the proposal
  * alone rather than inventing a "from" value.
  */
 export function describeProposal(request: OrderChangeRequest): string[] {

@@ -6,7 +6,7 @@
 // canRequestOrderChange in src/lib/orders/amendments.ts — an admin amends, and
 // everyone else who can see the Order proposes. Neither function is the
 // authority: assert_order_amender() and the order_change_requests INSERT policy
-// are (20260804000000). These decide which control is worth showing.
+// are (20260816000000). These decide which control is worth showing.
 //
 // All four are FORM modals, so all four use OrderModal, whose overlay carries no
 // click handler at all. Losing a typed reason and seven re-entered figures to a
@@ -448,7 +448,7 @@ export function ReviewChangeRequestModal({
 
   // `baseline → proposed`, so the admin reads what is being replaced rather
   // than a bare list of new values. The baseline is captured server-side at
-  // request time (20260806000000).
+  // request time (20260818000000).
   const lines = describeProposal(request)
 
   // Advisory mirror of the staleness gate in approve_order_change_request. The
