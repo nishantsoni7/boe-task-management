@@ -15,6 +15,12 @@ import {
   type CorrectionDayContext,
   type CorrectionPayload,
 } from './AttendanceCorrectionModal'
+import {
+  DeductionExplanationModal,
+  type ExplanationDayContext,
+} from './DeductionExplanationModal'
+import { CalculationRulesSection } from './CalculationRulesSection'
+import { COMPANY_PAID_NOTE } from '@/lib/payroll/deductionExplanation'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -62,10 +68,31 @@ type PeriodMeta = {
   locked_at: string | null
 }
 
+// `waived_by` and `explain` are engine metadata, carried through the detail API
+// so a row can say WHY it costs nothing and the popup can show the workings
+// without recalculating them. See src/lib/payroll/types.ts.
+type DeductionLineView = {
+  deduction_type: string
+  hours_deducted: number
+  amount_deducted: number
+  waived_by?: string
+  explain?: {
+    gross_amount: number
+    units: number
+    unit: 'hours' | 'days'
+    rate: number
+    rate_basis: 'per_hour' | 'per_day' | 'half_day'
+    scheduled_minutes?: number
+    grace_end_minutes?: number
+    actual_minutes?: number
+    minutes_beyond?: number
+  }
+}
+
 type DeductionDay = {
   date: string
   classification: string
-  lines: { deduction_type: string; hours_deducted: number; amount_deducted: number }[]
+  lines: DeductionLineView[]
   total_amount: number
   is_corrected: boolean
   check_in_at: string | null
@@ -408,6 +435,47 @@ function ResultTabs({
   )
 }
 
+/**
+ * The explanation affordance.
+ *
+ * A separate control from Edit, and visually different from it — a circled "?"
+ * against Edit's word — because the two do different things and one of them
+ * changes payroll. The whole row is clickable as well, for anyone who reaches
+ * for the figure rather than the icon; the row handler and this button open the
+ * same dialog, so they cannot disagree.
+ *
+ * Never disabled. A locked period still has to be explainable.
+ */
+function WhyButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title="How was this calculated?"
+      style={{
+        fontSize: 13, fontWeight: 700, borderRadius: 999,
+        width: 26, height: 26, marginRight: 2, padding: 0,
+        border: '1px solid rgba(0,0,0,0.12)', background: 'transparent',
+        color: '#8C94A6', cursor: 'pointer', lineHeight: 1,
+        transition: 'background 0.12s, color 0.12s, border-color 0.12s',
+        verticalAlign: 'middle',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.background = 'rgba(79,111,208,0.08)'
+        e.currentTarget.style.color = '#4F6FD0'
+        e.currentTarget.style.borderColor = 'rgba(79,111,208,0.35)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = 'transparent'
+        e.currentTarget.style.color = '#8C94A6'
+        e.currentTarget.style.borderColor = 'rgba(0,0,0,0.12)'
+      }}
+    >
+      ?
+    </button>
+  )
+}
+
 // Deliberately quiet: on an audit table the amounts and the day statuses are
 // what should catch the eye, not the action that sits on every single row.
 function EditButton({ onClick, disabled, title }: { onClick: () => void; disabled: boolean; title?: string }) {
@@ -542,6 +610,11 @@ export default function PayrollResultDetailPage() {
 
   const [tab, setTab] = useState<TabKey>('deductions')
   const [editingDate, setEditingDate] = useState<string | null>(null)
+  // Deliberately separate from `editingDate`: explaining a deduction and
+  // correcting one are different actions with different consequences, and a
+  // click meant for the first must never open the second. Explanations stay
+  // available when payroll is locked; corrections do not.
+  const [explainingDate, setExplainingDate] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedNotice, setSavedNotice] = useState<string | null>(null)
@@ -571,7 +644,12 @@ export default function PayrollResultDetailPage() {
         .eq('id', session.user.id)
         .single()
 
-      if (!prof || prof.role !== 'admin') { router.push('/dashboard'); return }
+      // Module access is decided once, by the route guard in
+      // src/app/{attendance,payroll}/layout.tsx, through
+      // src/lib/moduleAccess.ts. A second 'is this an admin?' here is what let
+      // the launcher and the route disagree; admin-only ACTIONS on this page
+      // are gated where they are rendered, and again in their API routes.
+      if (!prof) { router.push('/coming-soon'); return }
       setProfile(prof)
       setToken(session.access_token)
 
@@ -630,6 +708,27 @@ export default function PayrollResultDetailPage() {
         : null,
     }
   }, [editingDate, data, correctionsByDate])
+
+  // The popup reads the same DeductionDay the row was rendered from, so every
+  // figure inside it is the figure on the row by construction.
+  const explainingContext: ExplanationDayContext | null = useMemo(() => {
+    if (!explainingDate || !data) return null
+    const day = data.deduction_days.find(d => d.date === explainingDate)
+    if (!day) return null
+    const correction = correctionsByDate.get(explainingDate)
+    return {
+      date: day.date,
+      dateLabel: fmtDayDate(day.date),
+      classification: day.classification,
+      classificationLabel: CLASSIFICATION_LABELS[day.classification] ?? day.classification,
+      check_in_at: day.check_in_at,
+      check_out_at: day.check_out_at,
+      is_corrected: day.is_corrected,
+      correctionRemark: correction?.remark ?? null,
+      lines: day.lines,
+      total_amount: day.total_amount,
+    }
+  }, [explainingDate, data, correctionsByDate])
 
   const handleSaveCorrection = async (payload: CorrectionPayload) => {
     setSaving(true)
@@ -816,6 +915,7 @@ export default function PayrollResultDetailPage() {
                     canEdit={canEdit}
                     editHint={data.edit_blocked}
                     onEdit={setEditingDate}
+                    onExplain={setExplainingDate}
                   />
                 ) : (
                   <ConsideredTab
@@ -839,7 +939,21 @@ export default function PayrollResultDetailPage() {
 
           </div>
 
+          {/* The system behind the figures — collapsed, full page width, and
+              below the workspace so it never competes with the ledger. */}
+          <CalculationRulesSection />
+
         </div>
+      )}
+
+      {/* Read-only, and deliberately not gated on `canEdit`: a locked payroll
+          still has to explain itself. */}
+      {explainingContext && result && (
+        <DeductionExplanationModal
+          employeeName={result.employee_name}
+          day={explainingContext}
+          onClose={() => setExplainingDate(null)}
+        />
       )}
 
       {editingContext && result && (
@@ -859,7 +973,7 @@ export default function PayrollResultDetailPage() {
 // ─── Tab 1: Deductions ────────────────────────────────────────────────────────
 
 function DeductionsTab({
-  days, totalDeductions, corrections, canEdit, editHint, onEdit,
+  days, totalDeductions, corrections, canEdit, editHint, onEdit, onExplain,
 }: {
   days: DeductionDay[]
   totalDeductions: number | null
@@ -867,6 +981,7 @@ function DeductionsTab({
   canEdit: boolean
   editHint: string | null
   onEdit: (date: string) => void
+  onExplain: (date: string) => void
 }) {
   if (days.length === 0) {
     return <div style={{ padding: '28px 20px', fontSize: 13, color: '#8C94A6' }}>No deductions applied.</div>
@@ -898,9 +1013,15 @@ function DeductionsTab({
             {days.map((day, i) => {
               const correction = corrections.get(day.date)
               // One row per DATE. The reasons stack inside it, so a date with
-              // two deductions carries one Edit action, not two.
+              // two deductions carries one Edit action, not two — and one
+              // explanation covering all of them.
               return (
-                <tr key={day.date} style={{ borderBottom: i < days.length - 1 ? ROW_DIVIDER : 'none' }}>
+                <tr
+                  key={day.date}
+                  className="payroll-ledger-row--explainable"
+                  onClick={() => onExplain(day.date)}
+                  style={{ borderBottom: i < days.length - 1 ? ROW_DIVIDER : 'none', cursor: 'pointer' }}
+                >
                   <td style={{ ...TD, whiteSpace: 'nowrap' }}>
                     <DayDateCell iso={day.date} />
                     {day.is_corrected && <CorrectedBadge remark={correction?.remark} />}
@@ -911,12 +1032,19 @@ function DeductionsTab({
                         {/* Neutral: red is reserved for the money column, so the
                             amounts stay the fastest thing to find on the row. */}
                         <span style={{ color: '#3D4455', fontWeight: 500 }}>
-                          {DEDUCTION_LABELS[l.deduction_type] ?? l.deduction_type}
+                          {l.waived_by === 'paid_leave'
+                            ? 'Paid Leave · Company Paid'
+                            : DEDUCTION_LABELS[l.deduction_type] ?? l.deduction_type}
                         </span>
-                        {l.hours_deducted > 0 && (
+                        {l.waived_by !== 'paid_leave' && l.hours_deducted > 0 && (
                           <span style={{ color: '#8C94A6', fontVariantNumeric: 'tabular-nums' }}>
                             {' · '}{fmtHours(l.hours_deducted)}
                           </span>
+                        )}
+                        {l.waived_by === 'paid_leave' && (
+                          <div style={{ fontSize: 11.5, color: '#047857', marginTop: 1 }}>
+                            {COMPANY_PAID_NOTE}
+                          </div>
                         )}
                       </div>
                     ))}
@@ -931,10 +1059,25 @@ function DeductionsTab({
                     <div style={PUNCH_LINE}>{fmtPunches(day.check_in_at, day.check_out_at)}</div>
                     <DayStatus classification={day.classification} />
                   </td>
-                  <td style={{ ...TD, textAlign: 'right', color: '#DC2626', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                    −{fmt(day.total_amount)}
+                  {/* A company-paid date is green and unsigned: it is not a
+                      cut, and printing "−₹0.00" would read as one. */}
+                  <td style={{
+                    ...TD, textAlign: 'right', fontWeight: 600,
+                    fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+                    color: day.total_amount > 0 ? '#DC2626' : '#047857',
+                  }}>
+                    {day.total_amount > 0 ? `−${fmt(day.total_amount)}` : fmt(0)}
                   </td>
-                  <td style={{ ...TD, textAlign: 'right' }}>
+                  {/* Both actions live here, and the row click behind them is
+                      stopped so neither can be triggered by accident. */}
+                  <td
+                    style={{ ...TD, textAlign: 'right', whiteSpace: 'nowrap' }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <WhyButton
+                      onClick={() => onExplain(day.date)}
+                      label={`How ${fmtDayDate(day.date)} was calculated`}
+                    />
                     <EditButton
                       onClick={() => onEdit(day.date)}
                       disabled={!canEdit}
@@ -949,7 +1092,8 @@ function DeductionsTab({
             <tr>
               <td style={TFOOT_LABEL} colSpan={3}>Total Deductions</td>
               {/* Same sign convention as the rows, so the column reads as one
-                  continuous run of figures down to the total. */}
+                  continuous run of figures down to the total. Company-paid rows
+                  carry ₹0 and therefore change nothing here. */}
               <td style={{ ...TFOOT_VALUE, color: '#DC2626' }}>
                 −{fmt(totalDeductions)}
               </td>
