@@ -119,6 +119,29 @@ export const THUMB_WIDTH_2X = 128
  */
 export const THUMB_QUALITY = 35
 
+/**
+ * Widths for the edit page's product preview.
+ *
+ * The preview sits in the ~1/2.7 column of `.product-edit-layout`, so it renders
+ * around 400px wide on a normal desktop. 384 is the largest allowed width at or
+ * below that (it is the top of `images.imageSizes`), and 828 is the next allowed
+ * width up, used only as the high-DPI candidate.
+ *
+ * 828 is a ceiling, not a demand: the optimizer resizes `withoutEnlargement`, so
+ * a source narrower than that comes back at its own width rather than upscaled.
+ * A 768px stored image therefore lands at 768 — genuine 2x for a 384 slot —
+ * while a much larger original is still cut down to 828.
+ */
+export const PREVIEW_WIDTH_1X = 384
+export const PREVIEW_WIDTH_2X = 828
+
+/**
+ * Quality for the edit preview. Higher than a thumbnail because this is the
+ * image someone is actually looking at while they edit, low enough to stay well
+ * under the original. Must appear in `images.qualities`.
+ */
+export const PREVIEW_QUALITY = 55
+
 /** Next's built-in Image Optimization endpoint. Matches `images.path`. */
 const OPTIMIZER_PATH = '/_next/image'
 
@@ -145,25 +168,44 @@ export type ThumbSource = {
 }
 
 /**
- * What a small square thumbnail should actually load for `raw`.
+ * What an image sized for a known box should actually load.
  *
  * An allowlisted host is resized and re-encoded (WebP where the browser accepts
- * it) down to a 64/128px square instead of shipping a multi-megabyte original
- * into a 56px box. Everything else is returned untouched, so an unconfigured
- * host degrades to today's behaviour rather than to a broken image.
+ * it) to the given widths instead of shipping the full original into a small
+ * box. Everything else is returned untouched, so an unconfigured host degrades
+ * to plain behaviour rather than to a broken image.
  */
-export function thumbSource(raw: string | null | undefined): ThumbSource | null {
+function sizedSource(
+  raw: string | null | undefined,
+  width1x: number,
+  width2x: number,
+  quality: number,
+): ThumbSource | null {
   const src = (raw ?? '').trim()
   if (!src) return null
   if (!isOptimizableImageUrl(src)) return { src, optimized: false, original: src }
 
   return {
-    src: optimizerUrl(src, THUMB_WIDTH_1X, THUMB_QUALITY),
-    srcSet: `${optimizerUrl(src, THUMB_WIDTH_1X, THUMB_QUALITY)} 1x, ` +
-            `${optimizerUrl(src, THUMB_WIDTH_2X, THUMB_QUALITY)} 2x`,
+    src: optimizerUrl(src, width1x, quality),
+    srcSet: `${optimizerUrl(src, width1x, quality)} 1x, ` +
+            `${optimizerUrl(src, width2x, quality)} 2x`,
     optimized: true,
     original: src,
   }
+}
+
+/** What a 56px list thumbnail should load — see {@link THUMB_WIDTH_1X}. */
+export function thumbSource(raw: string | null | undefined): ThumbSource | null {
+  return sizedSource(raw, THUMB_WIDTH_1X, THUMB_WIDTH_2X, THUMB_QUALITY)
+}
+
+/**
+ * What the edit page's product preview should load — see
+ * {@link PREVIEW_WIDTH_1X}. Same contract and same retreat path as
+ * {@link thumbSource}, just sized for the larger box.
+ */
+export function previewSource(raw: string | null | undefined): ThumbSource | null {
+  return sizedSource(raw, PREVIEW_WIDTH_1X, PREVIEW_WIDTH_2X, PREVIEW_QUALITY)
 }
 
 /**
