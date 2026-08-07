@@ -365,7 +365,7 @@ describe('describeAmendment', () => {
   })
 })
 
-// ── Proposal rendering and staleness (20260806000000) ─────────────────────────
+// ── Proposal rendering and staleness (20260818000000) ─────────────────────────
 
 // A full request row, baseline captured server-side at filing time against the
 // `order` fixture above.

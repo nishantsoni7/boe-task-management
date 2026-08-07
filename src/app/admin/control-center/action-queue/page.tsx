@@ -146,7 +146,7 @@ export default function ActionQueuePage() {
         // (finalized_at IS NULL) have no verified Main PI and are not yet real.
         .not('finalized_at', 'is', null),
       // Pending amendments and cancellations raised against Confirmed Orders
-      // (20260804000000). order_change_requests_select already scopes this to
+      // (20260816000000). order_change_requests_select already scopes this to
       // admins (and to a requester's own rows), so no role filter is needed
       // here — but this page is admin-only anyway.
       supabase
