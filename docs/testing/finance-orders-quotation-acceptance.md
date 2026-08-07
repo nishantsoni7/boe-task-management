@@ -1,8 +1,8 @@
 # Finance / Orders / Quotation — signed-in acceptance pass
 
 Last updated: 2 August 2026
-Covers: `20260804000000_order_amendments.sql`,
-`20260805000000_financial_amount_invariants.sql`, and the Order amendment UI.
+Covers: `20260816000000_order_amendments.sql`,
+`20260817000000_financial_amount_invariants.sql`, and the Order amendment UI.
 
 ---
 
@@ -25,7 +25,7 @@ What *has* been verified, and how:
 | Unit tests (amendments) | `npx tsx --test src/lib/orders/amendments.test.ts` | **56 pass, 0 fail** |
 | Unit tests (full suite) | `npx tsx --test $(find src -name "*.test.ts" -o -name "*.test.tsx")` | **1384 pass, 0 fail, 275 suites, 6.96s** |
 | Invalid-row survey | `supabase db query --linked` | **0 invalid rows** on all five constrained columns. Table sizes: `finance_payment_requests` 6, `orders` 0, `order_requests` 2 |
-| Grant audit | `supabase db query --linked` | Confirmed `authenticated` + `anon` held table-wide `UPDATE/DELETE/TRUNCATE` on `orders` — the finding behind `20260806000000` |
+| Grant audit | `supabase db query --linked` | Confirmed `authenticated` + `anon` held table-wide `UPDATE/DELETE/TRUNCATE` on `orders` — the finding behind `20260818000000` |
 
 ---
 
@@ -46,11 +46,11 @@ What *has* been verified, and how:
 
    ```
    • 20260803000000_asset_permanent_delete.sql   <-- NOT this branch
-   • 20260804000000_order_amendments.sql
-   • 20260805000000_financial_amount_invariants.sql
+   • 20260816000000_order_amendments.sql
+   • 20260817000000_financial_amount_invariants.sql
    ```
 
-   *(`20260806000000_order_amendment_hardening.sql` was added after that run and
+   *(`20260818000000_order_amendment_hardening.sql` was added after that run and
    will appear as a fourth.)*
 
    `20260803000000` is **untracked work from a different in-flight session** and
@@ -78,7 +78,7 @@ What *has* been verified, and how:
 3. **Act on Part 1 of the amount script** before running any
    `VALIDATE CONSTRAINT` statement. It surveys existing rows and lists anything
    that would make validation fail. The `VALIDATE` statements are at the foot of
-   `20260805000000`, commented out deliberately.
+   `20260817000000`, commented out deliberately.
 
 ## 2. Test identities
 
@@ -126,7 +126,7 @@ Fill in *Actual* and *Pass/Fail* when run.
 | 1.1 | As Operations, open a Confirmed Order and change status `running → on_hold` | Succeeds. The guard covers commercial columns only. | | |
 | 1.2 | As Operations, `PATCH /rest/v1/orders?id=eq.<id>` with `{"total_value": 999999}` (bypassing the UI) | **Refused at the privilege layer** — `42501 permission denied for table orders` (column grant), *not* `ORDER_AMENDMENT_REQUIRED`. The trigger message now only appears for the service role and direct SQL. | | |
 | 1.3 | Same PATCH as Admin | **Refused** — an admin's raw PATCH is refused too; that is the point | | |
-| 1.4 | Same PATCH with `{"notes": "x"}` | **Refused** — `notes` joined the guarded tier in `20260806000000` | | |
+| 1.4 | Same PATCH with `{"notes": "x"}` | **Refused** — `notes` joined the guarded tier in `20260818000000` | | |
 | 1.5 | Service-role PATCH with `{"total_value": 999999}` | **Refused**, `ORDER_AMENDMENT_REQUIRED` — service_role keeps its grants, so the trigger is what catches it | | |
 | 1.6 | Service-role PATCH with `{"created_by": "<other uuid>"}` | **Refused**, `ORDER_FIELD_FROZEN` | | |
 | 1.7 | `DELETE /rest/v1/orders?id=eq.<id>` as Admin | **Refused** — no DELETE policy *and* no DELETE grant | | |

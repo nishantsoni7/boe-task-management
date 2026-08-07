@@ -51,7 +51,7 @@ This document is two things:
 | `finance_payment_requests` | `20260628000200` | **All five payment statuses live in this one table.** There is no separate received-payments table. |
 | `finance_payment_request_activity_log` | `20260674` | Append-only. |
 | `payment_proof_attachments` | `20260672` | |
-| `order_change_requests` | **`20260804000000` (new)** | Proposed amendments and cancellations. |
+| `order_change_requests` | **`20260816000000` (new)** | Proposed amendments and cancellations. |
 | `tasks` (`task_type='quotation_request'`) | `20260652` | **Quotation Requests are a task type, not a module.** |
 
 ### 1.3 Key RPCs
@@ -91,7 +91,7 @@ claims "update status/notes"; the policy permits rewriting `total_value`,
 `client_name`, `requested_by`, `assigned_to` — anything on the row, silently and
 with no audit entry.
 
-**Fixed** by `orders_guard_amendable_columns` (`20260804000000` §1), which
+**Fixed** by `orders_guard_amendable_columns` (`20260816000000` §1), which
 splits the columns into frozen / commercial / operational tiers and refuses a
 commercial change outside an amendment. Because it is a trigger, it holds for
 the **service role and direct SQL** too, not only for PostgREST.
@@ -117,7 +117,7 @@ psql) could write `amount = -50000`, and every derived figure absorbs it
 silently: the Order detail Received/Pending/Completion band, the advance on an
 Order Request, and the conversion rule's "at least one approved payment" count.
 
-**Fixed** by five `CHECK` constraints (`20260805000000`), added `NOT VALID` so
+**Fixed** by five `CHECK` constraints (`20260817000000`), added `NOT VALID` so
 the deployment cannot fail on a legacy row, with a survey script to run before
 validating.
 
@@ -150,9 +150,9 @@ decision about whether the quotation *is* the pre-order artifact or a separate
 stage, and building it speculatively would risk a second competing pre-order
 entity next to `order_requests`.
 
-### D6b — The amendment guard was the *only* control on commercial columns *(Priority A · fixed in `20260806000000`)*
+### D6b — The amendment guard was the *only* control on commercial columns *(Priority A · fixed in `20260818000000`)*
 
-Found by reviewing `20260804000000` rather than by writing it, and confirmed
+Found by reviewing `20260816000000` rather than by writing it, and confirmed
 against the live database:
 
 ```
@@ -193,7 +193,7 @@ and added a row trigger to make Confirmed Orders permanent, but left the DELETE
 and TRUNCATE *grants* — and **a row-level `BEFORE DELETE` trigger never fires on
 `TRUNCATE`**, so the grant was a hole straight through that guarantee.
 
-### D6c — An approved change request could silently clobber a newer amendment *(Priority A · fixed in `20260806000000`)*
+### D6c — An approved change request could silently clobber a newer amendment *(Priority A · fixed in `20260818000000`)*
 
 `order_change_requests` stored only the *proposed* values, and approval applied
 them with no reference to what the requester had been looking at:
@@ -215,7 +215,7 @@ refusing on that would train admins to re-submit blindly, which is the failure
 this prevents. A stale request is **refused, not auto-rejected**; it stays
 pending so a human decides whether the proposal still makes sense.
 
-### D7 — Any authenticated user can create a Confirmed Order directly *(open, Priority A)*
+### D7 — Any authenticated user could create a Confirmed Order directly *(FIXED in `20260819000000`)*
 
 `orders_sales_insert` (`20260655`) permits `INSERT` where
 `requested_by = auth.uid()`, and `authenticated` holds the table INSERT grant.
@@ -223,11 +223,36 @@ That lets a client create an Order outright — bypassing the Order Request →
 conversion → numbering path, and burning a real number from the display-number
 cycle via `orders_assign_display_number`.
 
-The policy is **vestigial**: it was written when sales inserted their own rows at
-status `requested`, a status `20260702000000` retired. Not fixed here because
-closing it changes *who can create an Order*, which is a different blast radius
-from the amendment work and needs its own end-to-end conversion test. **This is
-the recommended next fix.**
+The policy was **vestigial**: written when sales inserted their own rows at
+status `requested`, a status `20260702000000` retired.
+
+**Fixed** by dropping `orders_sales_insert` and revoking `INSERT` from
+`authenticated` and `anon`. `convert_order_request_to_order` is `SECURITY
+DEFINER` owned by `postgres`, so conversion is unaffected — verified against the
+live database before the revoke. `orders_admin_insert` is deliberately left in
+place: with the privilege gone it grants nothing, but it is correct as written,
+so restoring a deliberate admin escape hatch later is a one-line `GRANT` rather
+than a rediscovered policy.
+
+### R2 — The status graph lived only in the browser *(FIXED in `20260819000000`)*
+
+`TRANSITION_GRAPH` / `allowedTransitions()` were client-side only, so
+`dispatched → running`, or a salesperson cancelling an order, were refused by
+the UI and accepted by PostgREST. `20260818000000` narrowed *which columns* a
+client may write; `status` is deliberately the one left writable, and nothing
+constrained its *values*.
+
+`orders_enforce_status_transition` now applies three gates: the graph (every
+caller, including the service role — which is what makes "a cancelled order can
+never be dispatched" a database invariant), the path (`cancelled` is reachable
+only from inside `cancel_order_with_audit`, so a bare
+`.update({status:'cancelled'})` by an admin can no longer bypass the mandatory
+reason and the money disclosure), and the role (admin: any legal transition;
+operations: the three operational ones; everyone else: none).
+
+The graph mirrors the client's **exactly**, including what it omits —
+`ready_for_dispatch → running` is not added here, because the UI does not offer
+it and a transition nothing can reach would be worse than none.
 
 ### D8 — The blanket grant pattern is project-wide *(open)*
 
@@ -480,8 +505,31 @@ default.
 
 ## 6. Remaining risks
 
-**R1 — None of the three migrations has been applied.** `20260804000000`,
-`20260805000000` and `20260806000000` are written and reviewed but have never
+> **Status update — all migrations APPLIED to production.** Renumbered to
+> `20260816`–`20260821` (the originals were `20260804`–`20260806`, which would
+> have landed *below* nine already-applied migrations). Applied in order, each
+> after a clean dry-run. Both SQL assertion suites pass against the migrated
+> database, and the live access model is verified in §9 below.
+>
+> **Executing the assertions found three defects that reading them had not:**
+>
+> 1. A **test bug** — the audit-payload assertion compared `numeric(12,2)` as
+>    text, so `250000.00` failed against `'250000'`.
+> 2. A **product bug in `20260818000000`** — `v_stale := v_stale || 'literal'`
+>    resolves to array-concat, not append, so the staleness gate raised a raw
+>    `22P02` cast error instead of `ORDER_CHANGE_REQUEST_STALE`. It failed
+>    *safe* (the exception still aborted the approval, so no stale amendment was
+>    ever applied) but the admin got an unmappable error. Fixed in
+>    `20260820000000` with `array_append`.
+> 3. A **false claim in `20260817000000`** — it stated every amount column was
+>    unconstrained. Three of the five already had `CHECK`s, inline on the
+>    `ADD COLUMN` in `20260696000000`. The duplicates are dropped and the two
+>    genuinely-new constraints are now `VALIDATE`d (`20260821000000`).
+>
+> ~~**R1 — None of the three migrations has been applied.**~~ *(resolved)*
+
+**R1 — None of the three migrations has been applied.** `20260816000000`,
+`20260817000000` and `20260818000000` are written and reviewed but have never
 run against any database. The UI shipped alongside them **will fail** until they
 are applied: `amend_order` and `order_change_requests` do not exist yet. Apply
 the migrations **before** deploying the application code.
@@ -496,13 +544,13 @@ nothing has been applied**, and it must be resolved with the owner of the assets
 work before any push.
 
 **R1c — Column privileges and the amendment guard must stay in step.** After
-`20260806000000`, `status` is the only column a client role may update on
+`20260818000000`, `status` is the only column a client role may update on
 `orders`. Any future feature that needs to write another column from the client
 must go through the amendment path — granting the column back would re-open
 D6b silently, because the trigger alone never was sufficient.
 
 **R1d — Legacy change requests carry no baseline.** Rows created between
-`20260804000000` and `20260806000000` have `baseline_*` NULL and are therefore
+`20260816000000` and `20260818000000` have `baseline_*` NULL and are therefore
 exempt from the staleness gate. In practice there are none (the feature has
 never been deployed), but the code path exists and both the SQL and the
 TypeScript treat a missing baseline as "cannot judge" rather than "not stale by
@@ -533,7 +581,7 @@ above the order value. The survey script in
 
 ## 7. Operations permissions — the exact allowed fields
 
-After `20260806000000`, for every client role (`authenticated`, `anon`):
+After `20260818000000`, for every client role (`authenticated`, `anon`):
 
 | Column | Client UPDATE? | Enforced by |
 | --- | --- | --- |
@@ -556,7 +604,32 @@ any write path.
 
 `status` transition *validity* is still client-side only — see risk R2.
 
-## 8. Recommended next small task
+## 9. Verified live access model (post-migration)
+
+Queried from `information_schema` / `pg_catalog` after applying, not inferred:
+
+| Check | Result |
+| --- | --- |
+| `orders` table grants, client roles | `anon: SELECT`, `authenticated: SELECT` — nothing else |
+| `orders` column UPDATE grants | `authenticated: status` — one column |
+| `orders_sales_insert` | **DROPPED** |
+| Triggers on `orders` | `enforce_status_transition`, `guard_amendable_columns`, `prevent_delete`, `protect_display_number`, `protect_source_request`, `protect_test_data`, `assign_display_number`, `stamp_test_data`, `set_updated_at` |
+| Public RPCs | all 5 `SECURITY DEFINER`, owner `postgres`, `search_path=public, pg_temp` |
+| Internal fns callable by a client role | **NONE** |
+| `order_change_requests` UPDATE/DELETE policies | **NONE** |
+| Amount constraints validated | `finance_payment_requests_amount_positive=true`, `orders_total_value_non_negative=true` |
+
+Left deliberately: `order_requests_total_value_nonneg` stays `NOT VALID`. It
+predates this branch and the survey shows it would validate cleanly, but
+validating another workstream's constraint is a change they should make
+knowingly.
+
+Also left: `20260814000000_create_meetings_module.sql` and
+`src/lib/meetings/schemaGuards.test.ts` cite migration `20260806000000` — the
+pre-renumber number of what is now `20260818000000`. The migration is already
+applied and must not be edited; the citation is stale but harmless.
+
+## 10. Recommended next small task
 
 **Resolve R1b, apply the three migrations, run the assertion scripts, then close
 D7.**
