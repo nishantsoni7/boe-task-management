@@ -9,6 +9,7 @@ import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -203,6 +204,17 @@ export default function CorrectionLogPage() {
           </svg>
           Back to Attendance
         </Link>
+
+        {/* Employee-reported issues sit above the import audit trail: this is
+            the screen an admin is already on when investigating a disputed
+            day, and resolving one usually means making a correction. The
+            correction itself is still a separate, deliberate action. */}
+        <ObjectionQueue
+          subject="attendance"
+          token={token}
+          title="Reported attendance issues"
+          emptyLabel="No employee has reported an attendance issue."
+        />
 
         {/* Filter bar */}
         <div style={{

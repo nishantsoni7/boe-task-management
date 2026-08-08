@@ -8,6 +8,7 @@ import type { UserProfile } from '@/lib/types'
 import { PayrollLayout } from '@/components/layout/PayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -202,6 +203,17 @@ export default function PayrollResultsPage() {
           ← Back to Payroll Periods
         </button>
       </div>
+
+      {/* What employees have reported about their own payslips, on the screen
+          where an admin reviews those payslips. Resolving one records the
+          outcome; any actual correction is still made through the existing
+          adjustment and correction tools. */}
+      <ObjectionQueue
+        subject="payroll"
+        token={token}
+        title="Reported payroll issues"
+        emptyLabel="No employee has reported a payroll issue."
+      />
 
       {/* Locked banner */}
       {isLocked && (
