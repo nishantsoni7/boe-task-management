@@ -11,7 +11,7 @@
 // any client that reaches PostgREST directly; neither is load-bearing alone.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveCaller, UNAUTHORIZED } from '@/lib/security/attendancePayrollApiAuth'
+import { resolveCaller, UNAUTHORIZED, type ServiceClient } from '@/lib/security/attendancePayrollApiAuth'
 import { validateObjectionInput, attendanceSnapshot, payrollSnapshot } from '@/lib/objections'
 import { istClockOf } from '@/lib/istDate'
 
@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
   // by the browser would let an employee write any salary figure they liked
   // into a row an admin later reads as a statement of fact.
   let snapshot: string
+  let periodLabelForResult = 'this period'
   let insert: Record<string, unknown>
 
   if (target.kind === 'attendance') {
@@ -115,6 +116,10 @@ export async function POST(req: NextRequest) {
     const period = (Array.isArray(result.period) ? result.period[0] : result.period) as
       { payroll_month: number | null; payroll_year: number | null } | null | undefined
 
+    periodLabelForResult = period?.payroll_month && period?.payroll_year
+      ? `${String(period.payroll_month).padStart(2, '0')}/${period.payroll_year}`
+      : 'this period'
+
     snapshot = payrollSnapshot({
       payroll_month:    period?.payroll_month ?? null,
       payroll_year:     period?.payroll_year  ?? null,
@@ -143,5 +148,68 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Tell the admins. Awaited so a failure is logged rather than lost in an
+  // unhandled rejection, but never allowed to fail the objection itself — the
+  // employee's report is already saved, and a notification problem must not
+  // read to them as "your issue was not submitted".
+  await notifyAdminsOfObjection(svc, {
+    employeeId: caller.id,
+    kind:       target.kind,
+    subject:    target.kind === 'attendance' ? target.attendanceDate : periodLabelForResult,
+    objectionId: (data as unknown as { id: string }).id,
+  })
+
   return NextResponse.json({ objection: data }, { status: 201 })
+}
+
+/**
+ * One notification per admin, of the type getNotificationMeta() knows how to
+ * route: an attendance issue to the correction log, a payroll issue to that
+ * employee's payslip.
+ *
+ * Admins only. Attendance and payroll management is an admin surface (see
+ * SELF_SERVICE_MODULE_KEYS), so anyone else receiving this would be told about
+ * a record they cannot open.
+ *
+ * REQUIRES 20260824000000_objection_notification_types.sql. Until that is
+ * applied the insert fails the enum check and is logged here; the objection is
+ * unaffected.
+ */
+async function notifyAdminsOfObjection(
+  svc: ServiceClient,
+  { employeeId, kind, subject, objectionId }: {
+    employeeId: string
+    kind: 'attendance' | 'payroll'
+    subject: string
+    objectionId: string
+  },
+): Promise<void> {
+  try {
+    const [{ data: employee }, { data: admins }] = await Promise.all([
+      svc.from('users').select('full_name').eq('id', employeeId).maybeSingle(),
+      svc.from('users').select('id').eq('role', 'admin').eq('is_active', true),
+    ])
+
+    if (!admins?.length) return
+
+    const who   = employee?.full_name ?? 'An employee'
+    const what  = kind === 'attendance' ? 'an Attendance issue' : 'a Payroll issue'
+    const title = `${who} raised ${what} for ${subject}`
+
+    const { error } = await svc.from('notifications').insert(
+      admins.map((a: { id: string }) => ({
+        user_id:   a.id,
+        type:      kind === 'attendance' ? 'attendance_issue_raised' : 'payroll_issue_raised',
+        title,
+        body:      'Open the record to read their reason and resolve or reject it.',
+        entity_id: objectionId,
+      })),
+    )
+
+    if (error) {
+      console.error(`[objections] notification not delivered (${kind}):`, error.message)
+    }
+  } catch (e) {
+    console.error('[objections] notification failed:', e)
+  }
 }

@@ -9,6 +9,8 @@ import { PayrollLayout } from '@/components/layout/PayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
+import { useObjections } from '@/components/objections/useObjections'
+import { employeeStatusLabel, statusTone as objectionTone } from '@/lib/objections'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,6 +92,10 @@ export default function PayrollResultsPage() {
   const [token,       setToken]       = useState('')
   const [locking,     setLocking]     = useState(false)
   const [lockError,   setLockError]   = useState<string | null>(null)
+
+  // What employees have reported about this period, so a complaint travels
+  // with the row instead of living only in the queue above the table.
+  const objections = useObjections(token)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -345,7 +351,22 @@ export default function PayrollResultsPage() {
                       {fmt(r.net_salary)}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
-                      <ReviewBadge reviewedAt={r.employee_reviewed_at} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <ReviewBadge reviewedAt={r.employee_reviewed_at} />
+                        {objections.byResult.get(r.id) && (
+                          <span
+                            title={objections.byResult.get(r.id)!.reason}
+                            style={{
+                              padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                              background: objectionTone(objections.byResult.get(r.id)!.status).bg,
+                              color: objectionTone(objections.byResult.get(r.id)!.status).fg,
+                            }}
+                          >
+                            {employeeStatusLabel(objections.byResult.get(r.id)!.status)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <Link

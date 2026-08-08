@@ -24,6 +24,9 @@ import {
   type ExplanationDayContext,
 } from './DeductionExplanationModal'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { useObjections } from '@/components/objections/useObjections'
+import { ObjectionReviewPanel } from '@/components/objections/ObjectionReviewPanel'
+import { periodLabel } from '@/lib/payroll/months'
 import {
   PayrollDetailWorkspace,
   fmtDayDate,
@@ -98,6 +101,12 @@ export default function PayrollResultDetailPage() {
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodId, employeeId])
+
+  // Every hook runs before the first early return. This one sat below the
+  // `if (loading)` guard, so the hook order changed between the loading render
+  // and the loaded one — React reported it, and it would have surfaced as a
+  // stale or crossed-over objection rather than an obvious crash.
+  const objections = useObjections(token)
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -199,6 +208,10 @@ export default function PayrollResultDetailPage() {
 
   const canEdit = data?.can_edit ?? false
 
+  // What this employee said about this payslip, on the screen where the admin
+  // is already reviewing it.
+  const objection = data?.result ? objections.byResult.get(data.result.id) : undefined
+
   return (
     <PayrollLayout
       profile={profile}
@@ -240,6 +253,14 @@ export default function PayrollResultDetailPage() {
           canEdit={canEdit}
           onEdit={setEditingDate}
           onExplain={setExplainingDate}
+          issuePanel={objection && (
+            <ObjectionReviewPanel
+              objection={objection}
+              token={token}
+              subjectLabel={periodLabel(data.period.payroll_month, data.period.payroll_year)}
+              onReviewed={objections.reload}
+            />
+          )}
           notices={savedNotice && (
             <div style={{
               marginBottom: 16, padding: '11px 16px', borderRadius: 9,
