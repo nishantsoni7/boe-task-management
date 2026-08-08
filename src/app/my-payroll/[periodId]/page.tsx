@@ -1,118 +1,80 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+// My Payroll — the detail of one month, as the employee whose payslip it is.
+//
+// Renders the SAME workspace an admin sees on
+// /payroll/results/[periodId]/[employeeId]. It used to be a separate, thinner
+// layout, which meant every improvement to the admin page quietly widened the
+// gap between what an admin could see about a payslip and what its owner could.
+//
+// The difference between the two readers is `canEdit={false}` and no `onEdit`
+// callback — so the correction controls are absent rather than disabled. That is
+// presentation only. The real boundary is the endpoint: /api/payroll/my-result
+// substitutes the caller's own id and has no employee_id parameter to tamper
+// with, and every mutating payroll route keeps its own admin check.
+
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type DeductionLine = {
-  id: string
-  line_date: string
-  deduction_type: string
-  hours_deducted: number | null
-  amount_deducted: number | null
-}
-
-type MyDetail = {
-  id: string
-  payroll_month: number | null
-  payroll_year: number | null
-  period_status: 'draft' | 'generated' | 'locked' | null
-  period_locked_at: string | null
-  monthly_salary: number | null
-  working_days_in_month: number | null
-  days_present: number | null
-  days_absent: number | null
-  half_day_count: number | null
-  paid_leave_used: number | null
-  late_deduction_hours: number | null
-  missing_punch_hours: number | null
-  gross_salary: number | null
-  total_deductions: number | null
-  pending_adjustment_total: number | null
-  net_salary: number | null
-  status: 'draft' | 'locked'
-  employee_reviewed_at: string | null
-  generated_at: string | null
-  deduction_lines: DeductionLine[]
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-]
-
-const DEDUCTION_LABELS: Record<string, string> = {
-  late_arrival:      'Late Arrival',
-  early_checkout:    'Early Checkout',
-  missing_punch_in:  'Missing Punch-In',
-  missing_punch_out: 'Missing Punch-Out',
-  absent:            'Absent',
-  half_day:          'Half Day',
-  short_hours:       'Short Hours',
-}
-
-function fmt(n: number | null): string {
-  if (n == null) return '—'
-  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function fmtDate(s: string): string {
-  return new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-function SectionHeader({ title }: { title: string }) {
-  return (
-    <div style={{
-      fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-      letterSpacing: '0.08em', color: '#8C94A6',
-      padding: '14px 20px 8px', borderBottom: '1px solid rgba(0,0,0,0.06)',
-    }}>
-      {title}
-    </div>
-  )
-}
-
-function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      padding: '10px 20px', borderBottom: '1px solid rgba(0,0,0,0.04)',
-    }}>
-      <span style={{ fontSize: 13, color: '#6B7280' }}>{label}</span>
-      <span style={{
-        fontSize: 13.5, fontWeight: highlight ? 700 : 500,
-        color: highlight ? '#111318' : '#3D4455', fontVariantNumeric: 'tabular-nums',
-      }}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
+import {
+  PayrollDetailWorkspace,
+  fmtDayDate,
+  CLASSIFICATION_LABELS,
+  type DetailPayload,
+  type CorrectionRow,
+  type TabKey,
+} from '@/app/payroll/results/[periodId]/[employeeId]/PayrollDetailView'
+import {
+  DeductionExplanationModal,
+  type ExplanationDayContext,
+} from '@/app/payroll/results/[periodId]/[employeeId]/DeductionExplanationModal'
+import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
+import { employeeStatusLabel, statusTone as objectionTone, type ObjectionRow } from '@/lib/objections'
 
 export default function MyPayrollDetailPage() {
   const params   = useParams()
   const periodId = params.periodId as string
 
-  const [profile,     setProfile]     = useState<UserProfile | null>(null)
-  const [result,      setResult]      = useState<MyDetail | null>(null)
-  const [loading,     setLoading]     = useState(true)
-  const [error,       setError]       = useState<string | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [data,    setData]    = useState<DetailPayload | null>(null)
+  const [token,   setToken]   = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState<string | null>(null)
+  const [tab,     setTab]     = useState<TabKey>('deductions')
+  const [explainingDate, setExplainingDate] = useState<string | null>(null)
+
   const [reviewing,   setReviewing]   = useState(false)
   const [reviewError, setReviewError] = useState<string | null>(null)
-  const [token,       setToken]       = useState('')
+
+  const [objection,  setObjection]  = useState<ObjectionRow | null>(null)
+  const [issueOpen,  setIssueOpen]  = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+
+  const load = useCallback(async (accessToken: string) => {
+    const auth = { authorization: `Bearer ${accessToken}` }
+    const [detailRes, objRes] = await Promise.all([
+      fetch(`/api/payroll/my-result?period_id=${periodId}`, { headers: auth }),
+      fetch('/api/objections', { headers: auth }),
+    ])
+
+    const json = await detailRes.json()
+    if (!detailRes.ok) setError(json.error ?? 'Failed to load your payroll')
+    else setData(json)
+
+    if (objRes.ok) {
+      const { objections } = await objRes.json()
+      const mine = (objections ?? []).find(
+        (o: ObjectionRow) => o.payroll_result_id && o.payroll_result_id === json?.result?.id,
+      )
+      setObjection(mine ?? null)
+    }
+  }, [periodId])
 
   useEffect(() => {
     const init = async () => {
@@ -129,18 +91,40 @@ export default function MyPayrollDetailPage() {
       if (!prof) { router.push('/login'); return }
       setProfile(prof)
 
-      const res = await fetch(`/api/payroll/my-result?period_id=${periodId}`, {
-        headers: { authorization: `Bearer ${session.access_token}` },
-      })
-      const json = await res.json()
-      if (!res.ok) setError(json.error ?? 'Failed to load payroll data')
-      else setResult(json.result)
-
+      await load(session.access_token)
       setLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodId])
+
+  const result = data?.result ?? null
+
+  const correctionsByDate = useMemo(
+    () => new Map<string, CorrectionRow>((data?.corrections ?? []).map(c => [c.attendance_date, c])),
+    [data?.corrections],
+  )
+
+  // The popup reads the same DeductionDay the row was rendered from, so every
+  // figure inside it is the figure on the row by construction.
+  const explainingContext: ExplanationDayContext | null = useMemo(() => {
+    if (!explainingDate || !data) return null
+    const day = data.deduction_days.find(d => d.date === explainingDate)
+    if (!day) return null
+    const correction = correctionsByDate.get(explainingDate)
+    return {
+      date: day.date,
+      dateLabel: fmtDayDate(day.date),
+      classification: day.classification,
+      classificationLabel: CLASSIFICATION_LABELS[day.classification] ?? day.classification,
+      check_in_at: day.check_in_at,
+      check_out_at: day.check_out_at,
+      is_corrected: day.is_corrected,
+      correctionRemark: correction?.remark ?? null,
+      lines: day.lines,
+      total_amount: day.total_amount,
+    }
+  }, [explainingDate, data, correctionsByDate])
 
   const handleMarkReviewed = async () => {
     if (reviewing || result?.employee_reviewed_at) return
@@ -149,21 +133,30 @@ export default function MyPayrollDetailPage() {
     try {
       const res = await fetch('/api/payroll/my-result/review', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ period_id: periodId }),
       })
       const json = await res.json()
-      if (!res.ok) {
-        setReviewError(json.error ?? 'Failed to mark as reviewed')
-      } else {
-        setResult(prev => prev ? { ...prev, employee_reviewed_at: new Date().toISOString() } : prev)
-      }
+      if (!res.ok) setReviewError(json.error ?? 'Failed to mark as reviewed')
+      else setData(prev => prev
+        ? { ...prev, result: { ...prev.result, employee_reviewed_at: new Date().toISOString() } }
+        : prev)
     } finally {
       setReviewing(false)
     }
+  }
+
+  const submitIssue = async (reason: string): Promise<string | null> => {
+    if (!result) return 'Payroll not loaded.'
+    const res = await fetch('/api/objections', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ payroll_result_id: result.id, reason }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) return json.error ?? 'Could not submit your issue.'
+    setObjection(json.objection)
+    return null
   }
 
   const handleSignOut = async () => {
@@ -173,232 +166,111 @@ export default function MyPayrollDetailPage() {
 
   if (loading) return <LoadingScreen />
 
-  const card: React.CSSProperties = {
-    background: '#fff', borderRadius: 12,
-    border: '1px solid rgba(0,0,0,0.08)',
-    overflow: 'hidden', marginBottom: 20,
-  }
-
-  const monthLabel = result?.payroll_month
-    ? `${MONTHS[result.payroll_month - 1]} ${result.payroll_year ?? ''}`
-    : 'Payroll Summary'
-
-  const isReviewed = !!result?.employee_reviewed_at
-  const isLocked   = result?.period_status === 'locked'
+  const reviewed = !!result?.employee_reviewed_at
 
   return (
     <AttendanceLayout
       profile={profile}
-      title={monthLabel}
-      subtitle="Your payroll summary"
+      title="My Payroll"
+      subtitle="Your salary for this month, and how it was worked out"
       onSignOut={handleSignOut}
     >
-      {/* Back */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 16 }}>
         <button
           onClick={() => router.push('/my-payroll')}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: '#6B7280', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, padding: 0,
+            color: '#8C94A6', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4, padding: 0,
           }}
         >
           ← Back to My Payroll
         </button>
       </div>
 
-      {/* Locked notice */}
-      {isLocked && (
-        <div style={{
-          marginBottom: 16, padding: '10px 16px', borderRadius: 8,
-          background: 'rgba(232,160,48,0.10)', color: '#92400E',
-          border: '1px solid rgba(232,160,48,0.35)', fontSize: 13,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <span>🔒</span>
-          <span>
-            This payroll has been locked by your admin
-            {result?.period_locked_at ? ` on ${fmtDate(result.period_locked_at)}` : ''}.
-            {' '}No further changes are possible.
-          </span>
-        </div>
-      )}
-
-      {error && (
-        <div style={{
+      {(error || reviewError) && (
+        <div role="alert" style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,
           background: 'rgba(239,68,68,0.08)', color: '#DC2626',
           border: '1px solid rgba(239,68,68,0.2)', fontSize: 13,
         }}>
-          {error}
+          {error ?? reviewError}
         </div>
       )}
 
-      {result && (
-        <div style={{ maxWidth: 680 }}>
-
-          {/* Attendance summary */}
-          <div style={card}>
-            <SectionHeader title="Attendance Summary" />
-            <Row label="Salary Month"           value={monthLabel} />
-            <Row label="Payable Days"           value={result.days_present != null ? String(result.days_present) : '—'} />
-            <Row label="Absent Days"            value={result.days_absent  != null ? String(result.days_absent)  : '—'} />
-            {result.half_day_count != null && result.half_day_count > 0 && (
-              <Row label="Half Days"            value={String(result.half_day_count)} />
-            )}
-            {result.paid_leave_used != null && result.paid_leave_used > 0 && (
-              <Row label="Paid Leave Used"      value={String(result.paid_leave_used)} />
-            )}
-          </div>
-
-          {/* Deduction hours */}
-          {((result.late_deduction_hours ?? 0) > 0 || (result.missing_punch_hours ?? 0) > 0) && (
-            <div style={card}>
-              <SectionHeader title="Hourly Deductions" />
-              {(result.late_deduction_hours ?? 0) > 0 && (
-                <Row label="Late / Early Departure Hours" value={`${result.late_deduction_hours}h`} />
-              )}
-              {(result.missing_punch_hours ?? 0) > 0 && (
-                <Row label="Missing Punch Hours" value={`${result.missing_punch_hours}h`} />
-              )}
-            </div>
-          )}
-
-          {/* Salary breakdown */}
-          <div style={card}>
-            <SectionHeader title="Salary Breakdown" />
-            <Row label="Monthly Salary (CTC)" value={fmt(result.monthly_salary)} />
-            <Row label="Gross Salary"         value={fmt(result.gross_salary)} highlight />
-            <Row label="Total Deductions"     value={fmt(result.total_deductions)} />
-            {result.pending_adjustment_total != null && result.pending_adjustment_total !== 0 && (
-              <Row
-                label="Adjustments"
-                value={`${(result.pending_adjustment_total ?? 0) >= 0 ? '+' : ''}${fmt(result.pending_adjustment_total)}`}
-              />
-            )}
-          </div>
-
-          {/* Deduction lines — detailed */}
-          {result.deduction_lines.length > 0 && (
-            <div style={card}>
-              <SectionHeader title="Deduction Details" />
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)', background: 'rgba(0,0,0,0.015)' }}>
-                      {['Date', 'Reason', 'Hours', 'Amount'].map(h => (
-                        <th key={h} style={{
-                          padding: '8px 16px', textAlign: 'left',
-                          fontSize: 11, fontWeight: 700, color: '#8C94A6',
-                          textTransform: 'uppercase', letterSpacing: '0.05em',
-                        }}>
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.deduction_lines.map((l, i) => (
-                      <tr key={l.id} style={{
-                        borderBottom: i < result.deduction_lines.length - 1 ? '1px solid rgba(0,0,0,0.04)' : 'none',
-                      }}>
-                        <td style={{ padding: '9px 16px', fontSize: 13, color: '#3D4455' }}>{fmtDate(l.line_date)}</td>
-                        <td style={{ padding: '9px 16px', fontSize: 13, color: '#3D4455' }}>
-                          {DEDUCTION_LABELS[l.deduction_type] ?? l.deduction_type}
-                        </td>
-                        <td style={{ padding: '9px 16px', fontSize: 13, color: '#6B7280', fontVariantNumeric: 'tabular-nums' }}>
-                          {l.hours_deducted != null ? `${l.hours_deducted}h` : '—'}
-                        </td>
-                        <td style={{ padding: '9px 16px', fontSize: 13, color: '#DC2626', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
-                          {fmt(l.amount_deducted)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Net salary */}
-          <div style={{
-            ...card,
-            background: 'linear-gradient(135deg, #1E293B 0%, #334155 100%)',
-            border: 'none',
-          }}>
+      {result && data && (
+        <PayrollDetailWorkspace
+          result={result}
+          data={data}
+          tab={tab}
+          onSelectTab={setTab}
+          corrections={correctionsByDate}
+          correctableDates={new Set()}
+          canEdit={false}
+          onExplain={setExplainingDate}
+          issuePanel={
             <div style={{
-              padding: '20px 24px', display: 'flex',
-              justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: 16, padding: '12px 16px', borderRadius: 9,
+              background: '#FAFBFC', border: '1px solid #E8EBF0',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 12, flexWrap: 'wrap',
             }}>
-              <div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>
-                  Net Payable
-                </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                  Gross − Deductions + Adjustments
-                </div>
+              <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.55, minWidth: 220, flex: 1 }}>
+                {objection
+                  ? <>You reported an issue with this month&rsquo;s payroll.{objection.review_note ? ` Admin replied: ${objection.review_note}` : ''}</>
+                  : <>Something look wrong? Raise it with your admin — this does not change your salary by itself.</>}
               </div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
-                {fmt(result.net_salary)}
-              </div>
-            </div>
-          </div>
-
-          {/* Review action */}
-          <div style={{
-            background: '#fff', borderRadius: 12,
-            border: '1px solid rgba(0,0,0,0.08)',
-            padding: '20px 24px',
-          }}>
-            {isReviewed ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '6px 14px', borderRadius: 20,
-                  background: 'rgba(16,185,129,0.12)', color: '#059669',
-                  fontSize: 13, fontWeight: 700,
-                }}>
-                  ✓ Reviewed
-                </span>
-                <span style={{ fontSize: 12, color: '#8C94A6' }}>
-                  on {fmtDate(result.employee_reviewed_at!)}
-                </span>
-              </div>
-            ) : isLocked ? (
-              <div style={{ fontSize: 13, color: '#92400E' }}>
-                🔒 The review window is closed — this payroll period has been locked by your admin.
-              </div>
-            ) : (
-              <div>
-                <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 12 }}>
-                  Please review your payroll summary above and confirm it looks correct.
-                </div>
-                {reviewError && (
-                  <div style={{
-                    marginBottom: 10, padding: '7px 12px', borderRadius: 7,
-                    background: 'rgba(239,68,68,0.08)', color: '#DC2626',
-                    border: '1px solid rgba(239,68,68,0.2)', fontSize: 12.5,
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {objection ? (
+                  <span style={{
+                    display: 'inline-block', padding: '3px 11px', borderRadius: 20,
+                    fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                    background: objectionTone(objection.status).bg,
+                    color: objectionTone(objection.status).fg,
                   }}>
-                    {reviewError}
-                  </div>
+                    {employeeStatusLabel(objection.status)}
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setIssueOpen(true)}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '5px 12px', fontSize: 12.5, whiteSpace: 'nowrap' }}
+                  >
+                    Raise Issue
+                  </button>
                 )}
                 <button
                   onClick={handleMarkReviewed}
-                  disabled={reviewing}
-                  style={{
-                    padding: '9px 22px', borderRadius: 8, fontSize: 13.5, fontWeight: 700,
-                    cursor: reviewing ? 'not-allowed' : 'pointer',
-                    border: 'none',
-                    background: reviewing ? 'rgba(0,0,0,0.08)' : '#1A2035',
-                    color: reviewing ? '#8C94A6' : '#E8A030',
-                  }}
+                  disabled={reviewed || reviewing}
+                  className={reviewed ? 'boe-btn boe-btn-ghost' : 'boe-btn boe-btn-primary'}
+                  style={{ padding: '5px 12px', fontSize: 12.5, whiteSpace: 'nowrap', opacity: reviewed ? 0.7 : 1 }}
                 >
-                  {reviewing ? 'Submitting…' : 'Mark as Reviewed'}
+                  {reviewed ? 'Reviewed' : reviewing ? 'Saving…' : 'Mark as reviewed'}
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          }
+        />
+      )}
 
-        </div>
+      {/* Read-only, and available whatever the period's lock state: a locked
+          payroll still has to explain itself. */}
+      {explainingContext && result && (
+        <DeductionExplanationModal
+          employeeName={result.employee_name}
+          day={explainingContext}
+          onClose={() => setExplainingDate(null)}
+        />
+      )}
+
+      {issueOpen && result && (
+        <RaiseIssueModal
+          subject={{
+            title: `${data ? `${String(data.period.payroll_month).padStart(2, '0')}/${data.period.payroll_year}` : ''}`,
+            summary: `Gross ₹${Number(result.gross_salary ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} · Deductions ₹${Number(result.total_deductions ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} · Net payable ₹${Number(result.net_salary ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+          }}
+          onClose={() => setIssueOpen(false)}
+          onSubmit={submitIssue}
+        />
       )}
     </AttendanceLayout>
   )

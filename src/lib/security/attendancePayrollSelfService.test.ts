@@ -151,6 +151,57 @@ describe('the employee self-service surfaces exist and stay ungated', () => {
     )
   })
 
+  // The employee's payslip and the admin's review of it are the same document.
+  // They render from one module so they cannot drift apart again — the earlier
+  // split is what let the employee view fall behind the approved design.
+  test('both payroll detail readers render the one shared workspace', () => {
+    for (const page of [
+      'src/app/payroll/results/[periodId]/[employeeId]/page.tsx',
+      'src/app/my-payroll/[periodId]/page.tsx',
+    ]) {
+      assert.ok(
+        read(page).includes('<PayrollDetailWorkspace'), `${page} must render the shared workspace`,
+      )
+    }
+  })
+
+  test('the employee view passes no edit callback at all', () => {
+    const src = read('src/app/my-payroll/[periodId]/page.tsx')
+    assert.ok(src.includes('canEdit={false}'), 'the employee view must declare canEdit false')
+    assert.equal(
+      /onEdit=/.test(src), false,
+      'an onEdit callback would put a correction control on the employee page',
+    )
+    assert.equal(
+      src.includes('AttendanceCorrectionModal'), false,
+      'the correction modal is an admin surface',
+    )
+  })
+
+  test('the employee detail is served by the own-scoped endpoint', () => {
+    const src = read('src/app/my-payroll/[periodId]/page.tsx')
+    assert.ok(src.includes('/api/payroll/my-result'), 'must read from the self-scoped route')
+    assert.equal(
+      src.includes('/api/payroll/results/detail'), false,
+      'the admin detail endpoint must not be reachable from the employee page',
+    )
+  })
+
+  test('my-result takes no employee id — there is nothing to tamper with', () => {
+    const src = read('src/app/api/payroll/my-result/route.ts')
+    assert.ok(src.includes('employeeId:  caller.id') || src.includes('employeeId: caller.id'))
+    assert.equal(
+      /searchParams\.get\('employee_id'\)/.test(src), false,
+      'accepting an employee_id here would reopen the cross-employee read',
+    )
+    assert.ok(src.includes('canEdit:     false') || src.includes('canEdit: false'))
+  })
+
+  test('the shared payload builder does not authorise — its callers do', () => {
+    const admin = read('src/app/api/payroll/results/detail/route.ts')
+    assert.ok(admin.includes('requireAdmin('), 'the admin detail route stays admin-only')
+  })
+
   test('the management guards use resolveManagementAccess, not the card resolver', () => {
     for (const guard of ['src/app/attendance/layout.tsx', 'src/app/payroll/layout.tsx']) {
       const src = read(guard)
