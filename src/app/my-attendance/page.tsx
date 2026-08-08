@@ -21,6 +21,8 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istClockOf } from '@/lib/istDate'
 import { colors } from '@/lib/tokens'
+import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
+import { employeeStatusLabel, statusTone as objectionTone, type ObjectionRow } from '@/lib/objections'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +101,8 @@ export default function MyAttendancePage() {
   const now = new Date()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [rows,    setRows]    = useState<MyDayRow[]>([])
+  const [objections, setObjections] = useState<ObjectionRow[]>([])
+  const [issueDay,   setIssueDay]   = useState<MyDayRow | null>(null)
   const [year,    setYear]    = useState(now.getFullYear())
   const [month,   setMonth]   = useState(now.getMonth() + 1)
   const [loading, setLoading] = useState(true)
@@ -120,14 +124,50 @@ export default function MyAttendancePage() {
       year:  String(y),
       month: String(m),
     })
-    const res = await fetch(`/api/attendance/employee-monthly-detail?${params}`, {
-      headers: { authorization: `Bearer ${session.access_token}` },
-    })
-    const json = await res.json()
-    if (!res.ok) { setError(json.error ?? 'Failed to load your attendance'); setRows([]) }
+    const auth = { authorization: `Bearer ${session.access_token}` }
+
+    const [detailRes, objRes] = await Promise.all([
+      fetch(`/api/attendance/employee-monthly-detail?${params}`, { headers: auth }),
+      // Own objections. The route pins a non-admin to their own rows, so this
+      // asks for no id and could not use one.
+      fetch('/api/objections', { headers: auth }),
+    ])
+
+    const json = await detailRes.json()
+    if (!detailRes.ok) { setError(json.error ?? 'Failed to load your attendance'); setRows([]) }
     else setRows(json.records ?? [])
+
+    if (objRes.ok) {
+      const { objections } = await objRes.json()
+      setObjections((objections ?? []).filter((o: ObjectionRow) => o.attendance_date))
+    }
     setBusy(false)
   }, [supabase, router])
+
+  /** The newest objection per date — what the row badge reflects. */
+  const objectionByDate = useMemo(() => {
+    const m = new Map<string, ObjectionRow>()
+    for (const o of objections) {
+      if (o.attendance_date && !m.has(o.attendance_date)) m.set(o.attendance_date, o)
+    }
+    return m
+  }, [objections])
+
+  const submitIssue = async (date: string, reason: string): Promise<string | null> => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return 'Session expired.' }
+
+    const res = await fetch('/api/objections', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ attendance_date: date, reason }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) return json.error ?? 'Could not submit your issue.'
+
+    setObjections(prev => [json.objection, ...prev])
+    return null
+  }
 
   useEffect(() => {
     const init = async () => {
@@ -222,9 +262,9 @@ export default function MyAttendancePage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {['Date', 'In', 'Out', 'Hours', 'Status'].map((h, i) => (
-                <th key={h} style={{
-                  textAlign: i === 0 || i === 4 ? 'left' : 'right',
+              {['Date', 'In', 'Out', 'Hours', 'Status', ''].map((h, i) => (
+                <th key={h || 'issue'} style={{
+                  textAlign: i === 0 || i >= 4 ? 'left' : 'right',
                   padding: '10px 14px', fontSize: 11, fontWeight: 600,
                   color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em',
                   whiteSpace: 'nowrap',
@@ -237,13 +277,14 @@ export default function MyAttendancePage() {
           <tbody>
             {rows.length === 0 && !busy && (
               <tr>
-                <td colSpan={5} style={{ padding: '28px 14px', textAlign: 'center', fontSize: 13, color: colors.muted }}>
+                <td colSpan={6} style={{ padding: '28px 14px', textAlign: 'center', fontSize: 13, color: colors.muted }}>
                   No attendance recorded for this month yet.
                 </td>
               </tr>
             )}
             {rows.map(r => {
               const tone = statusTone(r.effective_status)
+              const objection = objectionByDate.get(r.attendance_date)
               return (
                 <tr key={r.id} style={{ borderTop: `1px solid ${colors.border}` }}>
                   <td style={{
@@ -291,6 +332,32 @@ export default function MyAttendancePage() {
                       </span>
                     )}
                   </td>
+                  {/* Quiet by design: reporting a problem is rare, so the
+                      control should not compete with the day's own figures. */}
+                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                    {objection ? (
+                      <span
+                        title={objection.review_note ?? undefined}
+                        style={{
+                          display: 'inline-block', padding: '2px 10px', borderRadius: 20,
+                          fontSize: 11.5, fontWeight: 600,
+                          background: objectionTone(objection.status).bg,
+                          color: objectionTone(objection.status).fg,
+                        }}
+                      >
+                        {employeeStatusLabel(objection.status)}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIssueDay(r)}
+                        className="boe-btn boe-btn-ghost"
+                        style={{ padding: '3px 10px', fontSize: 12 }}
+                      >
+                        Raise Issue
+                      </button>
+                    )}
+                  </td>
                 </tr>
               )
             })}
@@ -309,10 +376,21 @@ export default function MyAttendancePage() {
         {anyCorrected
           ? 'Days marked “Corrected” were adjusted by an admin after the machine import. '
           : ''}
-        Something look wrong? Raise it with your admin — attendance corrections are
-        made by an admin against the imported record, and will show here as{' '}
-        <strong>Corrected</strong> once applied.
+        Something look wrong? Use <strong>Raise Issue</strong> on that day. An admin
+        reviews it — raising an issue does not change your attendance or salary by
+        itself. Applied corrections show as <strong>Corrected</strong>.
       </div>
+
+      {issueDay && (
+        <RaiseIssueModal
+          subject={{
+            title: dayLabel(issueDay.attendance_date),
+            summary: `${clock(issueDay.check_in_at)} → ${clock(issueDay.check_out_at)} · ${statusLabel(issueDay.effective_status)}`,
+          }}
+          onClose={() => setIssueDay(null)}
+          onSubmit={reason => submitIssue(issueDay.attendance_date, reason)}
+        />
+      )}
     </AttendanceLayout>
   )
 }
