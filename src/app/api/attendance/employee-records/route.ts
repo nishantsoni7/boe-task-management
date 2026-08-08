@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireSelfOrModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 // Returns all attendance records for one employee (unpaginated).
 // Used by the employee detail page for summary card computation.
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const requested = searchParams.get('employee_id')
 
-  const auth = await requireSelfOrModuleAccess(req, 'attendance', requested)
+  const auth = await requireSelfOrAdmin(req, requested)
   if (isResponse(auth)) return auth
   const { caller, employeeId } = auth
 

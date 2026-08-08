@@ -4,13 +4,13 @@
 // Module Visibility → Custom. Same decision the launcher and PayrollGuard use.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 export async function GET(req: NextRequest) {
   const periodId = req.nextUrl.searchParams.get('period_id')
   if (!periodId) return NextResponse.json({ error: 'period_id is required' }, { status: 400 })
 
-  const auth = await requireModuleAccess(req, 'payroll')
+  const auth = await requireAdmin(req)
   if (isResponse(auth)) return auth
   const svc = auth.svc
 

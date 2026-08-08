@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 // Returns today's date string (YYYY-MM-DD) in IST (UTC+5:30)
 function todayIST(): string {
@@ -13,7 +13,7 @@ function todayIST(): string {
 // the workforce and belongs to the admin attendance dashboard, so it is gated
 // the same way as the rest of that screen.
 export async function GET(req: NextRequest) {
-  const auth = await requireModuleAccess(req, 'attendance')
+  const auth = await requireAdmin(req)
   if (isResponse(auth)) return auth
   const svc = auth.svc
 

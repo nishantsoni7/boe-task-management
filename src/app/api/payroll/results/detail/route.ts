@@ -6,7 +6,7 @@
 // `can_edit` below reports that separately.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
 import { isSkip } from '@/lib/payroll/types'
 import type { EngineEmployee } from '@/lib/payroll/types'
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   if (!periodId || !employeeId)
     return NextResponse.json({ error: 'period_id and employee_id are required' }, { status: 400 })
 
-  const auth = await requireModuleAccess(req, 'payroll')
+  const auth = await requireAdmin(req)
   if (isResponse(auth)) return auth
   const svc = auth.svc
 

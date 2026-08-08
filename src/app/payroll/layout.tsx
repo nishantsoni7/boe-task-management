@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { resolveModuleAccess } from '@/lib/moduleAccess'
+import { resolveManagementAccess } from '@/lib/moduleAccess'
 
 export default function PayrollGuard({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState(false)
@@ -25,21 +25,15 @@ export default function PayrollGuard({ children }: { children: React.ReactNode }
           .single(),
       ])
 
-      // One decision, shared with /modules and with the payroll API routes —
-      // see src/lib/moduleAccess.ts. /payroll is salary administration for the
-      // whole company, so `payroll` is an explicit-grant module there: flipping
-      // the module to `live` or to a department cannot hand an employee the
-      // payroll ledger, and a non-admin gets in only by being named in Control
-      // Center → Module Visibility → Custom. Employees still reach their own
-      // payslip at /my-payroll without any of this.
-      //
-      // Opening the module is not the same as running it: generation, locking,
-      // unlocking, adjustments and attendance corrections stay admin-only in
-      // their API routes and in canCorrectAttendance().
-      const allowed = !!profile && resolveModuleAccess('payroll', mod, profile, false)
+      // /payroll is salary administration for the whole company, so this is the
+      // MANAGEMENT surface and it is admins only — no Control Center visibility
+      // mode can widen it. See SELF_SERVICE_MODULE_KEYS in
+      // src/lib/moduleAccess.ts. Employees reach their own payslip at
+      // /my-payroll, which is not gated by this module row at all.
+      const allowed = !!profile && resolveManagementAccess('payroll', mod, profile, false)
 
       if (!allowed) {
-        router.replace('/coming-soon')
+        router.replace(profile ? '/my-payroll' : '/coming-soon')
         return
       }
 

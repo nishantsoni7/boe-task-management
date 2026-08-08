@@ -160,6 +160,11 @@ export default function BoeOsHomePage() {
 
   // Fallback values used when app_modules DB data is unavailable
   const isAdminFallback = effectiveProfile?.role === 'admin'
+
+  // Whether the Attendance and Payroll cards point at the management module or
+  // at the employee's own record. Only admins manage; see
+  // SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts.
+  const isModuleAdmin = isAdminFallback
   const hasShowroomFallback = isAdminFallback ||
     (effectiveProfile?.team?.toLowerCase().includes('sales') ?? false) ||
     (effectiveProfile?.team?.toLowerCase().includes('showroom') ?? false)
@@ -198,12 +203,19 @@ export default function BoeOsHomePage() {
     ...(canSeeModule('attendance', modVis, effectiveProfile, isAdminFallback) ? [{
       key: 'attendance',
       title: 'Attendance',
-      description: 'Manage employee attendance records, uploads, and leave history.',
-      href: '/attendance',
+      description: isModuleAdmin
+        ? 'Manage employee attendance records, uploads, and leave history.'
+        : 'View your own attendance for the month.',
+      // Two surfaces, one card. Management reads the whole company and is
+      // admins only; everyone else gets their own record. See
+      // SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts.
+      href: isModuleAdmin ? '/attendance' : '/my-attendance',
       status: 'active' as ModuleStatus,
       accent: '#0F766E',
       icon: <CalIcon />,
-      adminOnly: true,
+      // The badge describes the destination, so a self-service card must not
+      // claim to be admin-only.
+      adminOnly: isModuleAdmin,
       notificationCount: null,
       visibilityType: modVis['attendance']?.visibility_type,
       allowedDepartment: modVis['attendance']?.allowed_department,
@@ -211,12 +223,14 @@ export default function BoeOsHomePage() {
     ...(canSeeModule('payroll', modVis, effectiveProfile, isAdminFallback) ? [{
       key: 'payroll',
       title: 'Payroll',
-      description: 'Process payroll runs, view salary breakdowns, and download payslips.',
-      href: '/payroll',
+      description: isModuleAdmin
+        ? 'Process payroll runs, view salary breakdowns, and download payslips.'
+        : 'View your own payslips and salary breakdown.',
+      href: isModuleAdmin ? '/payroll' : '/my-payroll',
       status: 'active' as ModuleStatus,
       accent: '#166534',
       icon: <PayIcon />,
-      adminOnly: true,
+      adminOnly: isModuleAdmin,
       notificationCount: null,
       visibilityType: modVis['payroll']?.visibility_type,
       allowedDepartment: modVis['payroll']?.allowed_department,

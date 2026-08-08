@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { resolveModuleAccess } from '@/lib/moduleAccess'
+import { resolveManagementAccess } from '@/lib/moduleAccess'
 
 export default function AttendanceGuard({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState(false)
@@ -25,18 +25,19 @@ export default function AttendanceGuard({ children }: { children: React.ReactNod
           .single(),
       ])
 
-      // One decision, shared with /modules and with the attendance API routes —
-      // see src/lib/moduleAccess.ts. Every screen under /attendance reads other
-      // people's punches, so `attendance` is an explicit-grant module there:
-      // `live` and `department_only` cannot open it, `hidden` closes it, and a
-      // non-admin gets in only by being named in Control Center → Module
-      // Visibility → Custom. Row access is still enforced by RLS and by the API
-      // routes regardless of what this guard decides — see
+      // Every screen under /attendance reads other people's punches, so this is
+      // the MANAGEMENT surface and it is admins only — no Control Center
+      // visibility mode can widen it. See SELF_SERVICE_MODULE_KEYS in
+      // src/lib/moduleAccess.ts. An employee granted the Attendance module goes
+      // to /my-attendance instead, which the launcher already sends them to.
+      //
+      // Row access is still enforced by RLS and by the API routes regardless of
+      // what this guard decides — see
       // supabase/migrations/20260812000000_attendance_payroll_isolation.sql.
-      const allowed = !!profile && resolveModuleAccess('attendance', mod, profile, false)
+      const allowed = !!profile && resolveManagementAccess('attendance', mod, profile, false)
 
       if (!allowed) {
-        router.replace('/coming-soon')
+        router.replace(profile ? '/my-attendance' : '/coming-soon')
         return
       }
 

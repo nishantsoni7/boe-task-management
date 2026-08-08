@@ -17,9 +17,23 @@
 // and "not your employee" must not be distinguishable, or the error itself
 // becomes a way to enumerate who exists.
 
+// There are exactly two shapes of authorisation here, and nothing in between:
+//
+//   requireAdmin        the whole-company screens and every write. Attendance
+//                       and Payroll management is admins only — a Control Center
+//                       visibility setting cannot widen it. See
+//                       SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts.
+//
+//   requireSelfOrAdmin  an employee's own record. A non-admin is pinned to
+//                       caller.id, so asking for a colleague is not a request
+//                       the route can express.
+//
+// A previous version had a third helper that widened self-service routes by
+// module access, which let a Control Center "Custom" member read every
+// employee's attendance. That is gone and must not return.
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { resolveModuleAccess } from '@/lib/moduleAccess'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ServiceClient = SupabaseClient<any, any, any>
@@ -71,57 +85,6 @@ export async function requireAdmin(req: NextRequest): Promise<Caller | NextRespo
 }
 
 /**
- * Whether this caller may open a module, decided by exactly the rule the
- * launcher and the client route guard use — src/lib/moduleAccess.ts.
- *
- * The point of routing this through the shared resolver rather than restating
- * `role === 'admin'` here is that a card, a route guard and the API behind them
- * must never be able to disagree: the launcher only shows what the route will
- * open, and the route only opens what the API will answer. Control Center's
- * Custom mode names members individually, and this is what makes that grant
- * real rather than cosmetic.
- *
- * A missing app_modules row denies. These modules are always seeded, so no row
- * means the registry is not in the state this code expects, and that is not a
- * moment to hand out the company's attendance.
- */
-export async function callerCanAccessModule(caller: Caller, moduleKey: string): Promise<boolean> {
-  if (caller.isAdmin) return true
-
-  const { data: mod } = await caller.svc
-    .from('app_modules')
-    .select('visibility_type, allowed_department, allowed_user_ids')
-    .eq('module_key', moduleKey)
-    .single()
-
-  return resolveModuleAccess(
-    moduleKey,
-    mod,
-    { id: caller.id, role: caller.role, team: caller.team },
-    false,
-  )
-}
-
-/**
- * A route that serves a module's whole-company screens. Admin, or a member the
- * module has been explicitly granted to.
- *
- * This replaces requireAdmin on the READ routes only. Every route that writes —
- * attendance import, payroll generation, locking, unlocking, adjustments and
- * attendance corrections — stays admin-only, because module access is
- * permission to look at payroll, not permission to move money.
- */
-export async function requireModuleAccess(
-  req: NextRequest,
-  moduleKey: string,
-): Promise<Caller | NextResponse> {
-  const caller = await resolveCaller(req)
-  if (!caller) return UNAUTHORIZED()
-  if (!(await callerCanAccessModule(caller, moduleKey))) return FORBIDDEN()
-  return caller
-}
-
-/**
  * A route an employee may call for their own data and an admin may call for
  * anyone's. Returns the employee id the query must be constrained to — never
  * the raw parameter.
@@ -132,43 +95,20 @@ export async function requireModuleAccess(
 export async function requireSelfOrAdmin(
   req: NextRequest,
   requestedEmployeeId: string | null,
-): Promise<{ caller: Caller; employeeId: string } | NextResponse> {
+): Promise<{ caller: Caller; employeeId: string; canReadAll: boolean } | NextResponse> {
   const caller = await resolveCaller(req)
   if (!caller) return UNAUTHORIZED()
 
   if (caller.isAdmin) {
     // An admin without an explicit target is asking about themselves.
-    return { caller, employeeId: requestedEmployeeId ?? caller.id }
+    return { caller, employeeId: requestedEmployeeId ?? caller.id, canReadAll: true }
   }
 
   // Same 403 whether the id belongs to a real colleague, a deleted user or
   // nobody at all — the response must not confirm that a person exists.
   if (requestedEmployeeId && requestedEmployeeId !== caller.id) return FORBIDDEN()
 
-  return { caller, employeeId: caller.id }
-}
-
-/**
- * Same contract as requireSelfOrAdmin, widened by module access: a member the
- * module has been granted to may query anyone, exactly as an admin can. Anyone
- * else is still pinned to their own id, so a cross-employee read remains
- * inexpressible rather than merely refused.
- */
-export async function requireSelfOrModuleAccess(
-  req: NextRequest,
-  moduleKey: string,
-  requestedEmployeeId: string | null,
-): Promise<{ caller: Caller; employeeId: string; canReadAll: boolean } | NextResponse> {
-  const caller = await resolveCaller(req)
-  if (!caller) return UNAUTHORIZED()
-
-  const canReadAll = await callerCanAccessModule(caller, moduleKey)
-  if (canReadAll) {
-    return { caller, employeeId: requestedEmployeeId ?? caller.id, canReadAll }
-  }
-
-  if (requestedEmployeeId && requestedEmployeeId !== caller.id) return FORBIDDEN()
-  return { caller, employeeId: caller.id, canReadAll }
+  return { caller, employeeId: caller.id, canReadAll: false }
 }
 
 export function isResponse(v: unknown): v is NextResponse {
