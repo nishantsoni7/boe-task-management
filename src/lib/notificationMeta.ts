@@ -127,6 +127,27 @@ function parseTaskActor(title: string, matchIndex: number): string | null {
 export function getNotificationMeta(n: Notification): NotificationMeta {
   const type = n.type ?? ''
 
+  // ── Employee-raised attendance and payroll issues ──────────────────────────
+  // Each lands where an admin would actually deal with it, not on a list of
+  // complaints: an attendance issue on the correction log, beside the tool that
+  // fixes the day; a payroll issue on the period results, where the employee's
+  // payslip and the reason they disputed it are one click apart.
+  //
+  // These are checked before the prefix branches below because
+  // 'attendance_issue_raised' and 'payroll_issue_raised' would otherwise fall
+  // through to the generic 'other' case and lose their link entirely.
+  if (type === 'attendance_issue_raised' || type === 'payroll_issue_raised') {
+    const isAttendance = type === 'attendance_issue_raised'
+    return {
+      category: 'other',
+      heading: isAttendance ? 'Attendance' : 'Payroll',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: isAttendance ? '/attendance/correction-log' : '/payroll',
+      actionLabel: 'Review issue',
+    }
+  }
+
   // ── Finance ────────────────────────────────────────────────────────────────
   if (type.startsWith('finance')) {
     const badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
