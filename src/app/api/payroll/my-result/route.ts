@@ -8,6 +8,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { buildResultDetailPayload } from '@/lib/payroll/resultDetailPayload'
 
 export async function GET(req: NextRequest) {
   const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
@@ -24,59 +25,26 @@ export async function GET(req: NextRequest) {
   const periodId = req.nextUrl.searchParams.get('period_id')
 
   // ─── Detail view ─────────────────────────────────────────────────────────────
+  // ─── Detail view ─────────────────────────────────────────────────────────────
+  //
+  // Built by the SAME module the admin detail route uses, so the employee sees
+  // the approved presentation of their own payslip rather than an older, thinner
+  // rendering of it that drifts every time the admin page improves.
+  //
+  // The employee id is the caller's, taken from the token. There is no
+  // employee_id parameter on this route to tamper with, and canEdit is hard-false:
+  // reading your own payslip is not permission to correct attendance, which stays
+  // admin-only in its own route.
   if (periodId) {
-    const { data: rawResult, error: resultErr } = await svc
-      .from('payroll_results')
-      .select('id, monthly_salary, working_days_in_month, days_present, days_absent, half_day_count, paid_leave_used, late_deduction_hours, short_hours_deduction, missing_punch_hours, gross_salary, total_deductions, pending_adjustment_total, net_salary, status, employee_reviewed_at, generated_at, payroll_period_id')
-      .eq('payroll_period_id', periodId)
-      .eq('employee_id', caller.id)
-      .single()
-
-    if (resultErr) return NextResponse.json({ error: resultErr.message }, { status: 500 })
-    if (!rawResult) return NextResponse.json({ error: 'Result not found' }, { status: 404 })
-
-    const result = rawResult as Record<string, unknown>
-
-    // Fetch period for month/year/lock display
-    const { data: period } = await svc
-      .from('payroll_periods')
-      .select('payroll_month, payroll_year, status, locked_at')
-      .eq('id', periodId)
-      .single()
-
-    // Fetch deduction lines
-    const { data: lines } = await svc
-      .from('payroll_deduction_lines')
-      .select('id, line_date, deduction_type, hours_deducted, amount_deducted')
-      .eq('payroll_result_id', result.id as string)
-      .order('line_date', { ascending: true })
-
-    return NextResponse.json({
-      result: {
-        id:                       result.id,
-        payroll_month:            period?.payroll_month  ?? null,
-        payroll_year:             period?.payroll_year   ?? null,
-        period_status:            period?.status         ?? null,
-        period_locked_at:         period?.locked_at      ?? null,
-        monthly_salary:           result.monthly_salary,
-        working_days_in_month:    result.working_days_in_month,
-        days_present:             result.days_present,
-        days_absent:              result.days_absent,
-        half_day_count:           result.half_day_count,
-        paid_leave_used:          result.paid_leave_used,
-        late_deduction_hours:     result.late_deduction_hours,
-        short_hours_deduction:    result.short_hours_deduction,
-        missing_punch_hours:      result.missing_punch_hours,
-        gross_salary:             result.gross_salary,
-        total_deductions:         result.total_deductions,
-        pending_adjustment_total: result.pending_adjustment_total,
-        net_salary:               result.net_salary,
-        status:                   result.status,
-        employee_reviewed_at:     result.employee_reviewed_at,
-        generated_at:             result.generated_at,
-        deduction_lines:          lines ?? [],
-      },
+    const outcome = await buildResultDetailPayload(svc, {
+      periodId,
+      employeeId:  caller.id,
+      canEdit:     false,
+      editBlocked: null,
     })
+
+    if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
+    return NextResponse.json(outcome.payload)
   }
 
   // ─── List view ────────────────────────────────────────────────────────────────

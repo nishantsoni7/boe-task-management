@@ -348,6 +348,35 @@ describe('the employee payroll route derives identity from the session', () => {
     assert.notEqual(result.id, created.resultA)
   })
 
+  // The employee's detail view now renders the same workspace an admin sees,
+  // which means it needs the same payload. What must NOT come with it is any
+  // authority: same document, same figures, no edit path.
+  test('the employee detail payload is the shared one, with editing off', async () => {
+    const res = await myResult(req(`/api/payroll/my-result?period_id=${created.periodId}`, actors.a.token))
+    assert.equal(res.status, 200)
+    const body = await res.json()
+
+    for (const key of ['period', 'result', 'deduction_days', 'considered_days', 'corrections']) {
+      assert.ok(key in body, `the employee payload is missing ${key}`)
+    }
+    assert.equal(body.can_edit, false, 'an employee must never be handed can_edit true')
+    assert.equal(body.result.employee_id, actors.a.id, 'and only ever their own result')
+  })
+
+  test('the figures an employee sees are the ones the engine stored', async () => {
+    const res  = await myResult(req(`/api/payroll/my-result?period_id=${created.periodId}`, actors.a.token))
+    const body = await res.json()
+
+    const { data: stored } = await svc.from('payroll_results')
+      .select('gross_salary, total_deductions, net_salary')
+      .eq('id', created.resultA).single()
+
+    assert.equal(Number(body.result.gross_salary),     Number(stored!.gross_salary))
+    assert.equal(Number(body.result.total_deductions), Number(stored!.total_deductions))
+    assert.equal(Number(body.result.net_salary),       Number(stored!.net_salary),
+      'the page must render what the engine settled, never a recalculation')
+  })
+
   test('10. an employee with no result in a period gets a not-found, not a colleague row', async () => {
     const res = await myResult(req(`/api/payroll/my-result?period_id=${created.periodId}`, actors.manager.token))
     assert.ok(res.status === 404 || res.status === 500, `expected no result, got ${res.status}`)
