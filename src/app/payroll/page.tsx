@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState, useMemo } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { PayrollLayout } from '@/components/layout/PayrollLayout'
@@ -20,6 +20,7 @@ import {
 import { CreatePeriodModal } from './CreatePeriodModal'
 import { UnlockPayrollModal } from './UnlockPayrollModal'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,7 +95,18 @@ function StatusBadge({ status }: { status: PayrollPeriodRow['status'] }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// `?issue=<objection id>` arrives here from a Payroll-issue notification, so the
+// page reads search params — which needs the Suspense boundary Next requires
+// around useSearchParams. Same shape as /finance/received.
 export default function PayrollPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <PayrollPeriodsPage />
+    </Suspense>
+  )
+}
+
+function PayrollPeriodsPage() {
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [periods,      setPeriods]      = useState<PayrollPeriodRow[]>([])
   const [loading,      setLoading]      = useState(true)
@@ -119,7 +131,42 @@ export default function PayrollPage() {
   const [highlightedPeriodId, setHighlightedPeriodId] = useState<string | null>(null)
 
   const router  = useRouter()
+  const searchParams = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
+
+  /**
+   * A Payroll-issue notification lands here carrying the objection id, and this
+   * turns it into the disputed payslip.
+   *
+   * The period and employee come from /api/objections, which reads them back
+   * through the objection's own foreign key and only hands them to an admin.
+   * Nothing is taken from the URL except the objection id itself, and an id
+   * belonging to somebody else's objection resolves to nothing — the route
+   * behind it is admin-only regardless.
+   *
+   * Returns true when it has navigated away, so the caller can stop.
+   */
+  const resolveIssueDeepLink = async (accessToken: string): Promise<boolean> => {
+    const issueId = searchParams.get(ISSUE_PARAM)
+    if (!issueId) return false
+
+    const res = await fetch(`/api/objections?id=${encodeURIComponent(issueId)}`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return false
+
+    const { objections } = await res.json().catch(() => ({ objections: [] }))
+    const objection: AdminObjectionRow | undefined = objections?.[0]
+    const href = objection ? payrollObjectionHref(objection) : null
+
+    // No href means the objection is gone, is an attendance one, or its payroll
+    // result was removed by a regeneration. The periods list is then the right
+    // place to have landed, so this falls through rather than erroring.
+    if (!href) return false
+
+    router.replace(href)
+    return true
+  }
 
   // Own the highlight's lifetime here rather than in the click handler, so the
   // timer is cleared if the id changes again (re-highlighting a different row)
@@ -166,6 +213,12 @@ export default function PayrollPage() {
       }
 
       setProfile(prof)
+
+      // Before the list is built: a notification deep link is only passing
+      // through here. Resolving it while the loading screen is still up means
+      // the admin never sees the periods table flash on the way to the payslip.
+      if (await resolveIssueDeepLink(session.access_token)) return
+
       await loadPeriods(session.access_token)
       setLoading(false)
     }

@@ -32,6 +32,42 @@ export type ObjectionRow = {
   created_at: string
 }
 
+// ─── Where an admin reviews one ──────────────────────────────────────────────
+//
+// A payroll objection is reviewed on the payslip it disputes, not on a list of
+// complaints: the figures, the employee's reason and Resolve/Reject are one
+// screen. That screen is keyed by (period, employee), and an objection only
+// stores payroll_result_id — so the pair is read back through the result, by
+// the server, in /api/objections. Nothing here accepts a route from a caller.
+
+/** The query parameter a payroll-issue notification lands on, on /payroll. */
+export const ISSUE_PARAM = 'issue'
+
+/** An objection as the admin list returns it, with its result's route keys. */
+export type AdminObjectionRow = ObjectionRow & {
+  employee?: { full_name?: string | null; employee_code?: string | null } | null
+  payroll_result?:
+    | { payroll_period_id: string | null; employee_id: string | null }
+    | { payroll_period_id: string | null; employee_id: string | null }[]
+    | null
+}
+
+/**
+ * The admin review route for a payroll objection, or null when this is not one
+ * (an attendance objection) or the result it named no longer exists.
+ *
+ * Null is a real answer, not a failure: a payroll result is deleted when a
+ * period is regenerated, and a link to a payslip that is gone is worse than no
+ * link at all.
+ */
+export function payrollObjectionHref(o: AdminObjectionRow): string | null {
+  if (!o.payroll_result_id) return null
+  // PostgREST returns a to-one embed as an object, but types it as either.
+  const r = Array.isArray(o.payroll_result) ? o.payroll_result[0] : o.payroll_result
+  if (!r?.payroll_period_id || !r?.employee_id) return null
+  return `/payroll/results/${r.payroll_period_id}/${r.employee_id}`
+}
+
 export function isObjectionStatus(v: unknown): v is ObjectionStatus {
   return typeof v === 'string' && (OBJECTION_STATUSES as readonly string[]).includes(v)
 }

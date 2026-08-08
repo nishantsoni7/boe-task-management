@@ -19,6 +19,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { getNotificationMeta } from './notificationMeta'
+import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from './objections'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
@@ -37,10 +38,16 @@ describe('an issue notification lands where the admin can act on it', () => {
     assert.ok(meta.actionLabel)
   })
 
-  test('a payroll issue opens the payroll review side', () => {
-    const meta = getNotificationMeta(notif('payroll_issue_raised'))
-    assert.equal(meta.href, '/payroll')
+  // The gap this closes: a payroll issue used to land on /payroll — the list of
+  // PERIODS. An admin arriving there still had to find the month, then the
+  // employee, then the issue, which is the opposite of "click the notification
+  // and read the reason". It now carries the objection id, which /payroll trades
+  // for the disputed payslip.
+  test('a payroll issue carries the objection through to the disputed result', () => {
+    const meta = getNotificationMeta(notif('payroll_issue_raised', 'obj-9'))
+    assert.equal(meta.href, `/payroll?${ISSUE_PARAM}=obj-9`)
     assert.equal(meta.heading, 'Payroll')
+    assert.notEqual(meta.href, '/payroll', 'the bare periods list is not a review context')
   })
 
   test('neither falls through to a link-less generic notification', () => {
@@ -50,11 +57,89 @@ describe('an issue notification lands where the admin can act on it', () => {
     }
   })
 
-  test('the routing does not depend on entity_id being present', () => {
-    // The objection id is carried for reference, but the destination is a
-    // screen rather than a record, so a missing id must not break the link.
+  test('a missing entity_id degrades to the module rather than to a broken link', () => {
     const meta = getNotificationMeta(notif('payroll_issue_raised', null))
     assert.equal(meta.href, '/payroll')
+  })
+
+  // These used to fall through to the neutral "Activity" chip, which reads as a
+  // log line rather than as a person disputing their attendance or their pay.
+  test('both carry an issue badge, not the generic Activity fallback', () => {
+    for (const t of ['attendance_issue_raised', 'payroll_issue_raised']) {
+      const { badge } = getNotificationMeta(notif(t))
+      assert.notEqual(badge.label, 'Activity', `${t} must not use the neutral fallback`)
+      assert.match(badge.label, /issue/i)
+    }
+  })
+})
+
+describe('the payroll destination is derived, never assembled from the URL', () => {
+  const row = (payroll_result: AdminObjectionRow['payroll_result'], resultId: string | null = 'res-1') =>
+    ({
+      id: 'o1', employee_id: 'emp-1', attendance_date: null, payroll_result_id: resultId,
+      reason: 'r', subject_snapshot: 's', status: 'pending', reviewed_by: null,
+      reviewed_at: null, review_note: null, created_at: '', payroll_result,
+    }) as AdminObjectionRow
+
+  test('the route is the period and employee of the result the objection names', () => {
+    assert.equal(
+      payrollObjectionHref(row({ payroll_period_id: 'per-1', employee_id: 'emp-1' })),
+      '/payroll/results/per-1/emp-1',
+      'the admin lands on the existing payslip route, not on a new screen',
+    )
+  })
+
+  test('a to-one embed returned as an array resolves the same way', () => {
+    assert.equal(
+      payrollObjectionHref(row([{ payroll_period_id: 'per-1', employee_id: 'emp-1' }])),
+      '/payroll/results/per-1/emp-1',
+    )
+  })
+
+  test('an attendance objection has no payroll route', () => {
+    assert.equal(payrollObjectionHref(row(null, null)), null)
+  })
+
+  test('a result that no longer exists yields no link rather than a broken one', () => {
+    assert.equal(payrollObjectionHref(row(null)), null)
+    assert.equal(payrollObjectionHref(row({ payroll_period_id: null, employee_id: 'emp-1' })), null)
+    assert.equal(payrollObjectionHref(row({ payroll_period_id: 'per-1', employee_id: null })), null)
+  })
+
+  test('the employee id comes from the payroll result, never from the objection row', () => {
+    // Belt and braces: even if an objection row somehow carried a mismatched
+    // employee_id, the route is built from the RESULT the database joined.
+    const mismatched = row({ payroll_period_id: 'per-1', employee_id: 'emp-real' })
+    mismatched.employee_id = 'emp-spoofed'
+    assert.equal(payrollObjectionHref(mismatched), '/payroll/results/per-1/emp-real')
+  })
+})
+
+describe('the resolver hands out no authority of its own', () => {
+  const api  = read('src/app/api/objections/route.ts')
+  const page = read('src/app/payroll/page.tsx')
+
+  test('only an admin is given the result period and employee', () => {
+    const embed = 'payroll_result:payroll_result_id ( payroll_period_id, employee_id )'
+    assert.ok(api.includes(embed), 'the route keys must be read server-side')
+    const adminBranch = api.slice(api.indexOf('caller.isAdmin'), api.indexOf('let query'))
+    assert.ok(adminBranch.includes(embed), 'and only on the admin branch of the select')
+  })
+
+  test('an id filter cannot escape the ownership pin', () => {
+    // `.eq('id', …)` is applied after the non-admin pin, so it can only narrow
+    // rows the caller already owns.
+    assert.ok(api.indexOf("query.eq('employee_id', caller.id)") < api.indexOf("query.eq('id', id)"),
+      'the pin must be applied before any id filter')
+  })
+
+  test('the page resolves the objection id and nothing else from the URL', () => {
+    assert.ok(page.includes(`searchParams.get(ISSUE_PARAM)`), 'only the objection id is read')
+    assert.ok(page.includes('payrollObjectionHref'), 'the destination comes from the API answer')
+    assert.equal(
+      /searchParams\.get\('(period|employee)/.test(page), false,
+      'no period or employee id may be taken from the query string',
+    )
   })
 })
 

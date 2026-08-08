@@ -21,6 +21,7 @@
 
 import type { Notification } from '@/lib/types'
 import { colors } from '@/lib/tokens'
+import { ISSUE_PARAM } from '@/lib/objections'
 
 export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'other'
 
@@ -99,6 +100,12 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   access_updated:               { label: 'Access updated', color: colors.blue,  bg: colors.blueTint  },
   access_revoked:               { label: 'Access revoked', color: colors.red,   bg: colors.redTint   },
   access_restored:              { label: 'Access restored', color: colors.green, bg: colors.greenTint },
+  // Employee-raised issues. Amber like every other "needs review" event, and
+  // labelled as the thing it is — these used to fall through to the neutral
+  // "Activity" badge, which read as a log entry rather than as a person
+  // disputing their own attendance or pay.
+  attendance_issue_raised:      { label: 'Issue raised',   color: colors.amber, bg: colors.amberTint },
+  payroll_issue_raised:         { label: 'Issue raised',   color: colors.amber, bg: colors.amberTint },
 }
 
 const NEUTRAL_BADGE = { label: 'Activity', color: colors.muted, bg: colors.float }
@@ -129,21 +136,37 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
 
   // ── Employee-raised attendance and payroll issues ──────────────────────────
   // Each lands where an admin would actually deal with it, not on a list of
-  // complaints: an attendance issue on the correction log, beside the tool that
-  // fixes the day; a payroll issue on the period results, where the employee's
-  // payslip and the reason they disputed it are one click apart.
+  // complaints.
   //
-  // These are checked before the prefix branches below because
-  // 'attendance_issue_raised' and 'payroll_issue_raised' would otherwise fall
-  // through to the generic 'other' case and lose their link entirely.
+  // ATTENDANCE goes to the correction log, beside the tool that fixes the day
+  // and beside the queue the issue is already listed in. That is the review
+  // location, so it stays a plain link.
+  //
+  // PAYROLL cannot be a plain link. The screen an admin needs is the disputed
+  // payslip — /payroll/results/[periodId]/[employeeId], where the figures, the
+  // employee's stated reason and Resolve/Reject are one page — and that needs
+  // two ids, while `entity_id` is a single uuid column holding the OBJECTION.
+  // `/payroll` alone was the wrong answer: it is the list of periods, and an
+  // admin landing there still has to find the month, then the employee, then
+  // the issue.
+  //
+  // So the objection id is carried as a deep-link parameter and /payroll
+  // resolves it — reading the period and employee back through the objection's
+  // own foreign key, server-side, in /api/objections. Same shape as Finance's
+  // `/finance/received?payment=` resolver. Deliberately NOT a second id in the
+  // URL: a route built from ids a caller supplies is a route a caller can point
+  // at somebody else's payslip.
   if (type === 'attendance_issue_raised' || type === 'payroll_issue_raised') {
     const isAttendance = type === 'attendance_issue_raised'
+    const href = isAttendance
+      ? '/attendance/correction-log'
+      : (n.entity_id ? `/payroll?${ISSUE_PARAM}=${n.entity_id}` : '/payroll')
     return {
       category: 'other',
       heading: isAttendance ? 'Attendance' : 'Payroll',
       headingIsActor: false,
       badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
-      href: isAttendance ? '/attendance/correction-log' : '/payroll',
+      href,
       actionLabel: 'Review issue',
     }
   }

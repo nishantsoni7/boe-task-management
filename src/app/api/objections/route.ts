@@ -26,8 +26,16 @@ export async function GET(req: NextRequest) {
   // The admin queue needs a name to review against; an employee already knows
   // whose record it is, and asking for the join would only widen what the
   // response can carry.
+  //
+  // An admin also gets the payroll result's period and employee. That pair IS
+  // the review route (/payroll/results/[periodId]/[employeeId]), and deriving it
+  // HERE — from the objection's own foreign key, on the server — is what lets a
+  // notification open the disputed result without any id travelling in from the
+  // outside. `notifications.entity_id` is a single uuid column and carries the
+  // objection; the route it resolves to is never taken from a URL.
   const columns = caller.isAdmin
-    ? `${OBJECTION_COLUMNS}, employee:employee_id ( full_name, employee_code )`
+    ? `${OBJECTION_COLUMNS}, employee:employee_id ( full_name, employee_code )` +
+      ', payroll_result:payroll_result_id ( payroll_period_id, employee_id )'
     : OBJECTION_COLUMNS
 
   let query = caller.svc
@@ -46,6 +54,13 @@ export async function GET(req: NextRequest) {
 
   const status = req.nextUrl.searchParams.get('status')
   if (status) query = query.eq('status', status)
+
+  // Asking for one objection by id. Applied AFTER the ownership pin above, so
+  // for a non-admin it can only ever narrow their own rows — an id belonging to
+  // a colleague returns an empty list, not a 403, because the pin means the row
+  // was never in the query to begin with.
+  const id = req.nextUrl.searchParams.get('id')
+  if (id) query = query.eq('id', id)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -164,8 +179,13 @@ export async function POST(req: NextRequest) {
 
 /**
  * One notification per admin, of the type getNotificationMeta() knows how to
- * route: an attendance issue to the correction log, a payroll issue to that
- * employee's payslip.
+ * route: an attendance issue to the correction log, a payroll issue to the
+ * disputed payslip itself.
+ *
+ * `entity_id` carries the OBJECTION id, which is what makes the payroll route
+ * resolvable — /payroll trades it for the result's period and employee through
+ * the GET above, so the payslip route is derived from the objection's own
+ * foreign key rather than assembled from anything a caller supplied.
  *
  * Admins only. Attendance and payroll management is an admin surface (see
  * SELF_SERVICE_MODULE_KEYS), so anyone else receiving this would be told about
