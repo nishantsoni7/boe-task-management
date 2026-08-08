@@ -11,7 +11,7 @@ import { colors, font } from '@/lib/tokens'
 import { Printer, Download } from 'lucide-react'
 import { useToast, Toast } from '@/components/ui/toast'
 import { useViewAs } from '@/hooks/useViewAs'
-import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { resolveModuleAccess } from '@/lib/moduleAccess'
 import {
   downloadQrCanvasAsPng,
   qrFileNameFor,
@@ -19,7 +19,7 @@ import {
   QR_EXPORT_MARGIN_MODULES,
 } from '@/lib/qrExport'
 
-type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null; allowed_user_ids: string[] | null }
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
@@ -50,7 +50,7 @@ export default function MyQRPage() {
           .single(),
         supabase
           .from('app_modules')
-          .select('visibility_type, allowed_department')
+          .select('visibility_type, allowed_department, allowed_user_ids')
           .eq('module_key', 'showroom_qr')
           .single(),
       ])
@@ -59,7 +59,7 @@ export default function MyQRPage() {
       const prof = p as UserProfile
       setShowroomMod(mod ?? null)
       const hasAccess = prof.role === 'admin' ||
-        canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, prof, teamFallback(prof.team))
+        resolveModuleAccess('showroom_qr', mod, prof, teamFallback(prof.team))
       if (!hasAccess) { router.replace('/modules'); return }
 
       setProfile(prof)
@@ -76,7 +76,7 @@ export default function MyQRPage() {
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
     const effectiveHasAccess = viewAsProfile.role === 'admin' ||
-      canAccessModule(showroomMod?.visibility_type as ModuleVisibilityType | undefined, showroomMod?.allowed_department, viewAsProfile, teamFallback(viewAsProfile.team))
+      resolveModuleAccess('showroom_qr', showroomMod, viewAsProfile, teamFallback(viewAsProfile.team))
     if (!effectiveHasAccess) router.replace('/modules')
   }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 

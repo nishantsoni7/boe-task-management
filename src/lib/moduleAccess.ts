@@ -34,15 +34,39 @@ export type ModuleAccessRow = {
 }
 
 /**
- * Modules whose every screen reads the WHOLE company's attendance or salary.
+ * MANAGEMENT MODULES — access must be granted explicitly, never broadly.
  *
- * For these, "visible to everyone" and "visible to a department" are not
- * statements anybody should be able to make: flipping a launcher toggle would
- * hand each employee the company's payroll ledger. So the broad modes only ever
- * narrow what is shown — they never grant — and access has to be stated
- * per-person with `custom`, or held to admin.
+ * This restriction is deliberate and approved. It is not an accident of
+ * refactoring, and a future change that "simplifies" it away would re-open the
+ * hole it exists to close. Read this before touching it.
  *
- * This is the ONE place that rule lives. The launcher, the route guards and the
+ * `/attendance` and `/payroll` are MANAGEMENT surfaces. Every screen under them
+ * reads the whole company — everybody's punches, everybody's salary, everybody's
+ * deduction ledger. There is no self-scoped view inside either one. So
+ * "visible to everyone" and "visible to a department" are not statements anybody
+ * should be able to make about them: `live` and `department_only` would turn a
+ * launcher toggle into a company-wide payroll disclosure. For these two modules
+ * those modes therefore NARROW what is shown and never grant — access is either
+ * admin, or named person by person through `custom` in
+ * Control Center → Module Visibility.
+ *
+ * EMPLOYEE SELF-SERVICE IS A DIFFERENT SURFACE AND IS NOT AFFECTED.
+ * An employee reaches their own payslip at `/my-payroll`, served by
+ * `/api/payroll/my-result`, which is open to any authenticated caller and hard-
+ * scoped to `caller.id`. It is not gated by the `payroll` app_modules row at all,
+ * and nothing here can close it. The same split holds on the attendance side:
+ * `/api/attendance/records`, `/api/attendance/employee-records` and
+ * `/api/attendance/employee-monthly-detail` all pin a non-privileged caller to
+ * their own id. So this constant restricts MANAGEMENT access only; it has never
+ * governed, and must never govern, an employee's access to their own record.
+ *
+ * Granting `custom` on these modules is granting management access, and is meant
+ * to be: a named member can then read what the module manages. It does NOT grant
+ * mutations — import, payroll generation, period creation, locking, unlocking,
+ * adjustments and corrections all keep their own role checks in their own
+ * routes.
+ *
+ * This is the ONE place the rule lives. The launcher, the route guards and the
  * API routes all reach it through resolveModuleAccess, so there is no second
  * opinion to drift out of sync. Row-level access inside the modules is still
  * enforced separately by RLS and by the service-role routes — see

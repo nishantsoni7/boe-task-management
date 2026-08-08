@@ -11,7 +11,7 @@ import { colors } from '@/lib/tokens'
 import { PlusCircle, X, Printer, Trash2, Download } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
-import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { resolveModuleAccess } from '@/lib/moduleAccess'
 import { useToast, Toast } from '@/components/ui/toast'
 import {
   ProductToolbar,
@@ -40,7 +40,7 @@ import {
   type QrImageFormat,
 } from '@/lib/qrExport'
 
-type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null; allowed_user_ids: string[] | null }
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
@@ -188,7 +188,7 @@ function ShowroomProductsContent() {
           .single(),
         supabase
           .from('app_modules')
-          .select('visibility_type, allowed_department')
+          .select('visibility_type, allowed_department, allowed_user_ids')
           .eq('module_key', 'showroom_qr')
           .single(),
       ])
@@ -196,7 +196,7 @@ function ShowroomProductsContent() {
       setShowroomMod(mod ?? null)
       const profile = p as UserProfile | null
       const hasAccess = !!profile && (profile.role === 'admin' ||
-        canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team)))
+        resolveModuleAccess('showroom_qr', mod, profile, teamFallback(profile.team)))
       if (!hasAccess) { router.push('/modules'); return }
       setProfile(profile)
     }
@@ -208,7 +208,7 @@ function ShowroomProductsContent() {
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
     const effectiveHasAccess = viewAsProfile.role === 'admin' ||
-      canAccessModule(showroomMod?.visibility_type as ModuleVisibilityType | undefined, showroomMod?.allowed_department, viewAsProfile, teamFallback(viewAsProfile.team))
+      resolveModuleAccess('showroom_qr', showroomMod, viewAsProfile, teamFallback(viewAsProfile.team))
     if (!effectiveHasAccess) router.replace('/modules')
   }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 

@@ -8,11 +8,11 @@ import { AlertBanner, LoadingScreen } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors } from '@/lib/tokens'
 import { useViewAs } from '@/hooks/useViewAs'
-import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { resolveModuleAccess } from '@/lib/moduleAccess'
 import { useRefreshShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
 import { productCategoryHref } from '@/lib/showroom/productNav'
 
-type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null; allowed_user_ids: string[] | null }
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
@@ -106,7 +106,7 @@ export default function NewProductPage() {
   useEffect(() => {
     if (!profile || !viewAsUserId || !viewAsProfile) return
     const effectiveHasAccess = viewAsProfile.role === 'admin' ||
-      canAccessModule(showroomMod?.visibility_type as ModuleVisibilityType | undefined, showroomMod?.allowed_department, viewAsProfile, teamFallback(viewAsProfile.team))
+      resolveModuleAccess('showroom_qr', showroomMod, viewAsProfile, teamFallback(viewAsProfile.team))
     if (!effectiveHasAccess) router.replace('/modules')
   }, [profile, viewAsUserId, viewAsProfile, showroomMod, router])
 
@@ -123,7 +123,7 @@ export default function NewProductPage() {
           .single(),
         supabase
           .from('app_modules')
-          .select('visibility_type, allowed_department')
+          .select('visibility_type, allowed_department, allowed_user_ids')
           .eq('module_key', 'showroom_qr')
           .single(),
       ])
@@ -131,7 +131,7 @@ export default function NewProductPage() {
       setShowroomMod(mod ?? null)
       const profile = p as UserProfile | null
       const hasAccess = !!profile && (profile.role === 'admin' ||
-        canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team)))
+        resolveModuleAccess('showroom_qr', mod, profile, teamFallback(profile.team)))
       if (!hasAccess) { router.replace('/modules'); return }
       setProfile(profile)
 

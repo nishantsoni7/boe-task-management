@@ -88,6 +88,9 @@ export function ModuleSwitchButton({
           return
         }
 
+        // Same resolver FinanceGuard uses, so this convenience switch cannot
+        // offer a module the route will bounce. Admin is already short-circuited
+        // above, matching the guard's own admin-first rule.
         const allowed = resolveModuleAccess('finance', financeModule, profile, true)
 
         updateVisibility(allowed)
