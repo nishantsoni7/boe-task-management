@@ -29,6 +29,7 @@ import {
   selectableYears,
   MONTH_NOT_IMPORTED_TITLE,
   monthNotImportedMessage,
+  coverageNoticeMessage,
 } from '@/lib/attendance/monthAvailability'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -111,6 +112,9 @@ export default function MyAttendancePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [rows,    setRows]    = useState<MyDayRow[]>([])
   const [monthImported, setMonthImported] = useState(true)
+  // The last date the answer speaks for. Null for a finished month, where the
+  // cut-off is the month end and there is nothing to explain.
+  const [coverageThrough, setCoverageThrough] = useState<string | null>(null)
   const [objections, setObjections] = useState<ObjectionRow[]>([])
   const [issueDay,   setIssueDay]   = useState<MyDayRow | null>(null)
   const [year,    setYear]    = useState(nowIst.year)
@@ -148,11 +152,13 @@ export default function MyAttendancePage() {
       setError(json.error ?? 'Failed to load your attendance')
       setRows([])
       setMonthImported(true)
+      setCoverageThrough(null)
     } else {
       setRows(json.records ?? [])
       // Absent from an older response shape means "imported"; only an explicit
       // false is the not-uploaded state.
       setMonthImported(json.month_imported !== false)
+      setCoverageThrough(json.coverage_through ?? null)
     }
 
     if (objRes.ok) {
@@ -230,6 +236,12 @@ export default function MyAttendancePage() {
 
   const anyCorrected = rows.some(r => r.is_corrected)
 
+  // Only worth saying when the month is genuinely cut short. A finished month's
+  // cut-off IS its last day, and announcing that would be noise on every past
+  // month an employee opens.
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10)
+  const partiallyUploaded = monthImported && coverageThrough != null && coverageThrough < monthEnd
+
   return (
     <AttendanceLayout
       profile={profile}
@@ -297,6 +309,19 @@ export default function MyAttendancePage() {
           <div style={{ fontSize: 12.5, color: colors.muted, marginTop: 10 }}>
             Nothing here counts as an absence — pick an earlier month to see your record.
           </div>
+        </div>
+      )}
+
+      {/* The current month, uploaded only part-way. The days after the cut-off
+          are not in the table at all — they have not been processed, and some
+          have not happened, so neither one is something to be absent on. */}
+      {partiallyUploaded && !busy && (
+        <div style={{
+          marginBottom: 12, padding: '10px 14px', borderRadius: 10,
+          background: 'rgba(232,160,48,0.10)', border: '1px solid rgba(232,160,48,0.30)',
+          fontSize: 12.5, color: '#8A5A12', lineHeight: 1.55,
+        }}>
+          {coverageNoticeMessage(dayLabel(coverageThrough!))}
         </div>
       )}
 

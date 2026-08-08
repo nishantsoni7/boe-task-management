@@ -33,6 +33,8 @@ import { GET as attendanceDashboard }  from '@/app/api/attendance/dashboard/rout
 import { GET as payrollResults }       from '@/app/api/payroll/results/route'
 import { GET as payrollResultDetail }  from '@/app/api/payroll/results/detail/route'
 import { GET as myResult }             from '@/app/api/payroll/my-result/route'
+import { istCurrentYearMonth, istToday } from '@/lib/attendance/monthAvailability'
+import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
 
 config({ path: '.env.local' })
 
@@ -75,7 +77,14 @@ let actorSeq = 0
  *  cannot leave an orphaned account behind. */
 const createdAuthUserIds: string[] = []
 
-const created = { periodId: '', resultA: '', resultB: '', attendanceA: '', attendanceB: '' }
+const created = { periodId: '', resultA: '', resultB: '', attendanceA: '', attendanceB: '', attendanceCurrent: '' }
+
+// The CURRENT month, which is the only month where "imported" and "processed"
+// can disagree. A is given one punch on its first day; the assertions below read
+// the company-wide latest date back from the database rather than assuming this
+// fixture is the newest row, so they hold whatever real attendance exists.
+const CURRENT       = istCurrentYearMonth()
+const CURRENT_FIRST = monthRange(CURRENT.year, CURRENT.month).from
 
 async function makeActor(label: string, role: 'member' | 'manager' | 'admin'): Promise<Actor> {
   const email = `boe-api-isolation-${label}-${STAMP}@example.invalid`
@@ -149,10 +158,20 @@ before(async () => {
     assert.ok(!error, `attendance insert failed: ${error?.message}`)
     created[key] = data!.id
   }
+
+  // One punch on the 1st of the current month: an import that has started but
+  // certainly has not reached the end of the month.
+  const { data: currentRow, error: currentErr } = await svc.from('attendance_records').insert({
+    user_id: actors.a.id, attendance_date: CURRENT_FIRST,
+    check_in_at: `${CURRENT_FIRST}T04:45:00Z`, check_out_at: `${CURRENT_FIRST}T13:00:00Z`, status: 'present',
+  }).select('id').single()
+  assert.ok(!currentErr, `current-month attendance insert failed: ${currentErr?.message}`)
+  created.attendanceCurrent = currentRow!.id
 })
 
 after(async () => {
-  await svc.from('attendance_records').delete().in('id', [created.attendanceA, created.attendanceB].filter(Boolean))
+  await svc.from('attendance_records').delete()
+    .in('id', [created.attendanceA, created.attendanceB, created.attendanceCurrent].filter(Boolean))
   await svc.from('payroll_results').delete().in('id', [created.resultA, created.resultB].filter(Boolean))
   if (created.periodId) await svc.from('payroll_periods').delete().eq('id', created.periodId)
   for (const id of createdAuthUserIds) {
@@ -175,8 +194,15 @@ describe('service-role attendance routes reject a mismatched employee identity',
     const res = await employeeRecords(req(`/api/attendance/employee-records?employee_id=${actors.a.id}`, actors.a.token))
     assert.equal(res.status, 200)
     const { records } = await res.json()
-    assert.equal(records.length, 1)
-    assert.equal(records[0].attendance_date, DAY_A)
+
+    // This route takes no date bounds, so it answers with every month A has —
+    // the sandbox day below and the current-month fixture used by the coverage
+    // tests further down. What it must never contain is a day of B's.
+    const dates = (records as { id: string; attendance_date: string }[]).map(r => r.attendance_date)
+    assert.ok(dates.includes(DAY_A), 'A own sandbox day must be returned')
+    assert.equal(dates.includes(DAY_B), false, 'B day must never appear in A answer')
+    const ids = (records as { id: string }[]).map(r => r.id)
+    assert.equal(ids.includes(created.attendanceB), false)
   })
 
   test('9b. Employee A omitting employee_id is scoped to themselves, not to everyone', async () => {
@@ -300,6 +326,141 @@ describe('a month nobody has imported is not a month of absences', () => {
       actors.a.token,
     ))
     assert.equal(res.status, 403, 'the upload state must not become a way to probe a colleague')
+  })
+})
+
+// ─── The current month is only classified as far as the import reached ────────
+//
+// The gap this closes: "the month has been imported" was decided by a row COUNT,
+// so one punch anywhere in August marked August imported and the calendar then
+// produced every remaining working day of it as an absence — including days
+// nobody had uploaded, and days that had not happened. The cut-off is now the
+// company-wide latest attendance_date in the month, capped at today.
+//
+// These assertions read that latest date back from the database instead of
+// hard-coding one, so they mean the same thing on the 1st and on the 31st, and
+// whatever real attendance the environment happens to hold.
+
+describe('an unprocessed or future day in the current month is never an absence', () => {
+  const detail = (actor = actors.a) =>
+    monthlyDetail(req(
+      `/api/attendance/employee-monthly-detail?employee_id=${actor.id}` +
+      `&year=${CURRENT.year}&month=${CURRENT.month}`,
+      actor.token,
+    ))
+
+  /** The newest attendance_date anyone in the company has this month. */
+  const companyLatest = async (): Promise<string> => {
+    const { from, to } = monthRange(CURRENT.year, CURRENT.month)
+    const { data } = await svc.from('attendance_records')
+      .select('attendance_date')
+      .gte('attendance_date', from).lte('attendance_date', to)
+      .order('attendance_date', { ascending: false }).limit(1)
+    return data![0].attendance_date
+  }
+
+  /** The working days the routes themselves would build, up to the cut-off. */
+  const coveredWorkingDates = async (cut: string): Promise<string[]> => {
+    const { from, to } = monthRange(CURRENT.year, CURRENT.month)
+    const { data } = await svc.from('payroll_holidays')
+      .select('holiday_date').gte('holiday_date', from).lte('holiday_date', to)
+    return workingDatesInMonth(CURRENT.year, CURRENT.month, {
+      holidays: (data ?? []).map(h => h.holiday_date),
+    }).filter(d => d <= cut)
+  }
+
+  test('2. the response names how far the import has reached, and stops there', async () => {
+    const res = await detail()
+    assert.equal(res.status, 200)
+    const body = await res.json()
+
+    assert.equal(body.month_imported, true, 'the fixture punch means this month IS imported')
+    assert.equal(body.coverage_through, await companyLatest(),
+      'the cut-off must be the latest date actually imported, not the end of the month')
+
+    for (const r of body.records as { attendance_date: string }[]) {
+      assert.ok(r.attendance_date <= body.coverage_through,
+        `${r.attendance_date} is past the imported-through date and must not be returned`)
+    }
+  })
+
+  test('3. days after the imported-through date are absent from the response entirely', async () => {
+    const body = await (await detail()).json()
+    const cut  = body.coverage_through as string
+    const returned = new Set((body.records as { attendance_date: string }[]).map(r => r.attendance_date))
+
+    // Every working day of the month that falls after the cut-off — none may
+    // appear, as an absence or as anything else.
+    for (const date of workingDatesInMonth(CURRENT.year, CURRENT.month)) {
+      if (date <= cut) continue
+      assert.equal(returned.has(date), false,
+        `${date} has not been processed and must not be classified at all`)
+    }
+  })
+
+  test('4. no future date is returned, and none is marked Absent', async () => {
+    const today = istToday()
+    const body  = await (await detail()).json()
+
+    for (const r of body.records as { attendance_date: string; effective_status: string }[]) {
+      assert.ok(r.attendance_date <= today,
+        `${r.attendance_date} has not happened yet and must never appear`)
+      assert.ok(!(r.attendance_date > today && r.effective_status === 'absent'),
+        'a day that has not happened can never be an absence')
+    }
+    assert.ok(body.coverage_through <= today, 'the cut-off itself must never be in the future')
+  })
+
+  test('6. inside the covered range a working day with no punch is still Absent', async () => {
+    const body = await (await detail()).json()
+    const cut  = body.coverage_through as string
+
+    // Every covered working day is answered for — that is the 21 July rule —
+    // and the ones A has no punch on are absences, not omissions.
+    const byDate = new Map(
+      (body.records as { attendance_date: string; effective_status: string }[])
+        .map(r => [r.attendance_date, r.effective_status]),
+    )
+    const covered = await coveredWorkingDates(cut)
+
+    for (const date of covered) {
+      assert.ok(byDate.has(date), `${date} is inside the import and must be answered for`)
+      if (date !== CURRENT_FIRST) {
+        assert.equal(byDate.get(date), 'absent', `A has no punch on ${date}, which is a real absence`)
+      }
+    }
+    if (covered.includes(CURRENT_FIRST)) {
+      assert.equal(byDate.get(CURRENT_FIRST), 'present', 'the day A did punch must read as present')
+    }
+  })
+
+  test('7. the cut-off is not a way to read a colleague current month', async () => {
+    const res = await monthlyDetail(req(
+      `/api/attendance/employee-monthly-detail?employee_id=${actors.b.id}` +
+      `&year=${CURRENT.year}&month=${CURRENT.month}`,
+      actors.a.token,
+    ))
+    assert.equal(res.status, 403, 'the current month is no more readable than any other')
+  })
+
+  test('the admin monthly summary applies the same cut-off', async () => {
+    const res = await monthlySummary(req(
+      `/api/attendance/monthly-summary?year=${CURRENT.year}&month=${CURRENT.month}`,
+      actors.admin.token,
+    ))
+    assert.equal(res.status, 200)
+    const body = await res.json()
+
+    const cut = await companyLatest()
+    assert.equal(body.coverage_through, cut)
+
+    // The denominator is the COVERED working days — not the whole month, which
+    // is what made every employee look absent for the rest of it.
+    const expected = (await coveredWorkingDates(cut)).length
+    for (const s of body.summaries as { total_records: number }[]) {
+      assert.equal(s.total_records, expected,
+        'an admin must be shown the same month the employee is')
+    }
   })
 })
 

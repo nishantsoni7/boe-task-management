@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
+import { attendanceCoverageThrough, withinCoverage } from '@/lib/attendance/monthAvailability'
 
 function hoursWorked(checkIn: string | null, checkOut: string | null): number {
   if (!checkIn || !checkOut) return 0
@@ -69,9 +70,25 @@ export async function GET(req: NextRequest) {
   // zero days rather than a month nobody has been marked present for. Same
   // calendar the payroll engine builds, so the two screens agree about what the
   // month was made of.
-  const workingDates = workingDatesInMonth(year, month, {
-    holidays: (holidays ?? []).map(h => h.holiday_date),
-  })
+  //
+  // Cut at the coverage date for the same reason /employee-monthly-detail does:
+  // a working day nobody has uploaded yet is not an absence. Without this an
+  // admin opening the current month on the 8th would read every remaining day of
+  // it as absent for every employee — and would then be looking at a different
+  // month from the one the employee sees on /my-attendance. The latest date is
+  // taken from the rows already fetched above, so this costs no extra query.
+  const latestImported = (records ?? []).reduce<string | null>(
+    (max, r) => (!max || r.attendance_date > max ? r.attendance_date : max),
+    null,
+  )
+  const coverageThrough = attendanceCoverageThrough(year, month, latestImported)
+
+  const workingDates = withinCoverage(
+    workingDatesInMonth(year, month, {
+      holidays: (holidays ?? []).map(h => h.holiday_date),
+    }),
+    coverageThrough,
+  )
 
   // Index each employee's records by date for O(1) lookup
   const byEmployeeByDate = new Map<string, Map<string, typeof records[number]>>()
@@ -149,5 +166,11 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  return NextResponse.json({ year, month, summaries })
+  return NextResponse.json({
+    year,
+    month,
+    month_imported: latestImported !== null,
+    coverage_through: coverageThrough,
+    summaries,
+  })
 }
