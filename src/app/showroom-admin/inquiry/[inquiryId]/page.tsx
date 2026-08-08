@@ -9,7 +9,7 @@ import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
 import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package, Box, User, Phone, CalendarDays, Save } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
-import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { resolveModuleAccess } from '@/lib/moduleAccess'
 
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
@@ -137,14 +137,14 @@ export default function InquiryDetailPage() {
           .single(),
         supabase
           .from('app_modules')
-          .select('visibility_type, allowed_department')
+          .select('visibility_type, allowed_department, allowed_user_ids')
           .eq('module_key', 'showroom_qr')
           .single(),
       ])
       if (!p) { router.push('/login'); return }
       const profile = p as UserProfile
       const hasAccess = profile.role === 'admin' ||
-        canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback(profile.team))
+        resolveModuleAccess('showroom_qr', mod, profile, teamFallback(profile.team))
       if (!hasAccess) { router.replace('/modules'); return }
 
       setProfile(profile)

@@ -8,7 +8,7 @@ import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { useViewAs } from '@/hooks/useViewAs'
 import { createClient } from '@/lib/supabase/client'
-import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { resolveModuleAccess } from '@/lib/moduleAccess'
 import { ProductMasterNav } from '@/components/layout/ProductMasterNav'
 import { ProductLookup } from '@/components/layout/ProductLookup'
 import { useShowroomProductCounts } from '@/hooks/queries/useShowroomProductCounts'
@@ -29,7 +29,7 @@ type ShowroomAdminLayoutProps = {
   children: React.ReactNode
 }
 
-type ModVisRow = { visibility_type: string; allowed_department: string[] | null }
+type ModVisRow = { visibility_type: string; allowed_department: string[] | null; allowed_user_ids: string[] | null }
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
 
@@ -52,17 +52,13 @@ export function ShowroomAdminLayout({
   useEffect(() => {
     supabase
       .from('app_modules')
-      .select('visibility_type, allowed_department')
+      .select('visibility_type, allowed_department, allowed_user_ids')
       .eq('module_key', 'showroom_qr')
       .single()
       .then((res: { data: ModVisRow | null }) => setShowroomMod(res.data ?? null))
   }, [supabase])
 
-  const canManageProducts = isAdmin || canAccessModule(
-    showroomMod?.visibility_type as ModuleVisibilityType | undefined,
-    showroomMod?.allowed_department,
-    effectiveProfile ?? null,
-    teamFallback(effectiveProfile?.team),
+  const canManageProducts = isAdmin || resolveModuleAccess('showroom_qr', showroomMod, effectiveProfile ?? null, teamFallback(effectiveProfile?.team),
   )
 
   const navTo = (path: string) => {

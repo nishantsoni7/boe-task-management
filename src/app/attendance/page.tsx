@@ -13,10 +13,13 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ─── Module cards ─────────────────────────────────────────────────────────────
 
-// Importing the machine export writes raw attendance, so /api/attendance/import
-// admits admin and manager only. A member Control Center granted the module to
-// can read every screen here but must not be shown a card that ends in a 403.
-const IMPORT_ROLES = ['admin', 'manager']
+// Importing the machine export WRITES raw attendance, so /api/attendance/import
+// and /api/attendance/preview both admit `admin` and nothing else
+// (ALLOWED_ROLES in each route). A member Control Center granted the module to
+// can read every screen here, but module access is read access — it must not be
+// shown a card whose first request is a 403. This list mirrors the routes
+// exactly; widen both together or neither.
+const IMPORT_ROLES = ['admin']
 
 const UPLOAD_CARD = {
   title: 'Upload Monthly Attendance',

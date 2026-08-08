@@ -590,7 +590,7 @@ function OverviewTab({
         fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
         border: '1px solid #E8EBF0', borderRadius: 10, padding: '12px 16px',
       }}>
-        <strong>Sample Tracking</strong> is the only module whose permissions are actively enforced today.
+        <strong>Sample Tracking</strong>{' '}is the only module whose permissions are actively enforced today.
         Other modules&apos; access settings are prepared but not yet enforced — see{' '}
         <button
           onClick={onOpenAccessControl}
@@ -1240,9 +1240,22 @@ function ControlCenterPageInner() {
                 background: '#FFFBEB', border: '1px solid rgba(232,160,48,0.4)',
                 fontSize: 12, color: '#92400E', lineHeight: 1.5,
               }}>
-                {editMod.module_name} shows every employee&rsquo;s attendance and salary, so this
+                {editMod.module_name}{' '}shows every employee&rsquo;s attendance and salary, so this
                 setting will keep it to admins only. Use <strong>Custom</strong> to give named
                 members access.
+              </div>
+            )}
+
+            {/* One line, only for the management modules, and only once Custom
+                is actually chosen — an admin picking members for Attendance or
+                Payroll is granting management access and should be told so
+                plainly. Every other module keeps the plain picker. */}
+            {modVisType === 'custom' && isExplicitGrantModule(editMod.module_key) && (
+              <div style={{
+                marginTop: -8, marginBottom: 12,
+                fontSize: 12, color: '#6B7384', lineHeight: 1.5,
+              }}>
+                Selected members can access the full management module.
               </div>
             )}
 

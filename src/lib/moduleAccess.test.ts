@@ -172,3 +172,88 @@ describe('resolveModuleAccess — attendance and payroll need an explicit grant'
     })
   }
 })
+
+// ─── The five personas ────────────────────────────────────────────────────────
+//
+// One table, so a change to the resolver has to state which persona it moved.
+// A = Custom Payroll member, B = Custom Attendance member, C = normal employee.
+
+describe('personas', () => {
+  const payrollCustom    = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-a'] }
+  const attendanceCustom = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-b'] }
+
+  test('A — Custom Payroll member enters Payroll and nothing else', () => {
+    assert.equal(resolveModuleAccess('payroll',    payrollCustom,    A, false), true)
+    assert.equal(resolveModuleAccess('attendance', attendanceCustom, A, false), false)
+  })
+
+  test('B — Custom Attendance member enters Attendance and nothing else', () => {
+    assert.equal(resolveModuleAccess('attendance', attendanceCustom, B, false), true)
+    assert.equal(resolveModuleAccess('payroll',    payrollCustom,    B, false), false)
+  })
+
+  test('C — a normal employee enters neither, under any broad mode', () => {
+    for (const vt of ['live', 'admin_only', 'department_only', 'custom', 'hidden']) {
+      const row = { visibility_type: vt, allowed_department: ['sales'], allowed_user_ids: [] }
+      assert.equal(resolveModuleAccess('payroll', row, C, true), false, `payroll/${vt}`)
+      assert.equal(resolveModuleAccess('attendance', row, C, true), false, `attendance/${vt}`)
+    }
+  })
+
+  test('Admin enters both under every mode except hidden', () => {
+    for (const vt of ['live', 'admin_only', 'department_only', 'custom']) {
+      const row = { visibility_type: vt, allowed_department: ['sales'], allowed_user_ids: [] }
+      assert.equal(resolveModuleAccess('payroll', row, ADMIN, false), true, `payroll/${vt}`)
+      assert.equal(resolveModuleAccess('attendance', row, ADMIN, false), true, `attendance/${vt}`)
+    }
+  })
+
+  // The launcher and the guards call this same function, so "sees the card" and
+  // "can open the route" are the same boolean by construction. There is no
+  // separate assertion to make — that is the point of the shared resolver.
+  test('card visibility and route access are one decision, not two', () => {
+    const row = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-a'] }
+    const launcher = resolveModuleAccess('payroll', row, A, false)
+    const guard    = resolveModuleAccess('payroll', row, A, false)
+    assert.equal(launcher, guard)
+    assert.equal(launcher, true)
+  })
+})
+
+// ─── Finance / Showroom compatibility ─────────────────────────────────────────
+//
+// Custom is offered for every module in Control Center, so every module's guard
+// has to understand it. These two are NOT explicit-grant modules: their broad
+// modes keep working exactly as they always did, and each keeps its own
+// admin-first clause and its own functional permissions outside this resolver.
+
+describe('custom works for Finance and Showroom without changing their other modes', () => {
+  for (const key of ['finance', 'showroom_qr']) {
+    test(`${key}: live still admits everyone`, () => {
+      const row = { visibility_type: 'live', allowed_department: null, allowed_user_ids: null }
+      assert.equal(resolveModuleAccess(key, row, A, false), true)
+      assert.equal(resolveModuleAccess(key, row, C, false), true)
+    })
+
+    test(`${key}: department_only still follows the department`, () => {
+      const row = { visibility_type: 'department_only', allowed_department: ['sales'], allowed_user_ids: null }
+      assert.equal(resolveModuleAccess(key, row, A, false), true)   // sales
+      assert.equal(resolveModuleAccess(key, row, C, false), false)  // operations
+    })
+
+    test(`${key}: custom admits the named members only`, () => {
+      const row = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-a', 'user-b'] }
+      assert.equal(resolveModuleAccess(key, row, A, false), true)
+      assert.equal(resolveModuleAccess(key, row, B, false), true)
+      assert.equal(resolveModuleAccess(key, row, C, false), false)
+    })
+
+    test(`${key}: the no-row fallback is preserved for callers that pass one`, () => {
+      // Finance and the Showroom screens pass an "open" fallback of their own
+      // (Finance: true; Showroom: a sales/showroom team check). That must keep
+      // working when app_modules has nothing to say.
+      assert.equal(resolveModuleAccess(key, null, C, true), true)
+      assert.equal(resolveModuleAccess(key, null, C, false), false)
+    })
+  }
+})

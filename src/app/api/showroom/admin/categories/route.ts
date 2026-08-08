@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { canAccessModule, type ModuleVisibilityType } from '@/lib/moduleAccess'
+import { resolveModuleAccess } from '@/lib/moduleAccess'
 
 function serviceClient() {
   return createClient(
@@ -21,15 +21,15 @@ async function requireShowroomAccess(req: NextRequest) {
   if (error || !user) return null
 
   const [{ data: profile }, { data: mod }] = await Promise.all([
-    client.from('users').select('role, team').eq('id', user.id).single(),
-    client.from('app_modules').select('visibility_type, allowed_department').eq('module_key', 'showroom_qr').single(),
+    client.from('users').select('id, role, team').eq('id', user.id).single(),
+    client.from('app_modules').select('visibility_type, allowed_department, allowed_user_ids').eq('module_key', 'showroom_qr').single(),
   ])
   if (!profile) return null
 
   const team = (profile.team as string | null)?.toLowerCase()
   const teamFallback = !!team && (team.includes('sales') || team.includes('showroom'))
   const allowed = profile.role === 'admin' ||
-    canAccessModule(mod?.visibility_type as ModuleVisibilityType | undefined, mod?.allowed_department, profile, teamFallback)
+    resolveModuleAccess('showroom_qr', mod, profile, teamFallback)
 
   return allowed ? client : null
 }

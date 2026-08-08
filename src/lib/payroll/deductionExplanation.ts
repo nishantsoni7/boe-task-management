@@ -205,11 +205,13 @@ export function explainDay(lines: ExplainableLine[]): ExplainedDeduction[] {
 }
 
 /**
- * What the date cost in total.
+ * What the lines add up to.
  *
- * Summed from the same lines the popup lists, so the figure at the bottom of
- * the popup and the figure on the row it opened from cannot disagree. Covered
- * lines contribute 0 by virtue of their amount, not by being skipped.
+ * A CROSS-CHECK, not a display value. The popup and the ledger row both show
+ * the engine's own `total_deduction_amount` for the date; this exists so a test
+ * can assert that re-adding the parts reproduces it. Rendering this instead
+ * would put a second implementation of the figure in the UI, and the day the
+ * two disagreed the screen would be the one that was wrong.
  */
 export function dayDeductionTotal(lines: ExplainableLine[]): number {
   return lines.reduce((sum, l) => sum + l.amount_deducted, 0)

@@ -16,7 +16,6 @@ import { PayrollModal } from '@/components/payroll/PayrollModal'
 import { istClockOf } from '@/lib/istDate'
 import {
   explainDay,
-  dayDeductionTotal,
   money,
   COMPANY_PAID_NOTE,
   type ExplainableLine,
@@ -33,7 +32,15 @@ export type ExplanationDayContext = {
   is_corrected: boolean
   correctionRemark?: string | null
   lines: ExplainableLine[]
-  /** The row's own total, so the popup can be checked against what opened it. */
+  /**
+   * What the date cost, as the engine settled it.
+   *
+   * Displayed as-is. The popup deliberately does NOT re-add the lines to get
+   * here: that would be a second implementation of the same figure living in a
+   * React component, and the day the two disagreed the screen would be the one
+   * that was wrong. dayDeductionTotal() still exists and still sums the lines —
+   * as a test assertion, which is where a cross-check belongs.
+   */
   total_amount: number
 }
 
@@ -50,7 +57,7 @@ export function DeductionExplanationModal({
   onClose: () => void
 }) {
   const explained = explainDay(day.lines)
-  const total = dayDeductionTotal(day.lines)
+  const total = day.total_amount
 
   return (
     <PayrollModal
@@ -98,6 +105,10 @@ export function DeductionExplanationModal({
           style={{
             border: `1px solid ${item.companyPaid ? 'rgba(5,150,105,0.3)' : colors.border}`,
             borderRadius: 10, overflow: 'hidden',
+            // The dialog is a column flex box that scrolls. Without this, a date
+            // with more than one reason makes these cards shrink instead, and
+            // `overflow: hidden` then clips the Calculation rows out of reach.
+            flexShrink: 0,
           }}
         >
           <div style={{
