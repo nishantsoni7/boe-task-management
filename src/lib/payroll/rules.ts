@@ -242,8 +242,8 @@ export const RULE_CARDS: RuleCard[] = [
     key: 'company_paid_leave',
     group: 'leave',
     title: 'First paid leave is on the company',
-    body: 'The allowance is spent on the first thing it can cover, and that item is charged ₹0 — it stays visible in Deductions so the month still adds up.',
-    detail: `In order: one absent day, then ${HALF_DAYS_PER_PAID_LEAVE} half days, then one half day against a ${PAID_LEAVE_TIERS[1].leave}-day allowance, then up to ${HOURS_PER_PAID_LEAVE}h of late / early / missing-punch deductions.`,
+    body: 'The allowance is spent on the EARLIEST item of the month it can cover, and that item is charged ₹0 — it stays visible in Deductions so the month still adds up.',
+    detail: `Earliest by attendance date, never by when the record was imported or edited. In order of what it covers: one absent day, then ${HALF_DAYS_PER_PAID_LEAVE} half days, then one half day against a ${PAID_LEAVE_TIERS[1].leave}-day allowance, then up to ${HOURS_PER_PAID_LEAVE}h of late / early / missing-punch deductions.`,
   },
   {
     key: 'unpaid_leave',

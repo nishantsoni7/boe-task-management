@@ -106,6 +106,12 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   // disputing their own attendance or pay.
   attendance_issue_raised:      { label: 'Issue raised',   color: colors.amber, bg: colors.amberTint },
   payroll_issue_raised:         { label: 'Issue raised',   color: colors.amber, bg: colors.amberTint },
+  // The admin's decision, sent back to the employee who raised it. Blue rather
+  // than green or red because one type carries both outcomes — which one it was
+  // is stated in the title, and a green chip over the word "rejected" would be
+  // worse than a neutral one.
+  attendance_issue_reviewed:    { label: 'Issue reviewed', color: colors.blue,  bg: colors.blueTint  },
+  payroll_issue_reviewed:       { label: 'Issue reviewed', color: colors.blue,  bg: colors.blueTint  },
 }
 
 const NEUTRAL_BADGE = { label: 'Activity', color: colors.muted, bg: colors.float }
@@ -168,6 +174,32 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
       badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
       href,
       actionLabel: 'Review issue',
+    }
+  }
+
+  // ── The decision, sent back to the employee who raised it ──────────────────
+  // The mirror of the branch above, and the same reasoning about ids: one
+  // destination for both subjects, because from the employee's side there is
+  // one place their reports live — /my-issues. The objection id travels in
+  // `entity_id` and is resolved there against a list /api/objections has
+  // already pinned to the caller's own rows, so an id that is not theirs
+  // selects nothing and the link cannot become a way to read a colleague's
+  // dispute.
+  //
+  // Order is not load-bearing: both branches test exact type equality, and
+  // neither `attendance_issue_reviewed` nor `payroll_issue_reviewed` matches
+  // any of the `startsWith` prefixes below (finance / order / access_ / asset)
+  // or any Task title pattern. It sits here because it belongs beside the
+  // branch it mirrors.
+  if (type === 'attendance_issue_reviewed' || type === 'payroll_issue_reviewed') {
+    const isAttendance = type === 'attendance_issue_reviewed'
+    return {
+      category: 'other',
+      heading: isAttendance ? 'Attendance' : 'Payroll',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: n.entity_id ? `/my-issues?${ISSUE_PARAM}=${n.entity_id}` : '/my-issues',
+      actionLabel: 'View issue',
     }
   }
 

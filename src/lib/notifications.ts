@@ -94,18 +94,27 @@ export const ORDER_NOTIFICATION_TYPES = [
 // of work, which is how an admin ends up clearing one and never noticing the
 // other. Same reasoning that keeps `access_*` inside the Assets list above.
 //
-// These two types are the whole feed and are expected to stay that way: this is
-// the "someone reported a problem with their own record" channel, not a general
-// attendance or payroll activity log. Anything routine belongs on the screens
-// themselves, not in a notification.
+// Four types, in two matched pairs, and expected to stay that way: this is the
+// "someone reported a problem with their own record, and here is what came of
+// it" channel, not a general attendance or payroll activity log. Anything
+// routine belongs on the screens themselves, not in a notification.
 //
-// ADMIN-ONLY — see ADMIN_ONLY_CATEGORIES below. Every row of these types is
-// written to an admin (src/app/api/objections/route.ts), and the feed reports on
-// the whole company's employees, so it is management information rather than
-// something an employee may read about themselves.
+//   *_issue_raised    written to every active ADMIN when an employee reports
+//                     something (src/app/api/objections/route.ts).
+//   *_issue_reviewed  written to the ONE EMPLOYEE who raised it, when an admin
+//                     resolves or rejects it (…/objections/review/route.ts).
+//                     Added by 20260825000000.
+//
+// Both halves in one category on purpose. They are two ends of a single
+// conversation, and every endpoint scopes rows to `user_id = caller`, so the
+// category decides which FEED a row belongs to while the row's own recipient
+// decides who reads it. An employee therefore sees the outcomes of their own
+// issues and no `*_raised` row at all, because none was ever addressed to them.
 export const ATTENDANCE_PAYROLL_NOTIFICATION_TYPES = [
   'attendance_issue_raised',
   'payroll_issue_raised',
+  'attendance_issue_reviewed',
+  'payroll_issue_reviewed',
 ] as const
 
 // PostgREST `type.in.(...)` fragment for an enum column — the safe equivalent
@@ -138,21 +147,29 @@ const VALID_CATEGORIES: readonly NotificationCategory[] =
   ['task', 'finance', 'order', 'asset', 'attendance_payroll']
 
 /**
- * Categories only an admin may read.
+ * Categories only an admin may read. Currently none.
  *
- * A notification row is already addressed to one `user_id`, so this is not what
- * keeps one employee's rows away from another — that is the `.eq('user_id',
- * caller)` every endpoint applies. This is about the FEED: attendance_payroll
- * reports employees' disputes about their own attendance and pay across the
- * whole company, and is the notification half of the admin-only surfaces at
- * /attendance and /payroll (see resolveManagementAccess and
- * SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts). It must not become a
- * self-service channel just because it lives in the shared table.
+ * `attendance_payroll` was listed here while every row of it was addressed to
+ * an admin: the feed was purely the company-wide queue of employees' disputes,
+ * so refusing it to anyone else cost nothing and stated the intent plainly.
  *
- * Enforced server-side in every notification endpoint via
- * canReadNotificationCategory() in src/lib/notificationAccess.ts.
+ * That stopped being true when an admin's decision started notifying the
+ * employee who raised the issue (20260825000000). The feed now has rows
+ * belonging to employees, and a category gate would refuse a person their own
+ * notification — the very bug the outcome notification exists to fix.
+ *
+ * What keeps one employee's rows away from another's has never been this list.
+ * It is the `.eq('user_id', caller)` every notification endpoint applies, which
+ * is row access and is untouched: an employee asking for this category is
+ * answered with the outcomes of their own issues, and no `*_issue_raised` row,
+ * because none was ever written to them.
+ *
+ * The machinery is kept rather than deleted. It is three lines, it is enforced
+ * server-side in every notification endpoint via canReadNotificationCategory()
+ * in src/lib/notificationAccess.ts, and the next admin-only feed is a one-word
+ * change instead of a reconstruction.
  */
-export const ADMIN_ONLY_CATEGORIES: readonly NotificationCategory[] = ['attendance_payroll']
+export const ADMIN_ONLY_CATEGORIES: readonly NotificationCategory[] = []
 
 export function isAdminOnlyNotificationCategory(category: NotificationCategory): boolean {
   return ADMIN_ONLY_CATEGORIES.includes(category)

@@ -8,7 +8,15 @@ import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
-import { employeeStatusLabel, statusTone as objectionTone, type ObjectionRow } from '@/lib/objections'
+import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
+import {
+  employeeStatusLabel,
+  statusTone as objectionTone,
+  canRaiseIssue,
+  raiseActionLabel,
+  groupIssueChains,
+  type ObjectionRow,
+} from '@/lib/objections'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,6 +77,7 @@ export default function MyPayrollPage() {
   const [error,   setError]   = useState<string | null>(null)
   const [objections,  setObjections]  = useState<ObjectionRow[]>([])
   const [issueResult, setIssueResult] = useState<MyResultRow | null>(null)
+  const [historyResultId, setHistoryResultId] = useState<string | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -116,6 +125,16 @@ export default function MyPayrollPage() {
       if (o.payroll_result_id && !m.has(o.payroll_result_id)) m.set(o.payroll_result_id, o)
     }
     return m
+  }, [objections])
+
+  /** Every attempt against each payslip, oldest first — what History shows. */
+  const chainsByResult = useMemo(() => {
+    const byResult = new Map<string, ObjectionRow[]>()
+    for (const chain of groupIssueChains(objections).values()) {
+      const resultId = chain[0].payroll_result_id
+      if (resultId) byResult.set(resultId, chain)
+    }
+    return byResult
   }, [objections])
 
   const submitIssue = async (resultId: string, reason: string): Promise<string | null> => {
@@ -226,28 +245,49 @@ export default function MyPayrollPage() {
                           View &amp; Review
                         </button>
                         {/* Reporting a problem, not editing one. No amount on
-                            this row is touchable from here. */}
-                        {objectionByResult.get(r.id) ? (
-                          <span
-                            title={objectionByResult.get(r.id)!.review_note ?? undefined}
-                            style={{
-                              display: 'inline-block', padding: '2px 10px', borderRadius: 20,
-                              fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
-                              background: objectionTone(objectionByResult.get(r.id)!.status).bg,
-                              color: objectionTone(objectionByResult.get(r.id)!.status).fg,
-                            }}
-                          >
-                            {employeeStatusLabel(objectionByResult.get(r.id)!.status)}
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => setIssueResult(r)}
-                            className="boe-btn boe-btn-ghost"
-                            style={{ padding: '3px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
-                          >
-                            Raise Issue
-                          </button>
-                        )}
+                            this row is touchable from here.
+
+                            Status, history and the action sit side by side: a
+                            resolved or rejected issue must not take away the
+                            employee's ability to raise the matter again. */}
+                        {(() => {
+                          const objection = objectionByResult.get(r.id)
+                          return (
+                            <>
+                              {objection && (
+                                <>
+                                  <span
+                                    title={objection.review_note ?? undefined}
+                                    style={{
+                                      display: 'inline-block', padding: '2px 10px', borderRadius: 20,
+                                      fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap',
+                                      background: objectionTone(objection.status).bg,
+                                      color: objectionTone(objection.status).fg,
+                                    }}
+                                  >
+                                    {employeeStatusLabel(objection.status)}
+                                  </span>
+                                  <button
+                                    onClick={() => setHistoryResultId(r.id)}
+                                    className="boe-btn boe-btn-ghost"
+                                    style={{ padding: '3px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+                                  >
+                                    History
+                                  </button>
+                                </>
+                              )}
+                              {canRaiseIssue(objection) && (
+                                <button
+                                  onClick={() => setIssueResult(r)}
+                                  className="boe-btn boe-btn-ghost"
+                                  style={{ padding: '3px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+                                >
+                                  {raiseActionLabel(objection)}
+                                </button>
+                              )}
+                            </>
+                          )
+                        })()}
                       </div>
                     </td>
                   </tr>
@@ -266,6 +306,14 @@ export default function MyPayrollPage() {
           }}
           onClose={() => setIssueResult(null)}
           onSubmit={reason => submitIssue(issueResult.id, reason)}
+        />
+      )}
+
+      {historyResultId && chainsByResult.get(historyResultId) && (
+        <IssueHistoryModal
+          chain={chainsByResult.get(historyResultId)!}
+          employeeLabel="You"
+          onClose={() => setHistoryResultId(null)}
         />
       )}
     </AttendanceLayout>

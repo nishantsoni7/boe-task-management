@@ -12,8 +12,8 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
-import { isReviewableStatus } from '@/lib/objections'
+import { requireAdmin, isResponse, type ServiceClient } from '@/lib/security/attendancePayrollApiAuth'
+import { isReviewableStatus, issueSubjectLabel, type ObjectionRow } from '@/lib/objections'
 
 /**
  * An anon client carrying the caller's own token, so `auth.uid()` resolves
@@ -70,5 +70,61 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Tell the employee. Reached only past the error branch above, so a
+  // notification cannot exist for a status change that did not happen — and
+  // because the RPC refuses anything that is not still `pending`, a second POST
+  // for the same objection stops at the 409 above and never notifies twice.
+  //
+  // Awaited so a failure is logged rather than lost in an unhandled rejection,
+  // but never allowed to fail the review: the decision is already committed,
+  // and reporting a notification problem as a failed review would invite an
+  // admin to press Resolve again.
+  await notifyEmployeeOfDecision(auth.svc, data as ObjectionRow | null)
+
   return NextResponse.json({ objection: data })
+}
+
+/**
+ * One notification, to the one person waiting for it.
+ *
+ * The recipient is read from the REVIEWED ROW the function returned, not from
+ * anything the request carried — so the notification cannot be addressed
+ * anywhere other than the employee whose objection was actually changed.
+ *
+ * `entity_id` carries the objection id, which getNotificationMeta() turns into
+ * /my-issues?issue=… — a filter over rows the employee already owns, never a
+ * route assembled from a caller-supplied id.
+ *
+ * REQUIRES 20260825000000_objection_review_notification_types.sql. Until that
+ * is applied the insert fails the enum check and is logged here; the review
+ * itself is unaffected.
+ */
+async function notifyEmployeeOfDecision(
+  svc: ServiceClient,
+  row: ObjectionRow | null,
+): Promise<void> {
+  if (!row?.employee_id) return
+
+  try {
+    const isAttendance = !!row.attendance_date
+    const outcome  = row.status === 'approved' ? 'resolved' : 'rejected'
+    const subject  = issueSubjectLabel(row)
+    const what     = isAttendance ? 'attendance issue' : 'payroll issue'
+
+    const { error } = await svc.from('notifications').insert({
+      user_id:   row.employee_id,
+      type:      isAttendance ? 'attendance_issue_reviewed' : 'payroll_issue_reviewed',
+      title:     `Your ${what} for ${subject} was ${outcome}`,
+      body:      row.review_note?.trim()
+        ? row.review_note.trim()
+        : 'Open the issue to read the full history.',
+      entity_id: row.id,
+    })
+
+    if (error) {
+      console.error('[objections] decision not delivered:', error.message)
+    }
+  } catch (e) {
+    console.error('[objections] decision notification failed:', e)
+  }
 }

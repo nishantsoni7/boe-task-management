@@ -4,13 +4,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, Upload, Home, ClipboardList, RefreshCw, CalendarX,
-  CalendarDays,
+  CalendarDays, MessageSquareWarning,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
-import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import { IssueNotificationBell } from '@/components/layout/IssueNotificationBell'
 import { useUnreadAttendancePayrollNotifications } from '@/hooks/queries/useUnreadNotifications'
 
 type AttendanceLayoutProps = {
@@ -67,10 +67,20 @@ export function AttendanceLayout({
   // sidebar through one category and therefore one query key — the two badges
   // are the same number by construction, not by coincidence.
   //
-  // Only requested for an admin: this layout is also the shell for
-  // /my-attendance and /my-payroll, and the API answers a non-admin with 403,
-  // so asking would be a guaranteed failed request on every employee page load.
-  const unreadIssues = useUnreadAttendancePayrollNotifications(isAdmin)
+  // Requested for EVERYONE now. It used to be admin-only because every row of
+  // this category was addressed to an admin, so an employee's count could only
+  // ever have been zero and the request would have 403'd. Since an admin's
+  // decision notifies the employee who raised the issue, an employee has rows
+  // of their own here — and a bell that never lights up for the one person
+  // waiting on an answer was the whole complaint. Rows stay pinned to
+  // `user_id = caller` in every endpoint, so this widens the FEED and not the
+  // visibility of anybody's data.
+  const unreadIssues = useUnreadAttendancePayrollNotifications()
+
+  // Admins review the whole company's issues at /attendance/notifications,
+  // which is behind AttendanceGuard. An employee's door onto the same feed sits
+  // beside their own issue list instead.
+  const notificationsHref = isAdmin ? '/attendance/notifications' : '/my-issues/notifications'
 
   const navItems = isAdmin
     ? [
@@ -82,6 +92,9 @@ export function AttendanceLayout({
     : [
         { label: 'My Attendance',        path: '/my-attendance',        icon: <CalendarDays size={15} strokeWidth={1.8} /> },
         { label: 'My Payroll',           path: '/my-payroll',           icon: <ClipboardList size={15} strokeWidth={1.8} /> },
+        // Reporting a problem is now reachable without first finding the record
+        // it is about — see /my-issues.
+        { label: 'My Issues',            path: '/my-issues',            icon: <MessageSquareWarning size={15} strokeWidth={1.8} /> },
       ]
 
   return (
@@ -157,18 +170,21 @@ export function AttendanceLayout({
             </button>
           )}
 
-          {/* Reported attendance and payroll issues. Admin only, like every
-              other entry above it — an employee's own issue status is shown on
-              the day and payslip rows themselves, not in an admin feed. */}
-          {isAdmin && (
-            <NotificationsNavItem
-              onNavigate={() => setSidebarOpen(false)}
-              count={unreadIssues}
-              href="/attendance/notifications"
-            />
-          )}
-
         </div>
+
+        {/* The notification bell, in the shape every other module uses: the
+            large alert while something is unread, the plain nav entry
+            otherwise. Attendance and Payroll had only the quiet entry, and only
+            for admins — so the bell an employee saw never moved, whatever had
+            happened to the issue they raised.
+
+            Same count, same category, same query cache as the Payroll shell;
+            only the destination differs by role. */}
+        <IssueNotificationBell
+          unread={unreadIssues}
+          href={notificationsHref}
+          onNavigate={() => setSidebarOpen(false)}
+        />
 
         {/* Bottom profile section */}
         <ViewModeSidebarSection

@@ -141,10 +141,10 @@ describe('the first eligible paid leave is charged to the company', () => {
     const covered = days.filter(d => d.lines.some(isCompanyPaidLine))
     assert.equal(charged.length, 1, 'exactly one absence is charged')
     assert.equal(covered.length, 1, 'exactly one absence is covered')
-    // Earliest first: the allowance settles the later date, so the employee's
-    // first absence of the month is the one that shows a charge.
-    assert.equal(charged[0].date, '2026-07-21')
-    assert.equal(covered[0].date, '2026-07-22')
+    // The FIRST leave of the month is the company's. 21 July comes first, so it
+    // is the covered one and 22 July is charged at the ordinary rate.
+    assert.equal(covered[0].date, '2026-07-21')
+    assert.equal(charged[0].date, '2026-07-22')
   })
 
   test('the ₹0 line adds nothing to the deduction total', () => {
@@ -162,6 +162,7 @@ describe('the first eligible paid leave is charged to the company', () => {
     const r = run(month({ 21: null, 22: null, 23: null, 24: null }))
     const covered = toDeductionDays(r.day_results).filter(d => d.lines.some(isCompanyPaidLine))
     assert.equal(covered.length, 1)
+    assert.equal(covered[0].date, '2026-07-21', 'and it is the earliest of the four')
     assert.equal(r.paid_leave_used, 1)
     close(r.total_deductions, 3 * PER_DAY, 'three of four absences are charged')
   })
@@ -208,6 +209,118 @@ describe('the first eligible paid leave is charged to the company', () => {
     const covered = toDeductionDays(r.day_results).filter(d => d.lines.some(isCompanyPaidLine))
     assert.equal(covered.length, 0, 'nothing is company-paid without an allowance')
     close(r.total_deductions, 19 * PER_DAY, 'all 19 absences are charged')
+  })
+})
+
+// ─── Which leave, exactly ─────────────────────────────────────────────────────
+//
+// The rule is chronological: the FIRST eligible leave of the payroll month is
+// the company-paid one. Not the last, not the cheapest, and not whichever row
+// the importer happened to write first.
+//
+// This block is the regression for the defect it replaced — the assembly step
+// charged the leading absences and waived the trailing one, which made the LAST
+// absence of the month the free one. Everything below states "earliest" from a
+// different angle so no single edit can quietly flip it back.
+
+describe('the company-paid leave is the earliest one in the month', () => {
+  /** The dates the allowance covered, in the order the engine emitted them. */
+  const coveredDates = (r: EngineResult) =>
+    r.deduction_lines.filter(isCompanyPaidLine).map(l => l.line_date)
+
+  test('1. a single leave in the month is the paid one', () => {
+    const r = run(month({ 10: null }))
+    assert.deepEqual(coveredDates(r), ['2026-07-10'])
+    close(r.total_deductions, 0, 'nothing left to charge')
+  })
+
+  test('2. with three leaves, the earliest is paid and the other two are not', () => {
+    // The brief's own example, moved into July: 3rd, 12th, 24th.
+    const r = run(month({ 3: null, 13: null, 24: null }))
+
+    assert.deepEqual(coveredDates(r), ['2026-07-03'], 'the 3rd is on the company')
+    const charged = toDeductionDays(r.day_results)
+      .filter(d => d.total_amount > 0).map(d => d.date)
+    assert.deepEqual(charged, ['2026-07-13', '2026-07-24'], 'the later two are ordinary leave')
+    close(r.total_deductions, 2 * PER_DAY, 'two absences at the full per-day rate')
+  })
+
+  test('3. attendance imported out of sequence still pays the earliest date', () => {
+    // Same month, the records array deliberately scrambled — a real import is
+    // ordered by whatever the biometric export gave, and a corrected day is
+    // written later still. Chronology must come from attendance_date alone.
+    const ordered  = month({ 3: null, 13: null, 24: null })
+    const reversed = [...ordered].reverse()
+    const shuffled = [...ordered].sort((a, b) => (a.attendance_date < b.attendance_date ? 1 : -1))
+
+    for (const [label, records] of [['reversed', reversed], ['shuffled', shuffled]] as const) {
+      const r = run(records)
+      assert.deepEqual(coveredDates(r), ['2026-07-03'], `${label} import`)
+      close(r.total_deductions, 2 * PER_DAY, `${label} total`)
+    }
+  })
+
+  test('4. adding a later leave leaves the earlier one paid', () => {
+    const before = run(month({ 3: null }))
+    assert.deepEqual(coveredDates(before), ['2026-07-03'])
+
+    // The employee is absent again on the 24th. The 3rd keeps the allowance;
+    // only the new day is charged.
+    const after = run(month({ 3: null, 24: null }))
+    assert.deepEqual(coveredDates(after), ['2026-07-03'], 'the earlier leave keeps the allowance')
+    close(after.total_deductions, PER_DAY, 'only the new absence is charged')
+  })
+
+  test('4b. and adding an EARLIER leave moves the allowance to it', () => {
+    // The other direction of the same rule: it is a property of the month, not
+    // a flag set on a row when the first objection-free run happened.
+    const after = run(month({ 3: null, 24: null }))
+    const earlierAdded = run(month({ 1: null, 3: null, 24: null }))
+    assert.deepEqual(coveredDates(after), ['2026-07-03'])
+    assert.deepEqual(coveredDates(earlierAdded), ['2026-07-01'])
+    close(earlierAdded.total_deductions, 2 * PER_DAY, 'the 3rd and the 24th are both charged now')
+  })
+
+  test('5. the deduction charged for every subsequent leave is unchanged', () => {
+    // What the later leaves cost must not have moved: each is one whole per-day
+    // rate, exactly as an absence outside the allowance always was.
+    const r = run(month({ 3: null, 13: null, 24: null }))
+    const later = toDeductionDays(r.day_results).filter(d => d.total_amount > 0)
+
+    assert.equal(later.length, 2)
+    for (const d of later) {
+      assert.equal(d.lines.length, 1)
+      assert.equal(d.lines[0].deduction_type, 'absent')
+      assert.equal(d.lines[0].waived_by, undefined, 'a charged day carries no waiver')
+      close(d.lines[0].amount_deducted, PER_DAY, `${d.date} costs one per-day rate`)
+      close(d.lines[0].explain!.gross_amount, PER_DAY, `${d.date} gross`)
+    }
+    close(r.net_salary, SALARY - 2 * PER_DAY, 'net salary')
+
+    // And an employee with no allowance at all is charged for every one of
+    // them, the earliest included — the rule picks a payer, it does not create
+    // an exemption.
+    const noAllowance = run([...JULY_WORKING_DAYS.slice(0, 8)].map(fullDay))
+    assert.deepEqual(coveredDates(noAllowance), [])
+  })
+
+  test('half days follow the same direction: the earliest pair is covered', () => {
+    // Three half days, a full day of allowance covering two of them. The two
+    // that cost nothing must be the first two.
+    const r = run(month({ 3: halfDay(3), 13: halfDay(13), 24: halfDay(24) }))
+
+    assert.equal(r.paid_leave_used, 1)
+    assert.deepEqual(coveredDates(r), ['2026-07-03', '2026-07-13'])
+    close(r.total_deductions, PER_DAY / 2, 'only the last half day is charged')
+
+    const charged = toDeductionDays(r.day_results).filter(d => d.total_amount > 0)
+    assert.deepEqual(charged.map(d => d.date), ['2026-07-24'])
+  })
+
+  test('the rule is stable across regeneration', () => {
+    const records = month({ 3: null, 13: null, 24: null })
+    const runs = [run(records), run(records), run(records)]
+    for (const r of runs) assert.deepEqual(coveredDates(r), ['2026-07-03'])
   })
 })
 

@@ -115,6 +115,32 @@ Punch-in 10:00 AM, punch-out 5:00 PM = 6.5 hours worked (excluding lunch) → **
 4. Any **full-day absence beyond the 1 paid leave** is deducted at the per-day-salary rate.
 5. **Two half-days** can be combined and adjusted as **1 paid leave**, but only if the employee has not already used their paid leave for the month.
 6. Half-days not covered by paid leave are deducted at **0.5 × per-day salary**.
+7. **Which leave is the paid one: the FIRST eligible leave of the payroll month, chronologically.**
+
+### Which leave the company pays for
+
+The monthly allowance is spent on the **earliest** item of the month it can
+cover. That item is charged **₹0** and stays visible on the Deductions tab,
+marked *Paid Leave · Company Paid*, so the month still adds up.
+
+> Leave on **3 August**, **12 August** and **24 August** →
+> **3 August is the company-paid leave**. The 12th and the 24th are ordinary
+> leave and are deducted at the rates above.
+
+"Earliest" means the **attendance date**, never the order the record was
+imported or the time it was created or corrected. Payroll is recalculated from
+attendance on every run, so re-importing a month, correcting a date inside it,
+or regenerating the period all produce the same answer; and if an *earlier*
+eligible day later appears (an admin restates the 1st as absent, say), the
+allowance moves to it, because the rule is a property of the month rather than
+a flag written on a row.
+
+The order in which the allowance is *applied* is unchanged: one absent day,
+then two half days, then one half day against a half-day allowance, then up to
+8.5 h of late / early / missing-punch deductions.
+
+Implemented in `assembleResult()` in `src/lib/payroll/engine.ts`; asserted in
+`src/lib/payroll/engine.companyPaidLeave.test.ts`.
 
 ---
 

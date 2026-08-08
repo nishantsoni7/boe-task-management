@@ -26,6 +26,7 @@ import {
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { useObjections } from '@/components/objections/useObjections'
 import { ObjectionReviewPanel } from '@/components/objections/ObjectionReviewPanel'
+import { issueChainKey } from '@/lib/objections'
 import { periodLabel } from '@/lib/payroll/months'
 import {
   PayrollDetailWorkspace,
@@ -212,6 +213,13 @@ export default function PayrollResultDetailPage() {
   // is already reviewing it.
   const objection = data?.result ? objections.byResult.get(data.result.id) : undefined
 
+  // Everything ever raised against this payslip, not just the current row — an
+  // employee may raise the matter again after a decision, and the admin
+  // deciding the repeat needs to see what was decided the first time.
+  const objectionChain = objection
+    ? objections.chains.get(issueChainKey(objection) ?? '')
+    : undefined
+
   return (
     <PayrollLayout
       profile={profile}
@@ -256,8 +264,10 @@ export default function PayrollResultDetailPage() {
           issuePanel={objection && (
             <ObjectionReviewPanel
               objection={objection}
+              chain={objectionChain}
               token={token}
               subjectLabel={periodLabel(data.period.payroll_month, data.period.payroll_year)}
+              employeeLabel={data.result.employee_name ?? 'Employee'}
               onReviewed={objections.reload}
             />
           )}

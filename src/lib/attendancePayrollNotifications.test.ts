@@ -1,5 +1,5 @@
 /**
- * The Attendance & Payroll issue feed — one shared category, admin only.
+ * The Attendance & Payroll issue feed — one shared category, both directions.
  *
  * The defect these cover: `attendance_issue_raised` and `payroll_issue_raised`
  * were being written to `notifications` correctly and were resolving to correct
@@ -54,7 +54,7 @@ const notif = (type: string, entityId: string | null = 'obj-1'): any => ({
 
 // ─── 1 & 2. The new category exists and holds exactly the two types ──────────
 
-describe('attendance_payroll is a real category with exactly two members', () => {
+describe('attendance_payroll is a real category with exactly four members', () => {
   test('1. it resolves as a valid category', () => {
     const r = resolveNotificationCategory('attendance_payroll')
     assert.equal(r.ok, true)
@@ -74,10 +74,22 @@ describe('attendance_payroll is a real category with exactly two members', () =>
       ['notifications', 'count', 'attendance_payroll'])
   })
 
-  test('2. the filter selects exactly the two issue types — no more, no fewer', () => {
+  test('2. the filter selects exactly the four issue types — no more, no fewer', () => {
     const selected = typesIn(getNotificationCategoryFilter('attendance_payroll'))
     assert.deepEqual(selected.sort(), [...ATTENDANCE_PAYROLL_NOTIFICATION_TYPES].sort())
-    assert.equal(selected.length, 2)
+    assert.equal(selected.length, 4)
+  })
+
+  test('2a. the feed carries both halves of the conversation', () => {
+    // A category that selects the raise but not the decision is the same defect
+    // this feed was created to fix, one step further along: the row exists and
+    // no screen can show it.
+    for (const t of [
+      'attendance_issue_raised', 'payroll_issue_raised',
+      'attendance_issue_reviewed', 'payroll_issue_reviewed',
+    ]) {
+      assert.ok((ATTENDANCE_PAYROLL_NOTIFICATION_TYPES as readonly string[]).includes(t), t)
+    }
   })
 
   test('2b. it is an enum IN filter, never a prefix LIKE', () => {
@@ -88,19 +100,39 @@ describe('attendance_payroll is a real category with exactly two members', () =>
     assert.equal(/like/i.test(filter), false)
   })
 
-  test('2c. the two types are the ones the objection route actually writes', () => {
+  test('2c. every type is one an objection route actually writes', () => {
     // If these drift, a notification is written with a type the feed does not
     // select — which is exactly the defect this feed exists to fix.
-    const route = read('src/app/api/objections/route.ts')
+    const raise  = read('src/app/api/objections/route.ts')
+    const review = read('src/app/api/objections/review/route.ts')
+    const emitted = `${raise}\n${review}`
     for (const t of ATTENDANCE_PAYROLL_NOTIFICATION_TYPES) {
-      assert.ok(route.includes(`'${t}'`), `${t} must be a type the raise path emits`)
+      assert.ok(emitted.includes(`'${t}'`), `${t} must be a type some objection path emits`)
+    }
+    // …and each half is emitted by the right route.
+    for (const t of ['attendance_issue_raised', 'payroll_issue_raised']) {
+      assert.ok(raise.includes(`'${t}'`), `${t} belongs to the raise path`)
+    }
+    for (const t of ['attendance_issue_reviewed', 'payroll_issue_reviewed']) {
+      assert.ok(review.includes(`'${t}'`), `${t} belongs to the review path`)
     }
   })
 
-  test('2d. and the ones the migration added to the enum', () => {
-    const migration = read('supabase/migrations/20260824000000_objection_notification_types.sql')
+  test('2d. and the ones the migrations added to the enum', () => {
+    const migrations = [
+      read('supabase/migrations/20260824000000_objection_notification_types.sql'),
+      read('supabase/migrations/20260825000000_objection_review_notification_types.sql'),
+    ].join('\n')
     for (const t of ATTENDANCE_PAYROLL_NOTIFICATION_TYPES) {
-      assert.ok(migration.includes(`ADD VALUE IF NOT EXISTS '${t}'`), t)
+      assert.ok(migrations.includes(`ADD VALUE IF NOT EXISTS '${t}'`), t)
+    }
+  })
+
+  test('2e. the review migration is additive only', () => {
+    const migration = read('supabase/migrations/20260825000000_objection_review_notification_types.sql')
+    for (const forbidden of ['DROP ', 'DELETE ', 'TRUNCATE', 'UPDATE ', 'ALTER TABLE']) {
+      assert.equal(migration.toUpperCase().includes(forbidden), false,
+        `the migration must not contain ${forbidden}`)
     }
   })
 })
@@ -208,47 +240,54 @@ function stubClient(answer: { data?: { role: string } | null; error?: { message:
   return client as any
 }
 
-describe('11. only an admin may consume the company-wide issue feed', () => {
-  test('the category is marked admin-only, and no other category is', () => {
-    assert.deepEqual([...ADMIN_ONLY_CATEGORIES], ['attendance_payroll'])
-    assert.equal(isAdminOnlyNotificationCategory('attendance_payroll'), true)
-    for (const c of ['task', 'finance', 'order', 'asset'] as const) {
+// The category was admin-only while every row of it was addressed to an admin.
+// Now that a decision notifies the employee who raised the issue, an employee
+// has rows of their own here, and a category gate would refuse a person their
+// own notification. What keeps one employee's rows away from another's is —
+// and always was — the `user_id = caller` pin on every endpoint.
+
+describe('11. the feed is row-scoped, not category-gated', () => {
+  test('no category is admin-only any more, and the predicate agrees', () => {
+    assert.deepEqual([...ADMIN_ONLY_CATEGORIES], [])
+    for (const c of ['task', 'finance', 'order', 'asset', 'attendance_payroll'] as const) {
       assert.equal(isAdminOnlyNotificationCategory(c), false, c)
     }
   })
 
-  test('an admin is allowed', async () => {
-    assert.equal(
-      await canReadNotificationCategory(stubClient({ data: { role: 'admin' } }), 'u1', 'attendance_payroll'),
-      true,
-    )
-  })
-
-  test('an employee and a manager are refused', async () => {
-    for (const role of ['member', 'manager']) {
+  test('an employee may now read their own attendance/payroll notifications', async () => {
+    // The whole point of the change: the one person waiting for an answer was
+    // the one person the feed refused.
+    for (const role of ['member', 'manager', 'admin']) {
       assert.equal(
         await canReadNotificationCategory(stubClient({ data: { role } }), 'u1', 'attendance_payroll'),
-        false, role,
+        true, role,
       )
     }
   })
 
-  test('it fails CLOSED — a missing profile or a broken lookup is not an admin', async () => {
-    assert.equal(
-      await canReadNotificationCategory(stubClient({ data: null }), 'u1', 'attendance_payroll'), false)
-    assert.equal(
-      await canReadNotificationCategory(stubClient({ error: { message: 'boom' } }), 'u1', 'attendance_payroll'), false)
-  })
-
-  test('the four open categories are answered without a role lookup at all', async () => {
-    for (const c of ['task', 'finance', 'order', 'asset'] as const) {
+  test('and it costs no users read, like every other open category', async () => {
+    for (const c of ['task', 'finance', 'order', 'asset', 'attendance_payroll'] as const) {
       const client = stubClient({ data: { role: 'member' } })
       assert.equal(await canReadNotificationCategory(client, 'u1', c), true, c)
       assert.equal(client.askedTable, '', `${c} must not cost a users read`)
     }
   })
 
-  test('all three category-scoped endpoints apply the gate', () => {
+  test('the gate still FAILS CLOSED for anything added to the list later', async () => {
+    // The machinery is kept, not deleted — so it has to still work. Asserted
+    // against the predicate directly, since no category uses it today.
+    const gated = async (answer: Parameters<typeof stubClient>[0]) =>
+      isAdminOnlyNotificationCategory('attendance_payroll')
+        ? canReadNotificationCategory(stubClient(answer), 'u1', 'attendance_payroll')
+        : null
+    assert.equal(await gated({ data: null }), null, 'not gated today, by design')
+
+    const access = read('src/lib/notificationAccess.ts')
+    assert.ok(access.includes('if (error)'), 'a broken lookup must not read as an admin')
+    assert.ok(access.includes("data?.role === 'admin'"), 'and a missing profile must not either')
+  })
+
+  test('all three category-scoped endpoints still apply the gate', () => {
     const list = read('src/app/api/notifications/route.ts')
     const mark = read('src/app/api/notifications/mark-read/route.ts')
     // GET (list + count) and DELETE (delete-all) are both in the list route.
@@ -268,16 +307,25 @@ describe('11. only an admin may consume the company-wide issue feed', () => {
     assert.equal(/\.select\('\*'\)/.test(code), false)
   })
 
-  test('the shared employee shell only offers the feed to an admin', () => {
-    // AttendanceLayout is also the shell for /my-attendance and /my-payroll, so
-    // an unguarded entry there would put an admin feed in front of an employee.
+  test('the shared shell sends each role to a door it can actually open', () => {
+    // AttendanceLayout is the shell for /attendance AND for /my-attendance,
+    // /my-payroll and /my-issues. /attendance/notifications is behind
+    // AttendanceGuard, so an employee pointed there would just be bounced.
     const layout = read('src/components/layout/AttendanceLayout.tsx')
-    const at = layout.indexOf('<NotificationsNavItem')
-    assert.notEqual(at, -1, 'the Attendance sidebar must offer the feed')
-    assert.ok(/\{isAdmin && \($/m.test(layout.slice(Math.max(0, at - 400), at)),
-      'the entry must sit inside an isAdmin branch')
-    assert.ok(layout.includes('useUnreadAttendancePayrollNotifications(isAdmin)'),
-      'and the count must not even be requested for an employee')
+    assert.ok(layout.includes("isAdmin ? '/attendance/notifications' : '/my-issues/notifications'"),
+      'the destination must branch on role')
+    assert.ok(layout.includes('useUnreadAttendancePayrollNotifications()'),
+      'and the count is now requested for everyone, because everyone can have rows')
+    assert.ok(layout.includes('<IssueNotificationBell'), 'the Attendance sidebar must offer the feed')
+  })
+
+  test('the employee door renders the same shared feed, not a second one', () => {
+    const page = read('src/app/my-issues/notifications/page.tsx')
+    assert.ok(page.includes('category="attendance_payroll"'), 'same category as both admin doors')
+    assert.ok(page.includes('NotificationsView'), 'same shared list')
+    for (const forbidden of ['useQuery', 'fetch(', 'createClient', 'useState']) {
+      assert.equal(page.includes(forbidden), false, `a second notification implementation: ${forbidden}`)
+    }
   })
 })
 
@@ -341,7 +389,11 @@ describe('Attendance and Payroll open the same feed, not two of them', () => {
 
   test('both sidebars read one count hook, so the two badges cannot disagree', () => {
     for (const p of ['src/components/layout/AttendanceLayout.tsx', 'src/components/layout/PayrollLayout.tsx']) {
-      assert.ok(read(p).includes('useUnreadAttendancePayrollNotifications'), p)
+      const src = read(p)
+      assert.ok(src.includes('useUnreadAttendancePayrollNotifications'), p)
+      // …and the same two-state bell, so neither shell can look inert while
+      // the other is counting.
+      assert.ok(src.includes('<IssueNotificationBell'), `${p} must use the shared bell`)
     }
     // Same category ⇒ same query key ⇒ one fetch shared by both shells.
     assert.deepEqual(

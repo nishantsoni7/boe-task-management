@@ -19,14 +19,30 @@ import { REASON_MAX_LENGTH } from '@/lib/objections'
 export type RaiseIssueSubject = {
   /** "20 July, Mon" or "July 2026" — what the employee is objecting to. */
   title: string
-  /** The figures or punches as they stand. Read-only, never editable. */
+  /**
+   * The figures or punches as they stand. Read-only, never editable.
+   *
+   * Empty when the record has not been chosen yet — the dedicated issues page
+   * opens this modal with nothing selected, so there is nothing yet to quote.
+   */
   summary: string
 }
 
 export function RaiseIssueModal({
-  subject, onClose, onSubmit,
+  subject, targetPicker, targetChosen = true, onClose, onSubmit,
 }: {
   subject: RaiseIssueSubject
+  /**
+   * Controls for choosing WHICH record this is about.
+   *
+   * Present only on the dedicated issues page, which is reached without a
+   * record already in hand. /my-attendance and /my-payroll open this modal from
+   * a row, so the target is already settled and this stays undefined — the form
+   * an employee sees there is unchanged.
+   */
+  targetPicker?: React.ReactNode
+  /** False while the picker has no selection; blocks submit without hiding it. */
+  targetChosen?: boolean
   onClose: () => void
   /** Resolves to an error message, or null when the issue was filed. */
   onSubmit: (reason: string) => Promise<string | null>
@@ -38,7 +54,7 @@ export function RaiseIssueModal({
   const trimmed = reason.trim()
 
   const submit = async () => {
-    if (!trimmed || saving) return
+    if (!trimmed || !targetChosen || saving) return
     setSaving(true)
     setError(null)
     const message = await onSubmit(trimmed)
@@ -55,21 +71,26 @@ export function RaiseIssueModal({
     >
       {error && <PayrollModalError message={error} />}
 
-      {/* What they are objecting to, exactly as the screen shows it. */}
-      <div style={{
-        background: colors.raised, border: `1px solid ${colors.border}`,
-        borderRadius: 10, padding: '11px 14px', flexShrink: 0,
-      }}>
+      {targetPicker}
+
+      {/* What they are objecting to, exactly as the screen shows it. Hidden
+          until a record is chosen — an empty "As recorded" box states nothing. */}
+      {subject.summary && (
         <div style={{
-          fontSize: 11, fontWeight: 600, color: colors.muted,
-          textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4,
+          background: colors.raised, border: `1px solid ${colors.border}`,
+          borderRadius: 10, padding: '11px 14px', flexShrink: 0,
         }}>
-          As recorded
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: colors.muted,
+            textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4,
+          }}>
+            As recorded
+          </div>
+          <div style={{ fontSize: 13, color: '#111318', lineHeight: 1.5 }}>
+            {subject.summary}
+          </div>
         </div>
-        <div style={{ fontSize: 13, color: '#111318', lineHeight: 1.5 }}>
-          {subject.summary}
-        </div>
-      </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
         <label htmlFor="objection-reason" style={{
@@ -100,7 +121,7 @@ export function RaiseIssueModal({
         onSave={submit}
         saving={saving}
         saveLabel="Submit issue"
-        disabled={!trimmed}
+        disabled={!trimmed || !targetChosen}
       />
     </PayrollModal>
   )

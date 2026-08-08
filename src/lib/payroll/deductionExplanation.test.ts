@@ -164,8 +164,10 @@ describe('every deduction type explains itself from engine values', () => {
   })
 
   test('absent: charged as a whole day at the daily rate', () => {
+    // Two absences, and the month's allowance settles the EARLIER one — so the
+    // day that carries a real charge is 22 July, not 21.
     const r = run(month({ 21: null, 22: null }))
-    const day = dayOf(r, '2026-07-21')
+    const day = dayOf(r, '2026-07-22')
     const [item] = explainDay(day.lines)
 
     assert.equal(item.title, 'Absent')
@@ -193,7 +195,7 @@ describe('every deduction type explains itself from engine values', () => {
 
     assert.equal(item.title, 'Paid Leave · Company Paid')
     assert.equal(item.companyPaid, true)
-    assert.match(item.rule, /first paid leave earned this month is covered by BOE/)
+    assert.match(item.rule, /first paid leave of the month — the earliest one by date — is covered by BOE/)
 
     // Three steps: what the rule charged, the allowance cancelling it, ₹0.
     const gross = item.calculation.find(c => c.label.startsWith('× 1 day'))

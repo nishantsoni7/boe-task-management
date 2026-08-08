@@ -9,7 +9,7 @@
 // issue on the payslip has been told two different things.
 
 import { useCallback, useEffect, useState } from 'react'
-import type { ObjectionRow } from '@/lib/objections'
+import { groupIssueChains, type ObjectionRow } from '@/lib/objections'
 
 export type ObjectionIndex = {
   all: ObjectionRow[]
@@ -17,6 +17,15 @@ export type ObjectionIndex = {
   byResult: Map<string, ObjectionRow>
   /** Newest objection per attendance date. */
   byDate: Map<string, ObjectionRow>
+  /**
+   * Every attempt against one record, oldest first, keyed by issueChainKey().
+   *
+   * An employee may raise the same matter again once a decision has been made,
+   * so "the objection on this payslip" and "everything said about this payslip"
+   * are two different lists. The badges above read the first; History reads
+   * this.
+   */
+  chains: Map<string, ObjectionRow[]>
   loading: boolean
   error: string | null
   reload: () => Promise<void>
@@ -47,5 +56,5 @@ export function useObjections(token: string): ObjectionIndex {
     if (o.attendance_date   && !byDate.has(o.attendance_date))     byDate.set(o.attendance_date, o)
   }
 
-  return { all, byResult, byDate, loading, error, reload }
+  return { all, byResult, byDate, chains: groupIssueChains(all), loading, error, reload }
 }

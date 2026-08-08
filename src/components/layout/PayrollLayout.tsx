@@ -7,7 +7,7 @@ import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
-import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import { IssueNotificationBell } from '@/components/layout/IssueNotificationBell'
 import { useUnreadAttendancePayrollNotifications } from '@/hooks/queries/useUnreadNotifications'
 
 type PayrollLayoutProps = {
@@ -122,15 +122,16 @@ export function PayrollLayout({
             )
           })}
 
-          {/* The Payroll door into the shared Attendance & Payroll issue feed.
-              Same rows and same count as the Attendance sidebar's entry — see
-              /payroll/notifications. */}
-          <NotificationsNavItem
-            onNavigate={() => setSidebarOpen(false)}
-            count={unreadIssues}
-            href="/payroll/notifications"
-          />
         </div>
+
+        {/* The Payroll door into the shared Attendance & Payroll issue feed.
+            Same rows, same count and now the same two-state bell as the
+            Attendance sidebar — see /payroll/notifications. */}
+        <IssueNotificationBell
+          unread={unreadIssues}
+          href="/payroll/notifications"
+          onNavigate={() => setSidebarOpen(false)}
+        />
 
         {/* Bottom profile section */}
         <ViewModeSidebarSection

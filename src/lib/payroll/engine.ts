@@ -621,6 +621,19 @@ type AssembleParams = {
   corrections: AttendanceDayCorrection[]
 }
 
+/**
+ * Days in calendar order, by DATE — never by the order they arrived.
+ *
+ * The working-day calendar is already built 1..N, so `dayResults` is in date
+ * order and this is a no-op today. It is stated anyway because the company-paid
+ * leave rule below turns on "earliest", and a rule that says "earliest" must not
+ * silently depend on a caller having sorted its attendance import. ISO dates
+ * sort lexicographically, so a string compare IS a chronological compare.
+ */
+function byChronology(days: DayResult[]): DayResult[] {
+  return [...days].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+}
+
 const HOURLY_DEDUCTION_TYPES = new Set<string>([
   'late_arrival',
   'early_checkout',
@@ -641,22 +654,33 @@ function assembleResult(p: AssembleParams): EngineResult {
   )
 
   // Absent-day deduction lines — one per full_absent day.
-  // The first `remaining_absent_days` carry the monetary deduction; the rest were
-  // covered by the month's paid leave and are marked as such rather than merely
-  // zeroed. That mark is what keeps the day on the Deductions tab: a ₹0 line with
-  // no reason attached is indistinguishable from a day that had no deduction at
-  // all, and the date used to vanish from the payroll detail entirely.
-  const absentDays = p.dayResults.filter(d => d.classification === 'full_absent')
+  //
+  // The month's allowance settles the EARLIEST eligible day and the rest are
+  // charged. That direction is the business rule, not a display preference: the
+  // first leave of the month is the one on the company, so an employee who is
+  // absent on the 3rd and again on the 24th has the 3rd covered.
+  //
+  // (It used to run the other way — `i < remaining_absent_days` charged the
+  // leading days and waived the trailing one — which made the LAST absence of
+  // the month the company-paid one.)
+  //
+  // A waived line is MARKED, not merely zeroed. That mark is what keeps the day
+  // on the Deductions tab: a ₹0 line with no reason attached is
+  // indistinguishable from a day that had no deduction at all, and the date used
+  // to vanish from the payroll detail entirely.
+  const absentDays = byChronology(p.dayResults.filter(d => d.classification === 'full_absent'))
+  const absorbedAbsentDays = absentDays.length - p.leaveState.remaining_absent_days
   const absentLines: PendingDeductionLine[] = absentDays.map((day, i) => {
     const line = dayLine(day.date, 'absent', p.rates)
-    return i < p.leaveState.remaining_absent_days ? line : waivedByPaidLeave(line)
+    return i < absorbedAbsentDays ? waivedByPaidLeave(line) : line
   })
 
-  // Half-day deduction lines — one per half_day, same rule.
-  const halfDays = p.dayResults.filter(d => d.classification === 'half_day')
+  // Half-day deduction lines — one per half_day, same rule, same direction.
+  const halfDays = byChronology(p.dayResults.filter(d => d.classification === 'half_day'))
+  const absorbedHalfDays = halfDays.length - p.leaveState.remaining_half_days
   const halfDayLines: PendingDeductionLine[] = halfDays.map((day, i) => {
     const line = dayLine(day.date, 'half_day', p.rates)
-    return i < p.leaveState.remaining_half_days ? line : waivedByPaidLeave(line)
+    return i < absorbedHalfDays ? waivedByPaidLeave(line) : line
   })
 
   const deduction_lines: PendingDeductionLine[] = [...absentLines, ...halfDayLines, ...hourlyLines]

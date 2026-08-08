@@ -11,24 +11,39 @@
 
 import { useState } from 'react'
 import { colors } from '@/lib/tokens'
+import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
 import { employeeStatusLabel, statusTone, type ObjectionRow } from '@/lib/objections'
 
 export function ObjectionReviewPanel({
-  objection, token, onReviewed, subjectLabel,
+  objection, chain, token, onReviewed, subjectLabel, employeeLabel,
 }: {
   objection: ObjectionRow
+  /**
+   * Every attempt against this record, oldest first — this one included.
+   *
+   * Present when the caller has the whole list to hand. A re-raise is a NEW
+   * row, so without it the panel would show the latest complaint with no sign
+   * that the same matter was already decided once.
+   */
+  chain?: ObjectionRow[]
   /** Bearer token of the signed-in admin. */
   token: string
   onReviewed: () => void | Promise<void>
   /** "07 Aug 2026" or "July 2026" — what the issue is against. */
   subjectLabel: string
+  /** Whose issue this is, for the history trail. */
+  employeeLabel?: string
 }) {
+  const [showHistory, setShowHistory] = useState(false)
   const [busy,  setBusy]  = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [note,  setNote]  = useState('')
 
   const pending = objection.status === 'pending'
   const tone    = statusTone(objection.status)
+  // The chain when the caller supplied one, otherwise just this row — the
+  // history is always openable, and a single-attempt trail is still a trail.
+  const history = chain?.length ? chain : [objection]
 
   const review = async (status: 'approved' | 'rejected') => {
     // A rejection with no word back is a dead end for the employee, so it is
@@ -63,13 +78,28 @@ export function ObjectionReviewPanel({
       }}>
         <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318' }}>
           Employee reported an issue · {subjectLabel}
+          {history.length > 1 && (
+            <span style={{ fontWeight: 500, color: colors.muted }}>
+              {' · '}attempt {history.length}
+            </span>
+          )}
         </div>
-        <span style={{
-          padding: '2px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600,
-          background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
-        }}>
-          {employeeStatusLabel(objection.status)}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setShowHistory(true)}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '3px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+          >
+            View History
+          </button>
+          <span style={{
+            padding: '2px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: 600,
+            background: tone.bg, color: tone.fg, whiteSpace: 'nowrap',
+          }}>
+            {employeeStatusLabel(objection.status)}
+          </span>
+        </div>
       </div>
 
       <div style={{ padding: '12px 16px' }}>
@@ -126,6 +156,14 @@ export function ObjectionReviewPanel({
           </div>
         )}
       </div>
+
+      {showHistory && (
+        <IssueHistoryModal
+          chain={history}
+          employeeLabel={employeeLabel ?? 'Employee'}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   )
 }

@@ -22,11 +22,15 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istClockOf } from '@/lib/istDate'
 import { colors } from '@/lib/tokens'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
+import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
 import {
   employeeStatusLabel,
   statusTone as objectionTone,
   ownAttendanceObjections,
   objectionsByAttendanceDate,
+  canRaiseIssue,
+  raiseActionLabel,
+  groupIssueChains,
   type ObjectionRow,
 } from '@/lib/objections'
 import {
@@ -123,6 +127,7 @@ export default function MyAttendancePage() {
   const [coverageThrough, setCoverageThrough] = useState<string | null>(null)
   const [objections, setObjections] = useState<ObjectionRow[]>([])
   const [issueDay,   setIssueDay]   = useState<MyDayRow | null>(null)
+  const [historyDate, setHistoryDate] = useState<string | null>(null)
   const [year,    setYear]    = useState(nowIst.year)
   const [month,   setMonth]   = useState(nowIst.month)
   const [loading, setLoading] = useState(true)
@@ -183,6 +188,21 @@ export default function MyAttendancePage() {
 
   /** The newest objection per date — what the row badge reflects. */
   const objectionByDate = useMemo(() => objectionsByAttendanceDate(objections), [objections])
+
+  /**
+   * Every attempt against each date, oldest first — what "View History" shows.
+   *
+   * The badge above answers "where does this stand"; this answers "what has
+   * happened", which after a re-raise are two different questions.
+   */
+  const chainsByDate = useMemo(() => {
+    const byDate = new Map<string, ObjectionRow[]>()
+    for (const chain of groupIssueChains(objections).values()) {
+      const date = chain[0].attendance_date
+      if (date) byDate.set(date, chain)
+    }
+    return byDate
+  }, [objections])
 
   const submitIssue = async (date: string, reason: string): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -412,30 +432,48 @@ export default function MyAttendancePage() {
                     )}
                   </td>
                   {/* Quiet by design: reporting a problem is rare, so the
-                      control should not compete with the day's own figures. */}
+                      control should not compete with the day's own figures.
+
+                      The status and the action are shown TOGETHER once a day
+                      has been reported. Showing only the badge is what left an
+                      employee with no way back after a decision — a rejected
+                      issue looked like a permanent verdict on the row. */}
                   <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                    {objection ? (
-                      <span
-                        title={objection.review_note ?? undefined}
-                        style={{
-                          display: 'inline-block', padding: '2px 10px', borderRadius: 20,
-                          fontSize: 11.5, fontWeight: 600,
-                          background: objectionTone(objection.status).bg,
-                          color: objectionTone(objection.status).fg,
-                        }}
-                      >
-                        {employeeStatusLabel(objection.status)}
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setIssueDay(r)}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '3px 10px', fontSize: 12 }}
-                      >
-                        Raise Issue
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      {objection && (
+                        <>
+                          <span
+                            title={objection.review_note ?? undefined}
+                            style={{
+                              display: 'inline-block', padding: '2px 10px', borderRadius: 20,
+                              fontSize: 11.5, fontWeight: 600,
+                              background: objectionTone(objection.status).bg,
+                              color: objectionTone(objection.status).fg,
+                            }}
+                          >
+                            {employeeStatusLabel(objection.status)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setHistoryDate(r.attendance_date)}
+                            className="boe-btn boe-btn-ghost"
+                            style={{ padding: '3px 10px', fontSize: 12 }}
+                          >
+                            History
+                          </button>
+                        </>
+                      )}
+                      {canRaiseIssue(objection) && (
+                        <button
+                          type="button"
+                          onClick={() => setIssueDay(r)}
+                          className="boe-btn boe-btn-ghost"
+                          style={{ padding: '3px 10px', fontSize: 12 }}
+                        >
+                          {raiseActionLabel(objection)}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )
@@ -459,7 +497,10 @@ export default function MyAttendancePage() {
           : ''}
         Something look wrong? Use <strong>Raise Issue</strong> on that day. An admin
         reviews it — raising an issue does not change your attendance or salary by
-        itself. Applied corrections show as <strong>Corrected</strong>.
+        itself. Applied corrections show as <strong>Corrected</strong>. Once an admin
+        has resolved or rejected an issue you can raise it again; every earlier
+        submission and reply stays under <strong>History</strong>, and all of them are
+        listed on <strong>My Issues</strong>.
       </div>
       )}
 
@@ -471,6 +512,14 @@ export default function MyAttendancePage() {
           }}
           onClose={() => setIssueDay(null)}
           onSubmit={reason => submitIssue(issueDay.attendance_date, reason)}
+        />
+      )}
+
+      {historyDate && chainsByDate.get(historyDate) && (
+        <IssueHistoryModal
+          chain={chainsByDate.get(historyDate)!}
+          employeeLabel="You"
+          onClose={() => setHistoryDate(null)}
         />
       )}
     </AttendanceLayout>

@@ -14,9 +14,16 @@
 // separation is enforced in the database: review_employee_record_objection()
 // touches four columns of one row and cannot reach attendance or payroll.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { colors } from '@/lib/tokens'
-import { employeeStatusLabel, statusTone, type ObjectionRow } from '@/lib/objections'
+import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
+import {
+  employeeStatusLabel,
+  statusTone,
+  groupIssueChains,
+  issueChainKey,
+  type ObjectionRow,
+} from '@/lib/objections'
 
 type Subject = 'attendance' | 'payroll'
 
@@ -35,6 +42,7 @@ export function ObjectionQueue({
   const [loading, setLoading] = useState(true)
   const [busyId,  setBusyId]  = useState<string | null>(null)
   const [error,   setError]   = useState<string | null>(null)
+  const [historyKey, setHistoryKey] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!token) return
@@ -72,6 +80,14 @@ export function ObjectionQueue({
   }
 
   const pending = rows.filter(r => r.status === 'pending')
+
+  // An employee may raise the same matter again after a decision, so a row in
+  // this queue can be the second or third attempt at one record. The admin
+  // deciding it needs the earlier decisions in front of them — otherwise the
+  // same reason gets rejected twice for reasons nobody can see.
+  const chains = useMemo(() => groupIssueChains(rows), [rows])
+  const historyChain = historyKey ? chains.get(historyKey) : undefined
+  const employeeOfChain = historyChain?.[0]?.employee?.full_name ?? 'Employee'
 
   if (loading) return null
   if (rows.length === 0) return null
@@ -161,32 +177,49 @@ export function ObjectionQueue({
                     </span>
                   </td>
                   <td style={{ padding: '10px 16px', whiteSpace: 'nowrap' }}>
-                    {r.status === 'pending' && (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          onClick={() => void review(r.id, 'approved')}
-                          disabled={busyId === r.id}
-                          className="boe-btn boe-btn-ghost"
-                          style={{ padding: '3px 10px', fontSize: 12 }}
-                        >
-                          Resolve
-                        </button>
-                        <button
-                          onClick={() => void review(r.id, 'rejected')}
-                          disabled={busyId === r.id}
-                          className="boe-btn boe-btn-ghost"
-                          style={{ padding: '3px 10px', fontSize: 12 }}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {r.status === 'pending' && (
+                        <>
+                          <button
+                            onClick={() => void review(r.id, 'approved')}
+                            disabled={busyId === r.id}
+                            className="boe-btn boe-btn-ghost"
+                            style={{ padding: '3px 10px', fontSize: 12 }}
+                          >
+                            Resolve
+                          </button>
+                          <button
+                            onClick={() => void review(r.id, 'rejected')}
+                            disabled={busyId === r.id}
+                            className="boe-btn boe-btn-ghost"
+                            style={{ padding: '3px 10px', fontSize: 12 }}
+                          >
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => setHistoryKey(issueChainKey(r))}
+                        className="boe-btn boe-btn-ghost"
+                        style={{ padding: '3px 10px', fontSize: 12 }}
+                      >
+                        History
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {historyChain && (
+        <IssueHistoryModal
+          chain={historyChain}
+          employeeLabel={employeeOfChain}
+          onClose={() => setHistoryKey(null)}
+        />
       )}
     </div>
   )

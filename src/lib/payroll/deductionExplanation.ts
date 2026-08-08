@@ -185,7 +185,7 @@ export function explainLine(line: ExplainableLine, index = 0): ExplainedDeductio
   const companyPaid = line.waived_by === 'paid_leave'
 
   const rule = companyPaid
-    ? 'The first paid leave earned this month is covered by BOE. '
+    ? 'The first paid leave of the month — the earliest one by date — is covered by BOE. '
       + `${ruleSentence(line, e)} That cost is charged to the company, not to this salary.`
     : ruleSentence(line, e)
 

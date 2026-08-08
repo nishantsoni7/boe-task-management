@@ -1,0 +1,48 @@
+-- Notification types for the ADMIN'S DECISION on an employee-raised issue.
+--
+-- THE DEFECT
+-- ----------
+-- 20260824000000 added the two "an employee raised something" types, and
+-- /api/objections writes one to every admin. Nothing was ever written back. An
+-- admin could resolve an issue and the employee who raised it was told
+-- nothing — they had to remember to go back and look at the row. The only
+-- person actually waiting for an answer was the only person not notified.
+--
+-- WHY A MIGRATION IS UNAVOIDABLE
+-- ------------------------------
+-- `notifications.type` is the strict enum `notification_type`. An insert with a
+-- value the enum does not carry fails, and the notify path is deliberately
+-- fire-and-forget (a notification must never fail the review that produced it),
+-- so that failure would be silent — exactly the bug this fixes, in a new place.
+--
+-- APPLY THIS BEFORE DEPLOYING THE CODE. Not a precaution — measured against the
+-- linked project with the migration unapplied:
+--
+--   ATTENDANCE_PAYROLL_NOTIFICATION_TYPES now names these two values, and the
+--   category filter is `type.in.(…)` over all four. PostgREST rejects the whole
+--   filter with 22P02 "invalid input value for enum notification_type" the
+--   moment one member does not exist — so the LIST request 500s and the
+--   HEAD/count request swallows the error and reports nothing.
+--
+-- The consequence of the wrong order is therefore not "the new notification is
+-- missing"; it is that the ENTIRE Attendance & Payroll feed stops loading, for
+-- admins included. Same contract as 20260824000000, one step stricter.
+--
+-- Two values, not four. The OUTCOME (resolved / rejected) lives in the
+-- notification title, where the employee reads it; splitting the enum by
+-- outcome would double the values for no routing difference — both land on the
+-- same issue, on the same page.
+--
+-- Purely ADDITIVE, in the same shape as 20260694000000 and 20260824000000: two
+-- enum values, nothing else. No table, no column, no policy, no permission, no
+-- existing behaviour is touched. `ADD VALUE IF NOT EXISTS` makes it idempotent,
+-- and the new values are not referenced within this migration, so PG never
+-- needs them committed mid-transaction.
+--
+-- Read by getNotificationMeta() in src/lib/notificationMeta.ts, which routes
+-- both to the employee's own issue on /my-issues, and listed in
+-- ATTENDANCE_PAYROLL_NOTIFICATION_TYPES so the shared feed actually selects
+-- them — a row belonging to no category is a row no screen can show.
+
+ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'attendance_issue_reviewed';
+ALTER TYPE notification_type ADD VALUE IF NOT EXISTS 'payroll_issue_reviewed';
