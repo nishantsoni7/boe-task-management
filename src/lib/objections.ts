@@ -68,6 +68,60 @@ export function payrollObjectionHref(o: AdminObjectionRow): string | null {
   return `/payroll/results/${r.payroll_period_id}/${r.employee_id}`
 }
 
+// ─── Matching an objection to the row it belongs on ──────────────────────────
+//
+// An attendance objection is keyed by DATE, and a date is not a person. Every
+// employee has an 11 July, so "the objection for 11 July" is only a sentence
+// once you have said whose 11 July — and the self-service screen had not.
+//
+// It looked correct because /api/objections pins a non-admin to their own rows,
+// so for an ordinary employee the list already contained nobody else. An ADMIN
+// gets the company-wide queue from that same endpoint, and their own
+// /my-attendance then borrowed a colleague's badge for any date they shared:
+// one employee's pending issue on 11 July appeared as "Issue Pending" on the
+// admin's own 11 July row, which is a false statement about the admin's record.
+//
+// Fixed HERE rather than in the API, because the admin queue legitimately needs
+// every employee's objections — it is the screen that reviews them. What was
+// wrong was reading a company-wide list as if it were a personal one.
+//
+// The payroll half never had this: it keys on payroll_result_id, and a result
+// belongs to exactly one employee, so a colleague's objection can never match a
+// row on your own payslip list.
+
+/**
+ * The viewer's OWN attendance objections, in the order given.
+ *
+ * Both halves of the rule are load-bearing: the employee id is what stops a
+ * colleague's issue appearing, and `attendance_date` is what keeps payroll
+ * objections out of a list of days. An empty viewer id yields nothing rather
+ * than everything — an unknown viewer must not inherit the whole company's.
+ */
+export function ownAttendanceObjections<
+  T extends { employee_id: string; attendance_date: string | null },
+>(rows: readonly T[], employeeId: string): T[] {
+  if (!employeeId) return []
+  return rows.filter(o => !!o.attendance_date && o.employee_id === employeeId)
+}
+
+/**
+ * Newest objection per attendance date, for the row badges.
+ *
+ * Expects rows already newest-first (the API orders by created_at desc), so the
+ * first hit for a date is the current one. Scope this to one employee with
+ * ownAttendanceObjections() first — this function knows nothing about whose
+ * days it is indexing.
+ */
+export function objectionsByAttendanceDate<T extends { attendance_date: string | null }>(
+  rows: readonly T[],
+): Map<string, T> {
+  const byDate = new Map<string, T>()
+  for (const o of rows) {
+    if (o.attendance_date && !byDate.has(o.attendance_date)) byDate.set(o.attendance_date, o)
+  }
+  return byDate
+}
+
 export function isObjectionStatus(v: unknown): v is ObjectionStatus {
   return typeof v === 'string' && (OBJECTION_STATUSES as readonly string[]).includes(v)
 }
