@@ -22,7 +22,13 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istClockOf } from '@/lib/istDate'
 import { colors } from '@/lib/tokens'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
-import { employeeStatusLabel, statusTone as objectionTone, type ObjectionRow } from '@/lib/objections'
+import {
+  employeeStatusLabel,
+  statusTone as objectionTone,
+  ownAttendanceObjections,
+  objectionsByAttendanceDate,
+  type ObjectionRow,
+} from '@/lib/objections'
 import {
   istCurrentYearMonth,
   selectableMonthsInYear,
@@ -142,8 +148,10 @@ export default function MyAttendancePage() {
 
     const [detailRes, objRes] = await Promise.all([
       fetch(`/api/attendance/employee-monthly-detail?${params}`, { headers: auth }),
-      // Own objections. The route pins a non-admin to their own rows, so this
-      // asks for no id and could not use one.
+      // The objection list. Asks for no id and could not use one — a non-admin
+      // is pinned to their own rows by the route. An ADMIN, however, gets the
+      // company-wide review queue back from this same endpoint, which is why
+      // the answer is scoped to this viewer below rather than trusted whole.
       fetch('/api/objections', { headers: auth }),
     ])
 
@@ -163,19 +171,18 @@ export default function MyAttendancePage() {
 
     if (objRes.ok) {
       const { objections } = await objRes.json()
-      setObjections((objections ?? []).filter((o: ObjectionRow) => o.attendance_date))
+      // THIS viewer's own attendance objections, and nobody else's. A date is
+      // not a person: every employee has an 11 July, so an admin reading the
+      // company-wide queue would otherwise show a colleague's issue as a badge
+      // on their own day. Scoped at the boundary so the state below can only
+      // ever hold rows that belong on this page.
+      setObjections(ownAttendanceObjections<ObjectionRow>(objections ?? [], session.user.id))
     }
     setBusy(false)
   }, [supabase, router])
 
   /** The newest objection per date — what the row badge reflects. */
-  const objectionByDate = useMemo(() => {
-    const m = new Map<string, ObjectionRow>()
-    for (const o of objections) {
-      if (o.attendance_date && !m.has(o.attendance_date)) m.set(o.attendance_date, o)
-    }
-    return m
-  }, [objections])
+  const objectionByDate = useMemo(() => objectionsByAttendanceDate(objections), [objections])
 
   const submitIssue = async (date: string, reason: string): Promise<string | null> => {
     const { data: { session } } = await supabase.auth.getSession()

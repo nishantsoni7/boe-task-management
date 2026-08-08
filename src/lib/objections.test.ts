@@ -11,6 +11,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   validateObjectionInput,
   attendanceSnapshot,
@@ -18,7 +20,10 @@ import {
   employeeStatusLabel,
   isObjectionStatus,
   isReviewableStatus,
+  ownAttendanceObjections,
+  objectionsByAttendanceDate,
   REASON_MAX_LENGTH,
+  type ObjectionRow,
 } from './objections'
 
 describe('validateObjectionInput — exactly one target', () => {
@@ -151,5 +156,112 @@ describe('snapshots describe, they do not compute', () => {
     assert.match(s, /period unknown/)
     assert.match(s, /—/)
     assert.equal(/₹0\.00/.test(s), false, 'a missing amount must never read as zero')
+  })
+})
+
+// ─── Whose 11 July is it? ─────────────────────────────────────────────────────
+//
+// An attendance objection is keyed by DATE, and a date is not a person. The
+// self-service page matched badges on date alone, which was invisible for an
+// ordinary employee (the API pins them to their own rows) and wrong for an
+// ADMIN, who gets the company-wide review queue from that same endpoint: one
+// employee's pending issue on 11 July showed as "Issue Pending" on the admin's
+// own 11 July row — a false statement about the admin's attendance.
+
+const A = 'employee-a'
+const B = 'employee-b'
+
+const objection = (
+  employee_id: string,
+  attendance_date: string | null,
+  extra: Partial<ObjectionRow> = {},
+): ObjectionRow => ({
+  id: `${employee_id}-${attendance_date}-${extra.status ?? 'pending'}`,
+  employee_id,
+  attendance_date,
+  payroll_result_id: null,
+  reason: 'looks wrong',
+  subject_snapshot: 'snapshot',
+  status: 'pending',
+  reviewed_by: null,
+  reviewed_at: null,
+  review_note: null,
+  created_at: '2026-08-08T00:00:00Z',
+  ...extra,
+})
+
+describe('an attendance badge belongs to one employee AND one date', () => {
+  // The company-wide answer an admin gets back from /api/objections.
+  const adminQueue: ObjectionRow[] = [
+    objection(B, '2026-07-11'),
+    objection(A, '2026-07-11'),
+    objection(A, '2026-07-20', { status: 'approved' }),
+    objection(B, '2026-07-22'),
+    { ...objection(A, null), payroll_result_id: 'res-1' },
+  ]
+
+  test('1. A own objection on 11 July appears on A row', () => {
+    const mine = objectionsByAttendanceDate(ownAttendanceObjections(adminQueue, A))
+    assert.equal(mine.get('2026-07-11')?.employee_id, A)
+  })
+
+  test('2. B objection on the SAME date does not appear on A row', () => {
+    const mine = ownAttendanceObjections(adminQueue, A)
+    assert.equal(mine.some(o => o.employee_id === B), false, 'a colleague row must never survive the filter')
+
+    // And with B first in the list — the ordering that produced the bug, since
+    // a date-keyed map takes whichever row it meets first.
+    const byDate = objectionsByAttendanceDate(ownAttendanceObjections(adminQueue, A))
+    assert.notEqual(byDate.get('2026-07-11')?.employee_id, B)
+  })
+
+  test('3. an admin viewing their own page inherits nobody else badge', () => {
+    // The observed case: the only objection for 22 July belongs to B, so the
+    // admin's own 22 July row must have no badge at all.
+    const mine = objectionsByAttendanceDate(ownAttendanceObjections(adminQueue, A))
+    assert.equal(mine.has('2026-07-22'), false, 'a date only a colleague objected to must stay blank')
+    assert.deepEqual([...mine.keys()].sort(), ['2026-07-11', '2026-07-20'])
+  })
+
+  test('4. an ordinary employee sees exactly what they saw before', () => {
+    // Their API answer is already pinned to them, so the filter is a no-op —
+    // the fix must not take anything away from the case that already worked.
+    const ownOnly = adminQueue.filter(o => o.employee_id === A)
+    assert.deepEqual(ownAttendanceObjections(ownOnly, A), ownOnly.filter(o => o.attendance_date))
+    const byDate = objectionsByAttendanceDate(ownAttendanceObjections(ownOnly, A))
+    assert.equal(byDate.get('2026-07-20')?.status, 'approved', 'a resolved issue still shows as resolved')
+  })
+
+  test('5. the filter is page-level — the queue it reads is left whole', () => {
+    const before = JSON.stringify(adminQueue)
+    ownAttendanceObjections(adminQueue, A)
+    assert.equal(JSON.stringify(adminQueue), before, 'filtering must not mutate the company-wide list')
+    assert.equal(adminQueue.filter(o => o.employee_id === B).length, 2,
+      'the admin queue still carries every employee — that is what it is for')
+  })
+
+  test('6. payroll objections are not days, and an unknown viewer gets nothing', () => {
+    // A payroll objection has no attendance_date and must never reach a day row.
+    assert.equal(ownAttendanceObjections(adminQueue, A).some(o => o.payroll_result_id), false)
+    // Fails closed: no viewer id means no badges, never everybody's.
+    assert.deepEqual(ownAttendanceObjections(adminQueue, ''), [])
+  })
+
+  test('the newest objection per date wins, and only among the viewer own', () => {
+    const rows = [
+      objection(B, '2026-07-11', { status: 'rejected' }),
+      objection(A, '2026-07-11', { status: 'approved' }),   // newest of A
+      objection(A, '2026-07-11', { status: 'pending', id: 'older' }),
+    ]
+    const byDate = objectionsByAttendanceDate(ownAttendanceObjections(rows, A))
+    assert.equal(byDate.get('2026-07-11')?.status, 'approved')
+  })
+
+  test('the self-service page scopes at the boundary, not at the badge', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/my-attendance/page.tsx'), 'utf8')
+    assert.ok(page.includes('ownAttendanceObjections<ObjectionRow>(objections ?? [], session.user.id)'),
+      'the list must be narrowed to the session employee as it arrives')
+    assert.equal(page.includes('.filter((o: ObjectionRow) => o.attendance_date)'), false,
+      'the old date-only filter must be gone, not merely supplemented')
   })
 })
