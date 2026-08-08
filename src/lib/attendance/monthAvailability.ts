@@ -23,6 +23,24 @@
 // The import marker is deliberately COMPANY-WIDE. "This employee has no rows"
 // cannot mean "not imported" — an employee who was absent all month genuinely
 // has no rows, and treating that as missing data would hide real absences.
+//
+// THREE STATES, NOT TWO
+// ---------------------
+// "Imported" is not a property of a month; it is a property of a DATE. Treating
+// it as a month-level flag is what let the first version of this file still
+// invent absences: one punch anywhere in August marked the whole of August
+// imported, and the calendar then produced working days for the 6th through the
+// 31st — days nobody had uploaded, and days that had not happened.
+//
+// So the questions are separate and answered separately:
+//
+//   MONTH HAS STARTED    isFutureMonth() — a future month is refused outright.
+//   MONTH WAS IMPORTED   is there any company row in it at all.
+//   DATE WAS PROCESSED   is it within attendanceCoverageThrough() below.
+//
+// Only the third one licenses the sentence "this employee was absent".
+
+import { monthRange } from './monthCalendar'
 
 /** IST is UTC+05:30, and the whole product reasons about attendance in IST. */
 const IST_OFFSET_MINUTES = 5 * 60 + 30
@@ -35,6 +53,12 @@ export function istCurrentYearMonth(now: Date = new Date()): YearMonth {
   return { year: ist.getUTCFullYear(), month: ist.getUTCMonth() + 1 }
 }
 
+/** Today's date in IST as YYYY-MM-DD — the same vocabulary attendance_date uses. */
+export function istToday(now: Date = new Date()): string {
+  const ist = new Date(now.getTime() + IST_OFFSET_MINUTES * 60_000)
+  return ist.toISOString().slice(0, 10)
+}
+
 /**
  * Is this month later than the current IST month?
  *
@@ -45,6 +69,59 @@ export function istCurrentYearMonth(now: Date = new Date()): YearMonth {
 export function isFutureMonth(year: number, month: number, now: Date = new Date()): boolean {
   const current = istCurrentYearMonth(now)
   return year > current.year || (year === current.year && month > current.month)
+}
+
+/**
+ * The last date of a month attendance may be CLASSIFIED for, or null when none
+ * of it may be.
+ *
+ * `latestImportedDate` is the newest attendance_date the company has anywhere in
+ * that month — i.e. how far the machine export has actually got. It is read
+ * company-wide for the same reason the import marker is: one employee's absence
+ * is not evidence that a date is unprocessed.
+ *
+ *   nothing imported   → null. Say "not uploaded"; assert nothing.
+ *   future month       → null. It cannot hold attendance.
+ *   historical month   → the whole month. A finished month's export covers it,
+ *                        and a working day with no punch in it is a real
+ *                        absence — this is the 21 July case, and it must keep
+ *                        working.
+ *   current month      → the EARLIER of the latest imported date and today.
+ *
+ * The current-month rule is the point of this function. On 8 August with the
+ * import run through the 5th, the 6th and 7th are working days that simply have
+ * not been processed, and the 9th onwards have not happened. Neither is an
+ * absence, and the calendar cannot tell the difference on its own. Capping at
+ * today as well as at the import is belt-and-braces: a machine file containing a
+ * stray future date must still never produce a future absence.
+ */
+export function attendanceCoverageThrough(
+  year: number,
+  month: number,
+  latestImportedDate: string | null,
+  now: Date = new Date(),
+): string | null {
+  if (!latestImportedDate) return null
+  if (isFutureMonth(year, month, now)) return null
+
+  const current = istCurrentYearMonth(now)
+  if (year !== current.year || month !== current.month) return monthRange(year, month).to
+
+  const today = istToday(now)
+  return latestImportedDate < today ? latestImportedDate : today
+}
+
+/**
+ * The dates of a month that may be classified, given that cut-off.
+ *
+ * A date past the cut-off is DROPPED rather than returned with some "unknown"
+ * status: a row on the screen is a statement about that day, and there is no
+ * true statement to make about a day nobody has processed. ISO dates compare
+ * lexicographically, which is what makes this a string comparison.
+ */
+export function withinCoverage(dates: readonly string[], coverageThrough: string | null): string[] {
+  if (!coverageThrough) return []
+  return dates.filter(d => d <= coverageThrough)
 }
 
 /**
@@ -83,4 +160,16 @@ export const MONTH_NOT_IMPORTED_TITLE = 'Attendance data not uploaded yet'
 /** The empty state, in the employee's terms. Names the month so it is specific. */
 export function monthNotImportedMessage(monthLabel: string): string {
   return `Attendance for ${monthLabel} has not been uploaded by Admin.`
+}
+
+/**
+ * The partly-uploaded notice for the current month.
+ *
+ * Said explicitly because the alternative is a table that just stops, which
+ * reads as "the rest of the month is missing from my record" — the same anxiety
+ * a row of false absences causes, for the opposite reason.
+ */
+export function coverageNoticeMessage(dateLabel: string): string {
+  return `Attendance has been uploaded up to ${dateLabel}. Later days of this month have not ` +
+    `been processed yet, so they are not shown — and none of them count as an absence.`
 }

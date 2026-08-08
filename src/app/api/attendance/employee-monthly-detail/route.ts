@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
-import { isFutureMonth } from '@/lib/attendance/monthAvailability'
+import {
+  isFutureMonth,
+  attendanceCoverageThrough,
+  withinCoverage,
+} from '@/lib/attendance/monthAvailability'
 
 // Hours between two ISO timestamps, rounded to 2 decimal places. Returns null if either is missing.
 function hoursWorked(checkIn: string | null, checkOut: string | null): number | null {
@@ -76,22 +80,37 @@ export async function GET(req: NextRequest) {
 
   const { from, to } = monthRange(year, month)
 
-  // Has the machine export for this month been imported AT ALL, for ANYONE?
+  // HOW FAR has the machine export for this month actually got, for ANYONE?
+  //
+  // The newest attendance_date in the month company-wide. It answers both
+  // questions at once — "has anything been imported" (a row exists) and "how
+  // much" (which date) — which is why it replaced a bare `count`. A count only
+  // says the month was touched, and "August was touched" was being read as
+  // "August is complete", so a single punch on the 5th licensed absences
+  // through the 31st.
   //
   // Company-wide on purpose. Scoping this to the caller would make "I was
   // absent all month" indistinguishable from "nobody has uploaded the sheet",
-  // and the first of those is a real fact that must keep showing.
-  const { count: companyRows, error: importErr } = await svc
+  // and the first of those is a real fact that must keep showing. It is also
+  // the only honest coverage signal available: the importer writes a row only
+  // for a day with a punch (see api/attendance/import), so there is no
+  // per-date "processed" marker to read — the furthest day anyone in the
+  // company was scanned on is how far the file reached.
+  const { data: latestRows, error: importErr } = await svc
     .from('attendance_records')
-    .select('id', { count: 'exact', head: true })
+    .select('attendance_date')
     .gte('attendance_date', from)
     .lte('attendance_date', to)
+    .order('attendance_date', { ascending: false })
+    .limit(1)
 
   if (importErr) {
     return NextResponse.json({ error: importErr.message }, { status: 500 })
   }
 
-  const monthImported = (companyRows ?? 0) > 0
+  const latestImported  = latestRows?.[0]?.attendance_date ?? null
+  const monthImported   = latestImported !== null
+  const coverageThrough = attendanceCoverageThrough(year, month, latestImported)
 
   // Nothing imported: say so, and return no rows. Building the calendar here
   // would assert an absence for every working day of a month nobody has
@@ -108,6 +127,7 @@ export async function GET(req: NextRequest) {
       year,
       month,
       month_imported: false,
+      coverage_through: null,
       records: [],
     })
   }
@@ -153,11 +173,20 @@ export async function GET(req: NextRequest) {
   // whole month before an import. A date with no punches is an absence and has
   // to be shown as one; it is not an absence of a date. Same calendar
   // buildWorkingDayCalendar() gives the payroll engine.
-  const workingDates = workingDatesInMonth(year, month, {
-    holidays:    (holRes.data ?? []).map(h => h.holiday_date),
-    joiningDate: empRes.data.joining_date ?? null,
-    exitDate:    empRes.data.exit_date ?? null,
-  })
+  //
+  // …and then cut at the coverage date. The calendar knows what a working day
+  // is; it does not know which of them anyone has processed. For a finished
+  // month that cut is the month end and nothing changes. For the CURRENT month
+  // it stops at the last imported day, so the days after it are absent from the
+  // response rather than present in it as absences.
+  const workingDates = withinCoverage(
+    workingDatesInMonth(year, month, {
+      holidays:    (holRes.data ?? []).map(h => h.holiday_date),
+      joiningDate: empRes.data.joining_date ?? null,
+      exitDate:    empRes.data.exit_date ?? null,
+    }),
+    coverageThrough,
+  )
 
   // Index this employee's records by date
   const correctedDates = new Set((corrRes.data ?? []).map(c => c.attendance_date))
@@ -220,6 +249,9 @@ export async function GET(req: NextRequest) {
     year,
     month,
     month_imported: true,
+    // The last date this answer speaks for. The screen names it so a month that
+    // stops on the 5th reads as "uploaded this far" rather than as a gap.
+    coverage_through: coverageThrough,
     records,
   })
 }
