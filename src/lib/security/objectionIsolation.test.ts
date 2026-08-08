@@ -22,7 +22,10 @@
 import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { NextRequest } from 'next/server'
 import { config } from 'dotenv'
+import { GET as objectionsGET } from '@/app/api/objections/route'
+import { payrollObjectionHref } from '@/lib/objections'
 
 config({ path: '.env.local' })
 
@@ -365,5 +368,75 @@ describe('an admin reviews, and reviewing changes nothing but the objection', ()
     const after = await svc.from('payroll_results')
       .select('net_salary, total_deductions, gross_salary').eq('id', created.resultA).single()
     assert.deepEqual(after.data, before.data, 'a review must never move money')
+  })
+})
+
+// ─── The notification deep link ──────────────────────────────────────────────
+//
+// A Payroll-issue notification opens the disputed payslip, and the route it
+// opens is (period, employee). Neither id is in the notification — it carries
+// the OBJECTION — so /api/objections is what turns one into the other. That
+// makes this route the boundary: if it would hand an employee the period and
+// employee of somebody else's payroll result, the notification would become a
+// way to read a colleague's pay.
+
+describe('resolving an issue to its payslip leaks nothing', () => {
+  /** The route handler, called with a real bearer token, as the browser would. */
+  const listObjections = async (actor: Actor, query: string) => {
+    const { data: { session } } = await actor.db.auth.getSession()
+    const res = await objectionsGET(new NextRequest(`http://localhost/api/objections${query}`, {
+      headers: { authorization: `Bearer ${session!.access_token}` },
+    }))
+    return { status: res.status, body: await res.json() }
+  }
+
+  let objectionId = ''
+
+  before(async () => {
+    if (!tableExists || !seeded) return
+    // B disputes B's own payslip. Everything below asks who may turn that row
+    // into a route.
+    const { data } = await fileObjection(actors.b, { payroll_result_id: created.resultB }, 'my net is short')
+    objectionId = data?.id ?? ''
+  })
+
+  test('an admin gets the route keys, and they name the disputed result', async t => {
+    if (!tableExists || !objectionId) return t.skip(SKIP_REASON)
+
+    const { status, body } = await listObjections(actors.admin, `?id=${objectionId}`)
+    assert.equal(status, 200)
+    assert.equal(body.objections.length, 1, 'the id filter must select exactly the one asked for')
+
+    const href = payrollObjectionHref(body.objections[0])
+    assert.equal(href, `/payroll/results/${created.periodId}/${actors.b.id}`,
+      'the notification must land on the payslip the employee actually disputed')
+  })
+
+  test('an employee cannot resolve a colleague objection to anything at all', async t => {
+    if (!tableExists || !objectionId) return t.skip(SKIP_REASON)
+
+    const { status, body } = await listObjections(actors.a, `?id=${objectionId}`)
+    assert.equal(status, 200)
+    assert.deepEqual(body.objections, [],
+      'the ownership pin must survive an id filter — B row is not A to read')
+  })
+
+  test('an employee reading their own issue is given no route keys either', async t => {
+    if (!tableExists || !objectionId) return t.skip(SKIP_REASON)
+
+    const { body } = await listObjections(actors.b, `?id=${objectionId}`)
+    assert.equal(body.objections.length, 1, 'B may read B own row')
+    assert.equal('payroll_result' in body.objections[0], false,
+      'the admin review route is not part of an employee answer')
+    assert.equal('employee' in body.objections[0], false)
+  })
+
+  test('an unauthenticated caller resolves nothing', async t => {
+    if (!tableExists || !objectionId) return t.skip(SKIP_REASON)
+
+    const res = await objectionsGET(
+      new NextRequest(`http://localhost/api/objections?id=${objectionId}`),
+    )
+    assert.equal(res.status, 401)
   })
 })
