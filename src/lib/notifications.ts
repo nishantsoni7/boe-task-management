@@ -85,6 +85,29 @@ export const ORDER_NOTIFICATION_TYPES = [
   'order_converted',
 ] as const
 
+// Attendance & Payroll employee-raised issues (20260824000000).
+//
+// ONE feed for both, on purpose. Attendance and Payroll are the same operational
+// loop — an employee disputes a day, and the deduction that day produced is on
+// the payslip — and both land on the same admin's desk as the same kind of
+// follow-up. Two feeds would mean two bells and two unread counts for one queue
+// of work, which is how an admin ends up clearing one and never noticing the
+// other. Same reasoning that keeps `access_*` inside the Assets list above.
+//
+// These two types are the whole feed and are expected to stay that way: this is
+// the "someone reported a problem with their own record" channel, not a general
+// attendance or payroll activity log. Anything routine belongs on the screens
+// themselves, not in a notification.
+//
+// ADMIN-ONLY — see ADMIN_ONLY_CATEGORIES below. Every row of these types is
+// written to an admin (src/app/api/objections/route.ts), and the feed reports on
+// the whole company's employees, so it is management information rather than
+// something an employee may read about themselves.
+export const ATTENDANCE_PAYROLL_NOTIFICATION_TYPES = [
+  'attendance_issue_raised',
+  'payroll_issue_raised',
+] as const
+
 // PostgREST `type.in.(...)` fragment for an enum column — the safe equivalent
 // of a `LIKE 'prefix_%'` prefix match, since enums only support equality/`IN`.
 const typeInList = (types: readonly string[]) => `type.in.(${types.join(',')})`
@@ -109,9 +132,31 @@ const TASK_TITLE_OR = [
   'title.ilike.%cancellation reversed%',
 ].join(',')
 
-export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset'
+export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll'
 
-const VALID_CATEGORIES: readonly NotificationCategory[] = ['task', 'finance', 'order', 'asset']
+const VALID_CATEGORIES: readonly NotificationCategory[] =
+  ['task', 'finance', 'order', 'asset', 'attendance_payroll']
+
+/**
+ * Categories only an admin may read.
+ *
+ * A notification row is already addressed to one `user_id`, so this is not what
+ * keeps one employee's rows away from another — that is the `.eq('user_id',
+ * caller)` every endpoint applies. This is about the FEED: attendance_payroll
+ * reports employees' disputes about their own attendance and pay across the
+ * whole company, and is the notification half of the admin-only surfaces at
+ * /attendance and /payroll (see resolveManagementAccess and
+ * SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts). It must not become a
+ * self-service channel just because it lives in the shared table.
+ *
+ * Enforced server-side in every notification endpoint via
+ * canReadNotificationCategory() in src/lib/notificationAccess.ts.
+ */
+export const ADMIN_ONLY_CATEGORIES: readonly NotificationCategory[] = ['attendance_payroll']
+
+export function isAdminOnlyNotificationCategory(category: NotificationCategory): boolean {
+  return ADMIN_ONLY_CATEGORIES.includes(category)
+}
 
 // Module-scoped filter. Used by every module's own unread count, notification
 // list, mark-all-read and delete-all so every one of those endpoints agrees on
@@ -126,6 +171,8 @@ export function getNotificationCategoryFilter(category: NotificationCategory): s
       return typeInList(ORDER_NOTIFICATION_TYPES)
     case 'asset':
       return typeInList(ASSET_NOTIFICATION_TYPES)
+    case 'attendance_payroll':
+      return typeInList(ATTENDANCE_PAYROLL_NOTIFICATION_TYPES)
   }
 }
 
@@ -139,7 +186,7 @@ export type CategoryResolution =
 //
 // Absent (`null`/`undefined`) is treated as "old caller, no opinion" and
 // defaults to `task` for backward compatibility. A *present* value that isn't
-// one of the three known categories is a caller mistake — e.g. a typo'd
+// one of the known categories is a caller mistake — e.g. a typo'd
 // `?category=Finance` or `?category=orders` — and must be rejected loudly
 // (HTTP 400) rather than silently falling back to `task`, which would quietly
 // misroute one module's request into another's data.

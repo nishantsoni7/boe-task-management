@@ -10,6 +10,8 @@ import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import { useUnreadAttendancePayrollNotifications } from '@/hooks/queries/useUnreadNotifications'
 
 type AttendanceLayoutProps = {
   profile: UserProfile | null
@@ -60,6 +62,15 @@ export function AttendanceLayout({
   // is a usability fix, never the control — the guard, the API routes and RLS
   // are what actually refuse the access.
   const isAdmin = profile?.role === 'admin'
+
+  // Employee-raised attendance and payroll issues, shared with the Payroll
+  // sidebar through one category and therefore one query key — the two badges
+  // are the same number by construction, not by coincidence.
+  //
+  // Only requested for an admin: this layout is also the shell for
+  // /my-attendance and /my-payroll, and the API answers a non-admin with 403,
+  // so asking would be a guaranteed failed request on every employee page load.
+  const unreadIssues = useUnreadAttendancePayrollNotifications(isAdmin)
 
   const navItems = isAdmin
     ? [
@@ -144,6 +155,17 @@ export function AttendanceLayout({
               </span>
               Holiday Management
             </button>
+          )}
+
+          {/* Reported attendance and payroll issues. Admin only, like every
+              other entry above it — an employee's own issue status is shown on
+              the day and payslip rows themselves, not in an admin feed. */}
+          {isAdmin && (
+            <NotificationsNavItem
+              onNavigate={() => setSidebarOpen(false)}
+              count={unreadIssues}
+              href="/attendance/notifications"
+            />
           )}
 
         </div>
