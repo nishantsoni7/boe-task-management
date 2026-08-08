@@ -7,6 +7,8 @@ import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import { useUnreadAttendancePayrollNotifications } from '@/hooks/queries/useUnreadNotifications'
 
 type PayrollLayoutProps = {
   profile: UserProfile | null
@@ -30,6 +32,11 @@ export function PayrollLayout({
   const router   = useRouter()
   const pathname = usePathname()
   const { triggerRefresh } = useRefresh()
+
+  // The same count the Attendance sidebar shows — one category, one query key,
+  // one fetch. Unconditional here because every /payroll route is behind
+  // PayrollGuard, which is admins only (resolveManagementAccess).
+  const unreadIssues = useUnreadAttendancePayrollNotifications()
 
   const handleRefresh = useCallback(() => {
     if (refreshing) return
@@ -114,6 +121,15 @@ export function PayrollLayout({
               </button>
             )
           })}
+
+          {/* The Payroll door into the shared Attendance & Payroll issue feed.
+              Same rows and same count as the Attendance sidebar's entry — see
+              /payroll/notifications. */}
+          <NotificationsNavItem
+            onNavigate={() => setSidebarOpen(false)}
+            count={unreadIssues}
+            href="/payroll/notifications"
+          />
         </div>
 
         {/* Bottom profile section */}

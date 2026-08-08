@@ -2,6 +2,7 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getNotificationCategoryFilter, resolveNotificationCategory } from '@/lib/notifications'
+import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
 
 // Lists the authenticated user's notifications (newest first), or — with
 // `?count=1` — returns only the unread count for the sidebar badge.
@@ -27,6 +28,14 @@ export async function GET(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+
+  // Some feeds are management information, not self-service (see
+  // ADMIN_ONLY_CATEGORIES). Checked before the filter is even built, and on the
+  // count path as well as the list path — an unread number is itself a fact
+  // about how many colleagues have disputed their pay.
+  if (!(await canReadNotificationCategory(supabase, user.id, categoryResult.category))) {
+    return NextResponse.json({ error: CATEGORY_FORBIDDEN }, { status: 403 })
+  }
 
   const activityFilter = getNotificationCategoryFilter(categoryResult.category)
 
@@ -83,6 +92,13 @@ export async function DELETE(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
+
+  // Same gate as GET: a category nobody may read is a category nobody may
+  // empty. Without this, "Delete all" would be a write path into a feed the
+  // read path refuses.
+  if (!(await canReadNotificationCategory(supabase, user.id, categoryResult.category))) {
+    return NextResponse.json({ error: CATEGORY_FORBIDDEN }, { status: 403 })
+  }
 
   const activityFilter = getNotificationCategoryFilter(categoryResult.category)
   // `.select('id')` so the response can report how many of the caller's rows

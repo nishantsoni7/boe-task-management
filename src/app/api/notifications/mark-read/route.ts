@@ -2,6 +2,7 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getNotificationCategoryFilter, resolveNotificationCategory } from '@/lib/notifications'
+import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
 import { isValidUUID } from '@/lib/ui'
 
 // Marks notifications as read. Body: { id } for a single notification, or
@@ -43,6 +44,12 @@ export async function POST(req: NextRequest) {
     const categoryResult = resolveNotificationCategory(category)
     if (!categoryResult.ok) {
       return NextResponse.json({ error: categoryResult.error }, { status: 400 })
+    }
+    // Same gate the list and count paths apply. Only reached for { all: true }:
+    // a single { id } request is already scoped to one row the caller owns and
+    // names no category at all.
+    if (!(await canReadNotificationCategory(supabase, user.id, categoryResult.category))) {
+      return NextResponse.json({ error: CATEGORY_FORBIDDEN }, { status: 403 })
     }
     // "Mark all" only affects visible task-activity rows, never hidden summary/digest ones.
     query = query.eq('is_read', false).or(getNotificationCategoryFilter(categoryResult.category))
