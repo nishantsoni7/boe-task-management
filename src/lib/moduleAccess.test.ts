@@ -11,7 +11,12 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { canAccessModule, resolveModuleAccess, isExplicitGrantModule } from './moduleAccess'
+import {
+  canAccessModule,
+  resolveModuleAccess,
+  resolveManagementAccess,
+  isSelfServiceModule,
+} from './moduleAccess'
 
 const admin  = { role: 'admin',  team: 'sales' }
 const member = { role: 'member', team: 'sales' }
@@ -139,27 +144,23 @@ describe('resolveModuleAccess — existing modes are unchanged', () => {
   })
 })
 
-describe('resolveModuleAccess — attendance and payroll need an explicit grant', () => {
-  test('attendance and payroll are the explicit-grant modules', () => {
-    assert.equal(isExplicitGrantModule('attendance'), true)
-    assert.equal(isExplicitGrantModule('payroll'), true)
-    assert.equal(isExplicitGrantModule('task_management'), false)
+describe('attendance and payroll are self-service modules', () => {
+  test('attendance and payroll are the self-service modules', () => {
+    assert.equal(isSelfServiceModule('attendance'), true)
+    assert.equal(isSelfServiceModule('payroll'), true)
+    assert.equal(isSelfServiceModule('task_management'), false)
   })
 
+  // resolveModuleAccess answers "may this person open the card", and for these
+  // two the card is the employee's OWN record. So the ordinary modes apply.
   for (const key of ['attendance', 'payroll']) {
-    test(`${key}: live does not hand the module to everyone`, () => {
+    test(`${key}: live gives every employee their own record`, () => {
       const row = { visibility_type: 'live', allowed_department: null, allowed_user_ids: null }
-      assert.equal(resolveModuleAccess(key, row, A, false), false)
+      assert.equal(resolveModuleAccess(key, row, C, false), true)
       assert.equal(resolveModuleAccess(key, row, ADMIN, false), true)
     })
 
-    test(`${key}: department_only does not grant either`, () => {
-      const row = { visibility_type: 'department_only', allowed_department: ['sales'], allowed_user_ids: null }
-      assert.equal(resolveModuleAccess(key, row, A, false), false)
-      assert.equal(resolveModuleAccess(key, row, ADMIN, false), true)
-    })
-
-    test(`${key}: custom is how a named member is let in`, () => {
+    test(`${key}: custom names the employees who get their own record`, () => {
       const row = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-a'] }
       assert.equal(resolveModuleAccess(key, row, A, false), true)
       assert.equal(resolveModuleAccess(key, row, C, false), false)
@@ -173,50 +174,81 @@ describe('resolveModuleAccess — attendance and payroll need an explicit grant'
   }
 })
 
-// ─── The five personas ────────────────────────────────────────────────────────
+// ─── The privacy boundary ─────────────────────────────────────────────────────
 //
-// One table, so a change to the resolver has to state which persona it moved.
-// A = Custom Payroll member, B = Custom Attendance member, C = normal employee.
+// The rule the product owner set: Custom is self-service visibility, never
+// management access. If one describe block in this file is load-bearing, it is
+// this one — an earlier build let a Custom member read every salary in the
+// company, and these assertions are what stop that coming back.
 
-describe('personas', () => {
-  const payrollCustom    = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-a'] }
-  const attendanceCustom = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-b'] }
+describe('resolveManagementAccess — attendance and payroll management is admin-only', () => {
+  for (const key of ['attendance', 'payroll']) {
+    test(`${key}: NO visibility mode grants management to a non-admin`, () => {
+      for (const vt of ['live', 'admin_only', 'department_only', 'custom']) {
+        const row = { visibility_type: vt, allowed_department: ['sales'], allowed_user_ids: ['user-a', 'user-b', 'user-c'] }
+        assert.equal(resolveManagementAccess(key, row, A, true), false, `${key}/${vt}/A`)
+        assert.equal(resolveManagementAccess(key, row, B, true), false, `${key}/${vt}/B`)
+        assert.equal(resolveManagementAccess(key, row, C, true), false, `${key}/${vt}/C`)
+      }
+    })
 
-  test('A — Custom Payroll member enters Payroll and nothing else', () => {
-    assert.equal(resolveModuleAccess('payroll',    payrollCustom,    A, false), true)
-    assert.equal(resolveModuleAccess('attendance', attendanceCustom, A, false), false)
-  })
+    test(`${key}: custom does not promote a named member`, () => {
+      const row = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-a'] }
+      // Sees the card…
+      assert.equal(resolveModuleAccess(key, row, A, false), true)
+      // …and still cannot manage.
+      assert.equal(resolveManagementAccess(key, row, A, false), false)
+    })
 
-  test('B — Custom Attendance member enters Attendance and nothing else', () => {
-    assert.equal(resolveModuleAccess('attendance', attendanceCustom, B, false), true)
-    assert.equal(resolveModuleAccess('payroll',    payrollCustom,    B, false), false)
-  })
+    test(`${key}: admin manages under every mode except hidden`, () => {
+      for (const vt of ['live', 'admin_only', 'department_only', 'custom']) {
+        const row = { visibility_type: vt, allowed_department: ['sales'], allowed_user_ids: [] }
+        assert.equal(resolveManagementAccess(key, row, ADMIN, false), true, `${key}/${vt}`)
+      }
+      const hidden = { visibility_type: 'hidden', allowed_department: null, allowed_user_ids: [] }
+      assert.equal(resolveManagementAccess(key, hidden, ADMIN, true), false)
+    })
+  }
 
-  test('C — a normal employee enters neither, under any broad mode', () => {
-    for (const vt of ['live', 'admin_only', 'department_only', 'custom', 'hidden']) {
-      const row = { visibility_type: vt, allowed_department: ['sales'], allowed_user_ids: [] }
-      assert.equal(resolveModuleAccess('payroll', row, C, true), false, `payroll/${vt}`)
-      assert.equal(resolveModuleAccess('attendance', row, C, true), false, `attendance/${vt}`)
-    }
-  })
-
-  test('Admin enters both under every mode except hidden', () => {
-    for (const vt of ['live', 'admin_only', 'department_only', 'custom']) {
-      const row = { visibility_type: vt, allowed_department: ['sales'], allowed_user_ids: [] }
-      assert.equal(resolveModuleAccess('payroll', row, ADMIN, false), true, `payroll/${vt}`)
-      assert.equal(resolveModuleAccess('attendance', row, ADMIN, false), true, `attendance/${vt}`)
-    }
-  })
-
-  // The launcher and the guards call this same function, so "sees the card" and
-  // "can open the route" are the same boolean by construction. There is no
-  // separate assertion to make — that is the point of the shared resolver.
-  test('card visibility and route access are one decision, not two', () => {
+  test('a module outside the self-service set is unaffected', () => {
     const row = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-a'] }
-    const launcher = resolveModuleAccess('payroll', row, A, false)
-    const guard    = resolveModuleAccess('payroll', row, A, false)
-    assert.equal(launcher, guard)
-    assert.equal(launcher, true)
+    assert.equal(resolveManagementAccess('finance', row, A, false), true)
+    assert.equal(resolveManagementAccess('finance', row, C, false), false)
+  })
+
+  test('no row falls back, exactly as the card decision does', () => {
+    assert.equal(resolveManagementAccess('payroll', null, ADMIN, false), false)
+    assert.equal(resolveManagementAccess('payroll', null, ADMIN, true), true)
+  })
+})
+
+// ─── Launcher routing ─────────────────────────────────────────────────────────
+//
+// The card's destination is the whole privacy model made visible: an admin is
+// sent to the management module, everybody else to their own record.
+
+describe('launcher destination follows management access, not card visibility', () => {
+  const dest = (key: string, row: Parameters<typeof resolveManagementAccess>[1], p: Parameters<typeof resolveManagementAccess>[2]) =>
+    resolveManagementAccess(key, row, p, false)
+      ? (key === 'payroll' ? '/payroll' : '/attendance')
+      : (key === 'payroll' ? '/my-payroll' : '/my-attendance')
+
+  const custom = { visibility_type: 'custom', allowed_department: null, allowed_user_ids: ['user-a'] }
+  const live   = { visibility_type: 'live',   allowed_department: null, allowed_user_ids: null }
+
+  test('admin goes to the management routes', () => {
+    assert.equal(dest('attendance', live, ADMIN), '/attendance')
+    assert.equal(dest('payroll',    live, ADMIN), '/payroll')
+  })
+
+  test('a Custom-selected employee goes to self-service', () => {
+    assert.equal(dest('attendance', custom, A), '/my-attendance')
+    assert.equal(dest('payroll',    custom, A), '/my-payroll')
+  })
+
+  test('an ordinary employee under live goes to self-service', () => {
+    assert.equal(dest('attendance', live, C), '/my-attendance')
+    assert.equal(dest('payroll',    live, C), '/my-payroll')
   })
 })
 

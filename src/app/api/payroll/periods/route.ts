@@ -5,7 +5,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = SupabaseClient<any, any, any>
@@ -95,7 +95,7 @@ export function computeOutOfDate(
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireModuleAccess(req, 'payroll')
+  const auth = await requireAdmin(req)
   if (isResponse(auth)) return auth
   const svc = auth.svc
 

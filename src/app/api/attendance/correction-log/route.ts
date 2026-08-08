@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 
 const PAGE_SIZE = 50
 
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   // exactly like the rest of it — see src/lib/moduleAccess.ts. It is read-only;
   // writing a correction is still admin-only in
   // /api/payroll/attendance-correction.
-  const auth = await requireModuleAccess(req, 'attendance')
+  const auth = await requireAdmin(req)
   if (isResponse(auth)) return auth
   const svc = auth.svc
 

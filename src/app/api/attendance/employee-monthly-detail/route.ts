@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireSelfOrModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
 
 // Hours between two ISO timestamps, rounded to 2 decimal places. Returns null if either is missing.
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'employee_id, year, and month are required' }, { status: 400 })
   }
 
-  const auth = await requireSelfOrModuleAccess(req, 'attendance', requested)
+  const auth = await requireSelfOrAdmin(req, requested)
   if (isResponse(auth)) return auth
   const { caller, employeeId } = auth
   const svc = caller.svc
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
 
   const { from, to } = monthRange(year, month)
 
-  const [empRes, recRes, holRes] = await Promise.all([
+  const [empRes, recRes, holRes, corrRes] = await Promise.all([
     svc.from('users')
       .select('id, full_name, employee_code, office_timing, joining_date, exit_date')
       .eq('id', employeeId)
@@ -84,6 +84,14 @@ export async function GET(req: NextRequest) {
       .select('holiday_date')
       .gte('holiday_date', from)
       .lte('holiday_date', to),
+    // Which of this employee's days an admin has corrected. Read-only, and
+    // scoped to the same employeeId the token authorised — an employee is being
+    // shown that their own record was edited, not who else's was.
+    svc.from('attendance_correction_log')
+      .select('attendance_date')
+      .eq('user_id', employeeId)
+      .gte('attendance_date', from)
+      .lte('attendance_date', to),
   ])
 
   if (empRes.error)      return NextResponse.json({ error: empRes.error.message },      { status: 500 })
@@ -108,6 +116,8 @@ export async function GET(req: NextRequest) {
   })
 
   // Index this employee's records by date
+  const correctedDates = new Set((corrRes.data ?? []).map(c => c.attendance_date))
+
   const recByDate = new Map<string, typeof recRes.data[number]>()
   for (const r of recRes.data ?? []) recByDate.set(r.attendance_date, r)
 
@@ -129,6 +139,7 @@ export async function GET(req: NextRequest) {
         is_late:          false,
         is_missing_punch: false,
         penalty:          null,
+        is_corrected:     correctedDates.has(date),
       }
     }
 
@@ -151,6 +162,7 @@ export async function GET(req: NextRequest) {
       is_late:          late_minutes !== null && late_minutes > 0,
       is_missing_punch,
       penalty:          is_missing_punch ? '2h' : null,
+      is_corrected:     correctedDates.has(r.attendance_date),
     }
   })
 

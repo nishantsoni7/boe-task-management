@@ -9,10 +9,19 @@ import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 import { formatFullDate } from '@/lib/ui'
 import { orderNumberErrorMessage, parseOrderNumberInput, formatOrderNumber } from '@/lib/orderNumbering'
-import { isExplicitGrantModule } from '@/lib/moduleAccess'
+import { isSelfServiceModule } from '@/lib/moduleAccess'
 import { ModuleMemberPicker } from './ModuleMemberPicker'
 
 // ── Local types ───────────────────────────────────────────────────────────────
+
+/**
+ * What a member of a self-service module gets to look at, in the admin's own
+ * words. Keyed the same way as SELF_SERVICE_MODULE_KEYS so the copy cannot
+ * describe a module the rule does not cover.
+ */
+function selfServiceNoun(moduleKey: string): string {
+  return moduleKey === 'payroll' ? 'payroll' : 'attendance'
+}
 
 type VisibilityType = 'live' | 'admin_only' | 'department_only' | 'hidden' | 'custom'
 
@@ -1229,33 +1238,34 @@ function ControlCenterPageInner() {
               <option value="hidden">Hidden — not shown in launcher</option>
             </select>
 
-            {/* Attendance and Payroll read the whole company's punches and
-                salary, so "everyone" and "a department" are not answers this
-                module accepts — see EXPLICIT_GRANT_MODULE_KEYS in
-                src/lib/moduleAccess.ts. Said here, at the moment of choosing,
-                rather than discovered later by an employee who cannot get in. */}
-            {isExplicitGrantModule(editMod.module_key) && (modVisType === 'live' || modVisType === 'department_only') && (
+            {/* Attendance and Payroll are two surfaces under one name: the
+                management module, which reads the whole company and is admins
+                only, and the employee's own record. This setting governs the
+                second one. Said here, at the moment of choosing, because an
+                admin picking members needs to know what they are handing out —
+                and, just as much, what they are not. See
+                SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts. */}
+            {isSelfServiceModule(editMod.module_key) && (
               <div style={{
                 marginTop: -8, marginBottom: 16, padding: '10px 12px', borderRadius: 8,
-                background: '#FFFBEB', border: '1px solid rgba(232,160,48,0.4)',
-                fontSize: 12, color: '#92400E', lineHeight: 1.5,
+                background: '#FAFBFC', border: '1px solid #E8EBF0',
+                fontSize: 12, color: '#4B5563', lineHeight: 1.5,
               }}>
-                {editMod.module_name}{' '}shows every employee&rsquo;s attendance and salary, so this
-                setting will keep it to admins only. Use <strong>Custom</strong> to give named
-                members access.
+                This controls who can see{' '}
+                <strong>their own {selfServiceNoun(editMod.module_key)}</strong>. Managing{' '}
+                {editMod.module_name}{' '}for the whole company — everyone&rsquo;s records,
+                and every administrative action — stays with admins and cannot be granted here.
               </div>
             )}
 
-            {/* One line, only for the management modules, and only once Custom
-                is actually chosen — an admin picking members for Attendance or
-                Payroll is granting management access and should be told so
-                plainly. Every other module keeps the plain picker. */}
-            {modVisType === 'custom' && isExplicitGrantModule(editMod.module_key) && (
+            {/* One line, only for the self-service modules, and only once Custom
+                is actually chosen. Every other module keeps the plain picker. */}
+            {modVisType === 'custom' && isSelfServiceModule(editMod.module_key) && (
               <div style={{
                 marginTop: -8, marginBottom: 12,
                 fontSize: 12, color: '#6B7384', lineHeight: 1.5,
               }}>
-                Selected members can access the full management module.
+                Selected members can view their own {selfServiceNoun(editMod.module_key)}.
               </div>
             )}
 

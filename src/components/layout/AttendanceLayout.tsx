@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, Upload, Home, ClipboardList, RefreshCw, CalendarX,
+  CalendarDays,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -68,6 +69,7 @@ export function AttendanceLayout({
         { label: 'Attendance Records',   path: '/attendance/records',   icon: <ClipboardList size={15} strokeWidth={1.8} /> },
       ]
     : [
+        { label: 'My Attendance',        path: '/my-attendance',        icon: <CalendarDays size={15} strokeWidth={1.8} /> },
         { label: 'My Payroll',           path: '/my-payroll',           icon: <ClipboardList size={15} strokeWidth={1.8} /> },
       ]
 

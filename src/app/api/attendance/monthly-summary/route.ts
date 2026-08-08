@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireModuleAccess, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
 
 function hoursWorked(checkIn: string | null, checkOut: string | null): number {
@@ -13,7 +13,7 @@ function hoursWorked(checkIn: string | null, checkOut: string | null): number {
 // per-employee form of this route and no way to scope it to one person, so it
 // is admin-only. It previously required nothing beyond a valid session.
 export async function GET(req: NextRequest) {
-  const auth = await requireModuleAccess(req, 'attendance')
+  const auth = await requireAdmin(req)
   if (isResponse(auth)) return auth
   const svc = auth.svc
 
