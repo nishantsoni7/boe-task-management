@@ -49,7 +49,17 @@ const svc = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
 
-const TEST_YEAR  = 2996
+// A sandbox month with no real data in it, so these actors cannot collide with
+// production attendance or payroll.
+//
+// In the PAST rather than the future, because employee-monthly-detail now
+// refuses a month that has not started yet — a future sandbox year would be
+// rejected before any of the identity checks below could be exercised. See
+// src/lib/attendance/monthAvailability.ts.
+//
+// 2021 rather than something older because payroll_periods carries
+// CHECK (payroll_year >= 2020).
+const TEST_YEAR  = 2021
 const TEST_MONTH = 4
 const DAY_A      = `${TEST_YEAR}-04-10`
 const DAY_B      = `${TEST_YEAR}-04-11`
@@ -227,6 +237,69 @@ describe('company-wide attendance routes are admin only', () => {
   test('the attendance dashboard refuses an employee and answers an admin', async () => {
     assert.equal((await attendanceDashboard(req('/api/attendance/dashboard', actors.a.token))).status, 403)
     assert.equal((await attendanceDashboard(req('/api/attendance/dashboard', actors.admin.token))).status, 200)
+  })
+})
+
+// ─── Uploaded vs not uploaded ─────────────────────────────────────────────────
+//
+// The distinction the calendar alone cannot make. April 2021 has punches (the
+// fixtures above); March 2021 has none for anybody, which is what "nobody has
+// uploaded the sheet" looks like.
+
+describe('a month nobody has imported is not a month of absences', () => {
+  const detail = (year: number, month: number, actor = actors.a) =>
+    monthlyDetail(req(
+      `/api/attendance/employee-monthly-detail?employee_id=${actor.id}&year=${year}&month=${month}`,
+      actor.token,
+    ))
+
+  test('a future month is refused rather than generated', async () => {
+    const next = new Date()
+    next.setUTCMonth(next.getUTCMonth() + 2)
+    const res = await detail(next.getUTCFullYear(), next.getUTCMonth() + 1)
+    assert.equal(res.status, 400, 'a month that has not started must not be answered')
+  })
+
+  test('a month with no company-wide import reports month_imported false and no rows', async () => {
+    const res = await detail(TEST_YEAR, 3)
+    assert.equal(res.status, 200)
+    const body = await res.json()
+    assert.equal(body.month_imported, false)
+    assert.deepEqual(body.records, [], 'an unimported month must not assert a single absence')
+  })
+
+  test('an imported month reports month_imported true', async () => {
+    const res = await detail(TEST_YEAR, TEST_MONTH)
+    assert.equal(res.status, 200)
+    const body = await res.json()
+    assert.equal(body.month_imported, true)
+  })
+
+  // The 21 July regression, in test form: once a month IS imported, the
+  // calendar still supplies every working day, and a day this employee has no
+  // punch for is a real absence that must keep showing.
+  test('an imported month still builds missing working days from the calendar', async () => {
+    const res = await detail(TEST_YEAR, TEST_MONTH)
+    const body = await res.json()
+
+    const punched = body.records.find((r: { attendance_date: string }) => r.attendance_date === DAY_A)
+    assert.ok(punched, 'the punched day must be present')
+    assert.equal(punched.effective_status, 'present')
+
+    // 12 April 2021 is a Monday, and A has no punch on it.
+    const absent = body.records.find((r: { attendance_date: string }) => r.attendance_date === `${TEST_YEAR}-04-12`)
+    assert.ok(absent, 'a working day with no punch must still appear')
+    assert.equal(absent.effective_status, 'absent')
+
+    assert.ok(body.records.length > 2, 'the month is built from the calendar, not from the two fixture rows')
+  })
+
+  test('the not-imported answer is still scoped to the caller', async () => {
+    const res = await monthlyDetail(req(
+      `/api/attendance/employee-monthly-detail?employee_id=${actors.b.id}&year=${TEST_YEAR}&month=3`,
+      actors.a.token,
+    ))
+    assert.equal(res.status, 403, 'the upload state must not become a way to probe a colleague')
   })
 })
 

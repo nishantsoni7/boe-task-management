@@ -23,6 +23,13 @@ import { istClockOf } from '@/lib/istDate'
 import { colors } from '@/lib/tokens'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { employeeStatusLabel, statusTone as objectionTone, type ObjectionRow } from '@/lib/objections'
+import {
+  istCurrentYearMonth,
+  selectableMonthsInYear,
+  selectableYears,
+  MONTH_NOT_IMPORTED_TITLE,
+  monthNotImportedMessage,
+} from '@/lib/attendance/monthAvailability'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,13 +105,16 @@ function clock(instant: string | null): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MyAttendancePage() {
-  const now = new Date()
+  // The month it is in IST, not in the browser's timezone — an employee abroad
+  // must still land on the company's current month.
+  const nowIst = istCurrentYearMonth()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [rows,    setRows]    = useState<MyDayRow[]>([])
+  const [monthImported, setMonthImported] = useState(true)
   const [objections, setObjections] = useState<ObjectionRow[]>([])
   const [issueDay,   setIssueDay]   = useState<MyDayRow | null>(null)
-  const [year,    setYear]    = useState(now.getFullYear())
-  const [month,   setMonth]   = useState(now.getMonth() + 1)
+  const [year,    setYear]    = useState(nowIst.year)
+  const [month,   setMonth]   = useState(nowIst.month)
   const [loading, setLoading] = useState(true)
   const [busy,    setBusy]    = useState(false)
   const [error,   setError]   = useState<string | null>(null)
@@ -134,8 +144,16 @@ export default function MyAttendancePage() {
     ])
 
     const json = await detailRes.json()
-    if (!detailRes.ok) { setError(json.error ?? 'Failed to load your attendance'); setRows([]) }
-    else setRows(json.records ?? [])
+    if (!detailRes.ok) {
+      setError(json.error ?? 'Failed to load your attendance')
+      setRows([])
+      setMonthImported(true)
+    } else {
+      setRows(json.records ?? [])
+      // Absent from an older response shape means "imported"; only an explicit
+      // false is the not-uploaded state.
+      setMonthImported(json.month_imported !== false)
+    }
 
     if (objRes.ok) {
       const { objections } = await objRes.json()
@@ -190,10 +208,17 @@ export default function MyAttendancePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /**
+   * Changing the year can strand the selection in a future month — picking
+   * this year while December is chosen, say. Clamp to the latest month that
+   * exists rather than sending a request the route will refuse.
+   */
   const changeMonth = (y: number, m: number) => {
+    const allowed = selectableMonthsInYear(y)
+    const safeMonth = allowed.includes(m) ? m : allowed[allowed.length - 1]
     setYear(y)
-    setMonth(m)
-    void load(y, m)
+    setMonth(safeMonth)
+    void load(y, safeMonth)
   }
 
   const handleSignOut = async () => {
@@ -220,8 +245,10 @@ export default function MyAttendancePage() {
             className="boe-input"
             style={{ padding: '8px 10px', fontSize: 13 }}
           >
-            {MONTHS.map((label, i) => (
-              <option key={label} value={i + 1}>{label}</option>
+            {/* Only months that have started. A future month holds no
+                attendance, so offering one just invites a wrong answer. */}
+            {selectableMonthsInYear(year).map(m => (
+              <option key={m} value={m}>{MONTHS[m - 1]}</option>
             ))}
           </select>
           <select
@@ -231,10 +258,9 @@ export default function MyAttendancePage() {
             className="boe-input"
             style={{ padding: '8px 10px', fontSize: 13 }}
           >
-            {[0, 1, 2].map(back => {
-              const y = now.getFullYear() - back
-              return <option key={y} value={y}>{y}</option>
-            })}
+            {selectableYears().map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
           </select>
         </div>
       }
@@ -254,7 +280,28 @@ export default function MyAttendancePage() {
         {busy && <span style={{ marginLeft: 8 }}>· Loading…</span>}
       </div>
 
+      {/* Nothing uploaded for this month. Shown INSTEAD of the table, not as an
+          empty row inside it: a table of dates with no data still reads as a
+          statement about those dates, and there is no statement to make yet. */}
+      {!monthImported && !busy && (
+        <div style={{
+          border: `1px solid ${colors.border}`, borderRadius: 12,
+          background: colors.base, padding: '34px 24px', textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111318', marginBottom: 6 }}>
+            {MONTH_NOT_IMPORTED_TITLE}
+          </div>
+          <div style={{ fontSize: 13, color: colors.tertiary, lineHeight: 1.55 }}>
+            {monthNotImportedMessage(`${MONTHS[month - 1]} ${year}`)}
+          </div>
+          <div style={{ fontSize: 12.5, color: colors.muted, marginTop: 10 }}>
+            Nothing here counts as an absence — pick an earlier month to see your record.
+          </div>
+        </div>
+      )}
+
       {/* Wide content scrolls inside its own box, so the page itself never does. */}
+      {monthImported && (
       <div style={{
         border: `1px solid ${colors.border}`, borderRadius: 12,
         background: colors.base, overflowX: 'auto',
@@ -364,10 +411,12 @@ export default function MyAttendancePage() {
           </tbody>
         </table>
       </div>
+      )}
 
       {/* There is no employee-facing correction request in this system — the
           only correction workflow is the admin one. Rather than invent a second
           one, say who to go to. */}
+      {monthImported && (
       <div style={{
         marginTop: 14, padding: '11px 14px', borderRadius: 10,
         background: '#F4F6F9', border: `1px solid ${colors.border}`,
@@ -380,6 +429,7 @@ export default function MyAttendancePage() {
         reviews it — raising an issue does not change your attendance or salary by
         itself. Applied corrections show as <strong>Corrected</strong>.
       </div>
+      )}
 
       {issueDay && (
         <RaiseIssueModal

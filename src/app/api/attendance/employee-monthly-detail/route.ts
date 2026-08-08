@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
+import { isFutureMonth } from '@/lib/attendance/monthAvailability'
 
 // Hours between two ISO timestamps, rounded to 2 decimal places. Returns null if either is missing.
 function hoursWorked(checkIn: string | null, checkOut: string | null): number | null {
@@ -66,7 +67,50 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid year or month' }, { status: 400 })
   }
 
+  // A future month holds no attendance by definition. Answered rather than
+  // guessed at, so a stale bookmark or a hand-edited URL cannot produce a
+  // calendar full of absences for days that have not happened.
+  if (isFutureMonth(year, month)) {
+    return NextResponse.json({ error: 'That month has not started yet' }, { status: 400 })
+  }
+
   const { from, to } = monthRange(year, month)
+
+  // Has the machine export for this month been imported AT ALL, for ANYONE?
+  //
+  // Company-wide on purpose. Scoping this to the caller would make "I was
+  // absent all month" indistinguishable from "nobody has uploaded the sheet",
+  // and the first of those is a real fact that must keep showing.
+  const { count: companyRows, error: importErr } = await svc
+    .from('attendance_records')
+    .select('id', { count: 'exact', head: true })
+    .gte('attendance_date', from)
+    .lte('attendance_date', to)
+
+  if (importErr) {
+    return NextResponse.json({ error: importErr.message }, { status: 500 })
+  }
+
+  const monthImported = (companyRows ?? 0) > 0
+
+  // Nothing imported: say so, and return no rows. Building the calendar here
+  // would assert an absence for every working day of a month nobody has
+  // processed yet.
+  if (!monthImported) {
+    const { data: emp } = await svc
+      .from('users')
+      .select('id, full_name, employee_code, office_timing')
+      .eq('id', employeeId)
+      .single()
+
+    return NextResponse.json({
+      employee: emp ?? null,
+      year,
+      month,
+      month_imported: false,
+      records: [],
+    })
+  }
 
   const [empRes, recRes, holRes, corrRes] = await Promise.all([
     svc.from('users')
@@ -175,6 +219,7 @@ export async function GET(req: NextRequest) {
     },
     year,
     month,
+    month_imported: true,
     records,
   })
 }
