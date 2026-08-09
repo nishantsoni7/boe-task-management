@@ -89,6 +89,7 @@ export type RuleGroup =
   | 'day'        // how a date is classified
   | 'deduction'  // what a classification costs
   | 'leave'      // the paid-leave allowance
+  | 'settlement' // carry-forward, adjustments, payment, closing balance
   | 'process'    // corrections, regeneration, locking
 
 export type RuleCard = {
@@ -117,6 +118,139 @@ export const CALCULATION_FLOW = [
   { key: 'deductions',     label: 'Deductions',      body: 'Each applicable rule × the salary rate for its unit.' },
   { key: 'net',            label: 'Net Payable',     body: 'Gross salary − deductions ± adjustments.' },
 ] as const
+
+// ─── The salary, step by step ─────────────────────────────────────────────────
+
+/**
+ * The nine figures on a payslip, in the order they are worked out.
+ *
+ * This is the spine of /payroll/how-it-works and the same sequence the
+ * Adjustments & Settlement section renders. `formula` is the arithmetic in one
+ * line; where a step is a plain input rather than a calculation, it is null.
+ *
+ * `sign` says what a figure can be, which is the thing employees get wrong most
+ * often: a balance is the only one that is genuinely two-directional.
+ */
+export type SalaryStep = {
+  key: string
+  label: string
+  body: string
+  formula?: string
+  sign?: 'positive' | 'negative' | 'signed'
+  /** Marks the three figures that are conclusions rather than ingredients. */
+  emphasis?: boolean
+}
+
+export const SALARY_FLOW: SalaryStep[] = [
+  {
+    key: 'gross_salary',
+    label: 'Gross Salary',
+    body: 'Your agreed monthly salary. It is recorded when payroll is generated, so a later change to your salary never rewrites a month that has already been run.',
+    sign: 'positive',
+  },
+  {
+    key: 'working_days',
+    label: 'Working Days',
+    body: `Every day of the month except Sundays, company holidays, and any date before you joined. Your daily rate is the monthly salary ÷ ${PER_DAY_DIVISOR}, and your hourly rate is that ÷ ${PER_HOUR_DIVISOR}.`,
+    formula: `Per day = Monthly Salary ÷ ${PER_DAY_DIVISOR}   ·   Per hour = Per day ÷ ${PER_HOUR_DIVISOR}`,
+  },
+  {
+    key: 'daily_attendance',
+    label: 'Daily Attendance',
+    body: 'Each working day is classified from your punches — full present, half day, absent, missing punch, and so on. The cards below say exactly what each one means.',
+  },
+  {
+    key: 'attendance_deductions',
+    label: 'Attendance Deductions',
+    body: 'Every rule that applied to a day, charged at the rate for its unit, added together. Days covered by your paid leave stay on the list showing ₹0, so the month still adds up.',
+    sign: 'negative',
+  },
+  {
+    key: 'salary_after_attendance',
+    label: 'Salary After Attendance',
+    body: 'What the month itself earned, before anything carried over from an earlier month.',
+    formula: 'Gross Salary − Attendance Deductions',
+    emphasis: true,
+  },
+  {
+    key: 'previous_balance',
+    label: 'Previous Balance',
+    body: 'Anything left unsettled in your previous payroll month. A positive balance means BOE still owes you it. A negative balance means you have already received that much in advance, and it is recovered here. If that month’s payment has not been recorded yet, nothing is carried across — the balance is not guessed at.',
+    sign: 'signed',
+  },
+  {
+    key: 'other_adjustments',
+    label: 'Other Adjustments',
+    body: 'Additions and recoveries an admin has entered for this month — a reimbursement, an approved correction, an advance being recovered. Each one is listed separately with its reason; they are never merged into a single unexplained number.',
+    sign: 'signed',
+  },
+  {
+    key: 'salary_payable',
+    label: 'Salary Payable',
+    body: 'What BOE should settle for this month, once the balance and the adjustments are applied.',
+    formula: 'Salary After Attendance + Previous Balance + Other Adjustments',
+    emphasis: true,
+  },
+  {
+    key: 'amount_paid',
+    label: 'Amount Paid',
+    body: 'What was actually paid to you for this month. It can be equal to, less than, or more than Salary Payable — recording it never changes any figure above it.',
+    sign: 'positive',
+  },
+  {
+    key: 'closing_balance',
+    label: 'Balance Carried Forward',
+    body: 'What is still outstanding after the payment. Positive means BOE owes you; negative means you are in advance and it will be adjusted next month; zero means the month is fully settled. Whatever it is becomes next month’s Previous Balance. Until the payment is recorded there is no balance at all, and the payslip says so rather than showing a figure.',
+    formula: 'Salary Payable − Amount Paid',
+    sign: 'signed',
+    emphasis: true,
+  },
+]
+
+// ─── A worked example, derived rather than written ────────────────────────────
+
+/**
+ * The example salary the deduction figures below are worked from.
+ *
+ * A round number so the arithmetic is followable, and DERIVED — every amount in
+ * EXAMPLE_DEDUCTIONS is computed from the same constants the engine divides by,
+ * so an example cannot quietly start disagreeing with the rule above it. That is
+ * the whole reason this lives in rules.ts rather than being typed into the page.
+ */
+export const EXAMPLE_MONTHLY_SALARY = 18_000
+
+const EXAMPLE_PER_DAY  = EXAMPLE_MONTHLY_SALARY / PER_DAY_DIVISOR
+const EXAMPLE_PER_HOUR = EXAMPLE_PER_DAY / PER_HOUR_DIVISOR
+
+export type ExampleDeduction = { label: string; detail: string; amount: number }
+
+export const EXAMPLE_DEDUCTIONS: ExampleDeduction[] = [
+  {
+    label:  'Late Arrival',
+    detail: `${ROUNDING_BLOCK_HOURS}h × per-hour rate`,
+    amount: ROUNDING_BLOCK_HOURS * EXAMPLE_PER_HOUR,
+  },
+  {
+    label:  'Absent',
+    detail: '1 day × per-day rate',
+    amount: EXAMPLE_PER_DAY,
+  },
+  {
+    label:  'Half Day',
+    detail: 'Half a day × per-day rate',
+    amount: EXAMPLE_PER_DAY / 2,
+  },
+]
+
+export const EXAMPLE_DEDUCTION_TOTAL =
+  EXAMPLE_DEDUCTIONS.reduce((sum, line) => sum + line.amount, 0)
+
+/** What BOE payroll deliberately does not do. Stated rather than left to be discovered. */
+export const NOT_CALCULATED = [
+  'Overtime. Extra hours are not paid automatically; anything owed for them is entered as an adjustment.',
+  'Tax, PF and other statutory deductions. Payroll shows gross salary and attendance, not take-home after tax.',
+  'Bonuses and incentives. These reach payroll as adjustments, with a reason, rather than being calculated here.',
+]
 
 /**
  * Every rule the engine actually applies.
@@ -260,11 +394,41 @@ export const RULE_CARDS: RuleCard[] = [
     body: 'An admin can restate a date — its punches, or the whole day as full day / half day / absent — and can waive a late, early or missing-punch deduction with a written reason.',
     detail: 'The machine record is never overwritten. Every version is kept, and payroll uses the current one.',
   },
+  // ── Adjustments and settlement ─────────────────────────────────────────────
   {
-    key: 'adjustments',
-    group: 'process',
-    title: 'Adjustments',
-    body: 'Manual additions or deductions carried from an earlier month. They are applied after deductions and are listed separately on the payslip.',
+    key: 'other_adjustments',
+    group: 'settlement',
+    title: 'Other Adjustments',
+    body: 'Manual additions and recoveries an admin enters against a month — a reimbursement, an approved correction, an advance being recovered. Applied after attendance deductions.',
+    detail: 'Every entry carries a written reason and is listed separately on the payslip. Unrelated amounts are never combined into one figure.',
+  },
+  {
+    key: 'previous_balance',
+    group: 'settlement',
+    title: 'Previous Balance',
+    body: 'The closing balance of your preceding payroll month, brought forward. Positive means BOE still owes you; negative means you have already received that much and it is being recovered.',
+    detail: 'Taken from the preceding payroll period that actually ran — if a month was never processed, the one before it is used. A period whose payment has not been recorded has no confirmed balance, so nothing is carried from it. An admin may correct the figure, but only with a written reason, and the originally proposed amount is kept alongside the correction.',
+  },
+  {
+    key: 'salary_payable',
+    group: 'settlement',
+    title: 'Salary Payable',
+    body: 'Salary After Attendance, plus the previous month’s balance, plus or minus this month’s adjustments. This is what BOE should settle for the month.',
+    detail: 'It can be negative, when a recovery is larger than the month’s pay. That is not an error — it means more has already been paid than the month earned.',
+  },
+  {
+    key: 'amount_paid',
+    group: 'settlement',
+    title: 'Amount Paid',
+    body: 'What was actually paid for the month. It is a record of a payment, not an input to the calculation.',
+    detail: 'Recording it never reruns attendance, never changes a deduction and never alters gross salary. It changes one figure: the balance carried forward.',
+  },
+  {
+    key: 'closing_balance',
+    group: 'settlement',
+    title: 'Balance Carried Forward',
+    body: 'Salary Payable minus Amount Paid. Positive means BOE owes you, negative means you are in advance, zero means the month is settled.',
+    detail: 'There is no balance until the payment has been recorded — an unrecorded month shows “Payment not recorded” rather than a figure. Once recorded, the balance becomes the proposed Previous Balance on your next payslip, and the month it came from stays recorded.',
   },
   {
     key: 'regeneration',
@@ -281,8 +445,12 @@ export const RULE_CARDS: RuleCard[] = [
 ]
 
 export const RULE_GROUP_LABELS: Record<RuleGroup, string> = {
-  day:       'How the day is classified',
-  deduction: 'What each rule costs',
-  leave:     'Paid leave',
-  process:   'Corrections, adjustments and locking',
+  day:        'How the day is classified',
+  deduction:  'What each rule costs',
+  leave:      'Paid leave',
+  settlement: 'Adjustments and salary settlement',
+  process:    'Corrections, regeneration and locking',
 }
+
+/** Reading order for the rule sections. */
+export const RULE_GROUP_ORDER: RuleGroup[] = ['day', 'deduction', 'leave', 'settlement', 'process']

@@ -37,6 +37,7 @@ import {
   type CorrectionRow,
   type TabKey,
 } from './PayrollDetailView'
+import { CarryForwardModal, PaymentModal } from './SettlementModal'
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,12 @@ export default function PayrollResultDetailPage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedNotice, setSavedNotice] = useState<string | null>(null)
+
+  // Settlement editing. Two dialogs, one save path — see saveSettlement below.
+  const [carryForwardOpen,  setCarryForwardOpen]  = useState(false)
+  const [paymentOpen,       setPaymentOpen]       = useState(false)
+  const [settlementSaving,  setSettlementSaving]  = useState(false)
+  const [settlementError,   setSettlementError]   = useState<string | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -179,6 +186,46 @@ export default function PayrollResultDetailPage() {
     }
   }, [explainingDate, data, correctionsByDate])
 
+  // ── Settlement ────────────────────────────────────────────────────────────
+  // One request shape for both edits; the route branches on `action`. Success
+  // reloads the payslip so every figure below comes back from the server rather
+  // than being patched optimistically into the page — settlement figures are
+  // computed server-side and must not be second-guessed here.
+  const saveSettlement = async (
+    action: 'carry_forward' | 'payment',
+    payload: Record<string, unknown>,
+  ) => {
+    setSettlementSaving(true)
+    setSettlementError(null)
+    try {
+      const res = await fetch('/api/payroll/settlement', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          payroll_period_id: periodId,
+          employee_id:       employeeId,
+          action,
+          ...payload,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setSettlementError(json.error ?? 'Failed to save')
+        return
+      }
+      setCarryForwardOpen(false)
+      setPaymentOpen(false)
+      await load(token)
+      setSavedNotice(action === 'carry_forward'
+        ? 'Previous balance updated.'
+        : 'Amount paid recorded.')
+    } catch (e) {
+      setSettlementError(String(e))
+    } finally {
+      setSettlementSaving(false)
+    }
+  }
+
   const handleSaveCorrection = async (payload: CorrectionPayload) => {
     setSaving(true)
     setSaveError(null)
@@ -261,6 +308,10 @@ export default function PayrollResultDetailPage() {
           canEdit={canEdit}
           onEdit={setEditingDate}
           onExplain={setExplainingDate}
+          // Present only for an admin. `canEdit` then decides whether they are
+          // live — it is false on a locked period, and the API refuses anyway.
+          onEditCarryForward={() => { setSettlementError(null); setCarryForwardOpen(true) }}
+          onEditPayment={() => { setSettlementError(null); setPaymentOpen(true) }}
           issuePanel={objection && (
             <ObjectionReviewPanel
               objection={objection}
@@ -307,6 +358,34 @@ export default function PayrollResultDetailPage() {
           error={saveError}
           onCancel={() => { setEditingDate(null); setSaveError(null) }}
           onSave={handleSaveCorrection}
+        />
+      )}
+
+      {carryForwardOpen && result && data?.settlement && (
+        <CarryForwardModal
+          employeeName={result.employee_name}
+          currentAmount={data.settlement.figures.carry_forward}
+          proposedAmount={data.settlement.carry_forward?.proposed ?? 0}
+          isManual={data.settlement.carry_forward?.is_manual ?? false}
+          currentRemark={data.settlement.carry_forward?.remark ?? null}
+          saving={settlementSaving}
+          error={settlementError}
+          onSubmit={payload => saveSettlement('carry_forward', payload)}
+          onClose={() => { setCarryForwardOpen(false); setSettlementError(null) }}
+        />
+      )}
+
+      {paymentOpen && result && data?.settlement && (
+        <PaymentModal
+          employeeName={result.employee_name}
+          salaryPayable={data.settlement.figures.salary_payable}
+          currentAmount={data.settlement.figures.amount_paid}
+          currentDate={data.settlement.payment?.payment_date ?? null}
+          currentRemark={data.settlement.payment?.remark ?? null}
+          saving={settlementSaving}
+          error={settlementError}
+          onSubmit={payload => saveSettlement('payment', payload)}
+          onClose={() => { setPaymentOpen(false); setSettlementError(null) }}
         />
       )}
     </PayrollLayout>
