@@ -7,7 +7,7 @@
 // What is left here is what only an admin does: fetch the whole-company detail
 // endpoint, and correct an attendance day.
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -39,6 +39,84 @@ import {
 } from './PayrollDetailView'
 import { CarryForwardModal, PaymentModal } from './SettlementModal'
 
+// ─── Busy overlay ─────────────────────────────────────────────────────────────
+
+/**
+ * A blocking, full-viewport busy state for the moment a settlement write is in
+ * flight.
+ *
+ * Page-local on purpose. There is an app-wide LoadingScreen, but it REPLACES a
+ * page rather than covering one, and this has to sit over a dialog that stays
+ * mounted with the admin's typed values in it. So the spinner is the existing
+ * .boe-loading-spinner and only the covering layer is new — no second loading
+ * framework, and no new stylesheet rules.
+ *
+ * z-index 300 clears the payroll modal, which layers its scrim at 200 and its
+ * dialog at 201 (PayrollModal.tsx). Covering the dialog too is the point: the
+ * Save button, the direction toggle and the Cancel control must all be
+ * unreachable while the write is happening.
+ */
+function SavingOverlay({ message }: { message: string }) {
+  const overlayRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    // Where focus was before the overlay took it, so it can be handed back to
+    // the control the admin was using once the write finishes.
+    const previouslyFocused = document.activeElement as HTMLElement | null
+
+    const restoreOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    overlayRef.current?.focus()
+
+    // Pointer events are already blocked by the covering layer; this closes the
+    // keyboard route to the same controls. Tab cannot walk into the dialog
+    // behind, and Escape cannot dismiss anything mid-write.
+    const trap = (e: KeyboardEvent) => {
+      if (e.key === 'Tab' || e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        overlayRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', trap, true)
+
+    return () => {
+      document.removeEventListener('keydown', trap, true)
+      document.body.style.overflow = restoreOverflow
+      previouslyFocused?.focus?.()
+    }
+  }, [])
+
+  return (
+    <div
+      ref={overlayRef}
+      tabIndex={-1}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 16,
+        background: 'rgba(17,24,39,0.55)',
+        backdropFilter: 'blur(2px)',
+        outline: 'none',
+        // Belt and braces with the keydown trap: nothing behind this layer can
+        // be reached with a pointer either.
+        touchAction: 'none',
+      }}
+    >
+      <div className="boe-loading-spinner" />
+      <p style={{
+        margin: 0, color: '#FFFFFF', fontSize: 13.5, fontWeight: 600,
+        letterSpacing: '0.01em', textAlign: 'center', padding: '0 24px',
+      }}>
+        {message}
+      </p>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PayrollResultDetailPage() {
@@ -69,18 +147,26 @@ export default function PayrollResultDetailPage() {
   const [settlementSaving,  setSettlementSaving]  = useState(false)
   const [settlementError,   setSettlementError]   = useState<string | null>(null)
 
+  // Guards against a second mutation from a repeated click. Refs, not state,
+  // because two clicks in one tick both read the pre-update state value.
+  const savingRef    = useRef(false)
+  const correctingRef = useRef(false)
+
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
-  const load = async (accessToken: string) => {
+  /** Returns whether the payslip was actually refreshed, so a caller cannot
+   *  report success on the back of a reload that failed. */
+  const load = async (accessToken: string): Promise<boolean> => {
     const res = await fetch(
       `/api/payroll/results/detail?period_id=${periodId}&employee_id=${employeeId}`,
       { headers: { authorization: `Bearer ${accessToken}` } },
     )
     const json = await res.json()
-    if (!res.ok) { setError(json.error ?? 'Failed to load result'); return }
+    if (!res.ok) { setError(json.error ?? 'Failed to load result'); return false }
     setError(null)
     setData(json as DetailPayload)
+    return true
   }
 
   useEffect(() => {
@@ -187,14 +273,30 @@ export default function PayrollResultDetailPage() {
   }, [explainingDate, data, correctionsByDate])
 
   // ── Settlement ────────────────────────────────────────────────────────────
-  // One request shape for both edits; the route branches on `action`. Success
-  // reloads the payslip so every figure below comes back from the server rather
-  // than being patched optimistically into the page — settlement figures are
-  // computed server-side and must not be second-guessed here.
+  // One request shape for both edits; the route branches on `action`.
+  //
+  // The response now carries the recomputed settlement block, so the page takes
+  // its new figures from the write that produced them instead of reloading the
+  // whole payslip to ask what happened. That reload cost a full engine
+  // recomputation and seven further round trips — most of the several-second
+  // wait after Save — to re-derive a day view and a deduction ledger that a
+  // settlement write cannot affect: this route has no path to the payroll
+  // engine, by construction (see the header of the settlement route).
+  //
+  // These are still SERVER figures, not optimistic ones. `json.settlement` is
+  // computed by buildSettlementBlock from the row the database returned, by the
+  // same function the detail endpoint uses, so what shows after saving and what
+  // shows after a reload cannot disagree.
   const saveSettlement = async (
     action: 'carry_forward' | 'payment',
     payload: Record<string, unknown>,
   ) => {
+    // One mutation per click, even if the click lands several times. A ref, not
+    // the `settlementSaving` state: state updates are asynchronous, so two
+    // clicks in the same tick would both read the old value and both fire.
+    if (savingRef.current) return
+    savingRef.current = true
+
     setSettlementSaving(true)
     setSettlementError(null)
     try {
@@ -233,26 +335,56 @@ export default function PayrollResultDetailPage() {
         setSettlementError(json.error ?? 'Failed to save')
         return
       }
+      const notice = action === 'carry_forward'
+        ? 'Previous balance updated.'
+        : 'Amount paid recorded.'
+
+      if (json.settlement) {
+        // One state update carrying the new figures, the closed dialog and the
+        // notice together, so React commits them in a single paint. Closing
+        // first and filling in afterwards is what would flash the old numbers.
+        setData(prev => prev
+          ? { ...prev, settlement: { ...prev.settlement, ...json.settlement } }
+          : prev)
+        setCarryForwardOpen(false)
+        setPaymentOpen(false)
+        setSavedNotice(notice)
+        return
+      }
+
+      // No settlement block came back — the period has no stored result to
+      // compute figures against. Fall back to the full reload, and refresh
+      // BEFORE closing so the dialog is never dismissed onto stale figures.
+      //
+      // The refreshed token, not the one in state: setToken above has not been
+      // applied yet, and reloading with the expired credential would blank the
+      // page straight after a successful save.
+      const refreshed = await load(accessToken)
+      if (!refreshed) {
+        // The write landed; the re-read did not. Saying "updated" here would
+        // claim a screen state that is not on screen. Retrying is the wrong
+        // advice too — the mutation already succeeded.
+        setSettlementError('Saved, but the payslip could not be refreshed. Please reload the page.')
+        return
+      }
       setCarryForwardOpen(false)
       setPaymentOpen(false)
-      // The refreshed token, not the one in state — setToken above will not
-      // have been applied yet, and reloading the payslip with the expired
-      // credential would blank the page straight after a successful save.
-      await load(accessToken)
-      setSavedNotice(action === 'carry_forward'
-        ? 'Previous balance updated.'
-        : 'Amount paid recorded.')
+      setSavedNotice(notice)
     } catch (e) {
       // Reaching here means the request never completed — the dialog stays
       // open with the entered values, and the browser console keeps the detail.
       console.error('[payroll/settlement] request failed:', e)
       setSettlementError('Settlement details could not be saved. Please try again.')
     } finally {
+      savingRef.current = false
       setSettlementSaving(false)
     }
   }
 
   const handleSaveCorrection = async (payload: CorrectionPayload) => {
+    if (correctingRef.current) return
+    correctingRef.current = true
+
     setSaving(true)
     setSaveError(null)
     try {
@@ -276,19 +408,34 @@ export default function PayrollResultDetailPage() {
       const json = await res.json()
       if (!res.ok) { setSaveError(json.error ?? 'Failed to save the correction'); return }
 
+      // Refresh BEFORE closing. Unlike a settlement write, a correction reruns
+      // the engine and restates the day view, the deduction ledger and the
+      // totals, so there is no shortcut here — the whole payslip genuinely has
+      // to come back. Closing first would show the pre-correction figures for
+      // the length of that reload.
+      //
+      // The refreshed token, not the one in state: setToken has not been
+      // applied yet, and reloading with the expired one would blank the page
+      // immediately after a correction succeeded.
+      const refreshed = await load(accessToken)
+      if (!refreshed) {
+        setSaveError('Corrected, but the payslip could not be refreshed. Please reload the page.')
+        return
+      }
+
       // Success closes the modal; a failure above leaves it open with the
       // entered values intact.
       setEditingDate(null)
-      // The refreshed token, not the one in state — setToken has not been
-      // applied yet, and reloading with the expired one would blank the page
-      // immediately after a correction succeeded.
-      await load(accessToken)
       setSavedNotice(
         `${fmtDayDate(payload.attendance_date)} corrected — payroll recalculated. Net salary ${fmt(json.net_salary)}.`,
       )
     } catch (e) {
-      setSaveError(String(e))
+      // The raw error object used to be rendered into the dialog. It goes to
+      // the console, where it is diagnosable, and the screen gets a sentence.
+      console.error('[payroll/attendance-correction] request failed:', e)
+      setSaveError('The correction could not be saved. Please try again.')
     } finally {
+      correctingRef.current = false
       setSaving(false)
     }
   }
@@ -428,6 +575,14 @@ export default function PayrollResultDetailPage() {
           onSubmit={payload => saveSettlement('payment', payload)}
           onClose={() => { setPaymentOpen(false); setSettlementError(null) }}
         />
+      )}
+
+      {/* Last in the tree and above every dialog, so it covers whichever one is
+          open. Both mutations on this page show it: a settlement write and an
+          attendance correction are each a save the admin must not be able to
+          interrupt, duplicate or navigate away from mid-flight. */}
+      {(settlementSaving || saving) && (
+        <SavingOverlay message="Saving and recalculating payroll…" />
       )}
     </PayrollLayout>
   )

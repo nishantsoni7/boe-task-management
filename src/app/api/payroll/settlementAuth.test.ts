@@ -33,6 +33,7 @@ import { NextRequest } from 'next/server'
 import { config } from 'dotenv'
 
 import { PATCH as settlement } from '@/app/api/payroll/settlement/route'
+import { GET as resultDetail } from '@/app/api/payroll/results/detail/route'
 
 config({ path: '.env.local' })
 
@@ -61,7 +62,13 @@ const actors: Record<'employee' | 'other' | 'admin', Actor> = {} as never
 let actorSeq = 0
 
 const createdAuthUserIds: string[] = []
-const created = { openPeriod: '', lockedPeriod: '' }
+const created = { openPeriod: '', lockedPeriod: '', result: '' }
+
+// The stored totals the settlement figures are computed from. Chosen so every
+// derived figure below is exact in two decimal places.
+const GROSS      = 26_500
+const DEDUCTIONS = 2_578.05
+const AFTER_ATTENDANCE = GROSS - DEDUCTIONS   // 23,921.95
 
 async function makeActor(label: string, role: 'member' | 'admin'): Promise<Actor> {
   const email = `boe-settlement-auth-${label}-${STAMP}@example.invalid`
@@ -134,9 +141,25 @@ before(async () => {
     assert.ok(!error, `period insert failed: ${error?.message}`)
     created[key] = data!.id
   }
+
+  // A stored result in the open period, so the settlement figures have
+  // something to be computed against.
+  const { data: row, error: resultErr } = await svc.from('payroll_results').insert({
+    payroll_period_id:        created.openPeriod,
+    employee_id:              actors.employee.id,
+    monthly_salary:           30_000,
+    gross_salary:             GROSS,
+    total_deductions:         DEDUCTIONS,
+    pending_adjustment_total: 0,
+    days_present:             20,
+    net_salary:               AFTER_ATTENDANCE,
+  }).select('id').single()
+  assert.ok(!resultErr, `result insert failed: ${resultErr?.message}`)
+  created.result = row!.id
 })
 
 after(async () => {
+  if (created.result) await svc.from('payroll_results').delete().eq('id', created.result)
   for (const periodId of [created.openPeriod, created.lockedPeriod].filter(Boolean)) {
     // Events cascade from the settlement row; the settlements are deleted
     // before the period so no foreign key holds the period back.
@@ -245,6 +268,83 @@ describe('an authorised payroll admin can record a previous balance', () => {
     ))
     assert.equal(res.status, 400)
     assert.match((await res.json()).error, /remark is required/i)
+  })
+})
+
+// ─── The response the page now renders from ───────────────────────────────────
+
+describe('a successful write answers with the confirmed settlement figures', () => {
+  test('the block carries the recomputed figures, so no second request is needed', async () => {
+    const res = await settlement(patch(
+      carryForward(created.openPeriod, actors.employee.id, -200, 'Received in advance'),
+      actors.admin.token,
+    ))
+    assert.equal(res.status, 200)
+
+    const { settlement: block } = await res.json()
+    assert.ok(block, 'the write must answer with the block the page renders from')
+
+    // The ₹200 advance, all the way through the arithmetic.
+    assert.equal(block.figures.carry_forward,   -200)
+    assert.equal(block.figures.net_adjustments, -200, 'no other adjustments, so this is the carry-forward alone')
+    assert.equal(block.figures.salary_after_attendance, AFTER_ATTENDANCE)
+    assert.equal(block.figures.salary_payable, AFTER_ATTENDANCE - 200)
+
+    // Nothing has been paid, so there is no closing balance yet — unknown is
+    // not zero, and the page must not be handed a manufactured debt.
+    assert.equal(block.figures.amount_paid,     null)
+    assert.equal(block.figures.closing_balance, null)
+    assert.equal(block.figures.payment_status,  'not_recorded')
+
+    // What the "set manually" notice and the Restore control are driven by.
+    assert.equal(block.carry_forward.is_manual, true)
+    assert.equal(block.carry_forward.remark,    'Received in advance')
+    assert.equal(block.payment, null)
+  })
+
+  test('it is the SAME block the detail endpoint serves — the two cannot drift', async () => {
+    // The whole point of answering from the write is that the page skips the
+    // reload. That is only safe while both come from one builder, so this
+    // compares them field for field.
+    const saved = await settlement(patch(
+      carryForward(created.openPeriod, actors.employee.id, -200, 'Received in advance'),
+      actors.admin.token,
+    ))
+    const { settlement: fromWrite } = await saved.json()
+
+    const detail = await resultDetail(new NextRequest(
+      `http://localhost/api/payroll/results/detail?period_id=${created.openPeriod}&employee_id=${actors.employee.id}`,
+      { headers: { authorization: `Bearer ${actors.admin.token}` } },
+    ))
+    assert.equal(detail.status, 200)
+    const { settlement: fromReload } = await detail.json()
+
+    assert.deepEqual(fromWrite.figures,       fromReload.figures)
+    assert.deepEqual(fromWrite.carry_forward, fromReload.carry_forward)
+    assert.deepEqual(fromWrite.payment,       fromReload.payment)
+    assert.equal(fromWrite.sentence,          fromReload.sentence)
+
+    // adjustments_balance belongs to the payload, not to the write — a
+    // settlement change cannot affect it, so the page keeps its existing value.
+    assert.equal('adjustments_balance' in fromWrite, false)
+    assert.equal(typeof fromReload.adjustments_balance, 'boolean')
+  })
+
+  test('recording a payment answers with the closing balance it produces', async () => {
+    const res = await settlement(patch({
+      payroll_period_id: created.openPeriod,
+      employee_id:       actors.employee.id,
+      action:            'payment',
+      amount_paid:       20_000,
+      payment_date:      `${TEST_YEAR}-05-31`,
+    }, actors.admin.token))
+    assert.equal(res.status, 200)
+
+    const { settlement: block } = await res.json()
+    assert.equal(block.figures.amount_paid, 20_000)
+    assert.equal(block.figures.closing_balance, AFTER_ATTENDANCE - 200 - 20_000)
+    assert.equal(block.figures.payment_status, 'recorded')
+    assert.equal(block.payment.payment_date, `${TEST_YEAR}-05-31`)
   })
 })
 
