@@ -1449,6 +1449,80 @@ body {
 }
 
 /* ─────────────────────────────────────────────────────
+   PAYROLL RESULT DETAIL — the employee identity header
+
+   Who this payslip belongs to, and which run produced it, on one line.
+
+   It used to be loose text on the grey page background: a 22px name, a wrapped
+   row of details under it, and a wide empty right-hand side. Naming it a card
+   costs nothing vertically — the surface is the same white/hairline/12px radius
+   the summary and ledger cards use, with no shadow, because none of them has
+   one — and it lets the metadata move to the right edge that was empty.
+
+   Identity left, metadata right, both vertically centred: two short columns
+   instead of one tall stack, which is what makes the card SHORTER than the
+   loose text it replaces rather than taller.
+───────────────────────────────────────────────────── */
+.payroll-identity-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  /* Measured, not guessed: at 1280px the loose header it replaces occupied
+     74px including its 18px gap. These values bring the card to 66px including
+     its own gap — the compact-not-cramped target. */
+  padding: 9px 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+}
+
+.payroll-identity-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+}
+
+/* Tablet: the metadata wraps under the identity rather than compressing into
+   it. Left-aligned once wrapped, so the two groups share one edge instead of
+   the metadata floating off to the right on its own line. */
+@media (max-width: 900px) {
+  .payroll-identity-card {
+    justify-content: flex-start;
+    align-items: flex-start;
+  }
+}
+
+/* Mobile: identity first, then the metadata as one three-up grid row.
+   Three columns rather than two, deliberately. Two columns pushes Generated
+   onto a second row and the card measures 160px — more than twice the 74px the
+   loose header took. One row of three costs 131px even though the Generated
+   value wraps to two lines inside its own column, because a wrapped value is
+   cheaper than an entire extra row plus its gap.
+
+   The columns are equal and zero-minimum, so the wrap happens inside the
+   column instead of widening the grid — which is what keeps the page from
+   scrolling sideways on a 375px screen. */
+@media (max-width: 560px) {
+  .payroll-identity-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 11px;
+    padding: 10px 14px;
+  }
+
+  .payroll-identity-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+}
+
+/* ─────────────────────────────────────────────────────
    ADJUSTMENTS & SETTLEMENT — the two working cards, side by side
 
    The section itself has NO geometry of its own. It reuses

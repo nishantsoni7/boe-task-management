@@ -29,7 +29,8 @@
 // engine settled it — see src/lib/payroll/engine.ts.
 
 import React from 'react'
-import { periodLabel } from '@/lib/payroll/months'
+import { periodLabel, formatGeneratedAt } from '@/lib/payroll/months'
+import { Avatar } from '@/components/ui/atoms'
 import type { DayTreatment } from '@/lib/attendance/corrections'
 import {
   PAYMENT_NOT_RECORDED_LABEL,
@@ -211,10 +212,6 @@ export function fmt(n: number | null): string {
   return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function fmtDate(s: string): string {
-  return new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
 /**
  * Date-only values are formatted from their parts — parsing them as UTC shifts
  * the day in IST. Split so a row can emphasise the date and mute the weekday
@@ -352,6 +349,37 @@ function StatusBadge({ status }: { status: DetailResult['status'] }) {
   }
   const s = map[status]
   return <Pill tone={s}>{s.label}</Pill>
+}
+
+/**
+ * One label/value pair in the identity header's metadata group.
+ *
+ * The label above the value rather than beside it: three inline "Label: value"
+ * pairs on one line read as a sentence and force the eye to re-parse where each
+ * ends, and stacking keeps the group two lines tall — the same height as the
+ * identity beside it, which is what lets the whole card stay on one row.
+ *
+ * The label styling is SectionHeader's, so the two agree about what a small
+ * uppercase label looks like on this page.
+ */
+function MetaField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{
+        fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.07em', color: '#8C94A6', lineHeight: 1.3,
+        whiteSpace: 'nowrap',
+      }}>
+        {label}
+      </div>
+      <div style={{
+        marginTop: 1, fontSize: 13, fontWeight: 600, color: '#111318',
+        lineHeight: 1.3, display: 'flex', alignItems: 'center', minHeight: 17,
+      }}>
+        {children}
+      </div>
+    </div>
+  )
 }
 
 function SectionHeader({ title }: { title: string }) {
@@ -1343,28 +1371,46 @@ export function PayrollDetailWorkspace({
     },
   ]
 
+  // The genuine stored instant, formatted in IST. Null when payroll has no
+  // recorded generation time — the field is then omitted rather than guessed at.
+  const generatedAt = formatGeneratedAt(result.generated_at)
+
   return (
     <div className="payroll-detail-page">
 
-      {/* The one place the employee is named. Sits directly on the page
-          background — identity does not need a card around it. */}
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 22, fontWeight: 700, color: '#111318', letterSpacing: '-0.015em' }}>
-          {result.employee_name}
+      {/* Who this payslip belongs to, and which run produced it. */}
+      <div className="payroll-identity-card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
+          <Avatar name={result.employee_name} size={32} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{
+              fontSize: 15, fontWeight: 700, color: '#111318',
+              letterSpacing: '-0.01em', lineHeight: 1.25,
+              // The name is the one value here with no bound on its length.
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {result.employee_name}
+            </div>
+            {result.employee_code && (
+              <div style={{ fontSize: 12, color: '#8C94A6', lineHeight: 1.3 }}>
+                {result.employee_code}
+              </div>
+            )}
+          </div>
         </div>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap',
-          marginTop: 6, fontSize: 13, color: '#8C94A6',
-        }}>
-          {result.employee_code && <span>{result.employee_code}</span>}
-          {result.employee_code && <span aria-hidden>·</span>}
-          <span style={{ color: '#111318', fontWeight: 600, fontSize: 13.5 }}>
+
+        <div className="payroll-identity-meta">
+          <MetaField label="Payroll Month">
             {periodLabel(data.period.payroll_month, data.period.payroll_year)}
-          </span>
-          <StatusBadge status={result.status} />
-          {result.generated_at && (
-            <span style={{ fontSize: 12.5 }}>Generated {fmtDate(result.generated_at)}</span>
-          )}
+          </MetaField>
+
+          {/* The same semantic badge as before — draft and locked already carry
+              their meaning, and this header is not the place to restate it. */}
+          <MetaField label="Status">
+            <StatusBadge status={result.status} />
+          </MetaField>
+
+          {generatedAt && <MetaField label="Generated">{generatedAt}</MetaField>}
         </div>
       </div>
 
