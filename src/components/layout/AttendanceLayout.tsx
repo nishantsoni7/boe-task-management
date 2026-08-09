@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, Upload, Home, ClipboardList, RefreshCw, CalendarX,
-  CalendarDays, MessageSquareWarning,
+  CalendarDays, MessageSquareWarning, BookOpen,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
+import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -95,6 +96,11 @@ export function AttendanceLayout({
         // Reporting a problem is now reachable without first finding the record
         // it is about — see /my-issues.
         { label: 'My Issues',            path: '/my-issues',            icon: <MessageSquareWarning size={15} strokeWidth={1.8} /> },
+        // The payroll guide, beside the payslip it explains. This is the one
+        // /payroll route an employee may open: PayrollGuard admits everybody to
+        // PAYROLL_GUIDE_PATH and redirects them away from every other one. The
+        // page carries no employee data — it renders rule constants only.
+        { label: 'How Payroll Works',    path: PAYROLL_GUIDE_PATH,      icon: <BookOpen size={15} strokeWidth={1.8} /> },
       ]
 
   return (

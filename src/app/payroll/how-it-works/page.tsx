@@ -36,9 +36,12 @@ import {
   EXAMPLE_MONTHLY_SALARY,
   NOT_CALCULATED,
   PER_DAY_DIVISOR,
+  GLOSSARY,
+  EXAMPLE_SETTLEMENT,
   type SalaryStep,
 } from '@/lib/payroll/rules'
 import { fmtMoney, fmtSigned } from '@/lib/payroll/settlement'
+import { AskAboutSalary } from './AskAboutSalary'
 
 // The three figures that are conclusions rather than ingredients get the accent;
 // everything else stays quiet so the page has a shape when skimmed.
@@ -46,6 +49,7 @@ const ACCENT = '#4F6FD0'
 
 export default function HowPayrollWorksPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [token,   setToken]   = useState('')
   const [loading, setLoading] = useState(true)
 
   const router   = useRouter()
@@ -55,6 +59,8 @@ export default function HowPayrollWorksPage() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
+
+      setToken(session.access_token)
 
       const { data: prof } = await supabase
         .from('users')
@@ -106,10 +112,31 @@ export default function HowPayrollWorksPage() {
         />
         <ExampleDeductions />
 
+        {/* ── The whole calculation, one month ──────────────────────────── */}
+        <SectionTitle
+          title="A full month, worked through"
+          note="One example from gross salary to what carries into next month. Your own figures are on your payslip."
+        />
+        <WorkedSettlement />
+
+        {/* ── Adjustments ───────────────────────────────────────────────── */}
+        <SectionTitle
+          title="Understanding adjustments"
+          note="Four things an adjustment can be. Every one carries a written reason you can see."
+        />
+        <AdjustmentCases />
+
+        {/* ── Payment ───────────────────────────────────────────────────── */}
+        <SectionTitle
+          title="What happens after payment"
+          note="Your closing balance depends on how much was actually paid."
+        />
+        <PaymentCases />
+
         {/* ── Settlement, worked ────────────────────────────────────────── */}
         <SectionTitle
-          title="Carry forward, worked through"
-          note="What happens when a month is not paid exactly."
+          title="Where next month's Previous Balance comes from"
+          note="This month's closing balance opens your next payroll month."
         />
         <CarryForwardExample />
 
@@ -154,6 +181,23 @@ export default function HowPayrollWorksPage() {
             </div>
           ))}
         </div>
+
+        {/* ── Glossary ──────────────────────────────────────────────────── */}
+        <SectionTitle title="Glossary" note="Every term on your payslip, in one line each." />
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+          {GLOSSARY.map((entry, i) => (
+            <div
+              key={entry.term}
+              style={{ padding: '10px 15px', borderTop: i > 0 ? `1px solid ${colors.border}` : 'none' }}
+            >
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#111318' }}>{entry.term}</div>
+              <div style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.55, marginTop: 2 }}>{entry.meaning}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Ask ───────────────────────────────────────────────────────── */}
+        <AskAboutSalary token={token} />
 
         <div style={{
           marginTop: 18, marginBottom: 8, padding: '12px 15px', borderRadius: 10,
@@ -333,6 +377,199 @@ function ExampleDeductions() {
 }
 
 /**
+ * One month, end to end, as a progressive calculation.
+ *
+ * Not a table: the point is that each figure is produced by the one above it, so
+ * the rows are grouped into the three stages the payslip itself uses, with a
+ * rule under each conclusion. Every value comes from EXAMPLE_SETTLEMENT in
+ * rules.ts, where it is computed from four inputs — so this cannot drift from
+ * the arithmetic the settlement tests assert.
+ */
+function WorkedSettlement() {
+  const e = EXAMPLE_SETTLEMENT
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 10, overflow: 'hidden' }}>
+      <WorkedStage title="What the month earned">
+        <ExampleLine label="Gross Salary"          value={fmtMoney(e.gross_salary)} />
+        <ExampleLine label="Attendance Deductions" value={`−${fmtMoney(e.attendance_deductions)}`} tone="#DC2626" />
+        <WorkedRule />
+        <ExampleLine label="Salary After Attendance" value={fmtMoney(e.salary_after_attendance)} strong />
+      </WorkedStage>
+
+      <WorkedStage title="What was added or recovered">
+        <ExampleLine label="Previous Balance"      value={fmtSigned(e.carry_forward)}   tone="#16A34A" />
+        <ExampleLine label="Travel reimbursement"  value={fmtSigned(e.other_addition)}  tone="#16A34A" />
+        <ExampleLine label="Advance recovery"      value={fmtSigned(e.other_deduction)} tone="#DC2626" />
+        <WorkedRule />
+        <ExampleLine label="Net Adjustments" value={fmtSigned(e.net_adjustments)} strong />
+      </WorkedStage>
+
+      <WorkedStage title="What BOE settled" accent>
+        <ExampleLine label="Salary After Attendance" value={fmtMoney(e.salary_after_attendance)} />
+        <ExampleLine label="Net Adjustments"         value={fmtSigned(e.net_adjustments)} tone="#16A34A" />
+        <WorkedRule />
+        <ExampleLine label="Salary Payable" value={fmtMoney(e.salary_payable)} strong />
+        <div style={{ height: 6 }} />
+        <ExampleLine label="Amount Paid" value={`−${fmtMoney(e.amount_paid)}`} />
+        <WorkedRule />
+        <ExampleLine label="Balance Carried Forward" value={fmtSigned(e.closing_balance)} strong />
+        <div style={{ fontSize: 11.5, color: '#5B6474', marginTop: 8, lineHeight: 1.5 }}>
+          {fmtMoney(e.closing_balance)} is still pending from BOE, and becomes the Previous Balance
+          on next month&rsquo;s payslip.
+        </div>
+      </WorkedStage>
+    </div>
+  )
+}
+
+function WorkedStage({
+  title, accent, children,
+}: { title: string; accent?: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{
+      padding: '12px 15px 14px',
+      borderTop: `1px solid ${colors.border}`,
+      background: accent ? 'rgba(79,111,208,0.04)' : undefined,
+    }}>
+      <div style={{
+        fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.09em', color: accent ? ACCENT : '#8C94A6', marginBottom: 5,
+      }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function WorkedRule() {
+  return <div style={{ height: 1, background: 'rgba(0,0,0,0.13)', margin: '8px 0 7px' }} />
+}
+
+/**
+ * The four shapes an adjustment takes.
+ *
+ * Split by DIRECTION and by SOURCE, because those are the two things employees
+ * conflate: a negative adjustment is not an attendance deduction, and a previous
+ * balance is not this month's reimbursement.
+ */
+function AdjustmentCases() {
+  const cases = [
+    {
+      label: 'Previous Balance, positive',
+      amount: '+₹2,000.00',
+      tone: '#16A34A',
+      body: 'Last month BOE paid you less than it owed. The shortfall is added to this month, so you receive it now.',
+    },
+    {
+      label: 'Previous Balance, negative',
+      amount: '−₹1,500.00',
+      tone: '#DC2626',
+      body: 'Last month you were paid more than the month earned — an advance, or an overpayment. It is recovered from this month.',
+    },
+    {
+      label: 'Other Adjustment, positive',
+      amount: '+₹800.00',
+      tone: '#16A34A',
+      body: 'Something owed to you for this month — a travel reimbursement, an approved incentive, a correction in your favour.',
+    },
+    {
+      label: 'Other Adjustment, negative',
+      amount: '−₹500.00',
+      tone: '#DC2626',
+      body: 'Something being recovered this month — an advance, or a correction. This is not an attendance deduction: it has nothing to do with your punches.',
+    },
+  ]
+
+  return (
+    <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+      {cases.map(c => (
+        <div key={c.label} style={{
+          background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 10, padding: '13px 15px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: '#111318' }}>{c.label}</span>
+            <span style={{
+              fontSize: 13, fontWeight: 700, color: c.tone,
+              fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+            }}>
+              {c.amount}
+            </span>
+          </div>
+          <div style={{ fontSize: 12.5, color: '#5B6474', lineHeight: 1.55, marginTop: 5 }}>{c.body}</div>
+        </div>
+      ))}
+      <div style={{
+        gridColumn: '1 / -1', padding: '11px 14px', borderRadius: 9,
+        background: 'rgba(0,0,0,0.028)', fontSize: 12.5, color: '#5B6474', lineHeight: 1.6,
+      }}>
+        Every manual adjustment records who entered it, when, and why. The reason appears on your
+        payslip beside the amount — you should never see a figure here without one.
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The four payment outcomes, including the one that is not an amount.
+ *
+ * "Not recorded" is listed alongside the three arithmetic cases because it is
+ * the one employees misread as ₹0 — and the consequence is different: nothing is
+ * carried forward at all until somebody records the payment.
+ */
+function PaymentCases() {
+  const payable = 25_000
+  const cases = [
+    {
+      label: 'Paid in full',
+      paid: fmtMoney(25_000),
+      balance: fmtSigned(0),
+      tone: '#16A34A',
+      body: 'The month is fully settled. Nothing carries into next month.',
+    },
+    {
+      label: 'Paid less than payable',
+      paid: fmtMoney(22_000),
+      balance: fmtSigned(3_000),
+      tone: '#16A34A',
+      body: 'BOE still owes you the difference. It is added to next month as your Previous Balance.',
+    },
+    {
+      label: 'Paid more than payable',
+      paid: fmtMoney(28_000),
+      balance: fmtSigned(-3_000),
+      tone: '#DC2626',
+      body: 'You have been paid in advance. The difference is recovered from next month.',
+    },
+    {
+      label: 'Payment not recorded',
+      paid: 'Not recorded',
+      balance: '—',
+      tone: '#8C94A6',
+      body: 'Nobody has entered what was paid yet, so there is no closing balance and nothing carries forward. This is different from a recorded payment of ₹0, which would mean the whole amount is still owed.',
+    },
+  ]
+
+  return (
+    <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+      {cases.map(c => (
+        <div key={c.label} style={{
+          background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 10, padding: '13px 15px',
+        }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: '#111318', marginBottom: 7 }}>{c.label}</div>
+          <ExampleLine label="Salary Payable" value={fmtMoney(payable)} />
+          <ExampleLine label="Amount Paid"    value={c.paid} />
+          <WorkedRule />
+          <ExampleLine label="Balance Carried Forward" value={c.balance} tone={c.tone} strong />
+          <div style={{ fontSize: 11.5, color: '#5B6474', lineHeight: 1.5, marginTop: 7 }}>{c.body}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
  * Carry-forward, shown as two consecutive months.
  *
  * The one thing employees ask about that a formula does not answer: where the
@@ -395,7 +632,9 @@ function CarryForwardExample() {
   )
 }
 
-function ExampleLine({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function ExampleLine({
+  label, value, strong, tone,
+}: { label: string; value: string; strong?: boolean; tone?: string }) {
   return (
     <div style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
@@ -404,9 +643,11 @@ function ExampleLine({ label, value, strong }: { label: string; value: string; s
       <span style={{ fontSize: 12.5, color: strong ? '#3D4455' : '#6B7280', fontWeight: strong ? 600 : 400 }}>
         {label}
       </span>
+      {/* Colour is a second signal only — the sign is already in the string, so
+          these read correctly in greyscale. */}
       <span style={{
         fontSize: strong ? 13.5 : 13, fontWeight: strong ? 700 : 600,
-        color: '#111318', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+        color: tone ?? '#111318', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
       }}>
         {value}
       </span>

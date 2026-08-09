@@ -1448,6 +1448,40 @@ body {
   }
 }
 
+/* ─────────────────────────────────────────────────────
+   ADJUSTMENTS & SETTLEMENT — the two working cards, side by side
+
+   The section itself has NO geometry of its own. It reuses
+   .payroll-detail-workspace / -main / -aside above, so its columns, gap and
+   both outer edges are the ledger's by definition rather than by a matching
+   pair of numbers that can drift. Two earlier attempts got this wrong in
+   opposite directions: a second 62/38 grid with its own gap, then a 1080px cap
+   that stopped the rail short of the one above it.
+
+   The only thing this section needs that the workspace does not provide is the
+   split INSIDE the main column — Salary Calculation beside Adjustments. That is
+   all this rule does.
+
+   align-items: start so a short card is not stretched to match a tall one.
+───────────────────────────────────────────────────── */
+.payroll-settlement-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+/* Stacked while the outer grid is still two columns: between these widths the
+   main column is too narrow to seat two label/figure cards without squeezing
+   the remark text under Previous Balance. Stacking here rather than at 1024
+   means the cards never render cramped — they go from side-by-side straight to
+   full width of the main column. */
+@media (max-width: 1280px) {
+  .payroll-settlement-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Payroll ledger table (result detail) ──
    A ledger, not a data grid: no vertical rules, hairline row separators, and a
    hover tint quiet enough that it reads as tracking rather than selection. */

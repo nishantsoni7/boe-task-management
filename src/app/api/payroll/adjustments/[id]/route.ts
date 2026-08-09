@@ -25,6 +25,24 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { periodLockStateByMonth, isLocked, LOCKED_PERIOD_MESSAGE } from '@/lib/payroll/lockGuard'
 
+/**
+ * A failure the admin can act on, with the technical detail kept server-side.
+ *
+ * This route used to return `String(e)` and the raw Postgres `error.message` to
+ * the browser, so a storage-layer problem surfaced on the payslip naming an
+ * internal table. The detail goes to the server log where it is diagnosable;
+ * the screen gets one sentence and keeps its retry.
+ *
+ * Still a 500 — the write genuinely failed and nothing pretends otherwise.
+ */
+function serverFailure(where: string, detail: unknown) {
+  console.error(`[payroll/adjustments] ${where}:`, detail)
+  return NextResponse.json(
+    { error: 'The adjustment could not be removed. Please try again.' },
+    { status: 500 },
+  )
+}
+
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -78,7 +96,7 @@ export async function DELETE(
         return NextResponse.json({ error: LOCKED_PERIOD_MESSAGE }, { status: 422 })
       }
     } catch (e) {
-      return NextResponse.json({ error: String(e) }, { status: 500 })
+      return serverFailure('lock state lookup', e)
     }
   }
 
@@ -96,7 +114,7 @@ export async function DELETE(
     // rather than overwriting the first one's audit trail.
     .eq('status', 'pending')
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverFailure('void adjustment', error)
 
   return NextResponse.json({ ok: true, status: 'cancelled' })
 }
