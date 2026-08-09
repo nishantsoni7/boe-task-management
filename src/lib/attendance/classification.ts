@@ -2,15 +2,8 @@
 // Pure classification logic only — no payroll deductions, no monetary values.
 // Extracted from src/lib/payroll/engine.ts classifySingleDay() without behaviour change.
 
-import {
-  GRACE_END_MINUTES,
-  SCHEDULED_OUT_MINUTES,
-  LUNCH_IN_BEFORE_MINUTES,
-  LUNCH_OUT_AFTER_MINUTES,
-  LUNCH_HOURS,
-  PRESENCE_THRESHOLD_HOURS,
-} from './scheduleRules'
 import { resolveDirectionSource, type PunchDirectionSource } from './punchDirection'
+import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from '../payroll/settings'
 
 export type AttendanceClassification =
   | 'full_present'
@@ -55,8 +48,19 @@ function istMinutes(ts: string): number {
   return d.getUTCHours() * 60 + d.getUTCMinutes()
 }
 
+/**
+ * Classify one day.
+ *
+ * `settings` carries the thresholds and the office clock. It defaults to
+ * DEFAULT_PAYROLL_SETTINGS — which IS the constant set this function used to
+ * import directly — so every caller that has no opinion behaves exactly as it
+ * did before settings existed. Payroll generation passes the period's snapshot
+ * instead, which is what keeps an already-generated month from restating itself
+ * when an admin edits a rule.
+ */
 export function classifyAttendanceDay(
   record: AttendanceRecordInput | undefined,
+  settings: PayrollSettings = DEFAULT_PAYROLL_SETTINGS,
 ): ClassifiedDay {
   const directionSource = resolveDirectionSource(record?.direction_source)
 
@@ -98,22 +102,23 @@ export function classifyAttendanceDay(
   // Lunch deduction: subtract 1h if check_in < 14:00 AND check_out > 13:00 (IST)
   const inMin  = istMinutes(record.check_in_at)
   const outMin = istMinutes(record.check_out_at)
-  const lunchDeducted = inMin < LUNCH_IN_BEFORE_MINUTES && outMin > LUNCH_OUT_AFTER_MINUTES
-  const effectiveHours = rawHours - (lunchDeducted ? LUNCH_HOURS : 0)
+  const lunchDeducted = inMin < settings.lunch_in_before_minutes && outMin > settings.lunch_out_after_minutes
+  const effectiveHours = rawHours - (lunchDeducted ? settings.lunch_hours : 0)
 
-  // Office-timing override: punch-in ≤ 10:15 IST and punch-out ≥ 18:30 IST → full day,
-  // even if effective hours fall slightly below 7.5 after lunch deduction.
-  const onOfficeTiming = inMin <= GRACE_END_MINUTES && outMin >= SCHEDULED_OUT_MINUTES
+  // Office-timing override: punch-in within grace and punch-out at or after the
+  // scheduled close → full day, even if effective hours fall slightly below the
+  // full-present threshold after the lunch deduction.
+  const onOfficeTiming = inMin <= settings.grace_end_minutes && outMin >= settings.scheduled_out_minutes
 
   // Classify by effective hours (office-timing takes priority)
   let classification: AttendanceClassification
-  if (onOfficeTiming || effectiveHours >= PRESENCE_THRESHOLD_HOURS.full_present) {
+  if (onOfficeTiming || effectiveHours >= settings.threshold_full_present_hours) {
     classification = 'full_present'
-  } else if (effectiveHours >= PRESENCE_THRESHOLD_HOURS.present_with_shortfall) {
+  } else if (effectiveHours >= settings.threshold_present_with_shortfall_hours) {
     classification = 'present_with_shortfall'
-  } else if (effectiveHours >= PRESENCE_THRESHOLD_HOURS.half_day) {
+  } else if (effectiveHours >= settings.threshold_half_day_hours) {
     classification = 'half_day'
-  } else if (effectiveHours >= PRESENCE_THRESHOLD_HOURS.short_present) {
+  } else if (effectiveHours >= settings.threshold_short_present_hours) {
     classification = 'short_present'
   } else {
     return { ...absent }
