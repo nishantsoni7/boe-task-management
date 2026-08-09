@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef } from 'react'
 import { colors } from '@/lib/tokens'
 import { shouldCloseFormModal, resolveTrapTarget, FOCUSABLE_SELECTOR } from '@/lib/ui/modalDismissal'
+import { useScrollLock } from '@/hooks/useScrollLock'
 
 // The form-modal shell for Payroll, following the same construction as the
 // Assets one (src/components/assets/AssetModal.tsx). Both defer the actual
@@ -32,13 +33,17 @@ export function PayrollModal({
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
 
+  // Scroll locking goes through the shared counter rather than being remembered
+  // here. A dialog is not always the only thing covering the page — Payroll
+  // Result Detail puts a saving overlay on top of this one — and two components
+  // each restoring their own "previous" value leaves whichever unmounts last in
+  // charge of a value it captured from the other. See src/hooks/useScrollLock.
+  useScrollLock()
+
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     dialogRef.current?.focus()
     return () => {
-      document.body.style.overflow = prevOverflow
       previouslyFocused?.focus?.()
     }
   }, [])

@@ -24,6 +24,7 @@ import {
   type ExplanationDayContext,
 } from './DeductionExplanationModal'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { useScrollLock } from '@/hooks/useScrollLock'
 import { useObjections } from '@/components/objections/useObjections'
 import { ObjectionReviewPanel } from '@/components/objections/ObjectionReviewPanel'
 import { issueChainKey } from '@/lib/objections'
@@ -59,13 +60,17 @@ import { CarryForwardModal, PaymentModal } from './SettlementModal'
 function SavingOverlay({ message }: { message: string }) {
   const overlayRef = useRef<HTMLDivElement>(null)
 
+  // Through the shared counter, not a local remembered value. This overlay
+  // mounts ON TOP of a dialog that has already locked scrolling, so the value
+  // it would observe for itself is the dialog's lock, not the page's. Restoring
+  // that on the way out is what left the page unscrollable after a save.
+  useScrollLock()
+
   useEffect(() => {
     // Where focus was before the overlay took it, so it can be handed back to
     // the control the admin was using once the write finishes.
     const previouslyFocused = document.activeElement as HTMLElement | null
 
-    const restoreOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     overlayRef.current?.focus()
 
     // Pointer events are already blocked by the covering layer; this closes the
@@ -82,7 +87,6 @@ function SavingOverlay({ message }: { message: string }) {
 
     return () => {
       document.removeEventListener('keydown', trap, true)
-      document.body.style.overflow = restoreOverflow
       previouslyFocused?.focus?.()
     }
   }, [])
