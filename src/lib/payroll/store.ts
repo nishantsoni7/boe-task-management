@@ -13,6 +13,7 @@ import type {
 } from './types'
 import type { AttendanceDayCorrection } from '../attendance/corrections'
 import { toSignedAdjustments, type StoredAdjustment } from './adjustments'
+import { onlyParticipating, partitionByParticipation } from './participation'
 
 // Callers pass a service-role client in; we accept any schema parameterisation.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,13 +46,43 @@ export async function fetchEmployee(svc: Svc, id: string): Promise<EngineEmploye
 }
 
 export async function fetchAllPayrollActiveEmployees(svc: Svc): Promise<EngineEmployee[]> {
+  const { data, error } = await onlyParticipating(
+    svc.from('users').select(EMPLOYEE_COLS),
+  ).or('is_deleted.eq.false,is_deleted.is.null')
+  if (error) throw new Error(`fetchAllPayrollActiveEmployees: ${error.message}`)
+  return (data ?? []) as EngineEmployee[]
+}
+
+/**
+ * The named employees, split into those payroll may process and those it may not.
+ *
+ * Generation has two entry paths and only one of them was filtered. Running for
+ * the whole company goes through fetchAllPayrollActiveEmployees above, which has
+ * always honoured the flag; running for a NAMED list — which is what every
+ * regeneration after an attendance correction does — fetched each row by id with
+ * no participation predicate at all. An excluded member reached the engine and
+ * was stopped only by its `employee_inactive` guard.
+ *
+ * That guard is a backstop, not the boundary. Relying on it means any future
+ * caller that assembles employees without going through the engine inherits the
+ * hole, so the restriction is stated here, at the data-fetch layer, for both
+ * paths. The excluded rows are returned rather than dropped so the caller can
+ * say WHY an explicitly named employee produced nothing.
+ */
+export async function fetchEmployeesForGeneration(
+  svc: Svc,
+  employeeIds: string[],
+): Promise<{ included: EngineEmployee[]; excludedIds: string[] }> {
+  if (employeeIds.length === 0) return { included: [], excludedIds: [] }
+
   const { data, error } = await svc
     .from('users')
     .select(EMPLOYEE_COLS)
-    .eq('payroll_active', true)
-    .or('is_deleted.eq.false,is_deleted.is.null')
-  if (error) throw new Error(`fetchAllPayrollActiveEmployees: ${error.message}`)
-  return (data ?? []) as EngineEmployee[]
+    .in('id', employeeIds)
+  if (error) throw new Error(`fetchEmployeesForGeneration: ${error.message}`)
+
+  const { included, excluded } = partitionByParticipation((data ?? []) as EngineEmployee[])
+  return { included, excludedIds: excluded.map(e => e.id) }
 }
 
 // ─── Attendance ───────────────────────────────────────────────────────────────

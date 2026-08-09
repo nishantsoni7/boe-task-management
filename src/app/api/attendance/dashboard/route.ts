@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { onlyParticipating } from '@/lib/payroll/participation'
 
 // Returns today's date string (YYYY-MM-DD) in IST (UTC+5:30)
 function todayIST(): string {
@@ -19,11 +20,16 @@ export async function GET(req: NextRequest) {
 
   const today = todayIST()
 
+  // Every employee attendance actually tracks — head:false so we get the IDs for
+  // the absent calculation.
+  //
+  // Participation, not just is_active. A member excluded from Attendance &
+  // Payroll keeps a live account, so they passed the is_active test, were counted
+  // in `total`, and then — having no record, because nobody expects them to
+  // punch — were counted as absent, every single day. See
+  // src/lib/payroll/participation.ts.
   const [activeUsersRes, todayRecordsRes] = await Promise.all([
-    // All active employees — head:false so we get the IDs for absent calc
-    svc.from('users')
-      .select('id')
-      .eq('is_active', true),
+    onlyParticipating(svc.from('users').select('id').eq('is_active', true)),
 
     // Today's attendance records — only what we need for the 4 cards
     svc.from('attendance_records')
