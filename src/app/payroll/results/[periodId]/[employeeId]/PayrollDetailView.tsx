@@ -234,7 +234,7 @@ export function fmtDayDate(iso: string): string {
   return `${date}, ${weekday}`
 }
 
-function DayDateCell({ iso }: { iso: string }) {
+export function DayDateCell({ iso }: { iso: string }) {
   const { date, weekday } = dayDateParts(iso)
   return (
     <>
@@ -244,7 +244,7 @@ function DayDateCell({ iso }: { iso: string }) {
   )
 }
 
-function fmtPunches(checkIn: string | null, checkOut: string | null): string {
+export function fmtPunches(checkIn: string | null, checkOut: string | null): string {
   return `${checkIn ? istClockOf(checkIn) : '—'} → ${checkOut ? istClockOf(checkOut) : '—'}`
 }
 
@@ -252,7 +252,7 @@ function fmtCount(n: number | null): string {
   return n != null ? String(n) : '—'
 }
 
-function fmtHours(h: number): string {
+export function fmtHours(h: number): string {
   if (h <= 0) return '—'
   const total = Math.round(h * 60)
   const hrs = Math.floor(total / 60)
@@ -260,7 +260,7 @@ function fmtHours(h: number): string {
   return min === 0 ? `${hrs}h` : `${hrs}h ${min}m`
 }
 
-const DEDUCTION_LABELS: Record<string, string> = {
+export const DEDUCTION_LABELS: Record<string, string> = {
   late_arrival:        'Late Arrival',
   early_checkout:      'Early Checkout',
   missing_punch_in:    'Missing Punch-In',
@@ -315,7 +315,7 @@ function DayStatus({ classification }: { classification: string }) {
   )
 }
 
-function Pill({ tone, children }: { tone: { bg: string; color: string }; children: React.ReactNode }) {
+export function Pill({ tone, children }: { tone: { bg: string; color: string }; children: React.ReactNode }) {
   return (
     <span style={{
       display: 'inline-block', padding: '2px 9px', borderRadius: 20,
@@ -362,7 +362,7 @@ function StatusBadge({ status }: { status: DetailResult['status'] }) {
  * The label styling is SectionHeader's, so the two agree about what a small
  * uppercase label looks like on this page.
  */
-function MetaField({ label, children }: { label: string; children: React.ReactNode }) {
+export function MetaField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{
@@ -382,7 +382,7 @@ function MetaField({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
-function SectionHeader({ title }: { title: string }) {
+export function SectionHeader({ title }: { title: string }) {
   return (
     <div style={{
       fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
@@ -396,7 +396,7 @@ function SectionHeader({ title }: { title: string }) {
 
 // ── Summary rail primitives ───────────────────────────────────────────────────
 
-function SummaryLine({ label, value, tone }: { label: string; value: string; tone?: string }) {
+export function SummaryLine({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
@@ -413,7 +413,7 @@ function SummaryLine({ label, value, tone }: { label: string; value: string; ton
   )
 }
 
-function SummaryGroup({ title }: { title: string }) {
+export function SummaryGroup({ title }: { title: string }) {
   return (
     <div style={{
       fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
@@ -424,25 +424,25 @@ function SummaryGroup({ title }: { title: string }) {
   )
 }
 
-function SummaryDivider() {
+export function SummaryDivider() {
   return <div style={{ height: 1, background: 'rgba(0,0,0,0.07)', margin: '15px 0 12px' }} />
 }
 
-const TH: React.CSSProperties = {
+export const TH: React.CSSProperties = {
   padding: '10px 16px', textAlign: 'left',
   fontSize: 10.5, fontWeight: 700, color: '#8C94A6',
   textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap',
 }
 
-const TD: React.CSSProperties = { padding: '10px 16px', fontSize: 13, color: '#3D4455', verticalAlign: 'top' }
+export const TD: React.CSSProperties = { padding: '10px 16px', fontSize: 13, color: '#3D4455', verticalAlign: 'top' }
 
 // The header rule is deliberately heavier than the row rules, so the head reads
 // as the table's edge and the body reads as one continuous ledger.
-const THEAD_ROW: React.CSSProperties = { borderBottom: '1px solid rgba(0,0,0,0.10)' }
-const ROW_DIVIDER = '1px solid rgba(0,0,0,0.045)'
+export const THEAD_ROW: React.CSSProperties = { borderBottom: '1px solid rgba(0,0,0,0.10)' }
+export const ROW_DIVIDER = '1px solid rgba(0,0,0,0.045)'
 
 /** First line of a stacked attendance cell — the punch pair. */
-const PUNCH_LINE: React.CSSProperties = {
+export const PUNCH_LINE: React.CSSProperties = {
   fontSize: 13, fontWeight: 500, color: '#3D4455', fontVariantNumeric: 'tabular-nums',
 }
 
@@ -451,17 +451,17 @@ const PUNCH_LINE: React.CSSProperties = {
 // rows above it and its figure lands in the very same column. Rendering it as a
 // sibling <div> below the table — which is what it used to be — pushed it to the
 // card's right edge, one column adrift from the numbers it totals.
-const TFOOT_CELL: React.CSSProperties = {
+export const TFOOT_CELL: React.CSSProperties = {
   padding: '13px 16px 14px',
   borderTop: '1px solid rgba(0,0,0,0.11)',
   background: 'rgba(0,0,0,0.012)',
 }
 
-const TFOOT_LABEL: React.CSSProperties = {
+export const TFOOT_LABEL: React.CSSProperties = {
   ...TFOOT_CELL, fontSize: 13, fontWeight: 600, color: '#3D4455', whiteSpace: 'nowrap',
 }
 
-const TFOOT_VALUE: React.CSSProperties = {
+export const TFOOT_VALUE: React.CSSProperties = {
   ...TFOOT_CELL, fontSize: 14, fontWeight: 700, textAlign: 'right',
   fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
 }
@@ -732,7 +732,7 @@ function PayrollSummaryCard({
 // Signs are explicit on every signed figure. Colour is a second signal only:
 // read this in greyscale and the direction is still unambiguous.
 
-function SettlementRow({
+export function SettlementRow({
   label, value, tone, remark, strong, muted,
 }: {
   label: string
@@ -773,7 +773,7 @@ function SettlementRow({
   )
 }
 
-function SettlementRule() {
+export function SettlementRule() {
   return <div style={{ height: 1, background: 'rgba(0,0,0,0.13)', margin: '9px 0 7px' }} />
 }
 
@@ -797,7 +797,7 @@ function SettlementCard({ title, children }: { title: string; children: React.Re
 }
 
 /** Tone for a signed figure. Never the only carrier of meaning — the sign is. */
-function signTone(amount: number): string | undefined {
+export function signTone(amount: number): string | undefined {
   if (Math.abs(amount) < 0.005) return undefined
   return amount > 0 ? '#16A34A' : '#DC2626'
 }
@@ -1036,7 +1036,7 @@ export function AdjustmentsAndSettlement({
 }
 
 /** Signed money with an explicit + or −, so direction survives without colour. */
-function fmtSignedAmount(amount: number): string {
+export function fmtSignedAmount(amount: number): string {
   if (Math.abs(amount) < 0.005) return fmt(0)
   return `${amount > 0 ? '+' : '−'}${fmt(Math.abs(amount))}`
 }
