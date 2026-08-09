@@ -33,6 +33,68 @@ import { fetchSettlement, type SettlementRow } from '@/lib/payroll/settlementSto
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = any
 
+/** The four stored figures the settlement arithmetic needs from payroll_results. */
+export type SettlementResultFigures = {
+  gross_salary: number | null
+  total_deductions: number | null
+  pending_adjustment_total: number | null
+  days_present: number | null
+}
+
+/**
+ * The part of the `settlement` block that a settlement WRITE can change.
+ *
+ * Extracted so PATCH /api/payroll/settlement can answer with the confirmed
+ * figures itself and the page does not have to re-fetch the whole payslip to
+ * learn what it already caused. Both callers build it here, so the number shown
+ * after saving and the number shown after a reload are the same number by
+ * construction — a second, parallel implementation in the route is exactly how
+ * those two would drift.
+ *
+ * `adjustments_balance` is deliberately NOT part of this. It reconciles the
+ * itemised adjustment rows against the engine's applied total, and a
+ * carry-forward or payment write touches neither, so it belongs to the payload
+ * and stays put across a save.
+ */
+export function buildSettlementBlock(
+  result: SettlementResultFigures,
+  settlementRow: SettlementRow | null,
+) {
+  const figures = computeSettlement(
+    {
+      gross_salary:             result.gross_salary,
+      total_deductions:         result.total_deductions,
+      pending_adjustment_total: result.pending_adjustment_total,
+      days_present:             result.days_present,
+    },
+    settlementRow,
+  )
+
+  return {
+    figures,
+    sentence: closingBalanceSentence(figures),
+    carry_forward: settlementRow
+      ? {
+          proposed:         Number(settlementRow.proposed_carry_forward),
+          is_manual:        settlementRow.carry_forward_is_manual,
+          remark:           settlementRow.carry_forward_remark,
+          source_period_id: settlementRow.carry_forward_source_period_id,
+          set_at:           settlementRow.carry_forward_set_at,
+        }
+      : null,
+    // Present only once a payment has actually been recorded. A settlement row
+    // can exist with amount_paid NULL — created by generation to hold the
+    // carry-forward — and that is not a payment.
+    payment: settlementRow && settlementRow.amount_paid != null
+      ? {
+          payment_date: settlementRow.payment_date,
+          remark:       settlementRow.payment_remark,
+          recorded_at:  settlementRow.payment_recorded_at,
+        }
+      : null,
+  }
+}
+
 export type ResultDetailFailure = { ok: false; status: number; error: string }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ResultDetailSuccess = { ok: true; payload: Record<string, any> }
@@ -143,15 +205,8 @@ export async function buildResultDetailPayload(
     console.error('[payroll/detail] settlement unavailable:', e)
   }
 
-  const figures = computeSettlement(
-    {
-      gross_salary:             result.gross_salary,
-      total_deductions:         result.total_deductions,
-      pending_adjustment_total: result.pending_adjustment_total,
-      days_present:             result.days_present,
-    },
-    settlementRow,
-  )
+  const settlementBlock = buildSettlementBlock(result, settlementRow)
+  const figures = settlementBlock.figures
 
   // The itemised rows must add up to the total the engine applied. When they do
   // not, the two are being read differently and one of them is wrong — so say so
@@ -207,28 +262,8 @@ export async function buildResultDetailPayload(
       // arithmetic of its own — which is what stops a displayed figure from
       // drifting away from the data model.
       settlement: {
-        figures,
-        sentence: closingBalanceSentence(figures),
+        ...settlementBlock,
         adjustments_balance: adjustmentsBalance,
-        carry_forward: settlementRow
-          ? {
-              proposed:         Number(settlementRow.proposed_carry_forward),
-              is_manual:        settlementRow.carry_forward_is_manual,
-              remark:           settlementRow.carry_forward_remark,
-              source_period_id: settlementRow.carry_forward_source_period_id,
-              set_at:           settlementRow.carry_forward_set_at,
-            }
-          : null,
-        // Present only once a payment has actually been recorded. A settlement
-        // row can exist with amount_paid NULL — created by generation to hold
-        // the carry-forward — and that is not a payment.
-        payment: settlementRow && settlementRow.amount_paid != null
-          ? {
-              payment_date: settlementRow.payment_date,
-              remark:       settlementRow.payment_remark,
-              recorded_at:  settlementRow.payment_recorded_at,
-            }
-          : null,
       },
       ...dayView,
     },

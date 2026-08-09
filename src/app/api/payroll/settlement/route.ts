@@ -33,8 +33,13 @@ import { periodLockStateById, isLocked, LOCKED_PERIOD_MESSAGE } from '@/lib/payr
 import {
   ensureSettlement,
   logSettlementEvent,
+  SETTLEMENT_COLS,
   type SettlementRow,
 } from '@/lib/payroll/settlementStore'
+import {
+  buildSettlementBlock,
+  type SettlementResultFigures,
+} from '@/lib/payroll/resultDetailPayload'
 import { sameMoney } from '@/lib/payroll/settlement'
 
 /**
@@ -117,18 +122,6 @@ export async function PATCH(req: NextRequest) {
   if (isResponse(auth)) return authFailure(auth)
   const svc = auth.svc
 
-  // The audit trail denormalises who acted, so the name is read here rather
-  // than widening the shared Caller shape for one route's benefit. A failed
-  // lookup costs the trail a name, never the write — `actor_name` is nullable
-  // for exactly this reason.
-  const { data: profile } = await svc
-    .from('users')
-    .select('full_name')
-    .eq('id', auth.id)
-    .maybeSingle()
-
-  const actor = { id: auth.id, name: (profile?.full_name as string | null) ?? null }
-
   let body: Body
   try {
     body = await req.json()
@@ -144,6 +137,33 @@ export async function PATCH(req: NextRequest) {
   if (action !== 'carry_forward' && action !== 'payment') {
     return NextResponse.json({ error: "action must be 'carry_forward' or 'payment'" }, { status: 400 })
   }
+
+  // ── Two reads that depend on nothing that follows ─────────────────────────
+  // Started here and awaited only where they are needed, so their latency runs
+  // underneath the lock check and the write instead of in front of them. Both
+  // were previously sequential steps in a save that took several seconds, and
+  // neither has an input that any later step produces.
+  //
+  // The actor name is for the audit trail, which denormalises who acted; it is
+  // read here rather than widening the shared Caller shape for one route. A
+  // failed lookup costs the trail a name, never the write — `actor_name` is
+  // nullable for exactly that reason.
+  const actorNamePromise = svc
+    .from('users')
+    .select('full_name')
+    .eq('id', auth.id)
+    .maybeSingle()
+
+  // The stored totals the settlement figures are computed FROM. A settlement
+  // write never changes them — this route cannot reach the payroll engine —
+  // so reading them alongside the write is safe, and it is what lets the
+  // response carry the confirmed figures instead of making the page ask again.
+  const resultPromise = svc
+    .from('payroll_results')
+    .select('gross_salary, total_deductions, pending_adjustment_total, days_present')
+    .eq('payroll_period_id', payroll_period_id)
+    .eq('employee_id', employee_id)
+    .maybeSingle()
 
   // ── Lock guard, before anything is written ────────────────────────────────
   let lockState
@@ -167,19 +187,67 @@ export async function PATCH(req: NextRequest) {
     return serverFailure('ensureSettlement', e)
   }
 
+  // Both promises resolved while the lock check and ensureSettlement ran.
+  const { data: profile } = await actorNamePromise
+  const actor = { id: auth.id, name: (profile?.full_name as string | null) ?? null }
+
+  const ctx: WriteContext = { svc, actor, resultPromise }
+
   return action === 'carry_forward'
-    ? handleCarryForward(svc, settlement, body, actor)
-    : handlePayment(svc, settlement, body, actor)
+    ? handleCarryForward(ctx, settlement, body)
+    : handlePayment(ctx, settlement, body)
+}
+
+// ─── Answering with the confirmed figures ─────────────────────────────────────
+
+type WriteContext = {
+  svc: ServiceClient
+  actor: { id: string | null; name: string | null }
+  resultPromise: PromiseLike<{ data: SettlementResultFigures | null }>
+}
+
+/**
+ * The success body: what was written, plus the settlement block recomputed from
+ * it, so the page can show the new figures without asking for the payslip again.
+ *
+ * The saved value used to be echoed back on its own, which left the browser to
+ * reload the entire Payroll Detail payload — an engine recomputation and seven
+ * more round trips — just to learn the consequences of a write it had already
+ * been told succeeded. Everything else on that payload is derived from
+ * attendance and stored totals, and this route provably cannot change either.
+ *
+ * These are CONFIRMED figures, not an optimistic echo: `row` is what the
+ * database returned from the UPDATE itself, so any rounding numeric(12,2)
+ * applied is already in it, and the arithmetic is the same
+ * `buildSettlementBlock` the detail endpoint runs.
+ */
+async function confirmed(
+  ctx: WriteContext,
+  row: SettlementRow,
+  extra: Record<string, unknown>,
+) {
+  const { data: result } = await ctx.resultPromise
+
+  // No stored result yet — the settlement is real but there is nothing to
+  // compute figures against, so the page falls back to a full reload rather
+  // than being handed a block built from zeroes.
+  if (!result) return NextResponse.json({ ok: true, ...extra, settlement: null })
+
+  return NextResponse.json({
+    ok: true,
+    ...extra,
+    settlement: buildSettlementBlock(result, row),
+  })
 }
 
 // ─── Carry forward ────────────────────────────────────────────────────────────
 
 async function handleCarryForward(
-  svc: ServiceClient,
+  ctx: WriteContext,
   settlement: SettlementRow,
   body: Body,
-  actor: { id: string | null; name: string | null },
 ) {
+  const { svc, actor } = ctx
   const previous = Number(settlement.carry_forward_amount)
   const proposed = Number(settlement.proposed_carry_forward)
 
@@ -188,7 +256,10 @@ async function handleCarryForward(
   // all: proposed_carry_forward is written once at materialisation and no
   // override path touches it.
   if (body.reset === true) {
-    const { error } = await svc
+    // .select() on the UPDATE: PostgREST returns the stored row on the same
+    // round trip, so the response is built from what the database actually
+    // holds without paying for a second read to find out.
+    const { data: row, error } = await svc
       .from('payroll_settlements')
       .update({
         carry_forward_amount:    proposed,
@@ -199,6 +270,8 @@ async function handleCarryForward(
         updated_at:              new Date().toISOString(),
       })
       .eq('id', settlement.id)
+      .select(SETTLEMENT_COLS)
+      .single()
 
     if (error) return serverFailure('carry-forward reset', error)
 
@@ -210,7 +283,10 @@ async function handleCarryForward(
       actorName:      actor.name,
     })
 
-    return NextResponse.json({ ok: true, carry_forward_amount: proposed, is_manual: false })
+    return confirmed(ctx, row as SettlementRow, {
+      carry_forward_amount: proposed,
+      is_manual: false,
+    })
   }
 
   // ── Manual override ─────────────────────────────────────────────────────
@@ -231,7 +307,7 @@ async function handleCarryForward(
     )
   }
 
-  const { error } = await svc
+  const { data: row, error } = await svc
     .from('payroll_settlements')
     .update({
       carry_forward_amount:    amount,
@@ -242,6 +318,8 @@ async function handleCarryForward(
       updated_at:              new Date().toISOString(),
     })
     .eq('id', settlement.id)
+    .select(SETTLEMENT_COLS)
+    .single()
 
   if (error) return serverFailure('carry-forward override', error)
 
@@ -253,17 +331,17 @@ async function handleCarryForward(
     actorName:      actor.name,
   })
 
-  return NextResponse.json({ ok: true, carry_forward_amount: amount, is_manual: true })
+  return confirmed(ctx, row as SettlementRow, { carry_forward_amount: amount, is_manual: true })
 }
 
 // ─── Payment ──────────────────────────────────────────────────────────────────
 
 async function handlePayment(
-  svc: ServiceClient,
+  ctx: WriteContext,
   settlement: SettlementRow,
   body: Body,
-  actor: { id: string | null; name: string | null },
 ) {
+  const { svc, actor } = ctx
   const previous = settlement.amount_paid == null ? null : Number(settlement.amount_paid)
   const remark   = (body.remark ?? '').trim() || null
 
@@ -271,7 +349,7 @@ async function handlePayment(
   // null means "not recorded", which is a different state from ₹0 ("paid
   // nothing"), so withdrawing a payment has to be expressible.
   if (body.amount_paid === null) {
-    const { error } = await svc
+    const { data: row, error } = await svc
       .from('payroll_settlements')
       .update({
         amount_paid:         null,
@@ -282,6 +360,8 @@ async function handlePayment(
         updated_at:          new Date().toISOString(),
       })
       .eq('id', settlement.id)
+      .select(SETTLEMENT_COLS)
+      .single()
 
     if (error) return serverFailure('payment clear', error)
 
@@ -292,7 +372,7 @@ async function handlePayment(
       actorName:      actor.name,
     })
 
-    return NextResponse.json({ ok: true, amount_paid: null })
+    return confirmed(ctx, row as SettlementRow, { amount_paid: null })
   }
 
   const amountPaid = body.amount_paid
@@ -310,7 +390,7 @@ async function handlePayment(
     return NextResponse.json({ error: 'payment_date must be a YYYY-MM-DD date' }, { status: 400 })
   }
 
-  const { error } = await svc
+  const { data: row, error } = await svc
     .from('payroll_settlements')
     .update({
       amount_paid:         amountPaid,
@@ -321,6 +401,8 @@ async function handlePayment(
       updated_at:          new Date().toISOString(),
     })
     .eq('id', settlement.id)
+    .select(SETTLEMENT_COLS)
+    .single()
 
   if (error) return serverFailure('payment record', error)
 
@@ -342,5 +424,5 @@ async function handlePayment(
     },
   )
 
-  return NextResponse.json({ ok: true, amount_paid: amountPaid })
+  return confirmed(ctx, row as SettlementRow, { amount_paid: amountPaid })
 }

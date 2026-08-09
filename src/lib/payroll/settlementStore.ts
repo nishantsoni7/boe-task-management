@@ -34,7 +34,12 @@ export type SettlementRow = {
   payment_recorded_at: string | null
 }
 
-const SETTLEMENT_COLS = `
+/**
+ * Exported so a mutation can ask PostgREST to hand the updated row back on the
+ * same round trip (`.update(...).select(SETTLEMENT_COLS).single()`) instead of
+ * paying for a second read to find out what it just wrote.
+ */
+export const SETTLEMENT_COLS = `
   id, payroll_period_id, employee_id, payroll_result_id,
   proposed_carry_forward, carry_forward_source_period_id,
   carry_forward_amount, carry_forward_is_manual, carry_forward_remark,
