@@ -12,6 +12,7 @@ import type {
   EngineResult,
 } from './types'
 import type { AttendanceDayCorrection } from '../attendance/corrections'
+import { parseStoredDirectionSource } from '../attendance/punchDirection'
 import { toSignedAdjustments, type StoredAdjustment } from './adjustments'
 import { onlyParticipating, partitionByParticipation } from './participation'
 
@@ -101,13 +102,42 @@ export async function fetchAttendanceForPeriod(
 
   const { data, error } = await svc
     .from('attendance_records')
-    .select('id, attendance_date, check_in_at, check_out_at')
+    .select('id, attendance_date, check_in_at, check_out_at, punch_direction_source')
     .eq('user_id', employeeId)
     .gte('attendance_date', start)
     .lt('attendance_date', end)
 
   if (error) throw new Error(`fetchAttendanceForPeriod: ${error.message}`)
-  return (data ?? []) as EngineAttendanceRecord[]
+  return (data ?? []).map(toEngineAttendanceRecord)
+}
+
+/**
+ * A stored attendance row, narrowed for the engine.
+ *
+ * The column is `text` with a CHECK, so Supabase types it `string | null` and
+ * the CHECK constrains the database rather than this program. The value is
+ * therefore PARSED, not asserted: anything the engine would not recognise
+ * becomes null and resolves to 'inferred', which is the reading that cannot
+ * over-charge. No raw database text reaches the calculation.
+ *
+ * Mapping through one function rather than casting the row is what makes that
+ * true of every payroll read — see the identically-shaped read in
+ * /api/payroll/monthly-review, which calls this too.
+ */
+export function toEngineAttendanceRecord(row: {
+  id: string
+  attendance_date: string
+  check_in_at: string | null
+  check_out_at: string | null
+  punch_direction_source?: unknown
+}): EngineAttendanceRecord {
+  return {
+    id:               row.id,
+    attendance_date:  row.attendance_date,
+    check_in_at:      row.check_in_at,
+    check_out_at:     row.check_out_at,
+    direction_source: parseStoredDirectionSource(row.punch_direction_source),
+  }
 }
 
 // ─── Attendance corrections (manual override layer) ───────────────────────────
@@ -147,6 +177,49 @@ export async function fetchCurrentCorrections(
 
   if (error) throw new Error(`fetchCurrentCorrections: ${error.message}`)
   return (data ?? []) as StoredCorrection[]
+}
+
+/**
+ * The active corrections for EVERY employee in one month, grouped by employee.
+ *
+ * The whole-company preview (/api/payroll/monthly-review) needs the same
+ * override layer generation uses, and fetching it per employee would be one
+ * round trip each. Same `is_current` filter and same column list as
+ * fetchCurrentCorrections above, so the two cannot resolve a day differently.
+ *
+ * Read unpaged on purpose: this is one month of manually corrected days for the
+ * whole company — tens of rows, orders of magnitude below the 1000-row PostgREST
+ * ceiling, and the same shape as the attendance read the caller already does for
+ * the same window. If BOE ever corrects more than a thousand days in one month,
+ * this and that read both need src/lib/supabasePaging.ts.
+ */
+export async function fetchCurrentCorrectionsByEmployee(
+  svc: Svc,
+  month: number,
+  year: number,
+): Promise<Map<string, StoredCorrection[]>> {
+  const mm        = String(month).padStart(2, '0')
+  const nextMonth = month === 12 ? 1 : month + 1
+  const nextYear  = month === 12 ? year + 1 : year
+  const start     = `${year}-${mm}-01`
+  const end       = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
+
+  const { data, error } = await svc
+    .from('attendance_day_corrections')
+    .select('user_id, id, attendance_date, corrected_check_in_at, corrected_check_out_at, day_treatment, waive_late_arrival, waive_early_checkout, waive_missing_punch, remark, corrected_by, corrected_at')
+    .eq('is_current', true)
+    .gte('attendance_date', start)
+    .lt('attendance_date', end)
+
+  if (error) throw new Error(`fetchCurrentCorrectionsByEmployee: ${error.message}`)
+
+  const byEmployee = new Map<string, StoredCorrection[]>()
+  for (const row of (data ?? []) as (StoredCorrection & { user_id: string })[]) {
+    const list = byEmployee.get(row.user_id)
+    if (list) list.push(row)
+    else byEmployee.set(row.user_id, [row])
+  }
+  return byEmployee
 }
 
 // ─── Holidays ─────────────────────────────────────────────────────────────────

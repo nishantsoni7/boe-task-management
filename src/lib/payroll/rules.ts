@@ -407,7 +407,7 @@ export const RULE_CARDS: RuleCard[] = [
     group: 'deduction',
     title: 'Missing Punch-In / Punch-Out',
     body: `One punch present and the other missing costs a flat ${MISSING_PUNCH_HOURS} hours. The day still counts as present.`,
-    detail: 'A missing punch-out also carries a late-arrival deduction if the punch-in was late. Both punches missing is an absence, not a missing punch.',
+    detail: 'A late-arrival deduction is added on top only when the attendance file states that the punch present was the arrival, or an admin has confirmed it — never when the direction was worked out from the time of day alone. Both punches missing is an absence, not a missing punch.',
   },
   {
     key: 'absent_deduction',

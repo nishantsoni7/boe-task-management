@@ -10,6 +10,7 @@ import {
   LUNCH_HOURS,
   PRESENCE_THRESHOLD_HOURS,
 } from './scheduleRules'
+import { resolveDirectionSource, type PunchDirectionSource } from './punchDirection'
 
 export type AttendanceClassification =
   | 'full_present'
@@ -24,6 +25,12 @@ export type MissingPunchType = 'missing_punch_in' | 'missing_punch_out'
 export type AttendanceRecordInput = {
   check_in_at: string | null   // ISO timestamptz
   check_out_at: string | null  // ISO timestamptz
+  /**
+   * How the IN/OUT split for this day was established. Optional because most
+   * callers have no opinion; absent is read as 'inferred', the cautious value.
+   * See ./punchDirection for why the distinction is carried this far.
+   */
+  direction_source?: PunchDirectionSource | null
 }
 
 export type ClassifiedDay = {
@@ -33,6 +40,12 @@ export type ClassifiedDay = {
   on_office_timing: boolean           // office-timing full-day override applied
   check_in_minutes: number | null     // IST minutes-since-midnight, when known
   check_out_minutes: number | null    // IST minutes-since-midnight, when known
+  /**
+   * Resolved provenance of the IN/OUT split — never null, so a consumer cannot
+   * forget to apply the default. Only meaningful when exactly one punch is
+   * present; a complete pair required no decision.
+   */
+  direction_source: PunchDirectionSource
 }
 
 // Returns minutes-since-midnight in IST for an ISO timestamptz string.
@@ -45,6 +58,8 @@ function istMinutes(ts: string): number {
 export function classifyAttendanceDay(
   record: AttendanceRecordInput | undefined,
 ): ClassifiedDay {
+  const directionSource = resolveDirectionSource(record?.direction_source)
+
   const absent: ClassifiedDay = {
     classification: 'full_absent',
     effective_hours_worked: 0,
@@ -52,6 +67,7 @@ export function classifyAttendanceDay(
     on_office_timing: false,
     check_in_minutes: null,
     check_out_minutes: null,
+    direction_source: directionSource,
   }
 
   // No record or both punches missing → full_absent
@@ -67,6 +83,7 @@ export function classifyAttendanceDay(
       on_office_timing: false,
       check_in_minutes: record.check_in_at != null ? istMinutes(record.check_in_at) : null,
       check_out_minutes: record.check_out_at != null ? istMinutes(record.check_out_at) : null,
+      direction_source: directionSource,
     }
   }
 
@@ -109,5 +126,9 @@ export function classifyAttendanceDay(
     on_office_timing: onOfficeTiming,
     check_in_minutes: inMin,
     check_out_minutes: outMin,
+    // Both punches are present, so nothing about the direction was decided.
+    // Reported as 'confirmed' regardless of what the caller passed, which keeps
+    // late-arrival and early-departure on complete days exactly as they were.
+    direction_source: 'confirmed',
   }
 }

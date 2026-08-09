@@ -13,6 +13,8 @@
 // attendance_day_corrections separately and asks this module which values
 // payroll should use.
 
+import { resolveDirectionSource, type PunchDirectionSource } from './punchDirection'
+
 export const DAY_TREATMENTS = ['auto', 'full_day', 'half_day', 'absent'] as const
 export type DayTreatment = (typeof DAY_TREATMENTS)[number]
 
@@ -38,6 +40,12 @@ export type AttendanceDayCorrection = {
 export type RawAttendance = {
   check_in_at: string | null
   check_out_at: string | null
+  /**
+   * How the importer established the IN/OUT split. Optional: the raw row does
+   * not carry it yet (see resolveEffectiveAttendance below), so it reads as
+   * 'inferred'.
+   */
+  direction_source?: PunchDirectionSource | null
 }
 
 export type EffectiveAttendance = {
@@ -45,6 +53,8 @@ export type EffectiveAttendance = {
   check_out_at: string | null
   /** Where the punches came from — drives the "Corrected" indicator in the UI. */
   source: 'raw' | 'corrected'
+  /** How confidently the IN/OUT split is known. See ./punchDirection. */
+  direction_source: PunchDirectionSource
 }
 
 export function isDayTreatment(value: unknown): value is DayTreatment {
@@ -56,6 +66,15 @@ export function isDayTreatment(value: unknown): value is DayTreatment {
  *
  * With no correction this is the raw record verbatim (or an empty pair when the
  * machine has nothing for the day at all).
+ *
+ * A CORRECTION IS ALWAYS 'confirmed', and that is a substantive rule rather than
+ * bookkeeping. The correction form asks for a punch-in and a punch-out as
+ * separate fields, so an admin who fills one and leaves the other blank has
+ * STATED which one is missing — there is nothing left to infer. It is also the
+ * escape hatch that makes the cautious default safe: where a Format B punch was
+ * read the wrong way round, or a genuine late arrival went uncharged because the
+ * direction could only be guessed, an admin correction restores the full normal
+ * treatment for that day, with a remark on the record explaining why.
  */
 export function resolveEffectiveAttendance(
   raw: RawAttendance | undefined,
@@ -66,12 +85,14 @@ export function resolveEffectiveAttendance(
       check_in_at:  correction.corrected_check_in_at,
       check_out_at: correction.corrected_check_out_at,
       source: 'corrected',
+      direction_source: 'confirmed',
     }
   }
   return {
     check_in_at:  raw?.check_in_at  ?? null,
     check_out_at: raw?.check_out_at ?? null,
     source: 'raw',
+    direction_source: resolveDirectionSource(raw?.direction_source),
   }
 }
 

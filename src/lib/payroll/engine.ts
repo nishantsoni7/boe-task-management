@@ -328,6 +328,10 @@ function classifySingleDay(
 
   const effective = resolveEffectiveAttendance(record, correction)
   const punches = { check_in_at: effective.check_in_at, check_out_at: effective.check_out_at }
+  // Kept out of `punches` deliberately: `punches` is spread onto the DayResult,
+  // and provenance is an input to the deduction rules, not a fact about the day
+  // that anything downstream should render.
+  const classifierInput = { ...punches, direction_source: effective.direction_source }
 
   // A day treatment other than 'auto' settles the day outright: the admin has
   // stated the outcome, so no punch-derived deduction line is produced for it.
@@ -352,7 +356,7 @@ function classifySingleDay(
 
   const waivedTypes = waivedDeductionTypes(correction)
   const isWaived = (type: string) => waivedTypes.has(type as WaivableDeductionType)
-  const classified = classifyAttendanceDay(punches)
+  const classified = classifyAttendanceDay(classifierInput)
 
   if (classified.classification === 'full_absent') {
     return {
@@ -366,13 +370,31 @@ function classifySingleDay(
   }
 
   // Missing punch: exactly one punch present → 2h fixed deduction.
-  // When punch-out is missing but punch-in exists, also apply late arrival if applicable.
+  //
+  // Late arrival may stack on top, but ONLY when the punch that is present has a
+  // CONFIRMED direction — the file said it was an arrival (Format A), or an
+  // admin did (a correction). A direction the parser inferred from the clock is
+  // not a sound basis for then charging the employee for the clock.
+  //
+  // This is the fix for the worst case the audit found. A Format B employee
+  // whose only punch was at 18:36 used to be recorded as ARRIVING at 18:36:
+  // a missing punch-out (2 h) plus roughly nine hours of "lateness", so one
+  // forgotten punch cost more than the whole day's pay. The parser now reads
+  // that punch as a departure, and this guard makes sure that even a lone
+  // MORNING punch — which is still only a guess at being an arrival — cannot
+  // carry a lateness charge.
+  //
+  // A missing punch-IN never reaches the late-arrival branch at all: there is no
+  // arrival time to measure, whatever its provenance.
   if (classified.classification === 'missing_punch') {
     const missingLines: PendingDeductionLine[] = [
       hourlyLine(date, classified.missing_punch_type!, MISSING_PUNCH_HOURS, rates),
     ]
 
-    if (classified.missing_punch_type === 'missing_punch_out') {
+    if (
+      classified.missing_punch_type === 'missing_punch_out' &&
+      classified.direction_source === 'confirmed'
+    ) {
       const inMin = classified.check_in_minutes!
       if (inMin > GRACE_END_MINUTES) {
         const lateHours = roundDeductionHours(inMin - SCHEDULED_IN_MINUTES)

@@ -23,6 +23,16 @@ export type EngineAttendanceRecord = {
   attendance_date: string   // ISO date
   check_in_at: string | null   // ISO timestamptz
   check_out_at: string | null  // ISO timestamptz
+  /**
+   * How the importer established the IN/OUT split for this day.
+   *
+   * Optional, and today no store read populates it: attendance_records has no
+   * column for it yet, so every raw record reaches the engine without one and is
+   * read as 'inferred'. That is the cautious default and it is what removes the
+   * over-deduction — see src/lib/attendance/punchDirection.ts. An admin
+   * correction supplies 'confirmed' through the corrections layer instead.
+   */
+  direction_source?: import('../attendance/punchDirection').PunchDirectionSource | null
 }
 
 export type EngineHoliday = {
