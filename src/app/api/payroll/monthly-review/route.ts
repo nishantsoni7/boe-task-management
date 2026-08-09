@@ -15,6 +15,7 @@ import {
   toEngineAttendanceRecord,
 } from '@/lib/payroll/store'
 import { onlyParticipating } from '@/lib/payroll/participation'
+import { fetchActiveSettings, settingsForPeriod } from '@/lib/payroll/settingsStore'
 import { isSkip } from '@/lib/payroll/types'
 import type { EngineEmployee, EngineAttendanceRecord, EnginePendingAdjustment } from '@/lib/payroll/types'
 
@@ -123,6 +124,43 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  // ── Which settings this preview is a preview OF ─────────────────────────────
+  //
+  // A month that has already been generated must be previewed with the settings
+  // it was generated under, or this screen would show one set of figures and the
+  // stored payslips another, with nothing on either to explain the difference.
+  // A month that has never run has nothing to preserve and previews under
+  // today's rules — which is exactly what an admin editing a setting wants to
+  // see before generating.
+  //
+  // The decision itself lives in settingsForPeriod so this and the generate
+  // route cannot drift; all that happens here is the lookup.
+  let settings: Awaited<ReturnType<typeof fetchActiveSettings>>['settings']
+  let settingsSource: 'current' | 'period_snapshot' = 'current'
+  try {
+    const [active, { data: periodRow }] = await Promise.all([
+      fetchActiveSettings(svc),
+      svc
+        .from('payroll_periods')
+        .select('status, settings_snapshot')
+        .eq('payroll_year', year)
+        .eq('payroll_month', month)
+        .maybeSingle(),
+    ])
+
+    if (periodRow) {
+      const period = periodRow as { status: 'draft' | 'generated' | 'locked'; settings_snapshot: unknown }
+      settings = settingsForPeriod(period, active.settings)
+      settingsSource = period.settings_snapshot != null || period.status !== 'draft'
+        ? 'period_snapshot'
+        : 'current'
+    } else {
+      settings = active.settings
+    }
+  } catch (e) {
+    return NextResponse.json({ error: `Could not resolve payroll settings: ${String(e)}` }, { status: 500 })
+  }
+
   // Dummy period for preview — no DB row required
   const previewPeriod = {
     id: 'preview',
@@ -136,9 +174,10 @@ export async function GET(req: NextRequest) {
     const attendance   = byEmployee.get(emp.id)   ?? []
     const adjustments  = adjByEmployee.get(emp.id) ?? []
     const corrections  = correctionsByEmployee.get(emp.id) ?? []
-    // Same six arguments generation passes. The corrections argument used to be
-    // omitted, which silently made this a preview of a different calculation.
-    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, adjustments, corrections)
+    // Same seven arguments generation passes. The corrections argument used to
+    // be omitted, which silently made this a preview of a different calculation;
+    // the settings argument is the same rule for the same reason.
+    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, adjustments, corrections, settings)
 
     if (isSkip(outcome)) {
       return {
@@ -172,5 +211,7 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  return NextResponse.json({ year, month, results })
+  // settings_source is reported so the screen can say which rules the figures
+  // were produced under, rather than leaving an admin to infer it.
+  return NextResponse.json({ year, month, results, settings_source: settingsSource })
 }

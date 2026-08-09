@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Banknote, BookOpen, FileBarChart, Home, RefreshCw } from 'lucide-react'
+import { Banknote, BookOpen, FileBarChart, Home, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -67,6 +67,9 @@ export function PayrollLayout({
     { label: 'Payroll Dashboard',  path: '/payroll',                icon: <Banknote     size={15} strokeWidth={1.8} /> },
     { label: 'Monthly Review',     path: '/payroll/monthly-review', icon: <FileBarChart size={15} strokeWidth={1.8} /> },
     { label: 'How Payroll Works',  path: PAYROLL_GUIDE_PATH,        icon: <BookOpen     size={15} strokeWidth={1.8} /> },
+    // Everything under /payroll is already admin-only (PayrollGuard →
+    // resolveManagementAccess), so this link needs no extra gate of its own.
+    { label: 'Payroll Settings',   path: '/payroll/settings',       icon: <SlidersHorizontal size={15} strokeWidth={1.8} /> },
   ]
 
   return (
