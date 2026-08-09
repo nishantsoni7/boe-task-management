@@ -503,6 +503,48 @@ describe('carry forward across an unresolved prior month', () => {
   })
 })
 
+// ─── What the redesigned section renders ──────────────────────────────────────
+
+describe('the settlement summary receives the right figures', () => {
+  // The Part 1 redesign moved Salary Payable into its own summary card. These
+  // pin the values that card is built from — a layout change must not quietly
+  // start feeding it net_salary, or the salary-after-attendance figure.
+  test('Salary Payable is the sum of the two lines shown above it', () => {
+    const f = computeSettlement(
+      result({ pending_adjustment_total: 300 }),
+      settlement({ carry_forward_amount: 2_000 }),
+    )
+    assert.ok(sameMoney(f.salary_after_attendance + f.net_adjustments, f.salary_payable))
+    assert.ok(sameMoney(f.salary_payable, 26_221.95))
+  })
+
+  test('an unrecorded payment yields no closing balance for the card to show', () => {
+    const f = computeSettlement(result(), settlement())
+    assert.equal(f.payment_status, 'not_recorded')
+    assert.equal(f.closing_balance, null)
+  })
+
+  test('a recorded ₹0 payment does yield one, for the full payable', () => {
+    const f = computeSettlement(result(), settlement({ amount_paid: 0 }))
+    assert.equal(f.payment_status, 'recorded')
+    assert.equal(f.closing_balance, f.salary_payable)
+  })
+
+  test('adjustment signs survive to the row level, in both directions', () => {
+    // The Adjustments card renders one row per adjustment; each must arrive
+    // already signed (see the toSignedAdjustment defect this guards).
+    const rows: StoredAdjustment[] = [
+      { id: 'a1', adjustment_type: 'addition',  amount: 800, description: 'Travel reimbursement' },
+      { id: 'a2', adjustment_type: 'deduction', amount: 500, description: 'Advance recovery' },
+    ]
+    const signed = toSignedAdjustments(rows)
+
+    assert.equal(signed[0].amount, 800)
+    assert.equal(signed[1].amount, -500)
+    assert.equal(adjustmentsReconcile(signed.map(a => a.amount), 300), true)
+  })
+})
+
 // ─── The specification's worked example, end to end ───────────────────────────
 
 describe('end-to-end: the specification example', () => {

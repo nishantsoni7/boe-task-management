@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Banknote, FileBarChart, Home, RefreshCw } from 'lucide-react'
+import { Banknote, BookOpen, FileBarChart, Home, RefreshCw } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
+import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -58,9 +59,14 @@ export function PayrollLayout({
     setSidebarOpen(false)
   }
 
+  // The guide is last: it explains the module rather than being a place work
+  // happens. It is also the one /payroll route employees may open — PayrollGuard
+  // lets them through to PAYROLL_GUIDE_PATH and nothing else — which is why it
+  // appears in the Attendance sidebar too, for readers who never see this one.
   const navItems = [
-    { label: 'Payroll Dashboard', path: '/payroll',                icon: <Banknote     size={15} strokeWidth={1.8} /> },
-    { label: 'Monthly Review',    path: '/payroll/monthly-review', icon: <FileBarChart size={15} strokeWidth={1.8} /> },
+    { label: 'Payroll Dashboard',  path: '/payroll',                icon: <Banknote     size={15} strokeWidth={1.8} /> },
+    { label: 'Monthly Review',     path: '/payroll/monthly-review', icon: <FileBarChart size={15} strokeWidth={1.8} /> },
+    { label: 'How Payroll Works',  path: PAYROLL_GUIDE_PATH,        icon: <BookOpen     size={15} strokeWidth={1.8} /> },
   ]
 
   return (

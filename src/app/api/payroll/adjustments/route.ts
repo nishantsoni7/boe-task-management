@@ -6,6 +6,24 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { periodLockStateByMonth, isLocked, LOCKED_PERIOD_MESSAGE } from '@/lib/payroll/lockGuard'
 
+/**
+ * A failure the admin can act on, with the technical detail kept server-side.
+ *
+ * These routes used to return `String(e)` and the raw Postgres `error.message`
+ * to the browser, so a storage-layer problem surfaced on the payslip naming an
+ * internal table. The detail goes to the server log where it is diagnosable;
+ * the screen gets one sentence and keeps its retry.
+ *
+ * Still a 500 — the write genuinely failed and nothing pretends otherwise.
+ */
+function serverFailure(where: string, detail: unknown) {
+  console.error(`[payroll/adjustments] ${where}:`, detail)
+  return NextResponse.json(
+    { error: 'The adjustment could not be saved. Please try again.' },
+    { status: 500 },
+  )
+}
+
 async function getAdminCaller(req: NextRequest) {
   const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
   if (!token) return null
@@ -43,7 +61,7 @@ export async function GET(req: NextRequest) {
     .eq('status', 'pending')
     .order('created_at', { ascending: false })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverFailure('list adjustments', error)
   return NextResponse.json({ adjustments: data ?? [] })
 }
 
@@ -86,7 +104,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: LOCKED_PERIOD_MESSAGE }, { status: 422 })
     }
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+    return serverFailure('lock state lookup', e)
   }
 
   const { data, error } = await ctx.svc
@@ -104,6 +122,6 @@ export async function POST(req: NextRequest) {
     .select('id, adjustment_type, amount, description, created_by, created_at')
     .single()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverFailure('create adjustment', error)
   return NextResponse.json({ adjustment: data }, { status: 201 })
 }

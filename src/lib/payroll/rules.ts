@@ -245,6 +245,64 @@ export const EXAMPLE_DEDUCTIONS: ExampleDeduction[] = [
 export const EXAMPLE_DEDUCTION_TOTAL =
   EXAMPLE_DEDUCTIONS.reduce((sum, line) => sum + line.amount, 0)
 
+// ─── The worked example, as one settlement ────────────────────────────────────
+
+/**
+ * The specification's end-to-end example, in one place.
+ *
+ * The guide renders it and `settlement.test.ts` asserts the same figures, so a
+ * change to the settlement arithmetic breaks a test rather than quietly leaving
+ * the guide teaching an outdated sum. Every derived line below is COMPUTED, not
+ * typed — only the four inputs are literals.
+ */
+export const EXAMPLE_SETTLEMENT = (() => {
+  const gross            = 26_500
+  const deductions       = 2_578.05
+  const carryForward     = 2_000
+  const otherAddition    = 800
+  const otherDeduction   = -500
+  const amountPaid       = 24_000
+
+  const afterAttendance  = gross - deductions
+  const otherAdjustments = otherAddition + otherDeduction
+  const netAdjustments   = carryForward + otherAdjustments
+  const salaryPayable    = afterAttendance + netAdjustments
+  const closingBalance   = salaryPayable - amountPaid
+
+  return {
+    gross_salary:            gross,
+    attendance_deductions:   deductions,
+    salary_after_attendance: afterAttendance,
+    carry_forward:           carryForward,
+    other_addition:          otherAddition,
+    other_deduction:         otherDeduction,
+    other_adjustments:       otherAdjustments,
+    net_adjustments:         netAdjustments,
+    salary_payable:          salaryPayable,
+    amount_paid:             amountPaid,
+    closing_balance:         closingBalance,
+  }
+})()
+
+// ─── Glossary ─────────────────────────────────────────────────────────────────
+
+/** One line each, for the terms the payslip uses. Same wording as the UI labels. */
+export const GLOSSARY: Array<{ term: string; meaning: string }> = [
+  { term: 'Gross Salary',            meaning: 'Your agreed monthly salary, before anything is added or taken off.' },
+  { term: 'Working Days',            meaning: `The days payroll counts for the month — everything except Sundays, company holidays and dates before you joined. Your daily rate is the monthly salary ÷ ${PER_DAY_DIVISOR}.` },
+  { term: 'Attendance Deductions',   meaning: 'The total taken off for late arrivals, early departures, half days, absences and missing punches.' },
+  { term: 'Salary After Attendance', meaning: 'Gross Salary minus Attendance Deductions — what the month itself earned.' },
+  { term: 'Previous Balance',        meaning: 'Anything left unsettled from your previous payroll month. Positive means BOE owes you; negative means you were paid extra and it is recovered now.' },
+  { term: 'Other Adjustments',       meaning: 'Additions and recoveries an admin entered for this month, each with a written reason.' },
+  { term: 'Net Adjustments',         meaning: 'Previous Balance and Other Adjustments added together.' },
+  { term: 'Salary Payable',          meaning: 'What BOE should settle for the month: Salary After Attendance plus Net Adjustments.' },
+  { term: 'Amount Paid',             meaning: 'What was actually paid to you. It can be equal to, less than, or more than Salary Payable.' },
+  { term: 'Balance Carried Forward', meaning: 'Salary Payable minus Amount Paid. It becomes next month’s Previous Balance.' },
+  { term: 'Settlement Status',       meaning: 'Whether the payment has been recorded yet. Until it is, there is no closing balance.' },
+  { term: 'Paid Leave',              meaning: 'One leave the company covers, earned by your attendance in the same month. The day still appears on the payslip, showing ₹0.' },
+  { term: 'Locked Period',           meaning: 'A payroll month that has been finalised. Nothing in it can change until an admin reopens it.' },
+]
+
 /** What BOE payroll deliberately does not do. Stated rather than left to be discovered. */
 export const NOT_CALCULATED = [
   'Overtime. Extra hours are not paid automatically; anything owed for them is entered as an adjustment.',

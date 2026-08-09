@@ -198,9 +198,29 @@ export default function PayrollResultDetailPage() {
     setSettlementSaving(true)
     setSettlementError(null)
     try {
+      // The access token is read again here rather than reused from state.
+      //
+      // `token` is captured once, at mount, and Supabase access tokens expire
+      // about an hour later. The client refreshes its own session in the
+      // background, but this component's copy does not move with it, so a
+      // payslip left open long enough sent a token the auth server no longer
+      // accepted — and the route answered that with a permission error. Nothing
+      // was wrong with the admin's permissions; the page was quoting a stale
+      // credential at it.
+      //
+      // getSession() hands back the current token, refreshing it first if it
+      // has to. Same shape as submitIssue in src/app/my-issues/page.tsx.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setSettlementError('Your session has expired. Please sign in again and retry.')
+        return
+      }
+      const accessToken = session.access_token
+      setToken(accessToken)
+
       const res = await fetch('/api/payroll/settlement', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({
           payroll_period_id: periodId,
           employee_id:       employeeId,
@@ -215,12 +235,18 @@ export default function PayrollResultDetailPage() {
       }
       setCarryForwardOpen(false)
       setPaymentOpen(false)
-      await load(token)
+      // The refreshed token, not the one in state — setToken above will not
+      // have been applied yet, and reloading the payslip with the expired
+      // credential would blank the page straight after a successful save.
+      await load(accessToken)
       setSavedNotice(action === 'carry_forward'
         ? 'Previous balance updated.'
         : 'Amount paid recorded.')
     } catch (e) {
-      setSettlementError(String(e))
+      // Reaching here means the request never completed — the dialog stays
+      // open with the entered values, and the browser console keeps the detail.
+      console.error('[payroll/settlement] request failed:', e)
+      setSettlementError('Settlement details could not be saved. Please try again.')
     } finally {
       setSettlementSaving(false)
     }
@@ -230,9 +256,21 @@ export default function PayrollResultDetailPage() {
     setSaving(true)
     setSaveError(null)
     try {
+      // Same reason as saveSettlement above: `token` is captured once at mount
+      // and goes stale about an hour later, so a payslip left open sends a
+      // credential the auth server has stopped accepting. Correcting a day is
+      // the other mutation on this page and had the identical exposure.
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setSaveError('Your session has expired. Please sign in again and retry.')
+        return
+      }
+      const accessToken = session.access_token
+      setToken(accessToken)
+
       const res = await fetch('/api/payroll/attendance-correction', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ ...payload, payroll_period_id: periodId, employee_id: employeeId }),
       })
       const json = await res.json()
@@ -241,7 +279,10 @@ export default function PayrollResultDetailPage() {
       // Success closes the modal; a failure above leaves it open with the
       // entered values intact.
       setEditingDate(null)
-      await load(token)
+      // The refreshed token, not the one in state — setToken has not been
+      // applied yet, and reloading with the expired one would blank the page
+      // immediately after a correction succeeded.
+      await load(accessToken)
       setSavedNotice(
         `${fmtDayDate(payload.attendance_date)} corrected — payroll recalculated. Net salary ${fmt(json.net_salary)}.`,
       )

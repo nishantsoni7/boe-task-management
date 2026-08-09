@@ -23,8 +23,12 @@
 // belong to, through buildResultDetailPayload — one payload, one set of numbers,
 // for the admin and the employee alike.
 
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  requireAdmin,
+  isResponse,
+  type ServiceClient,
+} from '@/lib/security/attendancePayrollApiAuth'
 import { periodLockStateById, isLocked, LOCKED_PERIOD_MESSAGE } from '@/lib/payroll/lockGuard'
 import {
   ensureSettlement,
@@ -33,22 +37,66 @@ import {
 } from '@/lib/payroll/settlementStore'
 import { sameMoney } from '@/lib/payroll/settlement'
 
-async function getAdminCaller(req: NextRequest) {
-  const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
-  if (!token) return null
-
-  const svc = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+/**
+ * A failure the admin can act on, with the technical detail kept server-side.
+ *
+ * This route used to return `String(e)` and `error.message` straight to the
+ * browser. When payroll_settlements had not been migrated yet, an admin opening
+ * Previous Balance was shown, in red, on the payslip:
+ *
+ *   "Could not find the table 'public.payroll_settlements' in the schema cache"
+ *
+ * That names an internal table, leaks the storage layer's vocabulary, and tells
+ * the person reading it nothing they can do. The detail belongs in the server
+ * log, where it is actually diagnosable; the screen gets one sentence and keeps
+ * its Try again control.
+ *
+ * Deliberately NOT a silent success — the operation genuinely failed, the caller
+ * still gets a 500, and the dialog stays open with the entered values intact.
+ */
+function serverFailure(where: string, detail: unknown) {
+  console.error(`[payroll/settlement] ${where}:`, detail)
+  return NextResponse.json(
+    { error: 'Settlement details could not be saved. Please try again.' },
+    { status: 500 },
   )
+}
 
-  const { data: { user }, error } = await svc.auth.getUser(token)
-  if (error || !user) return null
+/**
+ * Authorisation. Two outcomes, and they are NOT the same thing.
+ *
+ * This route used to roll its own admin check, and it collapsed four distinct
+ * conditions — no Authorization header, a token the auth server rejected, no
+ * profile row, and a real non-admin — into one bare 403 "Forbidden". An admin
+ * whose access token had simply gone stale was therefore told, on the payslip,
+ * that they lacked permission to edit payroll they in fact owned. The message
+ * pointed at the wrong problem, so the obvious remedy (sign in again) was the
+ * one thing it did not suggest.
+ *
+ * The check itself is now `requireAdmin` from the attendance/payroll auth
+ * module — the same helper /api/payroll/results/detail uses to decide who may
+ * READ this payslip, so the reader and the writer can no longer disagree about
+ * who the admin is. This route does not define a role rule of its own.
+ *
+ * What is kept local is only the wording: `requireAdmin` answers 401/403 with
+ * the deliberately flat "Unauthorized"/"Forbidden" that the isolation tests
+ * assert on, which is right for a probe and useless to an admin looking at a
+ * dialog. So the status is taken from the helper and the sentence is replaced.
+ */
+const EXPIRED_SESSION_MESSAGE =
+  'Your session has expired. Please sign in again and retry.'
+const NO_PERMISSION_MESSAGE =
+  'You do not have permission to update payroll settlement details.'
 
-  const { data: profile } = await svc.from('users').select('role, full_name').eq('id', user.id).single()
-  if (profile?.role !== 'admin') return null
-
-  return { svc, actor: { id: user.id, name: profile?.full_name ?? null } }
+function authFailure(res: NextResponse) {
+  // A refusal here writes nothing and returns no detail, so without this line
+  // it leaves no trace at all — which is exactly why the failure this replaces
+  // could not be diagnosed from the server side.
+  console.error(`[payroll/settlement] authorisation refused with ${res.status}`)
+  return NextResponse.json(
+    { error: res.status === 401 ? EXPIRED_SESSION_MESSAGE : NO_PERMISSION_MESSAGE },
+    { status: res.status },
+  )
 }
 
 type Body = {
@@ -65,9 +113,21 @@ type Body = {
 }
 
 export async function PATCH(req: NextRequest) {
-  const ctx = await getAdminCaller(req)
-  if (!ctx) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const { svc, actor } = ctx
+  const auth = await requireAdmin(req)
+  if (isResponse(auth)) return authFailure(auth)
+  const svc = auth.svc
+
+  // The audit trail denormalises who acted, so the name is read here rather
+  // than widening the shared Caller shape for one route's benefit. A failed
+  // lookup costs the trail a name, never the write — `actor_name` is nullable
+  // for exactly this reason.
+  const { data: profile } = await svc
+    .from('users')
+    .select('full_name')
+    .eq('id', auth.id)
+    .maybeSingle()
+
+  const actor = { id: auth.id, name: (profile?.full_name as string | null) ?? null }
 
   let body: Body
   try {
@@ -90,7 +150,7 @@ export async function PATCH(req: NextRequest) {
   try {
     lockState = await periodLockStateById(svc, payroll_period_id)
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+    return serverFailure('lock state lookup', e)
   }
   if (!lockState.found) {
     return NextResponse.json({ error: 'Payroll period not found' }, { status: 404 })
@@ -103,7 +163,8 @@ export async function PATCH(req: NextRequest) {
   try {
     settlement = await ensureSettlement(svc, payroll_period_id, employee_id)
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+    // The exact failure that surfaced on the payslip in red before this existed.
+    return serverFailure('ensureSettlement', e)
   }
 
   return action === 'carry_forward'
@@ -114,8 +175,7 @@ export async function PATCH(req: NextRequest) {
 // ─── Carry forward ────────────────────────────────────────────────────────────
 
 async function handleCarryForward(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  svc: any,
+  svc: ServiceClient,
   settlement: SettlementRow,
   body: Body,
   actor: { id: string | null; name: string | null },
@@ -140,7 +200,7 @@ async function handleCarryForward(
       })
       .eq('id', settlement.id)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverFailure('carry-forward reset', error)
 
     await logSettlementEvent(svc, settlement.id, 'carry_forward_reset', {
       previousAmount: previous,
@@ -183,7 +243,7 @@ async function handleCarryForward(
     })
     .eq('id', settlement.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverFailure('carry-forward override', error)
 
   await logSettlementEvent(svc, settlement.id, 'carry_forward_overridden', {
     previousAmount: previous,
@@ -199,8 +259,7 @@ async function handleCarryForward(
 // ─── Payment ──────────────────────────────────────────────────────────────────
 
 async function handlePayment(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  svc: any,
+  svc: ServiceClient,
   settlement: SettlementRow,
   body: Body,
   actor: { id: string | null; name: string | null },
@@ -224,7 +283,7 @@ async function handlePayment(
       })
       .eq('id', settlement.id)
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return serverFailure('payment clear', error)
 
     await logSettlementEvent(svc, settlement.id, 'payment_cleared', {
       previousAmount: previous,
@@ -263,7 +322,7 @@ async function handlePayment(
     })
     .eq('id', settlement.id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) return serverFailure('payment record', error)
 
   // 'recorded' the first time, 'changed' thereafter — so the trail distinguishes
   // "this is what we paid" from "we corrected what we said we paid".
