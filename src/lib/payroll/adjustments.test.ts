@@ -101,7 +101,17 @@ function cleanMonth(): EngineAttendanceRecord[] {
 function monthWithDefect(): EngineAttendanceRecord[] {
   return cleanMonth().map(r =>
     r.attendance_date === TARGET
-      ? { ...r, check_in_at: ist(TARGET, 19, 0), check_out_at: null }
+      // A CONFIRMED punch-in at 19:00 with no punch-out: the attendance file
+      // stated this was the arrival, so the day carries the flat missing-punch
+      // charge plus a genuine 9 h late arrival — 11 h, comfortably past the
+      // 8.5 h the month's paid leave can absorb, which is what keeps the
+      // adjustment arithmetic below visible in total_deductions.
+      //
+      // Marked explicitly because it no longer follows from the punch times
+      // alone. Where the direction is only inferred the late line is not raised,
+      // and this month's deductions would be absorbed to ₹0 — a true outcome,
+      // but one that would leave these tests measuring nothing.
+      ? { ...r, check_in_at: ist(TARGET, 19, 0), check_out_at: null, direction_source: 'confirmed' as const }
       : r,
   )
 }

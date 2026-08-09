@@ -9,7 +9,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
-import { fetchHolidaysForPeriod } from '@/lib/payroll/store'
+import {
+  fetchHolidaysForPeriod,
+  fetchCurrentCorrectionsByEmployee,
+  toEngineAttendanceRecord,
+} from '@/lib/payroll/store'
+import { onlyParticipating } from '@/lib/payroll/participation'
 import { isSkip } from '@/lib/payroll/types'
 import type { EngineEmployee, EngineAttendanceRecord, EnginePendingAdjustment } from '@/lib/payroll/types'
 
@@ -33,11 +38,19 @@ export async function GET(req: NextRequest) {
   if (isNaN(year) || isNaN(month) || month < 1 || month > 12)
     return NextResponse.json({ error: 'Invalid year or month' }, { status: 400 })
 
-  // Fetch all payroll-active employees with display fields
-  const { data: employees, error: empErr } = await svc
-    .from('users')
-    .select('id, full_name, employee_code, monthly_salary, payroll_active, joining_date, employment_type')
-    .eq('payroll_active', true)
+  // Fetch all participating employees with display fields.
+  //
+  // Through the SHARED participation helper, not a hand-written
+  // `.eq('payroll_active', true)`. This preview and the real run must answer
+  // "who is in payroll this month" the same way — a preview that lists somebody
+  // generation will refuse, or omits somebody it will pay, is worse than no
+  // preview. See src/lib/payroll/participation.ts and
+  // fetchAllPayrollActiveEmployees in the store, which this now mirrors exactly.
+  const { data: employees, error: empErr } = await onlyParticipating(
+    svc
+      .from('users')
+      .select('id, full_name, employee_code, monthly_salary, payroll_active, joining_date, employment_type'),
+  )
     .or('is_deleted.eq.false,is_deleted.is.null')
     .order('full_name')
 
@@ -52,32 +65,39 @@ export async function GET(req: NextRequest) {
   const start     = `${year}-${mm}-01`
   const end       = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
 
+  // punch_direction_source is selected here for the same reason generation
+  // selects it: without it every stored day reaches the engine as a guess, and
+  // this preview would disagree with the run it is previewing.
   const { data: allRecords, error: recErr } = await svc
     .from('attendance_records')
-    .select('id, user_id, attendance_date, check_in_at, check_out_at')
+    .select('id, user_id, attendance_date, check_in_at, check_out_at, punch_direction_source')
     .gte('attendance_date', start)
     .lt('attendance_date', end)
 
   if (recErr) return NextResponse.json({ error: recErr.message }, { status: 500 })
 
-  // Group records by employee
+  // Group records by employee, mapped through the SAME narrowing generation
+  // uses so an unrecognised stored value fails to 'inferred' on both paths.
   const byEmployee = new Map<string, EngineAttendanceRecord[]>()
   for (const r of allRecords ?? []) {
     if (!byEmployee.has(r.user_id)) byEmployee.set(r.user_id, [])
-    byEmployee.get(r.user_id)!.push({
-      id:              r.id,
-      attendance_date: r.attendance_date,
-      check_in_at:     r.check_in_at,
-      check_out_at:    r.check_out_at,
-    })
+    byEmployee.get(r.user_id)!.push(toEngineAttendanceRecord(r))
   }
 
-  // Fetch holidays and adjustments for the month in parallel
+  // Fetch holidays, adjustments and the manual correction layer for the month.
+  //
+  // The corrections are the fix for a real divergence: this preview ran the
+  // engine on RAW biometric punches while generation runs it on raw punches
+  // overlaid with approved corrections. An admin who corrected a date then
+  // compared the two screens saw different money with nothing to explain it, and
+  // the preview was the wrong one.
   let holidays: Awaited<ReturnType<typeof fetchHolidaysForPeriod>>
+  let correctionsByEmployee: Awaited<ReturnType<typeof fetchCurrentCorrectionsByEmployee>>
   let allAdjustments: { employee_id: string; adjustment_type: string; amount: number; id: string; description: string }[] = []
   try {
-    const [hols, adjResult] = await Promise.all([
+    const [hols, corrs, adjResult] = await Promise.all([
       fetchHolidaysForPeriod(svc, month, year),
+      fetchCurrentCorrectionsByEmployee(svc, month, year),
       svc
         .from('payroll_pending_adjustments')
         .select('id, employee_id, adjustment_type, amount, description')
@@ -85,8 +105,9 @@ export async function GET(req: NextRequest) {
         .eq('payroll_month', month)
         .eq('status', 'pending'),
     ])
-    holidays        = hols
-    allAdjustments  = adjResult.data ?? []
+    holidays              = hols
+    correctionsByEmployee = corrs
+    allAdjustments        = adjResult.data ?? []
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
@@ -114,7 +135,10 @@ export async function GET(req: NextRequest) {
   const results = (employees as EmployeeRow[]).map(emp => {
     const attendance   = byEmployee.get(emp.id)   ?? []
     const adjustments  = adjByEmployee.get(emp.id) ?? []
-    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, adjustments)
+    const corrections  = correctionsByEmployee.get(emp.id) ?? []
+    // Same six arguments generation passes. The corrections argument used to be
+    // omitted, which silently made this a preview of a different calculation.
+    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, adjustments, corrections)
 
     if (isSkip(outcome)) {
       return {

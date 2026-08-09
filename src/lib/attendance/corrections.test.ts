@@ -33,16 +33,30 @@ function correction(overrides: Partial<AttendanceDayCorrection> = {}): Attendanc
 }
 
 describe('resolveEffectiveAttendance', () => {
+  // EffectiveAttendance carries `direction_source` as well as `source` now — how
+  // confidently the IN/OUT split is known, as opposed to where the punches came
+  // from. A raw record that does not state one reads as 'inferred', the cautious
+  // default. See src/lib/attendance/punchDirection.ts.
   test('with no correction the raw record passes through untouched', () => {
     const raw = { check_in_at: '2026-07-21T05:00:00.000Z', check_out_at: null }
     const effective = resolveEffectiveAttendance(raw, undefined)
-    assert.deepEqual(effective, { ...raw, source: 'raw' })
+    assert.deepEqual(effective, { ...raw, source: 'raw', direction_source: 'inferred' })
   })
 
   test('with no raw record and no correction both punches are absent', () => {
     assert.deepEqual(resolveEffectiveAttendance(undefined, undefined), {
-      check_in_at: null, check_out_at: null, source: 'raw',
+      check_in_at: null, check_out_at: null, source: 'raw', direction_source: 'inferred',
     })
+  })
+
+  test('a raw record that states a confirmed direction keeps it', () => {
+    const raw = { check_in_at: '2026-07-21T05:00:00.000Z', check_out_at: null, direction_source: 'confirmed' as const }
+    assert.equal(resolveEffectiveAttendance(raw, undefined).direction_source, 'confirmed')
+  })
+
+  test('a correction is always confirmed — an admin stated which punch is missing', () => {
+    const raw = { check_in_at: '2026-07-21T13:06:00.000Z', check_out_at: null }
+    assert.equal(resolveEffectiveAttendance(raw, correction()).direction_source, 'confirmed')
   })
 
   test('a correction replaces the raw punches entirely', () => {

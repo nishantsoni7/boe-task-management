@@ -1,249 +1,25 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import * as XLSX from 'xlsx'
+import {
+  parseAttendanceWorkbook,
+  buildAttendanceRow,
+  attendanceRowChange,
+  type EmployeeBlock,
+  type ParsedAttendanceRow,
+} from '@/lib/attendance/punchParser'
+import type { PunchDirectionSource } from '@/lib/attendance/punchDirection'
 
 // Admin only — see the note in ../preview/route.ts. The import writes every
 // employee's raw attendance and the correction log that payroll is computed
 // from; it is the most privileged write in the module.
 const ALLOWED_ROLES = ['admin']
 
-// ─── XLS parser ───────────────────────────────────────────────────────────────
-
-type DayRecord = {
-  day: number
-  in: string
-  out: string
-  work: string
-  ot: string
-  status: string
-}
-
-type EmployeeBlock = {
-  empcode: string
-  name: string
-  year: number
-  month: number // 1-based
-  days: DayRecord[]
-}
-
-const MONTH_ABBR = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
-const MONTH_FULL = ['january','february','march','april','may','june','july','august','september','october','november','december']
-
-function monthYearFromText(v: string): { year: number; month: number } | null {
-  // "Jun-2026" / "June-2026" / "Jun 2026" / "June 2026"
-  const mName = v.match(/\b([A-Za-z]{3,9})[\s\-](\d{4})\b/)
-  if (mName) {
-    const name = mName[1].toLowerCase()
-    const year = parseInt(mName[2], 10)
-    if (year >= 2000 && year <= 2100) {
-      const byAbbr = MONTH_ABBR.indexOf(name.slice(0, 3))
-      if (byAbbr !== -1) return { year, month: byAbbr + 1 }
-      const byFull = MONTH_FULL.indexOf(name)
-      if (byFull !== -1) return { year, month: byFull + 1 }
-    }
-  }
-  // "2026-Jun" / "2026 June"
-  const mRev = v.match(/\b(\d{4})[\s\-]([A-Za-z]{3,9})\b/)
-  if (mRev) {
-    const year = parseInt(mRev[1], 10)
-    const name = mRev[2].toLowerCase()
-    if (year >= 2000 && year <= 2100) {
-      const byAbbr = MONTH_ABBR.indexOf(name.slice(0, 3))
-      if (byAbbr !== -1) return { year, month: byAbbr + 1 }
-      const byFull = MONTH_FULL.indexOf(name)
-      if (byFull !== -1) return { year, month: byFull + 1 }
-    }
-  }
-  // "06/2026" / "06-2026" (month/year numeric)
-  const mSlash = v.match(/\b(0?[1-9]|1[0-2])[\/\-](\d{4})\b/)
-  if (mSlash) {
-    const month = parseInt(mSlash[1], 10)
-    const year  = parseInt(mSlash[2], 10)
-    if (year >= 2000 && year <= 2100) return { year, month }
-  }
-  // "2026-06" / "2026/06" (ISO-style)
-  const mIso = v.match(/\b(\d{4})[\/\-](0[1-9]|1[0-2])\b/)
-  if (mIso) {
-    const year  = parseInt(mIso[1], 10)
-    const month = parseInt(mIso[2], 10)
-    if (year >= 2000 && year <= 2100) return { year, month }
-  }
-  return null
-}
-
-function parseMonthYear(sheet: XLSX.WorkSheet, sheetName: string): { year: number; month: number } | null {
-  // Check sheet name first
-  const fromSheet = monthYearFromText(sheetName)
-  if (fromSheet) return fromSheet
-
-  // Scan first 20 rows across all columns
-  const range = XLSX.utils.decode_range(sheet['!ref'] ?? 'A1')
-  for (let r = range.s.r; r <= Math.min(range.e.r, 20); r++) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = sheet[XLSX.utils.encode_cell({ r, c })]
-      if (!cell) continue
-      const v = String(cell.v ?? '').trim()
-      if (!v) continue
-      const result = monthYearFromText(v)
-      if (result) return result
-    }
-  }
-  return null
-}
-
-function cellStr(sheet: XLSX.WorkSheet, r: number, c: number): string {
-  const cell = sheet[XLSX.utils.encode_cell({ r, c })]
-  if (!cell) return ''
-  return String(cell.v ?? '').trim()
-}
-
-// ─── Format A parser (Empcode-row XLS: per-employee vertical blocks) ──────────
-
-function parseFormatA(ws: XLSX.WorkSheet, monthYear: { year: number; month: number }): EmployeeBlock[] {
-  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
-  const blocks: EmployeeBlock[] = []
-
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    if (cellStr(ws, r, 0) !== 'Empcode') continue
-    // Skip Format B header rows (col 1 = "Name")
-    if (cellStr(ws, r, 1) === 'Name') continue
-
-    const empcode = cellStr(ws, r, 2).trim()
-    const name    = cellStr(ws, r, 7).trim()
-    if (!empcode) continue
-
-    const inRow     = r + 3
-    const outRow    = r + 4
-    const workRow   = r + 5
-    const otRow     = r + 7
-    const statusRow = r + 8
-
-    const days: DayRecord[] = []
-    for (let day = 1; day <= 31; day++) {
-      const inV = cellStr(ws, inRow, day)
-      if (!inV || inV === '--:--') continue
-      days.push({
-        day,
-        in:     inV,
-        out:    cellStr(ws, outRow, day),
-        work:   cellStr(ws, workRow, day),
-        ot:     cellStr(ws, otRow, day),
-        status: cellStr(ws, statusRow, day),
-      })
-    }
-
-    blocks.push({ empcode, name, year: monthYear.year, month: monthYear.month, days })
-  }
-
-  return blocks
-}
-
-// ─── Format B parser (horizontal row layout: "List of Logs" style) ────────────
-// Row structure:
-//   Row 0: "List of Logs"
-//   Row 1: "01/05/2026 ~ 31/05/2026"   ← month/year detected here
-//   Row 2: "Empcode" | "Name" | 1 | 2 | ... | 31   ← header
-//   Row 3: weekday names                             ← skip
-//   Row 4+: employee rows  (col A = empcode, col B = name, cols C+ = punches)
-// Punch cells contain multiline text, e.g. "10:07\n18:36\n"
-
-function parseFormatB(ws: XLSX.WorkSheet, monthYear: { year: number; month: number }): EmployeeBlock[] {
-  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
-
-  let headerRow = -1
-  for (let r = range.s.r; r <= Math.min(range.e.r, 10); r++) {
-    if (cellStr(ws, r, 0) === 'Empcode' && cellStr(ws, r, 1) === 'Name') {
-      headerRow = r
-      break
-    }
-  }
-  if (headerRow === -1) return []
-
-  // col → day number (1-31) from header row
-  const colToDay = new Map<number, number>()
-  for (let c = 2; c <= range.e.c; c++) {
-    const n = parseInt(cellStr(ws, headerRow, c), 10)
-    if (!isNaN(n) && n >= 1 && n <= 31) colToDay.set(c, n)
-  }
-
-  const blocks: EmployeeBlock[] = []
-  // headerRow + 1 is the weekday-name row — skip it
-  for (let r = headerRow + 2; r <= range.e.r; r++) {
-    const empcode = cellStr(ws, r, 0).trim()
-    const name    = cellStr(ws, r, 1).trim()
-    if (!empcode) continue
-
-    const days: DayRecord[] = []
-    for (const [col, day] of colToDay) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c: col })]
-      if (!cell) continue
-      const raw = String(cell.v ?? cell.w ?? '').trim()
-      if (!raw) continue
-      const punches = raw.split(/[\n\r]+/).map(s => s.trim()).filter(s => /^\d{1,2}:\d{2}$/.test(s))
-      if (punches.length === 0) continue
-      days.push({
-        day,
-        in:     punches[0],
-        out:    punches.length > 1 ? punches[punches.length - 1] : '',
-        work:   '',
-        ot:     '',
-        status: '',
-      })
-    }
-
-    blocks.push({ empcode, name, year: monthYear.year, month: monthYear.month, days })
-  }
-
-  return blocks
-}
-
-// ─── Auto-detect format and parse ────────────────────────────────────────────
-
-function parseXLS(buffer: Buffer): EmployeeBlock[] {
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const monthYear = parseMonthYear(ws, wb.SheetNames[0])
-  if (!monthYear) throw new Error(
-    'Could not detect report month/year from file. ' +
-    'Expected a cell in the first 20 rows (or sheet name) containing a value like ' +
-    '"Jun-2026", "June 2026", "06/2026", or "2026-06".'
-  )
-
-  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
-  for (let r = range.s.r; r <= Math.min(range.e.r, 10); r++) {
-    if (cellStr(ws, r, 0) === 'Empcode' && cellStr(ws, r, 1) === 'Name') {
-      return parseFormatB(ws, monthYear)
-    }
-  }
-  return parseFormatA(ws, monthYear)
-}
-
-// ─── Time helpers ─────────────────────────────────────────────────────────────
-
-// Convert "HH:MM" IST + date parts → UTC ISO timestamp string, or null.
-// Fingerprint machine times are IST (UTC+5:30). We subtract 330 minutes so the
-// stored UTC value is correct. Date.UTC handles minute values outside 0-59.
-function toTimestamp(hhmm: string, year: number, month: number, day: number): string | null {
-  if (!hhmm || hhmm === '--:--') return null
-  const parts = hhmm.split(':')
-  if (parts.length < 2) return null
-  const hh = parseInt(parts[0], 10)
-  const mm = parseInt(parts[1], 10)
-  if (isNaN(hh) || isNaN(mm)) return null
-  const d = new Date(Date.UTC(year, month - 1, day, hh, mm - 330, 0))
-  return isNaN(d.getTime()) ? null : d.toISOString()
-}
-
-// Compare timestamps at minute precision to ignore sub-second DB differences
-function toMinutes(iso: string | null | undefined): number | null {
-  if (!iso) return null
-  const t = new Date(iso).getTime()
-  return isNaN(t) ? null : Math.floor(t / 60000)
-}
-
-function toDateStr(year: number, month: number, day: number): string {
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-}
+// The XLS parser that used to live here — types, month/year detection, both
+// format readers and the time helpers — now lives in
+// src/lib/attendance/punchParser.ts, shared with ../preview/route.ts so the
+// preview an admin approves and the import that follows it cannot disagree.
+// Nothing about the supported formats or the IST handling changed in the move;
+// what changed is how a day with exactly ONE punch is read. See that module.
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
@@ -280,10 +56,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to read uploaded file' }, { status: 400 })
   }
 
-  // Parse XLS
+  // Parse XLS — the same call ../preview/route.ts makes, so what the admin
+  // approved on the preview screen is what lands here.
   let blocks: EmployeeBlock[]
   try {
-    blocks = parseXLS(fileBuffer)
+    blocks = parseAttendanceWorkbook(fileBuffer).blocks
   } catch (e) {
     return NextResponse.json({ error: `Failed to parse file: ${(e as Error).message}` }, { status: 400 })
   }
@@ -338,13 +115,28 @@ export async function POST(req: NextRequest) {
   type SkippedEmployee = { excel_code: string; excel_name: string; days_skipped: number; reason: string }
   const skippedEmployees: SkippedEmployee[] = []
 
-  // Build all valid upsert rows and track which user+date pairs are involved
+  // Build all valid upsert rows and track which user+date pairs are involved.
+  //
+  // check_in_at is NULLABLE here, and that is the point of this change. A day
+  // where the machine recorded only a departure is a real attendance day — the
+  // employee was demonstrably present — and it used to be discarded, which made
+  // payroll charge a full day's absence for it. It is now stored as the
+  // punch-out it is, with no punch-in, and payroll reads it as a missing
+  // punch-in worth MISSING_PUNCH_HOURS.
   type UpsertRow = {
     user_id: string
     attendance_date: string
-    check_in_at: string
+    check_in_at: string | null
     check_out_at: string | null
-    status: string
+    status: ParsedAttendanceRow['status']
+    /**
+     * How the parser established this day's IN/OUT split, persisted so payroll
+     * generation — which runs in a later request, from the database — can tell a
+     * stated direction from a guessed one. Never null on a row we write: the
+     * parser always knows which it did. NULL in the column means "imported
+     * before this existed", and only legacy rows carry that.
+     */
+    punch_direction_source: PunchDirectionSource
   }
 
   const upsertRows: UpsertRow[] = []
@@ -368,24 +160,25 @@ export async function POST(req: NextRequest) {
     let badDays = 0
     for (const day of block.days) {
       totalRows++
-      const dateStr    = toDateStr(block.year, block.month, day.day)
-      const checkInAt  = toTimestamp(day.in,  block.year, block.month, day.day)
-      const checkOutAt = toTimestamp(day.out, block.year, block.month, day.day)
+      const built = buildAttendanceRow(block, day)
 
-      if (!checkInAt) {
+      // A day is only rejected when NEITHER punch yields a usable time. A single
+      // unreadable cell no longer discards the whole day in either direction.
+      if (!built.ok) {
         skipped++
         badDays++
-        errors.push(`${block.empcode} ${dateStr}: invalid IN time "${day.in}"`)
+        errors.push(`${block.empcode} ${built.attendance_date}: ${built.detail}`)
         continue
       }
 
-      involvedKeys.add(`${entry.id}|${dateStr}`)
+      involvedKeys.add(`${entry.id}|${built.row.attendance_date}`)
       upsertRows.push({
-        user_id:         entry.id,
-        attendance_date: dateStr,
-        check_in_at:     checkInAt,
-        check_out_at:    checkOutAt,
-        status:          checkOutAt ? 'present' : 'checked_in',
+        user_id:               entry.id,
+        attendance_date:       built.row.attendance_date,
+        check_in_at:           built.row.check_in_at,
+        check_out_at:          built.row.check_out_at,
+        status:                built.row.status,
+        punch_direction_source: built.row.direction_source,
       })
     }
 
@@ -394,49 +187,62 @@ export async function POST(req: NextRequest) {
         excel_code:   block.empcode,
         excel_name:   block.name,
         days_skipped: badDays,
-        reason:       `${badDays} day${badDays !== 1 ? 's' : ''} had invalid punch-in time`,
+        reason:       `${badDays} day${badDays !== 1 ? 's' : ''} had no readable punch time`,
       })
     }
   }
 
-  // Fetch existing records with timestamps to distinguish new / modified / unchanged
-  type ExistingRec = { check_in_at: string | null; check_out_at: string | null }
+  // Fetch existing records to distinguish new / modified / unchanged.
+  //
+  // punch_direction_source is selected as well as the timestamps: a row whose
+  // punches match but whose provenance is stale still has to be rewritten, or a
+  // legacy NULL would survive every future re-import of its month.
+  type ExistingRec = {
+    check_in_at: string | null
+    check_out_at: string | null
+    punch_direction_source: string | null
+  }
   const existingMap = new Map<string, ExistingRec>()
   if (involvedKeys.size > 0) {
     const userIds = [...new Set(upsertRows.map(r => r.user_id))]
     const dates   = [...new Set(upsertRows.map(r => r.attendance_date))]
     const { data: existing } = await svc
       .from('attendance_records')
-      .select('user_id, attendance_date, check_in_at, check_out_at')
+      .select('user_id, attendance_date, check_in_at, check_out_at, punch_direction_source')
       .in('user_id', userIds)
       .in('attendance_date', dates)
     for (const row of existing ?? []) {
       existingMap.set(`${row.user_id}|${row.attendance_date}`, {
-        check_in_at:  row.check_in_at,
-        check_out_at: row.check_out_at,
+        check_in_at:            row.check_in_at,
+        check_out_at:           row.check_out_at,
+        punch_direction_source: row.punch_direction_source ?? null,
       })
     }
   }
 
-  // Classify rows into new / modified / unchanged
+  // Classify rows into new / modified / unchanged, through the shared comparison
+  // ../preview/route.ts uses, so the preview's counts are the import's counts.
   const newRows:      UpsertRow[] = []
   const modifiedRows: UpsertRow[] = []
+  // The subset whose PUNCHES moved. Only these are corrections in the sense
+  // attendance_correction_log records; a provenance-only rewrite is bookkeeping.
+  const punchChangedKeys = new Set<string>()
 
   for (const row of upsertRows) {
     const key      = `${row.user_id}|${row.attendance_date}`
     const existing = existingMap.get(key)
     if (!existing) {
       newRows.push(row)
-    } else {
-      const oldIn  = toMinutes(existing.check_in_at)
-      const newIn  = toMinutes(row.check_in_at)
-      const oldOut = toMinutes(existing.check_out_at)
-      const newOut = toMinutes(row.check_out_at)
-      if (oldIn !== newIn || oldOut !== newOut) {
-        modifiedRows.push(row)
-      }
-      // else: unchanged — skip
+      continue
     }
+
+    const change = attendanceRowChange(
+      { check_in_at: row.check_in_at, check_out_at: row.check_out_at, direction_source: row.punch_direction_source },
+      existing,
+    )
+    if (change.punchesChanged) punchChangedKeys.add(key)
+    if (change.changed) modifiedRows.push(row)
+    // else: unchanged — skip
   }
 
   // Payroll lock check — block all imports (new rows and corrections) if payroll is locked for this month
@@ -478,14 +284,20 @@ export async function POST(req: NextRequest) {
 
   // Update modified records (corrections) and write audit log
   for (const row of modifiedRows) {
-    const existing = existingMap.get(`${row.user_id}|${row.attendance_date}`)
+    const key      = `${row.user_id}|${row.attendance_date}`
+    const existing = existingMap.get(key)
 
+    // punch_direction_source is written with the punches, not separately. The
+    // whole point of the column is that it describes THESE timestamps; letting
+    // the two be written apart is how a row ends up claiming a confirmed
+    // direction for a punch pair that has since been replaced.
     const { error: updateErr } = await svc
       .from('attendance_records')
       .update({
-        check_in_at:  row.check_in_at,
-        check_out_at: row.check_out_at,
-        status:       row.status,
+        check_in_at:            row.check_in_at,
+        check_out_at:           row.check_out_at,
+        status:                 row.status,
+        punch_direction_source: row.punch_direction_source,
       })
       .eq('user_id', row.user_id)
       .eq('attendance_date', row.attendance_date)
@@ -496,6 +308,12 @@ export async function POST(req: NextRequest) {
     }
 
     empUpdated.set(row.user_id, (empUpdated.get(row.user_id) ?? 0) + 1)
+
+    // The correction log records PUNCH corrections. A row rewritten only to
+    // repair its provenance has identical before and after times, and logging
+    // that would fill the attendance audit trail with entries stating that
+    // nothing happened.
+    if (!punchChangedKeys.has(key)) continue
 
     // Audit trail — fire-and-forget; don't block the response on log failure
     svc.from('attendance_correction_log').insert({

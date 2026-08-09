@@ -45,11 +45,20 @@ const JULY_WORKING_DAYS = [
 const iso = (d: number) => `2026-07-${String(d).padStart(2, '0')}`
 const at  = (d: number, hh: number, mm: number) => new Date(Date.UTC(2026, 6, d, hh, mm - 330)).toISOString()
 
-const rec = (d: number, inT: [number, number] | null, outT: [number, number] | null): EngineAttendanceRecord => ({
+const rec = (
+  d: number,
+  inT: [number, number] | null,
+  outT: [number, number] | null,
+  // Whether the IN/OUT split is known or was guessed from the clock. Only
+  // matters for single-punch days, where it decides whether a late-arrival line
+  // may stack on the missing punch. See src/lib/attendance/punchDirection.ts.
+  direction: 'confirmed' | 'inferred' = 'inferred',
+): EngineAttendanceRecord => ({
   id: `r-${d}`,
   attendance_date: iso(d),
   check_in_at:  inT  ? at(d, inT[0],  inT[1])  : null,
   check_out_at: outT ? at(d, outT[0], outT[1]) : null,
+  direction_source: direction,
 })
 
 const fullDay = (d: number) => rec(d, [10, 0], [18, 30])
@@ -139,7 +148,14 @@ describe('every deduction type explains itself from engine values', () => {
 
   test('missing punch-out: a flat two hours, and the late arrival with it', () => {
     // In at 10:45, no punch-out — the engine raises BOTH lines on this date.
-    const r = run(month({ 15: rec(15, [10, 45], null), 21: null }))
+    //
+    // The punch is marked CONFIRMED because that is now what makes the pair of
+    // lines possible: the attendance file stated this punch was the arrival, so
+    // measuring lateness from it is sound. An unmarked punch would carry the
+    // flat missing-punch charge alone, which is asserted in
+    // engine.missingPunch.test.ts. This test is about the popup rendering two
+    // reasons on one date, so it needs the case that produces two.
+    const r = run(month({ 15: rec(15, [10, 45], null, 'confirmed'), 21: null }))
     const day = dayOf(r, '2026-07-15')
     const items = explainDay(day.lines)
 
