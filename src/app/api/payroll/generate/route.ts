@@ -19,7 +19,7 @@ import { generatePayrollForEmployee } from '@/lib/payroll/engine'
 import { isSkip } from '@/lib/payroll/types'
 import {
   fetchPeriod,
-  fetchEmployee,
+  fetchEmployeesForGeneration,
   fetchAllPayrollActiveEmployees,
   fetchAttendanceForPeriod,
   fetchHolidaysForPeriod,
@@ -31,6 +31,7 @@ import {
   finalizeGenerationRow,
   setPeriodStatus,
 } from '@/lib/payroll/store'
+import { fetchPrecedingPeriod, materialiseSettlement } from '@/lib/payroll/settlementStore'
 
 export async function POST(req: NextRequest) {
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -47,12 +48,13 @@ export async function POST(req: NextRequest) {
 
   const { data: callerProfile } = await svc
     .from('users')
-    .select('role')
+    .select('role, full_name')
     .eq('id', caller.id)
     .single()
   if (callerProfile?.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 })
   }
+  const actor = { id: caller.id, name: callerProfile?.full_name ?? null }
 
   // ── Parse body ──────────────────────────────────────────────────────────────
   let body: { payroll_period_id?: string; employee_ids?: string[] }
@@ -84,16 +86,30 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Fetch employees ─────────────────────────────────────────────────────────
+  // Both paths are filtered by participation in the store. An employee excluded
+  // from Attendance & Payroll never reaches the engine on either one — see
+  // src/lib/payroll/participation.ts for what exclusion does and does not mean.
   let employees: Awaited<ReturnType<typeof fetchAllPayrollActiveEmployees>>
+  let excludedIds: string[] = []
   try {
     if (employee_ids && employee_ids.length > 0) {
-      const rows = await Promise.all(employee_ids.map(id => fetchEmployee(svc, id)))
-      employees = rows.filter((e): e is NonNullable<typeof e> => e !== null)
+      const named = await fetchEmployeesForGeneration(svc, employee_ids)
+      employees   = named.included
+      excludedIds = named.excludedIds
     } else {
       employees = await fetchAllPayrollActiveEmployees(svc)
     }
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+
+  // Naming ONLY excluded employees is a different situation from naming nobody,
+  // and answering both with "no employees found" would leave the admin guessing.
+  if (employees.length === 0 && excludedIds.length > 0) {
+    return NextResponse.json(
+      { error: 'Every employee named is excluded from Attendance & Payroll. Include them again to generate payroll for them.' },
+      { status: 422 },
+    )
   }
 
   if (employees.length === 0) {
@@ -107,6 +123,20 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
+
+  // ── Preceding payroll period, for the carry-forward proposal ───────────────
+  // The previous period in the PAYROLL SEQUENCE, not the previous calendar
+  // month: if June was never run, July's predecessor is May. Fetched once for
+  // the whole run rather than per employee, since it is a property of the month
+  // and not of any employee. Non-fatal — a payroll run must not fail because the
+  // prior period could not be looked up; the settlement starts at zero and an
+  // admin can correct it.
+  const previousPeriodId = await fetchPrecedingPeriod(svc, period.payroll_month, period.payroll_year)
+    .then(p => p?.id ?? null)
+    .catch(err => {
+      console.error('[payroll/generate] previous period lookup:', err)
+      return null
+    })
 
   // ── Create generation row ────────────────────────────────────────────────────
   let generationId: string
@@ -122,8 +152,14 @@ export async function POST(req: NextRequest) {
     | { employee_id: string; status: 'skipped';   reason: string }
     | { employee_id: string; status: 'failed';    error: string }
 
-  const outcomes: Outcome[] = []
-  let skippedCount = 0
+  // Excluded members are reported, not silently absent: an admin who named one
+  // explicitly needs to be told the request was understood and declined.
+  const outcomes: Outcome[] = excludedIds.map(id => ({
+    employee_id: id,
+    status: 'skipped' as const,
+    reason: 'excluded_from_attendance_and_payroll',
+  }))
+  let skippedCount = excludedIds.length
   const failedIds: string[] = []
 
   for (const employee of employees) {
@@ -155,6 +191,25 @@ export async function POST(req: NextRequest) {
 
       const resultId = await writeEngineResult(svc, generationId, outcome)
       await markAdjustmentsApplied(svc, outcome.applied_adjustment_ids, resultId, payroll_period_id)
+
+      // The carry-forward proposal becomes a stored fact here, with the source
+      // period recorded, so the balance has an auditable lineage rather than
+      // being re-derived on every read. A manual override and a recorded payment
+      // both survive this untouched — see materialiseSettlement.
+      //
+      // Non-fatal: payroll has already been written and is correct. A settlement
+      // that could not be materialised is recoverable (the next regeneration, or
+      // the first settlement edit, creates it) and must not turn a successful
+      // payroll run into a failed one.
+      await materialiseSettlement(svc, {
+        periodId:   payroll_period_id,
+        employeeId: employee.id,
+        resultId,
+        previousPeriodId,
+        actor,
+      }).catch(err =>
+        console.error(`[payroll/generate] settlement for ${employee.id}:`, err),
+      )
 
       outcomes.push({ employee_id: employee.id, status: 'generated', payroll_result_id: resultId })
     } catch (e) {

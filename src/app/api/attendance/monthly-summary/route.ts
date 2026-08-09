@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
 import { attendanceCoverageThrough, withinCoverage } from '@/lib/attendance/monthAvailability'
+import { onlyParticipating } from '@/lib/payroll/participation'
 
 function hoursWorked(checkIn: string | null, checkOut: string | null): number {
   if (!checkIn || !checkOut) return 0
@@ -34,12 +35,16 @@ export async function GET(req: NextRequest) {
 
   const { from, to } = monthRange(year, month)
 
-  // Fetch all active employees
-  const { data: employees, error: empErr } = await svc
-    .from('users')
-    .select('id, full_name, employee_code')
-    .eq('is_active', true)
-    .order('full_name')
+  // Every employee attendance tracks — active AND taking part in Attendance &
+  // Payroll. The second half is what stops an excluded member (a dummy account,
+  // a family member, anyone deliberately untracked) from accruing an absence for
+  // every working day of the month and inflating the warning counts on this
+  // screen. See src/lib/payroll/participation.ts.
+  const { data: employees, error: empErr } = await onlyParticipating(
+    svc.from('users')
+      .select('id, full_name, employee_code')
+      .eq('is_active', true),
+  ).order('full_name')
 
   if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 })
 

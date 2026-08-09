@@ -19,6 +19,7 @@ import {
 } from './PayrollRowActions'
 import { CreatePeriodModal } from './CreatePeriodModal'
 import { UnlockPayrollModal } from './UnlockPayrollModal'
+import { ParticipationModal, type ParticipationMember } from './ParticipationModal'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
 
@@ -38,7 +39,18 @@ type PayrollPeriodRow = {
   status: 'draft' | 'generated' | 'locked'
   notes: string | null
   created_at: string
-  generated_employees: number | null
+  /**
+   * Employees this period currently holds a payroll result for.
+   *
+   * Counted from payroll_results, NOT from the last generation run. Those two
+   * numbers are only equal when the run happened to cover everybody, and every
+   * attendance correction regenerates exactly one employee — which is how a
+   * 12-person month came to display "1". See countResultsByPeriod in
+   * src/app/api/payroll/periods/route.ts.
+   */
+  employee_count: number
+  /** How many employees the last completed run processed. Diagnostics only. */
+  last_run_employee_count: number | null
   last_generated_at: string | null
   out_of_date: boolean
   /** The most recent lock/unlock, for Last Activity. Null until one happens. */
@@ -127,6 +139,15 @@ function PayrollPeriodsPage() {
   // The row whose Attention icon was clicked. Held here, like the other two
   // dialogs, so the cell itself stays a stateless button.
   const [attentionTarget, setAttentionTarget] = useState<PayrollPeriodRow | null>(null)
+
+  // Attendance & Payroll participation. Loaded only when the dialog is opened —
+  // it is not needed to render the periods table and would be one more request
+  // on every visit to a page that does not otherwise ask about employees.
+  const [participationOpen,    setParticipationOpen]    = useState(false)
+  const [participationMembers, setParticipationMembers] = useState<ParticipationMember[]>([])
+  const [participationLoading, setParticipationLoading] = useState(false)
+  const [participationError,   setParticipationError]   = useState<string | null>(null)
+  const [participationSaving,  setParticipationSaving]  = useState<string | null>(null)
 
   const [highlightedPeriodId, setHighlightedPeriodId] = useState<string | null>(null)
 
@@ -377,6 +398,50 @@ function PayrollPeriodsPage() {
     setCreateInfo(null)
   }
 
+  // ── Attendance & Payroll participation ────────────────────────────────────
+
+  const openParticipation = async () => {
+    setParticipationOpen(true)
+    setParticipationError(null)
+    setParticipationLoading(true)
+    try {
+      const res  = await fetch('/api/payroll/participation', {
+        headers: { authorization: `Bearer ${token}` },
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setParticipationError(json.error ?? 'Failed to load members'); return }
+      setParticipationMembers(json.members ?? [])
+    } finally {
+      setParticipationLoading(false)
+    }
+  }
+
+  const handleParticipationChange = async (member: ParticipationMember, next: boolean) => {
+    if (participationSaving) return
+    setParticipationSaving(member.id)
+    setParticipationError(null)
+    try {
+      const res = await fetch('/api/payroll/participation', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ employee_id: member.id, participating: next }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setParticipationError(json.error ?? 'Failed to update participation'); return }
+
+      // Patch the one row rather than refetching: the dialog stays open and the
+      // member moves between the two groups immediately.
+      setParticipationMembers(prev =>
+        prev.map(m => (m.id === member.id ? { ...m, participating: next } : m)),
+      )
+      setSuccess(next
+        ? `${member.full_name} is included in Attendance & Payroll again. They will be picked up the next time payroll is generated.`
+        : `${member.full_name} is excluded from Attendance & Payroll. Existing records are unchanged.`)
+    } finally {
+      setParticipationSaving(null)
+    }
+  }
+
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
@@ -409,13 +474,22 @@ function PayrollPeriodsPage() {
         : 'Review monthly payroll results.'}
       onSignOut={handleSignOut}
       actions={isPayrollAdmin ? (
-        <button
-          className="boe-btn boe-btn-primary"
-          onClick={() => { setCreateError(null); setCreateInfo(null); setCreateOpen(true) }}
-          style={{ whiteSpace: 'nowrap' }}
-        >
-          Create Payroll Period
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="boe-btn boe-btn-ghost"
+            onClick={openParticipation}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            Participation
+          </button>
+          <button
+            className="boe-btn boe-btn-primary"
+            onClick={() => { setCreateError(null); setCreateInfo(null); setCreateOpen(true) }}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            Create Payroll Period
+          </button>
+        </div>
       ) : undefined}
     >
       {error && (
@@ -469,9 +543,7 @@ function PayrollPeriodsPage() {
         />
         <SummaryTile
           label="Employees Included"
-          value={summary.latestGenerated?.generated_employees != null
-            ? String(summary.latestGenerated.generated_employees)
-            : '—'}
+          value={summary.latestGenerated ? String(summary.latestGenerated.employee_count) : '—'}
           meta={summary.latestGenerated
             ? `In ${periodLabel(summary.latestGenerated.payroll_month, summary.latestGenerated.payroll_year)}`
             : 'Not generated yet'}
@@ -508,12 +580,16 @@ function PayrollPeriodsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
-                  {['Payroll Period', 'Status', 'Employees Included', 'Last Activity', 'Attention', 'Actions'].map(h => (
+                  {/* "Employees", not "Employees Included": the long header was
+                      setting the column's width, so a two-digit number sat in a
+                      column wide enough for a sentence. */}
+                  {['Payroll Period', 'Status', 'Employees', 'Last Activity', 'Attention', 'Actions'].map(h => (
                     <th key={h} style={{
                       padding: '11px 16px', textAlign: 'left',
                       fontSize: 11.5, fontWeight: 700,
                       color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.05em',
                       whiteSpace: 'nowrap',
+                      ...(h === 'Employees' ? { width: 96 } : null),
                     }}>
                       {h}
                     </th>
@@ -540,8 +616,14 @@ function PayrollPeriodsPage() {
                       <td style={{ padding: '12px 16px' }}>
                         <StatusBadge status={p.status} />
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13.5, color: '#3D4455' }}>
-                        {p.generated_employees != null ? p.generated_employees : '—'}
+                      {/* Tabular figures so the column reads as a column. A
+                          period with no results yet shows an em dash rather
+                          than a zero, which would look like a failed run. */}
+                      <td style={{
+                        padding: '12px 16px', fontSize: 13.5, color: '#3D4455',
+                        fontVariantNumeric: 'tabular-nums', width: 96,
+                      }}>
+                        {p.employee_count > 0 ? p.employee_count : '—'}
                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 12.5, color: '#6B7280', whiteSpace: 'nowrap' }}>
                         {activity ? (
@@ -604,6 +686,17 @@ function PayrollPeriodsPage() {
         />
       )}
 
+      {participationOpen && (
+        <ParticipationModal
+          members={participationMembers}
+          loading={participationLoading}
+          error={participationError}
+          saving={participationSaving}
+          onConfirm={handleParticipationChange}
+          onClose={() => { setParticipationOpen(false); setParticipationError(null) }}
+        />
+      )}
+
       {unlockTarget && (
         <UnlockPayrollModal
           periodLabel={periodLabel(unlockTarget.payroll_month, unlockTarget.payroll_year)}
@@ -623,6 +716,30 @@ function statusWord(status: PayrollPeriodRow['status']): string {
   return status === 'draft' ? 'Draft' : status === 'generated' ? 'Generated' : 'Locked'
 }
 
+/**
+ * The KPI value, in the body face rather than the display face.
+ *
+ * `.boe-kpi-value` is Syne at 28/700 — a display type meant for a headline
+ * number. Three of the four values on this page are not headline numbers: two
+ * are month labels ("August 2026") and one is a headcount, and Syne's wide,
+ * rounded figures made a two-digit count read as decorative while the long month
+ * labels had to be shrunk to 16px to fit, so the row never sat on one baseline.
+ *
+ * Overridden here, on this page, rather than in .boe-kpi-value — that class is
+ * every module's KPI card and this page is not entitled to restyle them all.
+ * The existing BOE body stack is inherited (no new font), tabular figures keep
+ * the numbers aligned as they change, and one size serves both a count and a
+ * month so the four cards share a baseline.
+ */
+const KPI_VALUE: React.CSSProperties = {
+  fontFamily: 'inherit',
+  fontSize: 19,
+  fontWeight: 600,
+  letterSpacing: '-0.01em',
+  lineHeight: 1.15,
+  fontVariantNumeric: 'tabular-nums',
+}
+
 function SummaryTile({
   label, value, meta, tone,
 }: { label: string; value: string; meta: string; tone?: 'amber' }) {
@@ -635,8 +752,8 @@ function SummaryTile({
       style={{ padding: '9px 12px' }}
     >
       <span className="boe-kpi-label">{label}</span>
-      <span className="boe-kpi-value" style={{ fontSize: value.length > 8 ? 16 : 23 }}>{value}</span>
-      <span className="boe-kpi-meta">{meta}</span>
+      <span className="boe-kpi-value" style={KPI_VALUE}>{value}</span>
+      <span className="boe-kpi-meta" style={{ marginTop: 4 }}>{meta}</span>
     </div>
   )
 }

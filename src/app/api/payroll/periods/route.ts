@@ -6,6 +6,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { fetchAllRows } from '@/lib/supabasePaging'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = SupabaseClient<any, any, any>
@@ -65,6 +66,37 @@ export async function getOrCreatePayrollPeriod(
   return { outcome: 'created', period: created as PayrollPeriodRecord }
 }
 
+/**
+ * How many employees each period currently holds a payroll result for.
+ *
+ * THE BUG THIS REPLACES
+ * ---------------------
+ * The dashboard used to show `payroll_generation.employee_count` from the latest
+ * completed run. That column records how many employees ONE generation REQUEST
+ * processed, which is only the period's headcount when the run happened to cover
+ * everybody. Every attendance correction triggers a regeneration for the single
+ * employee it affects, so a 12-person month displayed "1" the moment one date
+ * was corrected — while the period still held all 12 results.
+ *
+ * `payroll_results` is the source of truth for who is in a period: it is upserted
+ * on (payroll_period_id, employee_id), so regenerating one employee replaces that
+ * one row and leaves the other eleven untouched. Counting those rows is therefore
+ * correct for a partial run, a full run and a historical locked month alike —
+ * a locked period's rows never change, so its count stays what it was.
+ *
+ * Pure, so it can be tested without a database. The generation metadata is not
+ * deleted; it simply stops being used as a headcount.
+ */
+export function countResultsByPeriod(
+  resultRows: Array<{ payroll_period_id: string }>,
+): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const row of resultRows) {
+    counts[row.payroll_period_id] = (counts[row.payroll_period_id] ?? 0) + 1
+  }
+  return counts
+}
+
 // Pure decision logic for attendance-vs-generation staleness, factored out of
 // GET so it's unit-testable with fabricated data — no DB writes needed. See
 // the caller below for how attendanceRows is fetched (bounded to the months
@@ -115,6 +147,28 @@ export async function GET(req: NextRequest) {
     .order('completed_at', { ascending: false })
 
   if (genErr) return NextResponse.json({ error: genErr.message }, { status: 500 })
+
+  // ── Period headcount ──────────────────────────────────────────────────────
+  // Read from payroll_results, not from the generation run — see
+  // countResultsByPeriod above for why the two are not the same number.
+  // Paged: PostgREST silently caps a response at 1000 rows, and results grow as
+  // employees × months, so an unpaged read would quietly start under-counting
+  // the oldest periods once the table passes that mark.
+  const resultRowsRead = await fetchAllRows<{ payroll_period_id: string }>((from, to) =>
+    svc
+      .from('payroll_results')
+      .select('id, payroll_period_id')
+      .order('id', { ascending: true })
+      .range(from, to),
+  )
+
+  if (!resultRowsRead.ok || resultRowsRead.truncated) {
+    const detail = resultRowsRead.ok ? 'exceeded the paged read cap' : resultRowsRead.error
+    console.error('[payroll/periods] result headcount read failed:', detail)
+    return NextResponse.json({ error: 'Failed to read payroll results' }, { status: 500 })
+  }
+
+  const resultCounts = countResultsByPeriod(resultRowsRead.rows)
 
   // Keep only the first (latest) done generation per period
   const latestGen: Record<string, { employee_count: number; completed_at: string }> = {}
@@ -172,8 +226,12 @@ export async function GET(req: NextRequest) {
   const result = (periods ?? []).map(p => ({
     ...p,
     out_of_date: outOfDate[p.id] ?? false,
-    generated_employees: latestGen[p.id]?.employee_count ?? null,
-    last_generated_at:   latestGen[p.id]?.completed_at ?? null,
+    // The period's headcount: employees it currently holds a result for.
+    employee_count: resultCounts[p.id] ?? 0,
+    // Run metadata, kept because it is genuinely useful when diagnosing a
+    // generation — but it is NOT the headcount and nothing displays it as one.
+    last_run_employee_count: latestGen[p.id]?.employee_count ?? null,
+    last_generated_at:       latestGen[p.id]?.completed_at ?? null,
     last_status_event:   latestEvent[p.id]  ?? null,
     last_unlock:         latestUnlock[p.id] ?? null,
   }))
