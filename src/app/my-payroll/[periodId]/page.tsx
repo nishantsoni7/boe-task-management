@@ -207,6 +207,11 @@ export default function MyPayrollDetailPage() {
           correctableDates={new Set()}
           canEdit={false}
           onExplain={setExplainingDate}
+          // No onEditCarryForward and no onEditPayment. Same statement as the
+          // missing onEdit above: the employee has no settlement controls to
+          // disable, because there is no edit path here to reach. The real
+          // boundary is /api/payroll/settlement, which is admin-only, and the
+          // RLS on payroll_settlements, which grants employees SELECT alone.
           issuePanel={
             <div style={{
               marginBottom: 16, padding: '12px 16px', borderRadius: 9,

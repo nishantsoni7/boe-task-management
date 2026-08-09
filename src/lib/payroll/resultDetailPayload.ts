@@ -26,6 +26,9 @@ import {
   fetchCurrentCorrections,
 } from '@/lib/payroll/store'
 import { toDeductionDays, toConsideredDays, isCorrectableDay } from '@/lib/payroll/resultTabs'
+import { toSignedAdjustment, type StoredAdjustment } from '@/lib/payroll/adjustments'
+import { computeSettlement, adjustmentsReconcile, closingBalanceSentence } from '@/lib/payroll/settlement'
+import { fetchSettlement, type SettlementRow } from '@/lib/payroll/settlementStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = any
@@ -96,12 +99,67 @@ export async function buildResultDetailPayload(
 
   if (linesErr) return { ok: false, status: 500, error: linesErr.message }
 
+  // `adjustment_type` is selected and the rows are converted to SIGNED amounts.
+  //
+  // It was not, and that was a live defect: since migration 20260636 the stored
+  // `amount` is always POSITIVE with the direction in `adjustment_type`, so
+  // reading `amount` raw made every manual deduction render with a "+". An
+  // employee with a ₹500 advance recovery saw "+₹500" in the itemised list while
+  // the Adjustments total correctly showed −₹500. Same class of bug that
+  // toSignedAdjustment was written to kill, in the one path that never used it.
+  //
+  // Voided rows are excluded — a cancelled adjustment was never applied to this
+  // payroll and must not appear as though it were.
   const { data: adjustments, error: adjErr } = await svc
     .from('payroll_pending_adjustments')
-    .select('id, description, amount, status')
+    .select('id, description, amount, adjustment_type, status')
     .eq('payroll_result_id', result.id)
+    .neq('status', 'cancelled')
 
   if (adjErr) return { ok: false, status: 500, error: adjErr.message }
+
+  type SignedAdjustment = { id: string; description: string; amount: number; status: string }
+
+  const signedAdjustments: SignedAdjustment[] = (adjustments ?? []).map(
+    (row: StoredAdjustment & { status: string }) => ({
+      id:          row.id,
+      description: row.description ?? '',
+      amount:      toSignedAdjustment(row).amount,
+      status:      row.status,
+    }),
+  )
+
+  // ── Settlement ────────────────────────────────────────────────────────────
+  // Read, never written, on this path: opening a payslip must not create or
+  // change a financial record. A month with no settlement row yet computes as
+  // no carry-forward and no payment recorded, which is exactly what it means.
+  let settlementRow: SettlementRow | null = null
+  try {
+    settlementRow = await fetchSettlement(svc, periodId, employeeId)
+  } catch (e) {
+    // Degrades rather than failing the payslip: the settlement tables arrive in
+    // migration 20260826000000, and a payroll detail that 500s because it has
+    // not been applied yet would take the deduction ledger down with it.
+    console.error('[payroll/detail] settlement unavailable:', e)
+  }
+
+  const figures = computeSettlement(
+    {
+      gross_salary:             result.gross_salary,
+      total_deductions:         result.total_deductions,
+      pending_adjustment_total: result.pending_adjustment_total,
+      days_present:             result.days_present,
+    },
+    settlementRow,
+  )
+
+  // The itemised rows must add up to the total the engine applied. When they do
+  // not, the two are being read differently and one of them is wrong — so say so
+  // rather than render a breakdown that silently disagrees with its own total.
+  const adjustmentsBalance = adjustmentsReconcile(
+    signedAdjustments.map(a => a.amount),
+    figures.other_adjustments,
+  )
 
   const u = result.users as unknown as { full_name: string; employee_code: string | null } | null
 
@@ -142,7 +200,35 @@ export async function buildResultDetailPayload(
         generated_at:             result.generated_at,
         employee_reviewed_at:     result.employee_reviewed_at ?? null,
         deduction_lines:          lines ?? [],
-        adjustments:              adjustments ?? [],
+        adjustments:              signedAdjustments,
+      },
+      // Everything the Adjustments & Settlement section shows, computed once,
+      // server-side, from the stored records. The UI formats these and adds no
+      // arithmetic of its own — which is what stops a displayed figure from
+      // drifting away from the data model.
+      settlement: {
+        figures,
+        sentence: closingBalanceSentence(figures),
+        adjustments_balance: adjustmentsBalance,
+        carry_forward: settlementRow
+          ? {
+              proposed:         Number(settlementRow.proposed_carry_forward),
+              is_manual:        settlementRow.carry_forward_is_manual,
+              remark:           settlementRow.carry_forward_remark,
+              source_period_id: settlementRow.carry_forward_source_period_id,
+              set_at:           settlementRow.carry_forward_set_at,
+            }
+          : null,
+        // Present only once a payment has actually been recorded. A settlement
+        // row can exist with amount_paid NULL — created by generation to hold
+        // the carry-forward — and that is not a payment.
+        payment: settlementRow && settlementRow.amount_paid != null
+          ? {
+              payment_date: settlementRow.payment_date,
+              remark:       settlementRow.payment_remark,
+              recorded_at:  settlementRow.payment_recorded_at,
+            }
+          : null,
       },
       ...dayView,
     },

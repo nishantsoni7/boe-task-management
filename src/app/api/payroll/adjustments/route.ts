@@ -4,6 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { periodLockStateByMonth, isLocked, LOCKED_PERIOD_MESSAGE } from '@/lib/payroll/lockGuard'
 
 async function getAdminCaller(req: NextRequest) {
   const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
@@ -75,6 +76,18 @@ export async function POST(req: NextRequest) {
 
   if (typeof amount !== 'number' || amount <= 0)
     return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 })
+
+  // Locked periods reject new adjustments. This route had no lock check at all
+  // until now — see src/lib/payroll/lockGuard.ts. A month with no payroll period
+  // yet is not locked and passes: creating a pending adjustment ahead of the run
+  // is the normal way to use this.
+  try {
+    if (isLocked(await periodLockStateByMonth(ctx.svc, month, year))) {
+      return NextResponse.json({ error: LOCKED_PERIOD_MESSAGE }, { status: 422 })
+    }
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
 
   const { data, error } = await ctx.svc
     .from('payroll_pending_adjustments')
