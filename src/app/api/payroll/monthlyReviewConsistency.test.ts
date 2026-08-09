@@ -192,15 +192,36 @@ describe('23. Monthly Review and generation agree when a correction exists', () 
     assert.match(storeSrc,  /export function toEngineAttendanceRecord/, 'one shared narrowing function')
   })
 
-  test('the route passes corrections into the engine', async () => {
+  test('the route passes corrections AND settings into the engine', async () => {
+    // Updated when Central Payroll Settings added a seventh engine argument.
+    // The rule this test enforces is unchanged and is the reason it exists: the
+    // preview must hand the engine everything generation hands it. Omitting an
+    // argument here does not fail — it silently previews a DIFFERENT
+    // calculation, which is exactly how the corrections divergence happened.
     const src = await readFile('src/app/api/payroll/monthly-review/route.ts', 'utf8')
 
     assert.match(src, /fetchCurrentCorrectionsByEmployee/, 'the route must load the correction layer')
+    assert.match(src, /settingsForPeriod/, 'the route must resolve which settings the month is previewed under')
     assert.match(
       src,
-      /generatePayrollForEmployee\(\s*emp,\s*previewPeriod,\s*attendance,\s*holidays,\s*adjustments,\s*corrections\s*\)/,
-      'the engine call must pass all six arguments, corrections included',
+      /generatePayrollForEmployee\(\s*emp,\s*previewPeriod,\s*attendance,\s*holidays,\s*adjustments,\s*corrections,\s*settings\s*\)/,
+      'the engine call must pass all seven arguments, corrections and settings included',
     )
+  })
+
+  test('the preview and generation resolve settings through the same helper', async () => {
+    // Two routes deciding independently which settings apply is precisely the
+    // shape of the bug this suite exists to prevent, so the decision lives in
+    // one place and both call it.
+    const [reviewSrc, generateSrc] = await Promise.all([
+      readFile('src/app/api/payroll/monthly-review/route.ts', 'utf8'),
+      readFile('src/app/api/payroll/generate/route.ts', 'utf8'),
+    ])
+    assert.match(reviewSrc,   /from '@\/lib\/payroll\/settingsStore'/)
+    assert.match(generateSrc, /from '@\/lib\/payroll\/settingsStore'/)
+    // Generation pins BEFORE calculating; the preview never writes a pin.
+    assert.match(generateSrc, /pinSettingsToPeriod/)
+    assert.doesNotMatch(reviewSrc, /pinSettingsToPeriod/, 'the preview must stay read-only')
   })
 })
 

@@ -32,6 +32,7 @@ import {
   setPeriodStatus,
 } from '@/lib/payroll/store'
 import { fetchPrecedingPeriod, materialiseSettlement } from '@/lib/payroll/settlementStore'
+import { fetchActiveSettings, pinSettingsToPeriod } from '@/lib/payroll/settingsStore'
 
 export async function POST(req: NextRequest) {
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -57,14 +58,14 @@ export async function POST(req: NextRequest) {
   const actor = { id: caller.id, name: callerProfile?.full_name ?? null }
 
   // ── Parse body ──────────────────────────────────────────────────────────────
-  let body: { payroll_period_id?: string; employee_ids?: string[] }
+  let body: { payroll_period_id?: string; employee_ids?: string[]; recalculate_with_current_settings?: boolean }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { payroll_period_id, employee_ids } = body
+  const { payroll_period_id, employee_ids, recalculate_with_current_settings } = body
   if (!payroll_period_id) {
     return NextResponse.json({ error: 'payroll_period_id is required' }, { status: 400 })
   }
@@ -138,6 +139,28 @@ export async function POST(req: NextRequest) {
       return null
     })
 
+  // ── Pin the calculation settings to the period ───────────────────────────────
+  //
+  // BEFORE the first employee is calculated, and that ordering is the whole
+  // point. Doing it afterwards would leave a window in which a concurrent
+  // settings save changed the rules midway through a run, and the period would
+  // then claim a snapshot that only applied to some of its employees.
+  //
+  // An existing snapshot is KEPT unless the admin explicitly asked to
+  // recalculate under today's rules. Every regeneration triggered by an
+  // attendance correction goes through here, and a correction must not smuggle
+  // in a settings change: the month is being recomputed from corrected
+  // attendance under the rules it was always run with.
+  let settings: Awaited<ReturnType<typeof fetchActiveSettings>>['settings']
+  try {
+    const active = await fetchActiveSettings(svc)
+    settings = await pinSettingsToPeriod(svc, payroll_period_id, active.settings, {
+      replace: recalculate_with_current_settings === true,
+    })
+  } catch (e) {
+    return NextResponse.json({ error: `Could not resolve payroll settings: ${String(e)}` }, { status: 500 })
+  }
+
   // ── Create generation row ────────────────────────────────────────────────────
   let generationId: string
   try {
@@ -181,6 +204,7 @@ export async function POST(req: NextRequest) {
         holidays,
         adjustments,
         corrections,
+        settings,
       )
 
       if (isSkip(outcome)) {
