@@ -28,22 +28,7 @@ import {
   type AttendanceDayCorrection,
   type WaivableDeductionType,
 } from '../attendance/corrections'
-import {
-  SCHEDULED_IN_MINUTES,
-  GRACE_END_MINUTES,
-  SCHEDULED_OUT_MINUTES,
-  FULL_DAY_HOURS,
-  HALF_DAY_HOURS,
-  MISSING_PUNCH_HOURS,
-  PER_DAY_DIVISOR,
-  PER_HOUR_DIVISOR,
-  ROUNDING_BLOCK_MINUTES,
-  ROUNDING_BLOCK_HOURS,
-  PAID_LEAVE_TIERS,
-  HALF_DAYS_PER_PAID_LEAVE,
-  HOURS_PER_PAID_LEAVE,
-  WEEKLY_OFF_DAY,
-} from './rules'
+import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from './settings'
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
@@ -57,6 +42,16 @@ import {
  * classification, deductions, aggregates and totals — without the raw record
  * being altered. Omitting the argument runs payroll on raw attendance alone,
  * which is what every caller did before corrections existed.
+ *
+ * `settings` is the calculation policy — every divisor, threshold and clock time
+ * the arithmetic below turns on. It defaults to DEFAULT_PAYROLL_SETTINGS, which
+ * is the same constant set this module used to import directly, so a caller that
+ * passes nothing gets exactly the pre-settings behaviour.
+ *
+ * Real generation does NOT rely on that default. It passes the settings pinned
+ * to the period (payroll_periods.settings_snapshot), so regenerating a month
+ * reproduces the figures it was originally run with rather than silently
+ * adopting whatever an admin has changed since. See ./settingsSnapshot.
  */
 export function generatePayrollForEmployee(
   employee: EngineEmployee,
@@ -65,31 +60,32 @@ export function generatePayrollForEmployee(
   holidays: EngineHoliday[],
   pendingAdjustments: EnginePendingAdjustment[],
   corrections: AttendanceDayCorrection[] = [],
+  settings: PayrollSettings = DEFAULT_PAYROLL_SETTINGS,
 ): EngineOutcome {
   // Step 1 — Guard checks
   const skip = runGuards(employee, period)
   if (skip) return skip
 
   // Step 2 — Compute monetary rates
-  const rates = computeRates(employee.monthly_salary)
+  const rates = computeRates(employee.monthly_salary, settings)
 
   // Step 3 — Build the working-day calendar
-  const calendar = buildWorkingDayCalendar(employee, period, holidays)
+  const calendar = buildWorkingDayCalendar(employee, period, holidays, settings)
 
   // Step 4 — Classify each working day and produce per-day deduction lines
-  const dayResults = classifyAttendanceDays(calendar.workingDays, attendanceRecords, rates, corrections)
+  const dayResults = classifyAttendanceDays(calendar.workingDays, attendanceRecords, rates, corrections, settings)
 
   // Step 5 — Aggregate across all working days
   const aggregates = aggregateMonthlyTotals(dayResults, calendar)
 
   // Step 6 — Compute paid leave entitlement (based on actual days present)
-  const paidLeaveAvailable = computePaidLeaveEntitlement(aggregates.days_present)
+  const paidLeaveAvailable = computePaidLeaveEntitlement(aggregates.days_present, settings)
 
   // Step 7 + 8 — Apply paid leave absorption (all three stages)
-  const leaveState = applyLeaveAbsorption(aggregates, paidLeaveAvailable)
+  const leaveState = applyLeaveAbsorption(aggregates, paidLeaveAvailable, settings)
 
   // Step 9 — Compute deduction amounts
-  const totalDeductions = computeTotalDeductions(leaveState, rates)
+  const totalDeductions = computeTotalDeductions(leaveState, rates, settings)
 
   // Step 10 — Compute gross salary
   const grossSalary = computeGrossSalary(employee)
@@ -122,6 +118,7 @@ export function generatePayrollForEmployee(
     excludedDays: calendar.excludedDays,
     attendanceRecords,
     corrections,
+    settings,
   })
 }
 
@@ -142,9 +139,9 @@ function runGuards(employee: EngineEmployee, period: EnginePeriod): EngineSkip |
 
 // ─── Step 2: Monetary rates ───────────────────────────────────────────────────
 
-function computeRates(monthlySalary: number): PayrollRates {
-  const per_day_rate = monthlySalary / PER_DAY_DIVISOR
-  const per_hour_rate = per_day_rate / PER_HOUR_DIVISOR
+function computeRates(monthlySalary: number, s: PayrollSettings): PayrollRates {
+  const per_day_rate = monthlySalary / s.per_day_divisor
+  const per_hour_rate = per_day_rate / s.full_day_hours
   return { per_day_rate, per_hour_rate }
 }
 
@@ -181,19 +178,20 @@ function dayLine(
   date: string,
   type: 'absent' | 'half_day',
   rates: PayrollRates,
+  s: PayrollSettings,
 ): PendingDeductionLine {
   const isHalf = type === 'half_day'
-  const rate   = isHalf ? rates.per_day_rate / 2 : rates.per_day_rate
+  const rate   = isHalf ? rates.per_day_rate * s.half_day_fraction : rates.per_day_rate
   return {
     line_date: date,
     deduction_type: type,
-    hours_deducted: isHalf ? HALF_DAY_HOURS : FULL_DAY_HOURS,
+    hours_deducted: isHalf ? s.full_day_hours * s.half_day_fraction : s.full_day_hours,
     amount_deducted: rate,
     explain: {
       gross_amount: rate,
-      units: isHalf ? 0.5 : 1,
+      units: isHalf ? s.half_day_fraction : 1,
       unit: 'days',
-      rate: isHalf ? rates.per_day_rate / 2 : rates.per_day_rate,
+      rate,
       rate_basis: isHalf ? 'half_day' : 'per_day',
     },
   }
@@ -231,6 +229,7 @@ function buildWorkingDayCalendar(
   employee: EngineEmployee,
   period: EnginePeriod,
   holidays: EngineHoliday[],
+  s: PayrollSettings,
 ): CalendarResult {
   const { payroll_month, payroll_year } = period
   const holidaySet = new Set(holidays.map(h => h.holiday_date))
@@ -252,7 +251,7 @@ function buildWorkingDayCalendar(
   const excludedDays: ExcludedDay[] = []
   const nonSundayNonHoliday = allDays.filter(date => {
     const dow = new Date(`${date}T00:00:00Z`).getUTCDay()
-    if (dow === WEEKLY_OFF_DAY) { excludedDays.push({ date, reason: 'weekly_off' }); return false }
+    if (dow === s.weekly_off_day) { excludedDays.push({ date, reason: 'weekly_off' }); return false }
     if (holidaySet.has(date)) { excludedDays.push({ date, reason: 'holiday' });    return false }
     return true
   })
@@ -273,11 +272,12 @@ function buildWorkingDayCalendar(
 
 // ─── Step 6: Paid leave entitlement ──────────────────────────────────────────
 
-function computePaidLeaveEntitlement(daysPresent: number): number {
+function computePaidLeaveEntitlement(daysPresent: number, s: PayrollSettings): number {
   // BOE rule: leave earned is based on actual days present in the month.
-  // The bands are stated once, in ./rules — the same values the rule cards on
-  // Payroll Result Detail are written from.
-  for (const tier of PAID_LEAVE_TIERS) {
+  // The bands come from settings, ordered highest-first — parsePayrollSettings
+  // rejects any other order, because reading top-down and taking the first band
+  // reached would otherwise award the wrong allowance rather than fail visibly.
+  for (const tier of s.paid_leave_tiers) {
     if (daysPresent >= tier.min_days_present) return tier.leave
   }
   return 0
@@ -292,9 +292,9 @@ function computePaidLeaveEntitlement(daysPresent: number): number {
 //   9  → 0h   |  16 → 0.5h  |  30 → 0.5h
 //  31  → 1.0h |  38 → 1.0h  |  47 → 1.0h
 //  61  → 1.5h |  67 → 1.5h  |  91 → 2.0h
-function roundDeductionHours(minutesFromScheduled: number): number {
-  if (minutesFromScheduled <= GRACE_END_MINUTES - SCHEDULED_IN_MINUTES) return 0
-  return Math.ceil(minutesFromScheduled / ROUNDING_BLOCK_MINUTES) * ROUNDING_BLOCK_HOURS
+function roundDeductionHours(minutesFromScheduled: number, s: PayrollSettings): number {
+  if (minutesFromScheduled <= s.grace_end_minutes - s.scheduled_in_minutes) return 0
+  return Math.ceil(minutesFromScheduled / s.rounding_block_minutes) * s.rounding_block_hours
 }
 
 // ─── Step 4: Classify attendance days ────────────────────────────────────────
@@ -304,11 +304,12 @@ function classifyAttendanceDays(
   attendanceRecords: EngineAttendanceRecord[],
   rates: PayrollRates,
   corrections: AttendanceDayCorrection[],
+  s: PayrollSettings,
 ): DayResult[] {
   const byDate = new Map(attendanceRecords.map(r => [r.attendance_date, r]))
   const correctionByDate = new Map(corrections.map(c => [c.attendance_date, c]))
   return workingDays.map(date =>
-    classifySingleDay(date, byDate.get(date), rates, correctionByDate.get(date)),
+    classifySingleDay(date, byDate.get(date), rates, s, correctionByDate.get(date)),
   )
 }
 
@@ -316,6 +317,7 @@ function classifySingleDay(
   date: string,
   record: EngineAttendanceRecord | undefined,
   rates: PayrollRates,
+  s: PayrollSettings,
   correction?: AttendanceDayCorrection,
 ): DayResult {
   // The raw record is kept alongside the effective one so the day-level view
@@ -339,8 +341,8 @@ function classifySingleDay(
   // from the monthly aggregates in assembleResult, not from here.
   if (correction && correction.day_treatment !== 'auto') {
     const forced: Record<'full_day' | 'half_day' | 'absent', { classification: DayClassification; hours: number }> = {
-      full_day: { classification: 'full_present', hours: FULL_DAY_HOURS },
-      half_day: { classification: 'half_day',     hours: HALF_DAY_HOURS },
+      full_day: { classification: 'full_present', hours: s.full_day_hours },
+      half_day: { classification: 'half_day',     hours: s.full_day_hours * s.half_day_fraction },
       absent:   { classification: 'full_absent',  hours: 0 },
     }
     const { classification, hours } = forced[correction.day_treatment]
@@ -356,7 +358,7 @@ function classifySingleDay(
 
   const waivedTypes = waivedDeductionTypes(correction)
   const isWaived = (type: string) => waivedTypes.has(type as WaivableDeductionType)
-  const classified = classifyAttendanceDay(classifierInput)
+  const classified = classifyAttendanceDay(classifierInput, s)
 
   if (classified.classification === 'full_absent') {
     return {
@@ -388,7 +390,7 @@ function classifySingleDay(
   // arrival time to measure, whatever its provenance.
   if (classified.classification === 'missing_punch') {
     const missingLines: PendingDeductionLine[] = [
-      hourlyLine(date, classified.missing_punch_type!, MISSING_PUNCH_HOURS, rates),
+      hourlyLine(date, classified.missing_punch_type!, s.missing_punch_hours, rates),
     ]
 
     if (
@@ -396,14 +398,14 @@ function classifySingleDay(
       classified.direction_source === 'confirmed'
     ) {
       const inMin = classified.check_in_minutes!
-      if (inMin > GRACE_END_MINUTES) {
-        const lateHours = roundDeductionHours(inMin - SCHEDULED_IN_MINUTES)
+      if (inMin > s.grace_end_minutes) {
+        const lateHours = roundDeductionHours(inMin - s.scheduled_in_minutes, s)
         if (lateHours > 0) {
           missingLines.push(hourlyLine(date, 'late_arrival', lateHours, rates, {
-            scheduled_minutes:  SCHEDULED_IN_MINUTES,
-            grace_end_minutes:  GRACE_END_MINUTES,
+            scheduled_minutes:  s.scheduled_in_minutes,
+            grace_end_minutes:  s.grace_end_minutes,
             actual_minutes:     inMin,
-            minutes_beyond:     inMin - SCHEDULED_IN_MINUTES,
+            minutes_beyond:     inMin - s.scheduled_in_minutes,
           }))
         }
       }
@@ -430,26 +432,26 @@ function classifySingleDay(
     const inMin  = check_in_minutes!
     const outMin = check_out_minutes!
 
-    if (inMin > GRACE_END_MINUTES && !isWaived('late_arrival')) {
-      const lateHours = roundDeductionHours(inMin - SCHEDULED_IN_MINUTES)
+    if (inMin > s.grace_end_minutes && !isWaived('late_arrival')) {
+      const lateHours = roundDeductionHours(inMin - s.scheduled_in_minutes, s)
       if (lateHours > 0) {
         deduction_lines.push(hourlyLine(date, 'late_arrival', lateHours, rates, {
-          scheduled_minutes: SCHEDULED_IN_MINUTES,
-          grace_end_minutes: GRACE_END_MINUTES,
+          scheduled_minutes: s.scheduled_in_minutes,
+          grace_end_minutes: s.grace_end_minutes,
           actual_minutes:    inMin,
-          minutes_beyond:    inMin - SCHEDULED_IN_MINUTES,
+          minutes_beyond:    inMin - s.scheduled_in_minutes,
         }))
       }
     }
 
-    if (outMin < SCHEDULED_OUT_MINUTES && !isWaived('early_checkout')) {
-      const earlyHours = roundDeductionHours(SCHEDULED_OUT_MINUTES - outMin)
+    if (outMin < s.scheduled_out_minutes && !isWaived('early_checkout')) {
+      const earlyHours = roundDeductionHours(s.scheduled_out_minutes - outMin, s)
       if (earlyHours > 0) {
         deduction_lines.push(hourlyLine(date, 'early_checkout', earlyHours, rates, {
-          scheduled_minutes: SCHEDULED_OUT_MINUTES,
-          grace_end_minutes: SCHEDULED_OUT_MINUTES - (GRACE_END_MINUTES - SCHEDULED_IN_MINUTES),
+          scheduled_minutes: s.scheduled_out_minutes,
+          grace_end_minutes: s.scheduled_out_minutes - (s.grace_end_minutes - s.scheduled_in_minutes),
           actual_minutes:    outMin,
-          minutes_beyond:    SCHEDULED_OUT_MINUTES - outMin,
+          minutes_beyond:    s.scheduled_out_minutes - outMin,
         }))
       }
     }
@@ -529,6 +531,7 @@ function aggregateMonthlyTotals(
 function applyLeaveAbsorption(
   aggregates: MonthlyAggregates,
   paidLeaveAvailable: number,
+  s: PayrollSettings,
 ): LeaveState {
   let remaining_absent_days = aggregates.days_absent
   let remaining_half_days   = aggregates.half_day_count
@@ -547,8 +550,8 @@ function applyLeaveAbsorption(
   }
 
   // Stage 2: absorb two half-days (leave must not yet be used)
-  if (paid_leave_used === 0 && paidLeaveAvailable >= 1 && remaining_half_days >= HALF_DAYS_PER_PAID_LEAVE) {
-    remaining_half_days -= HALF_DAYS_PER_PAID_LEAVE
+  if (paid_leave_used === 0 && paidLeaveAvailable >= 1 && remaining_half_days >= s.half_days_per_paid_leave) {
+    remaining_half_days -= s.half_days_per_paid_leave
     paid_leave_used = 1
   }
 
@@ -560,7 +563,7 @@ function applyLeaveAbsorption(
 
   // Stage 3: absorb hourly deductions (leave must not yet be used)
   if (paid_leave_used === 0) {
-    const threshold = paidLeaveAvailable * HOURS_PER_PAID_LEAVE
+    const threshold = paidLeaveAvailable * s.hours_per_paid_leave
     if (total_hourly_hours > 0 && total_hourly_hours <= threshold) {
       leave_absorbed_deductions = true
       paid_leave_used = paidLeaveAvailable
@@ -582,9 +585,10 @@ function applyLeaveAbsorption(
 function computeTotalDeductions(
   leaveState: LeaveState,
   rates: PayrollRates,
+  s: PayrollSettings,
 ): TotalDeductions {
   const absent_deduction   = leaveState.remaining_absent_days  * rates.per_day_rate
-  const half_day_deduction = leaveState.remaining_half_days    * (rates.per_day_rate / 2)
+  const half_day_deduction = leaveState.remaining_half_days    * (rates.per_day_rate * s.half_day_fraction)
   const hourly_deduction   = leaveState.remaining_hourly_hours * rates.per_hour_rate
   const total_deduction    = absent_deduction + half_day_deduction + hourly_deduction
   return { absent_deduction, half_day_deduction, hourly_deduction, total_deduction }
@@ -641,6 +645,7 @@ type AssembleParams = {
   excludedDays: ExcludedDay[]
   attendanceRecords: EngineAttendanceRecord[]
   corrections: AttendanceDayCorrection[]
+  settings: PayrollSettings
 }
 
 /**
@@ -693,7 +698,7 @@ function assembleResult(p: AssembleParams): EngineResult {
   const absentDays = byChronology(p.dayResults.filter(d => d.classification === 'full_absent'))
   const absorbedAbsentDays = absentDays.length - p.leaveState.remaining_absent_days
   const absentLines: PendingDeductionLine[] = absentDays.map((day, i) => {
-    const line = dayLine(day.date, 'absent', p.rates)
+    const line = dayLine(day.date, 'absent', p.rates, p.settings)
     return i < absorbedAbsentDays ? waivedByPaidLeave(line) : line
   })
 
@@ -701,7 +706,7 @@ function assembleResult(p: AssembleParams): EngineResult {
   const halfDays = byChronology(p.dayResults.filter(d => d.classification === 'half_day'))
   const absorbedHalfDays = halfDays.length - p.leaveState.remaining_half_days
   const halfDayLines: PendingDeductionLine[] = halfDays.map((day, i) => {
-    const line = dayLine(day.date, 'half_day', p.rates)
+    const line = dayLine(day.date, 'half_day', p.rates, p.settings)
     return i < absorbedHalfDays ? waivedByPaidLeave(line) : line
   })
 
