@@ -28,7 +28,6 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -430,20 +429,35 @@ describe('corrections and issues', () => {
 
 // ─── 6. Nothing structural moved ─────────────────────────────────────────────
 
-describe('this was a presentation change only', () => {
-  const changed = execFileSync('git', ['diff', '--name-only', 'HEAD'], { cwd: ROOT, encoding: 'utf8' })
-    .split('\n').map(l => l.trim()).filter(Boolean)
+describe('the guide is presentation only', () => {
+  // These were a `git diff --name-only HEAD` check, which asserted that the
+  // WORKING TREE contained nothing but presentation changes. That was true of
+  // the commit it was written for and false of every commit after it: the next
+  // legitimate edit to settings.ts failed a payroll-guide test, which tells the
+  // author nothing useful and trains people to ignore red.
+  //
+  // A test that runs forever must assert a property that holds forever. These
+  // do: the guide's own files reach for nothing that could change a payslip,
+  // and the constants it renders are the documented ones.
 
-  test('no engine, API, schema or migration file was touched', () => {
-    const forbidden = changed.filter(f =>
-      f.startsWith('supabase/') ||
-      f.startsWith('src/app/api/') ||
-      f === 'src/lib/payroll/engine.ts' ||
-      f === 'src/lib/payroll/settlement.ts' ||
-      f === 'src/lib/payroll/settings.ts' ||
-      f === 'src/lib/attendance/classification.ts' ||
-      f === 'src/lib/attendance/scheduleRules.ts')
-    assert.deepEqual(forbidden, [], `presentation change touched: ${forbidden.join(', ')}`)
+  const GUIDE_FILES = [PAGE, CONTENT, VISUALS]
+
+  test('the guide reaches for no API, migration or schema', () => {
+    for (const src of GUIDE_FILES) {
+      assert.equal(/from '@\/app\/api/.test(src), false, 'the guide imports an API route')
+      assert.equal(src.includes('supabase/migrations'), false, 'the guide references a migration')
+      assert.equal(/\.(insert|update|upsert|delete)\(/.test(src), false, 'the guide writes to a table')
+    }
+  })
+
+  test('the guide imports rule constants, never the engine that applies them', () => {
+    // Reading the numbers is the whole design (ADR-0005). Importing the engine
+    // or the settlement layer would let a presentation change alter behaviour.
+    for (const src of GUIDE_FILES) {
+      assert.equal(src.includes("payroll/engine"), false, 'the guide imports the engine')
+      assert.equal(src.includes("payroll/settingsStore"), false, 'the guide imports the settings store')
+    }
+    assert.match(CONTENT, /from '@\/lib\/payroll\/rules'/)
   })
 
   test('the calculation constants are unchanged', () => {

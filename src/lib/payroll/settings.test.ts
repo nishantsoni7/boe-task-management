@@ -17,6 +17,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import {
   DEFAULT_PAYROLL_SETTINGS,
@@ -407,5 +409,78 @@ describe('field specs', () => {
   test('settingsField finds a spec, and throws loudly for one that does not exist', () => {
     assert.equal(settingsField('per_day_divisor').group, 'salary_basis')
     assert.throws(() => settingsField('nope' as never))
+  })
+})
+
+// ─── Settings that no calculation reads ──────────────────────────────────────
+
+/**
+ * `threshold_half_day_hours` is stored, validated, pinned in every period
+ * snapshot — and read by nothing, since classification.ts widened the half-day
+ * band down to the presence floor.
+ *
+ * An admin could edit it and believe they had changed how a day is classified.
+ * They had not. These tests pin the treatment: the field stays in the schema
+ * (it cannot be dropped without changing how historical snapshots parse), and
+ * the form marks it inactive so nobody is misled.
+ *
+ * If a future change makes the engine read it again, delete the `inactive` flag
+ * — and this test will tell you to.
+ */
+describe('settings no calculation reads', () => {
+  const INACTIVE_KEYS = ['threshold_half_day_hours'] as const
+
+  test('the inactive fields are exactly the ones we know about', () => {
+    const flagged = SETTINGS_FIELDS.filter(f => f.inactive).map(f => f.key).sort()
+    assert.deepEqual(flagged, [...INACTIVE_KEYS].sort())
+  })
+
+  test('an inactive field still explains itself', () => {
+    for (const field of SETTINGS_FIELDS.filter(f => f.inactive)) {
+      assert.ok(field.inactive!.badge.length > 0, `${field.key} has no badge`)
+      assert.ok(field.inactive!.reason.length > 20, `${field.key} has no reason`)
+      // The help text must not still describe a behaviour that no longer happens.
+      assert.match(field.help, /no longer used/i, `${field.key} help text still claims an effect`)
+    }
+  })
+
+  test('it is still a real settings field — schema and validation are unchanged', () => {
+    // Dropping it would change how every existing period snapshot parses.
+    assert.ok('threshold_half_day_hours' in DEFAULT_PAYROLL_SETTINGS)
+    assert.equal(
+      DEFAULT_PAYROLL_SETTINGS.threshold_half_day_hours,
+      PRESENCE_THRESHOLD_HOURS.half_day,
+      'the default must still match the historical constant',
+    )
+    const parsed = parsePayrollSettings({ ...DEFAULT_PAYROLL_SETTINGS })
+    assert.equal(parsed.ok, true, 'the defaults must still validate')
+  })
+
+  test('no calculation module reads it', () => {
+    // The claim the badge makes, checked rather than asserted in prose.
+    const sources = [
+      'src/lib/payroll/engine.ts',
+      'src/lib/attendance/classification.ts',
+      'src/lib/payroll/settlement.ts',
+    ]
+    for (const path of sources) {
+      const code = readFileSync(join(process.cwd(), path), 'utf8')
+        .split('\n')
+        .filter(line => !line.trim().startsWith('//') && !line.trim().startsWith('*'))
+        .join('\n')
+      assert.equal(
+        /\bthreshold_half_day_hours\b/.test(code), false,
+        `${path} reads threshold_half_day_hours — remove the inactive flag`,
+      )
+    }
+  })
+
+  test('the settings form marks it inactive and refuses edits', () => {
+    const page = readFileSync(
+      join(process.cwd(), 'src/app/payroll/settings/page.tsx'), 'utf8',
+    )
+    assert.match(page, /field\.inactive/, 'the form ignores the inactive flag')
+    assert.match(page, /readOnly=\{!!field\.inactive\}/, 'an inactive field is still editable')
+    assert.match(page, /disabled=\{!!field\.inactive\}/, 'an inactive select is still editable')
   })
 })
