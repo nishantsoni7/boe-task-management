@@ -278,12 +278,30 @@ export default function PayrollSettingsPage() {
                         {field.unit && field.kind === 'number' && (
                           <span style={{ fontWeight: 400, color: colors.tertiary }}> ({field.unit})</span>
                         )}
+                        {/* A stored setting that no calculation reads. Labelled
+                            rather than hidden: it is pinned inside every period
+                            snapshot already written, so an admin comparing a
+                            historical period against this page must still find
+                            it — but must not believe editing it does anything. */}
+                        {field.inactive && (
+                          <span
+                            style={{
+                              marginLeft: 6, padding: '1px 6px', borderRadius: 999,
+                              fontSize: 10, fontWeight: 700, letterSpacing: '0.03em',
+                              color: colors.tertiary, background: colors.float,
+                              border: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {field.inactive.badge}
+                          </span>
+                        )}
                       </span>
 
                       {field.kind === 'day_of_week' ? (
                         <select
                           value={draft[field.key] ?? ''}
                           onChange={e => set(field.key, e.target.value)}
+                          disabled={!!field.inactive}
                           style={inputStyle(!!problem)}
                         >
                           {DAY_OF_WEEK_LABELS.map((label, i) => (
@@ -298,11 +316,21 @@ export default function PayrollSettingsPage() {
                           max={field.kind === 'number' ? field.max : undefined}
                           step={field.kind === 'number' ? field.step : undefined}
                           onChange={e => set(field.key, e.target.value)}
-                          style={inputStyle(!!problem)}
+                          readOnly={!!field.inactive}
+                          aria-describedby={field.inactive ? `${field.key}-inactive` : undefined}
+                          style={{
+                            ...inputStyle(!!problem),
+                            ...(field.inactive
+                              ? { background: colors.raised, color: colors.tertiary, cursor: 'not-allowed' }
+                              : null),
+                          }}
                         />
                       )}
 
-                      <span style={{ fontSize: 11.5, lineHeight: 1.45, color: colors.tertiary }}>
+                      <span
+                        id={field.inactive ? `${field.key}-inactive` : undefined}
+                        style={{ fontSize: 11.5, lineHeight: 1.45, color: colors.tertiary }}
+                      >
                         {field.help}
                       </span>
 
