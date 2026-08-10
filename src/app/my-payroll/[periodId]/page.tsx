@@ -14,6 +14,7 @@
 // with, and every mutating payroll route keeps its own admin check.
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { formatRupees } from '@/lib/payroll/money'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -271,7 +272,7 @@ export default function MyPayrollDetailPage() {
         <RaiseIssueModal
           subject={{
             title: `${data ? `${String(data.period.payroll_month).padStart(2, '0')}/${data.period.payroll_year}` : ''}`,
-            summary: `Gross ₹${Number(result.gross_salary ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} · Deductions ₹${Number(result.total_deductions ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} · Net payable ₹${Number(result.net_salary ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+            summary: `Gross ${formatRupees(Number(result.gross_salary ?? 0))} · Deductions ${formatRupees(Number(result.total_deductions ?? 0))} · Net payable ${formatRupees(Number(result.net_salary ?? 0))}`,
           }}
           onClose={() => setIssueOpen(false)}
           onSubmit={submitIssue}

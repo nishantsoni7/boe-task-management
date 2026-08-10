@@ -20,6 +20,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { roundRupees } from './money'
 import { generatePayrollForEmployee } from './engine'
 import { isSkip } from './types'
 import type { EngineEmployee, EnginePeriod, EngineAttendanceRecord, EngineResult } from './types'
@@ -195,7 +196,7 @@ describe('the first eligible paid leave is charged to the company', () => {
     for (const d of covered) {
       assert.equal(d.lines[0].deduction_type, 'late_arrival')
       assert.equal(d.lines[0].amount_deducted, 0)
-      close(d.lines[0].explain!.gross_amount, 1 * PER_HOUR, 'gross of a covered late arrival')
+      assert.equal(d.lines[0].explain!.gross_amount, roundRupees(1 * PER_HOUR), 'gross of a covered late arrival')
     }
   })
 

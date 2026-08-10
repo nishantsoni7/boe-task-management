@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { formatRupees } from '@/lib/payroll/money'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -42,7 +43,9 @@ const MONTHS = [
 
 function fmt(n: number | null): string {
   if (n == null) return '—'
-  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  // Whole rupees: every payroll figure is stored whole since the whole-rupee
+  // rule, and a payslip that printed paise would not match what was paid.
+  return formatRupees(n)
 }
 
 function ReviewBadge({ reviewedAt }: { reviewedAt: string | null }) {

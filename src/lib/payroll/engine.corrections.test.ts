@@ -13,6 +13,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { roundRupees } from './money'
 import { generatePayrollForEmployee } from './engine'
 import { isSkip } from './types'
 import type {
@@ -321,8 +322,8 @@ describe('precedence and monthly totals', () => {
     // the allowance is spent on an absence instead.
     const before = run(attendanceWithSpentLeave())
     const after  = run(attendanceWithSpentLeave(), [correction({ day_treatment: 'full_day' })])
-    near(after.net_salary - before.net_salary, 2 * PHR)
-    near(before.total_deductions - after.total_deductions, 2 * PHR)
+    near(after.net_salary - before.net_salary, roundRupees(2 * PHR))
+    near(before.total_deductions - after.total_deductions, roundRupees(2 * PHR))
   })
 
   test('a day corrected to absent is deducted at the per-day rate', () => {
@@ -340,7 +341,7 @@ describe('precedence and monthly totals', () => {
     const after = run(attendanceWithDefect(), [correction({ day_treatment: 'half_day' })])
     assert.equal(after.half_day_count, 1)
     const line = linesOn(after, TARGET).find(l => l.deduction_type === 'half_day')!
-    near(line.amount_deducted, PDR / 2)
+    near(line.amount_deducted, roundRupees(PDR / 2))
   })
 })
 

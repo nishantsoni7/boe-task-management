@@ -41,6 +41,7 @@ import type {
   PendingDeductionLine,
 } from '../payroll/types'
 import { PER_DAY_DIVISOR, MISSING_PUNCH_HOURS, FULL_DAY_HOURS } from '../payroll/rules'
+import { roundRupees } from '../payroll/money'
 
 // ─── Workbook builders (same shapes as punchParser.test.ts) ───────────────────
 
@@ -386,14 +387,19 @@ describe('the deduction a stored row produces', () => {
     const late    = linesOn(r, 9).find(l => l.deduction_type === 'late_arrival')!
     assert.equal(missing.hours_deducted, MISSING_PUNCH_HOURS)
     assert.equal(late.hours_deducted, 1.5)   // 11:30 is 90 min past 10:00
-    assert.ok(Math.abs(amountOn(r, 9) - (MISSING_PUNCH_HOURS + 1.5) * PER_HOUR) < 0.005)
+    // Each line is rounded to a whole rupee as it is built, so the day is the
+    // SUM of rounded lines rather than the rounding of a summed total.
+    assert.equal(
+      amountOn(r, 9),
+      roundRupees(MISSING_PUNCH_HOURS * PER_HOUR) + roundRupees(1.5 * PER_HOUR),
+    )
   })
 
   test('13. stored Format B inferred single punch → the two-hour charge only', () => {
     const r = run(storedMonth(storedRow(9, at(9, 11, 30), null, 'inferred')))
 
     assert.deepEqual(typesOn(r, 9), ['missing_punch_out'])
-    assert.ok(Math.abs(amountOn(r, 9) - MISSING_PUNCH_HOURS * PER_HOUR) < 0.005)
+    assert.equal(amountOn(r, 9), roundRupees(MISSING_PUNCH_HOURS * PER_HOUR))
     assert.ok(amountOn(r, 9) < PER_DAY, 'a present day never costs more than a day')
   })
 
@@ -401,7 +407,7 @@ describe('the deduction a stored row produces', () => {
     const r = run(storedMonth(storedRow(9, null, at(9, 19, 0), 'confirmed')))
 
     assert.deepEqual(typesOn(r, 9), ['missing_punch_in'])
-    assert.ok(Math.abs(amountOn(r, 9) - MISSING_PUNCH_HOURS * PER_HOUR) < 0.005)
+    assert.equal(amountOn(r, 9), roundRupees(MISSING_PUNCH_HOURS * PER_HOUR))
   })
 
   test('the same punch stored two different ways produces two different bills', () => {
@@ -410,7 +416,11 @@ describe('the deduction a stored row produces', () => {
     const inferred  = run(storedMonth(storedRow(9, at(9, 11, 30), null, 'inferred')))
 
     assert.ok(amountOn(confirmed, 9) > amountOn(inferred, 9))
-    assert.ok(Math.abs(amountOn(confirmed, 9) - amountOn(inferred, 9) - 1.5 * PER_HOUR) < 0.005)
+    assert.equal(
+      amountOn(confirmed, 9) - amountOn(inferred, 9),
+      roundRupees(1.5 * PER_HOUR),
+      'the difference is exactly the late-arrival line the confirmed punch earns',
+    )
   })
 })
 

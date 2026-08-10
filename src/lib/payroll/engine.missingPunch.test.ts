@@ -37,6 +37,7 @@ import type {
 import type { AttendanceDayCorrection } from '../attendance/corrections'
 import type { PunchDirectionSource } from '../attendance/punchDirection'
 import { PER_DAY_DIVISOR, MISSING_PUNCH_HOURS, FULL_DAY_HOURS } from './rules'
+import { roundRupees } from './money'
 import { toDeductionDays, toConsideredDays } from './resultTabs'
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -152,7 +153,10 @@ function amountOn(result: EngineResult, day: number): number {
   return linesOn(result, day).reduce((sum, l) => sum + l.amount_deducted, 0)
 }
 
-const missingPunchCost = MISSING_PUNCH_HOURS * PER_HOUR
+// Whole rupees since the whole-rupee rule: a deduction LINE is rounded as it
+// is built. Derived through roundRupees rather than typed as 235 so the
+// expectation follows the rule instead of restating one salary's answer.
+const missingPunchCost = roundRupees(MISSING_PUNCH_HOURS * PER_HOUR)
 
 // ─── Confirmed direction ──────────────────────────────────────────────────────
 
@@ -163,7 +167,7 @@ describe('confirmed direction — the file or an admin said which punch it is', 
     assert.equal(classificationOn(r, 7), 'missing_punch')
     assert.deepEqual(typesOn(r, 7), ['missing_punch_out'])
     assert.equal(linesOn(r, 7)[0].hours_deducted, MISSING_PUNCH_HOURS)
-    assert.ok(Math.abs(amountOn(r, 7) - missingPunchCost) < 0.005)
+    assert.equal(amountOn(r, 7), missingPunchCost)
   })
 
   test('14. OUT-only → missing_punch_in, exactly MISSING_PUNCH_HOURS', () => {
@@ -172,7 +176,7 @@ describe('confirmed direction — the file or an admin said which punch it is', 
     assert.equal(classificationOn(r, 8), 'missing_punch')
     assert.deepEqual(typesOn(r, 8), ['missing_punch_in'])
     assert.equal(linesOn(r, 8)[0].hours_deducted, MISSING_PUNCH_HOURS)
-    assert.ok(Math.abs(amountOn(r, 8) - missingPunchCost) < 0.005)
+    assert.equal(amountOn(r, 8), missingPunchCost)
   })
 
   test('17. confirmed LATE arrival with a missing punch-out → both lines', () => {
@@ -182,7 +186,11 @@ describe('confirmed direction — the file or an admin said which punch it is', 
     assert.deepEqual(typesOn(r, 9), ['late_arrival', 'missing_punch_out'])
     const late = linesOn(r, 9).find(l => l.deduction_type === 'late_arrival')!
     assert.equal(late.hours_deducted, 1.5)
-    assert.ok(Math.abs(amountOn(r, 9) - (MISSING_PUNCH_HOURS + 1.5) * PER_HOUR) < 0.005)
+    assert.equal(
+      amountOn(r, 9),
+      roundRupees(MISSING_PUNCH_HOURS * PER_HOUR) + roundRupees(1.5 * PER_HOUR),
+      'each line rounds on its own, and the day is the sum of the rounded lines',
+    )
   })
 
   test('a confirmed IN inside the grace period carries no late line', () => {
@@ -197,7 +205,7 @@ describe('confirmed direction — the file or an admin said which punch it is', 
     for (const direction of ['confirmed', 'inferred'] as const) {
       const r = run(monthWithLeaveSpent(outOnly(11, 19, 0, direction)))
       assert.deepEqual(typesOn(r, 11), ['missing_punch_in'], direction)
-      assert.ok(Math.abs(amountOn(r, 11) - missingPunchCost) < 0.005, direction)
+      assert.equal(amountOn(r, 11), missingPunchCost, direction)
     }
   })
 
@@ -218,7 +226,7 @@ describe('inferred direction — the clock was the only signal', () => {
 
     assert.equal(classificationOn(r, 14), 'missing_punch')
     assert.deepEqual(typesOn(r, 14), ['missing_punch_out'])
-    assert.ok(Math.abs(amountOn(r, 14) - missingPunchCost) < 0.005)
+    assert.equal(amountOn(r, 14), missingPunchCost)
   })
 
   test('16. inferred evening punch → missing_punch_in, 2 h, and nothing else', () => {
@@ -226,7 +234,7 @@ describe('inferred direction — the clock was the only signal', () => {
 
     assert.equal(classificationOn(r, 15), 'missing_punch')
     assert.deepEqual(typesOn(r, 15), ['missing_punch_in'])
-    assert.ok(Math.abs(amountOn(r, 15) - missingPunchCost) < 0.005)
+    assert.equal(amountOn(r, 15), missingPunchCost)
   })
 
   test('a raw record with no provenance at all is treated as inferred', () => {
@@ -245,7 +253,7 @@ describe('inferred direction — the clock was the only signal', () => {
     const r = run(monthWithLeaveSpent(outOnly(17, 18, 36, 'inferred')))
     const total = amountOn(r, 17)
 
-    assert.ok(Math.abs(total - missingPunchCost) < 0.005)
+    assert.equal(total, missingPunchCost)
     assert.ok(total < PER_DAY, 'a present day must never cost more than a day of pay')
     assert.ok(total < 11 * PER_HOUR, 'the stacked lateness must be gone')
   })
