@@ -1,0 +1,93 @@
+name: verify
+
+# The repository had no CI at all before 2026-08-11 — the only pull-request
+# checks were Vercel's, so a branch could reach review with failing types or a
+# broken documentation link (risk R-8).
+#
+# This runs the same commands a contributor runs locally (`npm run verify`,
+# minus the build — see the `build` job below for why it is separate).
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+
+# A new push supersedes an in-flight run on the same ref.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: docs · types · lint · tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Lockfile install, so CI resolves exactly what a developer has.
+      - name: Install dependencies
+        run: npm ci
+
+      # Cheapest and most often broken, so it runs first.
+      - name: Documentation check
+        run: npm run docs:check
+
+      - name: Type check
+        run: npm run typecheck
+
+      # Does not fail the job: the repository has 4 known pre-existing errors
+      # (react-hooks/set-state-in-effect in src/components/objections/*). Making
+      # this blocking today would fail every PR for a reason nobody introduced.
+      # Remove `continue-on-error` once those are fixed — tracked in the risk
+      # register.
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Tests
+        run: npm test
+
+  build:
+    name: production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: checks
+
+    # The build prerenders 158 pages, and prerendering constructs a Supabase
+    # client, so it fails without the project URL and anon key. Those are
+    # publishable values, not secrets — but they are NOT invented here. A fake
+    # value would let the build "pass" while proving nothing.
+    #
+    # This job runs only once a maintainer adds the two repository secrets.
+    # Until then it is SKIPPED, visibly, and the build remains a local check.
+    if: ${{ vars.CI_BUILD_ENABLED == 'true' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: npm run build
