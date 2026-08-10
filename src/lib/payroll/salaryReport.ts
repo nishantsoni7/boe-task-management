@@ -34,6 +34,7 @@ import {
   type AdjustmentCategory,
 } from './adjustmentCategories'
 import type { AdjustmentType } from './adjustments'
+import { computeSettlement } from './settlement'
 
 // ─── Inputs ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,20 @@ export type ReportResultRow = {
   gross_salary: number | null
   total_deductions: number | null
   net_salary: number | null
+  /**
+   * The signed adjustment total the ENGINE applied, and the present-day count.
+   *
+   * Neither is stated on the report. They are the two remaining inputs
+   * computeSettlement needs to reach the same Salary Payable the Payroll Result
+   * Detail page shows — `days_present` only to apply the absence floor, which is
+   * an attendance RULE and not an attendance figure.
+   *
+   * Required, nullable rather than optional: a caller that omitted them would
+   * silently take the absence floor and report ₹0 payable for everyone, which is
+   * exactly the kind of wrong number that looks like a real one.
+   */
+  pending_adjustment_total: number | null
+  days_present: number | null
 }
 
 /** A stored adjustment row, reduced likewise. Description is NOT carried. */
@@ -53,6 +68,18 @@ export type ReportAdjustmentRow = {
   adjustment_type: AdjustmentType
   adjustment_category: unknown
   amount: number
+}
+
+/**
+ * A stored payroll_settlements row, reduced to the one figure the report needs.
+ *
+ * `amount_paid` is deliberately absent. The report states what is payable, never
+ * what has been paid, so a payment amount has no reason to travel with a message
+ * bound for WhatsApp — and Salary Payable does not depend on it.
+ */
+export type ReportSettlementRow = {
+  employee_id: string
+  carry_forward_amount: number | null
 }
 
 // ─── Output ───────────────────────────────────────────────────────────────────
@@ -73,6 +100,19 @@ export type ReportEmployee = {
   /** Only the categories that actually carry an amount, in report order. */
   adjustment_lines: ReportLine[]
   net_payable: number
+  /**
+   * Gross minus the attendance deduction — what the Payroll Result Detail page
+   * calls Salary After Attendance.
+   */
+  salary_to_be_booked: number
+  /**
+   * The saved advance/settlement figure, signed: negative when it is recovered.
+   * The detail page's Net Adjustments — the carry-forward plus the adjustment
+   * total the engine applied.
+   */
+  advance: number
+  /** salary_to_be_booked + advance. The detail page's Salary Payable. */
+  amount_payable: number
 }
 
 export type SalaryReport = {
@@ -83,6 +123,7 @@ export type SalaryReport = {
     gross_salary: number
     attendance_deduction: number
     net_payable: number
+    amount_payable: number
   }
 }
 
@@ -100,6 +141,10 @@ function n(value: number | null | undefined): number {
  * the named employees may appear in the output or in the totals. An id that is
  * selected but has no stored result is skipped rather than invented — there is
  * no payroll for that employee this month, and a report must not imply there is.
+ *
+ * `settlements` defaults to none, which computeSettlement reads exactly as the
+ * detail page does: an employee-month with no stored settlement row has no
+ * carry-forward.
  */
 export function buildSalaryReport(
   month: number,
@@ -107,8 +152,12 @@ export function buildSalaryReport(
   results: ReportResultRow[],
   adjustments: ReportAdjustmentRow[],
   selectedEmployeeIds: readonly string[],
+  settlements: ReportSettlementRow[] = [],
 ): SalaryReport {
   const selected = new Set(selectedEmployeeIds)
+  const carryForwardByEmployee = new Map(
+    settlements.map(s => [s.employee_id, n(s.carry_forward_amount)]),
+  )
 
   // Adjustments grouped by employee then by REPORTING category, so an
   // uncategorised legacy row lands on the matching Other line rather than being
@@ -146,6 +195,32 @@ export function buildSalaryReport(
       })
     }
 
+    // The SAME function the Payroll Result Detail page reaches its figures
+    // through, not a second arithmetic written here. Salary to be Booked,
+    // Advance and Amount Payable are that page's Salary After Attendance, Net
+    // Adjustments and Salary Payable — a report that computed its own would
+    // eventually disagree with the payslip it claims to summarise.
+    //
+    // The inputs are rounded on the way IN so the arithmetic runs on whole
+    // rupees and the printed lines add up to the printed total. A legacy row
+    // carrying paise would otherwise round three figures independently and show
+    // a subtraction that is a rupee out.
+    //
+    // `amount_paid` is passed as null on purpose: Salary Payable does not depend
+    // on it, and what was paid is not this report's business.
+    const figures = computeSettlement(
+      {
+        gross_salary:             n(row.gross_salary),
+        total_deductions:         n(row.total_deductions),
+        pending_adjustment_total: n(row.pending_adjustment_total),
+        days_present:             row.days_present,
+      },
+      {
+        carry_forward_amount: carryForwardByEmployee.get(row.employee_id) ?? 0,
+        amount_paid:          null,
+      },
+    )
+
     employees.push({
       employee_id:   row.employee_id,
       employee_name: row.employee_name,
@@ -157,6 +232,9 @@ export function buildSalaryReport(
       // gross − deductions + adjustments it would drift from the payslip the
       // moment either changed for a reason this module does not model.
       net_payable: n(row.net_salary),
+      salary_to_be_booked: figures.salary_after_attendance,
+      advance:             figures.net_adjustments,
+      amount_payable:      figures.salary_payable,
     })
   }
 
@@ -168,6 +246,7 @@ export function buildSalaryReport(
       gross_salary:         sumRupees(employees.map(e => e.gross_salary)),
       attendance_deduction: sumRupees(employees.map(e => e.attendance_deduction)),
       net_payable:          sumRupees(employees.map(e => e.net_payable)),
+      amount_payable:       sumRupees(employees.map(e => e.amount_payable)),
     },
   }
 }
@@ -216,19 +295,57 @@ export function renderReportText(report: SalaryReport): string {
 }
 
 /**
- * The compact one-line-per-employee form, for WhatsApp.
+ * A signed amount with the direction in the text, e.g. "-₹3,433" / "+₹1,200".
  *
- * A message has to survive a URL, so this trades the itemisation for length. The
- * detail stays available through Preview and Copy — nothing is hidden, it is
- * carried by a different channel.
+ * A bare ₹0 for a figure that is genuinely nothing: printing "-₹0" reads as a
+ * deduction that was applied and happened to be nil.
+ */
+function signedRupees(amount: number): string {
+  const whole = roundRupees(amount)
+  if (whole === 0) return formatRupees(0)
+  return `${whole < 0 ? '-' : '+'}${formatRupees(Math.abs(whole))}`
+}
+
+/**
+ * The salary summary for WhatsApp: five figures under each employee's name.
+ *
+ * WHAT IT STATES, AND WHY ONLY THIS
+ * ---------------------------------
+ * Gross Salary, Attendance Deduction, Salary to be Booked, Advance, Amount
+ * Payable. That is the money conversation an admin has when paying a month, and
+ * nothing else belongs in a message that leaves the system: no present, absent,
+ * half or paid day counts, and no itemisation of what an advance was for. The
+ * day-level detail stays available through Preview and Copy — nothing is hidden,
+ * it is carried by a different channel.
+ *
+ * Every figure comes from buildSalaryReport, which reaches them through the same
+ * computeSettlement the Payroll Result Detail page uses. So the message and the
+ * payslip cannot disagree: Salary to be Booked is that page's Salary After
+ * Attendance, Advance its Net Adjustments, Amount Payable its Salary Payable.
+ *
+ * The five lines are always printed, including when a figure is zero. A block
+ * that grows and shrinks per employee is harder to read down a column, and an
+ * absent line reads as an omission rather than as nothing.
  */
 export function renderWhatsAppText(report: SalaryReport): string {
   const lines: string[] = []
   lines.push(`Salary — ${monthLabel(report.month, report.year)}`)
   for (const e of report.employees) {
-    lines.push(`${e.employee_name}: ${formatRupees(e.net_payable)}`)
+    lines.push('')
+    lines.push(e.employee_name)
+    lines.push(`Gross Salary: ${formatRupees(e.gross_salary)}`)
+    // Stored positive; the report shows the direction, so a reader never has to
+    // know that convention.
+    lines.push(`Attendance Deduction: ${signedRupees(-e.attendance_deduction)}`)
+    lines.push(`Salary to be Booked: ${formatRupees(e.salary_to_be_booked)}`)
+    lines.push(`Advance: ${signedRupees(e.advance)}`)
+    lines.push(`Amount Payable: ${formatRupees(e.amount_payable)}`)
   }
-  lines.push(`Total: ${formatRupees(report.totals.net_payable)} (${report.employees.length})`)
+  lines.push('')
+  // The total of the SAME figure the blocks above end on. Totalling net_salary
+  // here — which is clamped at ₹0 and carries no advance — would put a footer on
+  // the message that its own lines do not add up to.
+  lines.push(`Total: ${formatRupees(report.totals.amount_payable)} (${report.employees.length})`)
   return lines.join('\n')
 }
 
