@@ -29,6 +29,7 @@ import {
   type WaivableDeductionType,
 } from '../attendance/corrections'
 import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from './settings'
+import { roundRupees, sumRupees } from './money'
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
@@ -84,8 +85,14 @@ export function generatePayrollForEmployee(
   // Step 7 + 8 — Apply paid leave absorption (all three stages)
   const leaveState = applyLeaveAbsorption(aggregates, paidLeaveAvailable, settings)
 
-  // Step 9 — Compute deduction amounts
-  const totalDeductions = computeTotalDeductions(leaveState, rates, settings)
+  // Step 9 — Build the final deduction lines, then total them.
+  //
+  // The order matters and is the whole of the whole-rupee rule: each line is
+  // rounded to a rupee as it is built, and every total below is a sum over those
+  // rounded lines. Computing a total any other way produces a payslip whose
+  // printed figures do not add up to its printed total.
+  const deductionLines = buildFinalDeductionLines({ dayResults, leaveState, rates, settings })
+  const totalDeductions = computeTotalDeductions(deductionLines)
 
   // Step 10 — Compute gross salary
   const grossSalary = computeGrossSalary(employee)
@@ -119,6 +126,7 @@ export function generatePayrollForEmployee(
     attendanceRecords,
     corrections,
     settings,
+    deductionLines,
   })
 }
 
@@ -157,7 +165,11 @@ function hourlyLine(
   rates: PayrollRates,
   clock?: { scheduled_minutes: number; grace_end_minutes?: number; actual_minutes: number; minutes_beyond: number },
 ): PendingDeductionLine {
-  const amount = hours * rates.per_hour_rate
+  // The hours and the rate stay precise; the LINE is where money becomes whole.
+  // `gross_amount` is rounded too — it is what this rule would have cost, shown
+  // to the employee when paid leave absorbs the line, so it has to be a figure
+  // the payslip could actually contain.
+  const amount = roundRupees(hours * rates.per_hour_rate)
   return {
     line_date: date,
     deduction_type: type,
@@ -181,17 +193,18 @@ function dayLine(
   s: PayrollSettings,
 ): PendingDeductionLine {
   const isHalf = type === 'half_day'
-  const rate   = isHalf ? rates.per_day_rate * s.half_day_fraction : rates.per_day_rate
+  // The day fraction stays precise; the line is rounded.
+  const amount = roundRupees(isHalf ? rates.per_day_rate * s.half_day_fraction : rates.per_day_rate)
   return {
     line_date: date,
     deduction_type: type,
     hours_deducted: isHalf ? s.full_day_hours * s.half_day_fraction : s.full_day_hours,
-    amount_deducted: rate,
+    amount_deducted: amount,
     explain: {
-      gross_amount: rate,
+      gross_amount: amount,
       units: isHalf ? s.half_day_fraction : 1,
       unit: 'days',
-      rate,
+      rate: amount,
       rate_basis: isHalf ? 'half_day' : 'per_day',
     },
   }
@@ -582,49 +595,82 @@ function applyLeaveAbsorption(
 
 // ─── Step 9: Deduction amounts ────────────────────────────────────────────────
 
-function computeTotalDeductions(
-  leaveState: LeaveState,
-  rates: PayrollRates,
-  s: PayrollSettings,
-): TotalDeductions {
-  const absent_deduction   = leaveState.remaining_absent_days  * rates.per_day_rate
-  const half_day_deduction = leaveState.remaining_half_days    * (rates.per_day_rate * s.half_day_fraction)
-  const hourly_deduction   = leaveState.remaining_hourly_hours * rates.per_hour_rate
-  const total_deduction    = absent_deduction + half_day_deduction + hourly_deduction
+/**
+ * The month's deductions, summed FROM the final lines.
+ *
+ * Not recomputed from the aggregates. The old version multiplied
+ * `remaining_absent_days × per_day_rate` and so on, which agreed with the lines
+ * to the last decimal only while both ran at full precision. With lines rounded
+ * to whole rupees the two would disagree — the total is the one figure an
+ * employee can check by adding up the column above it, so it has to BE that sum.
+ *
+ * Waived lines contribute their zero, which is correct: paid leave makes the day
+ * cost nothing, and the line stays visible saying so.
+ */
+function computeTotalDeductions(lines: PendingDeductionLine[]): TotalDeductions {
+  const amountsOfType = (types: readonly string[]) =>
+    lines.filter(l => types.includes(l.deduction_type)).map(l => l.amount_deducted)
+
+  const absent_deduction   = sumRupees(amountsOfType(['absent']))
+  const half_day_deduction = sumRupees(amountsOfType(['half_day']))
+  const hourly_deduction   = sumRupees(amountsOfType([...HOURLY_DEDUCTION_TYPES]))
+  const total_deduction    = sumRupees(lines.map(l => l.amount_deducted))
+
   return { absent_deduction, half_day_deduction, hourly_deduction, total_deduction }
 }
 
 // ─── Step 10: Gross salary snapshot ──────────────────────────────────────────
 
 function computeGrossSalary(employee: EngineEmployee): number {
-  return employee.monthly_salary
+  // A salary is already a whole rupee in every real record; rounding it states
+  // that rather than assuming it, so a legacy row carrying paise cannot make the
+  // payslip fail to add up.
+  return roundRupees(employee.monthly_salary)
 }
 
 // ─── Step 11: Pending adjustments ────────────────────────────────────────────
 
+/**
+ * Manual adjustments, each rounded to a whole rupee before being summed.
+ *
+ * Same rule as the deduction lines and for the same reason: every adjustment is
+ * shown to the employee as its own line with its own reason, so each must be a
+ * figure that can appear on a payslip, and the total must be the sum of what is
+ * printed.
+ */
 function sumPendingAdjustments(adjustments: EnginePendingAdjustment[]): PendingAdjustmentsSummary {
-  let additions = 0
-  let deductions = 0
+  const additionAmounts: number[] = []
+  const deductionAmounts: number[] = []
 
   for (const adj of adjustments) {
-    if (adj.amount > 0) {
-      additions += adj.amount
-    } else if (adj.amount < 0) {
-      deductions += Math.abs(adj.amount)
-    }
+    const amount = roundRupees(adj.amount)
+    if (amount > 0) additionAmounts.push(amount)
+    else if (amount < 0) deductionAmounts.push(Math.abs(amount))
   }
 
+  const additions  = sumRupees(additionAmounts)
+  const deductions = sumRupees(deductionAmounts)
   return { additions, deductions, net_adjustment: additions - deductions }
 }
 
 // ─── Step 12: Net salary ──────────────────────────────────────────────────────
 
+/**
+ * Net salary, derived from figures that are already whole rupees.
+ *
+ * Gross, the deduction total and the adjustment total are each whole by the time
+ * they reach here, so the subtraction is exact and no rounding is introduced at
+ * this step — which is the point. Rounding the NET independently is what makes a
+ * total stop matching the lines above it. roundRupees is applied only to state
+ * the invariant and to normalise -0.
+ */
 function computeNetSalary(
   grossSalary: number,
   totalDeductions: TotalDeductions,
   pendingAdjustmentTotal: PendingAdjustmentsSummary,
 ): number {
-  return Math.max(0, grossSalary - totalDeductions.total_deduction + pendingAdjustmentTotal.net_adjustment)
+  const net = grossSalary - totalDeductions.total_deduction + pendingAdjustmentTotal.net_adjustment
+  return Math.max(0, roundRupees(net))
 }
 
 // ─── Step 13: Assemble engine result ─────────────────────────────────────────
@@ -646,6 +692,8 @@ type AssembleParams = {
   attendanceRecords: EngineAttendanceRecord[]
   corrections: AttendanceDayCorrection[]
   settings: PayrollSettings
+  /** Built and rounded before the totals, which are sums over these. */
+  deductionLines: PendingDeductionLine[]
 }
 
 /**
@@ -669,7 +717,27 @@ const HOURLY_DEDUCTION_TYPES = new Set<string>([
   'short_hours',
 ])
 
-function assembleResult(p: AssembleParams): EngineResult {
+/**
+ * Every deduction line the month finally carries, with paid-leave absorption
+ * already applied and every amount already a whole rupee.
+ *
+ * This used to live inside assembleResult, which meant the lines were built
+ * AFTER the totals had been computed separately from the same aggregates. That
+ * was survivable while everything ran at full precision, because the two
+ * calculations agreed to the last decimal. It stops being survivable once lines
+ * are rounded: `round(a) + round(b)` is not `round(a + b)`, so a total computed
+ * in parallel drifts from the lines printed beneath it, and a payslip whose
+ * figures do not add up is indistinguishable from a payroll bug.
+ *
+ * So the lines are now the single source, built first, and every total is a sum
+ * over them.
+ */
+function buildFinalDeductionLines(p: {
+  dayResults: DayResult[]
+  leaveState: LeaveState
+  rates: PayrollRates
+  settings: PayrollSettings
+}): PendingDeductionLine[] {
   // Hourly deduction lines (missing punch, late arrival, short hours).
   // Stage 3 of leave absorption zeroes every one of them at once.
   const hourlyLines: PendingDeductionLine[] = p.dayResults.flatMap(day =>
@@ -710,7 +778,11 @@ function assembleResult(p: AssembleParams): EngineResult {
     return i < absorbedHalfDays ? waivedByPaidLeave(line) : line
   })
 
-  const deduction_lines: PendingDeductionLine[] = [...absentLines, ...halfDayLines, ...hourlyLines]
+  return [...absentLines, ...halfDayLines, ...hourlyLines]
+}
+
+function assembleResult(p: AssembleParams): EngineResult {
+  const deduction_lines = p.deductionLines
 
   return {
     day_results: buildDayResults(p, deduction_lines),
@@ -771,7 +843,9 @@ function buildDayResults(p: AssembleParams, finalLines: PendingDeductionLine[]):
     return {
       ...day,
       deduction_lines: lines,
-      total_deduction_amount: lines.reduce((sum, l) => sum + l.amount_deducted, 0),
+      // Summed through sumRupees, which refuses anything that is not already a
+      // whole rupee — so a day's total cannot quietly reintroduce paise.
+      total_deduction_amount: sumRupees(lines.map(l => l.amount_deducted)),
     }
   })
 

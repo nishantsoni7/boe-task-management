@@ -27,6 +27,7 @@ import {
   ROUNDING_BLOCK_HOURS,
   WEEKLY_OFF_DAY,
 } from '../attendance/scheduleRules'
+import { roundRupees, sumRupees } from './money'
 
 export {
   SCHEDULED_IN_MINUTES,
@@ -224,26 +225,33 @@ const EXAMPLE_PER_HOUR = EXAMPLE_PER_DAY / PER_HOUR_DIVISOR
 
 export type ExampleDeduction = { label: string; detail: string; amount: number }
 
+/**
+ * The worked amounts, rounded exactly as the engine rounds a real line.
+ *
+ * Each amount goes through roundRupees, and the total is the SUM of those
+ * rounded amounts — not a rounding of the raw total. The example has to
+ * demonstrate the rule it is explaining, or an employee checking the arithmetic
+ * on this page against their payslip would find the two disagreeing by a rupee.
+ */
 export const EXAMPLE_DEDUCTIONS: ExampleDeduction[] = [
   {
     label:  'Late Arrival',
     detail: `${ROUNDING_BLOCK_HOURS}h × per-hour rate`,
-    amount: ROUNDING_BLOCK_HOURS * EXAMPLE_PER_HOUR,
+    amount: roundRupees(ROUNDING_BLOCK_HOURS * EXAMPLE_PER_HOUR),
   },
   {
     label:  'Absent',
     detail: '1 day × per-day rate',
-    amount: EXAMPLE_PER_DAY,
+    amount: roundRupees(EXAMPLE_PER_DAY),
   },
   {
     label:  'Half Day',
     detail: 'Half a day × per-day rate',
-    amount: EXAMPLE_PER_DAY / 2,
+    amount: roundRupees(EXAMPLE_PER_DAY / 2),
   },
 ]
 
-export const EXAMPLE_DEDUCTION_TOTAL =
-  EXAMPLE_DEDUCTIONS.reduce((sum, line) => sum + line.amount, 0)
+export const EXAMPLE_DEDUCTION_TOTAL = sumRupees(EXAMPLE_DEDUCTIONS.map(line => line.amount))
 
 // ─── The worked example, as one settlement ────────────────────────────────────
 
@@ -301,6 +309,7 @@ export const GLOSSARY: Array<{ term: string; meaning: string }> = [
   { term: 'Settlement Status',       meaning: 'Whether the payment has been recorded yet. Until it is, there is no closing balance.' },
   { term: 'Paid Leave',              meaning: 'One leave the company covers, earned by your attendance in the same month. The day still appears on the payslip, showing ₹0.' },
   { term: 'Locked Period',           meaning: 'A payroll month that has been finalised. Nothing in it can change until an admin reopens it.' },
+  { term: 'Whole Rupees',            meaning: 'Every amount on your payslip is a whole number of rupees. Each line is rounded on its own and the totals are the sum of those lines, so the column always adds up to the total beneath it.' },
 ]
 
 /** What BOE payroll deliberately does not do. Stated rather than left to be discovered. */
@@ -380,6 +389,13 @@ export const RULE_CARDS: RuleCard[] = [
     title: 'Salary rate',
     body: `Per day = monthly salary ÷ ${PER_DAY_DIVISOR}. Per hour = per day ÷ ${PER_HOUR_DIVISOR}.`,
     detail: 'Every deduction below is one of these two rates × the units the rule charges.',
+  },
+  {
+    key: 'whole_rupees',
+    group: 'deduction',
+    title: 'Whole rupees',
+    body: 'Every amount on a payslip is a whole number of rupees. Each line is rounded to the nearest rupee on its own, and the totals are the sum of those rounded lines — so the figures you see always add up to the total you see.',
+    detail: 'Rates and hours stay exact while the amount is worked out; only the finished line is rounded. Half a rupee rounds up, in both directions: ₹10.50 becomes ₹11, and a recovery of ₹10.50 becomes ₹11 as well. Months generated before this rule are left exactly as they were.',
   },
   {
     key: 'late_arrival',

@@ -108,6 +108,21 @@ export type SettlementFigures = {
   payment_status: PaymentStatus
 }
 
+/**
+ * A stored figure, used as stored.
+ *
+ * NOT rounded here, deliberately. Since the whole-rupee rule every figure the
+ * engine writes is already a whole rupee, so settlement inherits whole rupees
+ * for free and its arithmetic stays exact.
+ *
+ * A row generated BEFORE that rule still carries paise, and it must keep them.
+ * Rounding on read would restate a historical payslip an employee has already
+ * been paid against — and it would do so inconsistently, because the stored
+ * deduction LINES of that month are unrounded too, so a rounded total would stop
+ * matching the column printed above it. An old month is self-consistent in its
+ * own terms; the new rule applies to new generation and to an intentional
+ * recalculation, not to reading history.
+ */
 function num(value: number | null | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }

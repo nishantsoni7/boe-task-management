@@ -36,6 +36,7 @@ import {
   type PayrollSettings,
 } from './settings'
 import { generatePayrollForEmployee } from './engine'
+import { roundRupees } from './money'
 import { isSkip } from './types'
 import type { EngineEmployee, EnginePeriod, EngineAttendanceRecord } from './types'
 
@@ -249,13 +250,16 @@ describe('settings drive the calculation', () => {
     assert.equal(four.missing_punch_hours, 4)
 
     // The fixture is one punched day in a month of absences, so the TOTAL is
-    // dominated by absent-day deductions. What must move is the difference, and
-    // it must move by exactly the two extra hours at the hourly rate:
-    // 26,000 ÷ 26 ÷ 8.5 = 117.647/hour.
+    // dominated by absent-day deductions. What must move is the difference.
+    //
+    // Each missing-punch LINE is rounded on its own, so the difference is
+    // round(4h) − round(2h), not the unrounded 2h between them:
+    // 26,000 ÷ 26 ÷ 8.5 = 117.647/hour → ₹471 − ₹235 = ₹236, where the raw
+    // arithmetic would have said ₹235.29. That gap IS the whole-rupee rule.
     const perHour = 26_000 / DEFAULT_PAYROLL_SETTINGS.per_day_divisor / DEFAULT_PAYROLL_SETTINGS.full_day_hours
-    assert.ok(
-      Math.abs((four.total_deductions - two.total_deductions) - 2 * perHour) < 1e-9,
-      `expected the extra 2h to cost ${2 * perHour}, got ${four.total_deductions - two.total_deductions}`,
+    assert.equal(
+      four.total_deductions - two.total_deductions,
+      roundRupees(4 * perHour) - roundRupees(2 * perHour),
     )
   })
 

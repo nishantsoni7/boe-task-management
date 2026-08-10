@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { formatRupees } from '@/lib/payroll/money'
 import { colors } from '@/lib/tokens'
 import { istClockToUtc, istClockOf } from '@/lib/istDate'
 import { DAY_TREATMENTS, type DayTreatment } from '@/lib/attendance/corrections'
@@ -77,7 +78,9 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
 }
 
 function fmtMoney(n: number): string {
-  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  // Whole rupees: every payroll figure is stored whole since the whole-rupee
+  // rule, and a payslip that printed paise would not match what was paid.
+  return formatRupees(n)
 }
 
 function fmtDayDate(iso: string): string {

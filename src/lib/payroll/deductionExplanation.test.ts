@@ -13,6 +13,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { roundRupees } from './money'
 import { generatePayrollForEmployee } from './engine'
 import { isSkip } from './types'
 import type { EngineEmployee, EnginePeriod, EngineAttendanceRecord, EngineResult } from './types'
@@ -314,9 +315,12 @@ describe('every figure in the popup reconciles to the payroll result', () => {
       for (const line of day.lines) {
         const e = line.explain
         assert.ok(e, `${day.date}/${line.deduction_type} carries its metadata`)
-        assert.ok(Math.abs(e.units * e.rate - e.gross_amount) < 0.005, 'units × rate = gross')
+        // gross_amount is the ROUNDED line since the whole-rupee rule; units and
+        // rate stay precise, so the relationship is 'rounds to' rather than
+        // 'equals'. Stated this way the popup still has to reconcile.
+        assert.equal(roundRupees(e.units * e.rate), e.gross_amount, 'round(units × rate) = gross')
         const expected = line.waived_by === 'paid_leave' ? 0 : e.gross_amount
-        assert.ok(Math.abs(line.amount_deducted - expected) < 0.005, 'amount follows the waiver')
+        assert.equal(line.amount_deducted, expected, 'amount follows the waiver')
       }
     }
   })

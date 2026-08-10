@@ -14,6 +14,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { roundRupees } from './money'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -39,9 +40,19 @@ describe('the deduction example', () => {
   test('each line is computed from the engine’s own divisors', () => {
     const byLabel = Object.fromEntries(EXAMPLE_DEDUCTIONS.map(d => [d.label, d.amount]))
 
-    assert.equal(byLabel['Absent'],       perDay)
-    assert.equal(byLabel['Half Day'],     perDay / 2)
-    assert.equal(byLabel['Late Arrival'], ROUNDING_BLOCK_HOURS * perHour)
+    // Rounded, because the engine rounds every real line to a whole rupee. An
+    // example that showed ₹692.31 while the payslip showed ₹692 would be the
+    // page teaching an employee arithmetic the system does not do.
+    assert.equal(byLabel['Absent'],       roundRupees(perDay))
+    assert.equal(byLabel['Half Day'],     roundRupees(perDay / 2))
+    assert.equal(byLabel['Late Arrival'], roundRupees(ROUNDING_BLOCK_HOURS * perHour))
+  })
+
+  test('the example amounts are whole rupees, like every real payslip line', () => {
+    for (const line of EXAMPLE_DEDUCTIONS) {
+      assert.ok(Number.isInteger(line.amount), `${line.label} = ${line.amount}`)
+    }
+    assert.ok(Number.isInteger(EXAMPLE_DEDUCTION_TOTAL))
   })
 
   test('the total is the sum of its lines, not a separate figure', () => {
