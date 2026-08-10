@@ -198,6 +198,20 @@ export default function PayrollResultsPage() {
       title="Payroll Results"
       subtitle={periodLabel ? `Results — ${periodLabel}` : 'Results for this payroll period'}
       onSignOut={handleSignOut}
+      actions={
+        // The processing report reads the same stored results this page shows,
+        // so it is reachable from here rather than from a separate nav entry.
+        <Link
+          href={`/payroll/results/${periodId}/salary-report`}
+          style={{
+            padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(0,0,0,0.13)',
+            fontSize: 13, fontWeight: 600, color: '#111318', textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Salary Processing Report
+        </Link>
+      }
     >
       {/* Back link */}
       <div style={{ marginBottom: 16 }}>
