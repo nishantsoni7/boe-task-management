@@ -15,6 +15,18 @@
 > generated from it, so what an employee reads and what the engine charges cannot
 > drift apart.
 >
+> **For the current rules in prose, read
+> [`PAYROLL_ATTENDANCE_RULES.md`](./PAYROLL_ATTENDANCE_RULES.md).** It covers
+> everything added since this brief: single-punch handling and the
+> confirmed/inferred direction, the deduction stacking rule, Central Payroll
+> Settings and the per-period snapshot, whole-rupee money, adjustment categories,
+> the salary-processing report, and the migration deployment order.
+>
+> Since 2026-08-10 the numbers below are also **admin-editable settings** rather
+> than compiled constants — `src/lib/payroll/settings.ts` defines them and each
+> payroll period pins the ones it was calculated with, so a settings change never
+> restates a month that has already run.
+>
 > Known divergences, verified against the code and the generated payrolls in the
 > database on 2026-08-08:
 >
