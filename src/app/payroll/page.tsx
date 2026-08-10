@@ -19,6 +19,7 @@ import {
 } from './PayrollRowActions'
 import { CreatePeriodModal } from './CreatePeriodModal'
 import { UnlockPayrollModal } from './UnlockPayrollModal'
+import { DeletePayrollModal, type DeletePayrollPreview } from './DeletePayrollModal'
 import { ParticipationModal, type ParticipationMember } from './ParticipationModal'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
@@ -135,6 +136,16 @@ function PayrollPeriodsPage() {
   const [unlockTarget, setUnlockTarget] = useState<PayrollPeriodRow | null>(null)
   const [unlocking,    setUnlocking]    = useState(false)
   const [unlockError,  setUnlockError]  = useState<string | null>(null)
+
+  // Deletion carries four pieces of state rather than one: the row, the server's
+  // preview of what deleting it would do, whether that preview is still loading,
+  // and whether the deletion itself is in flight. `deleting` is what prevents a
+  // second submission — the dialog reads it too.
+  const [deleteTarget,  setDeleteTarget]  = useState<PayrollPeriodRow | null>(null)
+  const [deletePreview, setDeletePreview] = useState<DeletePayrollPreview | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleting,      setDeleting]      = useState(false)
+  const [deleteError,   setDeleteError]   = useState<string | null>(null)
 
   // The row whose Attention icon was clicked. Held here, like the other two
   // dialogs, so the cell itself stays a stateless button.
@@ -337,6 +348,94 @@ function PayrollPeriodsPage() {
       setHighlightedPeriodId(period.id)
     } finally {
       setUnlocking(false)
+    }
+  }
+
+  /**
+   * Open the deletion dialog and ask the server what deleting this would do.
+   *
+   * The counts and the permission both come from GET /api/payroll/delete rather
+   * than from the row already on screen: the row knows the period's status and
+   * its result count, but not whether a payment has been recorded or a
+   * generation is running, and those are the two answers that decide whether
+   * this dialog offers a Delete button at all.
+   */
+  const openDelete = async (period: PayrollPeriodRow) => {
+    setDeleteTarget(period)
+    setDeletePreview(null)
+    setDeleteError(null)
+    setDeleteLoading(true)
+    try {
+      const res = await fetch(`/api/payroll/delete?period_id=${encodeURIComponent(period.id)}`, {
+        headers: { authorization: `Bearer ${token}` },
+        // Never a cached answer: whether a payroll may be deleted depends on
+        // whether a payment was recorded a moment ago.
+        cache: 'no-store',
+      })
+      const json = await res.json()
+      if (!res.ok) { setDeleteError(json.error ?? 'Could not check this payroll.'); return }
+      setDeletePreview(json as DeletePayrollPreview)
+    } catch {
+      setDeleteError('Could not check this payroll. Reload and try again.')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  const closeDelete = () => {
+    // Never mid-flight: closing the dialog while the request is running would
+    // leave the admin with no way to learn whether it succeeded.
+    if (deleting) return
+    setDeleteTarget(null)
+    setDeletePreview(null)
+    setDeleteError(null)
+  }
+
+  const handleDelete = async ({ reason, confirmation }: { reason: string; confirmation: string }) => {
+    const period = deleteTarget
+    if (!period || deleting) return
+
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch('/api/payroll/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          payroll_period_id: period.id,
+          payroll_month:     period.payroll_month,
+          payroll_year:      period.payroll_year,
+          confirmation,
+          reason,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        // A failed deletion keeps the dialog open with the typed text intact,
+        // and the payroll is still there — the route says so in the message.
+        setDeleteError(json.error ?? 'Deletion failed.')
+        return
+      }
+
+      const label = periodLabel(period.payroll_month, period.payroll_year)
+      // Reload BEFORE closing, so the row is already gone behind the dialog and
+      // no stale payroll remains on screen for even a frame.
+      await loadPeriods(token)
+      setDeleteTarget(null)
+      setDeletePreview(null)
+      setError(null)
+      setSuccess(
+        `${label} payroll has been permanently deleted. ` +
+        `${json.results_deleted ?? 0} employee result${json.results_deleted === 1 ? '' : 's'} removed. ` +
+        'Attendance records, employee profiles and salary settings are unchanged.',
+      )
+    } catch {
+      setDeleteError('Deletion failed. The payroll was not deleted and nothing was changed.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -648,6 +747,10 @@ function PayrollPeriodsPage() {
                           onLock={() => handleLock(p)}
                           onUnlock={() => { setUnlockError(null); setUnlockTarget(p) }}
                           onViewResults={() => router.push(`/payroll/results/${p.id}`)}
+                          // Admins only. PayrollRowActionBar drops the control
+                          // when no handler is given, so a Control Center member
+                          // with Payroll visibility never sees it.
+                          onDelete={isPayrollAdmin ? () => openDelete(p) : undefined}
                         />
                       </td>
                     </tr>
@@ -704,6 +807,21 @@ function PayrollPeriodsPage() {
           error={unlockError}
           onCancel={() => { setUnlockTarget(null); setUnlockError(null) }}
           onConfirm={handleUnlock}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeletePayrollModal
+          // Keyed on the period, so opening the dialog for a different month
+          // mounts a fresh one and nothing typed against the last period can
+          // survive into a confirmation for this one.
+          key={deleteTarget.id}
+          preview={deletePreview}
+          loading={deleteLoading}
+          deleting={deleting}
+          error={deleteError}
+          onCancel={closeDelete}
+          onConfirm={handleDelete}
         />
       )}
     </PayrollLayout>

@@ -15,6 +15,7 @@ export type PayrollPeriodAction =
   | 'regenerate'
   | 'lock'
   | 'unlock'
+  | 'delete'
 
 export const PAYROLL_ACTION_LABELS: Record<PayrollPeriodAction, string> = {
   view:       'View Payroll',
@@ -25,6 +26,9 @@ export const PAYROLL_ACTION_LABELS: Record<PayrollPeriodAction, string> = {
   regenerate: 'Regenerate Payroll',
   lock:       'Lock Payroll',
   unlock:     'Unlock Payroll',
+  // Not "Remove" and not "Discard". The word has to match what happens, which
+  // is that the month's salary records stop existing.
+  delete:     'Delete Payroll',
 }
 
 /**
@@ -44,6 +48,7 @@ export const PAYROLL_ROW_ACTION_PRESENTATION: Record<PayrollPeriodAction, Payrol
   regenerate: 'icon',
   lock:       'icon',
   unlock:     'icon',
+  delete:     'icon',
 }
 
 export type PayrollRowActions = {
@@ -64,13 +69,21 @@ export type PayrollRowActions = {
  * A locked row deliberately carries no disabled controls. The status badge
  * already says the period is locked; a greyed-out "Lock" button repeated that
  * and a greyed-out "Regenerate" invited clicks that could never work.
+ *
+ * Delete sits LAST on the two statuses that can be deleted, and is absent from a
+ * locked row for the same reason Lock is: unlocking is a separate, audited
+ * decision, and deletion must not appear to be one click away from a finalised
+ * month. Whether a deletable-looking period really is deletable — no payment
+ * recorded, no run in flight — is decided by canDeletePayrollPeriod in
+ * ./deletionRules and confirmed by the API; the row only decides whether the
+ * question is worth asking.
  */
 export function payrollRowActions(status: PeriodStatus): PayrollRowActions {
   switch (status) {
     case 'draft':
-      return { primary: 'generate', secondary: [] }
+      return { primary: 'generate', secondary: ['delete'] }
     case 'generated':
-      return { primary: 'view', secondary: ['regenerate', 'lock'] }
+      return { primary: 'view', secondary: ['regenerate', 'lock', 'delete'] }
     case 'locked':
       return { primary: 'view', secondary: ['unlock'] }
   }

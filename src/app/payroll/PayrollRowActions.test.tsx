@@ -172,6 +172,72 @@ describe('payroll row actions', () => {
   })
 })
 
+// ── Delete Payroll ────────────────────────────────────────────────────────────
+// The one destructive control in the module. What is asserted here is where it
+// appears and, more importantly, where it does NOT.
+
+describe('the Delete Payroll control', () => {
+  const onDelete = () => {}
+
+  test('a draft and a generated row offer it, as an icon', () => {
+    for (const status of ['draft', 'generated'] as const) {
+      const html = bar(status, { onDelete })
+      assert.match(html, /aria-label="Delete Payroll"/, status)
+      assert.doesNotMatch(visibleText(html), /Delete Payroll/, `${status}: it must not carry its label as text`)
+    }
+  })
+
+  test('a locked row does NOT offer it — unlocking is a separate, audited decision', () => {
+    assert.doesNotMatch(bar('locked', { onDelete }), /aria-label="Delete Payroll"/)
+  })
+
+  test('a viewer without management rights never sees it', () => {
+    for (const status of ['draft', 'generated', 'locked'] as const) {
+      assert.doesNotMatch(
+        bar(status, { onDelete, canManage: false }),
+        /aria-label="Delete Payroll"/,
+        status,
+      )
+    }
+  })
+
+  test('a surface that wires no handler does not render a dead control', () => {
+    for (const status of ['draft', 'generated', 'locked'] as const) {
+      assert.doesNotMatch(bar(status), /aria-label="Delete Payroll"/, status)
+    }
+  })
+
+  test('it sits last, after the actions that are not destructive', () => {
+    const titles = buttonsOf('generated', { onDelete }).map(b => b.props.title)
+    assert.deepEqual(titles, ['View Payroll', 'Regenerate Payroll', 'Lock Payroll', 'Delete Payroll'])
+  })
+
+  test('pressing it calls the delete handler and nothing else', () => {
+    const calls: string[] = []
+    const s = spies()
+    const found = elements(PayrollRowActionBar({
+      status: 'generated', isBusy: false, ...s.handlers,
+      onDelete: () => calls.push('delete'),
+    })).find(e => e.type === 'button' && e.props.title === 'Delete Payroll')
+
+    assert.ok(found)
+    found.props.onClick()
+    assert.deepEqual(calls, ['delete'])
+    assert.deepEqual(s.calls, [], 'no other handler may fire')
+  })
+
+  test('a generation in flight does not disable it — the API refuses instead', () => {
+    // Deliberate: the row does not decide whether a period is deletable. The
+    // dialog asks the server, and a running generation is refused there with an
+    // explanation, which is more useful than a control that silently does
+    // nothing.
+    const byTitle = Object.fromEntries(
+      buttonsOf('generated', { isBusy: true, onDelete }).map(b => [b.props.title, b.props.disabled]),
+    )
+    assert.equal(byTitle['Delete Payroll'], false)
+  })
+})
+
 // ── Attention ─────────────────────────────────────────────────────────────────
 
 const stale = (status: PeriodStatus) =>
