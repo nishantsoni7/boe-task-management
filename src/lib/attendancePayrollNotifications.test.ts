@@ -18,7 +18,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   ATTENDANCE_PAYROLL_NOTIFICATION_TYPES,
@@ -35,6 +35,10 @@ import { NOTIFICATION_CATEGORIES, notificationKeys } from './notificationCache'
 import { canReadNotificationCategory } from './notificationAccess'
 import { getNotificationMeta } from './notificationMeta'
 import { ISSUE_PARAM } from './objections'
+import {
+  ATTENDANCE_PAYROLL_ADMIN_NAV,
+  ATTENDANCE_PAYROLL_EMPLOYEE_NAV,
+} from '@/components/layout/attendancePayrollNav'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
@@ -308,15 +312,15 @@ describe('11. the feed is row-scoped, not category-gated', () => {
   })
 
   test('the shared shell sends each role to a door it can actually open', () => {
-    // AttendanceLayout is the shell for /attendance AND for /my-attendance,
-    // /my-payroll and /my-issues. /attendance/notifications is behind
-    // AttendanceGuard, so an employee pointed there would just be bounced.
-    const layout = read('src/components/layout/AttendanceLayout.tsx')
+    // AttendancePayrollLayout is the ONE shell for /attendance, /payroll,
+    // /my-attendance, /my-payroll and /my-issues. /attendance/notifications is
+    // behind AttendanceGuard, so an employee pointed there would just be bounced.
+    const layout = read('src/components/layout/AttendancePayrollLayout.tsx')
     assert.ok(layout.includes("isAdmin ? '/attendance/notifications' : '/my-issues/notifications'"),
       'the destination must branch on role')
     assert.ok(layout.includes('useUnreadAttendancePayrollNotifications()'),
       'and the count is now requested for everyone, because everyone can have rows')
-    assert.ok(layout.includes('<IssueNotificationBell'), 'the Attendance sidebar must offer the feed')
+    assert.ok(layout.includes('<IssueNotificationBell'), 'the module sidebar must offer the feed')
   })
 
   test('the employee door renders the same shared feed, not a second one', () => {
@@ -387,23 +391,40 @@ describe('Attendance and Payroll open the same feed, not two of them', () => {
     }
   })
 
-  test('both sidebars read one count hook, so the two badges cannot disagree', () => {
-    for (const p of ['src/components/layout/AttendanceLayout.tsx', 'src/components/layout/PayrollLayout.tsx']) {
-      const src = read(p)
-      assert.ok(src.includes('useUnreadAttendancePayrollNotifications'), p)
-      // …and the same two-state bell, so neither shell can look inert while
-      // the other is counting.
-      assert.ok(src.includes('<IssueNotificationBell'), `${p} must use the shared bell`)
-    }
-    // Same category ⇒ same query key ⇒ one fetch shared by both shells.
+  test('one sidebar reads one count hook, so no two badges can disagree', () => {
+    // Two shells used to hold two copies of this wiring, which is exactly how
+    // they drifted. There is one shell now, so there is nothing to keep in step.
+    const shell = 'src/components/layout/AttendancePayrollLayout.tsx'
+    const src = read(shell)
+    assert.ok(src.includes('useUnreadAttendancePayrollNotifications'), shell)
+    assert.ok(src.includes('<IssueNotificationBell'), `${shell} must use the shared bell`)
+    // Same category ⇒ same query key ⇒ one fetch, wherever in the module you are.
     assert.deepEqual(
       notificationKeys.count('attendance_payroll'),
       notificationKeys.count('attendance_payroll'),
     )
   })
 
-  test('each door stays inside its own module shell', () => {
-    assert.ok(attendancePage.includes('AttendanceLayout'))
-    assert.ok(payrollPage.includes('PayrollLayout'))
+  test('the two old shells are gone, not merely unused', () => {
+    for (const p of ['src/components/layout/AttendanceLayout.tsx', 'src/components/layout/PayrollLayout.tsx']) {
+      assert.equal(existsSync(join(ROOT, p)), false, `${p} still exists — the duplicate can come back`)
+    }
+  })
+
+  test('both URLs render the one merged shell', () => {
+    for (const [name, src] of [['attendance', attendancePage], ['payroll', payrollPage]] as const) {
+      assert.ok(src.includes('AttendancePayrollLayout'), `${name} must use the merged shell`)
+    }
+  })
+
+  test('the sidebar offers exactly one door onto the feed', () => {
+    // /payroll/notifications stays reachable for old links, but it is no longer
+    // a second entry point in the navigation — see attendancePayrollNav.tsx.
+    const navPaths = [...ATTENDANCE_PAYROLL_ADMIN_NAV, ...ATTENDANCE_PAYROLL_EMPLOYEE_NAV]
+      .map(i => i.path)
+    for (const feed of ['/attendance/notifications', '/payroll/notifications', '/my-issues/notifications']) {
+      assert.equal(navPaths.includes(feed), false,
+        `${feed} is a nav item as well as the bell — that is the duplicate door`)
+    }
   })
 })

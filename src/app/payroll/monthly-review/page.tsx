@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { PayrollLayout } from '@/components/layout/PayrollLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -176,7 +176,7 @@ export default function PayrollMonthlyReviewPage() {
     : 0
 
   return (
-    <PayrollLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Payroll Monthly Preview"
       subtitle="Engine-computed payroll summary for the selected month"
@@ -479,6 +479,6 @@ export default function PayrollMonthlyReviewPage() {
         )}
 
       </div>
-    </PayrollLayout>
+    </AttendancePayrollLayout>
   )
 }

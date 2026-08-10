@@ -1,6 +1,6 @@
 'use client'
 
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { NotificationsView } from '@/components/notifications/NotificationsView'
 
 // The EMPLOYEE's door into the Attendance & Payroll issue feed — the third one,
@@ -24,5 +24,5 @@ import { NotificationsView } from '@/components/notifications/NotificationsView'
 // admin-facing `*_issue_raised` rows are written only to admin user ids, so
 // they are not in an employee's answer to begin with.
 export default function MyIssueNotificationsPage() {
-  return <NotificationsView category="attendance_payroll" Layout={AttendanceLayout} />
+  return <NotificationsView category="attendance_payroll" Layout={AttendancePayrollLayout} />
 }

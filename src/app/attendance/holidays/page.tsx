@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
@@ -110,7 +110,7 @@ export default function HolidaysPage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Holiday Management"
       subtitle="Public holidays excluded from working days"
@@ -259,6 +259,6 @@ export default function HolidaysPage() {
         )}
 
       </div>
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

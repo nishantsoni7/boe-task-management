@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
@@ -103,7 +103,7 @@ export default function AttendancePage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Attendance"
       subtitle="Managed through monthly fingerprint Excel import"
@@ -231,6 +231,6 @@ export default function AttendancePage() {
         </div>
 
       </div>
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

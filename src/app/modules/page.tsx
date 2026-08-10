@@ -161,8 +161,8 @@ export default function BoeOsHomePage() {
   // Fallback values used when app_modules DB data is unavailable
   const isAdminFallback = effectiveProfile?.role === 'admin'
 
-  // Whether the Attendance and Payroll cards point at the management module or
-  // at the employee's own record. Only admins manage; see
+  // Whether the Attendance & Payroll card points at the management module or at
+  // the employee's own record. Only admins manage; see
   // SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts.
   const isModuleAdmin = isAdminFallback
   const hasShowroomFallback = isAdminFallback ||
@@ -174,6 +174,54 @@ export default function BoeOsHomePage() {
     (effectiveProfile?.role === 'admin' || effectiveProfile?.role === 'manager')
       ? '/performance/team'
       : '/performance'
+
+  // ── Attendance & Payroll — one card for what used to be two ────────────────
+  //
+  // Attendance is where payroll's input comes from, so from the launcher they
+  // are one destination. They remain two `app_modules` rows, two visibility
+  // settings and two route guards; nothing about who may see what changed here.
+  //
+  // VISIBILITY is the union of the two rows: whoever could previously open an
+  // Attendance card OR a Payroll card gets the combined one. Anything narrower
+  // would silently revoke access somebody has today. Whoever could open neither
+  // still gets nothing, and `hidden` on both still hides it.
+  const canSeeAttendance = canSeeModule('attendance', modVis, effectiveProfile, isAdminFallback)
+  const canSeePayroll    = canSeeModule('payroll',    modVis, effectiveProfile, isAdminFallback)
+
+  // DESTINATION follows what the person can actually open. Admins get the
+  // management surface; everyone else gets their own record, starting at
+  // attendance. The `/my-payroll` branch is for the one asymmetric case — an
+  // employee granted Payroll while Attendance is hidden — who would otherwise
+  // land on a module they were not given.
+  //
+  // Neither branch is an authorisation: /my-attendance and /my-payroll are
+  // served by APIs that derive the employee from the bearer token, and the
+  // admin routes are behind AttendanceGuard / PayrollGuard.
+  const attendancePayrollHref = isModuleAdmin
+    ? '/payroll'
+    : (canSeeAttendance ? '/my-attendance' : '/my-payroll')
+
+  // The badge reads from whichever row is actually gating this person, so a
+  // card shown by the Payroll row does not advertise Attendance's setting.
+  const attendancePayrollVisRow = canSeeAttendance ? modVis['attendance'] : modVis['payroll']
+
+  const attendancePayroll: ModuleDef | null = (canSeeAttendance || canSeePayroll) ? {
+    key: 'attendance_payroll',
+    title: 'Attendance & Payroll',
+    description: isModuleAdmin
+      ? 'Import attendance, review the month, run payroll, and manage salary settings.'
+      : 'View your own attendance, payslips, and the issues you have raised.',
+    href: attendancePayrollHref,
+    status: 'active' as ModuleStatus,
+    accent: '#0F766E',
+    icon: <CalIcon />,
+    // The badge describes the destination, so a self-service card must not
+    // claim to be admin-only.
+    adminOnly: isModuleAdmin,
+    notificationCount: null,
+    visibilityType: attendancePayrollVisRow?.visibility_type,
+    allowedDepartment: attendancePayrollVisRow?.allowed_department,
+  } : null
 
   const modules: ModuleDef[] = [
     ...(canSeeModule('task_management', modVis, effectiveProfile, true) ? [{
@@ -200,41 +248,7 @@ export default function BoeOsHomePage() {
       visibilityType: modVis['sample_tracking']?.visibility_type,
       allowedDepartment: modVis['sample_tracking']?.allowed_department,
     }] : []),
-    ...(canSeeModule('attendance', modVis, effectiveProfile, isAdminFallback) ? [{
-      key: 'attendance',
-      title: 'Attendance',
-      description: isModuleAdmin
-        ? 'Manage employee attendance records, uploads, and leave history.'
-        : 'View your own attendance for the month.',
-      // Two surfaces, one card. Management reads the whole company and is
-      // admins only; everyone else gets their own record. See
-      // SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts.
-      href: isModuleAdmin ? '/attendance' : '/my-attendance',
-      status: 'active' as ModuleStatus,
-      accent: '#0F766E',
-      icon: <CalIcon />,
-      // The badge describes the destination, so a self-service card must not
-      // claim to be admin-only.
-      adminOnly: isModuleAdmin,
-      notificationCount: null,
-      visibilityType: modVis['attendance']?.visibility_type,
-      allowedDepartment: modVis['attendance']?.allowed_department,
-    }] : []),
-    ...(canSeeModule('payroll', modVis, effectiveProfile, isAdminFallback) ? [{
-      key: 'payroll',
-      title: 'Payroll',
-      description: isModuleAdmin
-        ? 'Process payroll runs, view salary breakdowns, and download payslips.'
-        : 'View your own payslips and salary breakdown.',
-      href: isModuleAdmin ? '/payroll' : '/my-payroll',
-      status: 'active' as ModuleStatus,
-      accent: '#166534',
-      icon: <PayIcon />,
-      adminOnly: isModuleAdmin,
-      notificationCount: null,
-      visibilityType: modVis['payroll']?.visibility_type,
-      allowedDepartment: modVis['payroll']?.allowed_department,
-    }] : []),
+    ...(attendancePayroll ? [attendancePayroll] : []),
     ...(canSeeModule('showroom_qr', modVis, effectiveProfile, hasShowroomFallback) ? [{
       key: 'showroom',
       title: 'Showroom QR',
@@ -551,19 +565,14 @@ function BoxIcon() {
   )
 }
 
+// Attendance & Payroll. The calendar stands for the month, which is the unit
+// both halves of the module work in — a month of punches, and the payroll run
+// computed from it. (The separate banknote icon went with the separate card.)
 function CalIcon() {
   return (
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" />
       <line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  )
-}
-
-function PayIcon() {
-  return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" />
     </svg>
   )
 }

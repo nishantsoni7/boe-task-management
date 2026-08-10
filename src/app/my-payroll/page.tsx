@@ -5,7 +5,7 @@ import { formatRupees } from '@/lib/payroll/money'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
@@ -164,7 +164,7 @@ export default function MyPayrollPage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="My Payroll"
       subtitle="View your salary summaries"
@@ -319,6 +319,6 @@ export default function MyPayrollPage() {
           onClose={() => setHistoryResultId(null)}
         />
       )}
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

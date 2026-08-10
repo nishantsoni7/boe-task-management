@@ -2,7 +2,7 @@
 
 # Module Architecture
 
-Last Updated: June 2026
+Last Updated: 10 August 2026
 
 ---
 
@@ -35,8 +35,7 @@ Current major modules:
 * Performance
 * Team Performance
 * Sample Tracking
-* Attendance (planned)
-* Payroll (planned)
+* Attendance & Payroll
 * Assets & Access
 * Employee Records (planned)
 
@@ -260,42 +259,48 @@ Expected Future Areas:
 
 ---
 
-# ATTENDANCE MODULE
+# ATTENDANCE & PAYROLL MODULE
 
 Status:
 
-Planned / Foundation
+Operational. **One module in the user interface, two domains in the code.**
 
 Reference:
 
-ATTENDANCE_MODULE_PLAN.md
+ATTENDANCE_PAYROLL_MODULE.md (start here), ATTENDANCE_MODULE_PLAN.md,
+PAYROLL_ATTENDANCE_RULES.md, PAYROLL_RULES_V1.md
 
-Expected Areas:
+Purpose:
 
-* Attendance dashboard
-* Leave management
-* QR attendance
-* Attendance uploads
-* Employee attendance history
+Attendance is where payroll's input comes from, so the two present as a single
+module: one launcher card, one shell, one sidebar. Internally they stay
+separate — separate tables, calculations, guards, audit trails and URL trees.
+Merging the navigation did not merge the domains.
 
----
+## Surfaces
 
-# PAYROLL MODULE
+| Surface | Routes | Who |
+| --- | --- | --- |
+| Management | `/attendance/*`, `/payroll/*` | Admins only, always |
+| Self-service | `/my-attendance`, `/my-payroll`, `/my-issues` | The employee's own record only |
 
-Status:
+Guards are separate and unchanged: `AttendanceGuard`
+(`src/app/attendance/layout.tsx`) and `PayrollGuard`
+(`src/app/payroll/layout.tsx`). `app_modules` still holds two rows, `attendance`
+and `payroll`, configured independently in Control Center; the launcher card is
+shown when either admits the viewer.
 
-Planned / Foundation
+## Areas
 
-Reference:
+Attendance: monthly fingerprint import, attendance records, employee/device
+mapping, monthly attendance review, corrections and correction log, holidays.
 
-PAYROLL_RULES_V1.md
+Payroll: payroll runs, monthly payroll preview, per-employee payslips,
+adjustments, settlements, salary report, locking/unlocking, payroll settings,
+the calculation guide.
 
-Expected Areas:
-
-* Payroll generation
-* Salary review
-* Payslips
-* Payroll adjustments
+Shared: the employee issue workflow (raise, review, re-raise) on the one
+`attendance_payroll` notification category.
 
 ---
 
@@ -465,13 +470,9 @@ Samples
 * Sample Dispatch
 * Sample Audit History
 
-Attendance
+Attendance & Payroll
 
 * Attendance Records
-* Leave Requests
-
-Payroll
-
 * Payroll Runs
 * Payslips
 

@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import Link from 'next/link'
@@ -187,18 +187,18 @@ export default function EmployeeDetailPage() {
 
   if (notFound) {
     return (
-      <AttendanceLayout profile={profile} title="Employee Not Found" subtitle="" onSignOut={handleSignOut}>
+      <AttendancePayrollLayout profile={profile} title="Employee Not Found" subtitle="" onSignOut={handleSignOut}>
         <div style={{ maxWidth: 600, padding: '48px 0', color: colors.tertiary, fontSize: 14 }}>
           Employee not found. <Link href="/attendance/employees" style={{ color: colors.blue }}>Back to Employee Master</Link>
         </div>
-      </AttendanceLayout>
+      </AttendancePayrollLayout>
     )
   }
 
   const emp = employee!
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title={emp.full_name}
       subtitle="Attendance Detail"
@@ -428,6 +428,6 @@ export default function EmployeeDetailPage() {
         )}
 
       </div>
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

@@ -17,7 +17,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { PayrollLayout } from '@/components/layout/PayrollLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen, AlertBanner, EmptyState } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatRupees } from '@/lib/payroll/money'
@@ -139,7 +139,7 @@ export default function SalaryProcessingReportPage() {
   if (loading || !profile) return <LoadingScreen />
 
   return (
-    <PayrollLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Salary Processing Report"
       subtitle={period ? monthLabel(period.month, period.year) : undefined}
@@ -281,7 +281,7 @@ export default function SalaryProcessingReportPage() {
           </>
         )}
       </div>
-    </PayrollLayout>
+    </AttendancePayrollLayout>
   )
 }
 
