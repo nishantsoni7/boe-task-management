@@ -64,6 +64,16 @@ export type PaidLeaveTier = {
 }
 
 /**
+ * The most paid-leave bands that may be stored.
+ *
+ * A month has at most 31 days, so 31 distinct thresholds is already every band
+ * that could ever be reachable. The cap exists to stop an unbounded array being
+ * written by some future path — the settings jsonb is read on every payroll run,
+ * and a runaway list would be carried into every period snapshot with it.
+ */
+export const MAX_PAID_LEAVE_BANDS = 12
+
+/**
  * Every shared parameter the payroll calculation turns on.
  *
  * Times are IST minutes past midnight, which is the unit the engine and the
@@ -458,6 +468,36 @@ export function parsePayrollSettings(value: unknown): SettingsParseResult {
       }
       tiers.push({ min_days_present: min, leave })
     }
+    if (tiersRaw.length > MAX_PAID_LEAVE_BANDS) {
+      issues.push({
+        key: 'paid_leave_tiers',
+        message: `At most ${MAX_PAID_LEAVE_BANDS} paid-leave bands can be saved.`,
+      })
+    }
+
+    // Two bands claiming the same days-present threshold OVERLAP: the engine
+    // takes the first band an employee reaches, so the second could never be
+    // awarded to anybody. It is not merely redundant — it is a rule an admin
+    // wrote, saved, and would reasonably expect to apply. Rejecting is the only
+    // honest answer, because silently keeping one and dropping the other means
+    // the settings page shows something the engine does not do.
+    //
+    // This was missing: duplicates passed the descending check below, since
+    // equal values are legitimately "sorted".
+    const seen = new Map<number, number>()
+    for (let i = 0; i < tiers.length; i++) {
+      const days = tiers[i]!.min_days_present
+      const firstAt = seen.get(days)
+      if (firstAt != null) {
+        issues.push({
+          key: 'paid_leave_tiers',
+          message: `Two bands both start at ${days} days present. Each band needs its own threshold — the lower one could never apply.`,
+        })
+      } else {
+        seen.set(days, i)
+      }
+    }
+
     // The engine reads top-down and takes the first band reached, so an
     // unsorted list would silently award the wrong allowance rather than fail.
     const sorted = [...tiers].sort((a, b) => b.min_days_present - a.min_days_present)
@@ -469,6 +509,25 @@ export function parsePayrollSettings(value: unknown): SettingsParseResult {
     if (tiers.length > 0 && lowest && lowest.min_days_present !== 0) {
       issues.push({ key: 'paid_leave_tiers', message: 'The last band must start at 0 days present, so every employee falls into one.' })
     }
+
+    // More attendance must never earn LESS leave. The rule is "paid leave earned
+    // by attendance", so a band that pays an employee present 11 days more than
+    // one present 16 days is incoherent rather than unusual — and it fails in the
+    // direction nobody checks, because the better-attending employee is the one
+    // short-changed. Read in engine order (highest threshold first), the
+    // allowance must never increase as the threshold falls.
+    for (let i = 1; i < sorted.length; i++) {
+      const higher = sorted[i - 1]!
+      const lower  = sorted[i]!
+      if (lower.leave > higher.leave) {
+        issues.push({
+          key: 'paid_leave_tiers',
+          message: `${lower.min_days_present}+ days present would earn more leave (${lower.leave}) than ${higher.min_days_present}+ days (${higher.leave}). More attendance cannot earn less leave.`,
+        })
+        break
+      }
+    }
+
     tiers = sorted
   }
 
