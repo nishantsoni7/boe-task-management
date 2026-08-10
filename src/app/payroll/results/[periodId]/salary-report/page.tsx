@@ -29,6 +29,7 @@ import {
   WHATSAPP_URL_TEXT_LIMIT,
   type ReportResultRow,
   type ReportAdjustmentRow,
+  type ReportSettlementRow,
 } from '@/lib/payroll/salaryReport'
 
 type PeriodInfo = { id: string; month: number; year: number; status: string }
@@ -45,6 +46,7 @@ export default function SalaryProcessingReportPage() {
   const [period,      setPeriod]      = useState<PeriodInfo | null>(null)
   const [results,     setResults]     = useState<ReportResultRow[]>([])
   const [adjustments, setAdjustments] = useState<ReportAdjustmentRow[]>([])
+  const [settlements, setSettlements] = useState<ReportSettlementRow[]>([])
   const [selected,    setSelected]    = useState<Set<string>>(new Set())
   const [showPreview, setShowPreview] = useState(false)
 
@@ -69,6 +71,7 @@ export default function SalaryProcessingReportPage() {
         setPeriod(json.period)
         setResults(json.results ?? [])
         setAdjustments(json.adjustments ?? [])
+        setSettlements(json.settlements ?? [])
         // Everyone starts selected: the common case is paying the whole month,
         // and an admin removing a few is less work than adding twenty.
         setSelected(new Set((json.results ?? []).map((r: ReportResultRow) => r.employee_id)))
@@ -83,9 +86,9 @@ export default function SalaryProcessingReportPage() {
 
   const report = useMemo(
     () => period
-      ? buildSalaryReport(period.month, period.year, results, adjustments, [...selected])
+      ? buildSalaryReport(period.month, period.year, results, adjustments, [...selected], settlements)
       : null,
-    [period, results, adjustments, selected],
+    [period, results, adjustments, settlements, selected],
   )
 
   const reportText = useMemo(() => (report ? renderReportText(report) : ''), [report])
