@@ -18,6 +18,7 @@
 // disagree rather than quietly showing a day view the money no longer matches.
 
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
+import { fetchActiveSettings, settingsForPeriod, type PeriodSettingsContext } from './settingsStore'
 import { isSkip } from '@/lib/payroll/types'
 import type { EngineEmployee } from '@/lib/payroll/types'
 import {
@@ -118,7 +119,7 @@ export async function buildResultDetailPayload(
 ): Promise<ResultDetailOutcome> {
   const { data: period, error: periodErr } = await svc
     .from('payroll_periods')
-    .select('id, payroll_month, payroll_year, status, locked_at')
+    .select('id, payroll_month, payroll_year, status, locked_at, settings_snapshot')
     .eq('id', periodId)
     .single()
 
@@ -223,6 +224,7 @@ export async function buildResultDetailPayload(
     month: period.payroll_month,
     year:  period.payroll_year,
     storedTotalDeductions: result.total_deductions,
+    period: { status: period.status, settings_snapshot: period.settings_snapshot },
   })
 
   return {
@@ -277,11 +279,13 @@ type DayViewInput = {
   month: number
   year: number
   storedTotalDeductions: number | null
+  /** Decides which settings the day rows are computed under. */
+  period: PeriodSettingsContext
 }
 
 async function buildDayView(
   svc: Svc,
-  { employeeId, month, year, storedTotalDeductions }: DayViewInput,
+  { employeeId, month, year, storedTotalDeductions, period }: DayViewInput,
 ) {
   const empty = {
     deduction_days:  [],
@@ -307,6 +311,18 @@ async function buildDayView(
       fetchCurrentCorrections(svc, employeeId, month, year),
     ])
 
+    // The SAME settings the stored money was produced under.
+    //
+    // This run used to pass no settings at all, so the day rows were computed
+    // with today's defaults while the stored totals came from the period's
+    // snapshot. Any divergence between the two then read as "attendance changed
+    // after generation" — the staleness test below compares exactly these
+    // numbers — when it might equally have been a settings edit. Worse, on a
+    // period whose snapshot differs from the defaults the rows could disagree
+    // with the payslip permanently, with nothing to explain it.
+    const active = await fetchActiveSettings(svc)
+    const settings = settingsForPeriod(period, active.settings)
+
     const outcome = generatePayrollForEmployee(
       emp as EngineEmployee,
       // Always 'draft' here: the engine refuses to calculate a locked period,
@@ -319,6 +335,7 @@ async function buildDayView(
       // view never reports money the stored result does not already hold.
       [],
       corrections,
+      settings,
     )
 
     if (isSkip(outcome)) return { ...empty, day_view_error: `Payroll skipped: ${outcome.reason}` }

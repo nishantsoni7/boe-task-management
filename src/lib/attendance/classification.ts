@@ -3,6 +3,7 @@
 // Extracted from src/lib/payroll/engine.ts classifySingleDay() without behaviour change.
 
 import { resolveDirectionSource, type PunchDirectionSource } from './punchDirection'
+import { computeWorkedDuration } from './workedDuration'
 import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from '../payroll/settings'
 
 export type AttendanceClassification =
@@ -99,11 +100,19 @@ export function classifyAttendanceDay(
 
   const rawHours = (outMs - inMs) / 3_600_000
 
-  // Lunch deduction: subtract 1h if check_in < 14:00 AND check_out > 13:00 (IST)
+  // Lunch is the ACTUAL overlap between the punch interval and the lunch window,
+  // not a flat hour charged to any day that touches it. See workedDuration.ts —
+  // the old boolean turned 10:05→13:33 (33 minutes of lunch) into a full hour
+  // lost, which both understated paid time and pushed the day into a cheaper
+  // band than it belonged in.
   const inMin  = istMinutes(record.check_in_at)
   const outMin = istMinutes(record.check_out_at)
-  const lunchDeducted = inMin < settings.lunch_in_before_minutes && outMin > settings.lunch_out_after_minutes
-  const effectiveHours = rawHours - (lunchDeducted ? settings.lunch_hours : 0)
+  const worked = computeWorkedDuration(inMin, outMin, rawHours, {
+    start:    settings.lunch_out_after_minutes,
+    end:      settings.lunch_in_before_minutes,
+    maxHours: settings.lunch_hours,
+  })
+  const effectiveHours = worked.paid_hours
 
   // Office-timing override: punch-in within grace and punch-out at or after the
   // scheduled close → full day, even if effective hours fall slightly below the
@@ -116,10 +125,25 @@ export function classifyAttendanceDay(
     classification = 'full_present'
   } else if (effectiveHours >= settings.threshold_present_with_shortfall_hours) {
     classification = 'present_with_shortfall'
-  } else if (effectiveHours >= settings.threshold_half_day_hours) {
-    classification = 'half_day'
   } else if (effectiveHours >= settings.threshold_short_present_hours) {
-    classification = 'short_present'
+    // A HALF DAY, down to the presence floor.
+    //
+    // This band used to split at threshold_half_day_hours into `half_day`
+    // (charged half a day) and `short_present` (charged NOTHING), and that split
+    // made the cost of a day non-monotonic: on a ₹20,000 salary, four hours cost
+    // the employee ₹385 while under three hours cost ₹0 and produced no
+    // deduction line at all. Working less was cheaper than working more, and the
+    // cheap band never appeared on the payslip for anyone to notice.
+    //
+    // So the whole band above the presence floor is a half day. Nothing below
+    // that floor changes: too little attendance is still a full absence, which
+    // is the insufficient-attendance rule this deliberately preserves.
+    //
+    // threshold_half_day_hours no longer decides an outcome as a result. It is
+    // left in settings rather than removed because it is pinned inside every
+    // existing period snapshot, and dropping it would change how those
+    // historical periods parse.
+    classification = 'half_day'
   } else {
     return { ...absent }
   }
