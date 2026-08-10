@@ -47,18 +47,15 @@ export type ReportResultRow = {
   total_deductions: number | null
   net_salary: number | null
   /**
-   * The signed adjustment total the ENGINE applied, and the present-day count.
+   * The present-day count. NOT stated on the report — it is read only to apply
+   * the absence floor, which is an attendance RULE and not an attendance figure.
    *
-   * Neither is stated on the report. They are the two remaining inputs
-   * computeSettlement needs to reach the same Salary Payable the Payroll Result
-   * Detail page shows — `days_present` only to apply the absence floor, which is
-   * an attendance RULE and not an attendance figure.
-   *
-   * Required, nullable rather than optional: a caller that omitted them would
+   * Required, nullable rather than optional: a caller that omitted it would
    * silently take the absence floor and report ₹0 payable for everyone, which is
    * exactly the kind of wrong number that looks like a real one.
+   *
+   * `pending_adjustment_total` is deliberately NOT here. See buildSalaryReport.
    */
-  pending_adjustment_total: number | null
   days_present: number | null
 }
 
@@ -195,24 +192,41 @@ export function buildSalaryReport(
       })
     }
 
-    // The SAME function the Payroll Result Detail page reaches its figures
-    // through, not a second arithmetic written here. Salary to be Booked,
-    // Advance and Amount Payable are that page's Salary After Attendance, Net
-    // Adjustments and Salary Payable — a report that computed its own would
-    // eventually disagree with the payslip it claims to summarise.
+    // The adjustment total is the sum of the lines THIS REPORT ITEMISES, and
+    // that is the fix for a live defect rather than a stylistic choice.
+    //
+    // It used to be `payroll_results.pending_adjustment_total`. That column is
+    // written only by the payroll ENGINE, at generation time. An advance saved
+    // afterwards — which is the normal way admins record one, since
+    // POST /api/payroll/adjustments inserts a `pending` row and never touches
+    // the column — left it stale at 0. The report then itemised the ₹3,433
+    // advance in Preview while the summary said Advance ₹0 and paid the
+    // employee the full salary: one report, two adjustment sources, disagreeing
+    // about money.
+    //
+    // Reading the itemised lines instead makes the summary agree with the
+    // document it summarises BY CONSTRUCTION, and picks up a saved advance
+    // whether or not the period has since been regenerated.
+    //
+    // Still exactly one calculation: computeSettlement, the same function the
+    // Payroll Result Detail page reaches its figures through. Only the input it
+    // is given changed — Salary to be Booked, Advance and Amount Payable remain
+    // that page's Salary After Attendance, Net Adjustments and Salary Payable.
     //
     // The inputs are rounded on the way IN so the arithmetic runs on whole
     // rupees and the printed lines add up to the printed total. A legacy row
-    // carrying paise would otherwise round three figures independently and show
-    // a subtraction that is a rupee out.
+    // carrying paise would otherwise round the figures independently and show a
+    // subtraction that is a rupee out.
     //
     // `amount_paid` is passed as null on purpose: Salary Payable does not depend
     // on it, and what was paid is not this report's business.
+    const adjustmentsTotal = sumRupees(adjustment_lines.map(line => line.amount))
+
     const figures = computeSettlement(
       {
         gross_salary:             n(row.gross_salary),
         total_deductions:         n(row.total_deductions),
-        pending_adjustment_total: n(row.pending_adjustment_total),
+        pending_adjustment_total: adjustmentsTotal,
         days_present:             row.days_present,
       },
       {
@@ -307,25 +321,33 @@ function signedRupees(amount: number): string {
 }
 
 /**
- * The salary summary for WhatsApp: five figures under each employee's name.
+ * The salary summary for WhatsApp: what is being booked, and what is being paid.
  *
  * WHAT IT STATES, AND WHY ONLY THIS
  * ---------------------------------
- * Gross Salary, Attendance Deduction, Salary to be Booked, Advance, Amount
- * Payable. That is the money conversation an admin has when paying a month, and
- * nothing else belongs in a message that leaves the system: no present, absent,
- * half or paid day counts, and no itemisation of what an advance was for. The
- * day-level detail stays available through Preview and Copy — nothing is hidden,
- * it is carried by a different channel.
+ * Always the employee's name and Salary to be Booked. Advance and Amount
+ * Payable appear only when a non-zero advance actually applies — for most
+ * employees, most months, the salary booked IS the amount payable, and printing
+ * "Advance: ₹0 / Amount Payable: <the same number again>" invites the reader to
+ * hunt for a deduction that does not exist.
  *
- * Every figure comes from buildSalaryReport, which reaches them through the same
- * computeSettlement the Payroll Result Detail page uses. So the message and the
- * payslip cannot disagree: Salary to be Booked is that page's Salary After
- * Attendance, Advance its Net Adjustments, Amount Payable its Salary Payable.
+ * Gross Salary and Attendance Deduction are deliberately absent: the message
+ * answers "what is being paid", and the workings behind the booked figure are a
+ * payslip question. No present, absent, half or paid day counts either, and no
+ * itemisation of what an advance was for. The full detail stays available
+ * through Preview and Copy — nothing is hidden, it is carried by a different
+ * channel.
  *
- * The five lines are always printed, including when a figure is zero. A block
- * that grows and shrinks per employee is harder to read down a column, and an
- * absent line reads as an omission rather than as nothing.
+ * Every figure comes from buildSalaryReport, through the same computeSettlement
+ * the Payroll Result Detail page uses: Salary to be Booked is that page's Salary
+ * After Attendance, Advance its Net Adjustments, Amount Payable its Salary
+ * Payable.
+ *
+ * SIGNS. `advance` is already signed — negative when money is being recovered.
+ * So Amount Payable is salary + advance, an ADDITION, and it is computed once by
+ * computeSettlement rather than re-derived here. Subtracting an already-negative
+ * advance would turn a ₹3,433 recovery into a ₹3,433 bonus, and the result would
+ * still look like a plausible payslip.
  */
 export function renderWhatsAppText(report: SalaryReport): string {
   const lines: string[] = []
@@ -333,18 +355,19 @@ export function renderWhatsAppText(report: SalaryReport): string {
   for (const e of report.employees) {
     lines.push('')
     lines.push(e.employee_name)
-    lines.push(`Gross Salary: ${formatRupees(e.gross_salary)}`)
-    // Stored positive; the report shows the direction, so a reader never has to
-    // know that convention.
-    lines.push(`Attendance Deduction: ${signedRupees(-e.attendance_deduction)}`)
     lines.push(`Salary to be Booked: ${formatRupees(e.salary_to_be_booked)}`)
-    lines.push(`Advance: ${signedRupees(e.advance)}`)
-    lines.push(`Amount Payable: ${formatRupees(e.amount_payable)}`)
+    // Whole rupees throughout, so an exact zero test is the right one: there is
+    // no such thing here as an advance of half a rupee that this would miss.
+    if (e.advance !== 0) {
+      lines.push(`Advance: ${signedRupees(e.advance)}`)
+      lines.push(`Amount Payable: ${formatRupees(e.amount_payable)}`)
+    }
   }
   lines.push('')
-  // The total of the SAME figure the blocks above end on. Totalling net_salary
-  // here — which is clamped at ₹0 and carries no advance — would put a footer on
-  // the message that its own lines do not add up to.
+  // The total of what is actually payable, which for an employee with no advance
+  // is their booked salary. Totalling net_salary here — clamped at ₹0 and
+  // carrying no advance — would put a footer on the message that its own lines
+  // do not add up to.
   lines.push(`Total: ${formatRupees(report.totals.amount_payable)} (${report.employees.length})`)
   return lines.join('\n')
 }

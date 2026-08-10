@@ -66,18 +66,20 @@ export async function GET(req: NextRequest) {
   // and an employee's current salary is a different fact that has no business
   // travelling with a processing report.
   //
-  // `pending_adjustment_total` and `days_present` are the two further stored
-  // figures computeSettlement needs to reach the same Salary Payable the Payroll
-  // Result Detail page shows. Neither is stated on the report — days_present is
-  // read only to apply the absence floor, which is a RULE rather than a count,
-  // and no day count reaches the message.
+  // `days_present` is read only to apply the absence floor, which is a RULE
+  // rather than a count — no day count reaches the message.
+  //
+  // `pending_adjustment_total` is deliberately NOT selected. It is the total the
+  // ENGINE applied at generation time, and an advance recorded after that leaves
+  // it stale at 0, which is exactly how the summary came to report ₹0 advance
+  // for an employee whose advance this same response itemises. The report takes
+  // its adjustment total from the adjustment rows below instead.
   const { data: resultRows, error: resultErr } = await svc
     .from('payroll_results')
     .select(`
       employee_id,
       gross_salary,
       total_deductions,
-      pending_adjustment_total,
       days_present,
       net_salary,
       users:employee_id ( full_name, employee_code, payroll_active, is_deleted )
@@ -103,7 +105,6 @@ export async function GET(req: NextRequest) {
     employee_id: string
     gross_salary: number | null
     total_deductions: number | null
-    pending_adjustment_total: number | null
     days_present: number | null
     net_salary: number | null
     users: JoinedUser | JoinedUser[] | null
@@ -137,8 +138,7 @@ export async function GET(req: NextRequest) {
       employee_code:    user.employee_code,
       gross_salary:     raw.gross_salary,
       total_deductions: raw.total_deductions,
-      pending_adjustment_total: raw.pending_adjustment_total,
-      days_present:             raw.days_present,
+      days_present:     raw.days_present,
       net_salary:       raw.net_salary,
     })
   }
