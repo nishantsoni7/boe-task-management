@@ -2,7 +2,87 @@
 
 # Module Architecture
 
-Last Updated: 10 August 2026
+Last verified: **2026-08-11** (commit `a33c14e`)
+
+> **Companion records.** This file holds structure and ownership. It does not
+> repeat what lives elsewhere:
+>
+> - Who may do what, and where it is enforced → [08_Authorization_Matrix.md](08_Authorization_Matrix.md)
+> - Rule → code → test → [07_Business_Rule_Index.md](07_Business_Rule_Index.md)
+> - Known structural debt → [09_Risk_Register.md](09_Risk_Register.md)
+> - Why the structure is this way → [../adr/README.md](../adr/README.md)
+> - Where the structure is going → [11_File_Structure_Plan.md](11_File_Structure_Plan.md)
+> - Per-module detail → [../Module Docs/README.md](../Module%20Docs/README.md)
+
+## Repository structure (measured 2026-08-11)
+
+```text
+src/
+  app/          92 pages · 9 layouts · 98 API route handlers   ← App Router only
+  components/   57 shared components
+  lib/          211 modules — per-module subfolders where the pattern exists
+                (payroll, attendance, assets, meetings, permissions, security,
+                orders, tasks, showroom, users, ui, supabase)
+  hooks/        21 files
+  contexts/
+scripts/        utilities + the documentation validator
+supabase/
+  migrations/   159 forward-only SQL files
+docs/           project records
+```
+
+**Testing lives beside its subject** — `*.test.ts` / `*.test.tsx` next to the
+module (121 files, 3,211 tests). **Migrations live only in
+`supabase/migrations/`.** **Documentation lives only in `docs/`.**
+
+### Shared infrastructure
+
+| Concern | Owner |
+| --- | --- |
+| Supabase clients | `src/lib/supabase/` |
+| Module visibility + management access | `src/lib/moduleAccess.ts` |
+| Permission engine (Orders, Meetings, Assets) | `src/lib/permissions/` |
+| API admin gate | `src/lib/security/attendancePayrollApiAuth.ts` (**only 15 of 98 routes use it — R-2**) |
+| Notifications | `src/lib/notifications.ts`, `notificationAccess.ts`, `notificationMeta.ts` |
+| Safe user columns | `src/lib/users/safeColumns.ts` |
+| Paged reads over 1,000 rows | `src/lib/supabasePaging.ts` |
+| Design tokens | `src/lib/tokens.ts`, `src/app/globals.css` |
+
+### Cross-module dependencies
+
+- **Attendance → Payroll** — the one hard dependency. Payroll reads reviewed
+  attendance; it never writes attendance.
+- **`users` → everything** — one identity table. Salary columns are
+  column-granted (ACC-4).
+- **`notifications` → Finance, Orders, Assets, Samples, Tasks, Attendance &
+  Payroll** — one table, one enum type, gated by category.
+- **`app_modules` → launcher + route guards** — one resolver, `moduleAccess.ts`.
+
+### Authentication and authorization boundary
+
+Supabase Auth issues the session. Authorization is enforced **server-side** in
+three places — route-group `layout.tsx` guards, route-handler checks, and RLS
+policies. 78 of 98 API routes use the service role and therefore bypass RLS; in
+those the handler **is** the boundary. Navigation visibility is never
+authorization ([ADR-0006](../adr/0006-server-authorization-independent-of-navigation.md)).
+
+### Audit-log ownership
+
+| Log | Owner | Property |
+| --- | --- | --- |
+| `attendance_day_corrections` | Attendance | Every version kept; machine record never overwritten |
+| `payroll_period_status_events` | Payroll | Append-only, **0 write policies** |
+| `payroll_settings` | Payroll | Append-only; `created_by` + `created_at` are the trail |
+| `asset_activity_log` | Assets | Per-asset history |
+| `order_activity_log` | Orders | Per-order history |
+| Task activity | Tasks | Per-task history |
+
+### Configuration ownership
+
+`app_modules` (visibility) · `payroll_settings` (calculation parameters, pinned
+per period) · the permission registry (`src/lib/permissions/registry.ts`, synced
+by `npm run permissions:sync`) · `package.json` and
+`.github/workflows/verify.yml` (verification).
 
 ---
 

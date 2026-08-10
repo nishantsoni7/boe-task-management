@@ -119,7 +119,7 @@ rows — that's now explicit as Phase 3D below, not bundled into 3B.
 Full results in
 [`PERMISSIONS_MIGRATION_PHASE3C.md`](PERMISSIONS_MIGRATION_PHASE3C.md) and
 the dry-run/validation/backfill SQL in
-[`permissions-3f-backfill-DRAFT.sql`](permissions-3f-backfill-DRAFT.sql).
+`permissions-3f-backfill-DRAFT.sql` (working draft, not retained in the repository).
 Summary: live data turned out to be 3 rows, all for one user, all active,
 all mapping cleanly (0 rejected, 0 skipped, 0 orphans). Mapping
 (`samples_dispatch → dispatch`, `samples_receive → receive`, `samples_lost

@@ -1,536 +1,175 @@
-# BOE TASK MANAGEMENT
+# BOE TASK MANAGEMENT — Current System State
 
-# Current System State
+Last verified: **2026-08-11**, against commit `a33c14e` on
+`feat/attendance-payroll-module-merge` (branching from `origin/main` `0147b6f`).
 
-Last Updated: June 2026 (updated after Task Cancellation implementation)
-
----
-
-# MODULE STATUS OVERVIEW
-
-| Module                 | Status         |
-| ---------------------- | -------------- |
-| Authentication         | Active         |
-| Members Management     | Active         |
-| Task Management        | Active         |
-| Notifications          | Active         |
-| Performance Management | Active         |
-| Team Performance       | Active         |
-| Sample Tracking        | In Progress    |
-| Attendance             | Early Stage    |
-| Payroll                | Early Stage    |
-| Assets & Access        | Active         |
-| Employee Records       | Planned        |
+> Rebuilt from code, tests and applied migrations. The June 2026 version of this
+> file described Attendance and Payroll as "Early Stage"; both have been in
+> production use for months. See the source-of-truth hierarchy in
+> [00_README_FIRST.md](00_README_FIRST.md).
 
 ---
 
-# AUTHENTICATION
+## Repository size (measured 2026-08-11)
 
-Implemented:
-
-* User login
-* Role-based access
-* Password management
-* User activation/deactivation
-* Password reset by admin
-* Self password change
-
-Roles:
-
-* Admin
-* Manager
-* Employee
-
-Administrative functions are hidden from standard users.
+| Metric | Count |
+| --- | --- |
+| TypeScript/TSX source files | 544 |
+| Application pages (`page.tsx`, non-API) | 92 |
+| Route layouts | 9 |
+| API route handlers | 98 |
+| Supabase migrations | 159 |
+| Test files | 121 |
+| Automated tests | 3,211 |
+| Shared components | 57 |
+| `src/lib` modules | 211 |
 
 ---
 
-# MEMBERS MANAGEMENT
+## Module status
 
-Implemented:
+Status vocabulary: **Active** (in daily production use) · **Foundation**
+(usable, still gaining core workflows) · **Planned** (not built).
 
-* Employee listing
-* Employee activation
-* Employee deactivation
-* Soft delete
-* Restore deleted employee
-* Permanent deletion
-* Password reset controls
+| Module | Status | `app_modules` key | Entry route |
+| --- | --- | --- | --- |
+| Authentication | Active | — | `/login` |
+| Module launcher | Active | — | `/modules` |
+| Task Management | Active | `task_management` | `/dashboard` |
+| Notifications | Active | — | `/notifications` |
+| Performance Management | Active | `performance` | `/performance` |
+| Team Performance | Active | `performance` | `/performance/team` |
+| Sample Tracking | Active | `sample_tracking` | `/samples` |
+| **Attendance & Payroll** | **Active** | `attendance` + `payroll` | `/payroll` (admin) · `/my-attendance` (employee) |
+| Assets & Access | Foundation | `assets_access` | `/assets-access` |
+| Meetings | Active | `meetings` (permission-gated) | `/meetings` |
+| Order Management | Active | `orders` (permission-gated) | `/orders` |
+| Finance | Foundation | `finance` | `/finance` |
+| Showroom QR | Active | `showroom_qr` | `/showroom-admin` |
+| Employee Records | Active | `employee_records` | `/admin/members` |
+| Admin Control Center | Active | — (admin only) | `/admin/control-center` |
 
-Administrative access only.
-
----
-
-# TASK MANAGEMENT
-
-Status: Production Active
-
-This is currently the primary operational module used by employees.
-
----
-
-## My Tasks
-
-Implemented:
-
-* View All
-* Self Tasks
-* Delegated Tasks
-* Search
-* Filters
-* Priority indicators
-* Due dates
-* Status visibility
-* Create Self Task
-
-Important Rules:
-
-* Self-created tasks display "Assigned By: Self"
-* Task ownership is always visible
-* Minimal table layout preferred
+**Correction to earlier records:** Employee Records is no longer "Planned" — it
+is live at `/admin/members` with soft delete, restore, permanent deletion and
+password-reset controls. Sample Tracking is no longer "In Progress".
 
 ---
 
-## Assigned By Me
+## Attendance & Payroll consolidation
 
-Implemented:
+**Status: implemented on branch `feat/attendance-payroll-module-merge`, NOT yet
+merged to `main` and NOT deployed.**
 
-* View delegated tasks
-* Track progress
-* Review status
-* Review activity history
-* Open task details
+- One launcher card, "Attendance & Payroll", replacing two.
+- One shell (`AttendancePayrollLayout`) and one navigation definition
+  (`attendancePayrollNav.tsx`) replacing two near-identical copies.
+- `/attendance/*` and `/payroll/*` URL trees, guards, tables, calculations and
+  audit trails are **unchanged and still separate**.
+- No migration was required.
 
----
-
-## Task Detail
-
-Implemented:
-
-* Current status display
-* Activity timeline
-* Internal conversation thread
-* Attachments
-* Due date editing
-* Priority editing
-* Completion workflow
-* Restore workflow
-* Cancellation workflow
-
-Important Rules:
-
-* Acknowledge → Working
-* Working button removed
-* Waiting and Blocked are primary exception states
-* Cancelled is a terminal status distinct from Completed
-* Cancelled tasks do not count toward completion metrics or performance scoring
+See [../Module Docs/ATTENDANCE_PAYROLL_MODULE.md](../Module%20Docs/ATTENDANCE_PAYROLL_MODULE.md)
+and [ADR-0004](../adr/0004-attendance-payroll-ui-consolidation.md).
 
 ---
 
-## Task Cancellation Workflow
+## Major active workflows
 
-Implemented:
+**Task Management** — create, assign, self-assign, quotation requests, status
+transitions, cancellation, completion, restore, attachments, per-task activity.
 
-* Cancel Task action on task detail page
-* Mandatory cancellation reason selection (6 preset options)
-* Cancellation confirmation modal
-* Post-cancel redirect to Cancelled Tasks list
-* Cancelled task card showing reason and cancellation details
-* Restore from Cancelled back to pre-cancel status
-* Cancellation activity log entry
-* Assignee notification on cancellation
+**Attendance** — monthly fingerprint Excel import with employee mapping,
+day classification, date-level corrections with written reasons, correction log,
+holiday management, monthly attendance review.
 
-Permission Rules:
+**Payroll** — period creation, generation from reviewed attendance, monthly
+preview, per-employee payslips, pending adjustments with categories, settlements
+and carry-forward, salary processing report with WhatsApp sharing, locking and
+admin unlock, controlled period deletion, central payroll settings pinned per
+period.
 
-* Task creator can cancel
-* Admin can cancel
-* Assignee cannot cancel (unless they are also the creator or admin)
-* Server-side enforcement in `/api/cancel-task`
+**Employee issues** — an employee raises an issue against an attendance date or a
+payslip; an admin approves or rejects with a reason; the employee is notified and
+may re-raise once the issue has been answered. One `attendance_payroll`
+notification category, one feed, two role-specific doors.
 
-Cancellation Reasons:
+**Performance** — daily/monthly scoring, EOD discipline, team execution view,
+employees requiring attention, app-open tracking.
 
-* No longer required
-* Duplicate task
-* Created by mistake
-* Requirement changed
-* Completed outside system
-* Other (requires text entry)
+**Samples** — requests, dispatch, courier tracking, inward verification, audit
+history.
 
-Status Behaviour:
+**Assets & Access** — inventory, assignment, custody, repair/service, warranty,
+change requests, access register, permanent deletion (admin only).
 
-* `cancelled` is a terminal status separate from `completed`
-* Cancelled tasks are excluded from all active task lists
-* Cancelled tasks are excluded from overdue and needs-update counts
-* Cancelled tasks are excluded from performance and team performance metrics
-* Cancelled tasks remain visible in dedicated Cancelled Tasks pages for audit and restore
+**Meetings** — New Order and Repair Order reviews, SKU updates, follow-ups.
+
+**Orders & Finance** — order requests with attachments, amendments, payment
+requests, received payments, payment destinations, deletion protection.
 
 ---
 
-## Cancelled Tasks Pages
+## Admin vs employee
 
-Implemented:
+**Admin-only surfaces:** `/attendance/*`, `/payroll/*` (except the calculation
+guide), `/admin/*`, `/super-admin`, payroll settings, holiday management,
+attendance import, issue review, permanent deletions.
 
-* `/tasks/cancelled` — My Cancelled Tasks (assigned to or created by current user)
-* `/tasks/assigned-by-me/cancelled` — Tasks cancelled that were assigned by current user to others
-* Both pages accessible from sidebar navigation under their respective groups
+**Employee self-service:** `/my-attendance`, `/my-payroll`, `/my-issues`,
+`/notifications`, `/account`, `/tasks/*`, `/performance`, and
+`/payroll/how-it-works` (the one `/payroll` route open to everyone, because it
+holds no employee data).
 
----
-
-## Collaboration Workflow
-
-Implemented:
-
-* Waiting On User
-* Waiting Notes
-* Blocked Notes
-* Unblock Requests
-* Supporting Attachments
-
-Purpose:
-
-Reduce communication gaps and make blockers visible.
+Full mapping: [08_Authorization_Matrix.md](08_Authorization_Matrix.md).
 
 ---
 
-## Activity Tracking
+## Privacy model
 
-Implemented:
-
-* Status changes
-* Notes
-* Attachments
-* Edit history
-* Delete history
-* Task restoration tracking
-* Cancellation tracking (reason stored in activity log)
-
-Purpose:
-
-Create a complete audit trail.
+- **Salary columns on `users` are column-granted, not table-granted.** A
+  `select('*')` on `users` raises SQLSTATE 42501. Use
+  `USER_PROFILE_COLUMNS` / `src/lib/users/safeColumns.ts`.
+- **Attendance and payroll tables are row-isolated** by RLS
+  (`20260812000000_attendance_payroll_isolation.sql`).
+- **Self-service APIs derive the employee from the bearer token.** There is no
+  employee id parameter on `/api/payroll/my-result` to tamper with.
+- **`payroll_settings` is admin-read-only**; the settings API refuses non-admins.
+- **Module visibility is not authorization.** `app_modules` governs whether a
+  card appears; `resolveManagementAccess` keeps Attendance and Payroll
+  management admin-only whatever visibility says.
 
 ---
 
-# NOTIFICATIONS
+## Deployment model
 
-Status: Production Active
-
-Implemented:
-
-* Task acknowledged
-* Task completed
-* Task cancelled
-* Cancellation reversed (restore from cancelled)
-* Waiting updates
-* Blocked updates
-* Comments
-* Read/unread tracking
-* Bulk delete
-* Delete all
-* Mark as read
-
-Purpose:
-
-Reduce dependency on WhatsApp follow-ups.
+- Hosting: **Vercel**, canonical domain `boe-task-management.vercel.app`.
+  Per-deployment URLs sit behind Vercel SSO.
+- Database/Auth: **Supabase**, project `albnsrohngkljfsrrrhf`.
+- Migrations: **forward-only**, applied with `supabase db push --linked`.
+  See [ADR-0003](../adr/0003-forward-only-migrations.md).
+- Release: rebase-merge a feature branch into `main`; merging deploys.
+  **Migrations are applied before the merge**, because PostgREST returns 42703
+  for an unknown column.
+- There is no `gh` CLI on the current development machine.
 
 ---
 
-# PERFORMANCE MANAGEMENT
-
-Status: Production Active
-
-Performance system officially launched on 8 June 2026.
-
-Historical calculations begin from launch date to maintain fairness.
-
----
-
-## Today
-
-Implemented:
-
-* Daily score calculation
-* EOD submission
-* Self rating
-* Coaching feedback
-* Reflection generation
-* Performance scoring
-
-Categories:
-
-* Output
-* Momentum
-* Discipline
-* Risk
-
-Purpose:
-
-Create daily accountability and self-review.
-
----
-
-## Monthly Performance
-
-Implemented:
-
-* Current Month
-* Last Month
-* Daily score history
-* Submitted days
-* Missed days
-* Monthly average
-
-Detailed score breakdown available per day.
-
----
-
-## EOD System
-
-Implemented:
-
-* Daily work summary
-* Self rating
-* Submission tracking
-
-Purpose:
-
-Provide management visibility without requiring manual follow-up.
-
----
-
-# TEAM PERFORMANCE
-
-Status: Admin Only
-
-Purpose:
-
-Allow management to identify risks before tasks become overdue.
-
-Implemented:
-
-* Team score visibility
-* Attention Required indicators
-* Waiting task tracking
-* Blocked task tracking
-* Overdue task tracking
-* Member drill-down views
-* Stuck task modal
-
-Current Focus:
-
-Improving root-cause visibility and management actions.
-
----
-
-# SAMPLE TRACKING
-
-Status: Active Development
-
-Purpose:
-
-Track samples from request through approval, dispatch, delivery, return, replacement, loss, and closure.
-
----
-
-## Implemented
-
-* Sample request creation
-* Approval workflow
-* Request editing
-* Request deletion
-* Dispatch tracking
-* Dispatch audit logs
-* QR dispatch workflow
-* QR slip generation
-* Lost sample workflow
-* Approval tracking
-* Return tracking foundation
-
----
-
-## Current Development Focus
-
-* Notifications
-* End-to-end lifecycle visibility
-* Sample accountability
-* Customer sample history
-
----
-
-# ATTENDANCE
-
-Status: Foundation Stage
-
-Implemented:
-
-* Attendance import structure
-* Attendance visibility framework
-
-Planned:
-
-* Daily attendance
-* Leave tracking
-* Monthly attendance summaries
-
----
-
-# PAYROLL
-
-Status: Foundation Stage
-
-Implemented:
-
-* Payroll engine framework
-* Draft payroll generation
-* Payroll locking structure
-
-Planned:
-
-* Salary processing
-* Incentive calculations
-* Payroll reports
-
----
-
-# ASSETS & ACCESS
-
-Status: Operational (asset lifecycle complete); access credentials still V1
-
-Purpose:
-
-Track company assets through their whole life — purchase, custody, movement,
-repair and retirement — and record the access credentials assigned to employees.
-
-Implemented:
-
-* **Individual asset page** — `/assets-access/[id]`, the single source of truth
-  for one asset. Five sections: Overview, Assignment History, Repair & Service,
-  Warranty & Documents, Activity History.
-* **Permanent transfer history** — every movement of custody is an append-only
-  record (`asset_transfers`): who or where it came from, who or where it went,
-  both departments, the recorded and effective handover dates, condition,
-  remarks and who performed it. Nothing is ever edited or deleted; a correction
-  is a new entry.
-* **Repair & service history** — one record per service event, with type, issue,
-  vendor, dates, cost, condition after service and the next service date. Total
-  spend, record count, last service and next service are shown per asset.
-* **Warranty and purchase details** — purchase date, price, vendor, invoice
-  number, warranty start/expiry/type/remarks. Warranty status is **derived**,
-  never stored.
-* **Asset documents** — invoice, warranty card and supporting files in a private
-  bucket, opened only through short-lived signed URLs. Removal is a soft delete
-  that is always recorded.
-* **Search and filters** on the inventory: one search box across name, code,
-  serial, brand, model, holder and location; filters for category, status,
-  assigned employee, department, location, condition, warranty status and
-  purchase-date range.
-* **Asset notifications** — the shared `notifications` table, `asset_*` types,
-  its own feed at `/assets-access/notifications` with the same read/unread,
-  mark-all-read, delete-one, delete-selected and delete-all behaviour as Task
-  Management.
-* **Activity history** — an immutable audit trail per asset. No client role
-  holds INSERT, UPDATE or DELETE on it, including admins.
-* Employee self-service: My Assets, one-time acceptance, My Access.
-* Admin-approved edit and removal requests for non-admins.
-
-Not yet done:
-
-* `access_records.secret_value` is still plaintext, so the Access Register
-  remains admin-only. Widening it waits for the credential-storage rework.
-* No recurring-maintenance automation (a next-service date is recorded and
-  displayed; nothing schedules itself).
-* Warranty-expiry reminders are produced by a sweep that runs when the inventory
-  is opened, not by a scheduler — BOE has no cron for application code.
-
----
-
-# UI / UX DECISIONS
-
-The following decisions were intentionally made and should not be reversed without strong justification.
-
----
-
-## Simplicity First
-
-Avoid:
-
-* Overly detailed forms
-* Complex workflows
-* Multiple pages for simple actions
-
-Prefer:
-
-* Popups
-* Inline actions
-* Fast completion
-
----
-
-## Accountability Visibility
-
-Users should always know:
-
-* Who owns a task
-* Who assigned it
-* Current status
-* Pending blockers
-
----
-
-## Minimal Data Entry
-
-Reduce typing whenever possible.
-
-Prefer:
-
-* One-click actions
-* Dropdowns
-* Quick updates
-
----
-
-## Management Visibility
-
-Managers should be able to identify:
-
-* Overdue work
-* Waiting tasks
-* Blocked tasks
-* Missing EOD updates
-* Low-performing users
-
-without requiring direct follow-up.
-
----
-
-# CURRENT PRIORITIES
-
-Priority 1
-
-Sample Tracking completion
-
-Priority 2
-
-Attendance module
-
-Priority 3
-
-Payroll module
-
-Priority 4
-
-Assets & Access completion
-
-Priority 5
-
-Employee Records
-
----
-
-# KNOWN OPEN ITEMS
-
-* Team Performance refinements
-* Sample notification improvements
-* Sample lifecycle completion
-* Attendance workflow expansion
-* Payroll workflow completion
-* Mobile UI review and optimization
+## Known limitations
+
+Tracked with evidence and severity in [09_Risk_Register.md](09_Risk_Register.md).
+Summary:
+
+1. Authorization is enforced consistently on the server but **client route
+   gating is inconsistent** — some route families have a layout guard, others
+   gate inside the page, several rely on the API alone.
+2. **71 API routes hand-roll their role check** against `users`; only 15 use the
+   shared `requireAdmin`.
+3. Several **very large multi-responsibility page files** (largest: 2,679 lines).
+4. **Self-service routes have no module guard** — an employee whose card is
+   hidden can still open `/my-attendance` by URL. They see only their own data.
+   Classified as intended self-service access pending confirmation.
+5. `threshold_half_day_hours` is **stored, validated and editable but read by no
+   calculation** since the half-day band was widened.
+6. **Two migration filename conventions** coexist (65 eight-digit, 94 fourteen-digit).
+7. Automated coverage is **concentrated in payroll, assets and meetings**; large
+   UI areas have no tests.
+8. `payroll_holidays` is empty in production.

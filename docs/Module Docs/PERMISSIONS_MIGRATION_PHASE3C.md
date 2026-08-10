@@ -4,7 +4,7 @@ Status: **Analysis only. Zero writes.** Confirmed by re-counting all three affec
 
 Question this phase answers: **"If we migrated `employee_permissions` into the centralized engine today, exactly what would be written?"**
 
-Companion artifact: [`permissions-3f-backfill-DRAFT.sql`](permissions-3f-backfill-DRAFT.sql) — the dry-run query, the validation query, and the (fully commented-out, unexecuted) backfill `INSERT`. Not a Supabase migration file; not applied by any tooling.
+Companion artifact: `permissions-3f-backfill-DRAFT.sql` (working draft, not retained in the repository) — the dry-run query, the validation query, and the (fully commented-out, unexecuted) backfill `INSERT`. Not a Supabase migration file; not applied by any tooling.
 
 ---
 
@@ -48,7 +48,7 @@ Established in Phase 3B (action keys already exist in the centralized catalog �
 
 ## 3. Dry-run migration plan
 
-[`permissions-3f-backfill-DRAFT.sql`](permissions-3f-backfill-DRAFT.sql) PART 1 executed read-only against the linked database. Actual output (verbatim):
+`permissions-3f-backfill-DRAFT.sql` (working draft, not retained in the repository) PART 1 executed read-only against the linked database. Actual output (verbatim):
 
 | legacy_row_id | permission_key | target_action_key | legacy_is_active | unmappable | would_collide | disposition |
 |---|---|---|---|---|---|---|
@@ -62,7 +62,7 @@ Collision check: queried every existing `employee_permission_overrides` row for 
 
 ## 4. Validation statistics
 
-[`permissions-3f-backfill-DRAFT.sql`](permissions-3f-backfill-DRAFT.sql) PART 2 executed read-only against the linked database. Actual output (verbatim):
+`permissions-3f-backfill-DRAFT.sql` (working draft, not retained in the repository) PART 2 executed read-only against the linked database. Actual output (verbatim):
 
 | Would migrate directly | Transformed | Skipped (collision) | Rejected (unmappable) | Total |
 |---|---|---|---|---|
@@ -85,7 +85,7 @@ The dry-run script's detection logic (kept live, not just a one-time check) cove
 
 ## 6. Production-ready migration script (not executed)
 
-[`permissions-3f-backfill-DRAFT.sql`](permissions-3f-backfill-DRAFT.sql) PART 3. Properties:
+`permissions-3f-backfill-DRAFT.sql` (working draft, not retained in the repository) PART 3. Properties:
 - **Idempotent** — guarded by both a `NOT EXISTS` check and `ON CONFLICT (user_id, module_id, action_id) DO NOTHING`, so running it twice is a no-op the second time.
 - **Self-limiting to mappable rows** — uses `INNER JOIN`s to the key map and `permission_actions`, so any row with an unmappable `permission_key` is silently excluded rather than erroring, matching the "rejected" disposition from PART 1.
 - **Not runnable by accident** — every line of the actual `INSERT` is SQL-commented out in the file. Copying it into a real migration (only at Phase 3F, only after the 3F exit criteria in the 3A doc are met) requires deliberately un-commenting it.

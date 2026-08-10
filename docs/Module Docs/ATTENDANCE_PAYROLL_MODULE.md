@@ -1,6 +1,23 @@
 # Attendance & Payroll Module
 
-Last Updated: 11 August 2026
+Last verified: **2026-08-11** (commit `a33c14e`)
+
+## Status
+
+**Active** — in daily production use.
+
+The **UI consolidation described below is branch-only** on
+`feat/attendance-payroll-module-merge` (`789c771`, `a33c14e`). It is not merged
+to `main` and not deployed. The underlying attendance and payroll domains have
+been in production for months and are unaffected by it. No migration is required.
+
+## Users
+
+| Who | Uses it for |
+| --- | --- |
+| **Admin** | Import attendance, review and correct days, manage holidays, generate/lock/unlock payroll, enter adjustments, record settlements, review employee issues, edit payroll settings |
+| **Employee** | Their own attendance, their own payslips, raising and tracking issues, and the calculation guide |
+| **Manager** | No management access. Treated as an employee here (see ACC-1) |
 
 ## Purpose
 
@@ -200,6 +217,163 @@ differ, and they are never merged:
 
 An employee is offered no management route. This is a usability split, never the
 control — `PayrollGuard`, the route handlers and RLS are what refuse access.
+
+---
+
+## Routes
+
+| Route | Who | What it is |
+| --- | --- | --- |
+| `/attendance` | Admin | Module overview |
+| `/attendance/employees` | Admin | Employee master / fingerprint mapping |
+| `/attendance/upload` | Admin | Monthly machine-export import |
+| `/attendance/records` | Admin | Imported attendance records |
+| `/attendance/monthly-review` | Admin | Monthly Attendance Review (+ `/[userId]`) |
+| `/attendance/holidays` | Admin | Holiday management |
+| `/attendance/correction-log` | Admin | Correction audit trail |
+| `/attendance/notifications` | Admin | Issue feed (canonical address) |
+| `/payroll` | Admin | Payroll runs |
+| `/payroll/monthly-review` | Admin | Payroll Monthly Preview (+ `/[userId]`) |
+| `/payroll/results/[periodId]` | Admin | One run's results |
+| `/payroll/results/[periodId]/[employeeId]` | Admin | One payslip |
+| `/payroll/results/[periodId]/salary-report` | Admin | Salary processing report |
+| `/payroll/settings` | Admin | Central payroll settings |
+| `/payroll/notifications` | Admin | Same feed; kept for existing links |
+| `/payroll/how-it-works` | **Everyone** | Calculation guide — holds no employee data |
+| `/my-attendance` | Employee | Own attendance |
+| `/my-payroll` (+ `/[periodId]`) | Employee | Own payslips |
+| `/my-issues` (+ `/notifications`) | Employee | Own issues and their feed |
+
+## APIs
+
+| Route handler | Who | Enforcement |
+| --- | --- | --- |
+| `/api/attendance/import`, `/preview` | Admin | `ALLOWED_ROLES` in each route (service role) |
+| `/api/attendance/records`, `/monthly-summary`, `/employee-records` | Admin | In-route role check + RLS |
+| `/api/attendance/employee-monthly-detail` | Employee (own) | Employee derived from bearer token |
+| `/api/payroll/periods`, `/generate`, `/lock`, `/unlock`, `/delete` | Admin | `requireAdmin` (`src/lib/security/attendancePayrollApiAuth.ts`) |
+| `/api/payroll/adjustments`, `/settlement`, `/attendance-correction` | Admin | In-route admin check |
+| `/api/payroll/salary-report` | Admin | In-route admin check (`salaryReportAuth.test.ts`) |
+| `/api/payroll/settings` | Admin | `requireAdmin`; `payroll_settings` RLS is admin-only |
+| `/api/payroll/my-result` | Employee (own) | **Employee id is the caller's; no parameter to tamper with** |
+| `/api/payroll/ask` | Any signed-in | Grounded in rule constants; holds no employee data |
+
+## Tables
+
+| Table | Owns | RLS | Migration |
+| --- | --- | --- | --- |
+| `attendance_records` | Raw imported punches (overwritten by import) | Isolated | `20260609` |
+| `attendance_day_corrections` | Date-level corrections, all versions kept | Isolated | `20260807000000` |
+| `payroll_periods` | A month, its status and its `settings_snapshot` | Isolated | `20260611`, `20260828000000` |
+| `payroll_results` | Per-employee figures (**no month/year — those are on the period**) | Isolated | `20260614`, `20260615` |
+| `payroll_deduction_lines` | One line per rule per date | Isolated | `20260615` |
+| `payroll_pending_adjustments` | Manual additions/recoveries + category | Isolated | `20260829000000` |
+| `payroll_settlements` / `payroll_settlement_events` | Payment recorded, carry-forward | Isolated | `20260826000000` |
+| `payroll_period_status_events` | Append-only status audit (**0 write policies**) | Append-only | `20260811000000` |
+| `payroll_holidays` | Company holidays — **currently empty (R-12)** | Isolated | `20260613` |
+| `payroll_settings` | Versioned, append-only settings | **Admin read only** | `20260828000000` |
+
+Row isolation for the payroll tables: `20260812000000_attendance_payroll_isolation.sql`.
+
+## Permissions
+
+Admin-only management, employee-only self-service. The full matrix, including
+enforcement file per route family, is in
+[../BOE Master Context/08_Authorization_Matrix.md](../BOE%20Master%20Context/08_Authorization_Matrix.md).
+The governing rules are ACC-1, ACC-2 and ACC-3 in the business-rule index.
+
+## Main workflows
+
+1. **Import** — admin uploads the monthly machine export; unmatched codes are
+   mapped to employees by hand.
+2. **Review and correct** — admin restates a date or waives a charge, always with
+   a written reason. The machine record is never overwritten (ATT-7).
+3. **Generate** — payroll is computed from reviewed attendance, with the active
+   settings pinned to the period (PAY-16).
+4. **Settle** — admin records what was paid; the closing balance carries forward
+   (PAY-12).
+5. **Lock** — the month is frozen; only an admin can unlock (PAY-17).
+6. **Issue loop** — employee raises, admin decides, employee is notified and may
+   re-raise once answered (ISS-1, ISS-2).
+
+## Business rules
+
+PAY-1 … PAY-19, ATT-1 … ATT-11, ISS-1 … ISS-4, ACC-1 … ACC-4 in
+[../BOE Master Context/07_Business_Rule_Index.md](../BOE%20Master%20Context/07_Business_Rule_Index.md).
+Open mismatches affecting this module: **M-3** (`threshold_half_day_hours`) and
+**M-4** (narrative rule docs predate the settings model).
+
+## Notifications
+
+One category, `attendance_payroll`, admin-only by category
+(`notificationAccess.ts`). Types: `attendance_issue_raised`,
+`payroll_issue_raised`, `attendance_issue_reviewed`, `payroll_issue_reviewed`.
+Deep links: attendance → `/attendance/correction-log`; payroll →
+`/payroll?issue=<id>`; employee outcomes → `/my-issues?issue=<id>`.
+**`notifications.type` is a Postgres enum — apply its migration before the code.**
+
+## Audit history
+
+Attendance corrections keep every version. `payroll_period_status_events` is
+append-only with no write policies. Settings are append-only with `created_by`
+and `created_at` as the audit trail. Adjustments carry a written reason and the
+admin who entered them. `locked_at`/`locked_by` are never cleared.
+
+## Dependencies
+
+- **`users`** — identity, salary and joining date. Salary columns are
+  column-granted (ACC-4).
+- **`app_modules`** — two rows, `attendance` and `payroll`.
+- **`notifications`** — shared table, category-gated.
+- **Attendance → Payroll** is the one hard cross-domain dependency: payroll reads
+  reviewed attendance. Payroll never writes attendance.
+
+## Main files
+
+| File | Role |
+| --- | --- |
+| `src/lib/attendance/classification.ts` | Day classification — the band authority |
+| `src/lib/attendance/corrections.ts` | Correction and waiver rules |
+| `src/lib/payroll/engine.ts` | The calculation |
+| `src/lib/payroll/settlement.ts` | Payable, paid, carry-forward |
+| `src/lib/payroll/rules.ts` | Constants + the rule catalogue |
+| `src/lib/payroll/settings.ts` / `settingsStore.ts` | Settings, validation, per-period pinning |
+| `src/lib/moduleAccess.ts` | `resolveManagementAccess` |
+| `src/components/layout/AttendancePayrollLayout.tsx` | The one shell |
+| `src/components/layout/attendancePayrollNav.tsx` | The one navigation definition |
+
+## Tests
+
+| File | Covers |
+| --- | --- |
+| `src/lib/payroll/*.test.ts` (26 files) | Engine, rounding, leave, settlement, settings, snapshots |
+| `src/lib/attendance/*.test.ts` (7 files) | Classification, corrections, punch parsing, provenance |
+| `src/lib/security/attendancePayroll*.test.ts` | Row, API and self-service isolation |
+| `src/components/layout/attendancePayrollNav.test.tsx` | One card, one shell, one nav, active state |
+| `src/app/payroll/how-it-works/guide.test.tsx` | Guide content against the engine |
+| `src/app/payroll/payrollGuideAccess.test.ts` | Guide reachability and data-free-ness |
+
+## Known limitations
+
+- **R-12** `payroll_holidays` is empty in production — holidays are charged as
+  absences unless corrected by hand. Highest-severity open item for this module.
+- **R-5 / M-3** `threshold_half_day_hours` is editable but unused; marked
+  inactive in the UI 2026-08-11.
+- **R-1** Self-service routes have no module guard (own data only).
+- `PAYROLL_RULES_V1.md` is superseded by `src/lib/payroll/rules.ts` (M-1).
+- The adjustments API has **no lock check**.
+- `engine.validate.ts` scenario S18 fails on `main` already — pre-existing.
+
+## Planned next work
+
+1. Populate `payroll_holidays` and add an empty-state warning (R-12).
+2. Decide `threshold_half_day_hours` — restore the band or retire the field (R-5).
+3. Decide self-service route gating (R-1).
+4. Add a lock check to the adjustments API.
+
+## Owner
+
+`unassigned` — no ownership registry exists in this repository.
 
 ---
 

@@ -1,317 +1,59 @@
-# BOE TASK MANAGEMENT
+# BOE TASK MANAGEMENT — Current Roadmap
 
-# Current Roadmap
+Last verified: **2026-08-11**
 
-Last Updated: June 2026 (updated after Task Cancellation implementation)
+Overall status: **Production active**, internal BOE team.
+Approach: incremental, verified changes. Structural work before new modules.
 
----
-
-# PROJECT STATUS
-
-Overall Status:
-
-Production Active
-
-Current Users:
-
-Internal BOE Team
-
-Development Approach:
-
-Incremental development through small verified changes.
-
-Primary Objective:
-
-Expand BOE Task Management from a task execution platform into a complete internal operating system while maintaining simplicity and usability.
+> The June 2026 roadmap listed Attendance, Payroll and Employee Records as
+> upcoming priorities. All three are now in production. This is the rebuilt list.
 
 ---
 
-# CURRENT DEVELOPMENT PRIORITIES
+## Now (in flight)
 
-Priority 1
+| Item | Business purpose | Depends on | Exit condition | Verification | Touches production data |
+| --- | --- | --- | --- | --- | --- |
+| Attendance & Payroll UI consolidation | One module for one job; removes duplicated shells that caused missing links | — | Merged to `main` and deployed | `npm run verify`; signed-in admin + employee pass | No — no migration |
+| How Payroll Works redesign | Employees can understand their own pay in ~2 minutes | Consolidation | Merged and deployed | `guide.test.tsx`; signed-in pass | No |
+| Documentation and verification foundation | A contributor can start from the repository instead of old chats | — | `npm run verify` green in CI | `docs:check`, CI run | No |
 
-Sample Tracking Completion
+## Next (30 days)
 
-Priority 2
+| Item | Business purpose | Depends on | Exit condition | Verification | Touches production data |
+| --- | --- | --- | --- | --- | --- |
+| **R-2** Converge API authorization onto one helper | 71 routes hand-roll a role check in 9 shapes; 78 bypass RLS. One missed check is a silent hole | Nothing | Every service-role route calls the shared helper; a test asserts it | New test + full suite | No |
+| **R-12** Populate `payroll_holidays` | The table is empty, so public holidays are charged as absences unless corrected by hand | Owner supplies the holiday list | Current-year holidays entered; empty-state warning on the payroll run screen | Manual + a warning test | **Yes** — data entry, admin-performed |
+| **R-1** Decide self-service route gating | An employee whose card is hidden can still open their own records by URL | Owner decision | Documented as intended, or a guard added | Access tests | No |
+| **R-4a** Tests for the highest-risk untested paths | Task ownership, notification scoping, module visibility have no behaviour tests | — | Each has a failing-first test | Full suite | No |
+| Employee Records module document | Live module with no document | Template | Document merged, listed in the index | `docs:check` | No |
 
-Attendance Management
+## Later (60–90 days)
 
-Priority 3
+| Item | Business purpose | Depends on | Exit condition | Verification | Touches production data |
+| --- | --- | --- | --- | --- | --- |
+| **R-3** Decompose `finance/page.tsx` and `tasks/[id]/page.tsx` | 2,679 and 2,621 lines, no tests, highest business risk | R-4a tests exist first | Steps 1–3 of the extraction order done | `npm run verify` + signed-in pass | No |
+| **R-9** Observability first steps | A production failure is currently diagnosed by guessing which of 98 routes it came from | — | Consistent error shape + correlation id; no new paid service | New tests | No |
+| Task Management + Notifications module documents | Two active modules with no document | Template | Merged | `docs:check` | No |
+| **R-5** Decide `threshold_half_day_hours` | Marked inactive; whether to restore the band or retire the field is unresolved | Owner decision | ADR recording the decision | — | No |
 
-Payroll Management
+## Deferred (explicitly not doing)
 
-Priority 4
-
-Assets & Access Completion
-
-Priority 5
-
-Employee Records
-
----
-
-# PRIORITY 1
-
-# SAMPLE TRACKING
-
-Status:
-
-Active Development
-
-Business Goal:
-
-Create complete visibility and accountability for every sample from request through final closure.
-
-Current Focus Areas:
-
-* Lifecycle completion
-* Notifications
-* Accountability tracking
-* Customer sample history
-* Return management
-* Replacement management
-* Closure workflows
-
-Success Criteria:
-
-* No sample can be lost without visibility.
-* Sample ownership is always known.
-* Management can track sample status at any time.
-* Complete audit trail exists.
+| Item | Why not |
+| --- | --- |
+| Feature-folder migration of `src/lib` | Pure rename; fixes no observed defect. Do it per module, when that module is already being changed (`11_File_Structure_Plan.md`) |
+| API response-shape rewrite across 98 routes | Large diff, no user benefit. Converge new routes instead (R-10) |
+| Replacing Supabase or the auth model | Would be a rewrite; nothing is wrong with either |
+| Microservices / event bus / global state library | No observed problem to solve |
+| Sentry or centralized logging | Needs a funded service and production secrets |
+| Rewriting deployed migrations | Forbidden — forward-only (ADR-0003) |
+| Repo-wide accessibility remediation | Apply the guide's checklist per page as pages are touched (R-15) |
 
 ---
 
-# PRIORITY 2
-
-# ATTENDANCE MANAGEMENT
-
-Status:
-
-Foundation Exists
-
-Business Goal:
-
-Centralize employee attendance records within BOE.
-
-Planned Features:
-
-* Daily attendance
-* Attendance import
-* Attendance dashboard
-* Leave tracking
-* Monthly summaries
-* Employee attendance history
-
-Success Criteria:
-
-* Eliminate manual attendance tracking.
-* Provide management visibility.
-* Support payroll calculations.
-
----
-
-# PRIORITY 3
-
-# PAYROLL MANAGEMENT
-
-Status:
-
-Foundation Exists
-
-Business Goal:
-
-Create a payroll system integrated with attendance and employee records.
-
-Planned Features:
-
-* Salary calculation
-* Payroll generation
-* Payroll locking
-* Incentive handling
-* Payroll reports
-* Historical payroll records
-
-Success Criteria:
-
-* Controlled payroll process.
-* Reduced spreadsheet dependency.
-* Auditability.
-
----
-
-# PRIORITY 4
-
-# ASSETS & ACCESS
-
-Status:
-
-Asset lifecycle complete. Access credentials still V1.
-
-Business Goal:
-
-Track company assets and employee access rights.
-
-Delivered:
-
-* Individual asset page with the asset's full history
-* Permanent, append-only transfer and custody history
-* Repair / service records with total spend
-* Warranty and purchase details, with derived warranty status
-* Asset documents (invoice, warranty card, supporting files)
-* Inventory search and filters
-* Asset notifications, sharing the Task Management interaction model
-* Immutable per-asset activity history
-
-Current Focus:
-
-* **Credential storage rework.** `access_records.secret_value` is plaintext, so
-  the Access Register is admin-only and cannot be delegated. Encrypting it (or
-  moving it to a secrets manager) is what unblocks manager access to the second
-  half of this module.
-
-Next (not started):
-
-* Scheduled warranty-expiry reminders. Today the sweep runs when someone opens
-  the inventory, because BOE has no scheduler for application code; a database
-  cron job or a Vercel cron would make the reminder time-driven instead.
-* Recurring maintenance schedules. A next-service date is recorded and shown,
-  but nothing generates the next service from it.
-* Asset reporting (spend by category, ageing). Deliberately deferred — the
-  module is operational, not analytical, and BOE avoids dashboards until a real
-  question needs one.
-
-Success Criteria:
-
-* Clear ownership of company assets. **Met** — an asset can never read as
-  assigned without naming a custodian.
-* A permanent record of who held what, when. **Met.**
-* Clear visibility of employee access permissions. **Partly** — visible to
-  admins only until the credential rework.
-
----
-
-# PRIORITY 5
-
-# EMPLOYEE RECORDS
-
-Status:
-
-Planned
-
-Business Goal:
-
-Create a centralized employee information repository.
-
-Potential Scope:
-
-* Personal information
-* Employment details
-* Documents
-* Joining records
-* Role history
-* Department information
-
----
-
-# ACTIVE IMPROVEMENT TRACKS
-
-These are improvements to existing modules rather than new modules.
-
----
-
-## Task Management
-
-Completed Improvements:
-
-* Task cancellation workflow (June 2026) — creator/admin can cancel tasks with mandatory reason, dedicated cancelled task list pages, restore support, full audit trail
-
-Potential Improvements:
-
-* Mobile usability review
-* Faster task updates
-* Additional audit controls
-
----
-
-## Performance Management
-
-Potential Improvements:
-
-* Team visibility improvements
-* Better management insights
-* Additional coaching improvements
-
----
-
-## Team Performance
-
-Potential Improvements:
-
-* Better root-cause analysis
-* More actionable management views
-* Faster identification of execution risks
-
----
-
-# FUTURE MODULES
-
-These modules are not currently prioritized but may be developed later.
-
-Potential Areas:
-
-* Internal Communication
-* Approvals System
-* Purchase Requests
-* Procurement Tracking
-* Production Coordination
-* Quality Tracking
-* Dispatch Tracking
-* CRM Enhancements
-* Department-Specific Workflows
-
-Priority will be determined by operational need.
-
----
-
-# DEVELOPMENT RULES
-
-Every new feature should pass the following checks before implementation:
-
-1. Does it solve a real operational problem?
-
-2. Is it required for active users?
-
-3. Can it be implemented in a simpler way?
-
-4. Will employees actually use it?
-
-5. Does it improve accountability, visibility, or execution?
-
-If the answer is no, the feature should be postponed.
-
----
-
-# DO NOT CHANGE WITHOUT REVIEW
-
-The following items require deliberate review before modification:
-
-* Supabase production environment
-* Authentication architecture
-* Existing task workflows
-* Existing performance scoring logic
-* Production database structures
-* Vercel deployment configuration
-
----
-
-# NEXT IMMEDIATE WORK
-
-Current Focus:
-
-Sample Tracking Module
-
-Current Goal:
-
-Complete the end-to-end sample lifecycle and notification workflows before shifting major attention to Attendance and Payroll.
-
-All development efforts should remain focused on finishing active modules before introducing major new systems.
+## Standing constraints
+
+- Production data is changed only by an authorized admin through the
+  application, never by a migration or a script.
+- Migrations are applied **before** the merge that deploys their code.
+- No feature work lands with a failing check.
