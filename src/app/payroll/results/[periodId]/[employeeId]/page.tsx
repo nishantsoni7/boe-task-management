@@ -11,7 +11,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { PayrollLayout } from '@/components/layout/PayrollLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { resolveMachineRecord } from '@/lib/payroll/correctionContext'
 import {
@@ -460,7 +460,7 @@ export default function PayrollResultDetailPage() {
     : undefined
 
   return (
-    <PayrollLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Payroll Result Detail"
       onSignOut={handleSignOut}
@@ -588,6 +588,6 @@ export default function PayrollResultDetailPage() {
       {(settlementSaving || saving) && (
         <SavingOverlay message="Saving and recalculating payroll…" />
       )}
-    </PayrollLayout>
+    </AttendancePayrollLayout>
   )
 }

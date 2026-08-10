@@ -17,7 +17,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { PayrollLayout } from '@/components/layout/PayrollLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { Avatar, LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -489,7 +489,7 @@ export default function PayrollMonthlyReviewDetailPage() {
   const lateDays = groups.find(g => g.type === 'late_arrival')?.days ?? 0
 
   return (
-    <PayrollLayout
+    <AttendancePayrollLayout
       profile={profile}
       title={data && !data.skipped ? `${data.employee.full_name} — ${monthLabel}` : 'Payroll Preview Detail'}
       subtitle="Engine-computed payroll breakdown"
@@ -901,6 +901,6 @@ export default function PayrollMonthlyReviewDetailPage() {
         )}
 
       </div>
-    </PayrollLayout>
+    </AttendancePayrollLayout>
   )
 }

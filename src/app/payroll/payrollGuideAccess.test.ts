@@ -7,9 +7,10 @@
  *   1. The guide card is GONE from Payroll Result Detail. That page is one
  *      employee's salary and settlement; a module-wide explainer competed with
  *      the figures it was meant to explain.
- *   2. "How Payroll Works" is in BOTH sidebars — the Payroll one for admins and
- *      the Attendance one for employees, who never see the Payroll sidebar at all
- *      and would otherwise have no route to the page.
+ *   2. "How Payroll Works" is in BOTH navigations — the admin one and the
+ *      employee one. Attendance and Payroll now share a single shell, so these
+ *      are two arrays in one file rather than two files; an employee who is
+ *      never shown the admin list would otherwise have no route to the page.
  *   3. Both link to the SAME constant, so the guard's exception and the links
  *      cannot drift apart into a redirect loop or a locked-out employee.
  *
@@ -26,12 +27,17 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
+import {
+  ATTENDANCE_PAYROLL_ADMIN_NAV,
+  ATTENDANCE_PAYROLL_EMPLOYEE_NAV,
+} from '@/components/layout/attendancePayrollNav'
 
 const read = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), 'utf8')
 
 const DETAIL_VIEW = read('src', 'app', 'payroll', 'results', '[periodId]', '[employeeId]', 'PayrollDetailView.tsx')
-const PAYROLL_NAV = read('src', 'components', 'layout', 'PayrollLayout.tsx')
-const ATTEND_NAV  = read('src', 'components', 'layout', 'AttendanceLayout.tsx')
+// One shared navigation definition since Attendance and Payroll were merged
+// into a single module shell — see src/components/layout/attendancePayrollNav.tsx.
+const NAV         = read('src', 'components', 'layout', 'attendancePayrollNav.tsx')
 const GUARD       = read('src', 'app', 'payroll', 'layout.tsx')
 
 // ─── 1. The guide card is gone from Payroll Detail ────────────────────────────
@@ -65,36 +71,45 @@ describe('Payroll Result Detail', () => {
 // ─── 2 + 3. The guide is in both navigations, via the shared constant ─────────
 
 describe('navigation', () => {
-  test('the Payroll sidebar offers "How Payroll Works"', () => {
-    assert.match(PAYROLL_NAV, /label: 'How Payroll Works'/)
-    assert.match(PAYROLL_NAV, /path: PAYROLL_GUIDE_PATH/)
+  test('the admin navigation offers "How Payroll Works"', () => {
+    assert.ok(
+      ATTENDANCE_PAYROLL_ADMIN_NAV.some(i => i.label === 'How Payroll Works' && i.path === PAYROLL_GUIDE_PATH),
+      'the admin list must reach the guide',
+    )
   })
 
-  test('the Attendance sidebar offers it to employees', () => {
-    // Employees never render PayrollLayout — /payroll redirects them — so this
-    // is their only route to the page.
-    assert.match(ATTEND_NAV, /label: 'How Payroll Works'/)
-    assert.match(ATTEND_NAV, /path: PAYROLL_GUIDE_PATH/)
+  test('the employee navigation offers it too', () => {
+    // Employees are never shown the admin list — /payroll redirects them off
+    // every other route under it — so this is their only route to the page.
+    assert.ok(
+      ATTENDANCE_PAYROLL_EMPLOYEE_NAV.some(i => i.label === 'How Payroll Works' && i.path === PAYROLL_GUIDE_PATH),
+      'the employee list must reach the guide',
+    )
   })
 
-  test('neither sidebar hard-codes the route string', () => {
-    // A typo in one of three places would either lock employees out or send
-    // them into the guard's redirect.
-    for (const [name, source] of [['PayrollLayout', PAYROLL_NAV], ['AttendanceLayout', ATTEND_NAV]] as const) {
-      assert.match(source, /from '@\/lib\/payroll\/guidePath'/, `${name} does not import the constant`)
+  test('the navigation does not hard-code the route string', () => {
+    // A typo here would either lock employees out or send them into the guard's
+    // redirect. One shared file now, so there is one place this can go wrong.
+    assert.match(NAV, /from '@\/lib\/payroll\/guidePath'/, 'the nav does not import the constant')
+    assert.equal(
+      NAV.includes(`'${PAYROLL_GUIDE_PATH}'`), false,
+      'the nav hard-codes the guide path instead of importing it',
+    )
+  })
+
+  test('the employee entry sits beside My Payroll and pulls in no admin route', () => {
+    const labels = ATTENDANCE_PAYROLL_EMPLOYEE_NAV.map(i => i.label)
+    assert.ok(labels.includes('My Payroll'))
+    assert.ok(labels.includes('How Payroll Works'))
+    // The guide is the ONE /payroll path an employee may open. Any other
+    // /payroll or /attendance destination in this list is a link that bounces.
+    for (const item of ATTENDANCE_PAYROLL_EMPLOYEE_NAV) {
+      if (item.path === PAYROLL_GUIDE_PATH) continue
       assert.equal(
-        source.includes(`'${PAYROLL_GUIDE_PATH}'`), false,
-        `${name} hard-codes the guide path instead of importing it`,
+        item.path.startsWith('/payroll') || item.path.startsWith('/attendance'), false,
+        `employee nav points at the management surface: ${item.path}`,
       )
     }
-  })
-
-  test('the employee entry is added without disturbing the admin list', () => {
-    // The admin branch of AttendanceLayout is a different array; the guide
-    // belongs to the employee one, beside My Payroll.
-    const employeeBranch = ATTEND_NAV.slice(ATTEND_NAV.indexOf(': ['))
-    assert.ok(employeeBranch.includes("label: 'My Payroll'"))
-    assert.ok(employeeBranch.includes("label: 'How Payroll Works'"))
   })
 })
 

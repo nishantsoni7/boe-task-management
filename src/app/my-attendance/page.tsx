@@ -16,7 +16,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istClockOf } from '@/lib/istDate'
@@ -270,7 +270,7 @@ export default function MyAttendancePage() {
   const partiallyUploaded = monthImported && coverageThrough != null && coverageThrough < monthEnd
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="My Attendance"
       subtitle="Your own attendance record, month by month"
@@ -522,6 +522,6 @@ export default function MyAttendancePage() {
           onClose={() => setHistoryDate(null)}
         />
       )}
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

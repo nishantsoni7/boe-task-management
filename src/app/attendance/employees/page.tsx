@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { useRefresh } from '@/contexts/RefreshContext'
@@ -659,7 +659,7 @@ export default function EmployeeMasterPage() {
   const showEdit = canEdit(profile?.role)
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Employee Master"
       subtitle="All BOE employee records"
@@ -845,6 +845,6 @@ export default function EmployeeMasterPage() {
           onSaved={updated => { handleSaved(editEmp.id, updated); }}
         />
       )}
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

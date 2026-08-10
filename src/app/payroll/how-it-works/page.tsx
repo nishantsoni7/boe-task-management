@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { PayrollLayout } from '@/components/layout/PayrollLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { colors } from '@/lib/tokens'
@@ -83,7 +83,7 @@ export default function HowPayrollWorksPage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <PayrollLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="How Payroll Works"
       subtitle="Every figure on your payslip, and where it comes from."
@@ -208,7 +208,7 @@ export default function HowPayrollWorksPage() {
           month attached, and it does not change your salary by itself.
         </div>
       </div>
-    </PayrollLayout>
+    </AttendancePayrollLayout>
   )
 }
 

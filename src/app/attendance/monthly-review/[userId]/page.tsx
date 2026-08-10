@@ -5,7 +5,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -154,7 +154,7 @@ export default function EmployeeMonthlyDetailPage() {
     : '/attendance/monthly-review'
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title={employee ? `${employee.full_name} — ${monthLabel}` : 'Employee Detail'}
       subtitle="Day-wise attendance records for the selected month"
@@ -346,6 +346,6 @@ export default function EmployeeMonthlyDetailPage() {
         )}
 
       </div>
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

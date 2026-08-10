@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { PayrollLayout } from '@/components/layout/PayrollLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { periodLabel } from '@/lib/payroll/months'
 import {
@@ -565,7 +565,7 @@ function PayrollPeriodsPage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <PayrollLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Payroll"
       subtitle={isPayrollAdmin
@@ -824,7 +824,7 @@ function PayrollPeriodsPage() {
           onConfirm={handleDelete}
         />
       )}
-    </PayrollLayout>
+    </AttendancePayrollLayout>
   )
 }
 
