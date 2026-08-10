@@ -228,6 +228,24 @@ export type SettingsFieldSpec = {
   /** Smallest legal increment. 0.25 for hours, 1 for minutes and counts. */
   step: number
   unit?: string
+  /**
+   * The field is STORED and VALIDATED but no calculation reads it.
+   *
+   * It cannot simply be deleted: it is pinned inside the `settings_snapshot` of
+   * every period generated so far, and dropping it would change how those
+   * historical periods parse. So it stays in the type, in the defaults and in
+   * the validator — and the form marks it inactive and refuses edits, because
+   * an admin changing a number that does nothing is worse than not seeing it.
+   *
+   * Setting this changes NO calculation. It changes what the settings page
+   * tells an administrator.
+   */
+  inactive?: {
+    /** Shown beside the field. Short. */
+    badge: string
+    /** Why it no longer applies, and what replaced it. */
+    reason: string
+  }
 }
 
 /**
@@ -329,8 +347,17 @@ export const SETTINGS_FIELDS: SettingsFieldSpec[] = [
   {
     key: 'threshold_half_day_hours', group: 'punch_attendance', kind: 'number',
     label: 'Half day needs',
-    help: 'Effective hours at or above this, but below the short-hours band, is a half day.',
+    // CORRECTED 2026-08-11. This said "Effective hours at or above this, but
+    // below the short-hours band, is a half day" — which stopped being true when
+    // classification.ts merged the half-day band down to the presence floor.
+    // The old split made the cost of a day non-monotonic: four hours cost the
+    // employee half a day while three hours cost nothing.
+    help: 'No longer used. A half day now runs from the short-present floor up to the short-hours band, so this threshold decides nothing. Kept because it is pinned inside every payroll period already generated.',
     min: 0, max: 24, step: 0.25, unit: 'hours',
+    inactive: {
+      badge: 'Not in use',
+      reason: 'The half-day band was widened to the short-present floor, so no calculation reads this value. Changing it would have no effect on any payslip.',
+    },
   },
   {
     key: 'threshold_short_present_hours', group: 'punch_attendance', kind: 'number',
