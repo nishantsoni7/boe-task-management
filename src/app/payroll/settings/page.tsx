@@ -22,6 +22,7 @@ import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   SETTINGS_FIELDS,
+  MAX_PAID_LEAVE_BANDS,
   SETTINGS_GROUP_LABELS,
   SETTINGS_GROUP_ORDER,
   DAY_OF_WEEK_LABELS,
@@ -31,6 +32,14 @@ import {
   type PayrollSettings,
   type SettingsValidationIssue,
 } from '@/lib/payroll/settings'
+import {
+  orderBands,
+  addBand,
+  updateBand,
+  removeBand,
+  canAddBand,
+  canRemoveBand,
+} from '@/lib/payroll/paidLeaveBands'
 
 type HistoryRow = {
   id: string
@@ -135,12 +144,27 @@ export default function PayrollSettingsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // The paid-leave bands are compared too. Leaving them out meant an admin who
+  // only changed a band found Save still disabled, with nothing on screen
+  // explaining why — the form did not consider itself edited.
   const dirty = useMemo(
-    () => SETTINGS_FIELDS.some(f => draft[f.key] !== saved[f.key]),
+    () =>
+      SETTINGS_FIELDS.some(f => draft[f.key] !== saved[f.key]) ||
+      draft.paid_leave_tiers !== saved.paid_leave_tiers,
     [draft, saved],
   )
 
   const issueFor = (key: string) => issues.find(i => i.key === key)?.message
+
+  /**
+   * Every problem on a key, not just the first.
+   *
+   * The bands are one key that can carry several distinct faults at once — a
+   * duplicate threshold and a non-monotonic allowance, say. Showing one and
+   * hiding the rest means an admin fixes a value, saves, and is told about the
+   * next one, which reads like the form is inventing objections.
+   */
+  const issuesFor = (key: string) => issues.filter(i => i.key === key).map(i => i.message)
 
   const set = (key: string, value: string) => {
     setDraft(d => ({ ...d, [key]: value }))
@@ -292,7 +316,13 @@ export default function PayrollSettingsPage() {
                 })}
               </div>
 
-              {group === 'leave' && <PaidLeaveTiers draft={draft} issue={issueFor('paid_leave_tiers')} />}
+              {group === 'leave' && (
+                <PaidLeaveTiers
+                  draft={draft}
+                  issues={issuesFor('paid_leave_tiers')}
+                  onChange={next => set('paid_leave_tiers', JSON.stringify(next))}
+                />
+              )}
             </section>
           )
         })}
@@ -403,39 +433,196 @@ function inputStyle(hasError: boolean): React.CSSProperties {
   }
 }
 
-/**
- * The paid-leave bands, read-only here.
- *
- * They are a list rather than a scalar, and a full editor for them is a
- * different piece of work from a form of numbers — it needs add, remove and
- * reorder, and the ordering rule (highest days-present first, last band at 0) is
- * load-bearing. Showing them keeps the page honest about what the settings
- * contain; editing them stays with the API until that editor exists.
- */
-function PaidLeaveTiers({ draft, issue }: { draft: Draft; issue?: string }) {
-  let tiers: Array<{ min_days_present: number; leave: number }> = []
+type DraftTier = { min_days_present: number; leave: number }
+
+function parseTiers(draft: Draft): DraftTier[] {
   try {
-    tiers = JSON.parse(draft.paid_leave_tiers ?? '[]')
+    const parsed = JSON.parse(draft.paid_leave_tiers ?? '[]')
+    return Array.isArray(parsed) ? parsed : []
   } catch {
-    tiers = []
+    return []
   }
+}
+
+/**
+ * The paid-leave bands — add, edit, remove.
+ *
+ * WHY THERE ARE NO REORDER CONTROLS
+ * ---------------------------------
+ * The engine reads the bands top-down and awards the FIRST one an employee
+ * reaches (computePaidLeaveEntitlement in engine.ts), so order is genuinely part
+ * of the calculation — but it is not an independent property an admin can set.
+ * It is entirely determined by the days-present threshold, and
+ * parsePayrollSettings normalises the list by sorting on exactly that.
+ *
+ * Drag handles would therefore offer a choice that does not exist: any order the
+ * admin arranged would be silently re-sorted on save, and an arrangement that
+ * disagreed with the thresholds would simply be overwritten. So the rows sort
+ * themselves as the thresholds change, and the priority the engine will actually
+ * use is NUMBERED on screen instead. Nothing is hidden — the ordering is shown,
+ * it just is not pretended to be editable separately from the number that
+ * decides it.
+ */
+function PaidLeaveTiers({
+  draft,
+  issues,
+  onChange,
+}: {
+  draft: Draft
+  issues: string[]
+  onChange: (next: DraftTier[]) => void
+}) {
+  const tiers = parseTiers(draft)
+
+  // Displayed in engine order — highest threshold first, which is the order the
+  // allowance is actually looked up in. Every operation goes through the shared
+  // helpers in ../../lib/payroll/paidLeaveBands, so what this form does is the
+  // same thing the tests assert rather than a second implementation of it.
+  const ordered = orderBands(tiers)
+
+  const update = (index: number, patch: Partial<DraftTier>) =>
+    onChange(updateBand(ordered, index, patch))
+
+  const remove = (index: number) => onChange(removeBand(ordered, index))
+
+  const add = () => onChange(addBand(ordered))
+
+  const atLimit = !canAddBand(ordered)
 
   return (
-    <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6, color: colors.primary }}>
+    <div style={{ marginTop: 18, borderTop: `1px solid ${colors.border}`, paddingTop: 14 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4, color: colors.primary }}>
         Paid leave earned by attendance
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {tiers.map((t, i) => (
-          <div key={i} style={{ fontSize: 12.5, color: colors.tertiary }}>
-            {t.min_days_present}+ days present → {t.leave} day{t.leave === 1 ? '' : 's'} paid leave
+
+      {/* Plain language, next to the editor rather than in a help page. */}
+      <p style={{ fontSize: 11.5, lineHeight: 1.5, color: colors.tertiary, margin: '0 0 10px' }}>
+        Each band says: an employee present at least this many days in the month earns
+        this much paid leave. Payroll checks the bands from the highest days-present
+        downwards and uses the <strong>first one the employee reaches</strong>, so the
+        band with the largest threshold wins. The last band must start at 0 days so
+        everybody falls into one. More days present can never earn less leave.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {ordered.map((tier, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'flex-end',
+              gap: 8,
+              padding: '8px 10px',
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              background: colors.raised,
+            }}
+          >
+            <span
+              title="The order payroll checks the bands in"
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: colors.tertiary,
+                minWidth: 18,
+                paddingBottom: 8,
+              }}
+            >
+              {i + 1}
+            </span>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 130px', minWidth: 120 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: colors.secondary }}>
+                Days present (at least)
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={31}
+                step={1}
+                value={String(tier.min_days_present)}
+                onChange={e => update(i, { min_days_present: e.target.value === '' ? NaN : Number(e.target.value) })}
+                style={inputStyle(false)}
+                aria-label={`Band ${i + 1} days present`}
+              />
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 130px', minWidth: 120 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: colors.secondary }}>
+                Paid leave earned (days)
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={31}
+                step={0.5}
+                value={String(tier.leave)}
+                onChange={e => update(i, { leave: e.target.value === '' ? NaN : Number(e.target.value) })}
+                style={inputStyle(false)}
+                aria-label={`Band ${i + 1} leave earned`}
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              disabled={!canRemoveBand(ordered)}
+              title={
+                !canRemoveBand(ordered)
+                  ? 'At least one band is required — payroll cannot work out an allowance without one.'
+                  : 'Remove this band'
+              }
+              aria-label={`Remove band ${i + 1}`}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 7,
+                border: `1px solid ${colors.border}`,
+                background: 'transparent',
+                fontSize: 12,
+                fontWeight: 600,
+                color: canRemoveBand(ordered) ? colors.red : colors.muted,
+                cursor: canRemoveBand(ordered) ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Remove
+            </button>
           </div>
         ))}
       </div>
-      {issue && (
-        <div style={{ fontSize: 11.5, fontWeight: 600, color: colors.red, marginTop: 6 }}>
-          {issue}
-        </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+        <button
+          type="button"
+          onClick={add}
+          disabled={atLimit}
+          style={{
+            padding: '7px 13px',
+            borderRadius: 7,
+            border: `1px solid ${colors.border}`,
+            background: 'transparent',
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: atLimit ? colors.muted : colors.primary,
+            cursor: atLimit ? 'not-allowed' : 'pointer',
+          }}
+        >
+          Add band
+        </button>
+        <span style={{ fontSize: 11.5, color: colors.tertiary }}>
+          {ordered.length} of {MAX_PAID_LEAVE_BANDS}
+        </span>
+      </div>
+
+      {/* Every problem, not just the first — the bands can carry several at once. */}
+      {issues.length > 0 && (
+        <ul style={{ margin: '10px 0 0', paddingLeft: 18 }}>
+          {issues.map((message, i) => (
+            <li key={i} style={{ fontSize: 11.5, fontWeight: 600, color: colors.red, lineHeight: 1.5 }}>
+              {message}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
