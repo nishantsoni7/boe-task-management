@@ -1,6 +1,6 @@
 # Attendance & Payroll Module
 
-Last Updated: 10 August 2026
+Last Updated: 11 August 2026
 
 ## Purpose
 
@@ -132,6 +132,77 @@ reached from.
 
 ---
 
+## The How Payroll Works guide
+
+`/payroll/how-it-works` — the one page in the module that explains rather than
+reports. It is the only `/payroll` route an employee may open, because it holds
+no employee data at all.
+
+### Purpose
+
+Teach the calculation path in about two minutes, to somebody with no payroll or
+accounting knowledge, and then hold the detail for anybody who wants it.
+
+### Information sequence
+
+A hero (one sentence + the formula strip), then an eight-step **journey** with a
+guide rail beside it, then reference sections:
+
+1. Attendance is recorded
+2. Attendance is reviewed and corrected
+3. Payable days are determined
+4. Your salary becomes a daily and hourly rate
+5. Attendance deductions are calculated
+6. Paid leave absorbs the first thing it can
+7. Salary After Attendance is produced
+8. Balance and adjustments give Salary Payable
+
+Then: a month worked through · what each day counts as · the rules that affect
+pay · if something looks wrong · full rules and glossary.
+
+The rail carries the payslip's figures at a glance, the numbers that decide pay,
+the day-mark legend, a "what can change my salary" checklist, role-safe onward
+links, and a jump list. On desktop it is a second column (~65/35); below 1080px
+it falls into the reading order after the journey it summarises. **Nothing is
+sticky** — the shell's page header already is, and a rail taller than the
+remaining viewport would stick with its own bottom unreachable.
+
+### Source-of-truth rule
+
+**Every threshold, divisor, rate and worked figure the page shows is imported
+from the constants the engine calculates with** — `src/lib/payroll/rules.ts`,
+`src/lib/attendance/scheduleRules.ts`, and `payableDayValue` from
+`src/lib/payroll/resultTabs.ts`. Prose describing a rule is written in
+`guideContent.ts`; the rule itself is never retyped there.
+
+This is not a style preference. The guide shipped for months saying a half day
+was "3.75–5 effective hours" after `classification.ts` had merged that band down
+to the presence floor, and stating a "Short Present" classification the engine
+had stopped producing. `guide.test.tsx` now asserts the described bands against
+the **classifier's own behaviour**, so the next such drift breaks a test instead
+of misinforming an employee.
+
+Displayed values are the **standard** rules. Payroll parameters are configurable
+(`payroll_settings`), but that table is admin-read-only under RLS and the
+settings API refuses a non-admin, so the page cannot show live settings to
+everybody. A month already generated was calculated with the settings pinned to
+it; the page says so rather than implying its numbers describe every month.
+
+### Role-safe links
+
+The educational content is identical for both roles. Only the onward links
+differ, and they are never merged:
+
+| Role | Offered |
+| --- | --- |
+| Employee | `/my-attendance`, `/my-payroll`, `/my-issues` |
+| Admin | `/attendance/monthly-review`, `/payroll`, `/payroll/settings` |
+
+An employee is offered no management route. This is a usability split, never the
+control — `PayrollGuard`, the route handlers and RLS are what refuse access.
+
+---
+
 ## Access model (unchanged)
 
 The split described in `SELF_SERVICE_MODULE_KEYS` (`src/lib/moduleAccess.ts`)
@@ -159,6 +230,9 @@ the route handlers and RLS are what refuse access — see
 | `src/components/layout/attendancePayrollNav.tsx` | The one navigation definition |
 | `src/components/layout/AttendancePayrollLayout.tsx` | The one module shell |
 | `src/app/modules/page.tsx` | The one launcher card |
+| `src/app/payroll/how-it-works/page.tsx` | The guide |
+| `src/app/payroll/how-it-works/guideContent.ts` | Its content, derived from the engine's constants |
+| `src/app/payroll/how-it-works/GuideVisuals.tsx` | Its illustrations |
 | `src/app/attendance/layout.tsx` | `AttendanceGuard` — unchanged |
 | `src/app/payroll/layout.tsx` | `PayrollGuard` — unchanged |
 
@@ -167,6 +241,7 @@ the route handlers and RLS are what refuse access — see
 | File | Covers |
 | --- | --- |
 | `src/components/layout/attendancePayrollNav.test.tsx` | One card, one shell, one nav; every path is a real route; employee list has no management route; active state |
+| `src/app/payroll/how-it-works/guide.test.tsx` | The guide's stated rules against the engine's own behaviour; journey order; role-safe links; layout, accessibility and no-structural-change |
 | `src/app/payroll/payrollGuideAccess.test.ts` | The guide is reachable from both lists via the shared constant |
 | `src/lib/attendancePayrollNotifications.test.ts` | One issue feed, one bell, one door |
 | `src/lib/moduleAccess.test.ts` | The visibility rules the launcher and guards share |
