@@ -26,6 +26,8 @@ export type AdjustmentType = (typeof ADJUSTMENT_TYPES)[number]
 export type StoredAdjustment = {
   id: string
   adjustment_type: string | null
+  /** What the adjustment is. NULL on every row predating the category column. */
+  adjustment_category?: unknown
   amount: number
   description: string | null
 }

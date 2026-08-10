@@ -281,7 +281,7 @@ export async function fetchPendingAdjustments(
 ): Promise<EnginePendingAdjustment[]> {
   const { data, error } = await svc
     .from('payroll_pending_adjustments')
-    .select('id, adjustment_type, amount, description')
+    .select('id, adjustment_type, adjustment_category, amount, description')
     .eq('employee_id', employeeId)
     .or(
       `and(status.eq.pending,applied_in_period_id.eq.${periodId}),` +

@@ -3,6 +3,8 @@
 // Admin only.
 
 import { createClient } from '@supabase/supabase-js'
+import { validateCategoryForType } from '@/lib/payroll/adjustmentCategories'
+import { roundRupees } from '@/lib/payroll/money'
 import { NextRequest, NextResponse } from 'next/server'
 import { periodLockStateByMonth, isLocked, LOCKED_PERIOD_MESSAGE } from '@/lib/payroll/lockGuard'
 
@@ -54,7 +56,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await ctx.svc
     .from('payroll_pending_adjustments')
-    .select('id, adjustment_type, amount, description, created_by, created_at')
+    .select('id, adjustment_type, adjustment_category, amount, description, created_by, created_at')
     .eq('employee_id', empId)
     .eq('payroll_year',  year)
     .eq('payroll_month', month)
@@ -76,6 +78,7 @@ export async function POST(req: NextRequest) {
     adjustment_type: 'addition' | 'deduction'
     amount:          number
     note:            string
+    category?:       string
   }
 
   try {
@@ -84,7 +87,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { employee_id, year, month, adjustment_type, amount, note } = body
+  const { employee_id, year, month, adjustment_type, amount, note, category } = body
 
   if (!employee_id || !year || !month || !adjustment_type || amount == null || !note?.trim())
     return NextResponse.json({ error: 'employee_id, year, month, adjustment_type, amount, and note are required' }, { status: 400 })
@@ -94,6 +97,25 @@ export async function POST(req: NextRequest) {
 
   if (typeof amount !== 'number' || amount <= 0)
     return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 })
+
+  // The category is optional, so an existing caller that does not send one still
+  // works and simply stores NULL — the same state every pre-existing row is in.
+  // When one IS sent it must both exist and agree with the direction: an
+  // incentive is not a deduction, and a row whose label contradicted its own
+  // amount would put a payment onto the recovery line of the report.
+  let resolvedCategory: string | null = null
+  if (category != null) {
+    const check = validateCategoryForType(category, adjustment_type)
+    if (!check.ok) return NextResponse.json({ error: check.message }, { status: 422 })
+    resolvedCategory = check.category
+  }
+
+  // Whole rupees, like every other monetary figure payroll stores. An adjustment
+  // is shown to the employee as its own payslip line, so it has to be a figure a
+  // payslip can contain.
+  const wholeAmount = roundRupees(amount)
+  if (wholeAmount <= 0)
+    return NextResponse.json({ error: 'amount must be at least ₹1 once rounded to whole rupees' }, { status: 400 })
 
   // Locked periods reject new adjustments. This route had no lock check at all
   // until now — see src/lib/payroll/lockGuard.ts. A month with no payroll period
@@ -114,12 +136,13 @@ export async function POST(req: NextRequest) {
       payroll_year:    year,
       payroll_month:   month,
       adjustment_type,
-      amount,
+      adjustment_category: resolvedCategory,
+      amount:              wholeAmount,
       description:     note.trim(),
       status:          'pending',
       created_by:      ctx.callerId,
     })
-    .select('id, adjustment_type, amount, description, created_by, created_at')
+    .select('id, adjustment_type, adjustment_category, amount, description, created_by, created_at')
     .single()
 
   if (error) return serverFailure('create adjustment', error)
