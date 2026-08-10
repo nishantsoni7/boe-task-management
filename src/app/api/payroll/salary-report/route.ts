@@ -27,7 +27,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { participatesInPayroll } from '@/lib/payroll/participation'
-import type { ReportResultRow, ReportAdjustmentRow } from '@/lib/payroll/salaryReport'
+import type {
+  ReportResultRow,
+  ReportAdjustmentRow,
+  ReportSettlementRow,
+} from '@/lib/payroll/salaryReport'
 import type { AdjustmentType } from '@/lib/payroll/adjustments'
 
 export async function GET(req: NextRequest) {
@@ -57,16 +61,24 @@ export async function GET(req: NextRequest) {
 
   // The stored results for this period, with the employee's display fields.
   //
-  // Only the columns the report states. `monthly_salary` is deliberately absent:
+  // Only the columns the report needs. `monthly_salary` is deliberately absent:
   // the report shows gross_salary, which is what payroll RECORDED for the month,
   // and an employee's current salary is a different fact that has no business
   // travelling with a processing report.
+  //
+  // `pending_adjustment_total` and `days_present` are the two further stored
+  // figures computeSettlement needs to reach the same Salary Payable the Payroll
+  // Result Detail page shows. Neither is stated on the report — days_present is
+  // read only to apply the absence floor, which is a RULE rather than a count,
+  // and no day count reaches the message.
   const { data: resultRows, error: resultErr } = await svc
     .from('payroll_results')
     .select(`
       employee_id,
       gross_salary,
       total_deductions,
+      pending_adjustment_total,
+      days_present,
       net_salary,
       users:employee_id ( full_name, employee_code, payroll_active, is_deleted )
     `)
@@ -91,6 +103,8 @@ export async function GET(req: NextRequest) {
     employee_id: string
     gross_salary: number | null
     total_deductions: number | null
+    pending_adjustment_total: number | null
+    days_present: number | null
     net_salary: number | null
     users: JoinedUser | JoinedUser[] | null
   }
@@ -123,6 +137,8 @@ export async function GET(req: NextRequest) {
       employee_code:    user.employee_code,
       gross_salary:     raw.gross_salary,
       total_deductions: raw.total_deductions,
+      pending_adjustment_total: raw.pending_adjustment_total,
+      days_present:             raw.days_present,
       net_salary:       raw.net_salary,
     })
   }
@@ -159,6 +175,35 @@ export async function GET(req: NextRequest) {
       amount:              row.amount,
     }))
 
+  // The stored carry-forward, so the report's Advance is the same saved figure
+  // the Payroll Result Detail page already shows.
+  //
+  // `amount_paid` is NOT selected: Salary Payable does not depend on it, and what
+  // has been paid is not something this report states. A failure is an error
+  // rather than a silent empty list — a missing carry-forward would not look
+  // wrong on the message, it would just quietly overstate what is payable.
+  const { data: settlementRows, error: settlementErr } = await svc
+    .from('payroll_settlements')
+    .select('employee_id, carry_forward_amount')
+    .eq('payroll_period_id', periodId)
+
+  if (settlementErr) {
+    console.error('[payroll/salary-report] settlements:', settlementErr)
+    return NextResponse.json({ error: 'Could not load payroll settlements.' }, { status: 500 })
+  }
+
+  const settlements: ReportSettlementRow[] = ((settlementRows ?? []) as {
+    employee_id: string
+    carry_forward_amount: number | null
+  }[])
+    // Same boundary as the adjustments: a row belonging to somebody not on this
+    // report cannot travel with it, even unrendered.
+    .filter(row => includedIds.has(row.employee_id))
+    .map(row => ({
+      employee_id:          row.employee_id,
+      carry_forward_amount: row.carry_forward_amount,
+    }))
+
   return NextResponse.json({
     period: {
       id:     period.id,
@@ -168,6 +213,7 @@ export async function GET(req: NextRequest) {
     },
     results,
     adjustments,
+    settlements,
     excluded_count: excluded.length,
   })
 }

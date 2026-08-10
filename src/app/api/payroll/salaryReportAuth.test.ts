@@ -99,6 +99,18 @@ describe('what the route selects', () => {
     assert.doesNotMatch(src, /monthly_salary/)
   })
 
+  test('the settlement read takes the carry-forward and NOT what was paid', async () => {
+    const src = await readFile(ROUTE, 'utf8')
+    const settlementSelect = /\.from\('payroll_settlements'\)\s*\n\s*\.select\('([^']+)'\)/.exec(src)
+    assert.ok(settlementSelect, 'could not find the settlements select')
+    // The report's Advance needs the saved carry-forward. What has been PAID is a
+    // different fact, it does not change Salary Payable, and it has no reason to
+    // travel with a message bound for WhatsApp.
+    assert.match(settlementSelect[1]!, /carry_forward_amount/)
+    assert.doesNotMatch(settlementSelect[1]!, /amount_paid/)
+    assert.doesNotMatch(settlementSelect[1]!, /payment_/)
+  })
+
   test('no attendance, objection, comment, remark or settings column is read', async () => {
     const src = await code(ROUTE)
     for (const forbidden of [
@@ -155,6 +167,14 @@ describe('the page does not calculate salary', () => {
     const src = await readFile(PAGE, 'utf8')
     assert.match(src, /buildSalaryReport/)
     assert.match(src, /renderReportText/)
+  })
+
+  test('the stored settlements reach the builder rather than being re-derived', async () => {
+    const src = await readFile(PAGE, 'utf8')
+    // Without them the Advance on the message would not be the saved figure the
+    // Payroll Result Detail page shows.
+    assert.match(src, /setSettlements\(json\.settlements/)
+    assert.match(src, /buildSalaryReport\([^)]*settlements\)/)
   })
 
   test('it never runs the payroll engine in the browser', async () => {
