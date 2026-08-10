@@ -18,7 +18,7 @@ import { formatRupees } from '@/lib/payroll/money'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
@@ -170,7 +170,7 @@ export default function MyPayrollDetailPage() {
   const reviewed = !!result?.employee_reviewed_at
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="My Payroll"
       subtitle="Your salary for this month, and how it was worked out"
@@ -278,6 +278,6 @@ export default function MyPayrollDetailPage() {
           onSubmit={submitIssue}
         />
       )}
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

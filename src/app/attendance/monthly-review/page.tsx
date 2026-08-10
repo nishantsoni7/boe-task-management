@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -155,7 +155,7 @@ export default function MonthlyReviewPage() {
   } : null
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Monthly Attendance Review"
       subtitle="Per-employee attendance summary for the selected month"
@@ -364,6 +364,6 @@ export default function MonthlyReviewPage() {
         )}
 
       </div>
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

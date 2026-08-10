@@ -1,17 +1,39 @@
 'use client'
 
+// The ONE shell for the combined Attendance & Payroll module.
+//
+// This replaces AttendanceLayout and PayrollLayout, which were two copies of
+// the same component differing only in the brand sub-label and the sidebar
+// array. Anything fixed in one of them had to be remembered in the other, and
+// twice it was not: the Payroll sidebar never gained the role branch, and the
+// Attendance sidebar never gained the Monthly Review link.
+//
+// One shell, one nav definition (attendancePayrollNav.tsx), one brand. The
+// mobile menu is this same <aside> with `.open` toggled, so desktop and mobile
+// render the identical list — there is no second menu to keep in step.
+//
+// What this does NOT merge: the guards. /attendance is still behind
+// AttendanceGuard and /payroll behind PayrollGuard, both of which resolve
+// admin-only management access independently of anything here. A sidebar is a
+// convenience, never an authorisation — see resolveManagementAccess in
+// src/lib/moduleAccess.ts.
+
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Banknote, BookOpen, FileBarChart, Home, RefreshCw, SlidersHorizontal } from 'lucide-react'
+import { Home, RefreshCw } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
-import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { IssueNotificationBell } from '@/components/layout/IssueNotificationBell'
 import { useUnreadAttendancePayrollNotifications } from '@/hooks/queries/useUnreadNotifications'
+import {
+  ATTENDANCE_PAYROLL_MODULE_NAME,
+  attendancePayrollNavFor,
+  isAttendancePayrollNavItemActive,
+} from './attendancePayrollNav'
 
-type PayrollLayoutProps = {
+type AttendancePayrollLayoutProps = {
   profile: UserProfile | null
   title: string
   subtitle?: string
@@ -20,24 +42,19 @@ type PayrollLayoutProps = {
   children: React.ReactNode
 }
 
-export function PayrollLayout({
+export function AttendancePayrollLayout({
   profile,
   title,
   subtitle,
   actions,
   onSignOut,
   children,
-}: PayrollLayoutProps) {
+}: AttendancePayrollLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [refreshing,  setRefreshing]  = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
   const { triggerRefresh } = useRefresh()
-
-  // The same count the Attendance sidebar shows — one category, one query key,
-  // one fetch. Unconditional here because every /payroll route is behind
-  // PayrollGuard, which is admins only (resolveManagementAccess).
-  const unreadIssues = useUnreadAttendancePayrollNotifications()
 
   const handleRefresh = useCallback(() => {
     if (refreshing) return
@@ -59,18 +76,36 @@ export function PayrollLayout({
     setSidebarOpen(false)
   }
 
-  // The guide is last: it explains the module rather than being a place work
-  // happens. It is also the one /payroll route employees may open — PayrollGuard
-  // lets them through to PAYROLL_GUIDE_PATH and nothing else — which is why it
-  // appears in the Attendance sidebar too, for readers who never see this one.
-  const navItems = [
-    { label: 'Payroll Dashboard',  path: '/payroll',                icon: <Banknote     size={15} strokeWidth={1.8} /> },
-    { label: 'Monthly Review',     path: '/payroll/monthly-review', icon: <FileBarChart size={15} strokeWidth={1.8} /> },
-    { label: 'How Payroll Works',  path: PAYROLL_GUIDE_PATH,        icon: <BookOpen     size={15} strokeWidth={1.8} /> },
-    // Everything under /payroll is already admin-only (PayrollGuard →
-    // resolveManagementAccess), so this link needs no extra gate of its own.
-    { label: 'Payroll Settings',   path: '/payroll/settings',       icon: <SlidersHorizontal size={15} strokeWidth={1.8} /> },
-  ]
+  // This shell renders both the management screens (/attendance/*, /payroll/*)
+  // and the self-service ones (/my-attendance, /my-payroll, /my-issues). Every
+  // management destination is admin-only, so showing them to a non-admin only
+  // produces links that bounce off the module guard. Hiding them is a usability
+  // fix, never the control — the guards, the API routes and RLS are what
+  // actually refuse the access.
+  const isAdmin = profile?.role === 'admin'
+
+  const navItems = attendancePayrollNavFor(!!isAdmin)
+
+  // Employee-raised attendance and payroll issues: one category, one query key,
+  // one count, whichever page of the module you are on.
+  //
+  // Requested for EVERYONE. It used to be admin-only because every row of this
+  // category was addressed to an admin, so an employee's count could only ever
+  // have been zero. Since an admin's decision notifies the employee who raised
+  // the issue, an employee has rows of their own here — and a bell that never
+  // lights up for the one person waiting on an answer was the whole complaint.
+  // Rows stay pinned to `user_id = caller` in every endpoint, so this widens the
+  // FEED and not the visibility of anybody's data.
+  const unreadIssues = useUnreadAttendancePayrollNotifications()
+
+  // Admins review the whole company's issues at /attendance/notifications, which
+  // is behind AttendanceGuard. An employee's door onto the same feed sits beside
+  // their own issue list instead.
+  //
+  // ONE door per role. /payroll/notifications still resolves — it is the same
+  // shared feed and old links must keep working — but the sidebar no longer
+  // offers a second entry to the identical queue.
+  const notificationsHref = isAdmin ? '/attendance/notifications' : '/my-issues/notifications'
 
   return (
     <div className="boe-app-shell">
@@ -81,7 +116,7 @@ export function PayrollLayout({
         onClick={() => setSidebarOpen(false)}
       />
 
-      {/* Sidebar */}
+      {/* Sidebar — the same element on desktop and mobile */}
       <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
 
         {/* Brand header */}
@@ -90,7 +125,7 @@ export function PayrollLayout({
             <BoeBrandIcon />
             <div>
               <div className="boe-sidebar-brand-name">BOE</div>
-              <div className="boe-sidebar-brand-sub">Payroll</div>
+              <div className="boe-sidebar-brand-sub">{ATTENDANCE_PAYROLL_MODULE_NAME}</div>
             </div>
           </div>
           <button
@@ -113,14 +148,13 @@ export function PayrollLayout({
         {/* Nav */}
         <div className="boe-sidebar-section">
           {navItems.map(item => {
-            const active = item.path === '/payroll'
-              ? pathname === item.path
-              : pathname.startsWith(item.path)
+            const active = isAttendancePayrollNavItemActive(pathname, item)
             return (
               <button
                 key={item.path}
                 className={`boe-nav-item${active ? ' active' : ''}`}
                 onClick={() => navTo(item.path)}
+                aria-current={active ? 'page' : undefined}
                 style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
               >
                 <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
@@ -130,15 +164,15 @@ export function PayrollLayout({
               </button>
             )
           })}
-
         </div>
 
-        {/* The Payroll door into the shared Attendance & Payroll issue feed.
-            Same rows, same count and now the same two-state bell as the
-            Attendance sidebar — see /payroll/notifications. */}
+        {/* The issue feed, in the shape every other module uses: the large alert
+            while something is unread, the plain nav entry otherwise. This is the
+            module's only door onto the feed — same rows, same count, same query
+            cache for admins and employees; only the destination differs by role. */}
         <IssueNotificationBell
           unread={unreadIssues}
-          href="/payroll/notifications"
+          href={notificationsHref}
           onNavigate={() => setSidebarOpen(false)}
         />
 
@@ -146,7 +180,9 @@ export function PayrollLayout({
         <ViewModeSidebarSection
           profile={profile}
           onSignOut={onSignOut}
-          accountSettingsHref="/account?returnTo=/payroll"
+          // Back to the page they left, rather than to whichever half of the
+          // module the old two shells happened to name.
+          accountSettingsHref={`/account?returnTo=${encodeURIComponent(pathname)}`}
         />
 
       </aside>

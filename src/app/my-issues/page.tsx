@@ -35,7 +35,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { colors } from '@/lib/tokens'
@@ -243,7 +243,7 @@ function MyIssues() {
   const closeHistory = () => { setHistoryKey(null); setDeepLinkClosed(true) }
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="My Issues"
       subtitle="Attendance and payroll problems you have reported"
@@ -400,7 +400,7 @@ function MyIssues() {
           onClose={closeHistory}
         />
       )}
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }
 

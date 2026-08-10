@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { useRefresh } from '@/contexts/RefreshContext'
@@ -170,7 +170,7 @@ export default function AttendanceRecordsPage() {
   if (loading) return <LoadingScreen />
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Attendance Records"
       subtitle="View imported fingerprint attendance data"
@@ -386,6 +386,6 @@ export default function AttendanceRecordsPage() {
         )}
 
       </div>
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }

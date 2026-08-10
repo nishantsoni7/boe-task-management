@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { AttendanceLayout } from '@/components/layout/AttendanceLayout'
+import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -185,7 +185,7 @@ export default function CorrectionLogPage() {
   }
 
   return (
-    <AttendanceLayout
+    <AttendancePayrollLayout
       profile={profile}
       title="Attendance Correction Log"
       subtitle="Audit trail of attendance records created or modified during import"
@@ -381,6 +381,6 @@ export default function CorrectionLogPage() {
         </div>
 
       </div>
-    </AttendanceLayout>
+    </AttendancePayrollLayout>
   )
 }
