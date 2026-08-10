@@ -14,7 +14,7 @@
 // Nothing here decides what a row may do — payrollRowActions() and
 // payrollAttention() do, and they are shared with the tests.
 
-import { AlertTriangle, Eye, History, Lock, RefreshCw, Unlock } from 'lucide-react'
+import { AlertTriangle, Eye, History, Lock, RefreshCw, Trash2, Unlock } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { PayrollModal } from '@/components/payroll/PayrollModal'
 import {
@@ -90,6 +90,7 @@ const ACTION_ICON: Record<PayrollPeriodAction, typeof RefreshCw> = {
   regenerate: RefreshCw,
   lock:       Lock,
   unlock:     Unlock,
+  delete:     Trash2,
 }
 
 /** Per-action colour for the icon buttons. Neutral unless the action says otherwise. */
@@ -99,6 +100,10 @@ const ICON_TONE: Partial<Record<PayrollPeriodAction, React.CSSProperties>> = {
   // Reopening a finalised month is an amber decision, outlined not filled: the
   // one filled button in the row stays the primary action.
   unlock: { color: '#B45309', borderColor: 'rgba(232,160,48,0.55)' },
+  // The only destructive control on the page, and the only red one. Outlined
+  // rather than filled for the same reason as Unlock — a filled red button in
+  // every row would read as the thing to click.
+  delete: { color: '#C0392B', borderColor: 'rgba(192,57,43,0.42)' },
 }
 
 export type PayrollRowActionBarProps = {
@@ -119,16 +124,28 @@ export type PayrollRowActionBarProps = {
   onLock: () => void
   onUnlock: () => void
   onViewResults: () => void
+  /**
+   * Opens the deletion dialog. Optional so the existing call sites and the row
+   * tests that predate deletion still compile; when it is absent the row simply
+   * does not offer the action, which is the correct behaviour for any surface
+   * that has not wired up the confirmation.
+   */
+  onDelete?: () => void
 }
 
 export function PayrollRowActionBar({
-  status, isBusy, canManage = true, onGenerate, onLock, onUnlock, onViewResults,
+  status, isBusy, canManage = true, onGenerate, onLock, onUnlock, onViewResults, onDelete,
 }: PayrollRowActionBarProps) {
   const resolved = payrollRowActions(status)
   // A draft has nothing to read and nothing a non-admin may do, so it offers
   // no control at all rather than a View button that opens an empty period.
   const primary   = canManage ? resolved.primary : 'view'
-  const secondary = canManage ? resolved.secondary : []
+  // Deletion is admin-only twice over — the API refuses a non-admin and the RPC
+  // refuses them again — so a viewer without management rights never sees the
+  // control, and neither does a surface that passed no handler for it.
+  const secondary = canManage
+    ? resolved.secondary.filter(a => a !== 'delete' || onDelete != null)
+    : []
 
   const run: Record<PayrollPeriodAction, () => void> = {
     view:       onViewResults,
@@ -136,6 +153,7 @@ export function PayrollRowActionBar({
     regenerate: onGenerate,
     lock:       onLock,
     unlock:     onUnlock,
+    delete:     onDelete ?? (() => {}),
   }
 
   // Only the two engine actions are long-running, so only they show progress

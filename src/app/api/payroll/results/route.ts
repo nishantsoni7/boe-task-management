@@ -14,12 +14,19 @@ export async function GET(req: NextRequest) {
   if (isResponse(auth)) return auth
   const svc = auth.svc
 
-  // Fetch period metadata for the Lock button and lock display
+  // Fetch period metadata for the Lock button and lock display.
+  //
+  // A missing period is a 404, not an empty results list. Since a payroll period
+  // can be permanently deleted (POST /api/payroll/delete), a stale bookmark or a
+  // tab left open on a deleted month must land on "not found" rather than on a
+  // screen that looks like a real payroll with no employees in it.
   const { data: period } = await svc
     .from('payroll_periods')
     .select('payroll_month, payroll_year, status, locked_at')
     .eq('id', periodId)
-    .single()
+    .maybeSingle()
+
+  if (!period) return NextResponse.json({ error: 'Payroll period not found' }, { status: 404 })
 
   const { data: results, error: resultsErr } = await svc
     .from('payroll_results')
@@ -61,14 +68,12 @@ export async function GET(req: NextRequest) {
   })
 
   return NextResponse.json({
-    period: period
-      ? {
-          payroll_month: period.payroll_month,
-          payroll_year:  period.payroll_year,
-          status:        period.status,
-          locked_at:     period.locked_at ?? null,
-        }
-      : null,
+    period: {
+      payroll_month: period.payroll_month,
+      payroll_year:  period.payroll_year,
+      status:        period.status,
+      locked_at:     period.locked_at ?? null,
+    },
     results: rows,
   })
 }

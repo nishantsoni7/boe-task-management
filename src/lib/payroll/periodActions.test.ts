@@ -43,7 +43,7 @@ describe('payrollRowActions', () => {
   test('a generated row leads with View Payroll', () => {
     const { primary, secondary } = payrollRowActions('generated')
     assert.equal(primary, 'view')
-    assert.deepEqual(secondary, ['regenerate', 'lock'])
+    assert.deepEqual(secondary, ['regenerate', 'lock', 'delete'])
   })
 
   test('a locked row never offers Regenerate or Lock — not even disabled', () => {
@@ -55,7 +55,7 @@ describe('payrollRowActions', () => {
   })
 
   test('a draft row generates rather than regenerates, and cannot be locked or viewed', () => {
-    assert.deepEqual(labelsOf('draft'), ['Generate Payroll'])
+    assert.deepEqual(labelsOf('draft'), ['Generate Payroll', 'Delete Payroll'])
   })
 
   test('an unlocked period offers exactly what it offered before it was locked', () => {
@@ -63,7 +63,7 @@ describe('payrollRowActions', () => {
     // "Regenerate Payroll and Lock Payroll become available again" holds by
     // construction rather than by a separate code path.
     assert.deepEqual(payrollRowActions('generated'), payrollRowActions('generated'))
-    assert.deepEqual(labelsOf('generated'), ['View Payroll', 'Regenerate Payroll', 'Lock Payroll'])
+    assert.deepEqual(labelsOf('generated'), ['View Payroll', 'Regenerate Payroll', 'Lock Payroll', 'Delete Payroll'])
   })
 
   test('every action has a label, and the labels are the standard wording', () => {
@@ -73,6 +73,7 @@ describe('payrollRowActions', () => {
       regenerate: 'Regenerate Payroll',
       lock:       'Lock Payroll',
       unlock:     'Unlock Payroll',
+      delete:     'Delete Payroll',
     })
   })
 })
