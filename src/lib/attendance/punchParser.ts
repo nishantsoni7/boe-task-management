@@ -186,6 +186,57 @@ function punchCell(raw: string): string {
   return v === '' || v === '--:--' ? '' : v
 }
 
+/** Lower-cased, whitespace-collapsed — the form header labels are compared in. */
+function normaliseHeader(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/**
+ * The labels a horizontal workbook may use over its employee-code column.
+ *
+ * The exports differ only in what they call this column. Our own fingerprint
+ * machine writes 'Empcode'; the monthly workbook we receive from Santosh writes
+ * 'No.'. The layout underneath — a day per column, every punch of a day in one
+ * cell — is the same file shape, so it is read by the same code path rather than
+ * by a third format reader that would immediately start drifting from this one.
+ *
+ * Matched case-insensitively, and always TOGETHER WITH a 'Name' cell in the next
+ * column. On its own 'No.' is far too common a spreadsheet heading to treat as a
+ * format signal; 'No.' immediately left of 'Name' with numbered day columns to
+ * the right is not.
+ */
+export const EMPLOYEE_CODE_HEADER_LABELS = [
+  'empcode',
+  'emp code',
+  'emp. code',
+  'employee code',
+  'no.',
+  'no',
+] as const
+
+export function isEmployeeCodeHeader(raw: string): boolean {
+  return (EMPLOYEE_CODE_HEADER_LABELS as readonly string[]).includes(normaliseHeader(raw))
+}
+
+/**
+ * The punch times in one day cell, in the order the file lists them.
+ *
+ * Splitting used to be newline-only. That is how our own machine writes a
+ * multi-punch day, but it is not the only way: the same day arrives from other
+ * exports space-separated ("10:07 13:02 18:36") or comma-separated, and on a
+ * newline-only split the whole cell fails the HH:MM shape and the day is
+ * silently DROPPED — an attendance day turned into an absence by a separator.
+ *
+ * Every separator below is whitespace or punctuation that cannot occur inside
+ * "HH:MM", so a newline-separated cell splits exactly as it always did.
+ */
+export function splitPunchCell(raw: string): string[] {
+  return raw
+    .split(/[\s,;|/]+/)
+    .map(s => s.trim())
+    .filter(s => hhmmToIstMinutes(s) !== null)
+}
+
 // ─── Time helpers ─────────────────────────────────────────────────────────────
 
 const HHMM = /^(\d{1,2}):(\d{2})$/
@@ -285,17 +336,35 @@ function parseFormatA(ws: XLSX.WorkSheet, monthYear: { year: number; month: numb
 }
 
 // ─── Format B: horizontal "List of Logs", all punches in one cell ────────────
+//
+// Two workbooks share this layout and differ only in surface detail: our own
+// machine's "List of Logs" export, and the monthly workbook received from
+// Santosh, which heads its code column 'No.' instead of 'Empcode', omits the
+// weekday row, and may separate a day's punches with spaces rather than
+// newlines. All three differences are absorbed here rather than in a third
+// format reader, so a fix to how a horizontal day is read reaches both files.
+
+/**
+ * The row carrying the employee-code and Name headings, or -1.
+ *
+ * Shared by the reader below and the format detector at the bottom of this
+ * module, because those two answering the question differently is how a file
+ * gets detected as horizontal and then read as empty.
+ */
+function findHorizontalHeaderRow(ws: XLSX.WorkSheet): number {
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
+  for (let r = range.s.r; r <= Math.min(range.e.r, 10); r++) {
+    if (isEmployeeCodeHeader(cellStr(ws, r, 0)) && normaliseHeader(cellStr(ws, r, 1)) === 'name') {
+      return r
+    }
+  }
+  return -1
+}
 
 function parseFormatB(ws: XLSX.WorkSheet, monthYear: { year: number; month: number }): EmployeeBlock[] {
   const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
 
-  let headerRow = -1
-  for (let r = range.s.r; r <= Math.min(range.e.r, 10); r++) {
-    if (cellStr(ws, r, 0) === 'Empcode' && cellStr(ws, r, 1) === 'Name') {
-      headerRow = r
-      break
-    }
-  }
+  const headerRow = findHorizontalHeaderRow(ws)
   if (headerRow === -1) return []
 
   // col → day number (1-31) from the header row
@@ -306,26 +375,33 @@ function parseFormatB(ws: XLSX.WorkSheet, monthYear: { year: number; month: numb
   }
 
   const blocks: EmployeeBlock[] = []
-  // headerRow + 1 is the weekday-name row — skip it
-  for (let r = headerRow + 2; r <= range.e.r; r++) {
+  // Scanning starts at headerRow + 1, not + 2. Our own export puts a row of
+  // weekday names there, which is skipped below because its employee-code cell
+  // is empty; a workbook that has no such row (Santosh's does not) used to lose
+  // its FIRST EMPLOYEE to an unconditional +2. Skipping by what the row contains
+  // rather than by where it sits reads both.
+  for (let r = headerRow + 1; r <= range.e.r; r++) {
     const empcode = cellStr(ws, r, 0).trim()
     const name    = cellStr(ws, r, 1).trim()
     if (!empcode) continue
+    // A repeated header — some exports restate it per page — is not an employee.
+    if (isEmployeeCodeHeader(empcode) && normaliseHeader(name) === 'name') continue
 
     const days: DayPunches[] = []
     for (const [col, day] of colToDay) {
       const cell = ws[XLSX.utils.encode_cell({ r, c: col })]
       if (!cell) continue
-      const raw = String(cell.v ?? cell.w ?? '').trim()
+      // A cell holding a real Excel time is a NUMBER (0.42…), and stringifying
+      // that yields a fraction no clock parser will accept. `w` is the text the
+      // spreadsheet displays, which is the "HH:MM" a human sees, so it is
+      // preferred whenever the value is not already text.
+      const raw = (typeof cell.v === 'string' ? cell.v : (cell.w ?? String(cell.v ?? ''))).trim()
       if (!raw) continue
 
       // Only real clock times survive. A cell entry that matches the shape but
       // not the range ("25:99") is discarded here rather than being allowed to
       // decide a direction.
-      const punches = raw
-        .split(/[\n\r]+/)
-        .map(s => s.trim())
-        .filter(s => hhmmToIstMinutes(s) !== null)
+      const punches = splitPunchCell(raw)
 
       if (punches.length === 0) continue
 
@@ -368,14 +444,11 @@ export function parseAttendanceWorkbook(buffer: Buffer): ParsedWorkbook {
   const monthYear = parseMonthYear(ws, wb.SheetNames[0])
   if (!monthYear) throw new Error(MONTH_YEAR_PARSE_ERROR)
 
-  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1')
-  for (let r = range.s.r; r <= Math.min(range.e.r, 10); r++) {
-    if (cellStr(ws, r, 0) === 'Empcode' && cellStr(ws, r, 1) === 'Name') {
-      return {
-        blocks: parseFormatB(ws, monthYear),
-        format: 'B',
-        deviceFormat: 'Fingerprint Machine Export (Horizontal Row Format)',
-      }
+  if (findHorizontalHeaderRow(ws) !== -1) {
+    return {
+      blocks: parseFormatB(ws, monthYear),
+      format: 'B',
+      deviceFormat: 'Fingerprint Machine Export (Horizontal Row Format)',
     }
   }
 

@@ -7,6 +7,10 @@ import {
   utcToIST,
   type EmployeeBlock,
 } from '@/lib/attendance/punchParser'
+import {
+  parseManualMappings,
+  resolveEmployeeMapping,
+} from '@/lib/attendance/employeeMapping'
 import type { PunchDirectionSource } from '@/lib/attendance/punchDirection'
 
 // Admin only. This route reads every employee's stored punches for the month in
@@ -42,6 +46,10 @@ export async function POST(req: NextRequest) {
 
   let fileBuffer: Buffer
   let fileName = ''
+  // The employees an admin named by hand for codes the device lookup could not
+  // place. Read here and applied below through the SAME resolver the import
+  // uses, so this preview describes the import that the admin is about to run.
+  let manualMappingsRaw: unknown = null
   try {
     const form = await req.formData()
     const file = form.get('file')
@@ -50,8 +58,14 @@ export async function POST(req: NextRequest) {
     }
     fileName = (file as File).name
     fileBuffer = Buffer.from(await (file as File).arrayBuffer())
+    manualMappingsRaw = form.get('manualMappings')
   } catch {
     return NextResponse.json({ error: 'Failed to read uploaded file' }, { status: 400 })
+  }
+
+  const parsedMappings = parseManualMappings(manualMappingsRaw)
+  if (!parsedMappings.ok) {
+    return NextResponse.json({ error: parsedMappings.error }, { status: 400 })
   }
 
   let blocks: EmployeeBlock[]
@@ -85,10 +99,28 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // The people an admin is allowed to name for an unmatched code — every live
+  // employee, not just the ones carrying a device code, since the whole point is
+  // that the person in question has no device code to match on.
+  const { data: selectableRows, error: selectableErr } = await svc
+    .from('users')
+    .select('id, full_name')
+    .or('is_deleted.eq.false,is_deleted.is.null')
+  if (selectableErr) return NextResponse.json({ error: selectableErr.message }, { status: 500 })
+
+  const mappingResult = resolveEmployeeMapping({
+    blocks,
+    fingerprintToUser: fpToUser,
+    manualMappings: parsedMappings.mappings,
+    selectableUsers: selectableRows ?? [],
+  })
+  if (!mappingResult.ok) {
+    return NextResponse.json({ error: mappingResult.error }, { status: 400 })
+  }
+  const { resolved, unmatched: unmatchedEntries, applied: appliedMappings } = mappingResult.mapping
+
   // Classify each employee block
-  type UnmatchedEntry = { excel_code: string; excel_name: string; days: number }
   const matchedNames: string[] = []
-  const unmatchedEntries: UnmatchedEntry[] = []
 
   type PendingRow = {
     user_id: string
@@ -107,11 +139,8 @@ export async function POST(req: NextRequest) {
 
   for (const block of blocks) {
     totalRows += block.days.length
-    const matched = fpToUser.get(block.empcode)
-    if (!matched) {
-      unmatchedEntries.push({ excel_code: block.empcode, excel_name: block.name, days: block.days.length })
-      continue
-    }
+    const matched = resolved.get(block.empcode)
+    if (!matched) continue  // still unmatched — already listed by the resolver
     matchedNames.push(matched.name)
     for (const day of block.days) {
       // Same builder the import uses, so a day this preview counts as new or
@@ -232,6 +261,10 @@ export async function POST(req: NextRequest) {
       matchedCount:      matchedNames.length,
       unmatchedCount:    unmatchedEntries.length,
       unmatchedEntries,
+      // What the manual selections resolved to, echoed so the upload screen can
+      // state whose attendance each hand-mapped code is about to become — and so
+      // the admin confirms against the server's reading, not the browser's.
+      manualMappings:    appliedMappings,
       newCount,
       unchangedCount,
       modifiedCount,

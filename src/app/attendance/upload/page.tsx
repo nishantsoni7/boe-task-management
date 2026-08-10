@@ -14,6 +14,27 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 type UnmatchedEntry = { excel_code: string; excel_name: string; days: number }
 
+/** One code an admin named an employee for, as the server resolved it. */
+type AppliedMapping = {
+  excel_code:    string
+  excel_name:    string
+  user_id:       string
+  employee_name: string
+  days:          number
+}
+
+/** The choice sent back to both routes. */
+type ManualMapping = { excel_code: string; user_id: string }
+
+/** An employee the admin can pick, from /api/employee-list. */
+type SelectableEmployee = {
+  id:                        string
+  full_name:                 string | null
+  employee_code?:            string | null
+  fingerprint_employee_code?: string | null
+  is_active?:                boolean | null
+}
+
 type ModifiedRecord = {
   employeeName: string
   date:         string
@@ -33,6 +54,7 @@ type PreviewSummary = {
   matchedCount:      number
   unmatchedCount:    number
   unmatchedEntries:  UnmatchedEntry[]
+  manualMappings:    AppliedMapping[]
   newCount:          number
   unchangedCount:    number
   modifiedCount:     number
@@ -66,6 +88,7 @@ type ImportResult = {
   skipped:   number
   importedEmployees: ImportedEmployee[]
   skippedEmployees:  SkippedEmployee[]
+  manualMappings?:   AppliedMapping[]
   errors:    string[]
 }
 
@@ -99,6 +122,24 @@ function SectionCard({ children, warning }: { children: React.ReactNode; warning
   )
 }
 
+/**
+ * The employees whose text matches `query`, best-effort and case-insensitive.
+ *
+ * Name, HR code and fingerprint code are all searched because an admin
+ * reconciling a file knows the person by whichever of those the file gave them.
+ * An empty query returns everyone, so opening the picker shows a list rather
+ * than a blank box the admin has to guess at.
+ */
+function searchEmployees(employees: SelectableEmployee[], query: string): SelectableEmployee[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return employees
+  return employees.filter(e =>
+    (e.full_name ?? '').toLowerCase().includes(q) ||
+    (e.employee_code ?? '').toLowerCase().includes(q) ||
+    (e.fingerprint_employee_code ?? '').toLowerCase().includes(q)
+  )
+}
+
 function CardHeader({ children, warning }: { children: React.ReactNode; warning?: boolean }) {
   return (
     <div style={{
@@ -127,6 +168,25 @@ export default function AttendanceUploadPage() {
   const [result, setResult]     = useState<ImportResult | null>(null)
   const [pageError, setPageError] = useState<string | null>(null)
 
+  // ── Manual employee matching ──
+  // The codes an admin has named an employee for. Held here, sent to BOTH the
+  // preview and the import, and never applied client-side: the server resolves
+  // them, so the numbers on screen are the numbers the import will produce.
+  const [manualMappings, setManualMappings] = useState<ManualMapping[]>([])
+  const [employees, setEmployees]           = useState<SelectableEmployee[]>([])
+  const [employeesError, setEmployeesError] = useState<string | null>(null)
+  const [loadingEmployees, setLoadingEmployees] = useState(false)
+  /** Which unmatched code currently has its search box open. */
+  const [pickerFor, setPickerFor] = useState<string | null>(null)
+  const [pickerQuery, setPickerQuery] = useState('')
+  /**
+   * A chosen employee awaiting confirmation. Choosing is not assigning — this
+   * writes attendance onto a named person, so the admin says who and then says
+   * yes, rather than a stray click in a list doing both.
+   */
+  const [pendingChoice, setPendingChoice] =
+    useState<{ entry: UnmatchedEntry; employee: SelectableEmployee } | null>(null)
+
   const fileRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -153,24 +213,63 @@ export default function AttendanceUploadPage() {
     router.replace('/login')
   }
 
+  const resetManualMatching = () => {
+    setManualMappings([])
+    setPickerFor(null)
+    setPickerQuery('')
+    setPendingChoice(null)
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null
     setFile(f)
     setPreview(null)
     setResult(null)
     setPageError(null)
+    // A new file means new codes. Carrying the previous file's selections over
+    // would offer to import this file's days under the last file's names.
+    resetManualMatching()
+  }
+
+  /** The employee list for the picker, fetched once and only when it is needed. */
+  const loadEmployees = async () => {
+    if (employees.length > 0 || loadingEmployees) return
+    setLoadingEmployees(true)
+    setEmployeesError(null)
+    try {
+      const res  = await fetch('/api/employee-list', { headers: { 'Authorization': `Bearer ${token}` } })
+      const json = await res.json()
+      if (!res.ok) {
+        setEmployeesError(json.error ?? 'Could not load the employee list')
+      } else {
+        const list = (json.employees ?? []) as SelectableEmployee[]
+        setEmployees(
+          list
+            .filter(e => e.is_active !== false)
+            .sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? ''))
+        )
+      }
+    } catch {
+      setEmployeesError('Network error while loading the employee list')
+    }
+    setLoadingEmployees(false)
   }
 
   // Phase 1: Preview
-  const handlePreview = async () => {
+  //
+  // `mappings` is passed explicitly rather than read from state because a
+  // preview re-run immediately follows a selection, and React state is not yet
+  // the new value at that point. Sending the list we just built is what keeps
+  // the preview and the import describing the same mapping.
+  const handlePreview = async (mappings: ManualMapping[] = manualMappings) => {
     if (!file) return
     setPreviewing(true)
-    setPreview(null)
     setResult(null)
     setPageError(null)
 
     const form = new FormData()
     form.append('file', file)
+    if (mappings.length > 0) form.append('manualMappings', JSON.stringify(mappings))
 
     try {
       const res  = await fetch('/api/attendance/preview', {
@@ -191,6 +290,29 @@ export default function AttendanceUploadPage() {
     setPreviewing(false)
   }
 
+  /** Confirmed choice → new mapping list → a fresh preview built from it. */
+  const handleConfirmChoice = async () => {
+    if (!pendingChoice) return
+    const next: ManualMapping[] = [
+      ...manualMappings.filter(m => m.excel_code !== pendingChoice.entry.excel_code),
+      { excel_code: pendingChoice.entry.excel_code, user_id: pendingChoice.employee.id },
+    ]
+    setManualMappings(next)
+    setPendingChoice(null)
+    setPickerFor(null)
+    setPickerQuery('')
+    await handlePreview(next)
+  }
+
+  const handleRemoveMapping = async (excelCode: string) => {
+    const next = manualMappings.filter(m => m.excel_code !== excelCode)
+    setManualMappings(next)
+    setPendingChoice(null)
+    setPickerFor(null)
+    setPickerQuery('')
+    await handlePreview(next)
+  }
+
   // Phase 2: Confirm Import
   const handleConfirmImport = async () => {
     if (!file || !preview) return
@@ -199,6 +321,8 @@ export default function AttendanceUploadPage() {
 
     const form = new FormData()
     form.append('file', file)
+    // The same selections the preview above was built from.
+    if (manualMappings.length > 0) form.append('manualMappings', JSON.stringify(manualMappings))
 
     try {
       const res  = await fetch('/api/attendance/import', {
@@ -213,6 +337,7 @@ export default function AttendanceUploadPage() {
         setResult(json.summary)
         setPreview(null)
         setFile(null)
+        resetManualMatching()
         if (fileRef.current) fileRef.current.value = ''
       }
     } catch {
@@ -227,6 +352,7 @@ export default function AttendanceUploadPage() {
     setResult(null)
     setPageError(null)
     setFile(null)
+    resetManualMatching()
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -324,7 +450,7 @@ export default function AttendanceUploadPage() {
             </div>
 
             <button
-              onClick={handlePreview}
+              onClick={() => handlePreview()}
               disabled={!file || previewing || !canImport}
               style={{
                 ...btnBase,
@@ -426,34 +552,198 @@ export default function AttendanceUploadPage() {
                   <StatBox label="Unmatched" value={preview.unmatchedCount} color={preview.unmatchedCount > 0 ? '#F59E0B' : colors.tertiary} />
                 </div>
 
+                {/* Codes an admin named an employee for. Shown as the server
+                    resolved them, so what is confirmed here is what will run. */}
+                {preview.manualMappings.length > 0 && (
+                  <div style={{ marginBottom: preview.unmatchedEntries.length > 0 ? 16 : 0 }}>
+                    <div style={{ fontSize: 11, color: '#065F46', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                      Manually matched — these will be imported
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {preview.manualMappings.map(m => (
+                        <div key={m.excel_code} style={{
+                          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                          padding: '9px 12px', borderRadius: 8,
+                          background: 'rgba(16,185,129,0.07)',
+                          border: '1px solid rgba(16,185,129,0.3)',
+                          fontSize: 12.5, color: '#065F46',
+                        }}>
+                          <span style={{ fontFamily: 'monospace' }}>{m.excel_code}</span>
+                          <span style={{ color: '#047857' }}>{m.excel_name || 'unnamed in file'}</span>
+                          <span style={{ color: '#047857' }}>{m.days} day{m.days !== 1 ? 's' : ''}</span>
+                          <span aria-hidden>→</span>
+                          <strong style={{ fontWeight: 700 }}>{m.employee_name}</strong>
+                          <button
+                            onClick={() => handleRemoveMapping(m.excel_code)}
+                            disabled={previewing || confirming}
+                            style={{
+                              marginLeft: 'auto', fontSize: 11.5, fontWeight: 600,
+                              padding: '4px 10px', borderRadius: 6,
+                              background: 'transparent', color: '#065F46',
+                              border: '1px solid rgba(16,185,129,0.45)',
+                              cursor: previewing || confirming ? 'not-allowed' : 'pointer',
+                              opacity: previewing || confirming ? 0.5 : 1,
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {preview.unmatchedEntries.length > 0 && (
                   <>
                     <div style={{ fontSize: 11, color: '#92400E', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                      Unmatched employees — records will be skipped
+                      Unmatched employees — skipped unless you choose who they are
                     </div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                      <thead>
-                        <tr style={{ background: 'rgba(245,158,11,0.08)' }}>
-                          {['Name (from file)', 'Device Code', 'Days'].map(h => (
-                            <th key={h} style={{
-                              padding: '6px 10px', textAlign: 'left',
-                              fontSize: 10, fontWeight: 600, color: '#92400E',
-                              textTransform: 'uppercase', letterSpacing: '0.05em',
-                              borderBottom: '1px solid rgba(245,158,11,0.2)',
-                            }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {preview.unmatchedEntries.map((u, i) => (
-                          <tr key={i} style={{ borderBottom: i < preview.unmatchedEntries.length - 1 ? '1px solid rgba(245,158,11,0.15)' : 'none' }}>
-                            <td style={{ padding: '7px 10px', color: '#78350F' }}>{u.excel_name || '—'}</td>
-                            <td style={{ padding: '7px 10px', color: '#92400E', fontFamily: 'monospace' }}>{u.excel_code}</td>
-                            <td style={{ padding: '7px 10px', color: '#92400E' }}>{u.days}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {preview.unmatchedEntries.map(u => {
+                        const open      = pickerFor === u.excel_code
+                        const confirmed = pendingChoice?.entry.excel_code === u.excel_code
+                        const matches   = open && !confirmed
+                          ? searchEmployees(employees, pickerQuery).slice(0, 40)
+                          : []
+                        return (
+                          <div key={u.excel_code} style={{
+                            padding: '10px 12px', borderRadius: 8,
+                            background: 'rgba(245,158,11,0.06)',
+                            border: '1px solid rgba(245,158,11,0.28)',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: '#78350F' }}>
+                              <span style={{ fontFamily: 'monospace', color: '#92400E' }}>{u.excel_code}</span>
+                              <span style={{ fontWeight: 500 }}>{u.excel_name || 'unnamed in file'}</span>
+                              <span style={{ color: '#92400E' }}>{u.days} day{u.days !== 1 ? 's' : ''}</span>
+                              {!open && (
+                                <button
+                                  onClick={() => { setPickerFor(u.excel_code); setPickerQuery(''); setPendingChoice(null); loadEmployees() }}
+                                  disabled={previewing || confirming}
+                                  style={{
+                                    marginLeft: 'auto', fontSize: 11.5, fontWeight: 600,
+                                    padding: '5px 12px', borderRadius: 6,
+                                    background: '#F59E0B', color: '#fff', border: 'none',
+                                    cursor: previewing || confirming ? 'not-allowed' : 'pointer',
+                                    opacity: previewing || confirming ? 0.5 : 1,
+                                  }}
+                                >
+                                  Choose employee
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Confirmation gate — naming the employee and
+                                agreeing to import as them are two steps. */}
+                            {confirmed && pendingChoice && (
+                              <div style={{
+                                marginTop: 10, padding: '10px 12px', borderRadius: 7,
+                                background: colors.base, border: `1.5px solid ${colors.border}`,
+                              }}>
+                                <div style={{ fontSize: 12.5, color: colors.primary, lineHeight: 1.6 }}>
+                                  Import {u.days} day{u.days !== 1 ? 's' : ''} recorded under code{' '}
+                                  <strong style={{ fontFamily: 'monospace' }}>{u.excel_code}</strong>
+                                  {u.excel_name ? ` ("${u.excel_name}")` : ''} as{' '}
+                                  <strong>{pendingChoice.employee.full_name ?? 'this employee'}</strong>?
+                                </div>
+                                <div style={{ fontSize: 11.5, color: colors.tertiary, marginTop: 6 }}>
+                                  These punches will be written to that employee&apos;s attendance and counted in their payroll.
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                                  <button
+                                    onClick={handleConfirmChoice}
+                                    disabled={previewing}
+                                    style={{
+                                      fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6,
+                                      background: '#10B981', color: '#fff', border: 'none',
+                                      cursor: previewing ? 'not-allowed' : 'pointer',
+                                      opacity: previewing ? 0.5 : 1,
+                                    }}
+                                  >
+                                    {previewing ? 'Applying…' : 'Yes, import as this employee'}
+                                  </button>
+                                  <button
+                                    onClick={() => setPendingChoice(null)}
+                                    disabled={previewing}
+                                    style={{
+                                      fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 6,
+                                      background: colors.raised, color: colors.secondary,
+                                      border: `1px solid ${colors.border}`,
+                                      cursor: previewing ? 'not-allowed' : 'pointer',
+                                    }}
+                                  >
+                                    Back
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Searchable selector */}
+                            {open && !confirmed && (
+                              <div style={{ marginTop: 10 }}>
+                                <input
+                                  autoFocus
+                                  value={pickerQuery}
+                                  onChange={e => setPickerQuery(e.target.value)}
+                                  placeholder="Search by name or employee code…"
+                                  style={{ ...inputStyle, fontSize: 12.5 }}
+                                />
+                                {loadingEmployees && (
+                                  <div style={{ fontSize: 12, color: colors.tertiary, padding: '8px 2px' }}>Loading employees…</div>
+                                )}
+                                {employeesError && (
+                                  <div style={{ fontSize: 12, color: '#DC2626', padding: '8px 2px' }}>{employeesError}</div>
+                                )}
+                                {!loadingEmployees && !employeesError && (
+                                  <div style={{
+                                    marginTop: 6, maxHeight: 210, overflowY: 'auto',
+                                    border: `1px solid ${colors.border}`, borderRadius: 7,
+                                    background: colors.base,
+                                  }}>
+                                    {matches.length === 0 ? (
+                                      <div style={{ fontSize: 12, color: colors.tertiary, padding: '10px 12px' }}>
+                                        No employee matches that search.
+                                      </div>
+                                    ) : matches.map(emp => (
+                                      <button
+                                        key={emp.id}
+                                        onClick={() => setPendingChoice({ entry: u, employee: emp })}
+                                        style={{
+                                          display: 'block', width: '100%', textAlign: 'left',
+                                          padding: '8px 12px', fontSize: 12.5,
+                                          background: 'transparent', border: 'none',
+                                          borderBottom: `1px solid ${colors.border}`,
+                                          color: colors.primary, cursor: 'pointer',
+                                        }}
+                                      >
+                                        <span style={{ fontWeight: 500 }}>{emp.full_name ?? 'Unnamed'}</span>
+                                        {emp.employee_code && (
+                                          <span style={{ color: colors.tertiary, fontFamily: 'monospace', fontSize: 11, marginLeft: 8 }}>
+                                            {emp.employee_code}
+                                          </span>
+                                        )}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => { setPickerFor(null); setPickerQuery('') }}
+                                  style={{
+                                    marginTop: 8, fontSize: 11.5, fontWeight: 600,
+                                    padding: '5px 12px', borderRadius: 6,
+                                    background: colors.raised, color: colors.secondary,
+                                    border: `1px solid ${colors.border}`, cursor: 'pointer',
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+
                     <div style={{ padding: '10px 0 0' }}>
                       <Link
                         href="/attendance/employees"
@@ -680,6 +970,24 @@ export default function AttendanceUploadPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </SectionCard>
+            )}
+
+            {/* Manually matched codes — the one fact about this import that
+                cannot be recovered from the file afterwards. */}
+            {(result.manualMappings ?? []).length > 0 && (
+              <SectionCard>
+                <CardHeader>Manually matched codes</CardHeader>
+                <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {(result.manualMappings ?? []).map(m => (
+                    <div key={m.excel_code} style={{ fontSize: 12.5, color: colors.secondary }}>
+                      <span style={{ fontFamily: 'monospace', color: colors.tertiary }}>{m.excel_code}</span>
+                      {' '}
+                      {m.excel_name ? `("${m.excel_name}") ` : ''}
+                      imported as <strong style={{ color: colors.primary }}>{m.employee_name}</strong>
+                    </div>
+                  ))}
                 </div>
               </SectionCard>
             )}

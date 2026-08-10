@@ -22,6 +22,8 @@ import {
   parseAttendanceWorkbook,
   buildAttendanceRow,
   hhmmToIstMinutes,
+  isEmployeeCodeHeader,
+  splitPunchCell,
   toTimestamp,
   utcToIST,
   toDateStr,
@@ -87,6 +89,26 @@ function formatBWorkbook(cellsByDay: Record<number, string>): Buffer {
   for (let d = 1; d <= width - 2; d++) row.push(cellsByDay[d] ?? '')
 
   return workbook([title, header, weekdays, row])
+}
+
+/**
+ * The workbook received from Santosh: the same horizontal layout, but the code
+ * column is headed 'No.', there is no weekday row under the header, and a day's
+ * punches are separated by spaces rather than newlines.
+ */
+function santoshWorkbook(
+  cellsByDay: Record<number, string>,
+  opts: { code?: string; name?: string; header?: string } = {},
+): Buffer {
+  const width = 10
+  const title = Array<string>(width).fill(''); title[0] = 'Attendance Jun-2026'
+  const header: string[] = [opts.header ?? 'No.', 'Name']
+  for (let d = 1; d <= width - 2; d++) header.push(String(d))
+  const row: string[] = [opts.code ?? 'S-1', opts.name ?? 'Santosh Kumar']
+  for (let d = 1; d <= width - 2; d++) row.push(cellsByDay[d] ?? '')
+
+  // No weekday row — the employee row sits directly under the header.
+  return workbook([title, header, row])
 }
 
 function dayOf(blocks: EmployeeBlock[], day: number): DayPunches | undefined {
@@ -269,6 +291,123 @@ describe('Format B — the direction is inferred from the clock', () => {
     assert.equal(dayOf(blocks, 1)?.direction_source, 'confirmed')
     assert.equal(dayOf(blocks, 2)?.direction_source, 'inferred')
     assert.equal(dayOf(blocks, 2)?.in, '')
+  })
+})
+
+// ─── Santosh's workbook: the horizontal layout with a 'No.' code column ──────
+
+describe("Santosh's workbook — horizontal layout, 'No.' code header", () => {
+  test("'No.' over a Name column is recognised as the horizontal format", () => {
+    const { blocks, format, deviceFormat } = parseAttendanceWorkbook(
+      santoshWorkbook({ 1: '10:04 18:41' }),
+    )
+    assert.equal(format, 'B')
+    assert.equal(deviceFormat, 'Fingerprint Machine Export (Horizontal Row Format)')
+    assert.equal(blocks.length, 1)
+    assert.equal(blocks[0].empcode, 'S-1')
+    assert.equal(blocks[0].name, 'Santosh Kumar')
+    assert.equal(blocks[0].month, 6)
+    assert.equal(blocks[0].year, 2026)
+  })
+
+  test('the employee row directly under the header is not skipped as a weekday row', () => {
+    // The reader used to start at headerRow + 2 unconditionally. This workbook
+    // has no weekday row, so that swallowed its only employee and the file
+    // parsed as "no employee blocks found".
+    const { blocks } = parseAttendanceWorkbook(santoshWorkbook({ 2: '09:58 19:02' }))
+    assert.equal(blocks.length, 1, 'the first data row must survive')
+    assert.equal(dayOf(blocks, 2)?.in, '09:58')
+  })
+
+  test('space-separated punches: first and last are the pair', () => {
+    const { blocks } = parseAttendanceWorkbook(santoshWorkbook({ 3: '09:58 13:05 14:02 19:11' }))
+    const day = dayOf(blocks, 3)
+    assert.ok(day)
+    assert.equal(day.in, '09:58')
+    assert.equal(day.out, '19:11')
+    assert.equal(day.direction_source, 'confirmed')
+
+    const built = buildAttendanceRow(JUNE, day)
+    assert.equal(built.ok, true)
+    if (!built.ok) return
+    assert.equal(utcToIST(built.row.check_in_at), '09:58')
+    assert.equal(utcToIST(built.row.check_out_at), '19:11')
+    assert.equal(built.row.status, 'present')
+  })
+
+  test('comma-separated punches split the same way', () => {
+    const { blocks } = parseAttendanceWorkbook(santoshWorkbook({ 4: '10:01, 13:40, 18:55' }))
+    const day = dayOf(blocks, 4)
+    assert.ok(day)
+    assert.equal(day.in, '10:01')
+    assert.equal(day.out, '18:55')
+  })
+
+  test('a lone punch still goes through the divider, and is still inferred', () => {
+    const { blocks } = parseAttendanceWorkbook(santoshWorkbook({ 5: '18:30' }))
+    const day = dayOf(blocks, 5)
+    assert.ok(day)
+    assert.equal(day.in, '')
+    assert.equal(day.out, '18:30')
+    assert.equal(day.direction_source, 'inferred')
+  })
+
+  test('a day cell holding a real Excel time value is read from its display text', () => {
+    // aoa_to_sheet turns "10:07" typed as a time into a NUMBER. Stringifying
+    // that gives a fraction, which no clock parser accepts, so the day would be
+    // dropped — an attendance day silently becoming an absence.
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Attendance Jun-2026', '', ''],
+      ['No.', 'Name', '1'],
+      ['S-1', 'Santosh Kumar', ''],
+    ])
+    // `w` is not stored in the file — it is regenerated from the number format
+    // when the workbook is read, which is exactly how a real time cell arrives.
+    ws['C3'] = { t: 'n', v: 0.4215277777777778, z: 'hh:mm' }
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+    const { blocks } = parseAttendanceWorkbook(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer)
+
+    const day = dayOf(blocks, 1)
+    assert.ok(day, 'a time-typed cell must not be discarded')
+    assert.equal(day.in, '10:07')
+  })
+
+  test('the accepted code headers are matched case- and spacing-insensitively', () => {
+    for (const header of ['No.', 'no.', 'NO.', 'Empcode', 'EMPCODE', 'Emp Code', 'Employee Code']) {
+      const { blocks, format } = parseAttendanceWorkbook(
+        santoshWorkbook({ 1: '10:00 18:30' }, { header }),
+      )
+      assert.equal(format, 'B', header)
+      assert.equal(blocks.length, 1, header)
+      assert.equal(dayOf(blocks, 1)?.out, '18:30', header)
+    }
+    assert.ok(isEmployeeCodeHeader(' No. '))
+    assert.equal(isEmployeeCodeHeader('Sr'), false)
+    assert.equal(isEmployeeCodeHeader('Name'), false)
+  })
+
+  test('a repeated header row is not read as an employee', () => {
+    const buffer = workbook([
+      ['Attendance Jun-2026', '', ''],
+      ['No.', 'Name', '1'],
+      ['S-1', 'Santosh Kumar', '10:00 18:30'],
+      ['No.', 'Name', '1'],
+      ['S-2', 'Ravi Nair', '10:10 18:20'],
+    ])
+    const { blocks } = parseAttendanceWorkbook(buffer)
+    assert.deepEqual(blocks.map(b => b.empcode), ['S-1', 'S-2'])
+  })
+
+  test('splitPunchCell keeps order and drops anything that is not a clock time', () => {
+    assert.deepEqual(splitPunchCell('10:07 18:36'),      ['10:07', '18:36'])
+    assert.deepEqual(splitPunchCell('10:07\n18:36\n'),   ['10:07', '18:36'])
+    assert.deepEqual(splitPunchCell('10:07 , 18:36'),    ['10:07', '18:36'])
+    assert.deepEqual(splitPunchCell('10:07 / 18:36'),    ['10:07', '18:36'])
+    assert.deepEqual(splitPunchCell('--:-- 18:36'),      ['18:36'])
+    assert.deepEqual(splitPunchCell('25:99 18:36'),      ['18:36'])
+    assert.deepEqual(splitPunchCell('Absent'),           [])
+    assert.deepEqual(splitPunchCell(''),                 [])
   })
 })
 

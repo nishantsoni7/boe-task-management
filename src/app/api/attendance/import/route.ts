@@ -7,6 +7,10 @@ import {
   type EmployeeBlock,
   type ParsedAttendanceRow,
 } from '@/lib/attendance/punchParser'
+import {
+  parseManualMappings,
+  resolveEmployeeMapping,
+} from '@/lib/attendance/employeeMapping'
 import type { PunchDirectionSource } from '@/lib/attendance/punchDirection'
 
 // Admin only — see the note in ../preview/route.ts. The import writes every
@@ -44,6 +48,11 @@ export async function POST(req: NextRequest) {
   // Read file from multipart form
   let fileBuffer: Buffer
   let fileName = ''
+  // The same field ../preview/route.ts reads, carrying the same selections. The
+  // upload screen sends back exactly what it previewed with, and both routes run
+  // it through the same resolver, so the employee the admin confirmed on the
+  // preview is the employee written here.
+  let manualMappingsRaw: unknown = null
   try {
     const form = await req.formData()
     const file = form.get('file')
@@ -52,8 +61,14 @@ export async function POST(req: NextRequest) {
     }
     fileName   = (file as File).name
     fileBuffer = Buffer.from(await (file as File).arrayBuffer())
+    manualMappingsRaw = form.get('manualMappings')
   } catch {
     return NextResponse.json({ error: 'Failed to read uploaded file' }, { status: 400 })
+  }
+
+  const parsedMappings = parseManualMappings(manualMappingsRaw)
+  if (!parsedMappings.ok) {
+    return NextResponse.json({ error: parsedMappings.error }, { status: 400 })
   }
 
   // Parse XLS — the same call ../preview/route.ts makes, so what the admin
@@ -85,6 +100,40 @@ export async function POST(req: NextRequest) {
       fpToEntry.set(e.fingerprint_employee_code.trim(), entry)
       idToEntry.set(e.id, entry)
     }
+  }
+
+  // The people an admin may name for a code the lookup above could not place.
+  // Deliberately a separate read: the map above is intentionally not restricted
+  // to live employees (a departed colleague's historical attendance must still
+  // import by their device code), whereas a hand-picked employee must be one who
+  // is actually here to pick.
+  const { data: selectableRows, error: selectableErr } = await svc
+    .from('users')
+    .select('id, full_name, employee_code')
+    .or('is_deleted.eq.false,is_deleted.is.null')
+  if (selectableErr) return NextResponse.json({ error: selectableErr.message }, { status: 500 })
+
+  const mappingResult = resolveEmployeeMapping({
+    blocks,
+    fingerprintToUser: fpToEntry,
+    manualMappings: parsedMappings.mappings,
+    selectableUsers: selectableRows ?? [],
+  })
+  if (!mappingResult.ok) {
+    return NextResponse.json({ error: mappingResult.error }, { status: 400 })
+  }
+  const { resolved: resolvedEmployees, applied: appliedMappings } = mappingResult.mapping
+
+  // A hand-mapped employee has no fingerprint code, so they are absent from
+  // idToEntry and the per-employee report would name them by UUID. Add them.
+  const selectableById = new Map((selectableRows ?? []).map(u => [u.id, u]))
+  for (const m of appliedMappings) {
+    if (idToEntry.has(m.user_id)) continue
+    idToEntry.set(m.user_id, {
+      id: m.user_id,
+      name: m.employee_name,
+      employee_code: selectableById.get(m.user_id)?.employee_code ?? null,
+    })
   }
 
   // Detect month/year from the first block (all blocks share the same month)
@@ -143,7 +192,7 @@ export async function POST(req: NextRequest) {
   const involvedKeys = new Set<string>() // "userId|dateStr"
 
   for (const block of blocks) {
-    const entry = fpToEntry.get(block.empcode)
+    const entry = resolvedEmployees.get(block.empcode)
     if (!entry) {
       unmappedCodes.push(block.empcode)
       skipped    += block.days.length
@@ -376,6 +425,10 @@ export async function POST(req: NextRequest) {
       errors,
       importedEmployees,
       skippedEmployees,
+      // Which codes were placed by hand rather than by the device lookup. Shown
+      // on the result screen because "imported as" is the one fact about this
+      // import that is not recoverable from the file afterwards.
+      manualMappings: appliedMappings,
     },
   })
 }
