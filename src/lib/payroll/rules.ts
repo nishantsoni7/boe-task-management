@@ -353,14 +353,19 @@ export const RULE_CARDS: RuleCard[] = [
   {
     key: 'half_day',
     group: 'day',
+    // CORRECTED. This card said "3.75–5 hours" and there was a second card
+    // below it for a "Short Present" band of 2–3.75 hours. Neither described the
+    // engine any more: classification.ts merged the two bands, so everything
+    // from the presence floor up to the short-hours threshold is a half day.
+    //
+    // The old split made the cost of a day non-monotonic — four hours cost the
+    // employee half a day while three hours cost nothing — which is why it was
+    // merged. `threshold_half_day_hours` still exists in settings because it is
+    // pinned inside every period snapshot already written, but it no longer
+    // decides an outcome. Read classification.ts before changing this band.
     title: 'Half Day',
-    body: `${PRESENCE_THRESHOLD_HOURS.half_day}–${PRESENCE_THRESHOLD_HOURS.present_with_shortfall} effective hours. Counts as half a payable day.`,
-  },
-  {
-    key: 'short_present',
-    group: 'day',
-    title: 'Short Present',
-    body: `${PRESENCE_THRESHOLD_HOURS.short_present}–${PRESENCE_THRESHOLD_HOURS.half_day} effective hours. Counted as a present day, with no additional hourly cut.`,
+    body: `${PRESENCE_THRESHOLD_HOURS.short_present}–${PRESENCE_THRESHOLD_HOURS.present_with_shortfall} effective hours. Counts as half a payable day.`,
+    detail: 'One band, all the way down to the presence floor — working fewer hours can never cost less than working more.',
   },
   {
     key: 'absent',
