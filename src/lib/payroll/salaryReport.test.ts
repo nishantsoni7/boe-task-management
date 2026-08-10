@@ -50,7 +50,6 @@ function result(
     employee_code: `E${id}`,
     gross_salary: 26_000,
     total_deductions: 1_000,
-    pending_adjustment_total: 0,
     days_present: 24,
     net_salary: 25_000,
     ...over,
@@ -330,19 +329,22 @@ describe('what must never reach the report', () => {
 
 // ─── The WhatsApp salary summary ──────────────────────────────────────────────
 //
-// Five figures under each employee's name, and nothing else. The exclusions are
-// asserted as hard as the inclusions: a day count that reappears here leaves the
-// system in a message nobody can recall.
+// Name and Salary to be Booked always; Advance and Amount Payable only when a
+// non-zero advance applies. The exclusions are asserted as hard as the
+// inclusions: a day count that reappears here leaves the system in a message
+// nobody can recall, and a ₹0 advance line invites a reader to hunt for a
+// deduction that does not exist.
 
 describe('the WhatsApp salary summary', () => {
-  // The worked example the format was specified from.
+  // The worked example the format was specified from: 25,000 − 2,943 = 22,057
+  // booked, 3,433 advance, 18,624 payable.
   const EXAMPLE = result('1', 'Amit Sharma', {
-    gross_salary:             25_000,
-    total_deductions:          2_943,
-    pending_adjustment_total: -3_433,
-    days_present:                 22,
-    net_salary:               18_624,
+    gross_salary:  25_000,
+    total_deductions: 2_943,
+    days_present:        22,
+    net_salary:      22_057,
   })
+  const EXAMPLE_ADVANCE = adj('1', 'deduction', 'advance_recovery', 3_433)
 
   /** The lines belonging to one employee: their name and the figures under it. */
   function blockFor(text: string, name: string): string[] {
@@ -354,62 +356,96 @@ describe('the WhatsApp salary summary', () => {
     return block
   }
 
-  test('each employee shows exactly the five salary figures, in order', () => {
+  // ── 1. No adjustment ──────────────────────────────────────────────────────
+
+  test('with no advance, an employee shows only their name and Salary to be Booked', () => {
     const text = renderWhatsAppText(buildSalaryReport(7, 2026, [EXAMPLE], [], ['1']))
     assert.deepEqual(blockFor(text, 'Amit Sharma'), [
       'Amit Sharma',
-      'Gross Salary: ₹25,000',
-      'Attendance Deduction: -₹2,943',
+      'Salary to be Booked: ₹22,057',
+    ])
+  })
+
+  test('Gross Salary and Attendance Deduction are not on the message at all', () => {
+    const text = renderWhatsAppText(
+      buildSalaryReport(7, 2026, [EXAMPLE], [EXAMPLE_ADVANCE], ['1']),
+    )
+    assert.doesNotMatch(text, /Gross Salary/)
+    assert.doesNotMatch(text, /Attendance Deduction/)
+    // …and the gross figure itself is gone, not merely unlabelled.
+    assert.doesNotMatch(text, /25,000/)
+  })
+
+  // ── 2. An advance applies ─────────────────────────────────────────────────
+
+  test('the worked example renders exactly as specified', () => {
+    const text = renderWhatsAppText(
+      buildSalaryReport(7, 2026, [EXAMPLE], [EXAMPLE_ADVANCE], ['1']),
+    )
+    assert.deepEqual(blockFor(text, 'Amit Sharma'), [
+      'Amit Sharma',
       'Salary to be Booked: ₹22,057',
       'Advance: -₹3,433',
       'Amount Payable: ₹18,624',
     ])
   })
 
-  test('Salary to be Booked is the gross salary minus the attendance deduction', () => {
-    const r = buildSalaryReport(7, 2026, [
-      result('1', 'Amit', { gross_salary: 30_000, total_deductions: 4_500 }),
-    ], [], ['1'])
-    assert.equal(r.employees[0]!.salary_to_be_booked, 25_500)
-    assert.match(renderWhatsAppText(r), /Salary to be Booked: ₹25,500/)
-  })
-
-  test('Advance is the SAVED settlement carry-forward, not a figure invented here', () => {
-    const r = buildSalaryReport(7, 2026, [
-      result('1', 'Amit', { gross_salary: 25_000, total_deductions: 2_943, pending_adjustment_total: 0 }),
-    ], [], ['1'], [settlement('1', -3_433)])
+  test('REGRESSION: an advance saved after generation still reaches Amount Payable', () => {
+    // The defect this fix exists for. `payroll_results.pending_adjustment_total`
+    // is written by the ENGINE at generation time, so an advance recorded
+    // afterwards leaves it at 0. The summary used to read that column and print
+    // "Advance: ₹0 / Amount Payable: ₹22,057" while this very report itemised
+    // the ₹3,433 advance in Preview — one document, two answers about money.
+    const r = buildSalaryReport(7, 2026, [EXAMPLE], [EXAMPLE_ADVANCE], ['1'])
     assert.equal(r.employees[0]!.advance, -3_433)
+    assert.equal(r.employees[0]!.amount_payable, 18_624)
+
+    // The summary and the itemisation must agree, by construction.
+    const itemised = r.employees[0]!.adjustment_lines.reduce((t, l) => t + l.amount, 0)
+    assert.equal(r.employees[0]!.advance, itemised)
+    assert.match(renderReportText(r), /Advance recovery: -₹3,433/)
     assert.match(renderWhatsAppText(r), /Advance: -₹3,433/)
   })
 
-  test('Advance carries the applied adjustment total as well as the carry-forward', () => {
-    // Exactly what the detail page calls Net Adjustments: the two together.
-    const r = buildSalaryReport(7, 2026, [
-      result('1', 'Amit', { pending_adjustment_total: -2_000 }),
-    ], [], ['1'], [settlement('1', -500)])
-    assert.equal(r.employees[0]!.advance, -2_500)
-    assert.match(renderWhatsAppText(r), /Advance: -₹2,500/)
-  })
-
-  test('Amount Payable is what is left after the advance is deducted', () => {
-    const r = buildSalaryReport(7, 2026, [EXAMPLE], [], ['1'])
+  test('Amount Payable ADDS an already-negative advance rather than subtracting it', () => {
+    // Subtracting a −3,433 advance would yield 25,490 — a recovery paid out as a
+    // bonus, and a figure that still looks like a plausible payslip.
+    const r = buildSalaryReport(7, 2026, [EXAMPLE], [EXAMPLE_ADVANCE], ['1'])
     const e = r.employees[0]!
     assert.equal(e.amount_payable, e.salary_to_be_booked + e.advance)
     assert.equal(e.amount_payable, 18_624)
+    assert.notEqual(e.amount_payable, 25_490)
+    assert.doesNotMatch(renderWhatsAppText(r), /25,490/)
+  })
+
+  test('the saved settlement carry-forward counts as an advance too', () => {
+    const r = buildSalaryReport(7, 2026, [EXAMPLE], [], ['1'], [settlement('1', -3_433)])
+    assert.equal(r.employees[0]!.advance, -3_433)
+    assert.equal(r.employees[0]!.amount_payable, 18_624)
+    assert.match(renderWhatsAppText(r), /Advance: -₹3,433/)
+  })
+
+  test('a carry-forward and an adjustment combine into one Advance line', () => {
+    const r = buildSalaryReport(7, 2026, [EXAMPLE], [
+      adj('1', 'deduction', 'advance_recovery', 2_000),
+    ], ['1'], [settlement('1', -1_433)])
+    assert.equal(r.employees[0]!.advance, -3_433)
+    assert.equal(r.employees[0]!.amount_payable, 18_624)
+    assert.equal(blockFor(renderWhatsAppText(r), 'Amit Sharma').length, 4)
   })
 
   test('the figures are the Payroll Result Detail page’s own, not a second arithmetic', () => {
-    // Same function, same inputs, same answers. This is the assertion that stops
-    // the message and the payslip drifting apart.
     const row = result('1', 'Amit', {
-      gross_salary: 31_000, total_deductions: 2_117, pending_adjustment_total: -1_500, days_present: 20,
+      gross_salary: 31_000, total_deductions: 2_117, days_present: 20,
     })
-    const r = buildSalaryReport(7, 2026, [row], [], ['1'], [settlement('1', 750)])
+    const r = buildSalaryReport(7, 2026, [row], [
+      adj('1', 'deduction', 'advance_recovery', 1_500),
+    ], ['1'], [settlement('1', 750)])
     const figures = computeSettlement(
       {
         gross_salary:             row.gross_salary,
         total_deductions:         row.total_deductions,
-        pending_adjustment_total: row.pending_adjustment_total,
+        pending_adjustment_total: -1_500,
         days_present:             row.days_present,
       },
       { carry_forward_amount: 750, amount_paid: null },
@@ -420,75 +456,121 @@ describe('the WhatsApp salary summary', () => {
     assert.equal(e.amount_payable,      figures.salary_payable)
   })
 
+  test('an advance in the employee’s favour is signed as an addition', () => {
+    const r = buildSalaryReport(7, 2026, [EXAMPLE], [
+      adj('1', 'addition', 'incentive', 1_200),
+    ], ['1'])
+    assert.match(renderWhatsAppText(r), /Advance: \+₹1,200/)
+    assert.equal(r.employees[0]!.amount_payable, 23_257)
+  })
+
+  // ── 3. No zero lines ──────────────────────────────────────────────────────
+
+  test('a nil advance prints no Advance and no Amount Payable line', () => {
+    const text = renderWhatsAppText(buildSalaryReport(7, 2026, [EXAMPLE], [], ['1']))
+    assert.doesNotMatch(text, /Advance/)
+    assert.doesNotMatch(text, /Amount Payable/)
+    assert.doesNotMatch(text, /₹0/)
+    assert.doesNotMatch(text, /-₹0/)
+  })
+
+  test('adjustments that cancel to zero produce no Advance line', () => {
+    // Nothing is owed either way, so there is nothing to state.
+    const r = buildSalaryReport(7, 2026, [EXAMPLE], [
+      adj('1', 'deduction', 'advance_recovery', 1_000),
+      adj('1', 'addition',  'incentive',        1_000),
+    ], ['1'])
+    assert.equal(r.employees[0]!.advance, 0)
+    assert.deepEqual(blockFor(renderWhatsAppText(r), 'Amit Sharma'), [
+      'Amit Sharma',
+      'Salary to be Booked: ₹22,057',
+    ])
+  })
+
+  test('an advance cancelled by an equal carry-forward produces no Advance line', () => {
+    const r = buildSalaryReport(7, 2026, [EXAMPLE], [
+      adj('1', 'deduction', 'advance_recovery', 1_000),
+    ], ['1'], [settlement('1', 1_000)])
+    assert.equal(r.employees[0]!.advance, 0)
+    assert.doesNotMatch(renderWhatsAppText(r), /Advance/)
+  })
+
+  // ── 4. Several employees, different conditions ────────────────────────────
+
+  test('each employee gets the form their own figures call for', () => {
+    const text = renderWhatsAppText(buildSalaryReport(7, 2026, [AMIT, PRIYA, RAVI], [
+      adj('1', 'deduction', 'advance_recovery', 5_000),   // Amit: advance
+      adj('3', 'addition',  'incentive',        1_000),   // Ravi: addition
+    ], ['1', '2', '3'], []))                              // Priya: nothing
+
+    assert.deepEqual(blockFor(text, 'Amit Sharma'), [
+      'Amit Sharma',
+      'Salary to be Booked: ₹25,000',
+      'Advance: -₹5,000',
+      'Amount Payable: ₹20,000',
+    ])
+    assert.deepEqual(blockFor(text, 'Priya Nair'), [
+      'Priya Nair',
+      'Salary to be Booked: ₹30,000',
+    ])
+    assert.deepEqual(blockFor(text, 'Ravi Kumar'), [
+      'Ravi Kumar',
+      'Salary to be Booked: ₹17,500',
+      'Advance: +₹1,000',
+      'Amount Payable: ₹18,500',
+    ])
+  })
+
+  test('one employee’s advance never leaks into another’s figures', () => {
+    const r = buildSalaryReport(7, 2026, [AMIT, PRIYA], [
+      adj('1', 'deduction', 'advance_recovery', 5_000),
+    ], ['1', '2'], [settlement('2', -9_999)])
+    const [amit, priya] = r.employees
+    assert.equal(amit!.advance, -5_000)
+    assert.equal(priya!.advance, -9_999)
+  })
+
+  // ── Privacy, formatting and the safeguards that must survive ──────────────
+
   test('no attendance count of any kind reaches the message', () => {
-    const r = buildSalaryReport(7, 2026, [AMIT, PRIYA, RAVI], [
+    const text = renderWhatsAppText(buildSalaryReport(7, 2026, [AMIT, PRIYA, RAVI], [
       adj('1', 'deduction', 'advance_recovery', 2_000),
-    ], ['1', '2', '3'], [settlement('1', -400)])
-    const text = renderWhatsAppText(r)
+    ], ['1', '2', '3'], [settlement('1', -400)]))
     for (const forbidden of [
       /present/i, /absent/i, /half[- ]?day/i, /paid days/i, /working days/i,
-      /days/i, /attendance days/i,
+      /days/i, /attendance/i,
     ]) {
       assert.doesNotMatch(text, forbidden, `the summary leaked ${forbidden}`)
     }
-    // Structural, not just vocabulary: six lines per employee and no more, so an
-    // extra figure cannot arrive without this failing.
+    // Structural too: a block is 2 lines or 4, never anything else, so an extra
+    // figure cannot arrive without this failing.
     for (const name of ['Amit Sharma', 'Priya Nair', 'Ravi Kumar']) {
-      assert.equal(blockFor(text, name).length, 6, `${name}'s block is not the five figures`)
-    }
-  })
-
-  test('several employees each repeat the same five figures under their name', () => {
-    const text = renderWhatsAppText(
-      buildSalaryReport(7, 2026, [AMIT, PRIYA, RAVI], [], ['1', '2', '3']),
-    )
-    for (const name of ['Amit Sharma', 'Priya Nair', 'Ravi Kumar']) {
-      assert.deepEqual(blockFor(text, name).slice(1).map(l => l.split(':')[0]), [
-        'Gross Salary', 'Attendance Deduction', 'Salary to be Booked', 'Advance', 'Amount Payable',
-      ])
+      assert.ok([2, 4].includes(blockFor(text, name).length), `${name}'s block is malformed`)
     }
   })
 
   test('the existing Indian currency formatting is used throughout', () => {
     const r = buildSalaryReport(7, 2026, [
-      result('1', 'Amit', { gross_salary: 1_23_456, total_deductions: 0, pending_adjustment_total: 0 }),
-    ], [], ['1'])
+      result('1', 'Amit', { gross_salary: 1_23_456, total_deductions: 0 }),
+    ], [adj('1', 'deduction', 'advance_recovery', 23_456)], ['1'])
     const text = renderWhatsAppText(r)
-    assert.match(text, /Gross Salary: ₹1,23,456/)
-    assert.match(text, /Amount Payable: ₹1,23,456/)
+    assert.match(text, /Salary to be Booked: ₹1,23,456/)
+    assert.match(text, /Amount Payable: ₹1,00,000/)
     assert.doesNotMatch(text, /\d\.\d/)
   })
 
-  test('a nil deduction and a nil advance read as ₹0, not as −₹0', () => {
-    const text = renderWhatsAppText(buildSalaryReport(7, 2026, [
-      result('1', 'Amit', { total_deductions: 0, pending_adjustment_total: 0 }),
-    ], [], ['1']))
-    assert.match(text, /Attendance Deduction: ₹0/)
-    assert.match(text, /Advance: ₹0/)
-    assert.doesNotMatch(text, /-₹0/)
-  })
-
-  test('an advance in the employee’s favour is signed as an addition', () => {
-    const r = buildSalaryReport(7, 2026, [
-      result('1', 'Amit', { pending_adjustment_total: 1_200 }),
-    ], [], ['1'])
-    assert.match(renderWhatsAppText(r), /Advance: \+₹1,200/)
-  })
-
-  test('the total is the sum of the Amounts Payable the message itself shows', () => {
-    // A footer totalling something else is a message whose own lines do not add
-    // up to it.
-    const r = buildSalaryReport(7, 2026, [AMIT, PRIYA, RAVI], [], ['1', '2', '3'],
-      [settlement('1', -1_000)])
+  test('the total is the sum of the payable figures the message itself shows', () => {
+    const r = buildSalaryReport(7, 2026, [AMIT, PRIYA, RAVI], [
+      adj('1', 'deduction', 'advance_recovery', 1_000),
+    ], ['1', '2', '3'])
     const text = renderWhatsAppText(r)
     const sum = r.employees.reduce((t, e) => t + e.amount_payable, 0)
     assert.equal(r.totals.amount_payable, sum)
+    assert.equal(sum, 24_000 + 30_000 + 17_500)
     assert.match(text, new RegExp(`Total: ₹${sum.toLocaleString('en-IN')} \\(3\\)`))
   })
 
   test('an employee with no attendance at all is floored, exactly as the payslip is', () => {
-    // The absence floor is the detail page's rule; the message states the same
-    // ₹0 rather than a negative salary produced by the divisor.
     const r = buildSalaryReport(7, 2026, [
       result('1', 'Amit', { gross_salary: 26_000, total_deductions: 27_000, days_present: 0 }),
     ], [], ['1'])
