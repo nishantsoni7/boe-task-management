@@ -53,9 +53,9 @@ when the module is next substantially changed.
 | --- | --- | --- | --- |
 | Task Management | `tasks`, `task_attachments`, `daily_work_logs` | Assignee/creator scoping + RLS | `src/lib/tasks/*`, `src/lib/listState.test.ts` |
 | Notifications | `notifications` (type is a **PG enum**) | `user_id = caller`; category gate in `notificationAccess.ts` | `notificationCache.test.ts`, `notificationMutations.test.ts` |
-| Sample Tracking | `sample_requests`, `sample_dispatches` | Requester scoping + RLS | `sampleNotificationDeletes.test.ts` |
+| Sample Tracking | `sample_dispatches`, `sample_notifications` | Requester scoping + RLS | `sampleNotificationDeletes.test.ts` |
 | Assets & Access | `employee_assets`, `employee_access_details`, `asset_activity_log`, `asset_access_requests`, `asset_maintenance_history` | Permission engine (`permissions/assetsAccess.ts`); removal approval admin-only | `src/lib/assets/*` (14 files) |
-| Meetings | meeting tables + follow-ups | Permission engine (`permissions/meetings.ts`) | `src/lib/meetings/*` (7 files) |
+| Meetings | `meetings`, `meeting_attendees`, `meeting_orders`, `meeting_order_items`, `meeting_activity_log`, `meeting_update_history` | Permission engine (`permissions/modules.ts`, `moduleKey: 'meetings'`) | `src/lib/meetings/*` (7 files) |
 | Employee Records | `users` (salary columns **column-granted**) | Admin only | `users/noStarSelect.test.ts`, `usersPrivateColumns.test.ts` |
 | Showroom QR | product/inquiry/quotation tables | Share-token scoping for public routes | `src/lib/showroom/*` (4 files) |
 

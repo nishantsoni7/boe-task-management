@@ -2,6 +2,14 @@
 
 ## Project Master Context
 
+Last verified: **2026-08-11** (commit `a0352e5`)
+
+> **This is the vision record.** It holds company context, long-term direction and
+> philosophy — deliberately stable, and *not* a statement of what exists today.
+> For implemented state always read
+> [02_Current_System_State.md](02_Current_System_State.md); it outranks this file
+> on questions of fact.
+
 ### Project Overview
 
 BOE Task Management is the internal operating platform being developed for Best of Exports (BOE).
@@ -41,6 +49,18 @@ The long-term goal is to create a single internal platform covering:
 * Department-Specific Modules
 
 The system should eventually become the primary operating platform used by BOE employees on a daily basis.
+
+**Delivered against this vision** (detail and status in
+[02_Current_System_State.md](02_Current_System_State.md)): Task Management,
+Performance Management, Team Performance, Sample Tracking, Attendance, Payroll,
+Attendance & Payroll employee self-service, Employee Records, Assets & Access,
+Meetings, Order Management, Finance, Showroom QR and the Admin Control Center.
+
+Modules built beyond the original list above — **Meetings, Order Management,
+Finance and Showroom QR** — were added as the business asked for them. Internal
+Communication remains unbuilt; Approvals and Workflows exist per module
+(order amendments, asset change requests, employee issues) rather than as one
+central engine.
 
 ---
 

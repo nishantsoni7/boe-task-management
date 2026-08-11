@@ -1,4 +1,16 @@
-# BOE Operational Accountability System — Start Here
+> ## ⚠️ SUPERSEDED — this is not the entry point
+>
+> This file is **historical**. The canonical entry point is
+> [../BOE Master Context/00_README_FIRST.md](../BOE%20Master%20Context/00_README_FIRST.md),
+> and the contributor contract is [../../AGENTS.md](../../AGENTS.md). The root
+> `CLAUDE_START_HERE.md.txt` that duplicated this file was deleted in `2d91b0c`.
+>
+> Everything in `docs/Reference/` is **rank 6** in the source-of-truth hierarchy —
+> original intent, superseded in places. Do **not** follow the reading order below
+> as a starting instruction, and do not treat its status claims as current. Read it
+> only for original product intent.
+
+# BOE Operational Accountability System — Start Here (historical)
 
 Before doing ANY implementation work, read these files carefully in the following order:
 

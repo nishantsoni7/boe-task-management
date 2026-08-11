@@ -81,6 +81,12 @@ Do all of this **in the same commit as the code**:
 8. Add newly discovered debt to
    [`09_Risk_Register.md`](docs/BOE%20Master%20Context/09_Risk_Register.md), with
    evidence.
+9. Record **how the change was verified** — the command run, the tests added,
+   and any manual pass — in the module document or the record you touched. A
+   change with no verification record is not finished.
+10. Describe **completed work as completed and pending work as pending**. Never
+    state production behaviour that has not been verified against production
+    (see §5).
 
 ## 5. Statements you must never make loosely
 
@@ -100,9 +106,17 @@ Do all of this **in the same commit as the code**:
 npm run verify
 ```
 
-Runs `docs:check`, `typecheck`, `lint`, `test` and `build`. Individual steps:
-`npm run docs:check` · `npm run typecheck` · `npm run lint` · `npm test` ·
-`npm run build`.
+Runs, in order: `check:secrets`, `docs:check`, `typecheck`, `lint:baseline`,
+`test` and `build`. Individual steps: `npm run check:secrets` ·
+`npm run docs:check` · `npm run typecheck` · `npm run lint:baseline` ·
+`npm test` · `npm run build`.
+
+Plain `npm run lint` runs ESLint without the baseline ratchet and is **not** what
+`verify` calls. CI (`.github/workflows/verify.yml`) runs the same checks as
+separate steps, with two differences: `lint` is `continue-on-error` because of
+known pre-existing errors, and the production build is a **separate job gated on
+`vars.CI_BUILD_ENABLED`**, so the build may be skipped in CI while passing
+locally.
 
 Then **read the final diff** for: secrets, `.env` files, generated output,
 unrelated changes, accidental permission changes, calculation changes, schema

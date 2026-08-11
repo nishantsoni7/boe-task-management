@@ -30,20 +30,26 @@ Next.js 16 (App Router) · React 19 · TypeScript · Supabase (Postgres, Auth, R
 
 ```bash
 npm run dev         # development server
-npm run verify      # docs check + typecheck + lint + tests + production build
+npm run verify      # secrets scan + docs check + typecheck + lint baseline + tests + build
 ```
 
 Individual steps:
 
 ```bash
+npm run check:secrets  # credential scan over tracked files
 npm run docs:check  # documentation structure and links
 npm run typecheck   # tsc --noEmit
-npm run lint        # eslint
+npm run lint:baseline  # eslint against the known-error baseline (what verify runs)
+npm run lint        # plain eslint — NOT what verify runs
 npm test            # full suite (node:test via tsx)
 npm run build       # production build
 ```
 
-`npm run verify` is what CI runs and what must pass before a commit.
+`npm run verify` must pass before a commit. CI
+(`.github/workflows/verify.yml`) runs the same checks as separate steps, with two
+differences: `lint` is non-blocking because of known pre-existing errors, and the
+production build is a **separate job gated on `vars.CI_BUILD_ENABLED`** — so a
+green CI run does not prove the build passes. Run `verify` locally.
 
 ## Layout
 

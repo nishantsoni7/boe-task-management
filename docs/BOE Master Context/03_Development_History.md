@@ -41,7 +41,8 @@ Each entry names the evidence. Anything not yet merged to `main` is marked
 | 2026-08-10 | Payroll settings versioned and **pinned per period** | `721cfa0`, `f16e207` |
 | 2026-08-10 | **branch-only** — Attendance & Payroll consolidated at the UI level | `789c771`, [ADR-0004](../adr/0004-attendance-payroll-ui-consolidation.md) |
 | 2026-08-11 | **branch-only** — rule content derives from engine constants | `a33c14e`, [ADR-0005](../adr/0005-guide-content-derives-from-engine-constants.md) |
-| 2026-08-11 | **branch-only** — documentation contract + `docs:check` + CI | [ADR-0007](../adr/0007-documentation-contract.md) |
+| 2026-08-11 | **branch-only** — documentation contract + `docs:check` + CI | `cd125f7`, `f8ff8c2`, `cca9847`, [ADR-0007](../adr/0007-documentation-contract.md) |
+| 2026-08-11 | **branch-only** — GitHub Actions `verify` workflow and PR template. `lint` non-blocking; the build is a separate job gated on `vars.CI_BUILD_ENABLED` | `cca9847` |
 
 ## Business-rule changes
 
@@ -65,6 +66,37 @@ Each entry names the evidence. Anything not yet merged to `main` is marked
 | 2026-08 | `custom` visibility confirmed **not** a grant of management access | `moduleAccess.ts`, product-owner decision |
 | 2026-08-03 | Assets: removal approval is admin-only; grantable `delete` does not authorize purge | `9002723`, `83b1c75` |
 | 2026-08-08 | Issue badges scoped to the viewed employee | `df19f86` |
+| 2026-08-11 | **branch-only** — the three UAT scripts read credentials from the environment instead of carrying a `service_role` JWT in tracked source; `check:secrets` added and wired into `verify` | `4a36f74`, `uatScriptCredentials.test.ts` |
+| 2026-08-11 | **branch-only** — the scanner reports live findings (fails) separately from historical findings (reports); a credential already in history cannot be fixed by an exit code | `a0352e5` |
+
+**Rotation is still outstanding.** Source cleanup revoked nothing — the exposed
+`service_role` key remains live until it is rotated at Supabase. Tracked files
+now scan clean (758 files at `a0352e5`). See R-0 in
+[09_Risk_Register.md](09_Risk_Register.md).
+
+## Documentation corrections
+
+Corrections to earlier records, recorded because a withdrawn claim is itself
+history worth keeping.
+
+| When | Correction | Evidence |
+| --- | --- | --- |
+| 2026-08-11 | **R-12 restated.** "An unregistered public holiday is charged as an absence" was inferred from an empty table and was **too strong**. The real effect: paid leave usually absorbs the day, so nothing is charged — but the employee's paid-leave entitlement is silently consumed, and the loss surfaces later on a day they genuinely take off | `298faa1`, `src/lib/payroll/engine.holidays.test.ts` |
+| 2026-08-11 | `threshold_half_day_hours` labelled **inactive** in the settings UI. It is stored, validated and editable but read by no calculation; the help text had implied it still decided classification. No calculation changed | `5f9a6d8` |
+| 2026-08-11 | `npm run verify` composition corrected in `AGENTS.md`, `00_README_FIRST.md` and `README.md` — it runs `check:secrets` first and calls `lint:baseline`, not `lint` | this commit |
+| 2026-08-11 | Sample Tracking tables corrected to `sample_dispatches` / `sample_notifications`; `sample_requests` does not exist | this commit, verified against `supabase/migrations/` and `src/**` |
+
+## Deferred: Supabase opaque API key migration
+
+**Pending, not delivered.** An attempt to disable Supabase's legacy JWT API keys
+failed and was reverted by re-enabling them. The new opaque key formats are
+compatible with the installed packages, so **no application patch was approved or
+made**. The failure is strongly linked to a production deployment whose browser
+bundle still held the legacy publishable JWT key; a later deployment carries the
+new publishable-key format. Legacy keys remain enabled as a safety measure.
+Verification requirements are in
+[02_Current_System_State.md](02_Current_System_State.md). Treat as deferred
+technical cleanup.
 
 ## Module consolidations
 
@@ -96,6 +128,23 @@ superseding them, never by editing applied files.
 
 ## Not in production
 
-The branch `feat/attendance-payroll-module-merge` holds `789c771`, `a33c14e` and
-the documentation-foundation commits. **None of this is deployed.** It requires
-no migration.
+The branch `feat/attendance-payroll-module-merge` is **10 commits ahead of
+`origin/main` `0147b6f`, and 0 behind**. `git cherry -v origin/main HEAD` shows
+all 10 as unmerged. **None of this is deployed. It requires no migration.**
+
+| Commit | What |
+| --- | --- |
+| `789c771` | Attendance & Payroll merged at the UI level |
+| `a33c14e` | How Payroll Works redesigned as a calculation journey |
+| `2d91b0c` | Project records rebuilt from code evidence; ADRs 0001–0007 created; records 07–12 added; root `CLAUDE_START_HERE.md.txt` deleted |
+| `cd125f7` | `AGENTS.md` made the one contributor contract |
+| `f8ff8c2` | `verify`, `typecheck`, `test`, `docs:check` and the lint ratchet |
+| `cca9847` | CI `verify` workflow + PR template |
+| `5f9a6d8` | `threshold_half_day_hours` labelled inactive in the settings UI |
+| `298faa1` | Unregistered-holiday effect proven by test; R-12 restated |
+| `4a36f74` | UAT credentials read from the environment; `check:secrets` added |
+| `a0352e5` | Scanner failure and history reports separated |
+
+`main` itself is **cherry-pick built**, so ahead/behind counts alone are
+misleading — always run `git cherry -v origin/main HEAD` before judging what is
+merged.

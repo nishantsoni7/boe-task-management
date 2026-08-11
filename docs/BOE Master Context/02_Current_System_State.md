@@ -1,6 +1,6 @@
 # BOE TASK MANAGEMENT — Current System State
 
-Last verified: **2026-08-11**, against commit `a33c14e` on
+Last verified: **2026-08-11**, against commit `a0352e5` on
 `feat/attendance-payroll-module-merge` (branching from `origin/main` `0147b6f`).
 
 > Rebuilt from code, tests and applied migrations. The June 2026 version of this
@@ -14,15 +14,15 @@ Last verified: **2026-08-11**, against commit `a33c14e` on
 
 | Metric | Count |
 | --- | --- |
-| TypeScript/TSX source files | 544 |
+| TypeScript/TSX source files | 546 |
 | Application pages (`page.tsx`, non-API) | 92 |
 | Route layouts | 9 |
 | API route handlers | 98 |
-| Supabase migrations | 159 |
-| Test files | 121 |
-| Automated tests | 3,211 |
+| Supabase migrations | 159 (65 eight-digit, 94 fourteen-digit) |
+| Test files | 123 |
+| Automated tests | 3,239 in 668 suites — **all passing** at `a0352e5` |
 | Shared components | 57 |
-| `src/lib` modules | 211 |
+| `src/lib` modules | 213 |
 
 ---
 
@@ -139,6 +139,25 @@ Full mapping: [08_Authorization_Matrix.md](08_Authorization_Matrix.md).
 
 ---
 
+## Navigation and UI standards
+
+Both standards are **mandatory for every current and future module**, not
+advisory:
+
+- [BOE_GLOBAL_NAVIGATION_STANDARD.md](BOE_GLOBAL_NAVIGATION_STANDARD.md) —
+  sidebar structure, module header, module navigation, global user area, account
+  settings, View As User.
+- [BOE_MODULE_LAYOUT_STANDARD.md](BOE_MODULE_LAYOUT_STANDARD.md) — module shell
+  and page layout.
+
+Implementation: one launcher (`/modules`), one shared shell
+(`DashboardLayout.tsx`), and per-module navigation definitions. The
+Attendance & Payroll consolidation replaced two near-identical shells with one
+(`AttendancePayrollLayout` + `attendancePayrollNav.tsx`). **View As does not lend
+permissions** — see [ADR-0006](../adr/0006-server-authorization-independent-of-navigation.md).
+
+---
+
 ## Deployment model
 
 - Hosting: **Vercel**, canonical domain `boe-task-management.vercel.app`.
@@ -150,6 +169,36 @@ Full mapping: [08_Authorization_Matrix.md](08_Authorization_Matrix.md).
   **Migrations are applied before the merge**, because PostgREST returns 42703
   for an unknown column.
 - There is no `gh` CLI on the current development machine.
+- **Continuous integration exists** — `.github/workflows/verify.yml` (added
+  `cca9847`, **branch-only**) runs `docs:check`, `typecheck`, `lint`, `test` on
+  every pull request and on `main`/`feat/**`/`fix/**` pushes. Two limits are
+  deliberate: `lint` is `continue-on-error` because of 4 known pre-existing
+  errors, and the **production build is a separate job gated on
+  `vars.CI_BUILD_ENABLED`**, so it is skipped until a maintainer supplies the two
+  build secrets. A green CI run therefore does **not** prove the build passes.
+- Supabase API keys: **legacy JWT keys remain enabled**. See the pending note
+  below.
+
+### Pending: Supabase opaque API key migration
+
+Deferred technical cleanup — **not current module work**, and no application
+change is approved.
+
+- The new opaque Supabase key formats are **compatible with the installed
+  packages** (`@supabase/supabase-js` 2.106.1, `@supabase/ssr` 0.10.3). No
+  compatibility patch is required, and none was approved.
+- An earlier migration attempt failed. The failure is **strongly linked** to a
+  production deployment whose browser bundle still contained the legacy
+  publishable JWT key; a later deployment contains the new publishable-key
+  format. `NEXT_PUBLIC_*` values are compiled into the browser bundle at build
+  time, so a key change reaches the browser only through a rebuild.
+- **Legacy keys were re-enabled as a safety measure and remain enabled.**
+- Before any future controlled disablement, verify: server routes that use the
+  service credential, Storage signed URLs, the quotation image/PDF path, and
+  external integrations (database webhooks, scheduled jobs, CI secrets, local
+  development configuration).
+- Cause status: **strongly supported, not proven.** Do not treat current
+  availability with legacy keys enabled as verification of the new server key.
 
 ---
 
@@ -168,8 +217,19 @@ Summary:
    hidden can still open `/my-attendance` by URL. They see only their own data.
    Classified as intended self-service access pending confirmation.
 5. `threshold_half_day_hours` is **stored, validated and editable but read by no
-   calculation** since the half-day band was widened.
+   calculation** since the half-day band was widened. It is now **labelled
+   inactive in the payroll settings UI** (`5f9a6d8`) so an admin cannot change it
+   believing it affects classification. The field itself is retained because it is
+   pinned inside every existing `settings_snapshot`; whether to restore the band
+   or retire the field is an open owner decision (R-5).
 6. **Two migration filename conventions** coexist (65 eight-digit, 94 fourteen-digit).
 7. Automated coverage is **concentrated in payroll, assets and meetings**; large
    UI areas have no tests.
-8. `payroll_holidays` is empty in production.
+8. `payroll_holidays` is empty in production. The salary effect is now **proven by
+   test** rather than inferred (`src/lib/payroll/engine.holidays.test.ts`,
+   `298faa1`): an unregistered closure is **usually not charged**, because the
+   month's paid leave absorbs it — but it **silently consumes the employee's
+   paid-leave entitlement**, so their own next absence is no longer covered. Once
+   the allowance is spent, each further unregistered closure costs one full day's
+   pay. The earlier claim that such a day "is charged as an absence" was too
+   strong and has been withdrawn (R-12).

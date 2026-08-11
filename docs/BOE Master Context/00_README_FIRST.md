@@ -117,9 +117,13 @@ One command:
 npm run verify
 ```
 
-That runs documentation checks, type checking, the full test suite and a
-production build. Individual steps are `npm run docs:check`, `npm run typecheck`,
-`npm run lint`, `npm test`, `npm run build`.
+That runs, in order: a tracked-file credential scan, documentation checks, type
+checking, the lint baseline ratchet, the full test suite and a production build.
+Individual steps are `npm run check:secrets`, `npm run docs:check`,
+`npm run typecheck`, `npm run lint:baseline`, `npm test`, `npm run build`.
+
+Plain `npm run lint` is ESLint without the ratchet and is not what `verify`
+calls. At `a0352e5` the suite is **3,239 tests in 668 suites, all passing**.
 
 Full detail, including what CI runs and what it cannot: see
 [../../AGENTS.md](../../AGENTS.md).

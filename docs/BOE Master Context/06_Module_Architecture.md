@@ -2,7 +2,7 @@
 
 # Module Architecture
 
-Last verified: **2026-08-11** (commit `a33c14e`)
+Last verified: **2026-08-11** (commit `a0352e5`)
 
 > **Companion records.** This file holds structure and ownership. It does not
 > repeat what lives elsewhere:
@@ -20,7 +20,7 @@ Last verified: **2026-08-11** (commit `a33c14e`)
 src/
   app/          92 pages · 9 layouts · 98 API route handlers   ← App Router only
   components/   57 shared components
-  lib/          211 modules — per-module subfolders where the pattern exists
+  lib/          213 modules — per-module subfolders where the pattern exists
                 (payroll, attendance, assets, meetings, permissions, security,
                 orders, tasks, showroom, users, ui, supabase)
   hooks/        21 files
@@ -32,8 +32,28 @@ docs/           project records
 ```
 
 **Testing lives beside its subject** — `*.test.ts` / `*.test.tsx` next to the
-module (121 files, 3,211 tests). **Migrations live only in
+module (123 files, 3,239 tests in 668 suites). **Migrations live only in
 `supabase/migrations/`.** **Documentation lives only in `docs/`.**
+
+### Module ownership at a glance
+
+The legacy per-module sections below predate Meetings, Orders and Finance. Routes
+and tables for every module, including those three:
+
+| Module | Route tree | Owned tables | Authorization source |
+| --- | --- | --- | --- |
+| Task Management | `/dashboard`, `/tasks/*` | `tasks` (predates the migrations folder — no `create table` migration exists), `task_attachments`, `task_activity_log` | Assignee/creator scoping + RLS |
+| Performance | `/performance`, `/performance/team` | `daily_work_logs`, `performance_app_opens` | Own record; team view by role |
+| Sample Tracking | `/samples` | `sample_dispatches`, `sample_notifications` | Requester scoping + RLS |
+| Attendance | `/attendance/*`, `/my-attendance` | `attendance_records`, `attendance_day_corrections`, `payroll_holidays` | `resolveManagementAccess` (admin) · self-service by token |
+| Payroll | `/payroll/*`, `/my-payroll`, `/my-issues` | `payroll_periods`, `payroll_results`, `payroll_settings`, adjustments, settlements, objections | as above; `attendancePayrollApiAuth.ts` |
+| Assets & Access | `/assets-access` | `employee_assets`, `employee_access_details`, `asset_activity_log`, `asset_access_requests`, `asset_maintenance_history` | Permission engine (`permissions/assetsAccess.ts`) |
+| **Meetings** | `/meetings`, `/meetings/follow-ups` | `meetings`, `meeting_attendees`, `meeting_orders`, `meeting_order_items`, `meeting_activity_log`, `meeting_update_history` | Permission engine (`permissions/modules.ts`, `moduleKey: 'meetings'`) |
+| **Order Management** | `/orders`, `/orders/requests/*` | `order_requests`, `order_request_activity`, `order_request_attachments`, `order_change_requests`, `order_activity_log`, `order_request_seq`, `order_number_cycle` | Permission engine (`moduleKey: 'orders'`); **no UPDATE policy — all mutation via SECURITY DEFINER RPCs** |
+| **Finance** | `/finance`, `/finance/received` | `finance_payment_requests`, `finance_payment_request_activity_log`, `finance_payment_request_seq`, `payment_proof_attachments` | Permission engine (`moduleKey: 'finance'`) |
+| Showroom QR | `/showroom-admin`, `/showroom` | product / inquiry / quotation tables | Share-token scoping on public routes |
+| Employee Records | `/admin/members` | `users` (salary columns column-granted) | Admin only |
+| Control Center | `/admin/control-center` | `app_modules`, permission registry | Admin only |
 
 ### Shared infrastructure
 
