@@ -13,7 +13,7 @@ Severity: how bad if it happens · Likelihood: how likely within ~6 months.
 
 | ID | Area | Evidence | Operational effect | Likelihood | Severity | Treatment | Phase | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| **R-0** | **Secrets** | `scripts/uat-seed.mjs`, `scripts/uat-cleanup.mjs`, `scripts/uat-simulate.mjs` each hard-code a **Supabase `service_role` JWT** for the **production** project (same project ref as `.env.local`), plus a shared plaintext UAT password. Committed in `725049c` and **present on `origin/main`** | A `service_role` key **bypasses every RLS policy**. Anyone with repository read access has full read/write on every table — salaries, attendance, audit history — regardless of the entire authorization model documented here | **Certain** (already exposed) | **Critical** | **Rotate the key in Supabase immediately.** Then, forward-only: replace the literals with `process.env.SUPABASE_SERVICE_ROLE_KEY`, change the UAT password, and consider a history purge. Rotation is the only step that actually revokes access — editing the files does not, because the value stays in Git history | **Immediate** | **OPEN — release blocker** |
+| **R-0** | **Secrets** | **One** `service_role` JWT (issued 2026-05-20, project `albnsrohngkljfsrrrhf` — same ref as `.env.local`) appears in **five** files across Git history: the three UAT scripts plus the since-deleted `scripts/capture-performance.js` and `scripts/seed-demo-tasks.js`. One `anon` key also appears. Full scan: `npm run check:secrets -- --history` | A `service_role` key **bypasses every RLS policy**. Anyone with repository read access has full read/write on every table — salaries, attendance, audit history — regardless of the entire authorization model documented here | **Certain** (already exposed) | **Critical** | **Rotate at Supabase — that is the only step that revokes anything.** Source cleanup done 2026-08-11 (credentials now read from the environment; `check:secrets` reports tracked files clean), but the value remains in history and stays live until rotated | **Immediate** | **OPEN — rotation outstanding** |
 | **R-1** | Authorization | `/my-attendance`, `/my-payroll`, `/my-issues` have no `app_modules` guard | An employee whose card is hidden can still open their own records by URL. **Own data only** — APIs derive the employee from the token | High (already true) | Low | Confirm as intended self-service, or add a guard. **Product decision, not a bug fix** | Next | Open — awaiting owner |
 | **R-2** | Authorization | 98 API routes: **15** use shared `requireAdmin`, **71** hand-roll a `users` role read in **9 different `select()` shapes**, **78** use the service role (bypassing RLS) | In service-role routes the hand-rolled check is the only boundary. A new route that forgets one is a silent hole | Medium | **High** | Extract one `requireRole`/`requireAdmin` helper; migrate routes in small batches, highest-risk first; add a test asserting every service-role route calls it | Next 30 days | Open |
 | **R-3** | Maintainability | 20 files over 1,200 lines; largest `src/app/finance/page.tsx` **2,679**, `src/app/tasks/[id]/page.tsx` **2,621**, `src/app/orders/requests/page.tsx` **2,061** | Merge conflicts, hidden permission branches, untestable logic, slow review | High | Medium | Staged extraction (constants → helpers → stateless sections → hooks → services → policies). See [12_Large_File_Plan.md](12_Large_File_Plan.md) | Next 60–90 days | Open |
@@ -34,25 +34,45 @@ Severity: how bad if it happens · Likelihood: how likely within ~6 months.
 
 ## R-0 remediation, in order
 
-Found during the 2026-08-11 structural audit. **Not introduced by it** — the
-files were committed in `725049c` and are on `origin/main`. They were not
-modified, because the only step that actually revokes access is rotation, and
-editing them first would imply a fix that had not happened.
+Found during the 2026-08-11 structural audit. **Not introduced by it.**
 
-1. **Rotate** the `service_role` key in the Supabase dashboard (Settings → API).
-   Every copy of the old key, including the one in Git history, dies with it.
-2. Update `.env.local` and the Vercel environment with the new key.
-3. Change the shared UAT password.
-4. Forward-only commit: replace the three hard-coded literals with
-   `process.env.SUPABASE_SERVICE_ROLE_KEY`, and make each script exit with a
-   clear message when the variable is absent.
-5. Consider whether the UAT scripts should point at production at all, or at a
+### Exposure, as measured
+
+`npm run check:secrets -- --history` over 6,097 historical blobs found
+**two distinct tokens**, both for the production project, both issued
+2026-05-20:
+
+| Token | Appears in |
+| --- | --- |
+| `service_role` — **bypasses RLS** | `uat-seed.mjs`, `uat-cleanup.mjs`, `uat-simulate.mjs`, `capture-performance.js` (deleted), `seed-demo-tasks.js` (deleted) |
+| `anon` — publishable | `uat-simulate.mjs` |
+
+One key in five files, not five keys. **Rotating it once invalidates every
+copy**, including the two in files that no longer exist.
+
+### Steps
+
+1. ✅ **Source cleanup — done 2026-08-11.** All three live scripts read
+   credentials from the environment and stop with a clear message when one is
+   missing. `check:secrets` reports tracked files clean and now runs inside
+   `npm run verify`. `uatScriptCredentials.test.ts` fails if a literal returns.
+   **This revoked nothing.**
+2. ⬜ **Rotate** the `service_role` key — Supabase dashboard → Settings → API.
+   **Only this revokes access.** Every copy, including those in Git history,
+   dies with it.
+3. ⬜ Replace it in Vercel (production, preview, development) and in authorized
+   local `.env.local` files.
+4. ⬜ Rotate the shared UAT password.
+5. ⬜ Redeploy or restart anything that reads environment variables at startup.
+6. ⬜ Confirm the application still works, and that the **old** key is rejected.
+7. ⬜ Check Vercel logs for authentication or database errors after rotation.
+8. ⬜ Decide whether the UAT scripts should target production at all, or a
    separate project.
-6. Optional, and only with the owner's agreement, since it rewrites history:
+9. ⬜ Optional, owner's decision, rewrites history and affects every clone:
    purge the blobs with `git filter-repo`. **Rotation makes this cosmetic** —
-   do not treat it as the fix.
+   never treat it as the fix, and never attempt it before step 2.
 
-Until step 1 is done, every access-control property documented in
+Until step 2 is done, every access-control property documented in
 [08_Authorization_Matrix.md](08_Authorization_Matrix.md) is bypassable by anyone
 who can read the repository.
 

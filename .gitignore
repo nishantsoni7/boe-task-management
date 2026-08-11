@@ -30,8 +30,23 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# `.env*` already covers .env, .env.local, .env.production and friends. The
+# entries below cover the shapes that slipped past it or that tooling creates.
+#
+# This is a safety net, not the control. A credential in a tracked SOURCE file
+# is not caught by any ignore rule — see scripts/uat-env.mjs for why the UAT
+# scripts read theirs from the environment instead.
 .env*
+!.env.example
+!*.env.example
+*.key
+*.p12
+*.pfx
+*.keystore
+secrets.json
+.supabase/
+service-account*.json
 
 # vercel
 .vercel

@@ -10,7 +10,8 @@
     "test": "tsx --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\"",
     "typecheck": "tsc --noEmit",
     "docs:check": "node scripts/check-docs.mjs",
-    "verify": "npm run docs:check && npm run typecheck && npm run lint:baseline && npm test && npm run build",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "verify": "npm run check:secrets && npm run docs:check && npm run typecheck && npm run lint:baseline && npm test && npm run build",
     "lint:baseline": "node scripts/lint-baseline.mjs",
     "permissions:sync": "tsx scripts/sync-permissions.ts",
     "permissions:check": "tsx scripts/sync-permissions.ts --check"
