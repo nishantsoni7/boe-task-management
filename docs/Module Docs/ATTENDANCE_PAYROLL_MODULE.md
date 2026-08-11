@@ -355,8 +355,11 @@ admin who entered them. `locked_at`/`locked_by` are never cleared.
 
 ## Known limitations
 
-- **R-12** `payroll_holidays` is empty in production — holidays are charged as
-  absences unless corrected by hand. Highest-severity open item for this module.
+- **R-12** `payroll_holidays` is empty in production. Proven effect
+  (`engine.holidays.test.ts`): an unregistered holiday is usually **not** charged
+  — paid leave absorbs it — but it **silently consumes the employee's leave
+  entitlement**, and once that is spent each further closure costs a full day's
+  pay. Highest-severity open item for this module.
 - **R-5 / M-3** `threshold_half_day_hours` is editable but unused; marked
   inactive in the UI 2026-08-11.
 - **R-1** Self-service routes have no module guard (own data only).

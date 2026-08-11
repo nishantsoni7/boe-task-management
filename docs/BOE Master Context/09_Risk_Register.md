@@ -25,7 +25,7 @@ Severity: how bad if it happens · Likelihood: how likely within ~6 months.
 | **R-9** | Observability | No error boundaries; `console.error` in route handlers; no request/correlation id; no deployment identifier in logs | A production failure is diagnosed by guessing which of 98 routes it came from | Medium | Medium | Local, no-cost first steps only: consistent route error shape and a correlation id. Sentry/central logging is a separate funded task | Next 60–90 days | Open |
 | **R-10** | API consistency | 588 `{ error }` responses vs 30 `{ success }` vs 7 `{ ok }`; 7 distinct status codes with no documented meaning | Clients handle failures differently per route; new routes copy whichever neighbour they saw | Medium | Low | Document the intended shape, then converge new routes; do not rewrite 98 handlers | Later | Open |
 | **R-11** | Shared UI | Module shells were duplicated per module (Attendance/Payroll fixed in `789c771`); others remain distinct components | A fix applied to one shell silently misses the others | Medium | Low | Apply the Attendance & Payroll pattern to the next duplicated pair when one is touched anyway | Later | Partially treated |
-| **R-12** | Data | `payroll_holidays` is empty in production | Every calendar day except Sundays counts as a working day; a public holiday is charged as an absence unless corrected | Medium | **High** | Operational, not code: holidays must be entered. Surface an empty-state warning on the payroll run screen | Next 30 days | Open |
+| **R-12** | Data | `payroll_holidays` is empty in production. Salary effect **proven by test**, not inferred — `src/lib/payroll/engine.holidays.test.ts` | An unregistered holiday becomes a working day and, with the office shut, an absence. **It is usually not charged** — the month's paid leave absorbs it — but it **silently consumes the employee's paid-leave entitlement**, so their own next absence is no longer covered. Once the allowance is spent, each further unregistered closure costs **one full day's pay** | High | **High** | Operational, not code: holidays must be entered. Add an empty-state warning on the payroll run screen | Next 30 days | Open — **effect now proven and correctly stated** |
 | **R-13** | Release safety | No `gh` CLI on the dev machine; releases are manual rebase-merges; migrations must be applied **before** merge or PostgREST 42703s | A merge without its migration breaks the module for everyone | Medium | **High** | Documented in `02_Current_System_State.md` and the PR template checklist | Now | **Mitigated** (documented + checklist) |
 | **R-14** | Module boundaries | Module-specific logic sits in generic folders: `src/lib` holds 211 files including `teamPerformance.ts` (1,774 lines), `objections.ts`, `orderRequestAttachments.ts` | Ownership is unclear; unrelated domains import each other | Medium | Low | Feature-folder direction recorded in [11_File_Structure_Plan.md](11_File_Structure_Plan.md). **No mass move now** | Later | Open |
 | **R-15** | Accessibility | No repo-wide a11y checking. The payroll guide was built to the standard (heading order, non-colour signals, focus states); other pages are unverified | Inconsistent experience; unknown WCAG position | Medium | Low | Apply the guide's checklist when a page is next redesigned | Later | Open |
@@ -55,6 +55,26 @@ editing them first would imply a fix that had not happened.
 Until step 1 is done, every access-control property documented in
 [08_Authorization_Matrix.md](08_Authorization_Matrix.md) is bypassable by anyone
 who can read the repository.
+
+## R-12, stated precisely
+
+The first version of this entry said an unregistered public holiday "is charged
+as an absence". That was inferred from an empty table and is **too strong**.
+`engine.holidays.test.ts` runs the real engine and establishes what actually
+happens:
+
+| Scenario | Charged | Entitlement |
+| --- | --- | --- |
+| One unregistered holiday, otherwise clean month | **₹0** — paid leave absorbs it | **Consumed** |
+| One unregistered holiday + one genuine absence | **One day's pay** | Spent on the earlier absence |
+| Two unregistered holidays in a month | **One day's pay** | Spent on the first |
+
+So the harm is usually **not** a visible deduction. It is that a company closure
+silently spends an entitlement the employee earned by attending, and the loss
+only surfaces later, on a day they genuinely take off. That is harder to notice
+than a wrong number on a payslip, which makes it worse rather than better.
+
+The fix is unchanged and operational: enter the holidays.
 
 ## Not risks (checked and cleared)
 
