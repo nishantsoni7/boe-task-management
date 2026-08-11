@@ -1,6 +1,25 @@
+> ## ⚠️ SUPERSEDED — do not follow these as working instructions
+>
+> The contributor contract is [../../AGENTS.md](../../AGENTS.md), and the entry
+> point is
+> [../BOE Master Context/00_README_FIRST.md](../BOE%20Master%20Context/00_README_FIRST.md).
+> Follow those.
+>
+> This file is dated 2026-05-30 and its "Phase 1 Constraints" now contradict
+> shipped production behaviour — it forbids file attachments, comments, attendance
+> and salary systems, all of which exist and are in daily use. The three files it
+> tells you to read first
+> (`BOE_Task_Management_Master_Context.txt`,
+> `BOE_Phase_1_Process_Consultant_Review.html`,
+> `BOE_Dashboard_Layout_Redesign.html`) are **absent from the repository**.
+>
+> Its "Development Safety Rules" — ask before changing schema, auth, routing or
+> notification architecture — remain sound and are carried forward in `AGENTS.md`.
+> Read for original intent only. Rank 6 in the source-of-truth hierarchy.
+
 # FILE 4 → `docs/CLAUDE_TASK.md`
 
-# BOE Task Management System — Claude Working Instructions
+# BOE Task Management System — Claude Working Instructions (historical, 2026-05-30)
 
 # Primary Instruction
 

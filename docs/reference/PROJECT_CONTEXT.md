@@ -1,6 +1,27 @@
+> ## ⚠️ SUPERSEDED in places — dated 2026-05-30
+>
+> Company context, product philosophy and the core principle ("easier to give
+> honest updates, harder to avoid accountability") are still the direction, and
+> are carried forward in
+> [../BOE Master Context/01_Project_Master_Context.md](../BOE%20Master%20Context/01_Project_Master_Context.md).
+>
+> **Its scope statements are not current.** "Phase 1 focuses ONLY on task
+> management" and the Deferred list (attachments, attendance, salary systems,
+> chat) describe a system that has since shipped all of those. For implemented
+> state read
+> [../BOE Master Context/02_Current_System_State.md](../BOE%20Master%20Context/02_Current_System_State.md).
+>
+> All three files it names as "Source of Truth" are **absent from the
+> repository** — including `BOE_Phase_1_Process_Consultant_Review.html`, which it
+> calls the operational logic authority for escalation and stale-task rules. That
+> absence is why the escalation-threshold conflict is recorded as **M-5** in
+> [../BOE Master Context/07_Business_Rule_Index.md](../BOE%20Master%20Context/07_Business_Rule_Index.md).
+>
+> Rank 6 in the source-of-truth hierarchy.
+
 # FILE 1 → `docs/PROJECT_CONTEXT.md`
 
-# BOE Task Management System — Project Context
+# BOE Task Management System — Project Context (historical, 2026-05-30)
 
 ## Company
 

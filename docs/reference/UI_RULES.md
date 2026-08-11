@@ -1,12 +1,28 @@
+> ## ⚠️ Partly superseded — last touched 2026-07-24
+>
+> The UI *philosophy* below (operational, fast, compact, mobile-first, low
+> friction) is still the direction. The **source-of-truth claim is not current**:
+> `BOE_Dashboard_Layout_Redesign.html` is **absent from the repository**.
+>
+> The mandatory standards are
+> [BOE_GLOBAL_NAVIGATION_STANDARD.md](../BOE%20Master%20Context/BOE_GLOBAL_NAVIGATION_STANDARD.md)
+> and
+> [BOE_MODULE_LAYOUT_STANDARD.md](../BOE%20Master%20Context/BOE_MODULE_LAYOUT_STANDARD.md),
+> with design tokens in `src/lib/tokens.ts` and `src/app/globals.css`.
+>
+> This is the most current of the `docs/Reference/` files, but it is still rank 6
+> in the source-of-truth hierarchy.
+
 # FILE 2 → `docs/UI_RULES.md`
 
 # BOE Task Management System — UI Rules
 
 # UI Source of Truth
 
-The approved UI direction is defined by:
+The approved UI direction was defined by:
 
-`BOE_Dashboard_Layout_Redesign.html`
+`BOE_Dashboard_Layout_Redesign.html` — **no longer present in the repository; see
+the banner above for the current standards.**
 
 All future UI work must follow this structure and visual language.
 

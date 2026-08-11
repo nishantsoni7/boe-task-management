@@ -1,6 +1,22 @@
+> ## ⚠️ SUPERSEDED — dated 2026-05-30, not current state
+>
+> For implemented state read
+> [../BOE Master Context/02_Current_System_State.md](../BOE%20Master%20Context/02_Current_System_State.md).
+> This file describes a Phase-1 task-only application. Since it was written the
+> system has shipped Attendance, Payroll, employee self-service, Assets & Access,
+> Meetings, Order Management, Finance, Showroom QR and Employee Records, and task
+> **attachments** now exist — several things this file lists as out of scope.
+>
+> Its "visual source of truth", `BOE_Dashboard_Layout_Redesign.html`, is **absent
+> from the repository**. The current mandatory standards are
+> [BOE_GLOBAL_NAVIGATION_STANDARD.md](../BOE%20Master%20Context/BOE_GLOBAL_NAVIGATION_STANDARD.md)
+> and [BOE_MODULE_LAYOUT_STANDARD.md](../BOE%20Master%20Context/BOE_MODULE_LAYOUT_STANDARD.md).
+>
+> Read for original intent only. Rank 6 in the source-of-truth hierarchy.
+
 # FILE 3 → `docs/CURRENT_STATE.md`
 
-# BOE Task Management System — Current State
+# BOE Task Management System — Current State (historical, 2026-05-30)
 
 # Current Development Stage
 
