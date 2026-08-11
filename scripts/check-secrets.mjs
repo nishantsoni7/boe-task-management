@@ -160,19 +160,62 @@ for (const f of findings) {
   grouped.get(key).count++
 }
 
-console.error(`check:secrets — ${grouped.size} finding(s) in ${scope}\n`)
-for (const f of [...grouped.values()].sort((a, b) => a.where.localeCompare(b.where))) {
-  const times = f.count > 1 ? ` ×${f.count}` : ''
-  console.error(`  ${f.where}:${f.line}${times}`)
-  console.error(`    ${f.kind}${f.detail ? ` — ${f.detail}` : ''}`)
-}
-console.error(
-  '\nValues are deliberately not printed.' +
-  '\nA credential already committed is not fixed by deleting it: ROTATE it at the provider.' +
-  (HISTORY ? '' : '\nRun with --history to see whether these values are also in past commits.'),
-)
+const all = [...grouped.values()].sort((a, b) => a.where.localeCompare(b.where))
+const live = all.filter(f => !f.where.startsWith('history:'))
+const past = all.filter(f => f.where.startsWith('history:'))
 
-// History findings are a report on the past, and the past cannot be fixed by
-// failing a build. Only a live finding in a tracked file fails.
-const live = [...grouped.values()].some(f => !f.where.startsWith('history:'))
-process.exit(live ? 1 : 0)
+const render = f => {
+  const times = f.count > 1 ? ` ×${f.count}` : ''
+  return `  ${f.where}:${f.line}${times}\n    ${f.kind}${f.detail ? ` — ${f.detail}` : ''}`
+}
+
+// The two result kinds are reported SEPARATELY and labelled differently.
+//
+// An earlier version printed one combined "N finding(s)" header and exited 0
+// when every finding was historical. That reads as a failed check that somehow
+// passed, which is the worst possible signal from a security tool: a reviewer
+// either ignores a real problem or distrusts the exit code. A finding in a
+// tracked file is a FAILURE. A finding in history is an INVESTIGATION RESULT
+// about commits that already exist, and no exit code can change the past.
+
+if (live.length > 0) {
+  console.error(`\ncheck:secrets — FAILED: ${live.length} credential(s) in tracked files\n`)
+  console.error(live.map(render).join('\n'))
+  console.error(
+    '\n  Remove the literal, read the value from the environment, and ROTATE it at the' +
+    '\n  provider — a credential that has been committed is compromised even once deleted.',
+  )
+}
+
+if (past.length > 0) {
+  console.error(
+    `\ncheck:secrets — HISTORY REPORT: ${past.length} credential(s) in past commits` +
+    '\n  This is investigation output, NOT a check result. It does not pass and does not' +
+    '\n  fail: these commits already exist, and no exit code changes that. Use it to decide' +
+    '\n  WHAT TO ROTATE.\n',
+  )
+  console.error(past.map(render).join('\n'))
+  console.error(
+    '\n  Rotation at the provider is the only thing that revokes these. Deleting the file,' +
+    '\n  or even rewriting history, does not — assume every value here is compromised.',
+  )
+}
+
+console.error('\n  Values are deliberately not printed.')
+if (!HISTORY) {
+  console.error('  Run with --history to see whether these values also exist in past commits.')
+}
+
+// Only a live finding fails. Stated in the output above so the exit code is
+// never the only thing a reader has to go on.
+if (live.length > 0) {
+  process.exit(1)
+}
+
+console.log(
+  `\ncheck:secrets — tracked files clean (${scanned} scanned).` +
+  (past.length > 0
+    ? ` ${past.length} historical finding(s) reported above and NOT treated as a pass.`
+    : ''),
+)
+process.exit(0)

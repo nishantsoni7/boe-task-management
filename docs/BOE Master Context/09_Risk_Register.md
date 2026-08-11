@@ -28,6 +28,7 @@ Severity: how bad if it happens · Likelihood: how likely within ~6 months.
 | **R-12** | Data | `payroll_holidays` is empty in production. Salary effect **proven by test**, not inferred — `src/lib/payroll/engine.holidays.test.ts` | An unregistered holiday becomes a working day and, with the office shut, an absence. **It is usually not charged** — the month's paid leave absorbs it — but it **silently consumes the employee's paid-leave entitlement**, so their own next absence is no longer covered. Once the allowance is spent, each further unregistered closure costs **one full day's pay** | High | **High** | Operational, not code: holidays must be entered. Add an empty-state warning on the payroll run screen | Next 30 days | Open — **effect now proven and correctly stated** |
 | **R-13** | Release safety | No `gh` CLI on the dev machine; releases are manual rebase-merges; migrations must be applied **before** merge or PostgREST 42703s | A merge without its migration breaks the module for everyone | Medium | **High** | Documented in `02_Current_System_State.md` and the PR template checklist | Now | **Mitigated** (documented + checklist) |
 | **R-14** | Module boundaries | Module-specific logic sits in generic folders: `src/lib` holds 211 files including `teamPerformance.ts` (1,774 lines), `objections.ts`, `orderRequestAttachments.ts` | Ownership is unclear; unrelated domains import each other | Medium | Low | Feature-folder direction recorded in [11_File_Structure_Plan.md](11_File_Structure_Plan.md). **No mass move now** | Later | Open |
+| **R-16** | Operational safety | `scripts/uat-seed.mjs`, `uat-simulate.mjs` and `uat-cleanup.mjs` write and delete real rows with a `service_role` key. Nothing constrains **which project** they target — supplying a production URL and key runs them there. `uat-cleanup` deletes every `[TEST-UAT]` row it finds | A destructive script pointed at production by mistake. Environment variables fixed *committing* the credential; they did nothing about *aiming* the script | Medium | **High** | Printing `UAT target: <url>` before acting is a prompt, not a guard. Add an **approved-project allowlist** (refuse an unlisted project ref) or an **explicit destructive-operation confirmation** (require `--yes-i-mean-production` or an interactive prompt). Deliberately deferred: a real safety gate deserves its own task, not a tail-end addition to a credential commit | Next 30 days | Open |
 | **R-15** | Accessibility | No repo-wide a11y checking. The payroll guide was built to the standard (heading order, non-colour signals, focus states); other pages are unverified | Inconsistent experience; unknown WCAG position | Medium | Low | Apply the guide's checklist when a page is next redesigned | Later | Open |
 
 ---
@@ -42,13 +43,18 @@ Found during the 2026-08-11 structural audit. **Not introduced by it.**
 **two distinct tokens**, both for the production project, both issued
 2026-05-20:
 
-| Token | Appears in |
-| --- | --- |
-| `service_role` — **bypasses RLS** | `uat-seed.mjs`, `uat-cleanup.mjs`, `uat-simulate.mjs`, `capture-performance.js` (deleted), `seed-demo-tasks.js` (deleted) |
-| `anon` — publishable | `uat-simulate.mjs` |
+| Token | Severity | Appears in |
+| --- | --- | --- |
+| `service_role` — **bypasses RLS** | **This is the incident** | `uat-seed.mjs`, `uat-cleanup.mjs`, `uat-simulate.mjs`, `capture-performance.js` (deleted), `seed-demo-tasks.js` (deleted) |
+| `anon` — publishable | Low | `uat-simulate.mjs` |
 
 One key in five files, not five keys. **Rotating it once invalidates every
 copy**, including the two in files that no longer exist.
+
+The **`anon` key is designed to be public** — it ships in the client bundle of
+every Supabase application and is protected by row-level security, not by
+secrecy. Its presence here is untidy, not an emergency. Rotating it is optional
+hygiene; rotating the `service_role` key is the incident.
 
 ### Steps
 

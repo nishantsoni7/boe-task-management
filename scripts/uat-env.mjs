@@ -9,11 +9,13 @@
  * anyone with repository read access full read/write on payroll, salaries,
  * attendance and audit history.
  *
- * Moving the values to environment variables does NOT undo that exposure — the
- * committed value stays in Git history, and only rotating the key in Supabase
- * revokes it. What this does is stop the mistake continuing: from here, running
- * a UAT script requires credentials the operator supplies, and there is nothing
- * left in the repository to copy.
+ * Moving the values to environment variables does NOT undo that exposure. The
+ * committed value stays in Git history and remains LIVE until the key is
+ * rotated in Supabase; rotation is the only thing that revokes it.
+ *
+ * What this does is stop the mistake continuing: running a UAT script now
+ * requires credentials the operator supplies, and the working tree no longer
+ * carries one to copy. The repository still does, in earlier commits.
  *
  * FAIL LOUD, NEVER GUESS
  * ----------------------
