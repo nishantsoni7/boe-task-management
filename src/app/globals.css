@@ -194,6 +194,51 @@ body {
   }
 }
 
+/* ── Review decision (creator side of an approval) ──
+   Approve / Return / Copy / Cancel are four peers, not one lead plus offcuts, so
+   they lay out as an even 2x2 grid: equal columns, equal heights, one gap.
+   These rules must follow the 600px block above — they carry the same
+   specificity, so source order is what lets the grid keep both columns on a
+   phone rather than letting the primary span. */
+.boe-task-actions--review {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 1fr rows, not auto: when a long label wraps in row 1 the buttons in row 2
+     grow with it, so all four cells stay one height rather than two. */
+  grid-auto-rows: minmax(44px, 1fr);
+  align-items: stretch;
+  gap: 8px;
+}
+.boe-task-actions--review .boe-task-action-primary,
+.boe-task-actions--review .boe-task-action-secondary {
+  grid-column: auto;
+  width: 100%;
+  min-width: 0;          /* a long label shrinks the cell instead of overflowing the card */
+  min-height: 44px;      /* touch target */
+  white-space: normal;   /* ...and wraps rather than clipping */
+}
+.boe-task-actions--review .boe-task-action-primary:not(:disabled):hover {
+  filter: brightness(0.95);
+}
+.boe-task-actions--review .boe-task-action-primary:not(:disabled):active,
+.boe-task-actions--review .boe-task-action-secondary:not(:disabled):active {
+  transform: translateY(1px);
+}
+/* Narrow phones: one column. Two 44px-tall buttons plus a gap do not fit a
+   ~300px card width once the labels wrap. */
+@media (max-width: 460px) {
+  .boe-task-actions--review { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Interaction states for a filled primary action whose colour is supplied
+   inline from the shared blue token (Submit for Approval). Colour lives with
+   the button; only the hover/active feedback is shared here, matching the
+   pressed feel of .boe-btn and the hover of the review grid's primary.
+   Disabled is handled by the button's own opacity/cursor, so neither state
+   fires once it is disabled. */
+.boe-task-action-blue:not(:disabled):hover  { filter: brightness(0.95); }
+.boe-task-action-blue:not(:disabled):active { transform: translateY(1px); }
+
 /* ── Activity feed — quiet scrollbar + text-action hovers ── */
 .boe-activity-scroll {
   scrollbar-width: thin;
@@ -388,6 +433,21 @@ body {
    "important" rather than the amber of `waiting` — the two states sit side by
    side in the same lists and must not read as the same thing. */
 .boe-badge-pending-approval { background: rgba(196,154,40,0.14); color: #8A6B12; }
+
+/* Assigned By Me only. On that list `pending_approval` is the one status
+   waiting on the READER, so it gets the amber review treatment — soft amber
+   fill, a real amber edge, the amber text already used by .boe-badge-waiting
+   and .boe-nav-badge.amber, and a touch more weight. Layered ON TOP of the
+   shared class above rather than replacing it (equal specificity, later in the
+   file), so `tasks/my`, `tasks/all` and components/ui/TaskCard.tsx keep the
+   gold badge they render today. */
+.boe-badge-approval-review {
+  background: rgba(232,160,48,0.14);
+  border: 1px solid rgba(232,160,48,0.45);
+  color: #C4831A;
+  font-weight: 600;
+  gap: 4px;
+}
 
 /* Urgent — the same red as .boe-badge-blocked, under the name several modules
    already use. This class was referenced by Assets & Access (LOST / DISPOSED
