@@ -7,6 +7,10 @@ export type TaskStatus =
   | 'working'
   | 'waiting'
   | 'blocked'
+  // A delegated ordinary task the assignee has finished and handed to its
+  // creator to accept. Not completed: `completed_at` stays null and no
+  // completion credit is awarded until the creator approves.
+  | 'pending_approval'
   | 'completed'
   | 'cancelled'
 

@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Check, User, CalendarDays } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Task } from '@/lib/types'
-import { isOverdue, getAssignedByDisplay, isValidUUID } from '@/lib/ui'
+import { isOverdue, getAssignedByDisplay, isValidUUID, taskStatusLabel } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -545,9 +545,7 @@ function TodaysFocusPanel({
             ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1)
             : null
           const priorityLower = task.priority?.toLowerCase() ?? ''
-          const statusLabel = task.status
-            ? task.status.charAt(0).toUpperCase() + task.status.slice(1)
-            : null
+          const statusLabel = task.status ? taskStatusLabel(task.status) : null
           const assignerDisplay = getAssignedByDisplay(task, userMap)
           const isSelf = assignerDisplay === 'Self'
 
@@ -1338,17 +1336,18 @@ function TaskListDrawer({
 
 function StatusChip({ status }: { status: string }) {
   const map: Record<string, { color: string; bg: string }> = {
-    pending:   { color: '#6B7280', bg: '#F3F4F6' },
-    started:   { color: '#7C3AED', bg: '#F5F3FF' },
-    working:   { color: '#1D4ED8', bg: '#EFF6FF' },
-    waiting:   { color: '#92400E', bg: '#FFFBEB' },
-    blocked:   { color: '#991B1B', bg: '#FEF2F2' },
-    completed: { color: '#166534', bg: '#F0FDF4' },
+    pending:          { color: '#6B7280', bg: '#F3F4F6' },
+    started:          { color: '#7C3AED', bg: '#F5F3FF' },
+    working:          { color: '#1D4ED8', bg: '#EFF6FF' },
+    waiting:          { color: '#92400E', bg: '#FFFBEB' },
+    blocked:          { color: '#991B1B', bg: '#FEF2F2' },
+    pending_approval: { color: '#8A6B12', bg: '#FBF6E6' },
+    completed:        { color: '#166534', bg: '#F0FDF4' },
   }
   const s = map[status] ?? { color: '#374151', bg: '#F3F4F6' }
   return (
     <span style={{ fontSize: '11px', fontWeight: 600, color: s.color, background: s.bg, borderRadius: '5px', padding: '2px 8px', textTransform: 'capitalize' }}>
-      {status}
+      {taskStatusLabel(status)}
     </span>
   )
 }

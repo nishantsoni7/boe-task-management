@@ -139,6 +139,16 @@ const TASK_TITLE_OR = [
   'title.ilike.%cancelled a task%',
   'title.ilike.%reversed cancellation%',
   'title.ilike.%cancellation reversed%',
+  // Creator approval of delegated tasks (20260833000000). The titles are
+  // composed inside transition_task_review() as
+  // "<actor> submitted task for approval" / "… approved and completed task" /
+  // "… returned task to Working", and these three fragments are what put them
+  // in the feed. `approved and completed task` would already be caught by the
+  // `%completed task%` line above; it is listed explicitly anyway, so rewording
+  // either one cannot silently orphan the other.
+  'title.ilike.%submitted task for approval%',
+  'title.ilike.%approved and completed task%',
+  'title.ilike.%returned task to working%',
 ].join(',')
 
 export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll'

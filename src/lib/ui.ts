@@ -3,14 +3,36 @@ import type { TaskStatus, TaskPriority } from './types'
 // ─── Status badge class ───────────────────────────────────────────────────────
 export function statusBadgeClass(status: TaskStatus | string): string {
   const map: Record<string, string> = {
-    pending:   'boe-badge boe-badge-pending',
-    started:   'boe-badge boe-badge-started',
-    working:   'boe-badge boe-badge-working',
-    waiting:   'boe-badge boe-badge-waiting',
-    blocked:   'boe-badge boe-badge-blocked',
-    completed: 'boe-badge boe-badge-completed',
+    pending:          'boe-badge boe-badge-pending',
+    started:          'boe-badge boe-badge-started',
+    working:          'boe-badge boe-badge-working',
+    waiting:          'boe-badge boe-badge-waiting',
+    blocked:          'boe-badge boe-badge-blocked',
+    pending_approval: 'boe-badge boe-badge-pending-approval',
+    completed:        'boe-badge boe-badge-completed',
   }
   return map[status] ?? 'boe-badge boe-badge-pending'
+}
+
+// ─── Status label ─────────────────────────────────────────────────────────────
+// Every task status used to render as `status.charAt(0).toUpperCase() + …`,
+// which was fine while every value was one lowercase word. `pending_approval`
+// is not, and it reads differently depending on which side of it you are
+// standing on: the creator has something waiting FOR them, the assignee is
+// waiting ON someone. Both need naming, so the label takes the viewer's
+// relationship to the task.
+export type TaskStatusViewer = 'creator' | 'assignee' | 'other'
+
+export function taskStatusLabel(
+  status: TaskStatus | string,
+  viewer: TaskStatusViewer = 'other',
+): string {
+  if (status === 'pending_approval') {
+    if (viewer === 'creator')  return 'For Approval'
+    if (viewer === 'assignee') return 'Approval Pending'
+    return 'Pending Approval'
+  }
+  return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
 // ─── Priority dot color ───────────────────────────────────────────────────────

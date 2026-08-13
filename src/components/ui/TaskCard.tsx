@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import type { Task } from '@/lib/types'
 import {
   statusBadgeClass,
+  taskStatusLabel,
   isOverdue,
   formatShortDate,
   escalationLevel,
@@ -108,7 +109,7 @@ export function TaskCard({
 
       {/* Meta row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        <span className={statusBadgeClass(task.status)}>{task.status}</span>
+        <span className={statusBadgeClass(task.status)}>{taskStatusLabel(task.status)}</span>
 
         {task.status === 'blocked' && task.blocker_reason && (
           <span style={{

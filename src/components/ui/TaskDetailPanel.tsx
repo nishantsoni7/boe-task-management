@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import type { Task, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { isOverdue, formatShortDate, formatDateTime, timeAgo, formatLogAction, getTaskAging } from '@/lib/ui'
+import { isOverdue, formatShortDate, formatDateTime, timeAgo, formatLogAction, getTaskAging, taskStatusLabel } from '@/lib/ui'
 import { createClient } from '@/lib/supabase/client'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { CheckCircle } from 'lucide-react'
@@ -28,12 +28,13 @@ const PRIORITY: Record<string, { label: string; color: string; bg: string }> = {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  pending:   colors.muted,
-  started:   colors.secondary,
-  working:   colors.blue,
-  waiting:   colors.amber,
-  blocked:   colors.red,
-  completed: colors.green,
+  pending:          colors.muted,
+  started:          colors.secondary,
+  working:          colors.blue,
+  waiting:          colors.amber,
+  blocked:          colors.red,
+  pending_approval: '#A57F14',
+  completed:        colors.green,
 }
 
 // ─── Meta row ─────────────────────────────────────────────────────────────────
@@ -252,7 +253,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
                 background: `${statusColor}14`,
                 padding: '2px 8px', borderRadius: '4px',
               }}>
-                {task.status}
+                {taskStatusLabel(task.status)}
               </span>
             </MetaRow>
 

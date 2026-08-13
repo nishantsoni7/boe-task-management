@@ -1,6 +1,7 @@
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { restoreTargetStatus } from '@/lib/tasks/reviewTransitions'
 
 export async function POST(req: NextRequest) {
   const authClient = await createClient()
@@ -57,7 +58,11 @@ export async function POST(req: NextRequest) {
     .limit(1)
     .single()
 
-  const restoreStatus = terminalLog?.from_status ?? 'working'
+  // A task closed by creator approval was in `pending_approval` immediately
+  // before it completed, and restoring it there would put it back in the
+  // creator's queue with nothing for the assignee to do. It goes to `working`
+  // instead — see restoreTargetStatus for the reasoning.
+  const restoreStatus = restoreTargetStatus(terminalLog?.from_status)
 
   const now = new Date().toISOString()
 
