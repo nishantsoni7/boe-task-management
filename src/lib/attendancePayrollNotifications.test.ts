@@ -144,11 +144,18 @@ describe('attendance_payroll is a real category with exactly four members', () =
 // ─── 3–6. The four existing feeds are untouched ──────────────────────────────
 
 describe('no existing feed was widened', () => {
-  test('3. Task stays a narrow title whitelist and gains nothing', () => {
+  test('3. Task stays a narrow title whitelist and gains nothing from THIS work', () => {
     const filter = getNotificationCategoryFilter('task')
-    // Still title-based, still 13 fragments — NOT `task_id IS NOT NULL`, which
-    // would resurface ~16k historical overdue/escalation cron rows.
-    assert.equal(filter.split(',').length, 13)
+    // Still title-based, and still a whitelist — NOT `task_id IS NOT NULL`,
+    // which would resurface ~16k historical overdue/escalation cron rows.
+    //
+    // The fragment count was 13 when this was written and is 16 since the
+    // creator-approval workflow (20260833000000) added its three titles — a
+    // deliberate addition to the Task feed, asserted in
+    // src/lib/tasks/reviewTransitions.test.ts. The count is pinned rather than
+    // dropped so a fragment can never arrive here unnoticed; what this test
+    // guards is that no ATTENDANCE/PAYROLL row ever enters the Task feed.
+    assert.equal(filter.split(',').length, 16)
     assert.ok(filter.startsWith('title.ilike.'))
     assert.equal(/type\.in\./.test(filter), false)
     assert.equal(/task_id/.test(filter), false)

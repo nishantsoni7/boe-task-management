@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
-import { getTaskAging } from '@/lib/ui'
+import { getTaskAging, statusBadgeClass, taskStatusLabel } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -55,10 +55,14 @@ function formatDate(d: string | null): string | null {
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
-type TabKey = 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion'
+type TabKey = 'all' | 'for_approval' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion'
 
+// `for_approval` sits immediately after All because it is the only tab holding
+// work that is waiting on THIS person rather than on someone else. Every other
+// tab is a way of looking at what the team owes; this one is the queue.
 const TABS: { key: TabKey; label: string; color: string }[] = [
   { key: 'all',            label: 'All',             color: colors.secondary },
+  { key: 'for_approval',   label: 'For Approval',    color: '#A57F14'        },
   { key: 'important',      label: 'Important',       color: '#C49A28'        },
   { key: 'unacknowledged', label: 'Unacknowledged',  color: '#9B6FD4'        },
   { key: 'in_progress',    label: 'In Progress',     color: colors.blue      },
@@ -154,6 +158,14 @@ function TaskCard({
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#2E7D6B', background: 'rgba(46,158,107,0.10)', whiteSpace: 'nowrap' }}>{assigneeName}</span>
+          {/* The mobile card names no status — with one exception, because
+              "this one is waiting on you" is the only status on this screen
+              that asks the reader for something. */}
+          {task.status === 'pending_approval' && (
+            <span className={statusBadgeClass(task.status)} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
+              {taskStatusLabel(task.status, 'creator')}
+            </span>
+          )}
           <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
           {dateStr && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
@@ -259,8 +271,8 @@ function TaskCard({
 
       {/* Status — fixed 90px */}
       <div style={{ flexShrink: 0, width: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
-          {task.status}
+        <span className={statusBadgeClass(task.status)} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
+          {taskStatusLabel(task.status, 'creator')}
         </span>
       </div>
 
@@ -1024,6 +1036,12 @@ function AssignedByMeContent() {
     const sort = (arr: Task[]) => [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
     return {
       all:            sort(allTasks),
+      // Work handed back for this person to accept. `in_progress` names an
+      // explicit status list and so already excludes it — that is deliberate:
+      // a task waiting on the creator is not in progress with the assignee.
+      // `overdue` may still contain it, because it is not completed and a
+      // missed due date is still a missed due date.
+      for_approval:   sort(allTasks.filter(t => t.status === 'pending_approval')),
       important:      sort(allTasks.filter(t => t.is_urgent)),
       unacknowledged: sort(allTasks.filter(isUnacknowledged)),
       in_progress:    sort(allTasks.filter(t => !isOverdue(t) && ['started', 'working', 'pending'].includes(t.status))),
@@ -1035,6 +1053,7 @@ function AssignedByMeContent() {
 
   const counts: Record<TabKey, number> = {
     all:            buckets.all.length,
+    for_approval:   buckets.for_approval.length,
     important:      buckets.important.length,
     unacknowledged: buckets.unacknowledged.length,
     in_progress:    buckets.in_progress.length,
@@ -1133,15 +1152,25 @@ function AssignedByMeContent() {
                     }}
                   >
                     {item.label}
-                    <span style={{
-                      fontSize: '11px', fontWeight: 700,
-                      padding: '1px 7px', borderRadius: '10px',
-                      background: isActive ? `${item.color}18` : 'rgba(0,0,0,0.05)',
-                      color: isActive ? item.color : colors.muted,
-                      minWidth: '20px', textAlign: 'center',
-                    }}>
-                      {counts[item.key]}
-                    </span>
+                    {/* For Approval keeps its gold count even when the tab is
+                        not selected, but only while it is non-zero: the one
+                        tab holding work that is waiting on the reader should
+                        not look like the six that are not. */}
+                    {(() => {
+                      const standOut =
+                        isActive || (item.key === 'for_approval' && counts[item.key] > 0)
+                      return (
+                        <span style={{
+                          fontSize: '11px', fontWeight: 700,
+                          padding: '1px 7px', borderRadius: '10px',
+                          background: standOut ? `${item.color}18` : 'rgba(0,0,0,0.05)',
+                          color: standOut ? item.color : colors.muted,
+                          minWidth: '20px', textAlign: 'center',
+                        }}>
+                          {counts[item.key]}
+                        </span>
+                      )
+                    })()}
                   </button>
                 )
               })}

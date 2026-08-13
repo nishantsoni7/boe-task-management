@@ -27,7 +27,7 @@ const PAGE_SIZE  = 50
 // paging to 3, opening a task and pressing Back returns to page 3 rather than
 // page 1.
 const TASK_STATUSES = [
-  'pending', 'started', 'working', 'waiting', 'blocked', 'completed', 'cancelled',
+  'pending', 'started', 'working', 'waiting', 'blocked', 'pending_approval', 'completed', 'cancelled',
 ] as const satisfies readonly TaskStatus[]
 
 const LIST_PARAMS = {

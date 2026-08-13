@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Task, LogEntry, TaskStatus, UserProfile, TaskAttachment } from '@/lib/types'
 import {
   isOverdue, formatFullDate, formatDateTime, formatActivityTimestamp,
-  formatLogAction, timeAgo, getTaskAging,
+  formatLogAction, timeAgo, getTaskAging, taskStatusLabel,
 } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
@@ -22,30 +22,41 @@ import {
   attachmentRowsForSubmit, attachmentStatusLabel, createAttachmentQueue,
   failureSummary, submissionGate, submitButtonLabel,
 } from '@/lib/tasks/commentAttachments'
-import { canMarkComplete, canPostUpdate } from '@/lib/tasks/taskDetailAccess'
-import { CircleCheckBig, UserCheck, UserRound } from 'lucide-react'
+import {
+  canMarkComplete, canPostUpdate,
+  canSubmitForApproval, canApproveTask, canReturnTask,
+  RETURN_REASON_MAX_LENGTH,
+} from '@/lib/tasks/taskDetailAccess'
+import { CircleCheckBig, SendHorizontal, Undo2, UserCheck, UserRound } from 'lucide-react'
 import { perfTrack } from '@/lib/perf'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
+// The gold used for pending_approval is the "important" gold, not the amber of
+// `waiting` — the two are adjacent states and must not read as one.
+const APPROVAL_GOLD      = '#A57F14'
+const APPROVAL_GOLD_TINT = 'rgba(196,154,40,0.10)'
+
 const STATUS_COLORS: Record<string, string> = {
-  pending:   colors.muted,
-  started:   colors.secondary,
-  working:   colors.blue,
-  waiting:   colors.amber,
-  blocked:   colors.red,
-  completed: colors.green,
-  cancelled: '#78716C',
+  pending:          colors.muted,
+  started:          colors.secondary,
+  working:          colors.blue,
+  waiting:          colors.amber,
+  blocked:          colors.red,
+  pending_approval: APPROVAL_GOLD,
+  completed:        colors.green,
+  cancelled:        '#78716C',
 }
 
 const STATUS_TINTS: Record<string, string> = {
-  pending:   colors.float,
-  started:   colors.float,
-  working:   colors.blueTint,
-  waiting:   colors.amberTint,
-  blocked:   colors.redTint,
-  completed: colors.greenTint,
-  cancelled: '#F5F5F4',
+  pending:          colors.float,
+  started:          colors.float,
+  working:          colors.blueTint,
+  waiting:          colors.amberTint,
+  blocked:          colors.redTint,
+  pending_approval: APPROVAL_GOLD_TINT,
+  completed:        colors.greenTint,
+  cancelled:        '#F5F5F4',
 }
 
 const CANCEL_REASONS = [
@@ -96,6 +107,15 @@ export default function TaskDetailPage() {
   const [modalOpen,        setModalOpen]       = useState(false)
   const [modalStatus,      setModalStatus]     = useState<string>('')
   const [teamMembers,      setTeamMembers]     = useState<{ id: string; full_name: string }[]>([])
+
+  // Creator-approval workflow. One in-flight flag covers all three actions —
+  // they are mutually exclusive on one task — with the usual ref/state pair, so
+  // a double-click is refused in the same tick rather than after a re-render.
+  const [reviewBusy,       setReviewBusy]      = useState<'submit' | 'approve' | 'return' | null>(null)
+  const reviewBusyRef = useRef(false)
+  const [returnModalOpen,  setReturnModalOpen] = useState(false)
+  const [returnReason,     setReturnReason]    = useState('')
+  const [returnReasonError, setReturnReasonError] = useState<string | null>(null)
 
   const [commentNote,        setCommentNote]        = useState('')
   const [commentSaving,      setCommentSaving]      = useState(false)
@@ -444,6 +464,114 @@ export default function TaskDetailPage() {
       statusUpdatingRef.current = false
       setStatusUpdating(false)
       perf.end()
+    }
+  }
+
+  /**
+   * Submit / Approve / Return, all through the one protected RPC.
+   *
+   * Nothing about who is acting, who gets told or what the task is called is
+   * sent from here: `transition_task_review` reads every one of those from the
+   * locked task row and takes the actor from auth.uid(). What comes back is the
+   * updated task, which is merged into local state — no reload, and no
+   * navigation, because none of the three actions moves the task off this page
+   * for the person who performed it.
+   */
+  const runReviewAction = async (action: 'submit' | 'approve' | 'return', note?: string) => {
+    if (!task) return false
+    if (reviewBusyRef.current) return false
+    reviewBusyRef.current = true
+    setReviewBusy(action)
+    // Timed under the existing actions rather than three new ones: approval IS
+    // the completion of a delegated task, and submit/return are status moves.
+    // The perf audit's vocabulary stays the size it was.
+    const perf = perfTrack(action === 'approve' ? 'task.complete' : 'task.status.update')
+    try {
+      const { data, error } = await supabase.rpc('transition_task_review', {
+        p_task_id: task.id,
+        p_action:  action,
+        p_note:    note ?? null,
+      })
+      if (error) {
+        console.error(`[runReviewAction:${action}] rpc failed:`, error.message)
+        // The RPC's messages are written to be read — "TASK_REVIEW_FORBIDDEN:
+        // Only the task creator can approve this task" — so the part after the
+        // code is shown rather than a generic failure line.
+        const readable = error.message.includes(':')
+          ? error.message.slice(error.message.indexOf(':') + 1).trim()
+          : error.message
+        window.alert(readable || 'Failed to update this task. Please try again.')
+        return false
+      }
+      perf.mark('rpc')
+
+      const result = (data ?? {}) as {
+        status?: string
+        completed_at?: string | null
+        last_update_at?: string | null
+        blocker_reason?: string | null
+        waiting_on_type?: 'team_member' | 'external' | null
+        waiting_on_user_id?: string | null
+        waiting_on_text?: string | null
+      }
+      const nextStatus = (result.status ?? task.status) as TaskStatus
+      setTask({
+        ...task,
+        status:             nextStatus,
+        last_update_at:     result.last_update_at ?? task.last_update_at,
+        blocker_reason:     result.blocker_reason ?? null,
+        waiting_on_type:    result.waiting_on_type ?? null,
+        waiting_on_user_id: result.waiting_on_user_id ?? null,
+        waiting_on_text:    result.waiting_on_text ?? null,
+      })
+      setSelectedStatus(nextStatus)
+      invalidateTaskCache(task.assigned_to)
+      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+      // The notification this wrote is addressed to the OTHER party, so there
+      // is nothing of the actor's own to invalidate here.
+      // The RPC wrote the activity row inside its own transaction, so it is
+      // re-read rather than synthesized — the feed shows exactly what was
+      // recorded, including the return reason.
+      await loadLog(task.id)
+      perf.mark('reload-log')
+      return true
+    } finally {
+      reviewBusyRef.current = false
+      setReviewBusy(null)
+      perf.end()
+    }
+  }
+
+  const submitForApproval = async () => {
+    const ok = await runReviewAction('submit')
+    if (ok) showToast(`Submitted to ${creatorName ?? 'the creator'} for review.`)
+  }
+
+  const approveTask = async () => {
+    const confirmed = window.confirm(
+      'Approve this task and mark it complete? This records the completion against the assignee.'
+    )
+    if (!confirmed) return
+    const ok = await runReviewAction('approve')
+    if (ok) showToast('Task approved and completed.')
+  }
+
+  const returnTask = async () => {
+    const reason = returnReason.trim()
+    if (!reason) {
+      setReturnReasonError('Please say what needs to be corrected.')
+      return
+    }
+    if (reason.length > RETURN_REASON_MAX_LENGTH) {
+      setReturnReasonError(`Please keep this under ${RETURN_REASON_MAX_LENGTH} characters.`)
+      return
+    }
+    const ok = await runReviewAction('return', reason)
+    if (ok) {
+      setReturnModalOpen(false)
+      setReturnReason('')
+      setReturnReasonError(null)
+      showToast('Task returned to Working.')
     }
   }
 
@@ -908,10 +1036,16 @@ export default function TaskDetailPage() {
   const showCancelButton = (isCreator || isAdmin) && task.status !== 'completed' && task.status !== 'cancelled'
   const isUnacknowledged = isAssignee && !isSelfTask && !task.acknowledged_at && task.status !== 'cancelled' && task.task_type !== 'quotation_request'
   const isActiveTask     = task.status !== 'completed' && task.status !== 'cancelled'
-  // The two gates on the interactions optimised here, kept where a test can
-  // reach them so the optimisation cannot quietly widen either. Same rules.
+  // The gates on who may close a task, kept where a test can reach them so no
+  // screen edit can quietly widen one. The database re-derives every one of
+  // them; these only decide what is drawn.
   const mayPostUpdate    = canPostUpdate(task, currentUserId)
   const mayMarkComplete  = canMarkComplete(task, currentUserId)
+  const maySubmit        = canSubmitForApproval(task, currentUserId)
+  const mayApprove       = canApproveTask(task, currentUserId)
+  const mayReturn        = canReturnTask(task, currentUserId)
+  const isPendingApproval = task.status === 'pending_approval'
+  const reviewBusyAny    = reviewBusy !== null
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
     : isAssignee                    ? 'Assigned To Me'
@@ -967,7 +1101,7 @@ export default function TaskDetailPage() {
     : statusTint
   const qStatusLabel = isQuotation
     ? (task.status === 'completed' ? 'Completed' : 'Open')
-    : (task.status.charAt(0).toUpperCase() + task.status.slice(1))
+    : taskStatusLabel(task.status, isCreator && !isSelfTask ? 'creator' : isAssignee ? 'assignee' : 'other')
 
   // ── Task creation event ──────────────────────────────────────────────────
   // Every task written through the app records a real `created` activity row. Tasks
@@ -1469,6 +1603,80 @@ export default function TaskDetailPage() {
                       {markingComplete ? 'Marking…' : (isQuotation ? 'Mark Quotation Complete' : 'Mark Complete')}
                     </button>
                   )}
+
+                  {/* Delegated ordinary task, assignee's side: the work is handed
+                      to the person who asked for it rather than closed here. */}
+                  {maySubmit && (
+                    <button
+                      className="boe-task-action-primary"
+                      onClick={submitForApproval}
+                      disabled={saving || reviewBusyAny || statusUpdating}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                        padding: '9px 14px', borderRadius: '8px',
+                        border: `1.5px solid ${APPROVAL_GOLD}`,
+                        background: APPROVAL_GOLD, color: '#ffffff',
+                        fontSize: '13px', fontWeight: 700,
+                        cursor: saving || reviewBusyAny || statusUpdating ? 'not-allowed' : 'pointer',
+                        fontFamily: font.body,
+                        opacity: saving || reviewBusyAny || statusUpdating ? 0.6 : 1,
+                        transition: 'all 0.15s',
+                        boxShadow: `0 2px 6px ${APPROVAL_GOLD}38`,
+                      }}
+                    >
+                      <SendHorizontal size={15} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+                      {reviewBusy === 'submit' ? 'Submitting…' : 'Submit for Approval'}
+                    </button>
+                  )}
+
+                  {/* Delegated ordinary task, creator's side: accept the work or
+                      send it back. One decision, two buttons, no second page. */}
+                  {mayApprove && (
+                    <button
+                      className="boe-task-action-primary"
+                      onClick={approveTask}
+                      disabled={reviewBusyAny}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                        padding: '9px 14px', borderRadius: '8px',
+                        border: `1.5px solid ${colors.green}`,
+                        background: colors.green, color: '#ffffff',
+                        fontSize: '13px', fontWeight: 700,
+                        cursor: reviewBusyAny ? 'not-allowed' : 'pointer',
+                        fontFamily: font.body,
+                        opacity: reviewBusyAny ? 0.6 : 1,
+                        transition: 'all 0.15s',
+                        boxShadow: `0 2px 6px ${colors.green}38`,
+                      }}
+                    >
+                      <CircleCheckBig size={15} strokeWidth={2.4} style={{ flexShrink: 0 }} />
+                      {reviewBusy === 'approve' ? 'Approving…' : 'Approve & Complete'}
+                    </button>
+                  )}
+                  {mayReturn && (
+                    <button
+                      className="boe-task-action-secondary"
+                      onClick={() => { setReturnReason(''); setReturnReasonError(null); setReturnModalOpen(true) }}
+                      disabled={reviewBusyAny}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                        padding: '9px 12px', borderRadius: '8px',
+                        border: `1.5px solid ${APPROVAL_GOLD}55`,
+                        background: '#ffffff', color: APPROVAL_GOLD,
+                        fontSize: '12px', fontWeight: 600,
+                        cursor: reviewBusyAny ? 'not-allowed' : 'pointer',
+                        opacity: reviewBusyAny ? 0.6 : 1,
+                        fontFamily: font.body,
+                        whiteSpace: 'nowrap', transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = APPROVAL_GOLD_TINT }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
+                    >
+                      <Undo2 size={14} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                      Return to Working
+                    </button>
+                  )}
+
                   {showCancelButton && !isQuotation && !isUnacknowledged && (
                     <button
                       className="boe-task-action-secondary"
@@ -1627,7 +1835,11 @@ export default function TaskDetailPage() {
                   {qStatusLabel}
                 </span>
 
-                {!isQuotation && isAssignee && task.status !== 'completed' && task.status !== 'cancelled' && !isUnacknowledged && (
+                {/* Update Status is withdrawn while approval is pending: the
+                    task's next move is the creator's, and an assignee quietly
+                    parking it back in Waiting would strand the review. The
+                    database refuses the same move (tasks_enforce_review_path). */}
+                {!isQuotation && isAssignee && !isPendingApproval && task.status !== 'completed' && task.status !== 'cancelled' && !isUnacknowledged && (
                   <button
                     onClick={() => {
                       setModalStatus('')
@@ -1706,6 +1918,42 @@ export default function TaskDetailPage() {
                 </p>
               )}
             </div>
+
+            {/* § Awaiting approval — the assignee's side of the handover.
+                A small card, not a banner: the task is not in trouble, it is
+                simply with someone else. */}
+            {isPendingApproval && isAssignee && !isSelfTask && (
+              <div className="boe-card" style={{
+                padding: '12px 18px',
+                background: APPROVAL_GOLD_TINT,
+                borderLeft: `3px solid ${APPROVAL_GOLD}`,
+              }}>
+                <p style={{ fontSize: '12.5px', color: APPROVAL_GOLD, fontWeight: 700, margin: 0 }}>
+                  Awaiting approval from {creatorName ?? 'the task creator'}
+                </p>
+                <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '4px 0 0', lineHeight: 1.5 }}>
+                  Submitted to {creatorName ?? 'the task creator'} for review. You can still post
+                  updates here; you will be notified when it is approved or returned.
+                </p>
+              </div>
+            )}
+
+            {/* § Awaiting approval — the creator's side. The buttons live in the
+                action row above; this only says what is being asked of them. */}
+            {isPendingApproval && isCreator && !isSelfTask && (
+              <div className="boe-card" style={{
+                padding: '12px 18px',
+                background: APPROVAL_GOLD_TINT,
+                borderLeft: `3px solid ${APPROVAL_GOLD}`,
+              }}>
+                <p style={{ fontSize: '12.5px', color: APPROVAL_GOLD, fontWeight: 700, margin: 0 }}>
+                  {assigneeName} submitted this task for your approval
+                </p>
+                <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '4px 0 0', lineHeight: 1.5 }}>
+                  Approve to complete it, or return it to Working with what needs correcting.
+                </p>
+              </div>
+            )}
 
             {/* § Unacknowledged notice */}
             {isUnacknowledged && (
@@ -2226,6 +2474,104 @@ export default function TaskDetailPage() {
         </div>{/* end right column */}
 
       </div>
+
+      {/* ── Return to Working Modal ─────────────────────────────────────── */}
+      {/* Same shell and same proportions as Change Status below — one field,
+          because the only thing missing is what needs to be corrected. */}
+      {returnModalOpen && (
+        <div
+          onClick={() => { if (!reviewBusyAny) setReturnModalOpen(false) }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#ffffff', borderRadius: '12px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+              width: '100%', maxWidth: '420px',
+              padding: '24px',
+              display: 'flex', flexDirection: 'column', gap: '14px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>Return task to Working</span>
+              <button
+                onClick={() => setReturnModalOpen(false)}
+                disabled={reviewBusyAny}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: colors.muted, lineHeight: 1, padding: '2px 6px', borderRadius: '6px', fontFamily: font.body }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label
+                htmlFor="boe-return-reason"
+                style={{
+                  fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '0.07em',
+                  color: returnReasonError ? colors.red : colors.muted,
+                }}
+              >
+                What needs to be corrected? <span style={{ color: colors.red }}>*</span>
+              </label>
+              <textarea
+                id="boe-return-reason"
+                value={returnReason}
+                onChange={e => { setReturnReason(e.target.value); setReturnReasonError(null) }}
+                maxLength={RETURN_REASON_MAX_LENGTH}
+                className="boe-input"
+                style={{
+                  resize: 'vertical', minHeight: '92px', width: '100%', boxSizing: 'border-box',
+                  fontSize: '13px', lineHeight: 1.55,
+                  borderColor: returnReasonError ? colors.red : undefined,
+                }}
+                placeholder="The assignee sees this on the task, so be specific."
+                autoFocus
+              />
+              {returnReasonError && (
+                <span style={{ fontSize: '11px', color: colors.red, fontWeight: 600 }}>{returnReasonError}</span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setReturnModalOpen(false)}
+                disabled={reviewBusyAny}
+                style={{
+                  padding: '9px 16px', borderRadius: '8px',
+                  border: `1.5px solid ${colors.border}`,
+                  background: 'transparent', color: colors.secondary,
+                  fontSize: '13px', fontWeight: 600,
+                  cursor: reviewBusyAny ? 'not-allowed' : 'pointer', fontFamily: font.body,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={returnTask}
+                disabled={reviewBusyAny}
+                style={{
+                  padding: '9px 18px', borderRadius: '8px',
+                  border: `1.5px solid ${APPROVAL_GOLD}`,
+                  background: APPROVAL_GOLD, color: '#ffffff',
+                  fontSize: '13px', fontWeight: 700,
+                  cursor: reviewBusyAny ? 'not-allowed' : 'pointer', fontFamily: font.body,
+                  opacity: reviewBusyAny ? 0.6 : 1,
+                  boxShadow: `0 2px 6px ${APPROVAL_GOLD}38`,
+                }}
+              >
+                {reviewBusy === 'return' ? 'Returning…' : 'Return Task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Change Status Modal ─────────────────────────────────────────── */}
       {modalOpen && (

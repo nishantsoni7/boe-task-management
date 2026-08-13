@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
+import { statusBadgeClass, taskStatusLabel } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -340,8 +341,8 @@ function TaskCard({
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <span className={`boe-badge boe-badge-${task.status}`} style={{ fontSize: '10px', padding: '3px 9px', textTransform: 'capitalize', fontWeight: 600 }}>
-          {task.status}
+        <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '3px 9px', textTransform: 'capitalize', fontWeight: 600 }}>
+          {taskStatusLabel(task.status, 'assignee')}
         </span>
       </div>
 

@@ -384,6 +384,11 @@ body {
 .boe-badge-blocked   { background: rgba(217,79,79,0.1);     color: #C13030; }
 .boe-badge-completed { background: rgba(69,168,112,0.1);    color: #2E8A58; }
 
+/* Awaiting the creator's approval. Deliberately the gold already used for
+   "important" rather than the amber of `waiting` — the two states sit side by
+   side in the same lists and must not read as the same thing. */
+.boe-badge-pending-approval { background: rgba(196,154,40,0.14); color: #8A6B12; }
+
 /* Urgent — the same red as .boe-badge-blocked, under the name several modules
    already use. This class was referenced by Assets & Access (LOST / DISPOSED
    status, expired warranty), asset change requests and admin/members long
