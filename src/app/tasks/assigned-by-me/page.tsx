@@ -14,7 +14,7 @@ import { useViewAs } from '@/hooks/useViewAs'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers } from '@/hooks/queries/useMyTasks'
 import {
-  CheckCircle2, ExternalLink, Star, AlertCircle,
+  CheckCircle2, ClipboardCheck, ExternalLink, Star, AlertCircle,
   Search, Pencil, Trash2, Plus, Paperclip, X,
 } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
@@ -46,29 +46,27 @@ function needsUpdate(task: Task) {
 function isUnacknowledged(task: Task) {
   return !task.acknowledged_at && task.status !== 'completed' && task.status !== 'cancelled' && task.created_by !== task.assigned_to
 }
-function isNonCompletion(task: Task) {
-  return isOverdue(task) && needsUpdate(task)
-}
 function formatDate(d: string | null): string | null {
   if (!d) return null
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
-type TabKey = 'all' | 'for_approval' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion'
+type TabKey = 'all' | 'for_approval' | 'unacknowledged' | 'overdue' | 'needs_update'
 
 // `for_approval` sits immediately after All because it is the only tab holding
 // work that is waiting on THIS person rather than on someone else. Every other
 // tab is a way of looking at what the team owes; this one is the queue.
+//
+// A key dropped from this list stops being a valid `?tab=` value, because
+// TAB_KEYS below is derived from it and enumParam falls unknown values back to
+// `all`. Nothing else needs to know a tab was removed.
 const TABS: { key: TabKey; label: string; color: string }[] = [
   { key: 'all',            label: 'All',             color: colors.secondary },
   { key: 'for_approval',   label: 'For Approval',    color: '#A57F14'        },
-  { key: 'important',      label: 'Important',       color: '#C49A28'        },
   { key: 'unacknowledged', label: 'Unacknowledged',  color: '#9B6FD4'        },
-  { key: 'in_progress',    label: 'In Progress',     color: colors.blue      },
   { key: 'overdue',        label: 'Overdue',         color: colors.red       },
   { key: 'needs_update',   label: 'Pending Update',  color: colors.amber     },
-  { key: 'non_completion', label: 'Non Completion',  color: '#E05C2A'        },
 ]
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
@@ -76,6 +74,30 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   medium: { label: 'Med',  color: '#C07820'    },
   low:    { label: 'Low',  color: colors.muted },
 }
+
+// ─── Desktop column widths ────────────────────────────────────────────────────
+// One definition, read by both the header and the row, so a header can never
+// drift out of alignment with the cells beneath it.
+//
+// These were fixed pixels (130/56/90/100/100/84 plus a 28px star gutter) with
+// Task on `flex: 1`. That meant Task swallowed every pixel a wider screen
+// added: 48% of the row at 1440px, 64% at 1920px, while Status stayed at 90px.
+// Proportional widths hold Task near 42-43% at any width and give the largest
+// share of what it gives back to Status.
+//
+// Each carries a px floor. Below roughly 1000px the floors add up to more than
+// their percentages, and the surplus is taken from Task — which is the
+// intended order: the description truncates a word earlier rather than Status
+// or the action icons being squeezed.
+const STAR_GUTTER = '28px'
+const COL = {
+  assignee: { width: '10.5%', min: '96px'  },
+  priority: { width: '7%',    min: '52px'  },
+  status:   { width: '13.5%', min: '104px' },
+  created:  { width: '8.5%',  min: '82px'  },
+  due:      { width: '8.5%',  min: '88px'  },
+  actions:  { width: '7.5%',  min: '84px'  },
+} as const
 
 // ─── URL-backed list state ────────────────────────────────────────────────────
 // Tab, assignee, priority and search live in the query string, so Back from a
@@ -117,6 +139,10 @@ function TaskCard({
 
   const isImportant = task.is_urgent
 
+  // The one status on this list that is waiting on the reader. Read from the
+  // stored value; nothing here writes or reinterprets it.
+  const isForApproval = task.status === 'pending_approval'
+
   const cardBackground = isImportant
     ? (hovered ? 'rgba(196,154,40,0.08)' : 'rgba(196,154,40,0.04)')
     : (hovered ? colors.raised : colors.base)
@@ -125,13 +151,42 @@ function TaskCard({
     ? `1.5px solid rgba(196,154,40,${hovered ? '0.40' : '0.20'})`
     : `1.5px solid ${colors.border}`
 
+  // ── Desktop row only ──
+  // An approval row is tinted only when it is not ALREADY tinted as important;
+  // stacking the two would leave the reader unable to tell which signal they
+  // are looking at, and would quietly restyle every important row.
+  const desktopBackground = (isForApproval && !isImportant)
+    ? (hovered ? 'rgba(232,160,48,0.07)' : 'rgba(232,160,48,0.035)')
+    : cardBackground
+
+  const elevation = hovered
+    ? '0 2px 8px rgba(0,0,0,0.09)'
+    : isImportant
+      ? '0 1px 4px rgba(196,154,40,0.08)'
+      : '0 1px 3px rgba(0,0,0,0.04)'
+
+  // The 3px accent is an INSET shadow, not a thicker left border: it paints
+  // inside the existing 1.5px border box, so an approval row's content starts
+  // at exactly the same x as every other row's. Elevation is preserved, so
+  // hover still lifts the card.
+  const desktopShadow = isForApproval
+    ? `inset 3px 0 0 ${colors.amber}, ${elevation}`
+    : elevation
+
+  // Same accent for the mobile card, by the same means and for the same reason.
+  // The mobile card carries no elevation shadow of its own, so this is the only
+  // entry — and `undefined` leaves a non-approval card exactly as it was.
+  // No background tint here: the card is the full width of a phone screen, so
+  // the stripe alone is already unmissable and a tint would only muddy it.
+  const mobileShadow = isForApproval ? `inset 3px 0 0 ${colors.amber}` : undefined
+
   if (isMobile) {
     return (
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={onClick}
-        style={{ background: cardBackground, border: cardBorder, borderRadius: '8px', cursor: 'pointer', padding: '10px 12px' }}
+        style={{ background: cardBackground, border: cardBorder, borderRadius: '8px', boxShadow: mobileShadow, cursor: 'pointer', padding: '10px 12px' }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
           {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
@@ -161,8 +216,12 @@ function TaskCard({
           {/* The mobile card names no status — with one exception, because
               "this one is waiting on you" is the only status on this screen
               that asks the reader for something. */}
-          {task.status === 'pending_approval' && (
-            <span className={statusBadgeClass(task.status)} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
+          {isForApproval && (
+            <span
+              className={`${statusBadgeClass(task.status)} boe-badge-approval-review`}
+              style={{ fontSize: '9px', textTransform: 'capitalize' }}
+            >
+              <ClipboardCheck size={10} strokeWidth={2.4} style={{ flexShrink: 0 }} />
               {taskStatusLabel(task.status, 'creator')}
             </span>
           )}
@@ -184,21 +243,17 @@ function TaskCard({
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center',
-        background: cardBackground,
+        background: desktopBackground,
         border: cardBorder,
         borderRadius: '8px',
-        boxShadow: hovered
-          ? '0 2px 8px rgba(0,0,0,0.09)'
-          : isImportant
-            ? '0 1px 4px rgba(196,154,40,0.08)'
-            : '0 1px 3px rgba(0,0,0,0.04)',
+        boxShadow: desktopShadow,
         transition: 'background 0.12s, box-shadow 0.12s, border-color 0.12s',
         minHeight: '48px',
         cursor: 'pointer',
       }}
     >
-      {/* Star indicator */}
-      <div style={{ width: '28px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Star indicator — also the gutter the 3px approval accent paints into */}
+      <div style={{ width: STAR_GUTTER, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {task.is_urgent
           ? <Star size={11} fill="#C49A28" color="#C49A28" />
           : <div style={{ width: '11px' }} />
@@ -243,9 +298,9 @@ function TaskCard({
         })()}
       </div>
 
-      {/* Assigned To — fixed 130px */}
+      {/* Assigned To — 10.5% (min 96px) */}
       <div style={{
-        flexShrink: 0, width: '130px',
+        flexShrink: 0, width: COL.assignee.width, minWidth: COL.assignee.min,
         display: 'flex', alignItems: 'center',
         paddingLeft: '8px', paddingRight: '6px', overflow: 'hidden',
       }}>
@@ -262,36 +317,41 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Priority — fixed 56px */}
-      <div style={{ flexShrink: 0, width: '56px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Priority — 7% (min 52px) */}
+      <div style={{ flexShrink: 0, width: COL.priority.width, minWidth: COL.priority.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color, opacity: 0.85 }}>
           {priority.label}
         </span>
       </div>
 
-      {/* Status — fixed 90px */}
-      <div style={{ flexShrink: 0, width: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span className={statusBadgeClass(task.status)} style={{ fontSize: '9px', textTransform: 'capitalize' }}>
+      {/* Status — 13.5% (min 104px). The widest of the recovered space goes
+          here: "For Approval" plus its icon needs room to sit uncramped. */}
+      <div style={{ flexShrink: 0, width: COL.status.width, minWidth: COL.status.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span
+          className={`${statusBadgeClass(task.status)}${isForApproval ? ' boe-badge-approval-review' : ''}`}
+          style={{ fontSize: '9px', textTransform: 'capitalize' }}
+        >
+          {isForApproval && <ClipboardCheck size={10} strokeWidth={2.4} style={{ flexShrink: 0 }} />}
           {taskStatusLabel(task.status, 'creator')}
         </span>
       </div>
 
-      {/* Created On — fixed 100px */}
-      <div style={{ flexShrink: 0, width: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Created On — 8.5% (min 82px) */}
+      <div style={{ flexShrink: 0, width: COL.created.width, minWidth: COL.created.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
           {formatDate(task.created_at) ?? '—'}
         </span>
       </div>
 
-      {/* Due Date — fixed 100px */}
-      <div style={{ flexShrink: 0, width: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Due Date — 8.5% (min 88px) */}
+      <div style={{ flexShrink: 0, width: COL.due.width, minWidth: COL.due.min, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontSize: '11px', color: colors.secondary, whiteSpace: 'nowrap' }}>
           {formatDate(task.due_date) ?? 'No due date'}
         </span>
       </div>
 
-      {/* Actions */}
-      <div style={{ flexShrink: 0, width: '84px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+      {/* Actions — 7.5%, floored at 84px so the three 26px buttons are never clipped */}
+      <div style={{ flexShrink: 0, width: COL.actions.width, minWidth: COL.actions.min, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
         <button
           onClick={e => { e.stopPropagation(); onEdit?.() }}
           onMouseEnter={() => setHoveredEdit(true)}
@@ -1036,30 +1096,22 @@ function AssignedByMeContent() {
     const sort = (arr: Task[]) => [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
     return {
       all:            sort(allTasks),
-      // Work handed back for this person to accept. `in_progress` names an
-      // explicit status list and so already excludes it — that is deliberate:
-      // a task waiting on the creator is not in progress with the assignee.
-      // `overdue` may still contain it, because it is not completed and a
-      // missed due date is still a missed due date.
+      // Work handed back for this person to accept. `overdue` may still contain
+      // it, because it is not completed and a missed due date is still a missed
+      // due date.
       for_approval:   sort(allTasks.filter(t => t.status === 'pending_approval')),
-      important:      sort(allTasks.filter(t => t.is_urgent)),
       unacknowledged: sort(allTasks.filter(isUnacknowledged)),
-      in_progress:    sort(allTasks.filter(t => !isOverdue(t) && ['started', 'working', 'pending'].includes(t.status))),
       overdue:        sort(allTasks.filter(isOverdue)),
       needs_update:   sort(allTasks.filter(needsUpdate)),
-      non_completion: sort(allTasks.filter(isNonCompletion)),
     }
   }, [allTasks])
 
   const counts: Record<TabKey, number> = {
     all:            buckets.all.length,
     for_approval:   buckets.for_approval.length,
-    important:      buckets.important.length,
     unacknowledged: buckets.unacknowledged.length,
-    in_progress:    buckets.in_progress.length,
     overdue:        buckets.overdue.length,
     needs_update:   buckets.needs_update.length,
-    non_completion: buckets.non_completion.length,
   }
 
   const assigneeOptions = useMemo(() => {
@@ -1128,8 +1180,12 @@ function AssignedByMeContent() {
         <div style={{ minWidth: 0 }}>
 
             {/* View tabs — relocated from the former right sidebar */}
+            {/* The 20px that used to hang off each tab as `marginRight` is now
+                the row's `gap`, so the strip ends at the last tab instead of
+                trailing an empty gap. Widths stay content-sized and the row
+                still scrolls sideways on a narrow screen. */}
             <div style={{
-              display: 'flex', gap: '0',
+              display: 'flex', gap: '20px',
               borderBottom: `1px solid ${colors.border}`,
               marginBottom: '12px', overflowX: 'auto',
             }}>
@@ -1141,7 +1197,7 @@ function AssignedByMeContent() {
                     onClick={() => handleTabChange(item.key)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '6px',
-                      padding: '10px 4px', marginRight: '20px',
+                      padding: '10px 4px',
                       background: 'transparent', border: 'none',
                       borderBottom: `2px solid ${isActive ? item.color : 'transparent'}`,
                       cursor: 'pointer', outline: 'none',
@@ -1155,7 +1211,7 @@ function AssignedByMeContent() {
                     {/* For Approval keeps its gold count even when the tab is
                         not selected, but only while it is non-zero: the one
                         tab holding work that is waiting on the reader should
-                        not look like the six that are not. */}
+                        not look like the ones that are not. */}
                     {(() => {
                       const standOut =
                         isActive || (item.key === 'for_approval' && counts[item.key] > 0)
@@ -1233,14 +1289,14 @@ function AssignedByMeContent() {
                 textTransform: 'uppercase', letterSpacing: '0.07em',
                 color: colors.muted,
               }}>
-                <div style={{ width: '28px', flexShrink: 0 }} />
+                <div style={{ width: STAR_GUTTER, flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>Task</div>
-                <div style={{ flexShrink: 0, width: '130px', paddingLeft: '8px' }}>Assigned To</div>
-                <div style={{ flexShrink: 0, width: '56px', textAlign: 'center' }}>Priority</div>
-                <div style={{ flexShrink: 0, width: '90px', textAlign: 'center' }}>Status</div>
-                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Created On</div>
-                <div style={{ flexShrink: 0, width: '100px', textAlign: 'center' }}>Due Date</div>
-                <div style={{ flexShrink: 0, width: '84px', textAlign: 'center' }}>Action</div>
+                <div style={{ flexShrink: 0, width: COL.assignee.width, minWidth: COL.assignee.min, paddingLeft: '8px' }}>Assigned To</div>
+                <div style={{ flexShrink: 0, width: COL.priority.width, minWidth: COL.priority.min, textAlign: 'center' }}>Priority</div>
+                <div style={{ flexShrink: 0, width: COL.status.width,   minWidth: COL.status.min,   textAlign: 'center' }}>Status</div>
+                <div style={{ flexShrink: 0, width: COL.created.width,  minWidth: COL.created.min,  textAlign: 'center' }}>Created On</div>
+                <div style={{ flexShrink: 0, width: COL.due.width,      minWidth: COL.due.min,      textAlign: 'center' }}>Due Date</div>
+                <div style={{ flexShrink: 0, width: COL.actions.width,  minWidth: COL.actions.min,  textAlign: 'center' }}>Action</div>
               </div>
             )}
 

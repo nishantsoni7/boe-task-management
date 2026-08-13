@@ -27,7 +27,7 @@ import {
   canSubmitForApproval, canApproveTask, canReturnTask,
   RETURN_REASON_MAX_LENGTH,
 } from '@/lib/tasks/taskDetailAccess'
-import { CircleCheckBig, SendHorizontal, Undo2, UserCheck, UserRound } from 'lucide-react'
+import { Ban, CircleCheckBig, ClipboardCheck, SendHorizontal, Undo2, UserCheck, UserRound } from 'lucide-react'
 import { perfTrack } from '@/lib/perf'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -72,6 +72,20 @@ const PRIORITY_COLORS: Record<string, { fg: string; bg: string }> = {
   high:   { fg: colors.red,   bg: colors.redTint   },
   medium: { fg: colors.amber, bg: colors.amberTint },
   low:    { fg: colors.muted, bg: colors.float      },
+}
+
+// One geometry for the task action buttons, so the review grid's four cells
+// agree on height, padding, radius, icon gap and label size. Only colour and
+// weight are decided per button — that is what separates approve from cancel,
+// not a different shape.
+const ACTION_BUTTON_BASE: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+  boxSizing: 'border-box',
+  padding: '10px 14px', borderRadius: '8px',
+  fontSize: '12.5px', fontWeight: 600, lineHeight: 1.25,
+  fontFamily: font.body,
+  textAlign: 'center',
+  transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s, opacity 0.15s, filter 0.15s, transform 0.1s',
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
@@ -1046,6 +1060,14 @@ export default function TaskDetailPage() {
   const mayReturn        = canReturnTask(task, currentUserId)
   const isPendingApproval = task.status === 'pending_approval'
   const reviewBusyAny    = reviewBusy !== null
+  // The creator's accept-or-return decision. Both halves are the same rule, but
+  // both are read so the 2x2 grid can never be laid out for a decision that is
+  // only half present.
+  const isReviewDecision = mayApprove || mayReturn
+  // The two people an approval is actually between. For them the generic status
+  // card is replaced by the single review card below; every other viewer —
+  // an uninvolved admin, say — keeps the ordinary status card untouched.
+  const showReviewCard   = isPendingApproval && !isSelfTask && (isCreator || isAssignee)
 
   const relationLabel = isSelfTask  ? 'Self Assigned Task'
     : isAssignee                    ? 'Assigned To Me'
@@ -1560,10 +1582,12 @@ export default function TaskDetailPage() {
               )}
 
               {/* Active task action row: Mark Complete + Cancel + (admin) Copy & Assign.
-                  One compact, aligned row on desktop; Mark Complete leads full-width on mobile. */}
+                  One compact, aligned row on desktop; Mark Complete leads full-width on mobile.
+                  While the creator holds an approval decision the same row becomes an even
+                  2x2 grid (see .boe-task-actions--review) — four peer actions, not one lead. */}
               {isActiveTask && (isAssignee || showCancelButton || canCopyAssign) && (
                 <div
-                  className="boe-task-actions"
+                  className={`boe-task-actions${isReviewDecision ? ' boe-task-actions--review' : ''}`}
                   style={{
                     marginTop: '14px', paddingTop: '12px',
                     borderTop: `1px solid ${colors.border}`,
@@ -1608,20 +1632,24 @@ export default function TaskDetailPage() {
                       to the person who asked for it rather than closed here. */}
                   {maySubmit && (
                     <button
-                      className="boe-task-action-primary"
+                      className="boe-task-action-primary boe-task-action-blue"
                       onClick={submitForApproval}
                       disabled={saving || reviewBusyAny || statusUpdating}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                         padding: '9px 14px', borderRadius: '8px',
-                        border: `1.5px solid ${APPROVAL_GOLD}`,
-                        background: APPROVAL_GOLD, color: '#ffffff',
+                        // Blue, like Send Update and the page's other primary actions:
+                        // asking for approval is a submission, not a completion (green)
+                        // and not the pending state itself (the gold is reserved for
+                        // the status card and badge the submission produces).
+                        border: `1.5px solid ${colors.blue}`,
+                        background: colors.blue, color: '#ffffff',
                         fontSize: '13px', fontWeight: 700,
                         cursor: saving || reviewBusyAny || statusUpdating ? 'not-allowed' : 'pointer',
                         fontFamily: font.body,
                         opacity: saving || reviewBusyAny || statusUpdating ? 0.6 : 1,
                         transition: 'all 0.15s',
-                        boxShadow: `0 2px 6px ${APPROVAL_GOLD}38`,
+                        boxShadow: '0 2px 6px rgba(85,133,232,0.25)',
                       }}
                     >
                       <SendHorizontal size={15} strokeWidth={2.4} style={{ flexShrink: 0 }} />
@@ -1637,15 +1665,12 @@ export default function TaskDetailPage() {
                       onClick={approveTask}
                       disabled={reviewBusyAny}
                       style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                        padding: '9px 14px', borderRadius: '8px',
+                        ...ACTION_BUTTON_BASE,
+                        fontWeight: 700,
                         border: `1.5px solid ${colors.green}`,
                         background: colors.green, color: '#ffffff',
-                        fontSize: '13px', fontWeight: 700,
                         cursor: reviewBusyAny ? 'not-allowed' : 'pointer',
-                        fontFamily: font.body,
                         opacity: reviewBusyAny ? 0.6 : 1,
-                        transition: 'all 0.15s',
                         boxShadow: `0 2px 6px ${colors.green}38`,
                       }}
                     >
@@ -1659,61 +1684,54 @@ export default function TaskDetailPage() {
                       onClick={() => { setReturnReason(''); setReturnReasonError(null); setReturnModalOpen(true) }}
                       disabled={reviewBusyAny}
                       style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-                        padding: '9px 12px', borderRadius: '8px',
+                        ...ACTION_BUTTON_BASE,
                         border: `1.5px solid ${APPROVAL_GOLD}55`,
                         background: '#ffffff', color: APPROVAL_GOLD,
-                        fontSize: '12px', fontWeight: 600,
                         cursor: reviewBusyAny ? 'not-allowed' : 'pointer',
                         opacity: reviewBusyAny ? 0.6 : 1,
-                        fontFamily: font.body,
-                        whiteSpace: 'nowrap', transition: 'background 0.15s',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.background = APPROVAL_GOLD_TINT }}
+                      onMouseEnter={e => { if (!reviewBusyAny) e.currentTarget.style.background = APPROVAL_GOLD_TINT }}
                       onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
                     >
-                      <Undo2 size={14} strokeWidth={2.2} style={{ flexShrink: 0 }} />
-                      Return to Working
+                      <Undo2 size={15} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                      {reviewBusy === 'return' ? 'Returning…' : 'Return to Working'}
                     </button>
                   )}
 
-                  {showCancelButton && !isQuotation && !isUnacknowledged && (
-                    <button
-                      className="boe-task-action-secondary"
-                      onClick={() => { setCancelReason(''); setCancelOtherText(''); setCancelModalOpen(true) }}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-                        padding: '9px 12px', borderRadius: '8px',
-                        border: '1.5px solid #78716C40',
-                        background: '#F5F5F4', color: '#78716C',
-                        fontSize: '12px', fontWeight: 600,
-                        cursor: 'pointer', fontFamily: font.body,
-                        whiteSpace: 'nowrap', transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#E7E5E4' }}
-                      onMouseLeave={e => { e.currentTarget.style.background = '#F5F5F4' }}
-                    >
-                      🚫 Cancel
-                    </button>
-                  )}
+                  {/* Copy & Assign is placed before Cancel so the destructive action
+                      reads last — and, in the review grid, sits bottom-right. */}
                   {canCopyAssign && (
                     <button
                       className="boe-task-action-secondary"
                       onClick={openCopyModal}
                       style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-                        padding: '9px 12px', borderRadius: '8px',
+                        ...ACTION_BUTTON_BASE,
                         border: `1.5px solid ${colors.blue}55`,
                         background: '#ffffff', color: colors.blue,
-                        fontSize: '12px', fontWeight: 600,
-                        cursor: 'pointer', fontFamily: font.body,
-                        whiteSpace: 'nowrap', transition: 'background 0.15s',
+                        cursor: 'pointer',
                       }}
                       onMouseEnter={e => { e.currentTarget.style.background = colors.blueTint }}
                       onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
                     >
-                      <UserCheck size={14} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                      <UserCheck size={15} strokeWidth={2.2} style={{ flexShrink: 0 }} />
                       Copy &amp; Assign
+                    </button>
+                  )}
+                  {showCancelButton && !isQuotation && !isUnacknowledged && (
+                    <button
+                      className="boe-task-action-secondary"
+                      onClick={() => { setCancelReason(''); setCancelOtherText(''); setCancelModalOpen(true) }}
+                      style={{
+                        ...ACTION_BUTTON_BASE,
+                        border: '1.5px solid #78716C33',
+                        background: '#ffffff', color: '#78716C',
+                        cursor: 'pointer',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F5F5F4' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
+                    >
+                      <Ban size={15} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+                      Cancel
                     </button>
                   )}
                 </div>
@@ -1809,7 +1827,11 @@ export default function TaskDetailPage() {
               )}
             </div>
 
-            {/* ─ B. Current Status Card ─ */}
+            {/* ─ B. Current Status Card ─
+                Hidden for the two parties to a pending approval: the review card
+                below states the same status, in the words of the decision that is
+                actually open. Everyone else sees this card unchanged. */}
+            {!showReviewCard && (
             <div className="boe-card" style={{
               padding: '10px 16px',
               background: qStatusTint,
@@ -1918,40 +1940,73 @@ export default function TaskDetailPage() {
                 </p>
               )}
             </div>
-
-            {/* § Awaiting approval — the assignee's side of the handover.
-                A small card, not a banner: the task is not in trouble, it is
-                simply with someone else. */}
-            {isPendingApproval && isAssignee && !isSelfTask && (
-              <div className="boe-card" style={{
-                padding: '12px 18px',
-                background: APPROVAL_GOLD_TINT,
-                borderLeft: `3px solid ${APPROVAL_GOLD}`,
-              }}>
-                <p style={{ fontSize: '12.5px', color: APPROVAL_GOLD, fontWeight: 700, margin: 0 }}>
-                  Awaiting approval from {creatorName ?? 'the task creator'}
-                </p>
-                <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '4px 0 0', lineHeight: 1.5 }}>
-                  Submitted to {creatorName ?? 'the task creator'} for review. You can still post
-                  updates here; you will be notified when it is approved or returned.
-                </p>
-              </div>
             )}
 
-            {/* § Awaiting approval — the creator's side. The buttons live in the
-                action row above; this only says what is being asked of them. */}
-            {isPendingApproval && isCreator && !isSelfTask && (
+            {/* § Awaiting approval — ONE card for both sides of the handover, in
+                place of the status card above. It previously took two beige
+                panels to say what is really a single fact: whose move it is. The
+                heading carries the state, so no separate "CURRENT STATUS" label
+                is repeated under it; the pill beside it keeps the exact status
+                wording each side is used to reading (For Approval / Approval
+                Pending). Not a banner — the task is not in trouble, it is simply
+                with someone else. */}
+            {showReviewCard && (
               <div className="boe-card" style={{
-                padding: '12px 18px',
+                padding: '12px 16px',
                 background: APPROVAL_GOLD_TINT,
                 borderLeft: `3px solid ${APPROVAL_GOLD}`,
+                display: 'flex', alignItems: 'flex-start', gap: '10px',
               }}>
-                <p style={{ fontSize: '12.5px', color: APPROVAL_GOLD, fontWeight: 700, margin: 0 }}>
-                  {assigneeName} submitted this task for your approval
-                </p>
-                <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '4px 0 0', lineHeight: 1.5 }}>
-                  Approve to complete it, or return it to Working with what needs correcting.
-                </p>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: '26px', height: '26px', borderRadius: '50%',
+                    flexShrink: 0, marginTop: '1px',
+                    background: '#ffffff',
+                    border: `1px solid ${APPROVAL_GOLD}33`,
+                    color: APPROVAL_GOLD,
+                  }}
+                >
+                  <ClipboardCheck size={14} strokeWidth={2.2} />
+                </span>
+
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 700, color: APPROVAL_GOLD, margin: 0, lineHeight: 1.3 }}>
+                      {isCreator
+                        ? 'Awaiting your approval'
+                        : `Awaiting approval from ${creatorName ?? 'the task creator'}`}
+                    </p>
+                    <span style={{
+                      fontSize: '9.5px', fontWeight: 700,
+                      letterSpacing: '0.07em', textTransform: 'uppercase',
+                      color: APPROVAL_GOLD, background: '#ffffff',
+                      border: `1px solid ${APPROVAL_GOLD}33`,
+                      padding: '2px 8px', borderRadius: '20px',
+                      flexShrink: 0, whiteSpace: 'nowrap',
+                    }}>
+                      {qStatusLabel}
+                    </span>
+                  </div>
+
+                  <p style={{ fontSize: '11.5px', color: colors.secondary, margin: '4px 0 0', lineHeight: 1.5 }}>
+                    {isCreator
+                      ? `${assigneeName} submitted this task for review.`
+                      : `Submitted to ${creatorName ?? 'the task creator'} for review.`}
+                  </p>
+                  <p style={{ fontSize: '11.5px', color: colors.tertiary, margin: '2px 0 0', lineHeight: 1.5 }}>
+                    {isCreator
+                      ? 'Approve to complete the task, or return it to Working with what needs correcting.'
+                      : 'You can still post updates here, and you will be notified when it is approved or returned.'}
+                  </p>
+
+                  {latestNoteEntry && (
+                    <p style={{ fontSize: '10px', color: APPROVAL_GOLD, margin: '6px 0 0', fontWeight: 500 }}>
+                      Updated by{latestNoteEntry.actor_name && <strong> {latestNoteEntry.actor_name}</strong>} · {timeAgo(latestNoteEntry.created_at)}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
