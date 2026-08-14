@@ -1,19 +1,35 @@
 -- Access Control V1 — default-deny compatibility.
 --
 -- MUST RUN IMMEDIATELY AFTER 20260901000000. That migration makes stored
--- Finance and Orders grants real; this one removes the two stored Orders grants
+-- Finance and Orders grants real; this one removes the stored Orders grants
 -- that must NOT become real, and converts Meetings from "everybody, by role" to
 -- "the people who have it today, by name". Applying the first without the
 -- second hands Order Request approval and Order amendment authority to a test
 -- account. A repository test asserts these two files sort adjacently.
 --
+-- OWNER DECISION (2026-08-14)
+-- ---------------------------
+-- Test and objection accounts must carry NO operational access by default.
+-- Not "no protected access" — no access at all. The earlier draft of this file
+-- revoked only orders.approve and orders.manage on the reasoning that
+-- 20260901000000 leaves view/create/edit inert, so removing them would be an
+-- unrelated change. The owner overruled that: an inert grant is still a stored
+-- decision, and the next migration that wires up Orders view/create/edit would
+-- make it live without anyone re-reading this file. So all five go.
+--
+-- The accounts are NOT deactivated and NOT deleted. They may be granted
+-- temporary explicit permissions later for a specific controlled test; their
+-- DEFAULT state is no operational access.
+--
 -- WHAT IT DOES
 -- ------------
---   1. Revokes Test Sales User (DUMMY)'s orders.approve and orders.manage.
+--   1. Revokes all five of Test Sales User (DUMMY)'s stored Orders grants —
+--      view, create, edit, approve and manage.
 --   2. Removes the Meetings role defaults for 'member' and 'manager'.
 --   3. Re-grants Meetings, per employee, to the eleven ACTIVE REAL employees
 --      who hold it today — so nobody loses access on the day this lands.
---   4. Leaves future employees with no Meetings access at all.
+--   4. Leaves future employees with no Meetings access at all, and leaves every
+--      captured (DUMMY)/Objection account with no Meetings access at all.
 --
 -- WHAT IT DOES NOT DO
 -- -------------------
@@ -21,8 +37,10 @@
 --   * No change to Dhruv's Finance or Orders grants — they are intentional.
 --   * No change to Aditya's Assets grants, `assign` included.
 --   * No change to the Contributor-level Finance/Orders rows held by Prerna,
---     Saksham, Mohit Sharma, Shravi and Ashok Choudhary. 20260901000000 does
---     not enforce view/create/edit, so those stay inert and are left alone.
+--     Saksham, Mohit Sharma, Shravi and Ashok Choudhary. Those belong to REAL
+--     employees and are preserved; the owner decision above is about test
+--     accounts, not about the inert-grant question in general.
+--   * It does not deactivate, delete or otherwise alter any user row.
 --   * No other module's permissions are read or written.
 --
 -- IDENTITY
@@ -49,9 +67,13 @@
 do $$
 declare
   v_dummy_sales constant uuid := 'ac5e5888-cb72-4f9c-ab36-5b4d32efe54c';
+  -- The five Orders overrides the 2026-08-14 baseline captured on that account,
+  -- sorted, because the assertion below compares sorted arrays.
+  v_expected constant text[] := array['approve', 'create', 'edit', 'manage', 'view'];
   v_meetings_id uuid;
   v_orders_id   uuid;
   v_count       int;
+  v_actions     text[];
 begin
   select id into v_meetings_id from public.permission_modules where module_key = 'meetings';
   select id into v_orders_id   from public.permission_modules where module_key = 'orders';
@@ -72,20 +94,37 @@ begin
       v_dummy_sales, v_count;
   end if;
 
-  -- Its two protected Orders grants must still be active, or there is nothing
-  -- to revoke and the premise of this migration has changed.
-  select count(*) into v_count
+  -- Its Orders overrides must be EXACTLY the five the baseline captured — no
+  -- more, no fewer, none swapped. An exact-set comparison rather than a count:
+  -- a count of five would also be satisfied by four expected rows plus one
+  -- unexpected `delete`, which this migration would then revoke without anyone
+  -- having decided to. Missing, unexpected and changed all fail here, before
+  -- the first mutation.
+  select coalesce(array_agg(pa.action_key order by pa.action_key), array[]::text[])
+    into v_actions
   from public.employee_permission_overrides eo
   join public.permission_actions pa on pa.id = eo.action_id
   where eo.user_id = v_dummy_sales
     and eo.module_id = v_orders_id
-    and pa.action_key in ('approve', 'manage')
     and eo.allowed
     and eo.revoked_at is null;
 
-  if v_count <> 2 then
-    raise exception 'ACCESS_CONTROL_V1: expected 2 active protected Orders overrides for the test account, found %', v_count;
+  if v_actions <> v_expected then
+    raise exception 'ACCESS_CONTROL_V1: expected exactly the 5 baseline Orders overrides [%] for the test account, found [%]',
+      array_to_string(v_expected, ', '), array_to_string(v_actions, ', ');
   end if;
+
+  -- Snapshot every OTHER employee's active Orders overrides so the
+  -- post-conditions can prove this migration touched nobody else. Transaction
+  -- -local, so it evaporates whether the transaction commits or rolls back.
+  select count(*) into v_count
+  from public.employee_permission_overrides eo
+  where eo.module_id = v_orders_id
+    and eo.user_id <> v_dummy_sales
+    and eo.allowed
+    and eo.revoked_at is null;
+
+  perform set_config('access_control_v1.orders_others', v_count::text, true);
 
   -- The Meetings role defaults being removed must still exist, in the shape the
   -- baseline recorded: member = view, manager = view/create/edit/manage.
@@ -112,15 +151,18 @@ begin
 end;
 $$;
 
--- ─── 1. Revoke the test account's protected Orders grants ────────────────────
+-- ─── 1. Revoke the test account's Orders grants ───────────────────────────────
 --
 -- SOFT revoke, not a delete: it matches the shape the Control Center API
 -- already writes (revoked_by / revoked_at), keeps the audit trail, and is
 -- undone by clearing two columns.
 --
--- ONLY approve and manage. The account's view/create/edit rows are left exactly
--- as they are — 20260901000000 does not enforce those, so they remain inert and
--- removing them would be an unrelated change.
+-- ALL FIVE — view, create, edit, approve and manage — per the owner decision at
+-- the head of this file. approve and manage are the two 20260901000000 makes
+-- live immediately; view, create and edit are inert today and are removed
+-- anyway, so that wiring them up later cannot quietly hand this account Order
+-- Management. The account keeps its user row and its login; what it loses is
+-- every stored Orders decision.
 
 update public.employee_permission_overrides eo
    set revoked_by = '6507df9f-cdeb-4ebd-849f-8498c165d596',  -- the system admin
@@ -131,7 +173,7 @@ update public.employee_permission_overrides eo
    and pm.id = eo.module_id
    and eo.user_id = 'ac5e5888-cb72-4f9c-ab36-5b4d32efe54c'   -- Test Sales User (DUMMY)
    and pm.module_key = 'orders'
-   and pa.action_key in ('approve', 'manage')
+   and pa.action_key in ('view', 'create', 'edit', 'approve', 'manage')
    and eo.revoked_at is null;
 
 -- ─── 2. Remove the broad Meetings role defaults ──────────────────────────────
@@ -164,9 +206,11 @@ delete from public.role_permissions rp
 -- re-deciding it. It will display as Custom in Access Control, which is correct.
 --
 -- The nine (DUMMY) and Objection test accounts identified in the baseline are
--- NOT in this list. They lose Meetings when section 2 runs, which is the point:
--- test accounts should not carry operational access into a deny-by-default
--- model. They are listed in the Prompt 5 report.
+-- NOT in this list. They lose Meetings when section 2 runs, which is the point
+-- and is now explicit owner policy: test accounts carry no operational access
+-- by default. Post-condition 4g asserts all nine, through the engine, rather
+-- than trusting their absence from this INSERT. They are listed in the Prompt 5
+-- report and in the impact table in docs/Module Docs/ACCESS_CONTROL_V1.md.
 
 insert into public.employee_permission_overrides
   (user_id, module_id, action_id, allowed, granted_by, granted_at)
@@ -210,28 +254,76 @@ on conflict (user_id, module_id, action_id) do nothing;
 
 do $$
 declare
+  v_dummy_sales constant uuid := 'ac5e5888-cb72-4f9c-ab36-5b4d32efe54c';
   v_meetings_id uuid;
   v_orders_id   uuid;
   v_count       int;
+  v_leaks       text;
+  v_action      text;
 begin
   select id into v_meetings_id from public.permission_modules where module_key = 'meetings';
   select id into v_orders_id   from public.permission_modules where module_key = 'orders';
 
-  -- 4a. The test account holds no active protected Orders grant.
+  -- 4a. The test account holds no active Orders override AT ALL — not the five
+  --     revoked above, and not some sixth row this migration never saw.
   select count(*) into v_count
   from public.employee_permission_overrides eo
-  join public.permission_actions pa on pa.id = eo.action_id
-  where eo.user_id = 'ac5e5888-cb72-4f9c-ab36-5b4d32efe54c'
+  where eo.user_id = v_dummy_sales
     and eo.module_id = v_orders_id
-    and pa.action_key in ('approve', 'manage')
     and eo.allowed
     and eo.revoked_at is null;
 
   if v_count <> 0 then
-    raise exception 'ACCESS_CONTROL_V1: the test account still holds % protected Orders grant(s)', v_count;
+    raise exception 'ACCESS_CONTROL_V1: the test account still holds % active Orders override(s)', v_count;
   end if;
 
-  -- 4b. No Meetings role default survives for member or manager.
+  -- 4b. And no Orders authority reaches it through ANY level of the engine.
+  --     Clearing the overrides only closes one of four doors:
+  --     resolve_effective_permissions walks employee override → department →
+  --     role → system default and reports which level decided, so this catches
+  --     a department or role grant that never appeared in
+  --     employee_permission_overrides and would otherwise be invisible here.
+  --     It sweeps every action the Orders module registers, so `delete`,
+  --     `export` and `can_be_order_assignee` are covered without naming them.
+  select coalesce(
+           string_agg(r.action_key || ' via ' || r.source, ', ' order by r.action_key),
+           ''
+         )
+    into v_leaks
+  from public.resolve_effective_permissions(v_dummy_sales, 'orders') r
+  where r.allowed;
+
+  if v_leaks <> '' then
+    raise exception 'ACCESS_CONTROL_V1: the test account still resolves Orders authority: %', v_leaks;
+  end if;
+
+  -- 4c. The four authorities the owner decision names explicitly, asserted BY
+  --     NAME as well. 4b already covers the registered ones, but naming them
+  --     means that if a later migration registers `orders.admin`, or drops and
+  --     re-adds can_be_order_assignee, this file still fails loudly rather than
+  --     silently narrowing its own sweep.
+  foreach v_action in array array['delete', 'export', 'admin', 'can_be_order_assignee'] loop
+    if public.resolve_permission(v_dummy_sales, 'orders', v_action) then
+      raise exception 'ACCESS_CONTROL_V1: the test account resolves orders.% through some other source', v_action;
+    end if;
+  end loop;
+
+  -- 4d. Every OTHER employee's Orders access is exactly what it was before this
+  --     migration ran. The UPDATE is scoped by user_id so touching anyone else
+  --     should be impossible; this proves it rather than trusting it.
+  select count(*) into v_count
+  from public.employee_permission_overrides eo
+  where eo.module_id = v_orders_id
+    and eo.user_id <> v_dummy_sales
+    and eo.allowed
+    and eo.revoked_at is null;
+
+  if v_count <> current_setting('access_control_v1.orders_others')::int then
+    raise exception 'ACCESS_CONTROL_V1: other employees'' active Orders overrides changed from % to %',
+      current_setting('access_control_v1.orders_others'), v_count;
+  end if;
+
+  -- 4e. No Meetings role default survives for member or manager.
   select count(*) into v_count
   from public.role_permissions rp
   where rp.module_id = v_meetings_id and rp.role in ('member', 'manager');
@@ -240,7 +332,7 @@ begin
     raise exception 'ACCESS_CONTROL_V1: % Meetings role default(s) survived', v_count;
   end if;
 
-  -- 4c. All fourteen grandfathered rows landed (11 employees; Dhruv holds four).
+  -- 4f. All fourteen grandfathered rows landed (11 employees; Dhruv holds four).
   select count(*) into v_count
   from public.employee_permission_overrides
   where module_id = v_meetings_id and allowed and revoked_at is null;
@@ -249,7 +341,37 @@ begin
     raise exception 'ACCESS_CONTROL_V1: expected 14 grandfathered Meetings rows, found % — an employee may have been deactivated since the baseline', v_count;
   end if;
 
-  -- 4d. Dhruv keeps every Finance and Orders grant. This migration must not
+  -- 4g. Not one of the nine captured (DUMMY)/Objection accounts resolves
+  --     Meetings any more. Section 2 removed the role defaults that gave it to
+  --     them and section 3 did not re-grant it, but the owner decision is
+  --     explicit that these accounts end with no operational access, so it is
+  --     asserted rather than inferred. Checked through the engine, so a
+  --     department or override grant would be caught too.
+  foreach v_action in array array[
+    '890f0067-cef5-4d9c-9fdd-98fe407f3cbd',  -- Objection B
+    '27e2f32b-f12b-4a6a-aebd-c44d2ce1db7f',  -- Test Management User (DUMMY)
+    'ac5e5888-cb72-4f9c-ab36-5b4d32efe54c',  -- Test Sales User (DUMMY)
+    'f4df0228-319c-4baa-947d-a3f709a0e8a3',  -- Test Operations User (DUMMY)
+    '47b9bdc8-c73b-44f2-a675-aa3290a4e470',  -- Test HR User (DUMMY)
+    'be0a101a-6bfb-495b-8e95-30a7c104be04',  -- Test Design User (DUMMY)
+    'e2a14cb8-38ca-43e6-8703-3eb28b839375',  -- Objection A
+    'eadf65b1-98c1-4c63-ba0f-816cc171f81e',  -- Test Admin Dept User (DUMMY)
+    '57b11e89-a90b-407d-b92b-c4b0354f77fa'   -- Test Marketing User (DUMMY)
+  ] loop
+    select coalesce(
+             string_agg(r.action_key || ' via ' || r.source, ', ' order by r.action_key),
+             ''
+           )
+      into v_leaks
+    from public.resolve_effective_permissions(v_action::uuid, 'meetings') r
+    where r.allowed;
+
+    if v_leaks <> '' then
+      raise exception 'ACCESS_CONTROL_V1: test account % still resolves Meetings: %', v_action, v_leaks;
+    end if;
+  end loop;
+
+  -- 4h. Dhruv keeps every Finance and Orders grant. This migration must not
   --     have touched them; if it did, stop.
   select count(*) into v_count
   from public.employee_permission_overrides eo
@@ -263,7 +385,7 @@ begin
     raise exception 'ACCESS_CONTROL_V1: Dhruv holds only % active Finance/Orders grants; 15 were expected', v_count;
   end if;
 
-  -- 4e. Aditya keeps Assets, `assign` included.
+  -- 4i. Aditya keeps Assets, `assign` included.
   select count(*) into v_count
   from public.employee_permission_overrides eo
   join public.permission_modules pm on pm.id = eo.module_id
@@ -286,8 +408,8 @@ $$;
 -- role-default groups, which are recreated from the same values 20260814000000
 -- seeded.
 --
--- Step 1 — restore the test account's Orders grants (soft revoke, so this is
---          just clearing two columns):
+-- Step 1 — restore all five of the test account's Orders grants (soft revoke,
+--          so this is just clearing two columns):
 --
 --   update public.employee_permission_overrides eo
 --      set revoked_by = null, revoked_at = null
@@ -295,7 +417,19 @@ $$;
 --    where pa.id = eo.action_id and pm.id = eo.module_id
 --      and eo.user_id = 'ac5e5888-cb72-4f9c-ab36-5b4d32efe54c'
 --      and pm.module_key = 'orders'
---      and pa.action_key in ('approve', 'manage');
+--      and pa.action_key in ('view', 'create', 'edit', 'approve', 'manage')
+--      and eo.revoked_by = '6507df9f-cdeb-4ebd-849f-8498c165d596'
+--      and eo.revoked_at is not null;
+--
+--   EXPECT EXACTLY 5 ROWS. The revoked_by filter scopes the restore to rows
+--   this migration revoked, so an Orders grant revoked earlier by someone else
+--   is left revoked. If the count is not 5, the account's Orders overrides
+--   moved after this migration ran — stop and reconcile by hand rather than
+--   clearing more than was revoked here.
+--
+--   This restores the account to its pre-migration state exactly: five active
+--   Orders overrides, view/create/edit/approve/manage, same rows, same
+--   granted_by, same granted_at, audit trail intact.
 --
 -- Step 2 — restore the Meetings role defaults:
 --
@@ -322,5 +456,6 @@ $$;
 --    where pm.id = eo.module_id and pm.module_key = 'meetings'
 --      and eo.granted_by = '6507df9f-cdeb-4ebd-849f-8498c165d596';
 --
--- Rolling back restores exactly the access that exists today, including for the
--- nine test accounts.
+-- Rolling back restores exactly the access that exists today, including all
+-- five of the test account's Orders grants and the nine test accounts' Meetings
+-- access. Nothing in this migration is one-way.
