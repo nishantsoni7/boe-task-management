@@ -1477,12 +1477,22 @@ $$;
 -- `create or replace function` PRESERVES existing grants, so these are
 -- restatements for completeness rather than changes. They are listed so the
 -- callable surface of this migration is readable in one place.
+--
+-- EVERY signature below must be the EXACT argument-type list of the function as
+-- this migration defines it above. GRANT resolves a function by signature, not
+-- by name: a wrong type list does not fall back to the real function, it raises
+-- 42883 "function does not exist" and aborts the whole migration. Two of these
+-- were wrong on the first production attempt — link_finance_payment_to_order
+-- carried a third `text` argument it has never had, and admin_delete_order_request
+-- was missing its `boolean`. src/lib/permissions/migrationSignatures.test.ts now
+-- derives the authoritative list from the defining migrations and fails the build
+-- rather than the deployment.
 
 grant execute on function public.approve_finance_payment_request(uuid, text)               to authenticated;
-grant execute on function public.link_finance_payment_to_order(uuid, uuid, text)           to authenticated;
+grant execute on function public.link_finance_payment_to_order(uuid, uuid)                 to authenticated;
 grant execute on function public.unlink_finance_payment_from_order(uuid, text)             to authenticated;
 grant execute on function public.reject_order_request(uuid, text)                          to authenticated;
-grant execute on function public.admin_delete_order_request(uuid)                          to authenticated;
+grant execute on function public.admin_delete_order_request(uuid, boolean)                 to authenticated;
 grant execute on function public.assert_order_amender()                                    to authenticated;
 
 -- ─── 4. Finance row-level policies ───────────────────────────────────────────
