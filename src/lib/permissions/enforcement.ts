@@ -40,7 +40,13 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // RLS on assets / employee_assets (20260721000000, corrected 20260723000000),
   // the custody RPCs via assert_asset_custody_permission (20260725000000), the
   // own-records boundary (20260810000000), and the capability derivation in
-  // src/lib/permissions/assetsAccess.ts, which AssetsLayout gates the screen on.
+  // src/lib/permissions/assetsAccess.ts.
+  //
+  // MODULE ENTRY was the hole in this claim: deriveAssetsAccessCapabilities
+  // computed canAccessAssetsModule and no page or layout ever read it, while
+  // the launcher gated on app_modules ('live'). "Active" therefore overstated
+  // coverage by exactly the parent gate. src/app/assets-access/layout.tsx now
+  // supplies it, which is what makes this entry true rather than aspirational.
   assets_access: {
     state: 'enforced',
     detail: 'Every action is enforced — in the database and in the screen.',
@@ -54,13 +60,25 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   },
 
   // sample_dispatches RLS resolves the four lifecycle actions
-  // (20260665_cutover_sample_tracking_rls_to_resolver.sql) and the Sample
-  // Tracking screen resolves 'view'. create/edit/delete/approve/export/manage
-  // are registered for completeness and are not checked anywhere.
+  // (20260665_cutover_sample_tracking_rls_to_resolver.sql).
+  //
+  // 'view' IS NOW ACTUALLY ENFORCED. Until this correction the entry here
+  // claimed "the Sample Tracking screen resolves 'view'", and that was false:
+  // /samples had no guard at all, the launcher gated on
+  // app_modules.visibility_type ('live', therefore everyone), and the page
+  // fetched sample_dispatches on mount. The false claim survived because —
+  // unlike Orders, Finance, Meetings and Assets — nothing in enforcement.test.ts
+  // asserted it against the source. There is a test now.
+  //
+  // Entry: src/app/samples/layout.tsx via ModuleGuard, plus the parent gate in
+  // RLS from 20260904000000.
+  //
+  // create/edit/delete/approve/export/manage stay registered for completeness
+  // and are still checked nowhere.
   sample_tracking: {
     state: 'partial',
     enforcedActions: ['view', 'dispatch', 'receive', 'mark_lost', 'close'],
-    detail: 'View and the dispatch/receive/mark-lost/close actions are enforced. The others are saved but not yet used.',
+    detail: 'Opening the module, and the dispatch/receive/mark-lost/close actions, are enforced. The others are saved but not yet used.',
   },
 
   // 'view' via src/app/orders/layout.tsx and the launcher; assignee
@@ -99,10 +117,14 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // finance_payment_requests and its activity log. Additive: Finance never had
   // a blanket SELECT policy, so ownership-scoped visibility is unchanged for
   // anyone without it.
+  // 'view' added: src/app/finance/layout.tsx now resolves it instead of reading
+  // app_modules.visibility_type. Note the split this creates and keep it
+  // straight — `view` is MODULE ENTRY, and which payment records a person then
+  // sees is still decided by the ownership policies plus 'view_all'.
   finance: {
     state: 'partial',
-    enforcedActions: ['approve', 'manage', 'delete', 'view_all'],
-    detail: 'Approve, correct/reverse, delete and seeing all company payments are enforced. View, create and edit still follow record ownership.',
+    enforcedActions: ['view', 'approve', 'manage', 'delete', 'view_all'],
+    detail: 'Opening the module, approve, correct/reverse, delete and seeing all company payments are enforced. Which records you see, and create and edit, still follow record ownership.',
   },
 
   // The quotation actions are enforced in the app — the navigation, the
@@ -111,10 +133,43 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // work, and hiding the row would take an assignee's own task away from them.
   // See the limitation recorded in docs/Module Docs/ACCESS_CONTROL_V1.md.
   // view/create/edit/delete/export/manage remain unchecked for this module.
+  // 'view' added: /dashboard and /tasks are behind ModuleGuard, and the
+  // launcher card resolves the same grant. Module ENTRY is enforced; what a
+  // person can do once inside still follows the existing task rules.
   task_management: {
     state: 'partial',
-    enforcedActions: ['view_quotations', 'manage_quotations'],
-    detail: 'The two quotation permissions are enforced in the screens and routes. The other Task Management actions are saved but not yet used.',
+    enforcedActions: ['view', 'view_quotations', 'manage_quotations'],
+    detail: 'Opening the module and the two quotation permissions are enforced. The other Task Management actions are saved but not yet used.',
+  },
+
+  // The three modules below were 'prepared' — "saved, nothing consults it yet" —
+  // because nothing did. Each now has exactly ONE enforced action, module entry,
+  // via its ModuleGuard layout and the matching launcher card. Everything inside
+  // them is still governed by the pre-existing role checks, so 'partial' with a
+  // single enforced action is the honest label, not 'enforced'.
+
+  // Entry: src/app/showroom-admin/layout.tsx. The customer-facing /showroom tree
+  // is public by design and is not part of this module's gate.
+  showroom_qr: {
+    state: 'partial',
+    enforcedActions: ['view'],
+    detail: 'Opening the module is enforced. Create, edit and manage are saved but not yet used.',
+  },
+
+  // Entry: src/app/admin/members/layout.tsx, in front of the page's own
+  // admin-role bounce, which is unchanged.
+  employee_records: {
+    state: 'partial',
+    enforcedActions: ['view'],
+    detail: 'Opening the module is enforced. Everything inside is still admin-only by role.',
+  },
+
+  // Entry: src/app/performance/layout.tsx, covering /performance and
+  // /performance/team. The team route stays authorized server-side as well.
+  performance: {
+    state: 'partial',
+    enforcedActions: ['view'],
+    detail: 'Opening the module is enforced. The other Performance actions are saved but not yet used.',
   },
 
   // Management Attendance and Payroll read the whole company and are admin-only

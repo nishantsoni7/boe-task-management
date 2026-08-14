@@ -66,11 +66,15 @@ describe('the enforcement claims themselves', () => {
     }
   })
 
-  test('Finance enforces exactly the three protected actions', () => {
-    for (const action of ['approve', 'manage', 'delete']) {
+  test('Finance enforces module entry plus the three protected actions', () => {
+    // 'view' joined this list when src/app/finance/layout.tsx stopped reading
+    // app_modules.visibility_type. Read it precisely: it is MODULE ENTRY, and
+    // it says nothing about which payment records a person can then see —
+    // that is still the ownership policies plus 'view_all'.
+    for (const action of ['view', 'approve', 'manage', 'delete', 'view_all']) {
       assert.equal(isActionEnforced('finance', action), true, `finance.${action} is enforced`)
     }
-    for (const action of ['view', 'create', 'edit', 'export']) {
+    for (const action of ['create', 'edit', 'export']) {
       assert.equal(isActionEnforced('finance', action), false, `finance.${action} must stay ownership-based`)
     }
   })
@@ -156,6 +160,33 @@ describe('the claims still match the code', () => {
     const hook = read('src/hooks/useAssetsAccess.ts')
     assert.ok(hook.includes('getEffectivePermissions'))
     assert.equal(moduleEnforcement('assets_access').state, 'enforced')
+  })
+
+  // THE ASSERTION THAT WAS MISSING.
+  //
+  // Orders, Finance, Meetings and Assets each had their claim checked against
+  // real source above. Sample Tracking did not — and its claim ("the Sample
+  // Tracking screen resolves 'view'") was false for as long as it existed:
+  // /samples had no guard at all. An untested claim is how a screen came to
+  // tell administrators that switching a module off did something.
+  test("Sample Tracking's 'view' claim is backed by a real guard", () => {
+    const layout = read('src/app/samples/layout.tsx')
+    assert.ok(
+      layout.includes('ModuleGuard') && layout.includes('moduleKey="sample_tracking"'),
+      'MODULE_ENFORCEMENT.sample_tracking claims view is enforced — the route guard must exist',
+    )
+    assert.ok(isActionEnforced('sample_tracking', 'view'))
+    assert.ok(isActionEnforced('sample_tracking', 'dispatch'))
+    assert.equal(isActionEnforced('sample_tracking', 'create'), false)
+  })
+
+  test('the modules newly gated on entry claim exactly that and no more', () => {
+    for (const moduleKey of ['showroom_qr', 'employee_records', 'performance']) {
+      assert.equal(moduleEnforcement(moduleKey).state, 'partial', moduleKey)
+      assert.deepEqual(moduleEnforcement(moduleKey).enforcedActions, ['view'], moduleKey)
+      assert.equal(isActionEnforced(moduleKey, 'view'), true, moduleKey)
+      assert.equal(isActionEnforced(moduleKey, 'manage'), false, moduleKey)
+    }
   })
 
   test('the Access Control screen reads this file, not a local set', () => {
