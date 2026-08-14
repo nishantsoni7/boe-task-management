@@ -13,6 +13,12 @@ import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { formatINR, groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
 import { notifyFinance } from '@/lib/notify'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import {
+  deriveFinanceCapabilities,
+  NO_FINANCE_CAPABILITIES,
+  type FinanceCapabilities,
+} from '@/lib/permissions/finance'
 import {
   FinanceModal,
   RequestModalShell,
@@ -467,6 +473,7 @@ function DetailsModal({
   request: r,
   onClose,
   isAdmin,
+  mayCorrectPayments,
   userId,
   supabase,
   onCorrected,
@@ -475,7 +482,18 @@ function DetailsModal({
 }: {
   request: PaymentRequest
   onClose: () => void
+  /**
+   * Still used for the OWNERSHIP rules and for the creator-facing copy
+   * ("Reapply" vs "Edit"), which are about who submitted a request, not about
+   * who may correct one.
+   */
   isAdmin?: boolean
+  /**
+   * May correct or reverse a recorded payment — the finance.manage authority.
+   * Separate from isAdmin because an employee can now hold it without being an
+   * admin, and an admin holds it through the capability helper's short-circuit.
+   */
+  mayCorrectPayments?: boolean
   userId?: string
   supabase?: ReturnType<typeof createClient>
   onCorrected?: () => void
@@ -692,7 +710,7 @@ function DetailsModal({
       {/* F. Admin controls — compact action panel. Never for
           approved_unlinked/approved_linked rows; those are managed only via
           Mark Payment Received, Link, and Unlink. */}
-      {isAdmin && supabase && onCorrected && !isLinkageStatus && (
+      {mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           display: 'flex', flexDirection: 'column', gap: '12px',
@@ -2161,6 +2179,7 @@ const TH_STYLE: React.CSSProperties = {
 function PaymentsTable({
   rows,
   isAdmin,
+  canApprove,
   userId,
   cutoff,
   highlightId,
@@ -2170,7 +2189,10 @@ function PaymentsTable({
   onDelete,
 }: {
   rows: PaymentRequest[]
+  /** Ownership rules and creator-facing copy only — not approval authority. */
   isAdmin: boolean
+  /** May decide a pending request — the finance.approve authority. */
+  canApprove: boolean
   userId: string
   cutoff: number
   highlightId?: string | null
@@ -2238,7 +2260,7 @@ function PaymentsTable({
                     >
                       {r.client_name}
                     </span>
-                    {isAdmin && isPending && (
+                    {canApprove && isPending && (
                       <span style={{
                         flexShrink: 0, fontSize: '10px', fontWeight: 600,
                         color: '#92400E', background: '#FEF3C7',
@@ -2341,6 +2363,12 @@ function FinancePageInner() {
   const [pageLoading, setPageLoading]   = useState(true)
   const [userId, setUserId]             = useState<string>('')
   const [isAdmin, setIsAdmin]           = useState(false)
+  // Finance authority for the SIGNED-IN user, resolved from the permission
+  // engine. Starts at "nothing" and is only ever widened once the resolver has
+  // answered, so an administrative control cannot flash before it is
+  // authorized. Admins short-circuit inside deriveFinanceCapabilities, so
+  // their behaviour is unchanged.
+  const [caps, setCaps]                 = useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)
   const [profile, setProfile]           = useState<UserProfile | null>(null)
   const [requests, setRequests]         = useState<PaymentRequest[]>([])
   const [listLoading, setListLoading]   = useState(false)
@@ -2425,6 +2453,13 @@ function FinancePageInner() {
 
       setProfile(me as UserProfile)
       setIsAdmin(me?.role === 'admin')
+
+      // Resolved before the first render of the list, so the approval and
+      // correction controls are decided by the time anything can be clicked.
+      // A failed resolve falls back to no capabilities rather than to the role.
+      const financePerms = await getEffectivePermissions(supabase, uid, 'finance').catch(() => [])
+      setCaps(deriveFinanceCapabilities(me?.role, financePerms))
+
       await loadRequests()
       setPageLoading(false)
     }
@@ -2460,7 +2495,7 @@ function FinancePageInner() {
           setHighlightId(match.id)
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
-          if (isAdmin && match.status === 'pending_approval') {
+          if (caps.canApprovePayment && match.status === 'pending_approval') {
             setReviewRequest(match)
           } else {
             setDetailRequest(match)
@@ -2521,7 +2556,7 @@ function FinancePageInner() {
 
   // ── Row click handler ────────────────────────────────────────────────────────
   const handleRowClick = (r: PaymentRequest) => {
-    if (isAdmin && r.status === 'pending_approval') {
+    if (caps.canApprovePayment && r.status === 'pending_approval') {
       setReviewRequest(r)
     } else {
       setDetailRequest(r)
@@ -2601,6 +2636,7 @@ function FinancePageInner() {
           <PaymentsTable
             rows={visible}
             isAdmin={isAdmin}
+            canApprove={caps.canApprovePayment}
             userId={userId}
             cutoff={archiveCutoff()}
             highlightId={highlightId}
@@ -2647,6 +2683,7 @@ function FinancePageInner() {
           request={detailRequest}
           onClose={() => setDetailRequest(null)}
           isAdmin={isAdmin}
+          mayCorrectPayments={caps.canCorrectOrReversePayment}
           userId={userId}
           supabase={supabase}
           onCorrected={() => { setDetailRequest(null); loadRequests() }}

@@ -1,0 +1,278 @@
+/**
+ * The Access Control workspace, as one administrator workflow.
+ *
+ * Source-shape assertions over the real page, plus behavioural assertions on
+ * the shared level model that the page delegates to. They pin the four things
+ * finished in Prompt 6 — the module on/off toggle, the combined Attendance &
+ * Payroll row, unsaved-change protection, and the system-Admin lockout — and
+ * the boundaries V1 must not cross.
+ *
+ * Repository files only. No DB, no browser.
+ *
+ * Run:
+ *   npx tsx --test src/lib/permissions/accessControlUi.test.ts
+ */
+
+import { test, describe } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import {
+  ACCESS_LEVELS,
+  PRESET_LEVELS,
+  presetAllowedActions,
+  detectAccessLevel,
+  protectedActionsClearedByPreset,
+  isProtectedAction,
+  normalizeGrantedActions,
+} from './levels'
+import { moduleEnforcement } from './enforcement'
+
+const ROOT = process.cwd()
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
+const page = read('src/app/admin/control-center/permissions/page.tsx')
+
+const ASSETS = ['view', 'create', 'edit', 'delete', 'manage', 'assign']
+const FINANCE = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']
+const granted = (m: Record<string, boolean>) => Object.keys(m).filter(k => m[k]).sort()
+
+// ── PART 1: the module on/off toggle ────────────────────────────────────────
+
+describe('module access is one control, not two', () => {
+  test('Off maps to No Access', () => {
+    assert.deepEqual(granted(presetAllowedActions('no_access', ASSETS)), [])
+    assert.ok(page.includes("applyAccessLevel(mod, 'no_access')"))
+  })
+
+  test('On from No Access maps to Viewer', () => {
+    assert.deepEqual(granted(presetAllowedActions('viewer', ASSETS)), ['view'])
+    assert.ok(page.includes("applyAccessLevel(mod, 'viewer')"))
+  })
+
+  test('the toggle writes the same per-action state the level selector does', () => {
+    // Both call applyAccessLevel; there is no separate visibility field.
+    assert.ok(page.includes('function toggleModuleAccess'))
+    assert.equal(/setVisible|visibilityBoolean|moduleVisible/.test(page), false)
+    assert.equal(
+      /visibility_type|allowed_user_ids/.test(page),
+      false,
+      'the page must not write app_modules visibility',
+    )
+  })
+
+  test('toggle and level can never diverge — the level is derived from the state', () => {
+    // On is defined as "at least view", which is exactly what makes a module
+    // accessible, and the level is read back out of the same map.
+    for (const level of PRESET_LEVELS) {
+      const map = presetAllowedActions(level, ASSETS)
+      const accessible = ASSETS.some(a => map[a])
+      const detected = detectAccessLevel(ASSETS, map)
+      assert.equal(
+        accessible,
+        detected !== 'no_access',
+        `${level}: accessible=${accessible} but level=${detected}`,
+      )
+    }
+    assert.ok(page.includes('const accessible = mod.actions.some(a => effective[a.actionKey])'))
+  })
+
+  test('turning Off protected Custom access asks first and names what goes', () => {
+    const aditya = { view: true, create: true, edit: true, manage: true, assign: true, delete: false }
+    assert.deepEqual(
+      protectedActionsClearedByPreset('no_access', ASSETS, aditya).sort(),
+      ['assign', 'manage'],
+    )
+    assert.ok(page.includes("protectedActionsClearedByPreset('no_access', actionKeys, effective)"))
+    assert.ok(page.includes('will remove:'))
+    assert.ok(page.includes('window.confirm(message)'))
+    // The pending change is applied only after confirmation.
+    assert.ok(page.includes('if (!window.confirm(message)) return'))
+  })
+
+  test('the wording is plain', () => {
+    assert.ok(page.includes('Module access'))
+    assert.ok(page.includes("{accessible ? 'Visible' : 'Hidden'}"))
+    assert.equal(page.includes('Module Visibility'), false, 'no second setting by that name')
+  })
+})
+
+// ── PART 2: Attendance & Payroll ────────────────────────────────────────────
+
+describe('Attendance & Payroll is one self-service row', () => {
+  test('the two modules are separated out and rendered once', () => {
+    assert.ok(page.includes('const SELF_SERVICE_MODULE_KEYS = [\'attendance\', \'payroll\'] as const'))
+    assert.ok(page.includes('selfServiceModules.length > 0 && (\n                  <AttendancePayrollCard'))
+    assert.ok(page.includes('editableModules.map(mod =>'))
+    assert.ok(page.includes("const COMBINED_ATTENDANCE_PAYROLL_LABEL = 'Attendance & Payroll'"))
+  })
+
+  test('it carries no editable management controls', () => {
+    const start = page.indexOf('function AttendancePayrollCard')
+    const end = page.indexOf('// ── Page ──', start)
+    const card = page.slice(start, end > start ? end : undefined)
+    assert.equal(card.includes('onToggle'), false)
+    assert.equal(card.includes('AccessLevelBadge'), false)
+    assert.equal(card.includes('onOpen'), false)
+    assert.equal(/Viewer|Contributor|Manager|Custom/.test(card), false)
+  })
+
+  test('the self-service wording is present and accurate', () => {
+    assert.ok(page.includes('Self-service'))
+    assert.ok(page.includes('Employees can view their own attendance and payroll and raise issues.'))
+    assert.ok(page.includes('Management access is restricted to system administrators.'))
+  })
+
+  test('inert Attendance/Payroll overrides are surfaced, not activated', () => {
+    assert.ok(page.includes('Unused permissions on record'))
+    assert.ok(page.includes('left exactly as they are'))
+  })
+
+  test('the enforcement label does not call them Enforced', () => {
+    assert.equal(moduleEnforcement('attendance').state, 'role_only')
+    assert.equal(moduleEnforcement('payroll').state, 'role_only')
+  })
+})
+
+// ── PART 3: unsaved-change protection ───────────────────────────────────────
+
+describe('unsaved changes are protected', () => {
+  test('switching employee with pending edits asks first', () => {
+    assert.ok(page.includes("const UNSAVED_PROMPT = 'You have unsaved access changes. Leave without saving?'"))
+    assert.ok(page.includes('if (dirty && !window.confirm(UNSAVED_PROMPT)) return'))
+  })
+
+  test('Stay keeps the employee and the pending changes', () => {
+    // The guard returns BEFORE setSelectedEmployeeId / loadTree, so nothing
+    // about the current selection or the override map is touched.
+    const start = page.indexOf('async function selectEmployee')
+    const body = page.slice(start, page.indexOf('async function loadTree', start))
+    const guardAt = body.indexOf('window.confirm(UNSAVED_PROMPT)')
+    assert.ok(guardAt > -1)
+    assert.ok(guardAt < body.indexOf('setSelectedEmployeeId(id)'))
+    assert.ok(guardAt < body.indexOf('loadTree(id)'))
+  })
+
+  test('discarding sends no request', () => {
+    const start = page.indexOf('async function selectEmployee')
+    const body = page.slice(start, page.indexOf('async function loadTree', start))
+    assert.equal(body.includes('method: \'PUT\''), false)
+    assert.equal(body.includes('fetch('), false)
+  })
+
+  test('refresh and close are covered, and only while dirty', () => {
+    assert.ok(page.includes("window.addEventListener('beforeunload', warn)"))
+    assert.ok(page.includes('if (!dirty) return'), 'the listener must not outlive the pending changes')
+    assert.ok(page.includes("window.removeEventListener('beforeunload', warn)"))
+  })
+
+  test('it uses the browser prompt rather than a bespoke modal', () => {
+    assert.equal(/UnsavedChangesModal|LeaveConfirmModal/.test(page), false)
+  })
+
+  test('re-selecting the same employee never prompts', () => {
+    assert.ok(page.includes('if (id === selectedEmployeeId) return'))
+  })
+})
+
+// ── PART 4: system Admin protection ─────────────────────────────────────────
+
+describe('a system Administrator cannot be edited here', () => {
+  test('it is decided from the SELECTED employee, not the signed-in one', () => {
+    assert.ok(page.includes('function isSystemAdmin(tree: EmployeePermissionTree | null)'))
+    assert.ok(page.includes("return tree?.employee.role === 'admin'"))
+    assert.ok(page.includes('const adminLocked = isSystemAdmin(tree)'))
+  })
+
+  test('the explanation is shown', () => {
+    assert.ok(page.includes('System Administrator.'))
+    assert.ok(page.includes("this person&apos;s system role"))
+  })
+
+  test('toggles and level selectors are disabled', () => {
+    assert.ok(page.includes('locked={adminLocked}'))
+    assert.ok(page.includes('disabled={locked}'))
+    assert.ok(page.includes('onOpen={() => { if (!adminLocked) setChangeModalModuleKey(mod.moduleKey) }}'))
+  })
+
+  test('no PUT can be issued for a system Admin', () => {
+    const start = page.indexOf('async function save()')
+    const body = page.slice(start, page.indexOf('// ── Render', start))
+    const guardAt = body.indexOf('if (isSystemAdmin(tree)) return')
+    assert.ok(guardAt > -1, 'save must refuse a system admin')
+    assert.ok(guardAt < body.indexOf('fetch('), 'the refusal must precede the request')
+  })
+
+  test('the Control Center itself remains admin-only', () => {
+    assert.ok(page.includes("if (p?.role !== 'admin') { router.push('/dashboard'); return }"))
+  })
+})
+
+// ── PART 7: whole-workflow accuracy ─────────────────────────────────────────
+
+describe('the finished workflow holds its boundaries', () => {
+  test('exactly five levels, and none of them is editor or admin', () => {
+    assert.deepEqual([...ACCESS_LEVELS], ['no_access', 'viewer', 'contributor', 'manager', 'custom'])
+    assert.equal(page.includes("'editor'"), false)
+    assert.equal(page.includes("key: 'admin'"), false)
+  })
+
+  test('protected actions are reachable only through Custom', () => {
+    for (const keys of [ASSETS, FINANCE]) {
+      for (const level of PRESET_LEVELS) {
+        for (const action of granted(presetAllowedActions(level, keys))) {
+          assert.equal(isProtectedAction(action), false, `${level} granted ${action}`)
+        }
+      }
+    }
+  })
+
+  test('Custom automatically includes View', () => {
+    assert.deepEqual(normalizeGrantedActions(['manage'], FINANCE).sort(), ['manage', 'view'])
+    assert.deepEqual(normalizeGrantedActions(['assign'], ASSETS).sort(), ['assign', 'view'])
+  })
+
+  test('existing protected grants load as Custom and are not rewritten', () => {
+    const dhruvFinance = Object.fromEntries(FINANCE.map(a => [a, true]))
+    assert.equal(detectAccessLevel(FINANCE, dhruvFinance), 'custom')
+    const aditya = { view: true, create: true, edit: true, manage: true, assign: true, delete: false }
+    assert.equal(detectAccessLevel(ASSETS, aditya), 'custom')
+    assert.equal(aditya.assign, true, 'detection must not mutate')
+  })
+
+  test('Save is disabled when clean and while saving', () => {
+    assert.ok(page.includes('disabled={!dirty || saving}'))
+  })
+
+  test('a failed save keeps the pending state', () => {
+    const start = page.indexOf('async function save()')
+    const body = page.slice(start, page.indexOf('// ── Render', start))
+    assert.ok(body.includes("setSaveError(json.error ?? 'Save failed'); return"))
+    // No reload and no override reset on the failure path.
+    const failAt = body.indexOf("setSaveError(json.error ?? 'Save failed')")
+    const reloadAt = body.indexOf('await loadTree(selectedEmployeeId)')
+    assert.ok(failAt < reloadAt, 'the failure path must return before reloading')
+  })
+
+  test('a successful save reloads the effective state', () => {
+    assert.ok(page.includes('await loadTree(selectedEmployeeId)'))
+  })
+
+  test('loading fails closed', () => {
+    assert.ok(page.includes('treeLoading && <LoadingScreen'))
+    assert.ok(page.includes('!treeLoading && tree && ('))
+  })
+
+  test('no separate Module Visibility workflow remains', () => {
+    const layout = read('src/components/layout/ControlCenterLayout.tsx')
+    assert.equal(layout.includes('label="Module Visibility"'), false)
+  })
+
+  test('no V2 feature was introduced', () => {
+    for (const forbidden of [
+      'RoleTemplate', 'roleTemplate', 'bulkCopy', 'copyAccessFrom',
+      'DepartmentPermission', 'scopeEditor', 'AccessHistory', 'exportPermissions',
+    ]) {
+      assert.equal(page.includes(forbidden), false, `V1 must not contain ${forbidden}`)
+    }
+  })
+})

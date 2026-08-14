@@ -8,6 +8,12 @@ import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import {
+  deriveFinanceCapabilities,
+  NO_FINANCE_CAPABILITIES,
+  type FinanceCapabilities,
+} from '@/lib/permissions/finance'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -117,6 +123,9 @@ function StatCard({
 export default function OrdersDashboardPage() {
   const [pageLoading, setPageLoading] = useState(true)
   const [profile,     setProfile]     = useState<UserProfile | null>(null)
+  // The unlinked-payments card reads Finance data, so it is gated on Finance
+  // `view` rather than on the admin role. Starts empty so it cannot flash.
+  const [financeCaps, setFinanceCaps] = useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)
   const [orders,      setOrders]      = useState<Order[]>([])
   const [stats,       setStats]       = useState<DashboardStats>({
     activeOrders: 0, runningValue: 0, readyToDispatch: 0, unlinkedPayments: 0, overdueOrders: 0,
@@ -198,6 +207,10 @@ export default function OrdersDashboardPage() {
         .single()
 
       setProfile(me as UserProfile)
+
+      const financePerms = await getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => [])
+      setFinanceCaps(deriveFinanceCapabilities(me?.role, financePerms))
+
       await loadData()
       setPageLoading(false)
     }
@@ -221,7 +234,7 @@ export default function OrdersDashboardPage() {
   // else the query already silently returns 0. Neutralize the card instead
   // of showing a "0" that reads as "nothing unlinked" when it actually
   // means "you can't see Finance data."
-  const canSeeFinance = profile?.role === 'admin'
+  const canSeeFinance = financeCaps.canAccessFinanceModule
 
   return (
     <OrdersLayout

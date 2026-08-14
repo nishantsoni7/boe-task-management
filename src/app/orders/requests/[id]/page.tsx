@@ -25,6 +25,12 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import {
+  deriveOrdersCapabilities,
+  NO_ORDERS_CAPABILITIES,
+  type OrdersCapabilities,
+} from '@/lib/permissions/orders'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
@@ -821,9 +827,40 @@ function OrderRequestDetailPageInner() {
 
   const isAdmin = profile?.role === 'admin'
 
+  // Orders authority for the SIGNED-IN user, resolved from the permission
+  // engine. Starts empty so no review or delete control renders before the
+  // resolver has answered; admins short-circuit inside the helper, so their
+  // behaviour is unchanged.
+  const [caps, setCaps] = useState<OrdersCapabilities>(NO_ORDERS_CAPABILITIES)
+
+  useEffect(() => {
+    let cancelled = false
+    const userId = profile?.id
+    const role = profile?.role
+
+    // Resolved to a value first, then written once. Setting state
+    // synchronously here would cascade a render before the resolver has said
+    // anything, and the initial state is already NO_ORDERS_CAPABILITIES — so
+    // the screen is closed while this runs either way.
+    const resolve = async (): Promise<OrdersCapabilities> => {
+      if (!userId) return NO_ORDERS_CAPABILITIES
+      try {
+        return deriveOrdersCapabilities(role, await getEffectivePermissions(supabase, userId, 'orders'))
+      } catch {
+        return NO_ORDERS_CAPABILITIES
+      }
+    }
+
+    void resolve().then(next => { if (!cancelled) setCaps(next) })
+    return () => { cancelled = true }
+  }, [profile?.id, profile?.role, supabase])
+
   // ── Derived permissions ─────────────────────────────────────────────────────
   // Each mirrors, and never widens, the server-side gate named in shared.ts.
-  const canReview       = !!request && isAdmin && request.status === 'submitted'
+  // Reviewing is orders.approve: convert_order_request_to_order,
+  // reject_order_request and request_order_request_clarification all resolve
+  // that action after 20260901000000.
+  const canReview       = !!request && caps.canApproveOrder && request.status === 'submitted'
   const isRequester     = !!request && isPermittedRequester(request, currentUserId)
   // Widened from isRequester (created_by/requested_by) to include the CURRENT
   // ASSIGNEE — see canRespondToClarification. An admin-raised request left the
@@ -838,7 +875,9 @@ function OrderRequestDetailPageInner() {
   // order_requests_prevent_converted_delete trigger enforce server-side
   // (20260705000000). A converted request produced a Confirmed Order and is
   // permanent source history, so it never offers this.
-  const canDelete       = !!request && isAdmin && request.status !== 'converted' && !request.converted_order_id
+  // Deleting is orders.delete. The UNCONVERTED restriction is a
+  // record-keeping rule, not an authorization one, and is unchanged.
+  const canDelete       = !!request && caps.canDeleteOrder && request.status !== 'converted' && !request.converted_order_id
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

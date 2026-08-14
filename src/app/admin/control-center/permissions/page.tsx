@@ -11,37 +11,29 @@ import type { UserProfile } from '@/lib/types'
 import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
 import { LoadingScreen, EmptyState, AlertBanner, Avatar } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
+import {
+  moduleEnforcement,
+  ENFORCEMENT_BADGE_LABEL,
+  type EnforcementState,
+} from '@/lib/permissions/enforcement'
+import {
+  ACCESS_LEVELS,
+  ACCESS_LEVEL_LABELS,
+  presetAllowedActions,
+  detectAccessLevel as detectLevelForActions,
+  protectedActionsClearedByPreset,
+  type AccessLevel,
+  type PresetLevel,
+} from '@/lib/permissions/levels'
 import styles from './permissions.module.css'
 
-// Modules whose permissions are actually enforced by the resolver today.
-// Everything else is prepared (overrides save, resolver computes an
-// effective value) but no app code or RLS policy checks it yet.
-// Keep in sync with src/lib/permissions/modules.ts comments as modules cut over.
-//
-// 'orders': the 'view' action gates the module — src/app/orders/layout.tsx
-// and the /modules launcher card both call resolve_permission('orders','view')
-// before letting a non-admin in. Other orders actions (create/edit/delete/
-// approve/export/manage) are registered for the Access Control UI's presets
-// but aren't independently checked anywhere yet — orders RLS still governs
-// row-level access by team/ownership, unchanged. Same partial-enforcement
-// shape as 'sample_tracking' above (view-adjacent actions enforced, the
-// rest prepared).
-//
-// 'assets_access': fully enforced, unlike the two above. Every action is
-// checked in three places that agree with each other — the RLS policies on
-// assets / employee_assets (20260721000000, corrected by 20260723000000), the
-// custody RPCs assign_asset / return_asset / mark_asset_lost, which resolve
-// their action through assert_asset_custody_permission (20260725000000), and
-// the capability derivation in src/lib/permissions/assetsAccess.ts that
-// AssetsLayout gates the screen on. Granting 'assign' here really does hand
-// someone the Assign button, so the prepared-but-not-enforced warning would
-// be actively misleading on this module.
-const ENFORCED_MODULE_KEYS = new Set(['sample_tracking', 'orders', 'assets_access'])
-
-const ENFORCEMENT_COPY = {
-  active: 'Permissions are enforced in this module.',
-  prepared: 'Permissions are saved but not enforced in this module yet.',
-}
+// Which modules the engine actually decides now lives in one shared place —
+// src/lib/permissions/enforcement.ts — because the launcher, the route guards
+// and this screen must not each keep their own opinion. The set that used to
+// sit here said only enforced/not-enforced, which could not describe Orders
+// (module entry is enforced, everything inside is still users.role) and had
+// gone stale on Meetings (fully enforced since 20260814000000, still shown as
+// "Prepared").
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -73,54 +65,56 @@ type EmployeePermissionTree = {
   modules: ModuleState[]
 }
 
+/**
+ * A system Administrator's authority comes from users.role, not from anything
+ * on this screen. Every module guard, RPC and policy in the app short-circuits
+ * on role = 'admin', so an override written here could neither add to that nor
+ * take anything away — it would just look as though it had.
+ *
+ * This is checked against the SELECTED employee, not the signed-in one, so it
+ * protects every admin rather than only the person doing the editing.
+ */
+function isSystemAdmin(tree: EmployeePermissionTree | null): boolean {
+  return tree?.employee.role === 'admin'
+}
+
 // override choice per "moduleKey:actionKey" — 'inherit' means no employee override
 type OverrideChoice = 'inherit' | 'allow' | 'deny'
 
-// Understandable access levels shown to admins. These are a UI-only layer
-// over the granular action engine — 'custom' just means "don't apply a
-// preset, let the admin set each action manually" (the old behavior).
-type AccessLevel = 'no_access' | 'viewer' | 'editor' | 'manager' | 'admin' | 'custom'
-type PresetLevel = Exclude<AccessLevel, 'custom'>
+/**
+ * Attendance and Payroll are two permission modules wearing one name.
+ *
+ * The launcher shows them as a single "Attendance & Payroll" card, and their
+ * MANAGEMENT surface is admin-only by an explicit product decision that no grant
+ * on this screen can change — see SELF_SERVICE_MODULE_KEYS and
+ * resolveManagementAccess in src/lib/moduleAccess.ts. Rendering two editable
+ * rows of Viewer/Contributor/Manager controls would therefore be a lie: every
+ * switch would save a row that decides nothing.
+ *
+ * So the two modules are collapsed into one read-only row that says what is
+ * actually true, and nothing on this page writes an attendance or payroll
+ * override.
+ */
+const SELF_SERVICE_MODULE_KEYS = ['attendance', 'payroll'] as const
+const COMBINED_ATTENDANCE_PAYROLL_LABEL = 'Attendance & Payroll'
 
-const LEVELS: { key: AccessLevel; label: string; description: string }[] = [
-  { key: 'no_access', label: 'No Access', description: 'Cannot view or use this module.' },
-  { key: 'viewer',     label: 'Viewer',    description: 'Can view only.' },
-  { key: 'editor',     label: 'Editor',    description: 'Can view, create, and edit.' },
-  { key: 'manager',    label: 'Manager',   description: 'Can view, create, edit, approve, and manage.' },
-  { key: 'admin',      label: 'Admin',     description: 'Full access to every action in this module.' },
-  { key: 'custom',     label: 'Custom',    description: 'Manual action-level access.' },
-]
-
-// Local mapping from access level -> which actions should be allowed, for a
-// given module's action set. Only actions the module actually has are ever
-// touched. Manager intentionally does not grant delete/export/admin or any
-// module-specific lifecycle action (e.g. Sample Tracking's dispatch/receive/
-// mark_lost/close) — those stay reachable via Admin or Custom only.
-function presetAllowedActions(level: PresetLevel, actionKeys: string[]): Record<string, boolean> {
-  const has = (key: string) => actionKeys.includes(key)
-  const allowed: Record<string, boolean> = {}
-  for (const key of actionKeys) allowed[key] = false
-
-  if (level === 'admin') {
-    for (const key of actionKeys) allowed[key] = true
-    return allowed
-  }
-  if (level === 'no_access') return allowed
-
-  if (level === 'viewer' || level === 'editor' || level === 'manager') {
-    if (has('view')) allowed.view = true
-  }
-  if (level === 'editor' || level === 'manager') {
-    if (has('create')) allowed.create = true
-    if (has('edit')) allowed.edit = true
-  }
-  if (level === 'manager') {
-    if (has('approve')) allowed.approve = true
-    if (has('manage')) allowed.manage = true
-  }
-  return allowed
+function isSelfServiceModuleKey(moduleKey: string): boolean {
+  return (SELF_SERVICE_MODULE_KEYS as readonly string[]).includes(moduleKey)
 }
 
+// The level vocabulary lives in src/lib/permissions/levels.ts, shared with the
+// API, the tests and the capability helpers.
+//
+// The copy that used to sit here carried a sixth "Admin" level that granted
+// EVERY action, delete and assign included — the one shape through which a
+// protected permission could be handed out by picking a label off a list. It is
+// gone, and PROTECTED_ACTIONS in levels.ts is what keeps it gone.
+const LEVELS = ACCESS_LEVELS.map(key => ({ key, ...ACCESS_LEVEL_LABELS[key] }))
+
+// presetAllowedActions and the level detector are imported from
+// src/lib/permissions/levels.ts. detectAccessLevel here is a thin adapter that
+// feeds this page's ModuleState into the shared detector, so the screen and the
+// save handler can never disagree about what a level means.
 function overrideKey(moduleKey: string, actionKey: string) {
   return `${moduleKey}:${actionKey}`
 }
@@ -141,17 +135,8 @@ function effectiveMapForModule(mod: ModuleState, overrides: Map<string, Override
   return map
 }
 
-// Matches the module's current effective state against each preset, in
-// increasing order of privilege, so an ambiguous match prefers the more
-// conservative label. Falls back to 'custom' when nothing matches exactly.
 function detectAccessLevel(mod: ModuleState, effective: Record<string, boolean>): AccessLevel {
-  const actionKeys = mod.actions.map(a => a.actionKey)
-  const order: PresetLevel[] = ['no_access', 'viewer', 'editor', 'manager', 'admin']
-  for (const level of order) {
-    const preset = presetAllowedActions(level, actionKeys)
-    if (actionKeys.every(key => !!preset[key] === !!effective[key])) return level
-  }
-  return 'custom'
+  return detectLevelForActions(mod.actions.map(a => a.actionKey), effective)
 }
 
 function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>, initialOverrides: Map<string, OverrideChoice>): boolean {
@@ -340,29 +325,66 @@ function ModuleIcon({ moduleKey, color }: { moduleKey: string; color: string }) 
 
 // ── Badges ───────────────────────────────────────────────────────────────────
 
+// The banner colour follows the badge: green only when every action really is
+// enforced, so "Partly active" cannot read as a green light.
+const ENFORCEMENT_BANNER_VARIANT: Record<EnforcementState, 'green' | 'amber'> = {
+  enforced:  'green',
+  partial:   'amber',
+  prepared:  'amber',
+  role_only: 'amber',
+}
+
+const ENFORCEMENT_BADGE_STYLE: Record<EnforcementState, { color: string; bg: string }> = {
+  enforced:  { color: '#166534', bg: '#F0FDF4' },
+  partial:   { color: '#1E40AF', bg: '#EFF6FF' },
+  prepared:  { color: '#8C6D1F', bg: '#FFFBEB' },
+  role_only: { color: '#4B5563', bg: '#F3F4F6' },
+}
+
 function EnforcementBadge({ moduleKey }: { moduleKey: string }) {
-  const enforced = ENFORCED_MODULE_KEYS.has(moduleKey)
+  const enforcement = moduleEnforcement(moduleKey)
+  const tone = ENFORCEMENT_BADGE_STYLE[enforcement.state]
   return (
     <span
-      title={enforced ? ENFORCEMENT_COPY.active : ENFORCEMENT_COPY.prepared}
+      title={enforcement.detail}
       style={{
         fontSize: 10, fontWeight: 700,
-        color: enforced ? '#166534' : '#8C6D1F',
-        background: enforced ? '#F0FDF4' : '#FFFBEB',
+        color: tone.color,
+        background: tone.bg,
         borderRadius: 5, padding: '2px 7px',
       }}
     >
-      {enforced ? 'Active' : 'Prepared'}
+      {ENFORCEMENT_BADGE_LABEL[enforcement.state]}
     </span>
   )
 }
 
+// Protected permissions are named in plain words in the confirmation, because
+// "assign" on its own does not tell an administrator what they are about to
+// take away from Aditya.
+const PROTECTED_ACTION_WORDS: Record<string, string> = {
+  assign:                'Assign assets',
+  manage:                'Manage',
+  delete:                'Delete',
+  admin:                 'Admin',
+  dispatch:              'Dispatch',
+  receive:               'Receive',
+  mark_lost:             'Mark lost',
+  close:                 'Close',
+  can_be_order_assignee: 'Be an order assignee',
+}
+
+function protectedActionWords(actionKeys: string[]): string {
+  const names = actionKeys.map(k => PROTECTED_ACTION_WORDS[k] ?? k)
+  if (names.length === 1) return names[0]
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 const LEVEL_BADGE_META: Record<AccessLevel, { label: string; color: string; bg: string }> = {
-  no_access: { label: 'No Access', color: '#4B5563', bg: '#F3F4F6' },
-  viewer:    { label: 'Viewer',    color: '#1E40AF', bg: '#EFF6FF' },
-  editor:    { label: 'Editor',    color: '#4338CA', bg: '#EEF2FF' },
-  manager:   { label: 'Manager',   color: '#0F766E', bg: '#F0FDFA' },
-  admin:     { label: 'Admin',     color: '#DC1F2E', bg: 'rgba(220,31,46,0.08)' },
+  no_access:   { label: 'No Access',   color: '#4B5563', bg: '#F3F4F6' },
+  viewer:      { label: 'Viewer',      color: '#1E40AF', bg: '#EFF6FF' },
+  contributor: { label: 'Contributor', color: '#4338CA', bg: '#EEF2FF' },
+  manager:     { label: 'Manager',     color: '#0F766E', bg: '#F0FDFA' },
   custom:    { label: 'Custom',    color: '#8C6D1F', bg: '#FFFBEB' },
 }
 
@@ -443,10 +465,9 @@ function OverrideControl({
 // ── Change Access modal ──────────────────────────────────────────────────────
 
 function ChangeAccessModal({
-  mod, enforced, currentLevel, getChoice, onChangeAction, onApplyLevel, onClose,
+  mod, currentLevel, getChoice, onChangeAction, onApplyLevel, onClose,
 }: {
   mod: ModuleState
-  enforced: boolean
   currentLevel: AccessLevel
   getChoice: (actionKey: string) => OverrideChoice
   onChangeAction: (actionKey: string, choice: OverrideChoice) => void
@@ -454,12 +475,39 @@ function ChangeAccessModal({
   onClose: () => void
 }) {
   const [mode, setMode] = useState<AccessLevel>(currentLevel)
+  // A standard level the administrator has chosen but not yet confirmed,
+  // because applying it would take protected permissions away.
+  const [pendingLevel, setPendingLevel] = useState<PresetLevel | null>(null)
+
+  // What this module currently grants, folding in unsaved choices — the same
+  // view the level detector sees.
+  const currentlyAllowed: Record<string, boolean> = {}
+  for (const action of mod.actions) {
+    const choice = getChoice(action.actionKey)
+    currentlyAllowed[action.actionKey] = choice === 'inherit' ? action.allowed : choice === 'allow'
+  }
+
+  const actionKeys = mod.actions.map(a => a.actionKey)
+
+  function applyLevel(level: PresetLevel) {
+    onApplyLevel(level)
+    onClose()
+  }
 
   function pick(level: AccessLevel) {
     setMode(level)
     if (level === 'custom') return
-    onApplyLevel(level)
-    onClose()
+
+    // A standard level clears every protected permission. Say which, and wait.
+    // Silently keeping them would be worse (the administrator would believe
+    // they had reduced someone to Viewer), and silently dropping them worse
+    // still.
+    const cleared = protectedActionsClearedByPreset(level, actionKeys, currentlyAllowed)
+    if (cleared.length > 0) {
+      setPendingLevel(level)
+      return
+    }
+    applyLevel(level)
   }
 
   const sourceSummary = summarizeSource(mod, getChoice)
@@ -470,8 +518,8 @@ function ChangeAccessModal({
         <div style={MODAL_TITLE}>{mod.displayName} — Change Access</div>
 
         <div style={{ marginBottom: 16 }}>
-          <AlertBanner variant={enforced ? 'green' : 'amber'}>
-            {enforced ? ENFORCEMENT_COPY.active : ENFORCEMENT_COPY.prepared}
+          <AlertBanner variant={ENFORCEMENT_BANNER_VARIANT[moduleEnforcement(mod.moduleKey).state]}>
+            {moduleEnforcement(mod.moduleKey).detail}
           </AlertBanner>
         </div>
 
@@ -489,6 +537,42 @@ function ChangeAccessModal({
               : 'Some permissions are customized'}
           </div>
         </div>
+
+        {pendingLevel && (
+          <div
+            style={{
+              marginBottom: 16, padding: '12px 14px', borderRadius: 10,
+              border: '1px solid #F0C36D', background: '#FFFBEB',
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#8C6D1F', marginBottom: 6 }}>
+              Changing to {ACCESS_LEVEL_LABELS[pendingLevel].label} will remove:{' '}
+              {protectedActionWords(
+                protectedActionsClearedByPreset(pendingLevel, actionKeys, currentlyAllowed),
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: '#6B7384', marginBottom: 10 }}>
+              These are kept only under Custom. Choose Custom instead if this person
+              should keep them.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="boe-btn boe-btn-primary"
+                style={{ fontSize: 12, padding: '5px 12px' }}
+                onClick={() => { const l = pendingLevel; setPendingLevel(null); applyLevel(l) }}
+              >
+                Remove and continue
+              </button>
+              <button
+                className="boe-btn boe-btn-ghost"
+                style={{ fontSize: 12, padding: '5px 12px' }}
+                onClick={() => { setPendingLevel(null); setMode(currentLevel) }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={LEVEL_GRID}>
           {LEVELS.map(l => {
@@ -646,22 +730,22 @@ function WorkspaceHeader({ tree, overrides }: { tree: EmployeePermissionTree; ov
 // ── Module card ──────────────────────────────────────────────────────────────
 
 function ModuleCard({
-  mod, level, accessible, unsaved, open, onOpen,
+  mod, level, accessible, unsaved, locked, onToggle, open, onOpen,
 }: {
   mod: ModuleState
   level: AccessLevel
   accessible: boolean
   unsaved: boolean
+  /** True for a system Administrator — the row is read-only. */
+  locked: boolean
+  onToggle: (on: boolean) => void
   open: boolean
   onOpen: () => void
 }) {
   return (
-    <button
-      type="button"
+    <div
       className={`${styles.moduleCard}${accessible ? ` ${styles.granted}` : ''}${open ? ` ${styles.open}` : ''}`}
-      onClick={onOpen}
-      aria-haspopup="dialog"
-      aria-label={`${mod.displayName} — ${accessible ? 'Access enabled' : 'No access'}. Click to change.`}
+      style={locked ? { opacity: 0.6 } : undefined}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <ModuleIcon moduleKey={mod.moduleKey} color={accessible ? '#166534' : '#8C94A6'} />
@@ -680,15 +764,114 @@ function ModuleCard({
         {level !== 'no_access' && <AccessLevelBadge level={level} />}
       </div>
 
-      <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-        {accessible
-          ? <CheckCircle2 size={15} strokeWidth={2} color="#166534" />
-          : <Circle size={15} strokeWidth={2} color="#B7BEC9" />}
-        <span style={{ fontSize: 12, fontWeight: 600, color: accessible ? '#166534' : '#6B7384' }}>
-          {accessible ? 'Access enabled' : 'No access'}
+      {/* ONE control, two halves. The switch says whether the module is on;
+          the button underneath says how much. Both write the same per-action
+          state, so there is no second setting to reconcile. */}
+      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            cursor: locked ? 'default' : 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            role="switch"
+            checked={accessible}
+            disabled={locked}
+            onChange={e => onToggle(e.target.checked)}
+            aria-label={`Module access for ${mod.displayName}`}
+            style={{ width: 16, height: 16, cursor: locked ? 'default' : 'pointer' }}
+          />
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#6B7384' }}>Module access</span>
+          <span
+            style={{
+              fontSize: 11, fontWeight: 700,
+              color: accessible ? '#166534' : '#6B7384',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            {accessible
+              ? <CheckCircle2 size={13} strokeWidth={2} color="#166534" />
+              : <Circle size={13} strokeWidth={2} color="#B7BEC9" />}
+            {accessible ? 'Visible' : 'Hidden'}
+          </span>
+        </label>
+
+        <button
+          type="button"
+          onClick={onOpen}
+          disabled={locked}
+          aria-haspopup="dialog"
+          aria-label={`Change access level for ${mod.displayName}`}
+          style={{
+            fontSize: 11.5, fontWeight: 600, color: locked ? '#A0A9BE' : '#1A2035',
+            background: 'transparent', border: '1px solid #E8EBF0', borderRadius: 7,
+            padding: '4px 9px', cursor: locked ? 'default' : 'pointer', textAlign: 'left',
+          }}
+        >
+          {accessible ? 'Change level or permissions' : 'Choose access level'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Attendance & Payroll ─────────────────────────────────────────────────────
+//
+// One row, deliberately read-only. See SELF_SERVICE_MODULE_KEYS.
+
+function AttendancePayrollCard({ modules }: { modules: ModuleState[] }) {
+  // An inert override would decide nothing today, but an administrator should
+  // still be told it is there rather than discovering it during a future
+  // cutover — that is exactly how migration 20260723000000 came to exist.
+  const strayOverrides = modules.flatMap(mod =>
+    mod.actions
+      .filter(a => a.source === 'employee_override' && a.allowed)
+      .map(a => `${mod.displayName} ${a.displayName}`),
+  )
+
+  return (
+    <div className={styles.moduleCard} style={{ cursor: 'default' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <ModuleIcon moduleKey="attendance" color="#8C94A6" />
+        <EnforcementBadge moduleKey="attendance" />
+      </div>
+
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318', marginBottom: 6 }}>
+          {COMBINED_ATTENDANCE_PAYROLL_LABEL}
+        </div>
+        <span
+          style={{
+            fontSize: 10, fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
+            borderRadius: 5, padding: '2px 7px',
+          }}
+        >
+          Self-service
         </span>
       </div>
-    </button>
+
+      <div style={{ marginTop: 'auto', fontSize: 11.5, color: '#6B7384', lineHeight: 1.5 }}>
+        Employees can view their own attendance and payroll and raise issues.
+        <br />
+        Management access is restricted to system administrators.
+      </div>
+
+      {strayOverrides.length > 0 && (
+        <div
+          style={{
+            marginTop: 8, fontSize: 11, color: '#8C6D1F',
+            background: '#FFFBEB', border: '1px solid #F0C36D',
+            borderRadius: 7, padding: '6px 8px', lineHeight: 1.45,
+          }}
+        >
+          <strong>Unused permissions on record:</strong> {strayOverrides.join(', ')}.
+          These grant nothing — management access is admin-only — and have been
+          left exactly as they are.
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -787,9 +970,19 @@ export default function PermissionsPage() {
   }, [search, members, depts])
 
   // ── Load an employee's permission tree ──────────────────────────────────
+  const UNSAVED_PROMPT = 'You have unsaved access changes. Leave without saving?'
+
   async function selectEmployee(id: string) {
+    if (id === selectedEmployeeId) return
+    // Only ask when there is something to lose. Prompting on a clean screen
+    // trains people to dismiss the prompt without reading it.
+    if (dirty && !window.confirm(UNSAVED_PROMPT)) return
+
+    // Leaving discards LOCAL pending state only. No request is sent — the
+    // employee's stored permissions are untouched by walking away.
     setSelectedEmployeeId(id)
     setSaveError('')
+    setChangeModalModuleKey(null)
     await loadTree(id)
   }
 
@@ -902,16 +1095,72 @@ export default function PermissionsPage() {
     })
   }
 
-  const dirty = useMemo(() => {
-    for (const [key, choice] of overrides) {
-      if (initialOverrides.get(key) !== choice) return true
+  /**
+   * PART 1 — Module access, on or off.
+   *
+   * The toggle is NOT a second authority. It is a shortcut into the same
+   * per-action override state the level selector writes:
+   *
+   *   Off  →  no_access   (every action for this module set to deny)
+   *   On   →  viewer      (view only), from which the administrator picks a level
+   *
+   * Because both controls write the same state and the level is derived back
+   * out of it by detectAccessLevel, the two can never disagree — there is no
+   * separate visibility boolean, and nothing extra is saved.
+   *
+   * Turning a module OFF that holds protected actions removes them, so it asks
+   * first and names them, exactly as a standard level does.
+   */
+  function toggleModuleAccess(mod: ModuleState, on: boolean) {
+    const actionKeys = mod.actions.map(a => a.actionKey)
+
+    if (!on) {
+      const effective = effectiveMapForModule(mod, overrides)
+      const cleared = protectedActionsClearedByPreset('no_access', actionKeys, effective)
+      if (cleared.length > 0) {
+        const message =
+          `Turning off ${mod.displayName} will remove: ${protectedActionWords(cleared)}.\n\n` +
+          'Continue?'
+        if (!window.confirm(message)) return
+      }
+      applyAccessLevel(mod, 'no_access')
+      return
     }
-    return false
-  }, [overrides, initialOverrides])
+
+    // Turning ON from No Access starts at Viewer. An existing Custom or
+    // standard grant is already "on", so the toggle never appears off for it
+    // and this branch cannot silently downgrade anybody.
+    applyAccessLevel(mod, 'viewer')
+  }
+
+  // A plain computation, not useMemo: it is one pass over a Map of a few dozen
+  // entries, and memoizing it stopped the React Compiler from optimizing the
+  // component at all once the toggle and navigation guards started reading the
+  // same state.
+  let hasPendingChanges = false
+  for (const [key, choice] of overrides) {
+    if (initialOverrides.get(key) !== choice) { hasPendingChanges = true; break }
+  }
+  const dirty = hasPendingChanges
+
+  // Refresh, tab close and browser Back. The listener is attached only while
+  // there is something to lose and removed the moment the screen goes clean, so
+  // a saved page never traps anybody. Browsers show their own wording here; the
+  // in-app prompt above is where our sentence appears.
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
 
   // ── Save ─────────────────────────────────────────────────────────────────
   async function save() {
     if (!selectedEmployeeId || !tree) return
+    // A system Administrator's authority comes from users.role. The grid is
+    // disabled for them, and this is the second gate: no request is built, so
+    // there is nothing to send even if the UI were bypassed.
+    if (isSystemAdmin(tree)) return
 
     const changes: { moduleKey: string; actionKey: string; allowed: boolean | null }[] = []
     for (const mod of tree.modules) {
@@ -953,6 +1202,10 @@ export default function PermissionsPage() {
     ? tree?.modules.find(m => m.moduleKey === changeModalModuleKey) ?? null
     : null
 
+  const adminLocked = isSystemAdmin(tree)
+  const selfServiceModules = tree?.modules.filter(m => isSelfServiceModuleKey(m.moduleKey)) ?? []
+  const editableModules = tree?.modules.filter(m => !isSelfServiceModuleKey(m.moduleKey)) ?? []
+
   return (
     <ControlCenterLayout
       profile={profile}
@@ -987,8 +1240,25 @@ export default function PermissionsPage() {
             <>
               <WorkspaceHeader tree={tree} overrides={overrides} />
 
+              {adminLocked && (
+                <div style={{ marginTop: 16 }}>
+                  <AlertBanner variant="amber">
+                    <strong>System Administrator.</strong> Module access is controlled by
+                    this person&apos;s system role, not by the settings below. An override
+                    saved here could neither add to their authority nor reduce it.
+                  </AlertBanner>
+                </div>
+              )}
+
               <div className={styles.moduleGrid} style={{ marginTop: 16 }}>
-                {tree.modules.map(mod => {
+                {/* Attendance & Payroll is one row, and it is not editable —
+                    see SELF_SERVICE_MODULE_KEYS above. It is rendered from the
+                    two underlying modules but writes neither. */}
+                {selfServiceModules.length > 0 && (
+                  <AttendancePayrollCard modules={selfServiceModules} />
+                )}
+
+                {editableModules.map(mod => {
                   const effective = effectiveMapForModule(mod, overrides)
                   const level = detectAccessLevel(mod, effective)
                   const accessible = mod.actions.some(a => effective[a.actionKey])
@@ -1000,8 +1270,10 @@ export default function PermissionsPage() {
                       level={level}
                       accessible={accessible}
                       unsaved={unsaved}
+                      locked={adminLocked}
+                      onToggle={on => toggleModuleAccess(mod, on)}
                       open={changeModalModuleKey === mod.moduleKey}
-                      onOpen={() => setChangeModalModuleKey(mod.moduleKey)}
+                      onOpen={() => { if (!adminLocked) setChangeModalModuleKey(mod.moduleKey) }}
                     />
                   )
                 })}
@@ -1034,7 +1306,6 @@ export default function PermissionsPage() {
       {changeModalModule && (
         <ChangeAccessModal
           mod={changeModalModule}
-          enforced={ENFORCED_MODULE_KEYS.has(changeModalModule.moduleKey)}
           currentLevel={detectAccessLevel(changeModalModule, effectiveMapForModule(changeModalModule, overrides))}
           getChoice={actionKey => overrides.get(overrideKey(changeModalModule.moduleKey, actionKey)) ?? 'inherit'}
           onChangeAction={(actionKey, choice) => changeOverride(changeModalModule.moduleKey, actionKey, choice)}

@@ -2,11 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, LayoutGrid, Building2, Users, ShieldCheck, Layers, History, X, ClipboardList, Hash, Eraser } from 'lucide-react'
+import { Home, LayoutGrid, Building2, Users, ShieldCheck, History, X, ClipboardList, Hash, Eraser } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 
+// 'modules' (Module Visibility) is retained so the existing ?tab=modules URL
+// still resolves for rollback, but it is no longer reachable from the sidebar —
+// see the note where its NavItem used to be.
 export type ControlCenterTab = 'overview' | 'departments' | 'people' | 'modules' | 'order-numbering'
 
 type ControlCenterLayoutProps = {
@@ -126,12 +129,15 @@ export function ControlCenterLayout({
             active={pathname === '/admin/control-center' && activeTab === 'order-numbering'}
             onClick={() => goToTab('order-numbering')}
           />
-          <NavItem
-            label="Module Visibility"
-            icon={<Layers size={15} strokeWidth={1.8} />}
-            active={pathname === '/admin/control-center' && activeTab === 'modules'}
-            onClick={() => goToTab('modules')}
-          />
+          {/* Module Visibility was a second, parallel way to decide who sees a
+              module, sitting one click from Access Control and disagreeing with
+              it. Access Control is now the single administrator workflow.
+
+              Nothing was deleted: app_modules still governs Showroom QR's
+              department rule and the Attendance/Payroll self-service cards, and
+              the tab's code and API routes are untouched behind
+              ?tab=modules for rollback. What changed is that it is no longer
+              presented as a workflow an administrator is meant to use. */}
           {/* Its own page, deliberately far from the everyday Finance and
               Orders lists. Removing a finalized test record is not a routine
               action and must not sit next to routine ones. */}
