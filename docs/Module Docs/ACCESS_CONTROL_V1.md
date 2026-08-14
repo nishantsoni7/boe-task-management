@@ -91,6 +91,45 @@ employees who hold it today, so nobody loses access on the day it lands and the
 *next* employee inherits nothing. Nine `(DUMMY)`/`Objection` test accounts are
 deliberately excluded.
 
+### Test accounts hold nothing by default
+
+Owner decision, 2026-08-14. Test and objection accounts carry **no operational
+access** in their default state — not "no protected access", none.
+
+`20260902000000` revokes all five of Test Sales User (DUMMY)'s stored Orders
+grants: `view`, `create`, `edit`, `approve`, `manage`. An earlier draft removed
+only `approve` and `manage`, reasoning that `20260901000000` leaves
+view/create/edit inert. That reasoning was overruled, and correctly: an inert
+grant is still a stored decision, and the migration that eventually wires up
+Orders `view`/`create`/`edit` would make it live without anyone re-reading the
+compatibility file.
+
+These accounts are **not deactivated and not deleted**. They may be granted
+temporary explicit permissions later for a specific controlled test. What
+changes is the default they return to.
+
+### Masked impact — before and after `20260902000000`
+
+Real employees are masked; the test accounts are named because the decision is
+about them. "Effective" means what `resolve_effective_permissions` returns
+across employee override → department → role → system default.
+
+| Account | Orders before | Orders after | Meetings before | Meetings after |
+|---|---|---|---|---|
+| Employee A *(manager, Finance/Orders owner)* | view, create, edit, approve, export, delete, manage | **unchanged** | view, create, edit, manage *(role)* | view, create, edit, manage *(override)* |
+| Employee B *(Assets `assign` holder)* | — | — | view *(role)* | view *(override)* |
+| Employees C–F *(Contributor-level Finance/Orders)* | view, create, edit | **unchanged** | view *(role)* | view *(override)* |
+| Employees G–K *(remaining active real staff)* | — | — | view *(role)* | view *(override)* |
+| **Test Sales User (DUMMY)** | view, create, edit, approve, manage | **none** | view *(role)* | **none** |
+| **8 other (DUMMY)/Objection accounts** | — | — | view *(role)* | **none** |
+| Future employee *(created after this lands)* | — | — | view *(role)* | **none** |
+| System Administrators | full *(admin role)* | **unchanged** | full *(admin role)* | **unchanged** |
+
+Net: 14 Meetings override rows replace the two role defaults; five Orders
+overrides are soft-revoked on one test account; **no real employee loses
+anything**. Every row above is reversible — see the rollback plan at the foot of
+the migration.
+
 ---
 
 ## System Administrators
@@ -208,9 +247,12 @@ undo it.
 ## Deployment
 
 **`20260901000000` and `20260902000000` must be applied together, in that
-order, with nothing between them.** Applying enforcement without the cleanup
-hands Order Request approval and Order amendment authority to a test account.
-A repository test asserts the two files sort adjacently.
+order, with nothing between them, in the same controlled checkpoint.** Applying
+enforcement without the cleanup hands Order Request approval and Order amendment
+authority to a test account. Neither file may ship without the other being ready
+to apply in the same window. A repository test asserts the two files sort
+adjacently, that the cleanup declares the dependency in its own header, and that
+both halves are present.
 
 Both sit behind four earlier unapplied migrations, one of which lives on another
 branch — see the deployment order in the Prompt 6 report.
