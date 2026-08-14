@@ -63,9 +63,16 @@ describe('module access is one control, not two', () => {
   test('toggle and level can never diverge — the level is derived from the state', () => {
     // On is defined as "at least view", which is exactly what makes a module
     // accessible, and the level is read back out of the same map.
+    //
+    // The screen now says that literally. It used to define On as "any action
+    // of this module is allowed", which agreed with the sentence above for
+    // every PRESET — a preset always includes view when it grants anything —
+    // but disagreed for a Custom grant that had lost its view. That gap is what
+    // let a module read Hidden and still count as accessible; see
+    // moduleParentGate.test.ts.
     for (const level of PRESET_LEVELS) {
       const map = presetAllowedActions(level, ASSETS)
-      const accessible = ASSETS.some(a => map[a])
+      const accessible = map['view'] === true
       const detected = detectAccessLevel(ASSETS, map)
       assert.equal(
         accessible,
@@ -73,7 +80,8 @@ describe('module access is one control, not two', () => {
         `${level}: accessible=${accessible} but level=${detected}`,
       )
     }
-    assert.ok(page.includes('const accessible = mod.actions.some(a => effective[a.actionKey])'))
+    assert.ok(page.includes('const accessible = moduleIsAccessible(mod, overrides)'))
+    assert.ok(page.includes("const MODULE_ENTRY_ACTION = 'view'"))
   })
 
   test('turning Off protected Custom access asks first and names what goes', () => {
