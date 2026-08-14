@@ -294,29 +294,92 @@ Finance was never built that way — its SELECT policies are ownership-based
 touched. `orders.view_all` therefore reveals no price, payment or finance record
 on its own, structurally rather than by convention.
 
-### Known limitation — quotations are not enforced in the database
+### Full coverage — every table each `view_all` reaches
 
-`view_quotations` and `manage_quotations` are enforced in the **navigation, the
-routes and the screens**, not in RLS:
+`20260903000000` creates nine SELECT policies. All are `FOR SELECT`; none adds
+create, edit, approve, manage, delete or export anywhere.
 
-| Layer | Enforced |
+| Table | Gate | Kind |
+|---|---|---|
+| `orders` | `orders.view_all` | repointed from `view` |
+| `order_activity_log` | `orders.view_all` | repointed from `view` |
+| `order_requests` | `orders.view_all` | added |
+| `order_request_activity` | `orders.view_all` | added |
+| `order_request_attachments` | `orders.view_all` | added |
+| `order_change_requests` | `orders.view_all` | added |
+| `finance_payment_requests` | `finance.view_all` | added |
+| `finance_payment_request_activity_log` | `finance.view_all` | added |
+| `payment_proof_attachments` | `finance.view_all` | added |
+
+The split is the point: **order request attachments are operational documents**
+(PI, reference files) and follow Orders; **payment proof attachments are
+financial** and follow Finance. So `orders.view_all` reaches every operational
+child record and stops precisely at the money.
+
+`order_requests` has no UPDATE policy for any role by design — all mutation goes
+through `SECURITY DEFINER` RPCs — so a SELECT policy cannot widen write
+authority there. Amending an order still requires `orders.manage` through
+`assert_order_amender` (`20260901000000`), untouched here.
+
+A post-condition asserts all nine exist, that no Orders policy still resolves
+plain `view` for company-wide sight, and that **no Finance policy can be
+satisfied by an Orders grant**.
+
+### The task security boundary (production-observed, 2026-08-14)
+
+The migration history is **incomplete** for the task tables: `tasks` and
+`task_activity_log` were created in the original Supabase setup, before
+migrations began, so their RLS lives only in the database. Read directly from
+production rather than inferred from the repository:
+
+| Table | RLS | SELECT policy |
+|---|---|---|
+| `tasks` | **enabled** | `auth.uid() = created_by OR auth.uid() = assigned_to OR auth.uid() = delegated_by` |
+| `task_activity_log` | **enabled** | same boundary, via the parent task |
+| `task_attachments` | enabled | **was `USING (true)`** — every attachment in the company, readable by every account |
+
+**There is no company-wide quotation exposure through `tasks` or
+`task_activity_log`.** Both are correctly ownership-scoped. An earlier draft of
+this document speculated that `tasks` might lack RLS; that was wrong and has
+been removed.
+
+`task_attachments` was the real defect, and `20260903000000` closes it: an
+attachment is now readable only by someone who may read its parent task, through
+either parent (`task_id`, or `activity_log_id` → `task_activity_log.task_id`).
+The write policies are untouched.
+
+> **No admin branch, deliberately.** The production `tasks` policy has no admin
+> branch — a System Admin has no company-wide task read through RLS. Adding one
+> to the attachment policy would grant *new* authority and leave the child
+> broader than its parent, which is the defect being fixed. Admin task tooling
+> that needs more already runs with the service role.
+
+### The quotation boundary, stated exactly
+
+| Who | Sees quotation customer fields? |
 |---|---|
-| Navigation | Quotation Requests and New Request hidden, badge count included |
-| Route | `/tasks/quotation-requests` and `/new` redirect before any query runs |
-| Fields | `customer_name`, `contact_number`, `company_name`, `city_project` redacted to `null` |
-| Database | **not enforced** — see below |
+| Creator / assignee / delegator of the task | **Yes — intentionally.** They cannot do the work otherwise. |
+| Holder of `view_quotations` | Yes, plus the register and the request form |
+| Everyone else | **No** — no row, no fields, no attachments, no navigation |
 
-A quotation request **is** somebody's assigned task. Hiding the row in RLS would
-take an employee's own assigned work away from them, which the requirement
-explicitly forbids. So the row stays readable to whoever the ordinary task
-policies already allow, and a caller with a valid session can still reach it
-through direct PostgREST. What an employee without `view_quotations` loses is
-the quotation register, the request form and the customer's commercial details —
-not the task.
+The first row is a **business boundary, not a database gap**: those fields are
+deliberately available to the person doing the work, and this document makes no
+claim that they are protected from them. Everyone else is blocked by the `tasks`
+RLS policy itself, which never returns the row.
 
-Closing that gap needs column-level redaction that varies per user, which
-Postgres column grants cannot express (they are role-based; see
-`20260813000000` for where that pattern does work). It is not attempted here.
+Quotation gating is enforced in navigation, routes and field redaction; the
+row-level boundary is the existing task ownership policy. `view_quotations`
+appears in **no** RLS policy by design — resolving it in one would *widen* the
+task boundary and hand quotation holders other people's tasks.
+
+**The register and request creation are restricted to System Admin and to
+senior staff explicitly granted the permissions through Custom access.** Normal
+employees see no quotation navigation, register, creation screen, or
+quotation-specific customer fields — except on a task they created, received or
+delegated, where those fields are needed to perform the work.
+
+**No price is reachable through ordinary task access.** There is no price column
+in Task Management at all — see below.
 
 **There is no price column in Task Management.** `20260652` adds `task_type`,
 `customer_name`, `contact_number`, `company_name` and `city_project` and nothing

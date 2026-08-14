@@ -150,6 +150,139 @@ create policy "finance_payment_request_activity_log_view_all_select" on public.f
 comment on policy "finance_payment_request_activity_log_view_all_select" on public.finance_payment_request_activity_log is
   'Company-wide payment activity sight. Requires finance.view_all, matching the payment requests policy.';
 
+-- ─── 3b. Orders — extend view_all to the operational child records ───────────
+--
+-- ADDITIVE. Every policy below is a NEW permissive policy beside the existing
+-- ownership ones, which are not dropped, renamed or narrowed. PERMISSIVE
+-- policies OR together, so an employee without view_all keeps exactly the
+-- requester/creator/assignee/participant visibility they have today.
+--
+-- Audited surface — every table carrying operational order data. Confirmed by
+-- reading each table's existing SELECT policies: all four are ownership-scoped
+-- with no permission-engine branch, so before this section `orders.view_all`
+-- would have shown all orders while their requests, activity, attachments and
+-- amendments stayed invisible.
+--
+-- Deliberately SELECT only, and deliberately NOT extended to any Finance
+-- table. An order request's linked payments live in finance_payment_requests
+-- and payment_proof_attachments, which resolve 'finance' and are handled in
+-- section 3c. orders.view_all cannot reach them.
+
+create policy "order_requests_view_all_select" on public.order_requests
+  for select to authenticated
+  using (resolve_permission(auth.uid(), 'orders', 'view_all'));
+
+comment on policy "order_requests_view_all_select" on public.order_requests is
+  'Company-wide order request sight. Requires orders.view_all. SELECT only — order_requests has no UPDATE policy for any role by design.';
+
+create policy "order_request_activity_view_all_select" on public.order_request_activity
+  for select to authenticated
+  using (resolve_permission(auth.uid(), 'orders', 'view_all'));
+
+comment on policy "order_request_activity_view_all_select" on public.order_request_activity is
+  'Company-wide order request activity sight. Requires orders.view_all.';
+
+create policy "order_request_attachments_view_all_select" on public.order_request_attachments
+  for select to authenticated
+  using (resolve_permission(auth.uid(), 'orders', 'view_all'));
+
+comment on policy "order_request_attachments_view_all_select" on public.order_request_attachments is
+  'Company-wide order request attachment sight. Requires orders.view_all. These are operational documents (PI, reference files), not payment proofs — payment proofs are gated on finance.view_all.';
+
+create policy "order_change_requests_view_all_select" on public.order_change_requests
+  for select to authenticated
+  using (resolve_permission(auth.uid(), 'orders', 'view_all'));
+
+comment on policy "order_change_requests_view_all_select" on public.order_change_requests is
+  'Company-wide amendment sight. Requires orders.view_all. Amending an order still requires orders.manage through assert_order_amender (20260901000000), which this does not touch.';
+
+-- ─── 3c. Finance — supporting documents ──────────────────────────────────────
+--
+-- payment_proof_attachments is the third Finance surface. Sections 3 covered
+-- the payment facts and the activity; without this an employee with
+-- finance.view_all would see every payment and every note about it, but not
+-- the proof of payment attached to it.
+
+create policy "payment_proof_attachments_view_all_select" on public.payment_proof_attachments
+  for select to authenticated
+  using (resolve_permission(auth.uid(), 'finance', 'view_all'));
+
+comment on policy "payment_proof_attachments_view_all_select" on public.payment_proof_attachments is
+  'Company-wide payment proof sight. Requires finance.view_all — NOT orders.view_all, so company-wide order sight never reaches a payment document.';
+
+-- ─── 3d. Task attachments — close a global read ──────────────────────────────
+--
+-- PRODUCTION-OBSERVED DEFECT. task_attachments carried
+--
+--     create policy "task_attachments_read" ... using (true)
+--
+-- so every authenticated account could read every attachment on every task in
+-- the company — including files on quotation requests — regardless of whether
+-- it could read the parent task. The comment in 20260619 explains the original
+-- reasoning ("bucket is already public"), which is not an access-control
+-- argument: a guessable storage URL being weak is a reason to fix the bucket,
+-- not a reason to publish the index of every file.
+--
+-- The replacement mirrors the parent task boundary EXACTLY, as observed in
+-- production on 2026-08-14:
+--
+--     auth.uid() = created_by OR auth.uid() = assigned_to OR auth.uid() = delegated_by
+--
+-- TWO PARENTS. task_attachments has both task_id and activity_log_id, with a
+-- CHECK that at least one is set (20260619). A policy keyed only on task_id
+-- would silently hide every attachment posted against an activity-log entry, so
+-- both paths are authorized, the second by joining through
+-- task_activity_log.task_id.
+--
+-- NO ADMIN BRANCH, deliberately. The production `tasks` SELECT policy has no
+-- admin branch either: a System Admin has no company-wide task read through
+-- RLS today. Adding one here would GRANT NEW authority — attachment sight for
+-- tasks whose rows the admin cannot select — and would leave the child broader
+-- than its parent, which is the exact defect being fixed. Admins keep every
+-- attachment on every task they created, were assigned, or delegated, and admin
+-- task tooling that needs more already runs with the service role. This removes
+-- no access an admin legitimately has: it removes access nobody should have
+-- had.
+--
+-- INSERT and DELETE are untouched: task_attachments_insert (created_by =
+-- auth.uid()) and task_attachments_delete (created_by = auth.uid()) still
+-- decide writes exactly as before.
+--
+-- Note: the EXISTS subqueries are themselves subject to the `tasks` RLS policy
+-- for the calling user, so this is belt-and-braces — the ownership test is
+-- written explicitly rather than relying on that behaviour.
+
+drop policy if exists "task_attachments_read" on public.task_attachments;
+
+create policy "task_attachments_read" on public.task_attachments
+  for select to authenticated
+  using (
+    exists (
+      select 1
+      from public.tasks t
+      where t.id = task_attachments.task_id
+        and (
+          auth.uid() = t.created_by
+          or auth.uid() = t.assigned_to
+          or auth.uid() = t.delegated_by
+        )
+    )
+    or exists (
+      select 1
+      from public.task_activity_log l
+      join public.tasks t on t.id = l.task_id
+      where l.id = task_attachments.activity_log_id
+        and (
+          auth.uid() = t.created_by
+          or auth.uid() = t.assigned_to
+          or auth.uid() = t.delegated_by
+        )
+    )
+  );
+
+comment on policy "task_attachments_read" on public.task_attachments is
+  'An attachment is readable only by someone who may read its parent task — created_by, assigned_to or delegated_by — resolved through task_id or through task_activity_log.task_id. Replaces a USING (true) policy that published every attachment in the company. task_management.view does NOT widen this.';
+
 -- ─── 4. Post-conditions ──────────────────────────────────────────────────────
 
 do $$
@@ -202,6 +335,89 @@ begin
   if v_count <> 0 then
     raise exception 'PROTECTED_VISIBILITY: % role default(s) grant a new action', v_count;
   end if;
+
+  -- 4e. Every view_all policy this migration is responsible for exists. Named
+  --     individually so a dropped or renamed one fails loudly rather than
+  --     leaving a table quietly outside the boundary.
+  select count(*) into v_count
+  from pg_policies
+  where schemaname = 'public'
+    and policyname in (
+      'orders_permission_engine_select',
+      'order_activity_log_permission_engine_select',
+      'order_requests_view_all_select',
+      'order_request_activity_view_all_select',
+      'order_request_attachments_view_all_select',
+      'order_change_requests_view_all_select',
+      'finance_payment_requests_view_all_select',
+      'finance_payment_request_activity_log_view_all_select',
+      'payment_proof_attachments_view_all_select'
+    );
+
+  if v_count <> 9 then
+    raise exception 'PROTECTED_VISIBILITY: expected 9 view_all policies, found %', v_count;
+  end if;
+
+  -- 4f. No Orders policy resolves plain 'view' for company-wide sight any more.
+  select count(*) into v_count
+  from pg_policies
+  where schemaname = 'public'
+    and tablename in ('orders', 'order_activity_log')
+    and qual like '%''orders''::text, ''view''::text%';
+
+  if v_count <> 0 then
+    raise exception 'PROTECTED_VISIBILITY: % Orders policy(ies) still grant company-wide sight from plain view', v_count;
+  end if;
+
+  -- 4g. No Orders policy reaches a Finance table, and no Finance policy is
+  --     satisfied by an Orders grant. This is the separation the owner asked
+  --     to be proved rather than asserted.
+  select count(*) into v_count
+  from pg_policies
+  where schemaname = 'public'
+    and tablename in ('finance_payment_requests', 'finance_payment_request_activity_log', 'payment_proof_attachments')
+    and qual like '%''orders''%';
+
+  if v_count <> 0 then
+    raise exception 'PROTECTED_VISIBILITY: % Finance policy(ies) can be satisfied by an Orders grant', v_count;
+  end if;
+
+  -- 4h. The task attachment global read is gone. A USING (true) policy stores
+  --     qual as NULL, so this catches exactly the shape being replaced.
+  select count(*) into v_count
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'task_attachments'
+    and cmd in ('SELECT', 'ALL')
+    and (qual is null or btrim(qual) = 'true');
+
+  if v_count <> 0 then
+    raise exception 'PROTECTED_VISIBILITY: task_attachments still has % globally-readable SELECT policy(ies)', v_count;
+  end if;
+
+  -- 4i. And the replacement really is scoped to the parent task.
+  select count(*) into v_count
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'task_attachments'
+    and policyname = 'task_attachments_read'
+    and qual like '%assigned_to%'
+    and qual like '%delegated_by%';
+
+  if v_count <> 1 then
+    raise exception 'PROTECTED_VISIBILITY: task_attachments_read is not scoped to the parent task';
+  end if;
+
+  -- 4j. Task attachment WRITE authority is untouched.
+  select count(*) into v_count
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'task_attachments'
+    and policyname in ('task_attachments_insert', 'task_attachments_delete');
+
+  if v_count <> 2 then
+    raise exception 'PROTECTED_VISIBILITY: task attachment write policies changed (found %)', v_count;
+  end if;
 end $$;
 
 -- ─── ROLLBACK ────────────────────────────────────────────────────────────────
@@ -224,6 +440,18 @@ end $$;
 --     on public.order_activity_log
 --     for select to authenticated
 --     using (resolve_permission(auth.uid(), 'orders', 'view'));
+--
+--   drop policy if exists "order_requests_view_all_select"            on public.order_requests;
+--   drop policy if exists "order_request_activity_view_all_select"    on public.order_request_activity;
+--   drop policy if exists "order_request_attachments_view_all_select" on public.order_request_attachments;
+--   drop policy if exists "order_change_requests_view_all_select"     on public.order_change_requests;
+--   drop policy if exists "payment_proof_attachments_view_all_select" on public.payment_proof_attachments;
+--
+--   -- Restoring the task attachment global read. Do this ONLY as part of a
+--   -- deliberate rollback: it re-publishes every task attachment in the company.
+--   drop policy if exists "task_attachments_read" on public.task_attachments;
+--   create policy "task_attachments_read" on public.task_attachments
+--     for select to authenticated using (true);
 --
 -- The three action registrations may be left in place: they grant nothing on
 -- their own. Removing them would require deleting the module_permission_actions
