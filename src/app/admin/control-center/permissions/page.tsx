@@ -13,7 +13,6 @@ import { LoadingScreen, EmptyState, AlertBanner, Avatar } from '@/components/ui/
 import { useViewAs } from '@/hooks/useViewAs'
 import {
   moduleEnforcement,
-  ENFORCEMENT_BADGE_LABEL,
   type EnforcementState,
 } from '@/lib/permissions/enforcement'
 import {
@@ -139,6 +138,33 @@ function detectAccessLevel(mod: ModuleState, effective: Record<string, boolean>)
   return detectLevelForActions(mod.actions.map(a => a.actionKey), effective)
 }
 
+// THE PARENT GATE, as this screen reports it.
+//
+// Visible/Hidden is effective `view` and nothing else — the same single fact
+// the launcher card and every route guard now read (canAccessManagementModule
+// in src/lib/permissions/moduleVisibility.ts). The screen and the running app
+// therefore cannot disagree about whether a module is on.
+//
+// It used to be "any action of this module is allowed". That is what let a card
+// say Hidden next to the switch while still counting as accessible in the
+// header tally: a leftover child grant satisfied it. Aditya's Sample Tracking
+// is exactly that shape — dispatch/receive/mark_lost allowed, view denied — and
+// it must read as Hidden, because it is.
+//
+// The stored child actions are NOT removed and are still shown inside the
+// Custom modal. They are dormant, and they come back the moment view does.
+const MODULE_ENTRY_ACTION = 'view'
+
+/** Visible/Hidden including any unsaved change the administrator has made. */
+function moduleIsAccessible(mod: ModuleState, overrides: Map<string, OverrideChoice>): boolean {
+  return effectiveMapForModule(mod, overrides)[MODULE_ENTRY_ACTION] === true
+}
+
+/** Visible/Hidden as last loaded from the server, for the employee-list counters. */
+function moduleIsAccessibleAsLoaded(mod: ModuleState): boolean {
+  return mod.actions.some(a => a.actionKey === MODULE_ENTRY_ACTION && a.allowed)
+}
+
 function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>, initialOverrides: Map<string, OverrideChoice>): boolean {
   return mod.actions.some(a => {
     const key = overrideKey(mod.moduleKey, a.actionKey)
@@ -146,14 +172,14 @@ function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>,
   })
 }
 
-// A module counts as "accessible" for the employee-list/workspace counters
-// whenever at least one of its actions is allowed — same notion of access
-// summarizeModule already uses for the "No access granted" line.
+// A module counts as "accessible" for the employee-list/workspace counters when
+// its parent gate is open — effective `view` — and not merely when some child
+// action survives. See moduleIsAccessibleAsLoaded below.
 type ModuleCount = { allowed: number; total: number }
 
 function accessibleModuleCount(modules: ModuleState[]): ModuleCount {
   return {
-    allowed: modules.filter(mod => mod.actions.some(a => a.allowed)).length,
+    allowed: modules.filter(moduleIsAccessibleAsLoaded).length,
     total: modules.length,
   }
 }
@@ -334,30 +360,22 @@ const ENFORCEMENT_BANNER_VARIANT: Record<EnforcementState, 'green' | 'amber'> = 
   role_only: 'amber',
 }
 
-const ENFORCEMENT_BADGE_STYLE: Record<EnforcementState, { color: string; bg: string }> = {
-  enforced:  { color: '#166534', bg: '#F0FDF4' },
-  partial:   { color: '#1E40AF', bg: '#EFF6FF' },
-  prepared:  { color: '#8C6D1F', bg: '#FFFBEB' },
-  role_only: { color: '#4B5563', bg: '#F3F4F6' },
-}
-
-function EnforcementBadge({ moduleKey }: { moduleKey: string }) {
-  const enforcement = moduleEnforcement(moduleKey)
-  const tone = ENFORCEMENT_BADGE_STYLE[enforcement.state]
-  return (
-    <span
-      title={enforcement.detail}
-      style={{
-        fontSize: 10, fontWeight: 700,
-        color: tone.color,
-        background: tone.bg,
-        borderRadius: 5, padding: '2px 7px',
-      }}
-    >
-      {ENFORCEMENT_BADGE_LABEL[enforcement.state]}
-    </span>
-  )
-}
+// THERE IS NO ENFORCEMENT BADGE ON AN EMPLOYEE'S MODULE CARD. Deliberately.
+//
+// "Active", "Partly active", "Prepared" and "Not used" describe how far a
+// MODULE'S CODE has been cut over to the permission engine. They are a fact
+// about the product, identical for every employee, and they were being rendered
+// beside a per-employee switch — so a card could read "Hidden · Partly active"
+// and an administrator would reasonably read the second half as a statement
+// about that person's access. It is not one.
+//
+// The information is not lost: moduleEnforcement() still drives the banner at
+// the top of the Change Access modal (ENFORCEMENT_BANNER_VARIANT below), which
+// is where it belongs — the moment an administrator is choosing individual
+// actions is exactly when "ticking Approve does nothing yet" is worth knowing.
+//
+// An employee card now says three things and no more: enabled or disabled,
+// Visible or Hidden, and — when enabled — the access level.
 
 // Protected permissions are named in plain words in the confirmation, because
 // "assign" on its own does not tell an administrator what they are about to
@@ -706,10 +724,7 @@ function EmployeePanel({
 
 function WorkspaceHeader({ tree, overrides }: { tree: EmployeePermissionTree; overrides: Map<string, OverrideChoice> }) {
   const total = tree.modules.length
-  const accessible = tree.modules.filter(mod => {
-    const effective = effectiveMapForModule(mod, overrides)
-    return mod.actions.some(a => effective[a.actionKey])
-  }).length
+  const accessible = tree.modules.filter(mod => moduleIsAccessible(mod, overrides)).length
   const noAccess = total - accessible
 
   return (
@@ -765,7 +780,6 @@ function ModuleCard({
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <ModuleIcon moduleKey={mod.moduleKey} color={accessible ? '#166534' : '#8C94A6'} />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          <EnforcementBadge moduleKey={mod.moduleKey} />
           {unsaved && (
             <span style={{ fontSize: 9.5, fontWeight: 700, color: '#8C6D1F', letterSpacing: '0.03em' }}>UNSAVED</span>
           )}
@@ -850,7 +864,6 @@ function AttendancePayrollCard({ modules }: { modules: ModuleState[] }) {
     <div className={styles.moduleCard} style={{ cursor: 'default' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <ModuleIcon moduleKey="attendance" color="#8C94A6" />
-        <EnforcementBadge moduleKey="attendance" />
       </div>
 
       <div>
@@ -1276,7 +1289,7 @@ export default function PermissionsPage() {
                 {editableModules.map(mod => {
                   const effective = effectiveMapForModule(mod, overrides)
                   const level = detectAccessLevel(mod, effective)
-                  const accessible = mod.actions.some(a => effective[a.actionKey])
+                  const accessible = moduleIsAccessible(mod, overrides)
                   const unsaved = moduleIsDirty(mod, overrides, initialOverrides)
                   return (
                     <ModuleCard
