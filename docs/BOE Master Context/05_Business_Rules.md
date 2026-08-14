@@ -602,3 +602,30 @@ When a business rule changes:
 4. Record the change in Development History.
 
 This document should remain the primary source of operational rules for BOE Task Management.
+
+---
+
+## Access Control V1 — Rules
+
+1. **Default deny.** A new employee receives no optional-module access. Access
+   is granted per person; nothing arrives by virtue of a role.
+2. **Five levels only.** No Access, Viewer, Contributor, Manager, Custom.
+   Manager adds `approve` and `export` only where the module registers them.
+3. **Protected permissions are Custom-only** — `delete`, `admin`, `manage`,
+   `assign`, `dispatch`, `receive`, `mark_lost`, `close`,
+   `can_be_order_assignee`. No standard level grants any of them at any module.
+4. **A standard level clears protected permissions**, after naming them and
+   asking. Anyone holding one therefore reads as Custom.
+5. **`assign` is separable from `edit`, `delete` and `manage`.** Handing out a
+   laptop and writing one off are different decisions.
+6. **`can_be_order_assignee` is never implied** by Manager or by `manage`.
+7. **System Administrators are not editable here.** `users.role = 'admin'` is
+   the authority; the grid is locked and no PUT is issued for them.
+8. **Inactive and soft-deleted users are denied**, admins included. Deactivating
+   an account does not end its session, so this is enforced in SQL.
+9. **Attendance and Payroll management is admin-only.** No grant on this screen
+   can open it. Employee self-service (`/my-attendance`, `/my-payroll`) is a
+   separate surface and is unchanged.
+10. **Module access on/off is not a second authority.** Off = No Access,
+    On = Viewer. There is no separate visibility field.
+11. **Migrations 901 and 902 deploy together**, 901 first, nothing between.

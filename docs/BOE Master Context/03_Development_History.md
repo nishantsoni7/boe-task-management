@@ -513,3 +513,37 @@ and the inventory list had no search and no filters.
 Database-level guarantees are scripted in
 `docs/Module Docs/assets-lifecycle-verification.sql`; the signed-in UI pass is
 `docs/testing/assets-lifecycle-manual-tests.md`.
+
+---
+
+## Access Control V1 (branch `feature/access-control-v1`, not deployed)
+
+Merged Module Visibility and Access Control into one administrator workflow and
+moved Finance and Orders authorization onto the permission engine.
+
+**Why.** Three systems decided access: `app_modules` visibility, the permission
+engine, and hardcoded `users.role === 'admin'` checks. Dhruv held every Finance
+and Orders permission and still could not see the admin options, because every
+control inside both modules — and every RLS policy and RPC behind them — checked
+the role. A baseline capture confirmed the grants were real and inert.
+
+**What changed.** Five access levels replaced six (the old `admin` preset
+granted every action, `delete` and `assign` included). Nine protected
+permissions became Custom-only, and choosing a standard level now clears them
+after a named confirmation. Finance and Orders protected actions —
+approve, manage/correct, delete — moved onto the engine via
+`20260901000000`; view/create/edit kept their ownership rules.
+`20260902000000` removes the broad Meetings role defaults, grandfathers the
+eleven active real employees who hold Meetings today, and revokes the two
+protected Orders grants held by a test account. Attendance and Payroll became a
+single non-editable self-service row.
+
+**Two defects were found and fixed during the audit.** An RLS `WITH CHECK`
+sees only the new row, so the approver policy would have let a
+`finance.approve` holder rewrite a pending request's amount while rejecting it —
+closed with a column-immutability trigger. And the admin short-circuit,
+written to mirror the checks it replaced, would have let a deactivated or
+soft-deleted admin keep Finance and Orders authority — both branches now require
+an active, non-deleted user.
+
+Detail: `docs/Module Docs/ACCESS_CONTROL_V1.md`.

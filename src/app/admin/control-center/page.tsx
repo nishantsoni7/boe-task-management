@@ -568,7 +568,7 @@ function OverviewTab({
         <OverviewCard
           number={moduleCount}
           label="Modules"
-          hint="Manage launcher visibility"
+          hint="Managed in Access Control"
           onClick={() => onNavigate('modules')}
         />
         <OverviewCard

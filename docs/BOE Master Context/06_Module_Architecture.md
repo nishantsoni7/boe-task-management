@@ -686,3 +686,41 @@ Goals:
 * Long-term scalability
 
 Architecture decisions should favor simplicity and maintainability over premature complexity.
+
+---
+
+## Access Control V1 — Architecture
+
+**One authority, one vocabulary.** The permission engine
+(`permission_modules` / `permission_actions` / `role_permissions` /
+`department_permissions` / `employee_permission_overrides`, resolved by
+`resolve_permission`) decides access. The level vocabulary lives once, in
+`src/lib/permissions/levels.ts`, and is shared by the screen, the API and the
+tests — the page no longer keeps its own copy.
+
+**Layers**
+
+| Layer | File |
+|---|---|
+| Levels and protected actions | `src/lib/permissions/levels.ts` |
+| What the engine actually decides, per module | `src/lib/permissions/enforcement.ts` |
+| Module visibility from effective access | `src/lib/permissions/moduleVisibility.ts` |
+| Capability derivation | `assetsAccess.ts`, `meetings.ts`, `finance.ts`, `orders.ts` |
+| SQL authorization helpers | `actor_has_permission`, `actor_has_module_permission` (20260901000000) |
+
+**Capability pattern.** A module turns raw effective permissions into named UI
+booleans in one file, and every button maps to exactly one capability, so a
+control can never appear for a permission its RPC will refuse.
+
+**Enforcement is stated, not assumed.** `enforcement.ts` records per module
+whether the engine is Active, Partly active, Prepared, or Not used, and
+repository tests fail when a claim and the code disagree. A single
+enforced/not-enforced flag could not describe Orders and had gone stale on
+Meetings.
+
+**Legacy `app_modules` is retained deliberately** for the modules that still
+depend on it. It is labelled honestly rather than falsely routed through the
+engine, which keeps rollback cheap.
+
+**No V2 features in V1**: no role templates, department-role editors, scopes,
+approval chains, access-history screens, or permission exports.

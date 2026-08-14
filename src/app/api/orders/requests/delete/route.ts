@@ -44,12 +44,37 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
-  // Trusted admin authorization (server-side; never trust the client).
+  // Trusted authorization, resolved server-side from the bearer token's user —
+  // never from anything the client sent. Admin, or an explicit orders.delete
+  // grant, which is the same rule admin_delete_order_request() enforces after
+  // 20260901000000_finance_orders_permission_enforcement.sql. This check is
+  // the early, friendly one; the RPC below remains the real boundary.
+  //
+  // Fails closed on every uncertainty: a failed profile read, a failed resolve,
+  // and a missing row all deny.
   const { data: me, error: roleErr } = await service
     .from('users').select('role').eq('id', user.id).maybeSingle()
   if (roleErr) return NextResponse.json({ error: 'Authorization check failed.' }, { status: 500 })
-  if (!me || me.role !== 'admin') {
-    return NextResponse.json({ error: 'Only an admin may delete an Order Request.' }, { status: 403 })
+  if (!me) return NextResponse.json({ error: 'Authorization check failed.' }, { status: 500 })
+
+  let mayDelete = me.role === 'admin'
+  if (!mayDelete) {
+    // resolve_permission is SECURITY DEFINER and takes the user id explicitly,
+    // so it is called with the service client for the AUTHENTICATED user's id.
+    const { data: allowed, error: permErr } = await service.rpc('resolve_permission', {
+      p_user_id: user.id,
+      p_module_key: 'orders',
+      p_action_key: 'delete',
+    })
+    if (permErr) return NextResponse.json({ error: 'Authorization check failed.' }, { status: 500 })
+    mayDelete = allowed === true
+  }
+
+  if (!mayDelete) {
+    return NextResponse.json(
+      { error: 'You do not have permission to delete an Order Request.' },
+      { status: 403 },
+    )
   }
 
   // Load the request from the database (authoritative).

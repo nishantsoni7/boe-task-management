@@ -438,20 +438,32 @@ export function staleProposalFields(
 // Two questions, deliberately separate. An admin amends; everyone else who can
 // see the Order asks. Both are gated on the Order still being open, and neither
 // is the actual authority — assert_order_amender() and the insert policy are.
+//
+// `hasManageGrant` is the orders.manage permission. It opens the SAME direct
+// door an admin has, because after
+// 20260901000000_finance_orders_permission_enforcement.sql
+// assert_order_amender() accepts exactly that grant. It defaults to false, so a
+// caller that does not pass it gets the previous admin-only behaviour
+// unchanged.
 
 export function canAmendOrderDirectly(
   profile: { role?: string | null } | null,
   order: Pick<AmendableOrder, 'status'>,
+  hasManageGrant = false,
 ): boolean {
-  return profile?.role === 'admin' && isAmendableStatus(order.status)
+  const mayAmend = profile?.role === 'admin' || hasManageGrant
+  return mayAmend && isAmendableStatus(order.status)
 }
 
 export function canRequestOrderChange(
   profile: { role?: string | null } | null,
   order: Pick<AmendableOrder, 'status'>,
+  hasManageGrant = false,
 ): boolean {
   if (!profile) return false
-  if (profile.role === 'admin') return false   // they have the direct door
+  // Whoever holds the direct door does not also get the request door — asking
+  // yourself for permission you already have is not a workflow.
+  if (profile.role === 'admin' || hasManageGrant) return false
   return isAmendableStatus(order.status)
 }
 

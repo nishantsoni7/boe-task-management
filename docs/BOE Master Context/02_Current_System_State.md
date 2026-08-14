@@ -534,3 +534,32 @@ Employee Records
 * Attendance workflow expansion
 * Payroll workflow completion
 * Mobile UI review and optimization
+
+---
+
+## Access Control V1
+
+Status: **implemented on `feature/access-control-v1`, not deployed.** Migrations
+`20260901000000` and `20260902000000` are written and unapplied.
+
+One administrator workflow — Control Center → Access Control — replaced the two
+that could disagree with each other (Module Visibility and Access Control).
+The separate Module Visibility navigation entry is gone; `app_modules` itself is
+untouched and still governs Showroom QR's department rule and the
+Attendance/Payroll self-service cards.
+
+Five access levels: No Access, Viewer, Contributor, Manager, Custom. The former
+`editor` and `admin` presets are removed — the `admin` preset granted every
+action including `delete` and `assign`.
+
+Nine protected permissions (`delete`, `admin`, `manage`, `assign`, `dispatch`,
+`receive`, `mark_lost`, `close`, `can_be_order_assignee`) are reachable only
+through Custom. Selecting a standard level clears them after a named
+confirmation.
+
+Finance and Orders enforcement moves onto the permission engine for the
+protected actions only — approve, manage/correct, delete. View, create and edit
+keep their existing ownership rules. Attendance and Payroll management remain
+admin-only and are shown as a single non-editable self-service row.
+
+Full detail: `docs/Module Docs/ACCESS_CONTROL_V1.md`.

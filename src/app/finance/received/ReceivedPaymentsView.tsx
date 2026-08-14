@@ -21,6 +21,12 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import {
+  deriveFinanceCapabilities,
+  NO_FINANCE_CAPABILITIES,
+  type FinanceCapabilities,
+} from '@/lib/permissions/finance'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -327,13 +333,14 @@ function LinkedAgainstBadge({ target }: { target: LinkedAgainst }) {
 function DetailsModal({
   request: r,
   onClose,
-  isAdmin,
+  mayCorrectPayments,
   supabase,
   onCorrected,
 }: {
   request: PaymentRequest
   onClose: () => void
-  isAdmin?: boolean
+  /** May correct or reverse a recorded payment — the finance.manage authority. */
+  mayCorrectPayments?: boolean
   supabase?: ReturnType<typeof createClient>
   onCorrected?: () => void
 }) {
@@ -455,7 +462,7 @@ function DetailsModal({
       {/* Admin controls — never renders on this page in practice (every row
           here is approved_unlinked/approved_linked), kept for parity with the
           Payment Requests page's guard structure. */}
-      {isAdmin && supabase && onCorrected && !isLinkageStatus && (
+      {mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           display: 'flex', flexDirection: 'column', gap: '12px',
@@ -521,7 +528,7 @@ function DetailsModal({
           </div>
         </div>
       )}
-      {isAdmin && isLinkageStatus && (
+      {mayCorrectPayments && isLinkageStatus && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           fontSize: '12px', color: colors.muted, lineHeight: 1.5,
@@ -962,7 +969,7 @@ const TH_STYLE: React.CSSProperties = {
 // the Linked Against cell) now carries what the status badge used to say.
 function ReceivedPaymentsTable({
   rows,
-  isAdmin,
+  canManage,
   highlightId,
   onView,
   onEdit,
@@ -970,7 +977,11 @@ function ReceivedPaymentsTable({
   onUnlink,
 }: {
   rows: PaymentRequest[]
-  isAdmin: boolean
+  /**
+   * May link, unlink, and edit a recorded payment. Every one of those is a
+   * correction of an approved financial record — the finance.manage authority.
+   */
+  canManage: boolean
   highlightId?: string | null
   onView:   (r: PaymentRequest) => void
   onEdit:   (r: PaymentRequest) => void
@@ -1045,7 +1056,7 @@ function ReceivedPaymentsTable({
                     >
                       View
                     </button>
-                    {isAdmin && (
+                    {canManage && (
                       <>
                         {/* Link action for fully unlinked suspense payments */}
                         {!isLinked && !isRequestLinked && (
@@ -1127,7 +1138,10 @@ export function ReceivedPaymentsView({ mode }: { mode: ReceivedPaymentsMode }) {
 
 function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   const [pageLoading,    setPageLoading]    = useState(true)
-  const [isAdmin,        setIsAdmin]        = useState(false)
+  // Finance authority for the SIGNED-IN user. Starts empty and is only
+  // widened once the resolver answers, so no correction control can flash
+  // before it is authorized. Admins short-circuit inside the helper.
+  const [caps,           setCaps]           = useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)
   const [profile,        setProfile]        = useState<UserProfile | null>(null)
   const [requests,       setRequests]       = useState<PaymentRequest[]>([])
   const [listLoading,    setListLoading]    = useState(false)
@@ -1214,7 +1228,12 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
         .single()
 
       setProfile(me as UserProfile)
-      setIsAdmin(me?.role === 'admin')
+
+      // Resolved before the list first renders. A failed resolve falls back
+      // to no capabilities rather than to the role.
+      const financePerms = await getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => [])
+      setCaps(deriveFinanceCapabilities(me?.role, financePerms))
+
       await loadRequests()
       setPageLoading(false)
     }
@@ -1241,9 +1260,9 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           setHighlightId(match.id)
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
-          if (isAdmin && action === 'link' && !match.order_id && !match.order_request_id) {
+          if (caps.canManageFinance && action === 'link' && !match.order_id && !match.order_request_id) {
             setLinkRequest(match)
-          } else if (isAdmin && action === 'edit') {
+          } else if (caps.canManageFinance && action === 'edit') {
             // Editing a received payment is admin-only here, exactly as the
             // table's own Edit button is.
             setEditRequest(match)
@@ -1396,7 +1415,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
         ) : (
           <ReceivedPaymentsTable
             rows={visible}
-            isAdmin={isAdmin}
+            canManage={caps.canManageFinance}
             highlightId={highlightId}
             onView={r  => setDetailRequest(r)}
             onEdit={r  => setEditRequest(r)}
@@ -1412,7 +1431,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
         <DetailsModal
           request={detailRequest}
           onClose={() => setDetailRequest(null)}
-          isAdmin={isAdmin}
+          mayCorrectPayments={caps.canCorrectOrReversePayment}
           supabase={supabase}
           onCorrected={() => { setDetailRequest(null); refreshAfterMutation() }}
         />
