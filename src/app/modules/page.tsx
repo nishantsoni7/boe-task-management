@@ -9,40 +9,61 @@ import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
 import DailyQuoteLoader from '@/components/DailyQuoteLoader'
 import { useViewAs } from '@/hooks/useViewAs'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
-import { hasPermission } from '@/lib/permissions/resolver'
+import { getEffectivePermissionsForUser } from '@/lib/permissions/resolver'
+import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
+import type { EffectivePermission } from '@/lib/permissions/types'
 
 // ── Module definition ─────────────────────────────────────────────────────────
 
-type ModuleStatus = 'active' | 'foundation' | 'planned'
-
+// THERE IS NO STATUS OR VISIBILITY PILL ON A LAUNCHER CARD. Deliberately.
+//
+// This card list is now exactly "the modules you can open" — a card exists if
+// and only if the parent gate passed. That makes every label the card used to
+// carry either redundant or wrong:
+//
+//   Live / Admin Only / Sales Only / Custom / Hidden
+//       came from app_modules.visibility_type, which no longer decides entry
+//       for any engine-gated module. `Live` read as "available to everyone" on
+//       a card only visible to a `view` holder, and a module whose row said
+//       `hidden` would have rendered a card labelled Hidden.
+//
+//   Active / Foundation / Planned
+//       described how finished the FEATURE is. Sitting in the same pill slot,
+//       next to a per-employee list, it read as a statement about access.
+//
+// A module the employee cannot open has no card at all, so there is nothing
+// left for a visibility badge to say.
 type ModuleDef = {
   key: string
   title: string
   description: string
   href: string
-  status: ModuleStatus
   accent: string
   icon: React.ReactNode
-  adminOnly?: boolean
-  managerOrAdmin?: boolean
   notificationCount?: number | null  // null = no API yet → "No pending", 0 = confirmed zero, >0 = badge
-  visibilityType?: string   // from app_modules — drives badge when present
-  allowedDepartment?: string[] | null
-}
-
-const STATUS_LABEL: Record<ModuleStatus, { label: string; color: string; bg: string }> = {
-  active:     { label: 'Active',     color: '#166534', bg: '#F0FDF4' },
-  foundation: { label: 'Foundation', color: '#1E40AF', bg: '#EFF6FF' },
-  planned:    { label: 'Planned',    color: '#4B5563', bg: '#F3F4F6' },
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-// ── Visibility resolver — used by /modules to evaluate app_modules DB rules ──
+// ── Visibility resolvers ─────────────────────────────────────────────────────
 //
-// The SAME function the route guards and the module APIs call, so a card is
-// never shown to somebody the route would bounce to /coming-soon. See
-// src/lib/moduleAccess.ts.
+// TWO of them, and which one a module uses is the whole point of this screen.
+//
+//   canOpenModule   THE PARENT GATE. Effective `view` from the permission
+//                   engine, via the same canAccessManagementModule the route
+//                   guards call (src/components/layout/ModuleGuard.tsx). Used
+//                   by every module in ENGINE_GATED_MODULE_KEYS. A card and a
+//                   URL therefore cannot disagree: both ask one function.
+//
+//   canSeeModule    app_modules.visibility_type. Now used ONLY for the
+//                   Attendance/Payroll self-service card, which is what that
+//                   table legitimately still governs — see
+//                   SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts.
+//
+// Before this change every module except Orders and Meetings used the second
+// one. Access Control writes employee_permission_overrides and never writes
+// app_modules, so unticking "Module access" for an employee stored a decision
+// the launcher did not read: the card stayed, and so did the route.
 
 type ModVisRow = {
   visibility_type: string
@@ -70,8 +91,13 @@ export default function BoeOsHomePage() {
   const [financeNotif, setFinanceNotif] = useState<number | null>(null)
   const [orderNotif, setOrderNotif] = useState<number | null>(null)
   const [modVis,      setModVis]      = useState<Record<string, ModVisRow>>({})
-  const [ordersAllowed, setOrdersAllowed] = useState(false)
-  const [meetingsAllowed, setMeetingsAllowed] = useState(false)
+  // Effective permissions for the SIGNED-IN user, every module at once (one RPC
+  // round trip). View As is a preview of somebody else's screen and never lends
+  // or removes authority, so the gate below always reads the real caller —
+  // exactly as the Orders and Meetings cards already did.
+  const [permsByModule, setPermsByModule] =
+    useState<Map<string, readonly EffectivePermission[]>>(new Map())
+  const [signedInRole, setSignedInRole] = useState<string | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -84,52 +110,55 @@ export default function BoeOsHomePage() {
 
       const uid = session.user.id
 
+      // ── PHASE 1: who are you, and what may you open ───────────────────────
+      //
+      // NOTHING module-specific is requested here. The counts below are module
+      // data, and asking for them before the gate is resolved would mean a
+      // disabled module still issued its request and merely threw the answer
+      // away — which is not the same as not fetching it.
       const [
         { data: profileData },
         { data: appModulesData },
-        taskNotifsRes,
-        sampleNotifsRes,
-        financeNotifsRes,
-        orderNotifsRes,
-        ordersAllowedRes,
-        meetingsAllowedRes,
+        effectivePermissions,
       ] = await Promise.all([
         supabase
           .from('users')
           .select('id, full_name, email, phone, role, team, is_active, created_at')
           .eq('id', uid)
           .single(),
+        // Still needed, but only for the Attendance/Payroll self-service card —
+        // the one module family app_modules legitimately still governs.
         supabase
           .from('app_modules')
           .select('module_key, visibility_type, allowed_department, allowed_user_ids')
           .order('sort_order'),
-        // Task Management: same unread count the /notifications page shows
-        fetch('/api/notifications?count=1&category=task')
-          .then(r => r.ok ? r.json() : null)
-          .catch(() => null),
-        // Sample Tracking: unread sample notification count
-        fetch('/api/samples/notifications?count=1')
-          .then(r => r.ok ? r.json() : null)
-          .catch(() => null),
-        // Finance: unread count scoped to Finance events (type finance_%)
-        fetch('/api/notifications?count=1&category=finance')
-          .then(r => r.ok ? r.json() : null)
-          .catch(() => null),
-        // Orders: unread count scoped to Order Management events (type order_%)
-        fetch('/api/notifications?count=1&category=order')
-          .then(r => r.ok ? r.json() : null)
-          .catch(() => null),
-        // Order Management: gated by the permission engine (Control Center →
-        // Access Control), not app_modules — see src/app/orders/layout.tsx.
-        hasPermission(supabase, uid, 'orders', 'view').catch(() => false),
-        // Meetings: same model as Order Management — the permission engine
-        // decides, not app_modules, so the module is deny-by-default. These are
-        // confidential management reviews; a 'live' app_modules row would put
-        // the card in front of everyone.
-        hasPermission(supabase, uid, 'meetings', 'view').catch(() => false),
+        // THE PARENT GATE for every engine-gated module, resolved in one round
+        // trip. This is the model Orders and Meetings already used — two
+        // hasPermission() calls — generalised to the other seven, which were
+        // reading app_modules and so ignored Access Control entirely.
+        getEffectivePermissionsForUser(supabase, uid).catch(
+          () => new Map<string, EffectivePermission[]>(),
+        ),
       ])
 
+      const role = (profileData as UserProfile | null)?.role ?? null
+
+      // The same rule canOpenModule applies during render, available here
+      // before any module request is made. A failed profile read leaves role
+      // null and canAccessManagementModule denies — fail-closed for non-admins,
+      // while an admin still short-circuits on role alone and so is unaffected
+      // by a permissions RPC failure.
+      const mayOpen = (moduleKey: string): boolean =>
+        canAccessManagementModule({
+          role,
+          moduleKey,
+          isModuleActive: true,
+          permissions: effectivePermissions.get(moduleKey) ?? [],
+        })
+
       if (profileData) setProfile(profileData as UserProfile)
+      setSignedInRole(role)
+      setPermsByModule(effectivePermissions)
 
       if (appModulesData) {
         const vis: Record<string, ModVisRow> = {}
@@ -137,13 +166,33 @@ export default function BoeOsHomePage() {
         setModVis(vis)
       }
 
+      // ── PHASE 2: counts, only for the modules this person may open ────────
+      //
+      // `null` means "no number to show", which is exactly what a module the
+      // employee cannot open should contribute — and its card is not rendered
+      // anyway. Kept as one Promise.all so the authorized counts still resolve
+      // in parallel and the screen reveals in a single pass.
+      const countIfAllowed = (moduleKey: string, url: string): Promise<{ unreadCount?: number } | null> =>
+        mayOpen(moduleKey)
+          ? fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null)
+          : Promise.resolve(null)
+
+      const [taskNotifsRes, sampleNotifsRes, financeNotifsRes, orderNotifsRes] = await Promise.all([
+        // Task Management: same unread count the /notifications page shows
+        countIfAllowed('task_management', '/api/notifications?count=1&category=task'),
+        // Sample Tracking: unread sample notification count
+        countIfAllowed('sample_tracking', '/api/samples/notifications?count=1'),
+        // Finance: unread count scoped to Finance events (type finance_%)
+        countIfAllowed('finance', '/api/notifications?count=1&category=finance'),
+        // Orders: unread count scoped to Order Management events (type order_%)
+        countIfAllowed('orders', '/api/notifications?count=1&category=order'),
+      ])
+
       // Keep null if the API failed so the card shows "No pending" rather than a wrong number
       setTaskNotif(taskNotifsRes != null ? (taskNotifsRes.unreadCount ?? 0) : null)
       setSampleNotif(sampleNotifsRes != null ? (sampleNotifsRes.unreadCount ?? 0) : null)
       setFinanceNotif(financeNotifsRes != null ? (financeNotifsRes.unreadCount ?? 0) : null)
       setOrderNotif(orderNotifsRes != null ? (orderNotifsRes.unreadCount ?? 0) : null)
-      setOrdersAllowed(ordersAllowedRes === true)
-      setMeetingsAllowed(meetingsAllowedRes === true)
       setLoading(false)
     }
     init()
@@ -158,16 +207,33 @@ export default function BoeOsHomePage() {
   // In View Mode use the viewed user's profile for card visibility; fall back to actual profile.
   const effectiveProfile = (viewAsUserId && viewAsProfile) ? viewAsProfile : profile
 
-  // Fallback values used when app_modules DB data is unavailable
+  // THE PARENT GATE. `view` on the module, or admin. Nothing else opens a
+  // module: a leftover `dispatch` or `manage` grant with view = false is a
+  // dormant permission, not an entry ticket.
+  const canOpenModule = (moduleKey: string): boolean =>
+    canAccessManagementModule({
+      role: signedInRole,
+      moduleKey,
+      // The resolver returns no rows at all for an inactive or unregistered
+      // module, so the `view` test inside fails on its own.
+      isModuleActive: true,
+      permissions: permsByModule.get(moduleKey) ?? [],
+    })
+
+  // Fallback used when app_modules DB data is unavailable. Now reached only by
+  // the Attendance/Payroll self-service card — every other module resolves
+  // through canOpenModule and has no app_modules fallback to fall back TO.
   const isAdminFallback = effectiveProfile?.role === 'admin'
 
   // Whether the Attendance & Payroll card points at the management module or at
   // the employee's own record. Only admins manage; see
   // SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts.
   const isModuleAdmin = isAdminFallback
-  const hasShowroomFallback = isAdminFallback ||
-    (effectiveProfile?.team?.toLowerCase().includes('sales') ?? false) ||
-    (effectiveProfile?.team?.toLowerCase().includes('showroom') ?? false)
+
+  // The Showroom team-name fallback is gone with it. It existed so that Sales
+  // and Showroom staff kept the card when app_modules was unreachable; entry is
+  // now an explicit `showroom_qr:view` grant, and inferring authority from a
+  // free-text team name is exactly the implicit rule this work removes.
 
   // Management lands on Team Performance, everyone else on their own report.
   const performanceHref =
@@ -201,10 +267,6 @@ export default function BoeOsHomePage() {
     ? '/payroll'
     : (canSeeAttendance ? '/my-attendance' : '/my-payroll')
 
-  // The badge reads from whichever row is actually gating this person, so a
-  // card shown by the Payroll row does not advertise Attendance's setting.
-  const attendancePayrollVisRow = canSeeAttendance ? modVis['attendance'] : modVis['payroll']
-
   const attendancePayroll: ModuleDef | null = (canSeeAttendance || canSeePayroll) ? {
     key: 'attendance_payroll',
     title: 'Attendance & Payroll',
@@ -212,144 +274,109 @@ export default function BoeOsHomePage() {
       ? 'Import attendance, review the month, run payroll, and manage salary settings.'
       : 'View your own attendance, payslips, and the issues you have raised.',
     href: attendancePayrollHref,
-    status: 'active' as ModuleStatus,
     accent: '#0F766E',
     icon: <CalIcon />,
-    // The badge describes the destination, so a self-service card must not
-    // claim to be admin-only.
-    adminOnly: isModuleAdmin,
+    // The two experiences are told apart by the description above and by where
+    // the card goes, not by a pill. This is still the one card whose visibility
+    // comes from app_modules, and it is unchanged by the parent-gate work.
     notificationCount: null,
-    visibilityType: attendancePayrollVisRow?.visibility_type,
-    allowedDepartment: attendancePayrollVisRow?.allowed_department,
   } : null
 
   const modules: ModuleDef[] = [
-    ...(canSeeModule('task_management', modVis, effectiveProfile, true) ? [{
+    ...(canOpenModule('task_management') ? [{
       key: 'tasks',
       title: 'Task Management',
       description: 'Create, assign, and track tasks across your team.',
       href: '/dashboard',
-      status: 'active' as ModuleStatus,
       accent: '#1A2035',
       icon: <TaskIcon />,
       notificationCount: taskNotif,
-      visibilityType: modVis['task_management']?.visibility_type,
-      allowedDepartment: modVis['task_management']?.allowed_department,
     }] : []),
-    ...(canSeeModule('sample_tracking', modVis, effectiveProfile, true) ? [{
+    ...(canOpenModule('sample_tracking') ? [{
       key: 'samples',
       title: 'Sample Tracking',
       description: 'Request sample catalogs, track dispatch and returns, follow up on overdue items.',
       href: '/samples',
-      status: 'active' as ModuleStatus,
       accent: '#B45309',
       icon: <BoxIcon />,
       notificationCount: sampleNotif,
-      visibilityType: modVis['sample_tracking']?.visibility_type,
-      allowedDepartment: modVis['sample_tracking']?.allowed_department,
     }] : []),
     ...(attendancePayroll ? [attendancePayroll] : []),
-    ...(canSeeModule('showroom_qr', modVis, effectiveProfile, hasShowroomFallback) ? [{
+    ...(canOpenModule('showroom_qr') ? [{
       key: 'showroom',
       title: 'Showroom QR',
       description: 'QR-based showroom inquiries and quotations.',
       href: '/showroom-admin',
-      status: 'active' as ModuleStatus,
       accent: '#7C3AED',
       icon: <ShowroomIcon />,
       notificationCount: null,
-      visibilityType: modVis['showroom_qr']?.visibility_type,
-      allowedDepartment: modVis['showroom_qr']?.allowed_department,
     }] : []),
-    ...(canSeeModule('assets_access', modVis, effectiveProfile, true) ? [{
+    ...(canOpenModule('assets_access') ? [{
       key: 'assets',
       title: 'Assets & Access',
       description: 'View your assigned devices and access records, or manage the company inventory.',
       href: '/assets-access',
-      status: 'foundation' as ModuleStatus,
       accent: '#4B5563',
       icon: <AssetIcon />,
       notificationCount: null,
-      visibilityType: modVis['assets_access']?.visibility_type,
-      allowedDepartment: modVis['assets_access']?.allowed_department,
     }] : []),
-    ...(canSeeModule('employee_records', modVis, effectiveProfile, isAdminFallback) ? [{
+    ...(canOpenModule('employee_records') ? [{
       key: 'members',
       title: 'Employee Records',
       description: 'View and manage employee profiles, roles, and team assignments.',
       href: '/admin/members',
-      status: 'active' as ModuleStatus,
       accent: '#1E40AF',
       icon: <MembersIcon />,
-      adminOnly: true,
       notificationCount: null,
-      visibilityType: modVis['employee_records']?.visibility_type,
-      allowedDepartment: modVis['employee_records']?.allowed_department,
     }] : []),
     // Gated by the existing `performance` row in app_modules (live, sort 80).
     // Destination follows the effective profile so View As lands on the viewed
     // user's own page; the team route is still authorized server-side against
     // the real caller, so this grants nothing on its own.
-    ...(canSeeModule('performance', modVis, effectiveProfile, true) ? [{
+    ...(canOpenModule('performance') ? [{
       key: 'performance',
       title: 'Performance Management',
       description: 'Review personal performance, EOD discipline, team execution, and employees requiring attention.',
       href: performanceHref,
-      status: 'active' as ModuleStatus,
       accent: '#0369A1',
       icon: <PerformanceIcon />,
       notificationCount: null,
-      visibilityType: modVis['performance']?.visibility_type,
-      allowedDepartment: modVis['performance']?.allowed_department,
     }] : []),
-    ...(canSeeModule('finance', modVis, effectiveProfile, true) ? [{
+    ...(canOpenModule('finance') ? [{
       key: 'finance',
       title: 'Finance',
       description: 'Payment confirmations, order advances, and finance approvals.',
       href: '/finance',
-      status: 'foundation' as ModuleStatus,
       accent: '#065F46',
       icon: <FinanceIcon />,
       notificationCount: financeNotif,
-      visibilityType: modVis['finance']?.visibility_type,
-      allowedDepartment: modVis['finance']?.allowed_department,
     }] : []),
-    ...((isAdminFallback || meetingsAllowed) ? [{
+    ...(canOpenModule('meetings') ? [{
       key: 'meetings',
       title: 'Meetings',
       description: 'Run New Order and Repair Order reviews, record SKU updates, and track follow-ups.',
       href: '/meetings',
-      status: 'active' as ModuleStatus,
       accent: '#7C2D12',
       icon: <MeetingsIcon />,
       notificationCount: null,
-      visibilityType: modVis['meetings']?.visibility_type,
-      allowedDepartment: modVis['meetings']?.allowed_department,
     }] : []),
-    ...((isAdminFallback || ordersAllowed) ? [{
+    ...(canOpenModule('orders') ? [{
       key: 'orders',
       title: 'Order Management',
       description: 'Track confirmed orders from request through production and dispatch.',
       href: '/orders',
-      status: 'active' as ModuleStatus,
       accent: '#DC1F2E',
       icon: <OrdersIcon />,
       notificationCount: orderNotif,
-      visibilityType: modVis['orders']?.visibility_type,
-      allowedDepartment: modVis['orders']?.allowed_department,
     }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{
       key: 'control_center',
       title: 'Admin Control Center',
       description: 'Control modules, departments, and user department access.',
       href: '/admin/control-center',
-      status: 'active' as ModuleStatus,
       accent: '#6B21A8',
       icon: <ControlCenterIcon />,
-      adminOnly: true,
       notificationCount: null,
-      visibilityType: 'admin_only',
-      allowedDepartment: null,
     }] : []),
   ]
 
@@ -392,29 +419,9 @@ export default function BoeOsHomePage() {
 
 // ── ModuleCard ────────────────────────────────────────────────────────────────
 
-const VIS_BADGE: Record<string, { color: string; bg: string; label: (dept?: string[] | null) => string }> = {
-  live:            { color: '#166534', bg: '#F0FDF4', label: () => 'Live' },
-  admin_only:      { color: '#1E40AF', bg: '#EFF6FF', label: () => 'Admin Only' },
-  department_only: {
-    color: '#92400E', bg: '#FFFBEB',
-    label: (dept) => dept?.length
-      ? `${dept.map(d => `${d.charAt(0).toUpperCase()}${d.slice(1)}`).join('/')} Only`
-      : 'Dept Only',
-  },
-  // No member count here — how many colleagues share a module is Control
-  // Center's business, not something to print on every employee's launcher.
-  custom:          { color: '#5B21B6', bg: '#F5F3FF', label: () => 'Custom' },
-  hidden:          { color: '#4B5563', bg: '#F3F4F6', label: () => 'Hidden' },
-}
-
 function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
   const [hovered, setHovered] = useState(false)
 
-  // Use DB visibility badge when available; fall back to legacy status label.
-  const visMeta = mod.visibilityType ? VIS_BADGE[mod.visibilityType] : undefined
-  const st = visMeta
-    ? { label: visMeta.label(mod.allowedDepartment), color: visMeta.color, bg: visMeta.bg }
-    : STATUS_LABEL[mod.status]
   const hasNotif = (mod.notificationCount ?? 0) > 0
   const count    = mod.notificationCount
 
@@ -493,23 +500,16 @@ function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
         </div>
       </div>
 
-      {/* ── Footer: status pill + notification line + open ── */}
+      {/* ── Footer: notification line + open ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         paddingTop: '12px',
         borderTop: '1px solid #F3F4F6',
         gap: '8px',
       }}>
-        {/* Left: status + notification signal */}
+        {/* Left: notification signal. The status pill that used to sit here is
+            gone — see the note on ModuleDef. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <span style={{
-            fontSize: '10px', fontWeight: 700,
-            color: st.color, background: st.bg,
-            borderRadius: '5px', padding: '2px 7px',
-            whiteSpace: 'nowrap', flexShrink: 0,
-          }}>
-            {st.label}
-          </span>
           <span style={{
             fontSize: '11px',
             color: hasNotif ? '#D94F4F' : '#B0B8C8',

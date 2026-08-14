@@ -6,8 +6,13 @@ import { isSelfServiceModule } from '@/lib/moduleAccess'
 // This is the helper the unified Access Control workspace is built on: the
 // launcher card, the navigation entry and the route guard must all read the
 // same answer, so that hiding a card and blocking a URL can never disagree.
-// It is not yet wired to any page — src/app/modules/page.tsx still asks
-// app_modules for eight modules and the permission engine for two.
+//
+// It is now the LIVE rule. src/app/modules/page.tsx and every module route
+// guard (src/components/layout/ModuleGuard.tsx) call it for each key in
+// ENGINE_GATED_MODULE_KEYS below. Until this landed the launcher asked
+// app_modules for eight modules and the permission engine for two, so an
+// employee whose module access had been switched OFF in Access Control still
+// saw the card and could still open the URL. That is the defect this closes.
 //
 // THE RULE
 //
@@ -46,6 +51,45 @@ import { isSelfServiceModule } from '@/lib/moduleAccess'
 // answer comes from the role check below, never from an engine grant, so a
 // stray `payroll: view` row can never open them. See SELF_SERVICE_MODULE_KEYS
 // and resolveManagementAccess in src/lib/moduleAccess.ts.
+
+/**
+ * The modules whose ENTRY is decided by the permission engine — effective
+ * `view` — and not by `app_modules.visibility_type`.
+ *
+ * Orders and Meetings were already here in behaviour before this list existed;
+ * they are the working controls. The other seven were gated by
+ * `app_modules.visibility_type`, which Access Control does not write, so
+ * unticking "Module access" for an employee changed a stored override that
+ * nothing read. Every key below now resolves through canAccessManagementModule.
+ *
+ * Attendance and Payroll are deliberately ABSENT. Their management surfaces are
+ * admin-only by product decision and their self-service surfaces are a separate
+ * experience keyed off the bearer token — see SELF_SERVICE_MODULE_KEYS. Adding
+ * either key here would be a behaviour change to a module this work does not
+ * touch.
+ *
+ * `app_modules` is NOT dropped. Showroom QR's department rule and the
+ * Attendance/Payroll self-service cards still read it, and `?tab=modules`
+ * still resolves for rollback. What changed is that for these nine keys it is
+ * no longer the EMPLOYEE AUTHORIZATION decision.
+ */
+export const ENGINE_GATED_MODULE_KEYS = [
+  'task_management',
+  'sample_tracking',
+  'assets_access',
+  'showroom_qr',
+  'employee_records',
+  'performance',
+  'finance',
+  'orders',
+  'meetings',
+] as const
+
+export type EngineGatedModuleKey = (typeof ENGINE_GATED_MODULE_KEYS)[number]
+
+export function isEngineGatedModule(moduleKey: string): boolean {
+  return (ENGINE_GATED_MODULE_KEYS as readonly string[]).includes(moduleKey)
+}
 
 export type ModuleVisibilityInput = {
   /** users.role for the SIGNED-IN person. View As never lends permissions. */
