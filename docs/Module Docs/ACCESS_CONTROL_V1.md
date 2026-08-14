@@ -1,7 +1,9 @@
 # Access Control V1
 
-Status: **implemented, not deployed.** Migrations `20260901000000` and
-`20260902000000` are written and unapplied.
+Status: **database applied, frontend awaiting merge.** Migrations
+`20260901000000` and `20260902000000` are applied to production and verified by
+a read-only parity check (2026-08-14). The frontend ships in a separate release
+branch that has not been merged — see [Deployment](#deployment).
 
 One screen decides what every employee can reach: **Control Center → Access
 Control**. It replaced two parallel administrator workflows that could disagree
@@ -254,5 +256,71 @@ to apply in the same window. A repository test asserts the two files sort
 adjacently, that the cleanup declares the dependency in its own header, and that
 both halves are present.
 
-Both sit behind four earlier unapplied migrations, one of which lives on another
-branch — see the deployment order in the Prompt 6 report.
+### What actually happened (2026-08-14)
+
+The four earlier migrations this pair once sat behind — `20260831000000`
+(which lives on `chore/meeting-pi-import-831`, not on `main`), `20260832000000`,
+`20260833000000` and `20260834000000` — are all applied. That prerequisite is
+discharged; the note that used to stand here was stale on both counts.
+
+**The first attempt to apply `20260901000000` failed and rolled back cleanly.**
+It aborted at statement 18 with:
+
+```
+ERROR: function public.link_finance_payment_to_order(uuid, uuid, text) does not exist
+(SQLSTATE 42883)
+```
+
+`GRANT EXECUTE` resolves by exact argument-type list, and two grants named
+signatures that never existed: `link_finance_payment_to_order` was granted as
+`(uuid, uuid, text)` against an authoritative `(uuid, uuid)`
+(`20260691000000:41`), and `admin_delete_order_request` as `(uuid)` against an
+authoritative `(uuid, boolean)` (`20260705000000:264`) — the second would have
+failed on the very next statement. Both are corrected in commit `2b86a61`. All
+twelve of `20260901000000`'s own `CREATE OR REPLACE` signatures were audited
+against their defining migrations and match, so no rogue overload was ever
+created. `20260902000000` was not modified.
+[`src/lib/permissions/migrationSignatures.test.ts`](../../src/lib/permissions/migrationSignatures.test.ts)
+now parses every GRANT/REVOKE/COMMENT/DROP/ALTER in both files and compares each
+argument list against the signature derived from the defining migration, so this
+class of defect fails in the repository rather than against production.
+
+Both migrations were then applied together, in order, and both report Local +
+Remote in `supabase migration list --linked`.
+
+### Post-migration parity (read-only)
+
+Verified against production inside `BEGIN READ ONLY`:
+
+| Check | Result |
+|---|---|
+| Dhruv — Finance, Orders, Meetings | intended grants retained, incl. `can_be_order_assignee` |
+| Aditya — Assets & Access + Meetings | retained, `assign` included; Meetings `view` |
+| Test Sales (DUMMY) — Orders + Meetings | **zero** effective permissions |
+| Test Sales — active Orders overrides | **0** |
+| Nine (DUMMY)/Objection accounts — Meetings | **zero**, all nine |
+| Eleven grandfathered employees | all retain Meetings (Dhruv 4, the other ten 1 each) |
+| System Admin | active, not deleted |
+
+**Verdict: PASS.** No active real employee lost Meetings access.
+
+**The authority fingerprint changed, and that is expected.** It moved from
+`82 / 14b9b47fd0ea01e6cc3b790f7ee35375` to
+`81 / d312ce85dd429285b8e44883bc966d0c`. The hash did **not** stay the same, and
+nothing here should be read as claiming it did — a fingerprint is a digest of
+the grant set, so a single intended grant removal necessarily changes it.
+
+The one-row difference is fully accounted for. Ajaypal
+(`5a03d543-0e9a-4722-a96e-6036e9f54b91`, role `member`, `is_active = false`,
+`is_deleted = false`) held `meetings.view` through the `member` role default
+that `20260902000000` removes, and is deliberately **not** among the eleven
+grandfathered employees — the re-grant joins on `u.is_active`, so an inactive
+employee is skipped by design rather than re-granted. `resolve_effective_permissions`
+does not itself filter on `is_active`, which is why the account still counted
+toward the earlier figure. Net effect: `81 + 1 = 82`, one intentional
+fail-closed removal against an inactive account, and no other change.
+
+### Frontend
+
+The database is ahead of the deployed frontend until the Access Control release
+branch merges to `main`.
