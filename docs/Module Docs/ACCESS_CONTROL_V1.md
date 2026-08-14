@@ -234,8 +234,8 @@ The screen states what the engine actually decides, per module, from
 | Label | Meaning | Modules |
 |---|---|---|
 | **Active** | every registered action is checked | Assets & Access, Meetings |
-| **Partly active** | some actions checked, the rest inert | Orders, Finance, Sample Tracking |
-| **Prepared** | saved, nothing consults it yet | Task Management, Showroom QR, Employee Records, Performance |
+| **Partly active** | some actions checked, the rest inert | Orders, Finance, Sample Tracking, Task Management |
+| **Prepared** | saved, nothing consults it yet | Showroom QR, Employee Records, Performance |
 | **Not used** | governed by the admin role by design | Attendance, Payroll |
 
 A single enforced/not-enforced flag could not describe Orders, and had already
@@ -243,6 +243,92 @@ gone stale on Meetings. The distinction matters: on 2026-07-16 ten employees
 were granted Assets permissions while nothing consulted the engine, and
 `20260721000000` then made them all live at once — `20260723000000` exists to
 undo it.
+
+---
+
+## Protected visibility actions (`20260903000000`)
+
+Three protected, Custom-only actions. None is granted by Viewer, Contributor or
+Manager, and none is granted to anybody by the migration that registers them.
+
+| Action | Module | Means |
+|---|---|---|
+| `view_quotations` | Task Management | View quotations and quoted prices |
+| `manage_quotations` | Task Management | Create, edit, approve or share quotation information |
+| `view_all` | Order Management | View all company orders |
+| `view_all` | Finance | View all company payments and finance information |
+
+`view_all` is **one action key registered against two modules**. The engine
+scopes every grant by `(module_id, action_id)`, so Orders and Finance are
+granted independently and neither implies the other.
+
+**Dependencies**, enforced in the Access Control save path and again when
+capabilities are derived: `manage_quotations` → `view_quotations` → `view`, and
+`view_all` → `view`. Removing a parent removes its dependants, through the same
+protected-permission confirmation as any other removal.
+
+### The defect this corrects
+
+`orders.view` did not mean what the screen said it meant. `20260685000000` and
+`20260686000000` each added a SELECT policy of the form
+
+```sql
+USING (resolve_permission(auth.uid(), 'orders', 'view'))
+```
+
+on `orders` and `order_activity_log`, so **any** employee granted Order
+Management entry could read **every order in the company**. Those migrations
+were fixing a real defect — a granted employee saw zero rows — but they fixed it
+by opening the whole table rather than by adding an entry permission. Module
+entry and company-wide sight are two decisions, and `20260903000000` separates
+them: both policies now require `view_all`, and `view` falls back to the three
+ownership policies from `20260655_create_orders.sql` (admin, operations team,
+requester/assignee).
+
+This is a **narrowing**. Anyone holding `orders.view` without `orders.view_all`
+loses company-wide sight. There are deliberately no compatibility grants.
+
+Finance was never built that way — its SELECT policies are ownership-based
+(`20260628000200`, `20260674`, `20260699000000`, `20260707000000`) — so
+`finance.view_all` is purely **additive** and no existing Finance policy is
+touched. `orders.view_all` therefore reveals no price, payment or finance record
+on its own, structurally rather than by convention.
+
+### Known limitation — quotations are not enforced in the database
+
+`view_quotations` and `manage_quotations` are enforced in the **navigation, the
+routes and the screens**, not in RLS:
+
+| Layer | Enforced |
+|---|---|
+| Navigation | Quotation Requests and New Request hidden, badge count included |
+| Route | `/tasks/quotation-requests` and `/new` redirect before any query runs |
+| Fields | `customer_name`, `contact_number`, `company_name`, `city_project` redacted to `null` |
+| Database | **not enforced** — see below |
+
+A quotation request **is** somebody's assigned task. Hiding the row in RLS would
+take an employee's own assigned work away from them, which the requirement
+explicitly forbids. So the row stays readable to whoever the ordinary task
+policies already allow, and a caller with a valid session can still reach it
+through direct PostgREST. What an employee without `view_quotations` loses is
+the quotation register, the request form and the customer's commercial details —
+not the task.
+
+Closing that gap needs column-level redaction that varies per user, which
+Postgres column grants cannot express (they are role-based; see
+`20260813000000` for where that pattern does work). It is not attempted here.
+
+**There is no price column in Task Management.** `20260652` adds `task_type`,
+`customer_name`, `contact_number`, `company_name` and `city_project` and nothing
+else. Quoted prices (`rate_override`, `mrp_at_time`) live in
+`showroom_inquiry_items` under the separate Showroom QR module, which these
+actions do not govern. `view_quotations` is named for prices as well because it
+is the action that will gate them if the Task Management quotation workflow ever
+grows a commercial field.
+
+> The module key is **`task_management`**, not `tasks`. The business requirement
+> is written `tasks.view_quotations`; the registered action is
+> `task_management.view_quotations`.
 
 ---
 

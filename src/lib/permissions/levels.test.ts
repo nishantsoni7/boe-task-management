@@ -146,9 +146,20 @@ describe('Manager never receives a protected action', () => {
   })
 
   test('the protected set is exactly what V1 agreed', () => {
+    // Grew by three in 20260903000000, on a production finding: `orders.view`
+    // was carrying company-wide sight through the blanket SELECT policies in
+    // 20260685000000/20260686000000, so module entry and seeing every order
+    // were one grant. Splitting them needs a protected action, and the same
+    // reasoning covers company-wide Finance sight and the quotation screens.
+    //
+    // This assertion is deliberately exact rather than a superset check: the
+    // set growing is a decision someone must make on purpose, and an action
+    // silently becoming protected would take authority away from whoever holds
+    // it the next time an administrator picks a preset.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'assign', 'can_be_order_assignee', 'close', 'delete',
-      'dispatch', 'manage', 'mark_lost', 'receive',
+      'dispatch', 'manage', 'manage_quotations', 'mark_lost', 'receive',
+      'view_all', 'view_quotations',
     ])
   })
 

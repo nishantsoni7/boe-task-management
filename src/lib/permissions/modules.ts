@@ -24,6 +24,12 @@ registerModule({
     { actionKey: 'delete', displayName: 'Delete' },
     { actionKey: 'export', displayName: 'Export' },
     { actionKey: 'manage', displayName: 'Manage' },
+    // Quotation requests carry customer contact details and, where the
+    // workflow grows them, quoted commercial terms. Ordinary Task Management
+    // access must not reach them, so both are PROTECTED (see levels.ts) and
+    // Custom-only. Registered by 20260903000000.
+    { actionKey: 'view_quotations',   displayName: 'View Quotations & Prices' },
+    { actionKey: 'manage_quotations', displayName: 'Manage Quotations' },
   ],
 })
 
@@ -155,6 +161,11 @@ registerModule({
     { actionKey: 'approve', displayName: 'Approve' },
     { actionKey: 'export', displayName: 'Export' },
     { actionKey: 'manage', displayName: 'Manage' },
+    // Company-wide sight of every payment record. Separate from 'view', which
+    // is module entry plus the ownership-scoped rows the Finance RLS policies
+    // already allow. SELECT authority only — it implies no mutation.
+    // Registered by 20260903000000.
+    { actionKey: 'view_all', displayName: 'View All Payments & Finance' },
   ],
 })
 
@@ -200,5 +211,13 @@ registerModule({
     // never via role_permissions — so it never broadens to every admin/
     // manager/operations/bdm employee.
     { actionKey: 'can_be_order_assignee', displayName: 'Can Be Order Assignee' },
+    // Company-wide sight of every order. Until 20260903000000, plain 'view'
+    // carried this through the blanket SELECT policies added by 20260685000000
+    // and 20260686000000 — module entry and seeing the whole company were the
+    // same grant. They are now separate decisions: 'view' opens the module and
+    // leaves record visibility to the ownership policies, and this action is
+    // what widens it. Confers no edit, approve, manage, delete, assignee
+    // eligibility, or any Finance or quotation sight.
+    { actionKey: 'view_all', displayName: 'View All Company Orders' },
   ],
 })

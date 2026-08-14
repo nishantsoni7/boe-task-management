@@ -19,6 +19,8 @@ import { MobileBottomNav } from './MobileBottomNav'
 import { NotificationsNavItem } from './NotificationsNavItem'
 import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
 import { useRecordAppOpen } from '@/hooks/useRecordAppOpen'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { deriveQuotationCapabilities, NO_QUOTATION_CAPABILITIES } from '@/lib/permissions/quotations'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
 
@@ -151,6 +153,29 @@ export function DashboardLayout({
     gcTime: 5 * 60 * 1000,
   })
 
+  // Quotation permissions for the effective user — the same id the counts use,
+  // so "View As" shows the navigation that person would actually get.
+  //
+  // Defaults to NO capabilities, so the quotation items stay hidden while the
+  // query is in flight and if it fails. Hiding is not the enforcement boundary
+  // — the two routes gate themselves — but a nav item that flashes on before a
+  // permission resolves is still a leak of what exists.
+  const { data: quotationCaps = NO_QUOTATION_CAPABILITIES } = useQuery({
+    queryKey: ['nav-quotation-caps', effectiveNavUserId],
+    queryFn: async () => {
+      const uid = effectiveNavUserId
+      if (!uid || !isValidUUID(uid)) return NO_QUOTATION_CAPABILITIES
+      const [{ data: me }, perms] = await Promise.all([
+        supabase.from('users').select('role').eq('id', uid).single(),
+        getEffectivePermissions(supabase, uid, 'task_management').catch(() => []),
+      ])
+      return deriveQuotationCapabilities(me?.role, perms)
+    },
+    enabled: effectiveNavUserId != null,
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+  })
+
   const navTo = (path: string) => {
     router.push(path)
     setSidebarOpen(false)
@@ -219,11 +244,14 @@ export function DashboardLayout({
                 active={pathname === '/tasks/create'}
                 onClick={() => navTo('/tasks/create')}
               />
-              <NavChild
-                label="Quotation Request"
-                active={pathname === '/tasks/quotation-requests/new'}
-                onClick={() => navTo('/tasks/quotation-requests/new')}
-              />
+              {/* Raising a request is a quotation operation — manage, not view. */}
+              {quotationCaps.canManageQuotations && (
+                <NavChild
+                  label="Quotation Request"
+                  active={pathname === '/tasks/quotation-requests/new'}
+                  onClick={() => navTo('/tasks/quotation-requests/new')}
+                />
+              )}
             </CollapsibleNav>
           )}
 
@@ -277,14 +305,18 @@ export function DashboardLayout({
             />
           </CollapsibleNav>
 
-          {/* 4b. Quotation Requests */}
-          <NavLeaf
-            label="Quotation Requests"
-            icon={<FileText size={15} strokeWidth={1.8} />}
-            active={pathname === '/tasks/quotation-requests'}
-            onClick={() => navTo('/tasks/quotation-requests')}
-            badge={navCounts.quotationActive || undefined}
-          />
+          {/* 4b. Quotation Requests — the register itself, gated on view.
+              The badge count goes with it: an employee who may not open the
+              register must not learn how many requests are in it either. */}
+          {quotationCaps.canViewQuotations && (
+            <NavLeaf
+              label="Quotation Requests"
+              icon={<FileText size={15} strokeWidth={1.8} />}
+              active={pathname === '/tasks/quotation-requests'}
+              onClick={() => navTo('/tasks/quotation-requests')}
+              badge={navCounts.quotationActive || undefined}
+            />
+          )}
 
           {/* 5. Performance */}
           {canViewTeamPerformance ? (

@@ -372,10 +372,24 @@ const PROTECTED_ACTION_WORDS: Record<string, string> = {
   mark_lost:             'Mark lost',
   close:                 'Close',
   can_be_order_assignee: 'Be an order assignee',
+  view_quotations:       'View quotations and quoted prices',
+  manage_quotations:     'Manage quotations',
+  // One action key registered against two modules, so the words have to come
+  // from the module being edited rather than from this map alone — see
+  // protectedActionWords, which takes the module key for exactly this reason.
+  view_all:              'View all records',
 }
 
-function protectedActionWords(actionKeys: string[]): string {
-  const names = actionKeys.map(k => PROTECTED_ACTION_WORDS[k] ?? k)
+// `view_all` means something different in Orders than in Finance, and an
+// administrator removing it deserves to read which one they are removing.
+const MODULE_SCOPED_ACTION_WORDS: Record<string, Record<string, string>> = {
+  orders:  { view_all: 'View all company orders' },
+  finance: { view_all: 'View all company payments and finance information' },
+}
+
+function protectedActionWords(actionKeys: string[], moduleKey?: string): string {
+  const scoped = moduleKey ? MODULE_SCOPED_ACTION_WORDS[moduleKey] : undefined
+  const names = actionKeys.map(k => scoped?.[k] ?? PROTECTED_ACTION_WORDS[k] ?? k)
   if (names.length === 1) return names[0]
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
@@ -549,6 +563,7 @@ function ChangeAccessModal({
               Changing to {ACCESS_LEVEL_LABELS[pendingLevel].label} will remove:{' '}
               {protectedActionWords(
                 protectedActionsClearedByPreset(pendingLevel, actionKeys, currentlyAllowed),
+                mod.moduleKey,
               )}
             </div>
             <div style={{ fontSize: 12, color: '#6B7384', marginBottom: 10 }}>
@@ -1119,7 +1134,7 @@ export default function PermissionsPage() {
       const cleared = protectedActionsClearedByPreset('no_access', actionKeys, effective)
       if (cleared.length > 0) {
         const message =
-          `Turning off ${mod.displayName} will remove: ${protectedActionWords(cleared)}.\n\n` +
+          `Turning off ${mod.displayName} will remove: ${protectedActionWords(cleared, mod.moduleKey)}.\n\n` +
           'Continue?'
         if (!window.confirm(message)) return
       }
