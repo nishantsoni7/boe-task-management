@@ -3,9 +3,14 @@
  *
  * The migration cannot be run here, so these assertions read its SQL and prove
  * the properties that matter: it addresses people by UUID rather than by name,
- * it asserts the baseline before mutating, it removes exactly the two grants
- * that must not become real, and it re-grants Meetings to the current real
- * employees while leaving the test accounts behind.
+ * it asserts the baseline before mutating, it removes all five of the test
+ * account's Orders grants per the 2026-08-14 owner decision, and it re-grants
+ * Meetings to the current real employees while leaving the test accounts
+ * behind.
+ *
+ * These are SQL-shape assertions, not execution. They prove the migration says
+ * what it should; they cannot prove Postgres accepts it. Applying it against a
+ * real database is still an outstanding deployment prerequisite.
  *
  * Also pins the Access Control screen's retirement of the separate Module
  * Visibility workflow.
@@ -68,18 +73,38 @@ const EXCLUDED = [
   '57b11e89-a90b-407d-b92b-c4b0354f77fa', // Test Marketing User (DUMMY)
 ]
 
-describe('the test account loses its protected Orders authority', () => {
+describe('the test account loses ALL of its Orders authority', () => {
+  /** The owner decision of 2026-08-14: all five, not just the protected two. */
+  const ALL_FIVE = ['view', 'create', 'edit', 'approve', 'manage']
+
   test('it is addressed by uuid, never by name', () => {
     assert.ok(code.includes(DUMMY_SALES))
     assert.equal(/full_name|ilike|'Test Sales User/.test(code), false, 'no name may appear in executable SQL')
   })
 
-  test('only approve and manage are revoked', () => {
+  test('all five Orders grants are revoked, not only the protected two', () => {
     const revoke = statement('update public.employee_permission_overrides')
-    assert.ok(revoke.includes("pa.action_key in ('approve', 'manage')"))
-    // view/create/edit are inert under 20260901000000 and are left alone.
-    assert.equal(revoke.includes("'view'"), false)
-    assert.equal(revoke.includes("'create'"), false)
+    assert.ok(
+      revoke.includes("pa.action_key in ('view', 'create', 'edit', 'approve', 'manage')"),
+      'the revoke must name all five actions',
+    )
+    for (const action of ALL_FIVE) {
+      assert.ok(revoke.includes(`'${action}'`), `orders.${action} must be revoked`)
+    }
+  })
+
+  test('the precondition asserts the five as an exact set, not a count', () => {
+    // A count of five would also be satisfied by four expected rows plus one
+    // unexpected `delete`, which the migration would then revoke unbidden.
+    assert.ok(code.includes("v_expected constant text[] := array['approve', 'create', 'edit', 'manage', 'view']"))
+    assert.ok(code.includes('if v_actions <> v_expected then'))
+    assert.ok(code.includes('expected exactly the 5 baseline Orders overrides'))
+  })
+
+  test('the precondition fails before mutation on a missing or unexpected row', () => {
+    const guard = code.indexOf('if v_actions <> v_expected then')
+    const mutation = code.indexOf('update public.employee_permission_overrides')
+    assert.ok(guard >= 0 && guard < mutation, 'the exact-set guard must precede the revoke')
   })
 
   test('it is a soft revoke, so the audit trail and the rollback survive', () => {
@@ -88,8 +113,39 @@ describe('the test account loses its protected Orders authority', () => {
     assert.equal(/delete from public\.employee_permission_overrides/.test(code), false)
   })
 
-  test('a post-condition proves nothing protected survived', () => {
-    assert.ok(code.includes('the test account still holds % protected Orders grant(s)'))
+  test('the account is not deactivated or deleted', () => {
+    // Owner decision: these accounts stay, they just carry nothing.
+    assert.equal(/update public\.users/.test(code), false)
+    assert.equal(/delete from public\.users/.test(code), false)
+  })
+
+  test('a post-condition proves NO Orders override survived, of any action', () => {
+    assert.ok(code.includes('the test account still holds % active Orders override(s)'))
+    // Scoped to the module, not to a list of actions — a sixth row would fail.
+    const post = code.slice(code.indexOf('-- 4a'))
+    assert.equal(post.slice(0, 600).includes("pa.action_key in ('approve', 'manage')"), false)
+  })
+
+  test('a post-condition proves no Orders authority survives through ANY source', () => {
+    assert.ok(
+      code.includes("public.resolve_effective_permissions(v_dummy_sales, 'orders')"),
+      'must check the engine, not just the override table',
+    )
+    assert.ok(code.includes('still resolves Orders authority'))
+    // resolve_effective_permissions reports employee_override / department /
+    // role / system_default, so one sweep covers all four levels.
+    assert.ok(code.includes("r.action_key || ' via ' || r.source"))
+  })
+
+  test('the four named authorities are asserted by name as well', () => {
+    assert.ok(code.includes("array['delete', 'export', 'admin', 'can_be_order_assignee']"))
+    assert.ok(code.includes('resolves orders.% through some other source'))
+  })
+
+  test('every other employee keeps their Orders access', () => {
+    assert.ok(code.includes("set_config('access_control_v1.orders_others'"))
+    assert.ok(code.includes("current_setting('access_control_v1.orders_others')::int"))
+    assert.ok(code.includes("other employees'' active Orders overrides changed from % to %"))
   })
 })
 
@@ -123,13 +179,27 @@ describe('Meetings becomes deny-by-default without anyone losing access today', 
   test('the nine test accounts are NOT grandfathered', () => {
     const block = statement('insert into public.employee_permission_overrides')
     for (const id of EXCLUDED) {
-      // The dummy sales account legitimately appears elsewhere (the revoke
-      // statement and a post-condition); what matters is that it is absent from
-      // the grandfathering INSERT. The other eight must not appear at all.
       assert.equal(block.includes(id), false, `${id.slice(-6)} must not be grandfathered`)
-      if (id !== DUMMY_SALES) {
-        assert.equal(code.includes(id), false, `${id.slice(-6)} must not be re-granted anywhere`)
-      }
+    }
+  })
+
+  test('a post-condition proves no test account resolves Meetings from any source', () => {
+    // Stronger than "absent from the INSERT": the nine are checked through the
+    // engine, so a department or override grant would be caught too.
+    // Sliced from `sql`, not `code` — the 4g/4h anchors are comments.
+    const post = sql.slice(sql.indexOf('-- 4g'), sql.indexOf('-- 4h'))
+    assert.ok(post.length > 0, 'the 4g block must exist')
+    for (const id of EXCLUDED) {
+      assert.ok(post.includes(id), `${id.slice(-6)} must be asserted Meetings-free`)
+    }
+    assert.ok(code.includes("public.resolve_effective_permissions(v_action::uuid, 'meetings')"))
+    assert.ok(code.includes('still resolves Meetings'))
+  })
+
+  test('no test account is re-granted anything, anywhere', () => {
+    const block = statement('insert into public.employee_permission_overrides')
+    for (const id of EXCLUDED) {
+      assert.equal(block.includes(id), false, `${id.slice(-6)} must not be re-granted`)
     }
   })
 
@@ -163,12 +233,20 @@ describe('the migration fails safely rather than guessing', () => {
   test('every precondition raises with a readable message', () => {
     for (const fragment of [
       'is not the member account captured in the baseline',
-      'expected 2 active protected Orders overrides',
+      'expected exactly the 5 baseline Orders overrides',
       'expected 5 Meetings role rows',
       'Meetings employee override(s) already exist',
     ]) {
       assert.ok(code.includes(fragment), `missing precondition: ${fragment}`)
     }
+  })
+
+  test('the superseded two-grant precondition is gone', () => {
+    assert.equal(
+      code.includes('expected 2 active protected Orders overrides'),
+      false,
+      'the owner decision replaced the two-override premise with five',
+    )
   })
 
   test('Dhruv and Aditya are protected by post-conditions', () => {
@@ -208,6 +286,15 @@ describe('scope limits', () => {
   test('a rollback plan is documented', () => {
     assert.ok(sql.includes('ROLLBACK'))
     assert.ok(sql.includes('set revoked_by = null, revoked_at = null'))
+  })
+
+  test('the rollback restores all five Orders grants, exactly', () => {
+    const rollback = sql.slice(sql.indexOf('ROLLBACK PLAN'))
+    assert.ok(rollback.includes("pa.action_key in ('view', 'create', 'edit', 'approve', 'manage')"))
+    // Scoped to the rows THIS migration revoked, so an older revoke by someone
+    // else is not silently undone.
+    assert.ok(rollback.includes("eo.revoked_by = '6507df9f-cdeb-4ebd-849f-8498c165d596'"))
+    assert.ok(rollback.includes('EXPECT EXACTLY 5 ROWS'))
   })
 })
 

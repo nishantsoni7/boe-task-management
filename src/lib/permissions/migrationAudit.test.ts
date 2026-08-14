@@ -306,4 +306,34 @@ describe('the two migrations are ordered so enforcement cannot precede cleanup',
       assert.ok(ENFORCEMENT > stamp)
     }
   })
+
+  test('the cleanup declares the dependency in its own header', () => {
+    // Ordering alone is not enough: a deployer applying migrations one at a
+    // time needs the file to say why it cannot be separated from its
+    // predecessor. 20260901000000 is deliberately NOT edited to say this —
+    // it has no defect, and the dependency runs one way.
+    const compat = lf(readFileSync(join(MIGRATIONS, COMPATIBILITY), 'utf8'))
+    assert.ok(compat.includes('MUST RUN IMMEDIATELY AFTER 20260901000000'))
+    assert.ok(
+      compat.includes('Applying the first without the'),
+      'the header must state the consequence of splitting them',
+    )
+  })
+
+  test('the deployment note forbids applying enforcement alone', () => {
+    const doc = lf(readFileSync(join(ROOT, 'docs/Module Docs/ACCESS_CONTROL_V1.md'), 'utf8'))
+    assert.ok(doc.includes('must be applied together, in that'))
+    assert.ok(doc.includes('with nothing between them'))
+    assert.ok(
+      /same controlled checkpoint/i.test(doc),
+      'the doc must name the checkpoint rule, not just the ordering',
+    )
+  })
+
+  test('both halves of the checkpoint are present in the repository', () => {
+    // "Ready in the same controlled checkpoint" means both files ship together.
+    // If 902 were ever removed while 901 stayed, this fails.
+    assert.ok(existsSync(join(MIGRATIONS, ENFORCEMENT)))
+    assert.ok(existsSync(join(MIGRATIONS, COMPATIBILITY)))
+  })
 })
