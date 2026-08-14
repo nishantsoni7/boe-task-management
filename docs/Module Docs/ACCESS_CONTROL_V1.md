@@ -354,6 +354,71 @@ The write policies are untouched.
 > broader than its parent, which is the defect being fixed. Admin task tooling
 > that needs more already runs with the service role.
 
+### ⚠ Storage: the files themselves are still public
+
+**The RLS fix secures the index, not the bytes.** Audit result:
+
+| Question | Answer |
+|---|---|
+| Bucket | `task-attachments` |
+| Public? | **`public = true`** (`20260607000000`) |
+| `storage.objects` SELECT policy | `public_read`: `USING (bucket_id = 'task-attachments')` — **no `TO` clause, so it includes `anon`** |
+| Stored value | **a full public URL** via `getPublicUrl`, in `task_attachments.url` |
+| `storage_path` column? | **None** |
+| Shared with other modules? | **No** — 8 call sites, all task code |
+| Upload / delete | client `.upload(path, file)`; `auth_delete` restricts deletes to the uploader |
+
+Every other attachment bucket in this system — `asset-documents`,
+`order-request-attachments`, `payment-proofs` — is private and stores a
+`storage_path` signed on demand via `createSignedUrl`. `task-attachments` is the
+only one that does not.
+
+**Consequence:** anyone holding or guessing a file URL can still retrieve the
+file **without authenticating**. `20260903000000` stops an employee from
+*enumerating* attachments they shouldn't see; it does not stop retrieval of a
+URL already known. **Do not describe task attachments as secured until the
+bucket is private.**
+
+**Why it was not converted here.** The blocker is not sharing — the bucket is
+exclusive to tasks. It is that `task_attachments.url` stores a *public URL* and
+there is no path column. Flipping the bucket to private would break every
+existing production file immediately, because nothing can be signed from a
+stored URL. A safe conversion is its own migration:
+
+1. Add `task_attachments.storage_path`.
+2. Backfill it by parsing the object path out of each stored public URL, and
+   verify every row parsed before continuing.
+3. Move the 8 call sites to `createSignedUrl`, keeping the public URL as a
+   fallback while both work.
+4. Flip the bucket to `public = false` and replace `public_read` with a policy
+   scoped to the parent task.
+5. Drop the fallback.
+
+Steps 1–3 are backward-compatible and can ship first; only step 4 is the cutover.
+
+### Approved access configuration (owner, 2026-08-14)
+
+Applied by `20260903000000` as **employee overrides**, in the same transaction as
+the Orders narrowing, so nobody loses access in between. No role or department
+grant is written, so the owner can change any of it later through Access Control
+→ Custom without another migration.
+
+| Person | `orders.view` | `orders.view_all` | `finance.view` | `finance.view_all` |
+|---|:--:|:--:|:--:|:--:|
+| Dhruv | ✅ | ✅ | ✅ | ✅ |
+| Jasvi | ✅ | ✅ | — | — |
+| Aditya | ✅ | ✅ | — | — |
+| Ashok, Mohit, Prerna, Saksham, Shravi | ✅ | — | ✅ | — |
+
+**Jasvi and Aditya receive no Finance grant of any kind** — no payment data, no
+summaries, no proofs, no Finance navigation. The five Sales employees get
+`finance.view` as module *entry*; the existing ownership/participant policies are
+what limit each of them to payments on their own orders and requests.
+
+Only `view` and `view_all` are ever granted — 18 rows, no mutation action among
+them. **No quotation permission is granted to anyone**: the register stays with
+System Admin until the owner grants it explicitly.
+
 ### The quotation boundary, stated exactly
 
 | Who | Sees quotation customer fields? |

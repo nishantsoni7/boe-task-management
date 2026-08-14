@@ -283,11 +283,94 @@ create policy "task_attachments_read" on public.task_attachments
 comment on policy "task_attachments_read" on public.task_attachments is
   'An attachment is readable only by someone who may read its parent task — created_by, assigned_to or delegated_by — resolved through task_id or through task_activity_log.task_id. Replaces a USING (true) policy that published every attachment in the company. task_management.view does NOT widen this.';
 
+-- ─── 3e. The approved initial grants ─────────────────────────────────────────
+--
+-- Applied in the SAME transaction as the policy change above, so nobody
+-- experiences a window in which the narrowing has landed and their replacement
+-- grant has not. Owner-approved configuration, 2026-08-14.
+--
+--   Dhruv    orders.view, orders.view_all, finance.view, finance.view_all
+--   Jasvi    orders.view, orders.view_all                    (NO Finance)
+--   Aditya   orders.view, orders.view_all                    (NO Finance)
+--   Ashok, Mohit, Prerna, Saksham, Shravi
+--            orders.view, finance.view                       (NO view_all)
+--
+-- The five Sales employees get `finance.view` and nothing more: the existing
+-- ownership/assignment/participant policies (20260628000200, 20260699000000,
+-- 20260707000000) are what limit each of them to payments on their own orders
+-- and order requests. `finance.view` is module entry, not a widening — this
+-- migration adds no policy that would let it reach another person's payment.
+--
+-- EMPLOYEE OVERRIDES ONLY. No role_permissions row and no
+-- department_permissions row is written, so the owner can change any one of
+-- these people later through Access Control → Custom without a migration, and
+-- no future employee inherits any of it.
+--
+-- UPSERT, not insert: `do update` re-asserts a row that was previously
+-- soft-revoked (allowed = false, or revoked_at set), which `do nothing` would
+-- silently skip. That matters because a revoked row already occupies the
+-- (user_id, module_id, action_id) key.
+
+insert into public.employee_permission_overrides
+  (user_id, module_id, action_id, allowed, granted_by, granted_at)
+select
+  v.user_id,
+  pm.id,
+  pa.id,
+  true,
+  '6507df9f-cdeb-4ebd-849f-8498c165d596',   -- the system admin
+  now()
+from (values
+  -- Dhruv — all company orders AND all company finance.
+  ('61f4a1f7-3c2a-435f-abca-f884301dcc96'::uuid, 'orders',  'view'),
+  ('61f4a1f7-3c2a-435f-abca-f884301dcc96'::uuid, 'orders',  'view_all'),
+  ('61f4a1f7-3c2a-435f-abca-f884301dcc96'::uuid, 'finance', 'view'),
+  ('61f4a1f7-3c2a-435f-abca-f884301dcc96'::uuid, 'finance', 'view_all'),
+  -- Jasvi — complete operational orders, deliberately NO Finance at all.
+  ('fcf8bbf9-0cc4-4a6e-ba64-1143b14ef4a2'::uuid, 'orders',  'view'),
+  ('fcf8bbf9-0cc4-4a6e-ba64-1143b14ef4a2'::uuid, 'orders',  'view_all'),
+  -- Aditya — same as Jasvi. His Assets & Access grants are untouched.
+  ('973b4337-9cae-4f66-8e7f-b158326cdc10'::uuid, 'orders',  'view'),
+  ('973b4337-9cae-4f66-8e7f-b158326cdc10'::uuid, 'orders',  'view_all'),
+  -- Sales — own orders and the payments on them. No view_all on either module.
+  ('a3d157da-9eef-4d81-9aa6-84b4aa6061d6'::uuid, 'orders',  'view'),   -- Ashok Choudhary
+  ('a3d157da-9eef-4d81-9aa6-84b4aa6061d6'::uuid, 'finance', 'view'),
+  ('f8039454-9152-452d-8d33-261f58a471af'::uuid, 'orders',  'view'),   -- Mohit Sharma
+  ('f8039454-9152-452d-8d33-261f58a471af'::uuid, 'finance', 'view'),
+  ('9322e802-7203-456d-8986-ca625f3a8b77'::uuid, 'orders',  'view'),   -- Prerna
+  ('9322e802-7203-456d-8986-ca625f3a8b77'::uuid, 'finance', 'view'),
+  ('b37c5ae7-b03f-4dd8-ad4c-3a210caff1f8'::uuid, 'orders',  'view'),   -- Saksham
+  ('b37c5ae7-b03f-4dd8-ad4c-3a210caff1f8'::uuid, 'finance', 'view'),
+  ('fb6eec18-f60c-4210-a712-f265f6732557'::uuid, 'orders',  'view'),   -- Shravi
+  ('fb6eec18-f60c-4210-a712-f265f6732557'::uuid, 'finance', 'view')
+) as v(user_id, module_key, action_key)
+join public.permission_modules pm on pm.module_key = v.module_key
+join public.permission_actions  pa on pa.action_key = v.action_key
+-- Fail-closed on the person: an employee deactivated or soft-deleted since the
+-- approved configuration was agreed is skipped rather than granted. The
+-- post-conditions below then report the shortfall instead of it passing
+-- silently.
+join public.users u
+  on u.id = v.user_id
+ and u.is_active
+ and coalesce(u.is_deleted, false) = false
+on conflict (user_id, module_id, action_id) do update
+  set allowed    = true,
+      revoked_at = null,
+      revoked_by = null,
+      granted_by = excluded.granted_by,
+      granted_at = excluded.granted_at;
+
 -- ─── 4. Post-conditions ──────────────────────────────────────────────────────
 
 do $$
 declare
-  v_count int;
+  v_count   int;
+  v_user    uuid;
+  -- Bounds 4p to rows this migration wrote. now() is the transaction timestamp,
+  -- so it equals the granted_at stamped in section 3e — a pre-existing grant of
+  -- some other action is correctly ignored rather than blamed on this file.
+  v_started constant timestamptz := now();
 begin
   -- 4a. All four module/action registrations landed.
   select count(*) into v_count
@@ -312,16 +395,35 @@ begin
     raise exception 'PROTECTED_VISIBILITY: % new action(s) are allowed by default', v_count;
   end if;
 
-  -- 4c. Nobody has been granted any of them. This migration registers
-  --     authority; it never hands it out.
+  -- 4c. NO quotation authority is handed out here. The register stays with
+  --     System Admin until the owner grants it through Access Control.
   select count(*) into v_count
   from public.employee_permission_overrides eo
   join public.permission_actions pa on pa.id = eo.action_id
-  where pa.action_key in ('view_quotations', 'manage_quotations', 'view_all')
+  where pa.action_key in ('view_quotations', 'manage_quotations')
     and eo.allowed and eo.revoked_at is null;
 
   if v_count <> 0 then
-    raise exception 'PROTECTED_VISIBILITY: % employee override(s) already grant a new action', v_count;
+    raise exception 'PROTECTED_VISIBILITY: % quotation override(s) exist; none was approved', v_count;
+  end if;
+
+  -- 4c-ii. view_all is held by EXACTLY the three approved people, on exactly
+  --        the approved modules: Dhruv on orders and finance, Jasvi and Aditya
+  --        on orders only. Any fourth holder is a configuration error.
+  select count(*) into v_count
+  from public.employee_permission_overrides eo
+  join public.permission_actions  pa on pa.id = eo.action_id
+  join public.permission_modules  pm on pm.id = eo.module_id
+  where pa.action_key = 'view_all'
+    and eo.allowed and eo.revoked_at is null
+    and not (
+      (eo.user_id = '61f4a1f7-3c2a-435f-abca-f884301dcc96' and pm.module_key in ('orders', 'finance'))
+      or (eo.user_id = 'fcf8bbf9-0cc4-4a6e-ba64-1143b14ef4a2' and pm.module_key = 'orders')
+      or (eo.user_id = '973b4337-9cae-4f66-8e7f-b158326cdc10' and pm.module_key = 'orders')
+    );
+
+  if v_count <> 0 then
+    raise exception 'PROTECTED_VISIBILITY: % unapproved view_all grant(s) exist', v_count;
   end if;
 
   -- 4d. No ROLE default grants them either — that is what would quietly
@@ -417,6 +519,101 @@ begin
 
   if v_count <> 2 then
     raise exception 'PROTECTED_VISIBILITY: task attachment write policies changed (found %)', v_count;
+  end if;
+
+  -- ── The approved configuration, proved THROUGH THE ENGINE ─────────────────
+  -- resolve_permission is used rather than reading the override rows, so these
+  -- assert what each person can actually do, including any role or department
+  -- grant that might contradict the intent.
+
+  -- 4k. Dhruv resolves both view_all permissions.
+  if not public.resolve_permission('61f4a1f7-3c2a-435f-abca-f884301dcc96', 'orders', 'view_all')
+     or not public.resolve_permission('61f4a1f7-3c2a-435f-abca-f884301dcc96', 'finance', 'view_all') then
+    raise exception 'PROTECTED_VISIBILITY: Dhruv does not resolve both view_all permissions';
+  end if;
+
+  -- 4l. Jasvi resolves orders.view_all and NO Finance at all — not view_all,
+  --     and not even module entry. She must see no payment data, no payment
+  --     summary, no proof, and no Finance navigation.
+  if not public.resolve_permission('fcf8bbf9-0cc4-4a6e-ba64-1143b14ef4a2', 'orders', 'view_all') then
+    raise exception 'PROTECTED_VISIBILITY: Jasvi does not resolve orders.view_all';
+  end if;
+  if public.resolve_permission('fcf8bbf9-0cc4-4a6e-ba64-1143b14ef4a2', 'finance', 'view')
+     or public.resolve_permission('fcf8bbf9-0cc4-4a6e-ba64-1143b14ef4a2', 'finance', 'view_all') then
+    raise exception 'PROTECTED_VISIBILITY: Jasvi resolves Finance access, which was explicitly withheld';
+  end if;
+
+  -- 4m. Aditya resolves orders.view_all and receives no Finance grant here.
+  if not public.resolve_permission('973b4337-9cae-4f66-8e7f-b158326cdc10', 'orders', 'view_all') then
+    raise exception 'PROTECTED_VISIBILITY: Aditya does not resolve orders.view_all';
+  end if;
+  select count(*) into v_count
+  from public.employee_permission_overrides eo
+  join public.permission_modules pm on pm.id = eo.module_id
+  where eo.user_id = '973b4337-9cae-4f66-8e7f-b158326cdc10'
+    and pm.module_key = 'finance'
+    and eo.allowed and eo.revoked_at is null;
+  if v_count <> 0 then
+    raise exception 'PROTECTED_VISIBILITY: Aditya holds % Finance override(s); 903 must grant none', v_count;
+  end if;
+
+  -- 4n/4o. Each named Sales employee resolves finance.view and orders.view,
+  --        and NEITHER view_all on either module. Their reach is then limited
+  --        by the ownership/participant policies, which this migration does not
+  --        touch.
+  foreach v_user in array array[
+    'a3d157da-9eef-4d81-9aa6-84b4aa6061d6'::uuid,  -- Ashok Choudhary
+    'f8039454-9152-452d-8d33-261f58a471af'::uuid,  -- Mohit Sharma
+    '9322e802-7203-456d-8986-ca625f3a8b77'::uuid,  -- Prerna
+    'b37c5ae7-b03f-4dd8-ad4c-3a210caff1f8'::uuid,  -- Saksham
+    'fb6eec18-f60c-4210-a712-f265f6732557'::uuid   -- Shravi
+  ] loop
+    if not public.resolve_permission(v_user, 'finance', 'view')
+       or not public.resolve_permission(v_user, 'orders', 'view') then
+      raise exception 'PROTECTED_VISIBILITY: sales employee % lacks orders.view/finance.view', v_user;
+    end if;
+    if public.resolve_permission(v_user, 'orders', 'view_all')
+       or public.resolve_permission(v_user, 'finance', 'view_all') then
+      raise exception 'PROTECTED_VISIBILITY: sales employee % resolves a view_all permission', v_user;
+    end if;
+  end loop;
+
+  -- 4p. No mutation authority is introduced for ANY of the eight people. The
+  --     grants above are view/view_all only; this proves no create, edit,
+  --     approve, manage, delete, export or assignee eligibility came with them.
+  foreach v_user in array array[
+    '61f4a1f7-3c2a-435f-abca-f884301dcc96'::uuid,
+    'fcf8bbf9-0cc4-4a6e-ba64-1143b14ef4a2'::uuid,
+    '973b4337-9cae-4f66-8e7f-b158326cdc10'::uuid,
+    'a3d157da-9eef-4d81-9aa6-84b4aa6061d6'::uuid,
+    'f8039454-9152-452d-8d33-261f58a471af'::uuid,
+    '9322e802-7203-456d-8986-ca625f3a8b77'::uuid,
+    'b37c5ae7-b03f-4dd8-ad4c-3a210caff1f8'::uuid,
+    'fb6eec18-f60c-4210-a712-f265f6732557'::uuid
+  ] loop
+    select count(*) into v_count
+    from public.employee_permission_overrides eo
+    join public.permission_actions pa on pa.id = eo.action_id
+    where eo.user_id = v_user
+      and eo.allowed and eo.revoked_at is null
+      and eo.granted_at >= v_started
+      and pa.action_key not in ('view', 'view_all');
+
+    if v_count <> 0 then
+      raise exception 'PROTECTED_VISIBILITY: % non-view grant(s) written for %', v_count, v_user;
+    end if;
+  end loop;
+
+  -- 4q. No ROLE or DEPARTMENT holds either view_all. 4d already covers roles;
+  --     departments are the other inheritable level and would broaden these
+  --     permissions to everyone in a team.
+  select count(*) into v_count
+  from public.department_permissions dp
+  join public.permission_actions pa on pa.id = dp.action_id
+  where pa.action_key = 'view_all' and dp.allowed;
+
+  if v_count <> 0 then
+    raise exception 'PROTECTED_VISIBILITY: % department grant(s) of view_all exist', v_count;
   end if;
 end $$;
 
