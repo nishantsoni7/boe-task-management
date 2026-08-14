@@ -49,6 +49,18 @@ const statementsSql = executableSql.replace(/comment on [\s\S]*?;/g, '')
 /** Every `create policy` statement in the migration, as text. */
 const createPolicyStatements = [...statementsSql.matchAll(/create policy [\s\S]*?;/g)].map(m => m[0])
 
+/**
+ * The employee-override INSERT alone, bounded at its terminating semicolon.
+ *
+ * Slicing to end-of-file instead would swallow the post-conditions, where
+ * action names like view_quotations legitimately appear inside assertions.
+ */
+const grantStatement = (() => {
+  const start = statementsSql.indexOf('insert into public.employee_permission_overrides')
+  if (start < 0) return ''
+  return statementsSql.slice(start, statementsSql.indexOf(';', start) + 1)
+})()
+
 const allow = (...keys: string[]) => keys.map(k => ({ actionKey: k, allowed: true, source: 'employee_override' as const }))
 const ordersKeys  = getRegisteredModule('orders')!.actions.map(a => a.actionKey)
 const financeKeys = getRegisteredModule('finance')!.actions.map(a => a.actionKey)
@@ -282,19 +294,34 @@ describe('13-15. fail-closed, enforcement agreement, no regression', () => {
     assert.equal(isActionEnforced('task_management', 'edit'), false)
   })
 
-  test('the migration grants nothing to anybody', () => {
-    const executable = migrationSql.replace(/^--.*$/gm, '')
+  test('the migration grants only the owner-approved employee overrides', () => {
+    // This test used to assert the migration granted NOTHING. That changed by
+    // owner decision on 2026-08-14: the approved grants are applied in the same
+    // transaction as the Orders narrowing, so the named users never experience a
+    // window where their access has been removed and not yet restored. What
+    // must still hold is that nothing INHERITABLE is granted, and that no
+    // quotation authority is handed out at all.
     assert.ok(
-      !/insert into public\.employee_permission_overrides/i.test(executable),
-      'no employee may be granted a new action by this migration',
-    )
-    assert.ok(
-      !/insert into public\.role_permissions/i.test(executable),
+      !/insert into public\.role_permissions/i.test(statementsSql),
       'no role default may grant a new action',
     )
     assert.ok(
-      /default_allowed\)\s*\n?\s*select pm\.id, pa\.id, false/.test(executable),
-      'every registration must be deny-by-default',
+      !/insert into public\.department_permissions/i.test(statementsSql),
+      'no department default may grant a new action',
+    )
+    const block = grantStatement
+    assert.ok(
+      !/view_quotations|manage_quotations/.test(block),
+      'no quotation authority may be granted — the register stays with System Admin',
+    )
+    assert.ok(
+      /default_allowed\)\s*\n?\s*select pm\.id, pa\.id, false/.test(statementsSql),
+      'every registration must still be deny-by-default',
+    )
+    // Grants are guarded on the person being active and not soft-deleted.
+    assert.ok(
+      /u\.is_active[\s\S]{0,80}coalesce\(u\.is_deleted, false\) = false/.test(block),
+      'grants must fail closed on an inactive or deleted employee',
     )
   })
 
@@ -438,6 +465,100 @@ describe('13-15. fail-closed, enforcement agreement, no regression', () => {
         !new RegExp(`drop policy[^\\n]*${survivor}`).test(executable),
         `${survivor} must survive`,
       )
+    }
+  })
+
+  test('the approved employee grants are exactly the ones agreed', () => {
+    // The VALUES block in section 3e, parsed rather than eyeballed.
+    const block = grantStatement
+    const granted = new Set(
+      [...block.matchAll(/\('([0-9a-f-]{36})'::uuid, '(\w+)',\s*'(\w+)'\)/g)]
+        .map(([, user, mod, action]) => `${user}:${mod}.${action}`),
+    )
+
+    const DHRUV  = '61f4a1f7-3c2a-435f-abca-f884301dcc96'
+    const JASVI  = 'fcf8bbf9-0cc4-4a6e-ba64-1143b14ef4a2'
+    const ADITYA = '973b4337-9cae-4f66-8e7f-b158326cdc10'
+    const SALES  = {
+      ashok:   'a3d157da-9eef-4d81-9aa6-84b4aa6061d6',
+      mohit:   'f8039454-9152-452d-8d33-261f58a471af',
+      prerna:  '9322e802-7203-456d-8986-ca625f3a8b77',
+      saksham: 'b37c5ae7-b03f-4dd8-ad4c-3a210caff1f8',
+      shravi:  'fb6eec18-f60c-4210-a712-f265f6732557',
+    }
+
+    const expected = [
+      `${DHRUV}:orders.view`, `${DHRUV}:orders.view_all`,
+      `${DHRUV}:finance.view`, `${DHRUV}:finance.view_all`,
+      `${JASVI}:orders.view`, `${JASVI}:orders.view_all`,
+      `${ADITYA}:orders.view`, `${ADITYA}:orders.view_all`,
+      ...Object.values(SALES).flatMap(id => [`${id}:orders.view`, `${id}:finance.view`]),
+    ]
+    assert.deepEqual([...granted].sort(), expected.sort())
+  })
+
+  test('Jasvi and Aditya get no Finance grant of any kind', () => {
+    const block = grantStatement
+    for (const [who, id] of [
+      ['Jasvi', 'fcf8bbf9-0cc4-4a6e-ba64-1143b14ef4a2'],
+      ['Aditya', '973b4337-9cae-4f66-8e7f-b158326cdc10'],
+    ]) {
+      const rows = [...block.matchAll(new RegExp(`\\('${id}'::uuid, '(\\w+)',\\s*'(\\w+)'\\)`, 'g'))]
+      assert.ok(rows.length > 0, `${who} must appear`)
+      for (const [, mod] of rows) {
+        assert.notEqual(mod, 'finance', `${who} must receive no Finance grant`)
+      }
+    }
+    // And the migration proves it through the engine, not just by omission.
+    assert.ok(
+      /Jasvi resolves Finance access, which was explicitly withheld/.test(migrationSql),
+      'a post-condition must assert Jasvi resolves no Finance',
+    )
+  })
+
+  test('Sales employees get owned-payment visibility, never global', () => {
+    const block = grantStatement
+    for (const id of [
+      'a3d157da-9eef-4d81-9aa6-84b4aa6061d6', 'f8039454-9152-452d-8d33-261f58a471af',
+      '9322e802-7203-456d-8986-ca625f3a8b77', 'b37c5ae7-b03f-4dd8-ad4c-3a210caff1f8',
+      'fb6eec18-f60c-4210-a712-f265f6732557',
+    ]) {
+      const actions = [...block.matchAll(new RegExp(`\\('${id}'::uuid, '(\\w+)',\\s*'(\\w+)'\\)`, 'g'))]
+        .map(([, mod, action]) => `${mod}.${action}`)
+      assert.deepEqual(actions.sort(), ['finance.view', 'orders.view'])
+      assert.ok(!actions.includes('orders.view_all'))
+      assert.ok(!actions.includes('finance.view_all'))
+    }
+    // Their reach is bounded by policies this migration does not touch.
+    for (const survivor of [
+      'finance_payment_requests_own_select',
+      'finance_payment_requests_order_request_owner_select',
+      'finance_payment_requests_order_request_assignee_select',
+    ]) {
+      assert.ok(
+        !new RegExp(`drop policy[^\\n]*${survivor}`).test(statementsSql),
+        `${survivor} must survive — it is what scopes Sales to their own payments`,
+      )
+    }
+  })
+
+  test('grants are employee overrides only — no role or department rows', () => {
+    assert.ok(!/insert into public\.role_permissions/i.test(statementsSql))
+    assert.ok(!/insert into public\.department_permissions/i.test(statementsSql))
+    // Upsert must re-assert a soft-revoked row, not skip it.
+    assert.ok(
+      /on conflict \(user_id, module_id, action_id\) do update[\s\S]{0,200}revoked_at = null/.test(statementsSql),
+      'the upsert must clear a previous soft revocation',
+    )
+  })
+
+  test('only view and view_all are ever granted — no mutation', () => {
+    const block = grantStatement
+    const actions = [...block.matchAll(/\('[0-9a-f-]{36}'::uuid, '\w+',\s*'(\w+)'\)/g)]
+      .map(([, action]) => action)
+    assert.ok(actions.length === 18, `expected 18 grants, got ${actions.length}`)
+    for (const action of new Set(actions)) {
+      assert.ok(['view', 'view_all'].includes(action), `${action} is not a viewing action`)
     }
   })
 
