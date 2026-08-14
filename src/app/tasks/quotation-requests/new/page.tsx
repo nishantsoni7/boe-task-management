@@ -11,6 +11,8 @@ import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_A
 import { Paperclip, X, Info } from 'lucide-react'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 
 // Every quotation request is assigned to this user (resolved by email at init).
 const DEFAULT_QUOTATION_OWNER = 'admin@bestofexports.com'
@@ -57,6 +59,16 @@ export default function NewQuotationRequestPage() {
           supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
           supabase.from('users').select('id').eq('email', DEFAULT_QUOTATION_OWNER).single(),
         ])
+
+        // Raising a quotation request is a quotation OPERATION, so it needs
+        // manage_quotations — view alone opens the register, not the form.
+        // Checked before the form is shown rather than only on submit, so a
+        // direct URL cannot present a form the save would refuse.
+        const taskPerms = await getEffectivePermissions(supabase, session.user.id, 'task_management').catch(() => [])
+        if (!deriveQuotationCapabilities(profileData?.role, taskPerms).canManageQuotations) {
+          router.replace('/tasks/my')
+          return
+        }
 
         if (profileData) setProfile(profileData as UserProfile)
         if (ownerData)   setQuotationOwnerId(ownerData.id)

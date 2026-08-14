@@ -39,6 +39,16 @@ import type { EffectivePermission } from './types'
 export type OrdersCapabilities = {
   /** May open Order Management at all. Says nothing about which orders are visible. */
   canAccessOrdersModule: boolean
+  /**
+   * May see EVERY order in the company, not only the ones the ownership rules
+   * allow. Backed by the protected `view_all` action and by the RLS policies
+   * 20260903000000 repoints at it.
+   *
+   * Says nothing about acting on those orders, and nothing about Finance: it
+   * reveals no price, payment, payment summary or finance record. Those stay
+   * behind finance.view_all and the Finance policies.
+   */
+  canViewAllOrders: boolean
   canCreateOrder: boolean
   /**
    * May edit an order or request they are permitted to act on. WHICH records
@@ -59,6 +69,7 @@ export type OrdersCapabilities = {
 
 export const NO_ORDERS_CAPABILITIES: OrdersCapabilities = {
   canAccessOrdersModule: false,
+  canViewAllOrders: false,
   canCreateOrder: false,
   canEditOrder: false,
   canApproveOrder: false,
@@ -78,6 +89,10 @@ export function deriveOrdersCapabilities(
   if (role === 'admin') {
     return {
       canAccessOrdersModule: true,
+      // An admin already sees every order through orders_admin_select, which
+      // 20260903000000 leaves untouched. Reported as true so the UI matches
+      // what the database does rather than resolving a grant admins don't need.
+      canViewAllOrders: true,
       canCreateOrder: true,
       canEditOrder: true,
       canApproveOrder: true,
@@ -98,6 +113,7 @@ export function deriveOrdersCapabilities(
 
   return {
     canAccessOrdersModule,
+    canViewAllOrders: withEntry('view_all'),
     canCreateOrder: withEntry('create'),
     canEditOrder: withEntry('edit'),
     canApproveOrder: withEntry('approve'),

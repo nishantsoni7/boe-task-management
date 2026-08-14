@@ -613,12 +613,27 @@ This document should remain the primary source of operational rules for BOE Task
    Manager adds `approve` and `export` only where the module registers them.
 3. **Protected permissions are Custom-only** — `delete`, `admin`, `manage`,
    `assign`, `dispatch`, `receive`, `mark_lost`, `close`,
-   `can_be_order_assignee`. No standard level grants any of them at any module.
+   `can_be_order_assignee`, `view_quotations`, `manage_quotations`, `view_all`.
+   No standard level grants any of them at any module.
 4. **A standard level clears protected permissions**, after naming them and
    asking. Anyone holding one therefore reads as Custom.
 5. **`assign` is separable from `edit`, `delete` and `manage`.** Handing out a
    laptop and writing one off are different decisions.
 6. **`can_be_order_assignee` is never implied** by Manager or by `manage`.
+7. **Module entry is not company-wide sight.** `orders.view` and `finance.view`
+   open a module and leave record visibility to the ownership rules;
+   `orders.view_all` and `finance.view_all` are what widen it. The two are
+   granted per module and neither implies the other, so seeing every order
+   reveals no price, payment or finance record. Neither implies any authority to
+   act — no edit, approve, manage, delete, export or assignee eligibility.
+   (`orders.view` carried company-wide sight until `20260903000000`; that was a
+   defect, not the rule.)
+8. **Quotation data is commercially sensitive.** Ordinary Task Management access
+   reaches no quotation register, request form or customer commercial detail;
+   those need `view_quotations`, and creating/editing/approving/sharing needs
+   `manage_quotations` on top of it. A quotation request that is somebody's
+   assigned task stays visible to them as a task — only the quotation framing
+   and the customer's details are withheld.
 7. **System Administrators are not editable here.** `users.role = 'admin'` is
    the authority; the grid is locked and no PUT is issued for them.
 8. **Inactive and soft-deleted users are denied**, admins included. Deactivating

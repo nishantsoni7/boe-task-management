@@ -68,6 +68,15 @@ export const ACCESS_LEVEL_LABELS: Record<AccessLevel, { label: string; descripti
  *   can_be_order_assignee  eligibility to be named on an Order Request. Granted
  *                          only per person by design (20260697000000) — never
  *                          via a role or a preset.
+ *   view_quotations        quotation requests and their customer contact
+ *   manage_quotations      details. Commercially sensitive, so ordinary Task
+ *                          Management access must not reach them.
+ *   view_all               company-wide sight — every order, or every payment
+ *                          record. Registered against Orders and Finance
+ *                          separately by 20260903000000, so the two are granted
+ *                          independently and neither implies the other. It was
+ *                          `orders.view` that carried this until that migration,
+ *                          which is the defect it corrects.
  *
  * Payroll generation/adjustment/lock-unlock, attendance import and correction,
  * permanent deletion, password reset and employee access changes are NOT in
@@ -87,10 +96,95 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   'mark_lost',
   'close',
   'can_be_order_assignee',
+  'view_quotations',
+  'manage_quotations',
+  'view_all',
 ])
 
 export function isProtectedAction(actionKey: string): boolean {
   return PROTECTED_ACTIONS.has(actionKey)
+}
+
+/**
+ * Actions that are meaningless — or unsafe — without another action alongside
+ * them, as `child → parent`.
+ *
+ * These are not a second permission model. They are the same "a grant must have
+ * somewhere to act" rule that needsViewNormalization already applies to `view`,
+ * extended to the pairs where the parent is itself narrower than the module.
+ * Managing quotations without being able to see one is not a coherent state,
+ * and company-wide sight of a module nobody can open is a grant with nowhere to
+ * land.
+ *
+ * Chains resolve transitively: manage_quotations → view_quotations → view.
+ */
+export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
+  manage_quotations: 'view_quotations',
+  view_quotations:   'view',
+  view_all:          'view',
+}
+
+/** Every action `actionKey` depends on, nearest first. Cycle-safe. */
+export function actionDependencyChain(actionKey: string): string[] {
+  const chain: string[] = []
+  const seen = new Set<string>([actionKey])
+  let current = ACTION_DEPENDENCIES[actionKey]
+  while (current && !seen.has(current)) {
+    chain.push(current)
+    seen.add(current)
+    current = ACTION_DEPENDENCIES[current]
+  }
+  return chain
+}
+
+/**
+ * The actions that must be switched ON alongside the ones being granted.
+ *
+ * Applied to a Custom save so that ticking Manage Quotations cannot store an
+ * authority the person could never exercise. Only ever adds, and only ever adds
+ * actions the module actually registers.
+ */
+export function withRequiredDependencies(
+  allowedActions: readonly string[],
+  moduleActionKeys: readonly string[],
+): string[] {
+  const registered = new Set(moduleActionKeys)
+  const out = new Set(allowedActions)
+  for (const action of allowedActions) {
+    for (const dependency of actionDependencyChain(action)) {
+      if (registered.has(dependency)) out.add(dependency)
+    }
+  }
+  return moduleActionKeys.filter(action => out.has(action))
+}
+
+/**
+ * The actions that must come OFF when `actionKey` is switched off — everything
+ * that depends on it, transitively.
+ *
+ * This is the half that matters for safety. Removing View Quotations has to
+ * take Manage Quotations with it, or an administrator would believe they had
+ * withdrawn quotation access while the stronger grant survived — the same
+ * failure mode applyPresetToActions was corrected for.
+ */
+export function dependentActionsToRemove(
+  actionKey: string,
+  moduleActionKeys: readonly string[],
+): string[] {
+  const removed = new Set([actionKey])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const key of moduleActionKeys) {
+      if (removed.has(key)) continue
+      if (actionDependencyChain(key).some(dependency => removed.has(dependency))) {
+        removed.add(key)
+        changed = true
+      }
+    }
+  }
+  removed.delete(actionKey)
+  return moduleActionKeys.filter(key => removed.has(key))
 }
 
 /**

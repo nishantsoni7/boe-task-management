@@ -72,10 +72,14 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   //             cancel_order
   //   delete  → admin_delete_order_request, plus the delete API route
   // create/edit stay on the existing admin-or-assigned ownership rule.
+  // 'view_all' added by 20260903000000: it is what the two blanket SELECT
+  // policies on orders and order_activity_log now require. Before that
+  // migration those policies keyed on 'view', so module entry silently carried
+  // company-wide sight — the defect this corrects.
   orders: {
     state: 'partial',
-    enforcedActions: ['view', 'approve', 'manage', 'delete', 'can_be_order_assignee'],
-    detail: 'Opening the module, approving, managing, deleting and assignee eligibility are enforced. Create and edit still follow the admin-or-assigned rule.',
+    enforcedActions: ['view', 'view_all', 'approve', 'manage', 'delete', 'can_be_order_assignee'],
+    detail: 'Opening the module, seeing all company orders, approving, managing, deleting and assignee eligibility are enforced. Create and edit still follow the admin-or-assigned rule.',
   },
 
   // Cut over by the same migration:
@@ -91,10 +95,26 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // 20260901000000 is APPLIED. The screens already resolve these capabilities,
   // so shipping the frontend ahead of the migration would offer controls the
   // database still refuses.
+  // 'view_all' added by 20260903000000 as a new RLS policy on
+  // finance_payment_requests and its activity log. Additive: Finance never had
+  // a blanket SELECT policy, so ownership-scoped visibility is unchanged for
+  // anyone without it.
   finance: {
     state: 'partial',
-    enforcedActions: ['approve', 'manage', 'delete'],
-    detail: 'Approve, correct/reverse and delete are enforced. View, create and edit still follow record ownership.',
+    enforcedActions: ['approve', 'manage', 'delete', 'view_all'],
+    detail: 'Approve, correct/reverse, delete and seeing all company payments are enforced. View, create and edit still follow record ownership.',
+  },
+
+  // The quotation actions are enforced in the app — the navigation, the
+  // /tasks/quotation-requests routes and the quotation fields on task detail.
+  // They are deliberately NOT enforced by RLS: a quotation request is assigned
+  // work, and hiding the row would take an assignee's own task away from them.
+  // See the limitation recorded in docs/Module Docs/ACCESS_CONTROL_V1.md.
+  // view/create/edit/delete/export/manage remain unchecked for this module.
+  task_management: {
+    state: 'partial',
+    enforcedActions: ['view_quotations', 'manage_quotations'],
+    detail: 'The two quotation permissions are enforced in the screens and routes. The other Task Management actions are saved but not yet used.',
   },
 
   // Management Attendance and Payroll read the whole company and are admin-only

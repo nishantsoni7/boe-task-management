@@ -539,8 +539,16 @@ Employee Records
 
 ## Access Control V1
 
-Status: **implemented on `feature/access-control-v1`, not deployed.** Migrations
-`20260901000000` and `20260902000000` are written and unapplied.
+Status: **`20260901000000` and `20260902000000` applied to production and parity-
+verified (2026-08-14); frontend merged to `main`.** A follow-up migration,
+`20260903000000_protected_visibility_actions.sql`, is **written and unapplied** —
+it adds three protected, Custom-only actions and corrects a production finding
+that `orders.view` was granting company-wide sight of every order through the
+blanket SELECT policies in `20260685000000`/`20260686000000`. Applying it
+NARROWS Orders visibility for anyone holding `orders.view` without the new
+`orders.view_all`. See
+[ACCESS_CONTROL_V1.md](../Module%20Docs/ACCESS_CONTROL_V1.md) for the full rule
+set, the Finance/Orders asymmetry, and the quotation enforcement limitation.
 
 One administrator workflow — Control Center → Access Control — replaced the two
 that could disagree with each other (Module Visibility and Access Control).

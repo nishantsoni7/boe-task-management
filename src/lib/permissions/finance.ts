@@ -33,6 +33,15 @@ import type { EffectivePermission } from './types'
 export type FinanceCapabilities = {
   /** May open Finance at all. Says nothing about which records are visible. */
   canAccessFinanceModule: boolean
+  /**
+   * May see EVERY payment record in the company, not only their own and the
+   * ones their order participation already allows. Backed by the protected
+   * `view_all` action and the RLS policies 20260903000000 adds.
+   *
+   * Read-only by construction: it implies no create, edit, approve, manage,
+   * delete or export, and holding orders.view_all does not confer it.
+   */
+  canViewAllFinance: boolean
   /** May raise a new payment request. */
   canCreatePaymentRecord: boolean
   /**
@@ -62,6 +71,7 @@ export type FinanceCapabilities = {
 
 export const NO_FINANCE_CAPABILITIES: FinanceCapabilities = {
   canAccessFinanceModule: false,
+  canViewAllFinance: false,
   canCreatePaymentRecord: false,
   canEditPaymentRecord: false,
   canApprovePayment: false,
@@ -78,6 +88,9 @@ export function deriveFinanceCapabilities(
   if (role === 'admin') {
     return {
       canAccessFinanceModule: true,
+      // Admins already match finance_payment_requests_admin_select, which
+      // 20260903000000 does not touch.
+      canViewAllFinance: true,
       canCreatePaymentRecord: true,
       canEditPaymentRecord: true,
       canApprovePayment: true,
@@ -105,6 +118,7 @@ export function deriveFinanceCapabilities(
 
   return {
     canAccessFinanceModule,
+    canViewAllFinance: withEntry('view_all'),
     canCreatePaymentRecord: withEntry('create'),
     canEditPaymentRecord: withEntry('edit'),
     canApprovePayment: withEntry('approve'),

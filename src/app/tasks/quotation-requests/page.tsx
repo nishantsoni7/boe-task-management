@@ -16,6 +16,8 @@ import {
   filtersActive,
   type DateFilterKey, type QuotationFilters,
 } from './filters'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
@@ -222,6 +224,19 @@ function QuotationRequestsContent() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
       setLoggedInId(session.user.id)
+
+      // This whole screen is quotation-specific, so it is gated rather than
+      // filtered. Someone without the permission is sent to their ordinary task
+      // list — their assigned quotation tasks are still there, without the
+      // customer's commercial details. Denied BEFORE the query runs, so a
+      // direct URL never fetches a row it may not show.
+      const { data: me } = await supabase
+        .from('users').select('role').eq('id', session.user.id).single()
+      const taskPerms = await getEffectivePermissions(supabase, session.user.id, 'task_management').catch(() => [])
+      if (!deriveQuotationCapabilities(me?.role, taskPerms).canViewQuotations) {
+        router.replace('/tasks/my')
+        return
+      }
 
       const { data } = await supabase
         .from('tasks')
