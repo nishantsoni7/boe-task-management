@@ -32,6 +32,20 @@ export async function POST(req: NextRequest) {
   )
 
   // Trusted admin authorization (server-side; never trust the client).
+  //
+  // DELIBERATELY NOT moved onto orders.manage, unlike the sibling delete route.
+  // Two reasons, and the scoping of the storage targets is not one of them —
+  // that part is safe (paths come from the database, never from the browser):
+  //
+  //   1. This is not an Order Management action. It is the storage half of Test
+  //      Data Cleanup, an admin-only feature with its own confirmation gates and
+  //      audit trail. orders.manage means amending and cancelling orders; it
+  //      does not mean running a bulk maintenance purge.
+  //   2. It deletes objects while LEAVING the request row behind, so it is only
+  //      ever correct as one step of a larger operation the caller owns. Handing
+  //      that step to a permission that has no notion of the larger operation
+  //      would let it be invoked on its own, stranding rows whose attachments
+  //      are gone.
   const { data: me, error: roleErr } = await service
     .from('users').select('role').eq('id', user.id).maybeSingle()
   if (roleErr) return NextResponse.json({ error: 'Authorization check failed.' }, { status: 500 })

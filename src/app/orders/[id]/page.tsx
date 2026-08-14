@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import {
+  deriveOrdersCapabilities,
+  NO_ORDERS_CAPABILITIES,
+  type OrdersCapabilities,
+} from '@/lib/permissions/orders'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
@@ -398,6 +404,9 @@ function StatusControl({
 export default function OrderDetailPage() {
   const [pageLoading,   setPageLoading]   = useState(true)
   const [profile,       setProfile]       = useState<UserProfile | null>(null)
+  // Orders authority for the SIGNED-IN user. Starts empty so the amendment
+  // controls cannot render before the resolver answers.
+  const [ordersCaps,    setOrdersCaps]    = useState<OrdersCapabilities>(NO_ORDERS_CAPABILITIES)
   const [order,         setOrder]         = useState<Order | null>(null)
   const [payments,      setPayments]      = useState<LinkedPayment[]>([])
   const [activity,      setActivity]      = useState<ActivityEntry[]>([])
@@ -511,6 +520,9 @@ export default function OrderDetailPage() {
         .single()
 
       setProfile(me as UserProfile)
+
+      const ordersPerms = await getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => [])
+      setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
       await loadOrder()
 
       if ((me as UserProfile | null)?.role === 'admin') {
@@ -537,8 +549,12 @@ export default function OrderDetailPage() {
   // View As never lends authority, so an admin previewing someone else's view
   // does not keep the direct door — same rule the cleanup button already uses.
   const actingAsAdmin = profile?.role === 'admin' && !viewAsUserId
-  const canAmend   = order ? canAmendOrderDirectly(actingAsAdmin ? profile : { role: 'member' }, order) : false
-  const canRequest = order ? canRequestOrderChange(actingAsAdmin ? profile : { role: 'member' }, order) : false
+  // orders.manage opens the same direct door. Resolved for the SIGNED-IN
+  // user and suppressed under View As for exactly the reason above: viewing
+  // as someone else must not lend them your authority.
+  const mayManageOrders = ordersCaps.canManageOrders && !viewAsUserId
+  const canAmend   = order ? canAmendOrderDirectly(actingAsAdmin ? profile : { role: 'member' }, order, mayManageOrders) : false
+  const canRequest = order ? canRequestOrderChange(actingAsAdmin ? profile : { role: 'member' }, order, mayManageOrders) : false
 
   const myPendingEdit = !!(order && profile) &&
     hasPendingChangeRequest(changeRequests, order.id, profile.id, 'edit')
@@ -967,7 +983,7 @@ export default function OrderDetailPage() {
         <CancelOrderModal
           order={amendableOrder}
           supabase={supabase}
-          isAdmin={actingAsAdmin}
+          isAdmin={actingAsAdmin || mayManageOrders}
           onClose={() => setCancelOpen(false)}
           onDone={afterChange}
         />
