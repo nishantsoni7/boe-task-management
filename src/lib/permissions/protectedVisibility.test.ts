@@ -35,6 +35,20 @@ const MIGRATION = join(
 )
 const migrationSql = readFileSync(MIGRATION, 'utf8')
 
+/** The file with `--` comments removed — the ROLLBACK block is comments too. */
+const executableSql = migrationSql.replace(/^\s*--.*$/gm, '')
+
+/**
+ * Executable SQL minus `comment on ... ;` statements. Those carry prose that
+ * legitimately quotes migration numbers and action names, which would otherwise
+ * trip the "does not touch 901/902" and "no policy resolves task_management"
+ * assertions below.
+ */
+const statementsSql = executableSql.replace(/comment on [\s\S]*?;/g, '')
+
+/** Every `create policy` statement in the migration, as text. */
+const createPolicyStatements = [...statementsSql.matchAll(/create policy [\s\S]*?;/g)].map(m => m[0])
+
 const allow = (...keys: string[]) => keys.map(k => ({ actionKey: k, allowed: true, source: 'employee_override' as const }))
 const ordersKeys  = getRegisteredModule('orders')!.actions.map(a => a.actionKey)
 const financeKeys = getRegisteredModule('finance')!.actions.map(a => a.actionKey)
@@ -305,12 +319,135 @@ describe('13-15. fail-closed, enforcement agreement, no regression', () => {
     assert.equal(isActionEnforced('payroll', 'view_all'), false)
   })
 
-  test('the migration never edits an applied migration', () => {
-    const executable = migrationSql.replace(/^--.*$/gm, '')
-    assert.ok(!/20260901000000|20260902000000/.test(executable))
+  test('task attachments are scoped to the parent task, both parent paths', () => {
+    // Production-observed defect: task_attachments_read was USING (true), so
+    // every authenticated account could read every attachment in the company.
+    const policy = createPolicyStatements.find(s => s.includes('"task_attachments_read"'))!
+
+    assert.ok(/drop policy if exists "task_attachments_read"/.test(statementsSql))
+    // Checked against executable SQL only: the ROLLBACK block at the foot of
+    // the file deliberately shows the old USING (true) policy, in comments.
+    const created = createPolicyStatements.filter(s => s.includes('"task_attachments_read"'))
+    assert.equal(created.length, 1, 'exactly one replacement policy')
     assert.ok(
-      !/create or replace function/i.test(executable),
-      'this migration must not redefine any function 20260901000000 owns',
+      !/using\s*\(\s*true\s*\)/.test(created[0]),
+      'the replacement must not be globally readable',
+    )
+
+    // Both ownership branches, and all three ownership columns in each.
+    for (const column of ['created_by', 'assigned_to', 'delegated_by']) {
+      assert.ok(policy.includes(column), `${column} must be part of the boundary`)
+    }
+    // task_attachments has TWO parents (task_id, activity_log_id) with a CHECK
+    // that one is set. Keying only on task_id would hide every activity-log
+    // attachment.
+    assert.ok(policy.includes('task_attachments.task_id'), 'direct task parent must be authorized')
+    assert.ok(
+      /task_activity_log l[\s\S]{0,200}join public\.tasks t on t\.id = l\.task_id/.test(policy),
+      'the activity-log parent path must be authorized through task_activity_log.task_id',
+    )
+  })
+
+  test('the task attachment fix adds no admin branch and no write change', () => {
+    const policy = createPolicyStatements.find(s => s.includes('"task_attachments_read"'))!
+    // The production `tasks` SELECT policy has no admin branch, so adding one
+    // here would grant NEW authority and leave the child broader than its
+    // parent — the very defect being fixed.
+    assert.ok(!/role\s*=\s*'admin'/.test(policy), 'no admin branch may be introduced')
+    const executable = migrationSql.replace(/^--.*$/gm, '')
+    assert.ok(
+      !/drop policy[^\n]*task_attachments_(insert|delete)/.test(executable),
+      'attachment write policies must be untouched',
+    )
+  })
+
+  test('quotation permissions do not widen ordinary task or attachment access', () => {
+    // task_management.view_quotations must not appear in any RLS policy: the
+    // quotation gate is a screen gate, and widening the task boundary with it
+    // would hand quotation holders other people's tasks.
+    // 'task_management' legitimately appears in the action REGISTRATION. What
+    // must never happen is a POLICY resolving it — that would widen the task
+    // boundary itself and hand quotation holders other people's tasks.
+    for (const statement of createPolicyStatements) {
+      assert.ok(
+        !/task_management|view_quotations|manage_quotations/.test(statement),
+        `no policy may resolve a quotation action: ${statement.slice(0, 60)}`,
+      )
+    }
+  })
+
+  test('orders.view_all reaches every audited operational child record', () => {
+    const executable = migrationSql.replace(/^--.*$/gm, '')
+    for (const table of [
+      'orders', 'order_activity_log', 'order_requests',
+      'order_request_activity', 'order_request_attachments', 'order_change_requests',
+    ]) {
+      const policy = executable.slice(executable.indexOf(`on public.${table}\n`))
+      assert.ok(
+        /resolve_permission\(auth\.uid\(\), 'orders', 'view_all'\)/.test(policy.slice(0, 300)),
+        `${table} must be reachable by orders.view_all`,
+      )
+    }
+  })
+
+  test('orders.view_all cannot reach any Finance table', () => {
+    const executable = migrationSql.replace(/^--.*$/gm, '')
+    for (const table of [
+      'finance_payment_requests', 'finance_payment_request_activity_log',
+      'payment_proof_attachments',
+    ]) {
+      const policy = executable.slice(executable.indexOf(`on public.${table}\n`)).slice(0, 300)
+      assert.ok(
+        /resolve_permission\(auth\.uid\(\), 'finance', 'view_all'\)/.test(policy),
+        `${table} must be gated on finance.view_all`,
+      )
+      assert.ok(
+        !/'orders'/.test(policy),
+        `${table} must not be satisfiable by an Orders grant`,
+      )
+    }
+  })
+
+  test('finance.view_all reaches records, activity AND proof attachments', () => {
+    for (const policyName of [
+      'finance_payment_requests_view_all_select',
+      'finance_payment_request_activity_log_view_all_select',
+      'payment_proof_attachments_view_all_select',
+    ]) {
+      assert.ok(
+        migrationSql.includes(`create policy "${policyName}"`),
+        `${policyName} must exist`,
+      )
+    }
+  })
+
+  test('neither view_all grants mutation authority anywhere', () => {
+    const executable = migrationSql.replace(/^--.*$/gm, '')
+    // Every policy this migration creates is FOR SELECT.
+    const created = [...executable.matchAll(/create policy "([^"]+)"[\s\S]{0,160}?for (\w+)/g)]
+    assert.ok(created.length >= 10, 'sanity: policies were found to inspect')
+    for (const [, name, cmd] of created) {
+      assert.equal(cmd, 'select', `${name} must be a SELECT policy`)
+    }
+    // And no ownership policy is dropped to make room for one.
+    for (const survivor of [
+      'finance_payment_requests_own_select', 'orders_sales_select',
+      'orders_admin_select', 'orders_operations_select',
+    ]) {
+      assert.ok(
+        !new RegExp(`drop policy[^\\n]*${survivor}`).test(executable),
+        `${survivor} must survive`,
+      )
+    }
+  })
+
+  test('the migration never edits an applied migration', () => {
+    // `comment on` prose cites 20260901000000 by design; statements must not
+    // touch anything it owns.
+    assert.ok(!/20260901000000|20260902000000/.test(statementsSql))
+    assert.ok(
+      !/create or replace function|drop function/i.test(statementsSql),
+      'this migration must not redefine or drop any function 20260901000000 owns',
     )
   })
 })
