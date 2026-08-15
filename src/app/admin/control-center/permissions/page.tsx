@@ -19,6 +19,7 @@ import {
   ACCESS_LEVELS,
   ACCESS_LEVEL_LABELS,
   presetAllowedActions,
+  enableModuleEntry,
   detectAccessLevel as detectLevelForActions,
   protectedActionsClearedByPreset,
   type AccessLevel,
@@ -1098,29 +1099,52 @@ export default function PermissionsPage() {
     })
   }
 
-  // Applies a preset by writing explicit overrides — except for actions that
-  // have no employee override today (source !== 'employee_override') whose
-  // inherited value already matches the preset. Those are left as 'inherit'
-  // so re-picking an already-matching level doesn't create needless
-  // employee_permission_overrides rows on save; save() already no-ops any
-  // choice that ends up equal to its initialOverrides entry.
-  function applyAccessLevel(mod: ModuleState, level: PresetLevel) {
-    const actionKeys = mod.actions.map(a => a.actionKey)
-    const preset = presetAllowedActions(level, actionKeys)
+  // The ONE place per-action override state is written.
+  //
+  // `deriveDesired` receives the module's current effective map — including any
+  // unsaved edits — and returns the intended one. Splitting "what do we want"
+  // from "how is it stored" is what lets the level buttons and the Module access
+  // checkbox share a write path while holding genuinely different intentions: a
+  // level states every action, the checkbox states only `view`.
+  //
+  // The current map is read from `prev` INSIDE the updater rather than from the
+  // `overrides` closure, so two edits applied in the same tick cannot read a
+  // stale map and undo one another.
+  //
+  // Writes explicit overrides — except for actions that have no employee
+  // override today (source !== 'employee_override') whose inherited value
+  // already matches what is wanted. Those are left as 'inherit' so re-applying
+  // an already-matching state doesn't create needless
+  // employee_permission_overrides rows on save; save() already no-ops any choice
+  // that ends up equal to its initialOverrides entry.
+  function applyDesiredActions(
+    mod: ModuleState,
+    deriveDesired: (current: Record<string, boolean>) => Record<string, boolean>,
+  ) {
     setOverrides(prev => {
+      const desired = deriveDesired(effectiveMapForModule(mod, prev))
       const next = new Map(prev)
       for (const action of mod.actions) {
         const key = overrideKey(mod.moduleKey, action.actionKey)
-        const desired = preset[action.actionKey]
+        const want = desired[action.actionKey] === true
         const hasExistingOverride = action.source === 'employee_override'
-        if (!hasExistingOverride && desired === action.allowed) {
+        if (!hasExistingOverride && want === action.allowed) {
           next.set(key, 'inherit')
         } else {
-          next.set(key, desired ? 'allow' : 'deny')
+          next.set(key, want ? 'allow' : 'deny')
         }
       }
       return next
     })
+  }
+
+  // Picking a standard level. A preset is a COMPLETE statement about the module,
+  // so it ignores what is currently held — that is the whole point of choosing
+  // "Viewer", and it is why moving somebody down to it revokes what they had.
+  // Deliberately unchanged by the Module access fix below.
+  function applyAccessLevel(mod: ModuleState, level: PresetLevel) {
+    const actionKeys = mod.actions.map(a => a.actionKey)
+    applyDesiredActions(mod, () => presetAllowedActions(level, actionKeys))
   }
 
   /**
@@ -1129,15 +1153,30 @@ export default function PermissionsPage() {
    * The toggle is NOT a second authority. It is a shortcut into the same
    * per-action override state the level selector writes:
    *
-   *   Off  →  no_access   (every action for this module set to deny)
-   *   On   →  viewer      (view only), from which the administrator picks a level
+   *   Off  →  no_access            (every action for this module set to deny)
+   *   On   →  enableModuleEntry    (`view` true, every other action untouched)
    *
    * Because both controls write the same state and the level is derived back
    * out of it by detectAccessLevel, the two can never disagree — there is no
    * separate visibility boolean, and nothing extra is saved.
    *
-   * Turning a module OFF that holds protected actions removes them, so it asks
-   * first and names them, exactly as a standard level does.
+   * THE TWO DIRECTIONS ARE NOT SYMMETRICAL, on purpose.
+   *
+   * OFF is a complete statement — no access means no access — so it applies the
+   * no_access preset, and because that removes things it asks first and names
+   * them.
+   *
+   * ON is the smallest possible statement: let this person in. It says nothing
+   * about what they may do once inside, so it must not decide that for them.
+   * It used to apply the Viewer preset, which wrote an explicit deny over every
+   * child action the employee held — that is what erased Aditya's Sample
+   * Tracking dispatch, receive and mark_lost, silently, because the
+   * destructive-action confirmation only ever ran on the OFF path.
+   *
+   * There is deliberately NO confirmation on ON. Enabling a module can no longer
+   * remove anything, so there is nothing to warn about; adding a prompt here
+   * would train administrators to click through the one on OFF, which still
+   * matters.
    */
   function toggleModuleAccess(mod: ModuleState, on: boolean) {
     const actionKeys = mod.actions.map(a => a.actionKey)
@@ -1155,10 +1194,10 @@ export default function PermissionsPage() {
       return
     }
 
-    // Turning ON from No Access starts at Viewer. An existing Custom or
-    // standard grant is already "on", so the toggle never appears off for it
-    // and this branch cannot silently downgrade anybody.
-    applyAccessLevel(mod, 'viewer')
+    // Entry only. Every child action keeps exactly the value it already had, so
+    // an employee holding protected actions comes back as Custom rather than
+    // being flattened to Viewer.
+    applyDesiredActions(mod, current => enableModuleEntry(actionKeys, current))
   }
 
   // A plain computation, not useMemo: it is one pass over a Map of a few dozen

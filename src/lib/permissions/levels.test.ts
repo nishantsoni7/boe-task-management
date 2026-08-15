@@ -18,6 +18,7 @@ import {
   isProtectedAction,
   standardActionsForLevel,
   presetAllowedActions,
+  enableModuleEntry,
   applyPresetToActions,
   protectedActionsClearedByPreset,
   detectAccessLevel,
@@ -382,5 +383,174 @@ describe('allowedMapFromEffective', () => {
       { actionKey: 'delete', allowed: false, source: 'system_default' },
     ])
     assert.deepEqual(map, { view: true, delete: false })
+  })
+})
+
+// ── Switching MODULE ACCESS on ──────────────────────────────────────────────
+//
+// The regression this file exists to prevent recurring: enabling a module used
+// to apply the Viewer preset, which wrote an explicit deny over every child
+// action the employee held. It erased Aditya's Sample Tracking dispatch,
+// receive and mark_lost in production on 2026-08-15, silently — the
+// destructive-action confirmation only ever ran on the OFF path.
+
+// Task Management and the two view_all modules, with the protected actions the
+// shorter constants above omit.
+const TASKS = ['view', 'create', 'edit', 'delete', 'export', 'manage', 'view_quotations', 'manage_quotations']
+const ORDERS_FULL = [...ORDERS, 'view_all']
+const FINANCE_FULL = [...FINANCE, 'view_all']
+
+const allFalse = (keys: readonly string[]): Record<string, boolean> =>
+  Object.fromEntries(keys.map(k => [k, false]))
+
+describe('enabling a module preserves existing child permissions', () => {
+  // Aditya's exact production state on the day the defect fired.
+  const aditya: Record<string, boolean> = {
+    ...allFalse(SAMPLES),
+    view: false, dispatch: true, receive: true, mark_lost: true,
+  }
+
+  test('1. view goes true and every held child action survives', () => {
+    const next = enableModuleEntry(SAMPLES, aditya)
+    assert.equal(next.view, true)
+    assert.equal(next.dispatch, true)
+    assert.equal(next.receive, true)
+    assert.equal(next.mark_lost, true)
+  })
+
+  test('1b. the result reports as Custom, because it is', () => {
+    const next = enableModuleEntry(SAMPLES, aditya)
+    assert.equal(detectAccessLevel(SAMPLES, next), 'custom')
+  })
+
+  test('1c. nothing else was switched on as a side effect', () => {
+    const next = enableModuleEntry(SAMPLES, aditya)
+    assert.deepEqual(granted(next), ['dispatch', 'mark_lost', 'receive', 'view'])
+  })
+
+  test('2. with no child actions held, the result is exactly Viewer', () => {
+    const next = enableModuleEntry(SAMPLES, { ...allFalse(SAMPLES), view: false })
+    assert.equal(next.view, true)
+    assert.deepEqual(granted(next), ['view'])
+    assert.equal(detectAccessLevel(SAMPLES, next), 'viewer')
+    // Identical to what the Viewer preset would have produced — so the fix
+    // changes nothing for the case the old code got right.
+    assert.deepEqual(next, presetAllowedActions('viewer', SAMPLES))
+  })
+
+  test('3. no protected action is ever cleared, in any module', () => {
+    const cases: [string, readonly string[], string[]][] = [
+      ['quotations',   TASKS,        ['view_quotations', 'manage_quotations']],
+      ['orders',       ORDERS_FULL,  ['view_all', 'can_be_order_assignee', 'delete', 'manage']],
+      ['finance',      FINANCE_FULL, ['view_all', 'approve', 'delete', 'manage']],
+      ['assets',       ASSETS,       ['assign', 'manage', 'delete']],
+      ['payroll',      PAYROLL,      ['admin', 'manage']],
+    ]
+    for (const [name, keys, held] of cases) {
+      const current = { ...allFalse(keys), view: false, ...Object.fromEntries(held.map(k => [k, true])) }
+      const next = enableModuleEntry(keys, current)
+      for (const action of held) {
+        assert.equal(next[action], true, `${name}: ${action} must survive enabling the module`)
+      }
+      assert.equal(next.view, true, `${name}: view must be granted`)
+      assert.equal(
+        protectedActionsClearedByPreset('no_access', keys, next).length >= held.filter(isProtectedAction).length,
+        true,
+        `${name}: the held protected actions are still there to be reported`,
+      )
+    }
+  })
+
+  test('3b. only this module is described — no key from another module appears', () => {
+    const next = enableModuleEntry(SHOWROOM, { ...allFalse(SHOWROOM), view: false })
+    assert.deepEqual(Object.keys(next).sort(), [...SHOWROOM].sort())
+    assert.equal('dispatch' in next, false)
+    assert.equal('view_all' in next, false)
+  })
+
+  test('4. picking Viewer explicitly still applies the whole preset', () => {
+    // The contrast that matters: the checkbox preserves, the preset replaces.
+    const viaPreset = presetAllowedActions('viewer', SAMPLES)
+    assert.equal(viaPreset.dispatch, false)
+    assert.equal(viaPreset.receive, false)
+    assert.equal(viaPreset.mark_lost, false)
+    assert.equal(detectAccessLevel(SAMPLES, viaPreset), 'viewer')
+
+    const viaToggle = enableModuleEntry(SAMPLES, aditya)
+    assert.equal(viaToggle.dispatch, true)
+    assert.notDeepEqual(viaToggle, viaPreset)
+  })
+
+  test('4b. every preset still behaves exactly as before', () => {
+    for (const level of PRESET_LEVELS) {
+      const preset = presetAllowedActions(level, SAMPLES)
+      for (const action of SAMPLES) {
+        if (isProtectedAction(action)) assert.equal(preset[action], false, `${level}/${action}`)
+      }
+    }
+  })
+
+  test('5. turning OFF is unchanged — it still clears and still reports what goes', () => {
+    const cleared = protectedActionsClearedByPreset('no_access', SAMPLES, aditya)
+    assert.deepEqual(cleared.sort(), ['dispatch', 'mark_lost', 'receive'])
+    const off = presetAllowedActions('no_access', SAMPLES)
+    assert.deepEqual(granted(off), [])
+  })
+
+  test('the function is pure — the caller\u2019s map is never written to', () => {
+    const before = { ...aditya }
+    enableModuleEntry(SAMPLES, aditya)
+    assert.deepEqual(aditya, before)
+  })
+
+  test('applying it twice changes nothing further', () => {
+    const once = enableModuleEntry(SAMPLES, aditya)
+    assert.deepEqual(enableModuleEntry(SAMPLES, once), once)
+  })
+
+  test('a module that registers no view action is left exactly as it was', () => {
+    const noView = ['create', 'edit']
+    const current = { create: true, edit: false }
+    assert.deepEqual(enableModuleEntry(noView, current), current)
+  })
+
+  test('an absent key reads as false, never undefined', () => {
+    const next = enableModuleEntry(SAMPLES, { view: false, dispatch: true })
+    assert.equal(next.close, false)
+    assert.equal(next.manage, false)
+    assert.equal(next.dispatch, true)
+    assert.equal(next.view, true)
+  })
+})
+
+describe('enabling a module writes only the difference it intends', () => {
+  const SAMPLES_KEYS = SAMPLES
+
+  test('7. exactly one action changes value — view, and nothing else', () => {
+    const before: Record<string, boolean> = {
+      ...allFalse(SAMPLES_KEYS),
+      view: false, dispatch: true, receive: true, mark_lost: true,
+    }
+    const after = enableModuleEntry(SAMPLES_KEYS, before)
+    const changed = SAMPLES_KEYS.filter(k => (before[k] ?? false) !== after[k])
+    assert.deepEqual(changed, ['view'])
+  })
+
+  test('7b. re-enabling an already-enabled module changes nothing at all', () => {
+    const before: Record<string, boolean> = {
+      ...allFalse(SAMPLES_KEYS), view: true, dispatch: true,
+    }
+    const after = enableModuleEntry(SAMPLES_KEYS, before)
+    assert.deepEqual(SAMPLES_KEYS.filter(k => (before[k] ?? false) !== after[k]), [])
+  })
+
+  test('7c. by contrast, a preset legitimately changes many actions at once', () => {
+    const before: Record<string, boolean> = {
+      ...allFalse(SAMPLES_KEYS),
+      view: false, dispatch: true, receive: true, mark_lost: true,
+    }
+    const viewer = presetAllowedActions('viewer', SAMPLES_KEYS)
+    const changed = SAMPLES_KEYS.filter(k => (before[k] ?? false) !== viewer[k]).sort()
+    assert.deepEqual(changed, ['dispatch', 'mark_lost', 'receive', 'view'])
   })
 })
