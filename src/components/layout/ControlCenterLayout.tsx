@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, LayoutGrid, Building2, Users, ShieldCheck, History, X, ClipboardList, Hash, Eraser } from 'lucide-react'
+import { Home, LayoutGrid, Building2, Users, ShieldCheck, History, X, Hash, Eraser } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -113,12 +113,14 @@ export function ControlCenterLayout({
             active={pathname === '/admin/control-center/permissions'}
             onClick={() => navTo('/admin/control-center/permissions')}
           />
-          <NavItem
-            label="Action Queue"
-            icon={<ClipboardList size={15} strokeWidth={1.8} />}
-            active={pathname === '/admin/control-center/action-queue'}
-            onClick={() => navTo('/admin/control-center/action-queue')}
-          />
+          {/* Action Queue used to sit here. Every row it listed was a deep link
+              into Finance or Order Requests — it decided nothing, stored nothing
+              and configured nothing, so it was a second way to reach two
+              modules rather than a Control Center function of its own.
+              The ROUTE (/admin/control-center/action-queue) is deliberately
+              left in place so existing links and bookmarks still resolve, and
+              the Finance and Orders pages it pointed at are untouched. Only
+              this navigation entry is gone. */}
           {/* Order Numbering earns a top-level entry rather than living inside
               Overview: an admin looking for "where do I set the next Order
               number" scans this list, and anything not named here is, in
