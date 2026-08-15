@@ -21,6 +21,7 @@ import {
   ACCESS_LEVELS,
   PRESET_LEVELS,
   presetAllowedActions,
+  enableModuleEntry,
   detectAccessLevel,
   protectedActionsClearedByPreset,
   isProtectedAction,
@@ -44,14 +45,60 @@ describe('module access is one control, not two', () => {
     assert.ok(page.includes("applyAccessLevel(mod, 'no_access')"))
   })
 
-  test('On from No Access maps to Viewer', () => {
+  test('On grants entry and PRESERVES every child action', () => {
+    // Was "On from No Access maps to Viewer", and the page really did apply the
+    // Viewer preset — which wrote an explicit deny over every child action the
+    // employee held. That erased Aditya's Sample Tracking dispatch, receive and
+    // mark_lost in production on 2026-08-15, with no warning, because the
+    // destructive-action confirmation only ever ran on the OFF path.
+    //
+    // The ON path had been unreachable for anyone holding a child action, since
+    // a module counted as "on" whenever ANY action was allowed. Once module
+    // entry correctly became `view` alone, that same employee rendered as OFF
+    // and the path went live.
+    assert.ok(
+      page.includes('applyDesiredActions(mod, current => enableModuleEntry(actionKeys, current))'),
+      'enabling a module must preserve child actions, not apply a preset',
+    )
+    assert.equal(
+      page.includes("applyAccessLevel(mod, 'viewer')"),
+      false,
+      'the Viewer preset must never be applied by the checkbox again',
+    )
+    // Behavioural counterpart in levels.test.ts; asserted here too so the two
+    // halves of the fix cannot drift apart.
+    assert.deepEqual(
+      enableModuleEntry(ASSETS, { view: false, manage: true, assign: true }),
+      { view: true, create: false, edit: false, delete: false, manage: true, assign: true },
+    )
+  })
+
+  test('enabling a module needs no confirmation, because it removes nothing', () => {
+    const toggle = page.slice(
+      page.indexOf('function toggleModuleAccess'),
+      page.indexOf('// A plain computation, not useMemo'),
+    )
+    const onBranch = toggle.slice(toggle.indexOf('// Entry only.'))
+    assert.ok(onBranch.includes('applyDesiredActions'))
+    assert.equal(onBranch.includes('window.confirm'), false, 'the ON path must not prompt')
+    // The OFF path still does.
+    assert.ok(toggle.includes('window.confirm(message)'))
+    assert.ok(toggle.includes("protectedActionsClearedByPreset('no_access', actionKeys, effective)"))
+  })
+
+  test('picking a level explicitly still replaces the whole module state', () => {
+    // The distinction the fix turns on: a preset is a complete statement, the
+    // checkbox is not. Both still flow through one write path.
+    assert.ok(page.includes('function applyAccessLevel'))
+    assert.ok(page.includes('applyDesiredActions(mod, () => presetAllowedActions(level, actionKeys))'))
+    assert.ok(page.includes('onApplyLevel={level => applyAccessLevel(changeModalModule, level)}'))
     assert.deepEqual(granted(presetAllowedActions('viewer', ASSETS)), ['view'])
-    assert.ok(page.includes("applyAccessLevel(mod, 'viewer')"))
   })
 
   test('the toggle writes the same per-action state the level selector does', () => {
-    // Both call applyAccessLevel; there is no separate visibility field.
+    // Both go through applyDesiredActions; there is no separate visibility field.
     assert.ok(page.includes('function toggleModuleAccess'))
+    assert.ok(page.includes('function applyDesiredActions'))
     assert.equal(/setVisible|visibilityBoolean|moduleVisible/.test(page), false)
     assert.equal(
       /visibility_type|allowed_user_ids/.test(page),

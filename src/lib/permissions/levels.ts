@@ -242,6 +242,46 @@ export function presetAllowedActions(
 }
 
 /**
+ * The allow/deny map after switching MODULE ACCESS ON — entry, and nothing else.
+ *
+ * SWITCHING A MODULE ON IS NOT THE SAME DECISION AS PICKING A LEVEL, and this
+ * function exists to keep the two apart.
+ *
+ * A preset is a complete statement: "this person is a Viewer" means view and
+ * nothing else, which is why presetAllowedActions returns false for every other
+ * action and why moving someone down to Viewer legitimately revokes what they
+ * held. Ticking the Module access checkbox says something much smaller: "let
+ * them in". It carries no opinion about what they may do once inside, so it
+ * must not answer that question — least of all by answering "nothing".
+ *
+ * THE BUG THIS FIXES. The checkbox used to apply the Viewer preset, so enabling
+ * a module wrote an explicit deny over every child action the employee held.
+ * That erased Aditya's Sample Tracking dispatch, receive and mark_lost the
+ * moment somebody switched his module access on, with no warning — the
+ * destructive-action confirmation only ever ran on the OFF path. The ON path had
+ * been unreachable for anyone holding a child action, because a module counted
+ * as "on" whenever ANY action was allowed; once module entry correctly became
+ * `view` alone, that same employee rendered as OFF and the path went live.
+ *
+ * Every existing value is copied through untouched, so the result naturally
+ * reports as `custom` when child actions survive and as `viewer` when none do —
+ * detectAccessLevel derives that, nothing here needs to assert it.
+ *
+ * Pure: `currentlyAllowed` is read, never written to.
+ */
+export function enableModuleEntry(
+  moduleActionKeys: readonly string[],
+  currentlyAllowed: Readonly<Record<string, boolean>>,
+): Record<string, boolean> {
+  const map: Record<string, boolean> = {}
+  for (const action of moduleActionKeys) map[action] = currentlyAllowed[action] === true
+  // A module with no `view` action cannot express entry; leave it exactly as it
+  // was rather than inventing a key the module does not register.
+  if (moduleActionKeys.includes('view')) map['view'] = true
+  return map
+}
+
+/**
  * Whether a set of allowed actions would leave someone able to act on a module
  * they cannot open.
  *
