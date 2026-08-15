@@ -27,6 +27,7 @@ import { historyForItem, historyForOrder, previousUpdateByItem } from '@/lib/mee
 import { followUpDue, daysOverdue, FOLLOW_UP_DUE_META } from '@/lib/meetings/followUps'
 import { meetingErrorMessage, logMeetingFailure } from '@/lib/meetings/errors'
 import { fetchAllRows } from '@/lib/supabasePaging'
+import { hasPermission } from '@/lib/permissions/resolver'
 import {
   ITEM_STATUS_META, MEETING_COLUMNS, MEETING_HISTORY_COLUMNS, MEETING_ORDER_COLUMNS,
   MEETING_ORDER_ITEM_COLUMNS, MEETING_STATUS_META, MEETING_TYPE_META,
@@ -70,6 +71,28 @@ export function MeetingWorkScreen() {
   const meetingId = routeParams?.id ?? ''
   const router = useRouter()
   const { supabase, profile, caps, loading: authLoading, signOut } = useMeetings()
+
+  // Creating a task from a meeting writes into Task Management, so it needs
+  // that module's entry grant as well as the Meetings one. 20260905000000 makes
+  // the database refuse the INSERT regardless; this is the UI half, so the
+  // control is absent rather than offered and then rejected.
+  //
+  // Deny-by-default: false until the check answers, so the button cannot flash
+  // for someone who may not use it. Everything else in Meetings is unaffected.
+  const [canCreateTasks, setCanCreateTasks] = useState(false)
+  useEffect(() => {
+    if (!profile) return          // stays false — the initial, denying value
+    let active = true
+    // Resolved asynchronously even for an admin, so nothing sets state
+    // synchronously inside the effect and no cascading render is triggered.
+    const resolved = profile.role === 'admin'
+      ? Promise.resolve(true)
+      : hasPermission(supabase, profile.id, 'task_management', 'view')
+    resolved
+      .then(allowed => { if (active) setCanCreateTasks(allowed) })
+      .catch(() => { if (active) setCanCreateTasks(false) })
+    return () => { active = false }
+  }, [supabase, profile])
   const { toast, show, dismiss } = useToast()
 
   const [meeting, setMeeting]     = useState<Meeting | null>(null)
@@ -660,7 +683,7 @@ export function MeetingWorkScreen() {
                 onRemoveOrder={() => setModal({ kind: 'remove-order', order: selectedOrder })}
                 onAddItem={() => setModal({ kind: 'add-item', order: selectedOrder })}
                 onUpdateItem={(item, focus) => setModal({ kind: 'item-update', order: selectedOrder, item, focus })}
-                onCreateTask={item => setModal({ kind: 'create-task', order: selectedOrder, item })}
+                onCreateTask={canCreateTasks ? (item => setModal({ kind: 'create-task', order: selectedOrder, item })) : undefined}
                 onOpenTask={taskId => router.push(`/tasks/${taskId}`)}
                 onResolve={markResolved}
                 onItemHistory={item => setModal({
@@ -741,7 +764,7 @@ export function MeetingWorkScreen() {
           }}
         />
       )}
-      {modal.kind === 'create-task' && profile && (
+      {modal.kind === 'create-task' && profile && canCreateTasks && (
         <MeetingTaskModal
           supabase={supabase}
           profile={profile}
@@ -818,7 +841,8 @@ function OrderPanel({
   onRemoveOrder: () => void
   onAddItem: () => void
   onUpdateItem: (item: MeetingOrderItem, focus: 'update' | 'follow_up') => void
-  onCreateTask: (item: MeetingOrderItem) => void
+  /** Absent when the viewer lacks task_management:view — see canCreateTasks. */
+  onCreateTask?: (item: MeetingOrderItem) => void
   onOpenTask: (taskId: string) => void
   onResolve: (item: MeetingOrderItem) => void
   onItemHistory: (item: MeetingOrderItem) => void
@@ -930,7 +954,7 @@ function OrderPanel({
               task={item.linked_task_id ? tasks[item.linked_task_id] : undefined}
               editable={editable}
               onUpdate={focus => onUpdateItem(item, focus)}
-              onCreateTask={() => onCreateTask(item)}
+              onCreateTask={onCreateTask ? () => onCreateTask(item) : undefined}
               onOpenTask={onOpenTask}
               onResolve={() => onResolve(item)}
               onHistory={() => onItemHistory(item)}
@@ -960,7 +984,7 @@ function OrderPanel({
                   task={item.linked_task_id ? tasks[item.linked_task_id] : undefined}
                   editable={editable}
                   onUpdate={focus => onUpdateItem(item, focus)}
-                  onCreateTask={() => onCreateTask(item)}
+                  onCreateTask={onCreateTask ? () => onCreateTask(item) : undefined}
                   onOpenTask={onOpenTask}
                   onResolve={() => onResolve(item)}
                   onHistory={() => onItemHistory(item)}
@@ -982,7 +1006,8 @@ type ItemRowProps = {
   task: LinkedTask | undefined
   editable: boolean
   onUpdate: (focus: 'update' | 'follow_up') => void
-  onCreateTask: () => void
+  /** Absent when the viewer lacks task_management:view. */
+  onCreateTask?: () => void
   onOpenTask: (taskId: string) => void
   onResolve: () => void
   onHistory: () => void
@@ -1193,7 +1218,7 @@ function RowActions({
           <CalendarPlus size={14} strokeWidth={1.9} />
         </IconAction>
       )}
-      {editable && !item.linked_task_id && (
+      {editable && !item.linked_task_id && onCreateTask && (
         <IconAction label="Create task from this product" onClick={onCreateTask}>
           <ClipboardList size={14} strokeWidth={1.9} />
         </IconAction>
