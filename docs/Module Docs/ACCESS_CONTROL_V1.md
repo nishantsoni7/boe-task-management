@@ -1,9 +1,10 @@
 # Access Control V1
 
-Status: **database applied, frontend awaiting merge.** Migrations
-`20260901000000` and `20260902000000` are applied to production and verified by
-a read-only parity check (2026-08-14). The frontend ships in a separate release
-branch that has not been merged — see [Deployment](#deployment).
+Status: **shipped and enforced end to end (2026-08-15).** Migrations
+`20260901000000` through `20260907000000` are applied to production and verified
+read-only. Module entry is now gated in the launcher, in the route guards AND in
+the database, and `task-attachments` is private. See
+[Closing the parent gate](#closing-the-parent-gate-2026-08-15).
 
 One screen decides what every employee can reach: **Control Center → Access
 Control**. It replaced two parallel administrator workflows that could disagree
@@ -354,7 +355,12 @@ The write policies are untouched.
 > broader than its parent, which is the defect being fixed. Admin task tooling
 > that needs more already runs with the service role.
 
-### ⚠ Storage: the files themselves are still public
+### ~~⚠ Storage: the files themselves are still public~~ — CLOSED 2026-08-15
+
+**Resolved by `20260906000000` + `20260907000000`.** The bucket is private, the
+blanket read policy is gone, and every read is a short-lived signed URL. The
+audit below is kept as the record of what was wrong; see
+[Closing the parent gate](#closing-the-parent-gate-2026-08-15) for the fix.
 
 **The RLS fix secures the index, not the bytes.** Audit result:
 
@@ -538,3 +544,123 @@ fail-closed removal against an inactive account, and no other change.
 
 The database is ahead of the deployed frontend until the Access Control release
 branch merges to `main`.
+
+---
+
+## Closing the parent gate (2026-08-15)
+
+Access Control stored a decision that nothing read. Unticking **Module access**
+wrote an explicit `view = false` override and the card said *Hidden*, but the
+launcher and the routes gated on `app_modules.visibility_type` — a table this
+screen never writes. Jasvi kept Sample Tracking. Four releases closed it.
+
+### PR #25 — the parent gate (`view`) in the frontend
+
+Module entry became **effective `view`, and nothing else**, in both places that
+decide it: the launcher card and a shared `ModuleGuard` route guard, both asking
+`canAccessManagementModule`. A leftover child action is dormant, never an entry
+ticket. Route guards added for Task Management, Sample Tracking, Assets & Access,
+Showroom QR (admin surface only), Employee Records, Performance and Finance;
+Orders and Meetings already worked this way and were left alone.
+
+Control Center stopped deriving *Visible/Hidden* from "any action is allowed" —
+it is `view` alone — and the product-readiness badges (**Active / Partly active /
+Prepared / Not used**) were removed from employee cards. They describe how far a
+module's CODE is cut over, are identical for every employee, and sat beside a
+per-employee switch. That information still drives the banner inside the Change
+Access modal, where an administrator choosing individual actions needs it.
+
+**Deliberately not gated**, and asserted so in `20260905000000`:
+
+| Module | Why |
+|---|---|
+| `employee_records` | `users` is joined by every module for `full_name`; gating it closes the product for all non-admins |
+| `showroom_qr` | its four tables also back the PUBLIC customer QR pages |
+| `performance` | self-service EOD records every employee writes about themselves |
+
+### `20260904000000` — Sample Tracking in the database
+
+`sample_tracking_module_open()` (admin OR effective `view`), evaluated FIRST in
+all ten `sample_dispatches` policies. Ownership (`requested_by`) and the
+lifecycle grants are only reached once it passes. The admin UPDATE policy and
+the admin DELETE branch are untouched, and asserted so.
+
+### PR #26 — enabling a module must not erase Custom permissions
+
+A regression the parent gate created. Ticking **Module access** ON applied the
+Viewer preset, which writes a COMPLETE map — an explicit deny over every child
+action the employee held. It erased Aditya's Sample Tracking `dispatch`,
+`receive` and `mark_lost`, silently, because the destructive-action confirmation
+only ever ran on the OFF path. The ON branch had been unreachable while a module
+counted as "on" whenever ANY action was allowed; once entry correctly became
+`view` alone, that employee rendered as OFF and the path went live.
+
+`enableModuleEntry()` now states the smallest thing the checkbox means: `view`
+becomes true and every other action keeps its value. Exactly one action changes.
+**Picking a level explicitly still applies the whole preset and still revokes** —
+a preset is a complete statement; that is the point of choosing one.
+
+### `20260905000000` — parent gates for the remaining modules
+
+27 tables across Task Management, Assets & Access, Meetings, Orders and Finance,
+as **`AS RESTRICTIVE` policies** rather than rewrites. Postgres AND-s a
+restrictive policy with the OR of every permissive one, so each existing
+ownership, assignment, participant and `view_all` rule keeps its exact meaning,
+nothing routes around the gate, and a permissive policy added later is gated
+automatically. `view_all` is additional scope and never a substitute for `view`.
+
+Creating a task from a Meetings review now also requires `task_management:view`;
+the control is absent rather than offered and refused. A read-only check found
+**0** employees holding `meetings:view` without it.
+
+### `20260906000000` / `20260907000000` — private task attachments
+
+`task-attachments` was the only public bucket, and its `storage.objects` SELECT
+policy was `bucket_id = 'task-attachments'` to PUBLIC — no task, ownership or
+role check. **Three** surfaces carried such a URL, not one:
+
+| Surface | Rows |
+|---|---|
+| `task_attachments.url` | 469 |
+| `tasks.attachment_url` | 40 |
+| `task_activity_log.attachment_url` | 10 |
+
+All three gained a `storage_path`, backfilled and asserted — **519/519 mapped,
+0 unmapped, 0 orphaned**. Storage policies became task-aware: module entry AND
+creator/assignee/delegator on the parent task, plus admin, plus `owner` (the
+uploader, because comment attachments upload the object before the row exists).
+`906` left the bucket public so it was safe to apply ahead of the frontend; `907`
+flipped it private and re-runs the backfill first, so rows created during the
+deploy window still map.
+
+Reads are 300-second signed URLs minted with the caller's own session — **no
+service role in client code**. Legacy `url` / `attachment_url` columns remain
+`NOT NULL` and now receive `storage://task-attachments/<path>`: a canonical
+reference that names the object without being fetchable. They are compatibility
+fields, not a security exposure, and may stay.
+
+Verified after `907`: bucket private, **no public bucket remains in the project**,
+no blanket read policy, 3 task-aware policies, a copied public URL returns **HTTP
+400**, and no permission row changed (last permission write predates the release).
+
+### The agreed workflow
+
+**localhost review → documentation → GitHub → Vercel.** Changes are reviewed
+running locally first, the record here is updated as part of the same change,
+and only then does it reach a branch, a PR and a deployment. Migrations are
+applied in their own controlled checkpoint with a dry run first, and a migration
+that can break a live screen is split so the breaking half waits for
+confirmation — `906` then `907` is the worked example.
+
+---
+
+## Control Center: Action Queue removed (2026-08-15)
+
+The **Action Queue** navigation entry is gone. Every row it listed was a deep
+link into Finance or Order Requests; it decided nothing, stored nothing and
+configured nothing, so it was a second way to reach two modules rather than a
+Control Center function.
+
+The route `/admin/control-center/action-queue` is **left in place** so existing
+links and bookmarks still resolve, and the Finance and Orders pages it pointed at
+are untouched. Only the navigation entry in `ControlCenterLayout` was removed.
