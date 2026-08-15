@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -29,6 +29,7 @@ import {
 } from '@/lib/tasks/taskDetailAccess'
 import { Ban, CircleCheckBig, ClipboardCheck, SendHorizontal, Undo2, UserCheck, UserRound } from 'lucide-react'
 import { perfTrack } from '@/lib/perf'
+import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
@@ -151,7 +152,10 @@ export default function TaskDetailPage() {
   const [deletingActivityId, setDeletingActivityId] = useState<string | null>(null)
 
   const [taskLevelAttachments, setTaskLevelAttachments] = useState<TaskAttachment[]>([])
-  const [previewAttachment,    setPreviewAttachment]    = useState<{ url: string; fileName?: string } | null>(null)
+  const [previewAttachment,    setPreviewAttachment]    = useState<{ path: string; fileName?: string } | null>(null)
+  // Signed on open and held only while the modal is up. Null while signing, and
+  // null forever if the caller is not allowed the object — Postgres decides.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   // Copy & Assign (admin-only). The modal owns its field state; the page owns the submit.
   const [copyModalOpen,  setCopyModalOpen]  = useState(false)
@@ -186,6 +190,29 @@ export default function TaskDetailPage() {
   const router      = useRouter()
   const params      = useParams()
   const supabase    = useMemo(() => createClient(), [])
+
+  // Opening clears the previous signature and records the new path; the effect
+  // below only signs. Keeping the reset here rather than inside the effect
+  // avoids a cascading render, and it means the modal can never show the
+  // PREVIOUS attachment's URL for a frame while the new one is being signed.
+  const openPreview = useCallback((path: string, fileName?: string) => {
+    setPreviewUrl(null)
+    setPreviewAttachment({ path, fileName })
+  }, [])
+
+  // Signing happens on open, not on render, so a list of twenty attachments
+  // costs nothing until one is actually opened. A refusal leaves previewUrl
+  // null and the modal simply does not appear — the storage policy, not the
+  // browser, is what decides.
+  useEffect(() => {
+    if (!previewAttachment) return
+    let active = true
+    signAttachmentUrl(supabase, previewAttachment.path)
+      .then(url => { if (active) setPreviewUrl(url) })
+      .catch(() => { if (active) setPreviewUrl(null) })
+    return () => { active = false }
+  }, [previewAttachment, supabase])
+
   const queryClient = useQueryClient()
   const taskId      = params.id as string
 
@@ -198,8 +225,9 @@ export default function TaskDetailPage() {
     compress:     compressImageFile,
     upload:       (path, file) =>
       supabase.storage.from('task-attachments').upload(path, file, { upsert: false }),
-    publicUrl:    (path) =>
-      supabase.storage.from('task-attachments').getPublicUrl(path).data.publicUrl,
+    // NOT a public URL. A canonical reference for the legacy NOT NULL column —
+    // the object is reached by `storage_path` and a short-lived signed URL.
+    publicUrl:    (path) => canonicalAttachmentRef(path),
     deleteObject: async (path) => {
       // Storage policy `auth_delete` lets the uploader remove their own object,
       // so this succeeds for whoever queued it. A failure only leaves an
@@ -1108,9 +1136,15 @@ export default function TaskDetailPage() {
   const isQuotation = task.task_type === 'quotation_request'
   const canCopyAssign = isAdmin && !isQuotation   // admin-only; the API enforces this too
 
-  // Attachment count shown in the Copy & Assign modal (task-level rows + a distinct legacy URL)
+  // The legacy single attachment, as an object path. De-duplication compares
+  // PATHS now: `url` and `attachment_url` no longer hold the same shape once
+  // new rows carry a canonical reference instead of a public URL, so comparing
+  // the raw columns would show the same file twice.
+  const legacyTaskPath = resolveAttachmentPath(task)
+
+  // Attachment count shown in the Copy & Assign modal (task-level rows + a distinct legacy file)
   const copyAttachmentCount = taskLevelAttachments.length +
-    (task.attachment_url && !taskLevelAttachments.some(a => a.url === task.attachment_url) ? 1 : 0)
+    (legacyTaskPath && !taskLevelAttachments.some(a => resolveAttachmentPath(a) === legacyTaskPath) ? 1 : 0)
 
   const quotationCompletedAt = isQuotation
     ? (log.find(e => e.action === 'status_changed' && e.to_status === 'completed')?.created_at ?? null)
@@ -1504,10 +1538,10 @@ export default function TaskDetailPage() {
                     </p>
                   )}
                   {/* Legacy single attachment_url */}
-                  {task.attachment_url && !taskLevelAttachments.some(a => a.url === task.attachment_url) && (
+                  {legacyTaskPath && !taskLevelAttachments.some(a => resolveAttachmentPath(a) === legacyTaskPath) && (
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       <button
-                        onClick={() => setPreviewAttachment({ url: task.attachment_url! })}
+                        onClick={() => openPreview(legacyTaskPath!)}
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: '5px',
                           fontSize: '11.5px', fontWeight: 500,
@@ -1525,7 +1559,7 @@ export default function TaskDetailPage() {
                         background: colors.float, border: `1px solid ${colors.border}`,
                         padding: '1px 7px', borderRadius: '20px',
                       }}>
-                        {getFileTypeLabel(task.attachment_url)}
+                        {getFileTypeLabel(legacyTaskPath)}
                       </span>
                     </div>
                   )}
@@ -1533,7 +1567,7 @@ export default function TaskDetailPage() {
                   {taskLevelAttachments.map(att => (
                     <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       <button
-                        onClick={() => setPreviewAttachment({ url: att.url, fileName: att.file_name ?? undefined })}
+                        onClick={() => { const p = resolveAttachmentPath(att); if (p) openPreview(p, att.file_name ?? undefined) }}
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: '5px',
                           fontSize: '11.5px', fontWeight: 500,
@@ -2443,10 +2477,10 @@ export default function TaskDetailPage() {
                           )}
 
                           {/* Attachments */}
-                          {entry.attachment_url && !(entry.attachments ?? []).some((a: TaskAttachment) => a.url === entry.attachment_url) && (
+                          {resolveAttachmentPath(entry) && !(entry.attachments ?? []).some((a: TaskAttachment) => resolveAttachmentPath(a) === resolveAttachmentPath(entry)) && (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
                               <button
-                                onClick={() => setPreviewAttachment({ url: entry.attachment_url! })}
+                                onClick={() => { const p = resolveAttachmentPath(entry); if (p) openPreview(p) }}
                                 style={{
                                   display: 'inline-flex', alignItems: 'center', gap: '4px',
                                   fontSize: '10.5px', fontWeight: 500, color: colors.blue,
@@ -2461,14 +2495,14 @@ export default function TaskDetailPage() {
                                 background: colors.float, border: `1px solid ${colors.border}`,
                                 padding: '1px 6px', borderRadius: '20px',
                               }}>
-                                {getFileTypeLabel(entry.attachment_url)}
+                                {getFileTypeLabel(resolveAttachmentPath(entry) ?? '')}
                               </span>
                             </div>
                           )}
                           {(entry.attachments ?? []).map((att: TaskAttachment) => (
                             <div key={att.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
                               <button
-                                onClick={() => setPreviewAttachment({ url: att.url, fileName: att.file_name ?? undefined })}
+                                onClick={() => { const p = resolveAttachmentPath(att); if (p) openPreview(p, att.file_name ?? undefined) }}
                                 style={{
                                   display: 'inline-flex', alignItems: 'center', gap: '4px',
                                   fontSize: '10.5px', fontWeight: 500, color: colors.blue,
@@ -2852,9 +2886,9 @@ export default function TaskDetailPage() {
         </div>
       )}
 
-      {previewAttachment && (
+      {previewAttachment && previewUrl && (
         <AttachmentPreviewModal
-          url={previewAttachment.url}
+          url={previewUrl}
           fileName={previewAttachment.fileName}
           onClose={() => setPreviewAttachment(null)}
         />

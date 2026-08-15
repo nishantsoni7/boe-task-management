@@ -476,11 +476,15 @@ describe('duplicate submission', () => {
 // ── Submission payload ────────────────────────────────────────────────────────
 
 describe('attachmentRowsForSubmit', () => {
+  // `path` is now part of the payload: a row without its object key would be
+  // unreachable once task-attachments goes private (20260907000000), and the
+  // backfill assertion in 20260906000000 refuses to allow that state. A
+  // successful upload always sets it — see runAttachmentUpload.
   const items = [
-    { status: 'uploaded', url: 'https://cdn/a.png', fileName: 'a.png' },
-    { status: 'uploading', url: null, fileName: 'b.png' },
-    { status: 'failed', url: null, fileName: 'c.png' },
-    { status: 'uploaded', url: 'https://cdn/d.pdf', fileName: 'd.pdf' },
+    { status: 'uploaded', url: 'https://cdn/a.png', path: 'updates/T/a.png', fileName: 'a.png' },
+    { status: 'uploading', url: null, path: null, fileName: 'b.png' },
+    { status: 'failed', url: null, path: null, fileName: 'c.png' },
+    { status: 'uploaded', url: 'https://cdn/d.pdf', path: 'updates/T/d.pdf', fileName: 'd.pdf' },
   ] as PendingAttachment[]
 
   test('includes only uploaded files, in the order they were picked', () => {
@@ -489,6 +493,25 @@ describe('attachmentRowsForSubmit', () => {
     })
     assert.deepEqual(rows.map(r => r.file_name), ['a.png', 'd.pdf'])
     assert.deepEqual(rows.map(r => r.file_type), ['Image', 'PDF'])
+  })
+
+  test('every row carries the storage path it will be fetched by', () => {
+    const rows = attachmentRowsForSubmit(items, {
+      taskId: 'T', activityLogId: 'L', userId: 'U', fileTypeOf: () => 'Image',
+    })
+    assert.deepEqual(rows.map(r => r.storage_path), ['updates/T/a.png', 'updates/T/d.pdf'])
+  })
+
+  test('an uploaded item with no object key is dropped, not written half-formed', () => {
+    const pathless = [
+      { status: 'uploaded', url: 'https://cdn/x.png', path: null, fileName: 'x.png' },
+    ] as PendingAttachment[]
+    assert.deepEqual(
+      attachmentRowsForSubmit(pathless, {
+        taskId: 'T', activityLogId: 'L', userId: 'U', fileTypeOf: () => 'Image',
+      }),
+      [],
+    )
   })
 
   test('every row is linked to the new activity entry and its task', () => {

@@ -49,7 +49,10 @@ export type Task = {
   contact_number: string | null
   company_name: string | null
   city_project: string | null
+  /** LEGACY. Never rendered — read attachment_storage_path instead. */
   attachment_url: string | null
+  /** Object key in the task-attachments bucket. What preview and download sign. */
+  attachment_storage_path?: string | null
   cancelled_by: string | null
   cancelled_at: string | null
   cancellation_reason: string | null
@@ -409,7 +412,14 @@ export type TaskAttachment = {
   id: string
   task_id: string | null
   activity_log_id: string | null
+  /**
+   * LEGACY, and never rendered. Historic rows hold a public URL; rows written by
+   * this build hold a canonical `storage://` reference. Read `storage_path`
+   * instead — see resolveAttachmentPath in src/lib/tasks/attachmentStorage.ts.
+   */
   url: string
+  /** Object key in the task-attachments bucket. What preview and download sign. */
+  storage_path?: string | null
   file_name: string | null
   file_type: string | null
   created_by: string | null
@@ -494,6 +504,9 @@ export type LogEntry = {
   created_at: string
   actor_id: string
   actor_name?: string
+  /** LEGACY. Never rendered — read attachment_storage_path instead. */
   attachment_url?: string | null
+  /** Object key in the task-attachments bucket. What preview and download sign. */
+  attachment_storage_path?: string | null
   attachments?: TaskAttachment[]
 }

@@ -26,6 +26,7 @@ import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { enumParam, idParam, optionParam, optionalEnumParam, textParam } from '@/lib/listState'
+import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 
 
 function localDateStr(offsetDays = 0): string {
@@ -549,10 +550,10 @@ function CreateSelfTaskModal({
               .from('task-attachments')
               .upload(path, file, { upsert: false })
             if (upErr) { console.error('[attach upload]', upErr); return false }
-            const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
             const { error: metaErr } = await supabase.from('task_attachments').insert({
               task_id:    task.id,
-              url:        urlData.publicUrl,
+              url:        canonicalAttachmentRef(path),
+              storage_path: path,
               file_name:  file.name,
               file_type:  getFileTypeLabel(file.name),
               created_by: session.user.id,

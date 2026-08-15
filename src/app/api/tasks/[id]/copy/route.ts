@@ -15,6 +15,7 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveAttachmentPath, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 
 const VALID_PRIORITIES = ['high', 'medium', 'low'] as const
 
@@ -70,7 +71,7 @@ export async function POST(
   // 4. Source task must exist. Quotation requests are not copyable.
   const { data: source, error: srcErr } = await supabase
     .from('tasks')
-    .select('id, title, note, type, team, task_type, attachment_url')
+    .select('id, title, note, type, team, task_type, attachment_url, attachment_storage_path')
     .eq('id', sourceTaskId)
     .single()
   if (srcErr || !source) return NextResponse.json({ error: 'Source task not found.' }, { status: 404 })
@@ -91,7 +92,7 @@ export async function POST(
   // 6. Load the source's task-level attachments (activity_log_id is null → task, not a comment).
   const { data: sourceAtts, error: attFetchErr } = await supabase
     .from('task_attachments')
-    .select('url, file_name, file_type')
+    .select('url, storage_path, file_name, file_type')
     .eq('task_id', sourceTaskId)
     .is('activity_log_id', null)
   if (attFetchErr) {
@@ -99,11 +100,17 @@ export async function POST(
     return NextResponse.json({ error: 'Could not read the source attachments.' }, { status: 500 })
   }
 
-  // Legacy single attachment_url is only carried over when it is NOT already one of the
-  // task_attachments rows — otherwise it would show/copy as a duplicate of the same file.
-  const attUrls = new Set((sourceAtts ?? []).map(a => a.url))
-  const legacyAttachmentUrl =
-    source.attachment_url && !attUrls.has(source.attachment_url) ? source.attachment_url : null
+  // The legacy single attachment is carried over only when it is NOT already one
+  // of the task_attachments rows — otherwise it would copy as a duplicate.
+  //
+  // De-duplicated by OBJECT PATH, not by URL: the two columns no longer hold the
+  // same shape once new rows carry a canonical reference instead of a public
+  // URL, so comparing the raw columns would copy the same file twice.
+  const attPaths = new Set(
+    (sourceAtts ?? []).map(a => resolveAttachmentPath(a)).filter(Boolean) as string[],
+  )
+  const legacyPath = resolveAttachmentPath(source)
+  const copyLegacy = !!legacyPath && !attPaths.has(legacyPath)
 
   // Description saved on the copy: the admin's edited value when supplied (trimmed; empty → null,
   // matching normal task creation), otherwise the source's description. Stored only on the new
@@ -125,7 +132,9 @@ export async function POST(
       team:                caller.team ?? source.team,  // task team follows its creator (as on the create page)
       status:              'pending',
       acknowledged_at:     null,
-      attachment_url:      legacyAttachmentUrl,
+      // Never a public URL — a canonical reference, with the path as the authority.
+      attachment_url:          copyLegacy ? canonicalAttachmentRef(legacyPath!) : null,
+      attachment_storage_path: copyLegacy ? legacyPath : null,
       copied_from_task_id: source.id,                // authoritative link back to the source
     })
     .select('id')
@@ -135,17 +144,26 @@ export async function POST(
     return NextResponse.json({ error: 'Could not create the task. Please try again.' }, { status: 500 })
   }
 
-  // 8. Copy the attachment rows (REQUIRED) by referencing the SAME public storage URLs.
-  //    Copied tasks intentionally reuse source attachment URLs — no re-upload, no storage copy.
+  // 8. Copy the attachment rows (REQUIRED) by referencing the SAME storage OBJECTS.
+  //    Copied tasks intentionally reuse the source's objects — no re-upload, no
+  //    storage copy. Nothing public is minted: the copy carries the object path,
+  //    and whoever opens it signs that path like any other attachment.
   //    Revisit this assumption if task-attachment storage garbage collection is added.
   if (sourceAtts && sourceAtts.length > 0) {
-    const rows = sourceAtts.map(a => ({
-      task_id:    newTask.id,
-      url:        a.url,
-      file_name:  a.file_name,
-      file_type:  a.file_type,
-      created_by: user.id,
-    }))
+    const rows = sourceAtts.map(a => {
+      const path = resolveAttachmentPath(a)
+      return {
+        task_id:      newTask.id,
+        // `a.url` survives only for a historic row whose path could not be
+        // parsed; 20260906000000's assertion makes that state impossible in
+        // production, and the column goes away once `url` is dropped.
+        url:          path ? canonicalAttachmentRef(path) : a.url,
+        storage_path: path,
+        file_name:    a.file_name,
+        file_type:    a.file_type,
+        created_by:   user.id,
+      }
+    })
     const { error: attErr } = await supabase.from('task_attachments').insert(rows)
     if (attErr) {
       // Roll back so no half-copied task survives. Deleting the task cascades its
