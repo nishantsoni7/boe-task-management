@@ -13,6 +13,7 @@ import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
+import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 
 // Every quotation request is assigned to this user (resolved by email at init).
 const DEFAULT_QUOTATION_OWNER = 'admin@bestofexports.com'
@@ -179,10 +180,10 @@ export default function NewQuotationRequestPage() {
         .from('task-attachments')
         .upload(path, file, { upsert: false })
       if (upErr) { console.error('[qtn attach upload]', upErr); continue }
-      const { data: urlData } = supabase.storage.from('task-attachments').getPublicUrl(path)
       await supabase.from('task_attachments').insert({
         task_id:    task.id,
-        url:        urlData.publicUrl,
+        url:        canonicalAttachmentRef(path),
+        storage_path: path,
         file_name:  file.name,
         file_type:  getFileTypeLabel(file.name),
         created_by: session.user.id,

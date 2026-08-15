@@ -202,7 +202,16 @@ export function failureSummary(items: readonly PendingAttachment[]): string | nu
 export type AttachmentRow = {
   activity_log_id: string
   task_id: string
+  /**
+   * LEGACY. A public URL, still written because `task_attachments.url` is NOT
+   * NULL and the frontend deploys ahead of the migrations. Nothing READS it once
+   * `storage_path` is present — see resolveAttachmentPath. It stops resolving
+   * when 20260907000000 makes the bucket private, and the column can be dropped
+   * after that.
+   */
   url: string
+  /** The object key. The authority for signing, downloading and deleting. */
+  storage_path: string
   file_name: string
   file_type: string
   created_by: string
@@ -218,12 +227,16 @@ export function attachmentRowsForSubmit(
   items: readonly PendingAttachment[],
   ctx: { taskId: string; activityLogId: string; userId: string; fileTypeOf: (name: string) => string },
 ): AttachmentRow[] {
+  // `path` is now required as well as `url`: a row without its object key would
+  // be unreachable the moment the bucket goes private, which is precisely the
+  // state 20260906000000's assertion refuses to allow.
   return items
-    .filter(a => a.status === 'uploaded' && a.url)
+    .filter(a => a.status === 'uploaded' && a.url && a.path)
     .map(a => ({
       activity_log_id: ctx.activityLogId,
       task_id:         ctx.taskId,
       url:             a.url as string,
+      storage_path:    a.path as string,
       file_name:       a.fileName,
       file_type:       ctx.fileTypeOf(a.fileName),
       created_by:      ctx.userId,
