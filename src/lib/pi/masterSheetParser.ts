@@ -175,13 +175,36 @@ export function isNotApplicableMarker(value: string | null): boolean {
 }
 
 /**
+ * The template's other shorthand for a zero charge: the charge exists, but it
+ * is already inside another figure and is not billed again on this row.
+ *
+ * Exactly "inclusive" or "included" after whitespace collapsing and case
+ * folding. Nothing looser: "inclusive of GST" is a qualification somebody needs
+ * to read, "included?" is a question, and both must keep warning. The two bare
+ * words are the ones a BOE PI actually uses.
+ */
+export function isIncludedMarker(value: string | null): boolean {
+  if (value === null) return false
+  const normalized = normalizeLabel(value)
+  return normalized === 'inclusive' || normalized === 'included'
+}
+
+/**
  * How a commercial cell treats a value that is not a number.
  *
  *   strict     Any text is unexpected: preserved and warned about.
- *   dashIsZero Blank or a dash means zero (see isNotApplicableMarker); any other
- *              text is still unexpected, preserved and warned about.
+ *   wordedZero Blank or a dash means zero (isNotApplicableMarker), and
+ *              "Inclusive"/"Included" means zero-because-already-charged
+ *              (isIncludedMarker). Any other text is still unexpected,
+ *              preserved and warned about.
+ *
+ * Only the two "as per actual" rows use `wordedZero`. Discount, subtotal, total
+ * before GST, GST and the grand total stay `strict`: a grand total that says
+ * "Inclusive" is not a zero grand total, it is a workbook somebody must look
+ * at. Transportation is `strict` too, with warnings off — its text is expected
+ * and is shown verbatim.
  */
-type NonNumericPolicy = 'strict' | 'dashIsZero'
+type NonNumericPolicy = 'strict' | 'wordedZero'
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -256,27 +279,42 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
     ? harvestProductImages({
         entries,
         drawingPart,
-        imageColumn: COL.image,
+        representativeColumn: COL.image,
+        customizationColumn: COL.customization,
         firstRow: FIRST_PRODUCT_ROW,
         lastRow: LAST_PRODUCT_ROW,
       })
-    : { byRow: new Map<number, PiProductImage[]>(), issues: [] }
+    : {
+        representativeByRow: new Map<number, PiProductImage[]>(),
+        customizationByRow: new Map<number, PiProductImage[]>(),
+        issues: [],
+      }
 
+  // A rejected picture is reported under a code that says which KIND of picture
+  // it was. The representative codes exist to explain a blocking
+  // PRODUCT_IMAGE_REQUIRED; the customization codes exist to say "an
+  // illustration of a change is missing, and the order is still fine".
   for (const issue of harvest.issues) {
+    const unsafe = issue.code === 'PRODUCT_IMAGE_UNSAFE_PATH'
+    const customization = issue.role === 'customization'
+    const what = customization ? 'customization picture' : 'picture'
     warnings.push({
-      code: issue.code,
+      code: customization
+        ? (unsafe ? 'CUSTOMIZATION_IMAGE_UNSAFE_PATH' : 'CUSTOMIZATION_IMAGE_UNREADABLE')
+        : issue.code,
       row: issue.row,
       part: issue.part,
-      message: issue.code === 'PRODUCT_IMAGE_UNSAFE_PATH'
-        ? `Row ${issue.row}: the picture points at "${issue.part}", which is outside xl/media and was not read.`
-        : `Row ${issue.row}: the picture relationship could not be resolved to any part in the workbook.`,
+      message: unsafe
+        ? `Row ${issue.row}: the ${what} points at "${issue.part}", which is outside xl/media and was not read.`
+        : `Row ${issue.row}: the ${what} relationship could not be resolved to any part in the workbook.`,
     })
   }
 
   const hiddenProductRows: number[] = []
   const genuineProductRows: number[] = []
   const products: PiProduct[] = []
-  const images: PiProductImage[] = []
+  const representativeImages: PiProductImage[] = []
+  const customizationImages: PiProductImage[] = []
 
   for (let row = FIRST_PRODUCT_ROW; row <= LAST_PRODUCT_ROW; row++) {
     const hidden = sheet.hiddenRows.has(row)
@@ -299,9 +337,16 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
     if (!hasContent) continue
 
     genuineProductRows.push(row)
-    products.push(
-      buildProduct(sheet, row, harvest.byRow.get(row) ?? [], warnings, blockingIssues, images),
-    )
+    products.push(buildProduct({
+      sheet,
+      row,
+      rowImages: harvest.representativeByRow.get(row) ?? [],
+      rowCustomizationImages: harvest.customizationByRow.get(row) ?? [],
+      warnings,
+      blockingIssues,
+      representativeImages,
+      customizationImages,
+    }))
   }
 
   if (products.length === 0) {
@@ -346,7 +391,8 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
       header,
       products,
       commercial,
-      images,
+      representativeImages,
+      customizationImages,
     },
   }
 }
@@ -483,14 +529,25 @@ function rowHasProductContent(sheet: PiSheet, row: number): boolean {
   return cols.some(col => hasAnyValue(sheet.cells.get(cellRef(col, row))))
 }
 
-function buildProduct(
-  sheet: PiSheet,
-  row: number,
-  rowImages: readonly PiProductImage[],
-  warnings: PiWarning[],
-  blockingIssues: PiBlockingIssue[],
-  images: PiProductImage[],
-): PiProduct {
+type BuildProductInput = {
+  sheet: PiSheet
+  row: number
+  /** Column-E pictures anchored to this row. Exactly one is required. */
+  rowImages: readonly PiProductImage[]
+  /** Column-K pictures anchored to this row. Any number, including none. */
+  rowCustomizationImages: readonly PiProductImage[]
+  warnings: PiWarning[]
+  blockingIssues: PiBlockingIssue[]
+  /** Flat accumulators for the workbook result. Appended to, never read. */
+  representativeImages: PiProductImage[]
+  customizationImages: PiProductImage[]
+}
+
+function buildProduct(input: BuildProductInput): PiProduct {
+  const {
+    sheet, row, rowImages, rowCustomizationImages,
+    warnings, blockingIssues, representativeImages, customizationImages,
+  } = input
   const at = (col: number) => sheet.cells.get(cellRef(col, row))
 
   const codeCell = at(COL.code)
@@ -552,7 +609,7 @@ function buildProduct(
     })
   }
 
-  let image: PiProductImage | null = null
+  let representativeImage: PiProductImage | null = null
   if (rowImages.length === 0) {
     // Covers "no picture was anchored" and "the one that was could not be read"
     // alike — either way this row has no usable image. When it was the latter, a
@@ -574,9 +631,22 @@ function buildProduct(
       message: `Row ${row} has ${rowImages.length} images anchored to it. Remove the ones that do not belong to this product.`,
     })
   } else {
-    image = rowImages[0]
-    images.push(image)
+    representativeImage = rowImages[0]
+    representativeImages.push(representativeImage)
   }
+
+  // ── Customization images: optional, unlimited, never blocking ──
+  //
+  // No branch here raises anything. Zero is the ordinary case and says nothing;
+  // several on one row is a client asking for several changes and is equally
+  // ordinary. The only customization-image diagnostics in the parser are the
+  // two harvest warnings for a picture that could not be READ, and neither can
+  // stop a submission — a product with an unreadable illustration of a change
+  // is still a product with a price, a quantity and a photograph.
+  //
+  // The order the workbook anchored them in is preserved, so "customization
+  // image 2 of 3" means the same thing to the reviewer as it does to the file.
+  for (const customizationImage of rowCustomizationImages) customizationImages.push(customizationImage)
 
   // ── Non-blocking: description gaps and arithmetic ──
 
@@ -638,9 +708,12 @@ function buildProduct(
     itemSequence,
     // Kept in its own field, never folded into material: they answer different
     // questions and a later phase stores them in separate columns. Optional by
-    // definition — a blank one is never a blocking issue.
+    // definition — a blank one is never a blocking issue. This is the TEXT in
+    // column K; the pictures floating over that column are the separate field
+    // below, and neither is ever read as the other.
     customization: textOf(at(COL.customization)),
-    image,
+    representativeImage,
+    customizationImages: rowCustomizationImages,
   }
 }
 
@@ -673,15 +746,23 @@ function readCommercial(
     noteMissingCachedValue(cell, warnings, what)
 
     const amount = numberOf(cell)
-    if (amount !== null) return { amount, text: null, notApplicable: false, cell: address }
+    if (amount !== null) return { amount, text: null, zeroMeaning: null, cell: address }
 
     const text = textOf(cell)
 
-    // "Nothing to charge here", written the way the template writes it. Resolves
-    // to a real zero so callers can add it up, with the flag saying it was a
-    // dash or a blank rather than a typed 0.
-    if (policy === 'dashIsZero' && isNotApplicableMarker(text)) {
-      return { amount: 0, text: null, notApplicable: true, cell: address }
+    if (policy === 'wordedZero') {
+      // "Nothing to charge here", written the way the template writes it.
+      // Resolves to a real zero so callers can add it up, with the meaning
+      // saying it was a dash or a blank rather than a typed 0.
+      if (isNotApplicableMarker(text)) {
+        return { amount: 0, text: null, zeroMeaning: 'notApplicable', cell: address }
+      }
+      // "There IS such a charge, and it is already inside another figure." Also
+      // zero for arithmetic, and deliberately NOT the same fact as above — the
+      // source wording is kept so the record says which word the workbook used.
+      if (isIncludedMarker(text)) {
+        return { amount: 0, text, zeroMeaning: 'included', cell: address }
+      }
     }
 
     if (warnOnText && text !== null) {
@@ -691,7 +772,7 @@ function readCommercial(
         message: `${what} (${address}) holds text rather than a number. The text has been kept and no amount was inferred.`,
       })
     }
-    return { amount: null, text, notApplicable: false, cell: address }
+    return { amount: null, text, zeroMeaning: null, cell: address }
   }
 
   // ── The discount. Position, not label. ──
@@ -712,11 +793,13 @@ function readCommercial(
   }
 
   const subtotalAfterDiscount = amountOrText(COMMERCIAL_CELLS.subtotalAfterDiscount, 'Sub total', 'strict', true)
-  // Fabric and packing are the two "as per actual" rows, and the template's own
-  // shorthand for having none is a dash. A dash or a blank there is zero, not a
-  // problem; anything ELSE written there still is.
-  const fabricCost = amountOrText(COMMERCIAL_CELLS.fabricCost, 'Fabric cost', 'dashIsZero', true)
-  const packingCost = amountOrText(COMMERCIAL_CELLS.packingCost, 'Packing cost', 'dashIsZero', true)
+  // Fabric and packing are the two "as per actual" rows, and the template has
+  // two shorthands for them: a dash means there is no such charge, and
+  // "Inclusive"/"Included" means the charge is already inside another figure.
+  // Both are zero and neither is a problem; anything ELSE written there still
+  // is. These are the ONLY two cells that accept either.
+  const fabricCost = amountOrText(COMMERCIAL_CELLS.fabricCost, 'Fabric cost', 'wordedZero', true)
+  const packingCost = amountOrText(COMMERCIAL_CELLS.packingCost, 'Packing cost', 'wordedZero', true)
   // Transportation is EXPECTED to be words as often as numbers ("as applicable"
   // is the standard BOE wording), so text here is not a warning — it is the
   // fact, and it is preserved verbatim rather than resolved to zero.
