@@ -54,6 +54,7 @@ import {
   type PiSheet,
 } from './workbookReader'
 import { harvestProductImages, resolveDrawingPart, type PiImageHarvest } from './drawingAnchors'
+import { describeImageFormat, isStorableImageFormat, PI_ACCEPTED_IMAGE_LABEL } from './imageFormats'
 import type {
   PiAmountOrText,
   PiBlockingIssue,
@@ -630,6 +631,21 @@ function buildProduct(input: BuildProductInput): PiProduct {
       cell: cellRef(COL.image, row),
       message: `Row ${row} has ${rowImages.length} images anchored to it. Remove the ones that do not belong to this product.`,
     })
+  } else if (!isStorableImageFormat(rowImages[0].format)) {
+    // A FORMAT THAT CANNOT BE KEPT IS THE SAME OUTCOME AS NO IMAGE, and it is
+    // the more dangerous of the two because the workbook looks perfectly fine.
+    // GIF, BMP and TIFF are all sniffed correctly and all unusable here, so the
+    // message names what was found and what to replace it with. The picture is
+    // deliberately NOT assigned: nothing downstream may persist it, the preview
+    // shows the same missing-image placeholder a reviewer would see for a truly
+    // absent one, and the coverage count agrees with both.
+    blockingIssues.push({
+      code: 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT',
+      row,
+      cell: cellRef(COL.image, row),
+      message: `Row ${row}: the representative image is ${describeImageFormat(rowImages[0].format)}, `
+             + `which cannot be stored. Replace it with ${PI_ACCEPTED_IMAGE_LABEL} and upload the PI again.`,
+    })
   } else {
     representativeImage = rowImages[0]
     representativeImages.push(representativeImage)
@@ -637,16 +653,32 @@ function buildProduct(input: BuildProductInput): PiProduct {
 
   // ── Customization images: optional, unlimited, never blocking ──
   //
-  // No branch here raises anything. Zero is the ordinary case and says nothing;
-  // several on one row is a client asking for several changes and is equally
-  // ordinary. The only customization-image diagnostics in the parser are the
-  // two harvest warnings for a picture that could not be READ, and neither can
-  // stop a submission — a product with an unreadable illustration of a change
-  // is still a product with a price, a quantity and a photograph.
+  // Zero is the ordinary case and says nothing; several on one row is a client
+  // asking for several changes and is equally ordinary.
+  //
+  // A format that cannot be stored IS reported, as a warning naming the row.
+  // It is not blocking — a customization image is optional and the order is
+  // still submittable without it — but it is not dropped in silence either:
+  // the picture is left out of the product so that the preview, the saved
+  // record and the count all agree, and the warning says which row lost one.
   //
   // The order the workbook anchored them in is preserved, so "customization
   // image 2 of 3" means the same thing to the reviewer as it does to the file.
-  for (const customizationImage of rowCustomizationImages) customizationImages.push(customizationImage)
+  const storableCustomizationImages: PiProductImage[] = []
+  for (const customizationImage of rowCustomizationImages) {
+    if (!isStorableImageFormat(customizationImage.format)) {
+      warnings.push({
+        code: 'CUSTOMIZATION_IMAGE_UNSUPPORTED_FORMAT',
+        row,
+        cell: cellRef(COL.customization, row),
+        message: `Row ${row}: a customization image is ${describeImageFormat(customizationImage.format)}, `
+               + `which cannot be stored, so it was left out. Convert it to ${PI_ACCEPTED_IMAGE_LABEL} if it is needed.`,
+      })
+      continue
+    }
+    storableCustomizationImages.push(customizationImage)
+    customizationImages.push(customizationImage)
+  }
 
   // ── Non-blocking: description gaps and arithmetic ──
 
@@ -713,7 +745,7 @@ function buildProduct(input: BuildProductInput): PiProduct {
     // below, and neither is ever read as the other.
     customization: textOf(at(COL.customization)),
     representativeImage,
-    customizationImages: rowCustomizationImages,
+    customizationImages: storableCustomizationImages,
   }
 }
 

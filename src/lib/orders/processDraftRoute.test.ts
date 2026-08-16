@@ -631,3 +631,45 @@ describe('service-role isolation', () => {
     assert.ok(!raw(PAYLOAD).includes("'use client'"))
   })
 })
+
+// ══ 11. Nothing is skipped silently ══════════════════════════════════════════
+
+describe('unsupported image formats are refused, not skipped', () => {
+  test('the route refuses a plan that lost any image', () => {
+    assert.ok(route.includes('plan.counts.skippedImages > 0'))
+    assert.ok(route.includes("fail(422, 'IMAGE_FORMAT_UNSUPPORTED'"))
+  })
+
+  test('the refusal happens BEFORE anything is uploaded', () => {
+    const guardAt = route.indexOf('plan.counts.skippedImages > 0')
+    const uploadAt = route.indexOf('for (const image of plan.images)')
+    const leaseAt = route.indexOf("service.rpc('begin_order_submission_processing'")
+    assert.ok(guardAt > -1 && guardAt < uploadAt, 'no object is written for a refused plan')
+    assert.ok(guardAt > leaseAt, 'and it happens under the lease, like the rest')
+  })
+
+  test('the response no longer carries an unhandled skipped count', () => {
+    assert.ok(!route.includes('skippedImageCount'),
+      'a field the client never displayed is exactly how the gap stayed invisible')
+  })
+
+  test('the parser is the first line of defence, server-side', () => {
+    const parser = read('src/lib/pi/masterSheetParser.ts')
+    assert.ok(parser.includes("code: 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT'"))
+    assert.ok(parser.includes("code: 'CUSTOMIZATION_IMAGE_UNSUPPORTED_FORMAT'"))
+    assert.ok(parser.includes('isStorableImageFormat'))
+  })
+
+  test('the accepted set has ONE definition', () => {
+    const rule = read('src/lib/pi/imageFormats.ts')
+    assert.ok(rule.includes("PI_STORABLE_IMAGE_FORMATS = ['png', 'jpeg', 'webp']"))
+    // Everything reads it from there rather than restating it.
+    assert.ok(read('src/lib/orders/submissionPayload.ts').includes("from '../pi/imageFormats'"))
+    assert.ok(read('src/lib/pi/previewView.ts').includes("from './imageFormats'"))
+    assert.ok(read('src/lib/pi/masterSheetParser.ts').includes("from './imageFormats'"))
+  })
+
+  test('the client maps the refusal to a visible message', () => {
+    assert.ok(read(FLOW).includes('IMAGE_FORMAT_UNSUPPORTED'))
+  })
+})

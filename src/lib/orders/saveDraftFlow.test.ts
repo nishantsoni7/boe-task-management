@@ -280,3 +280,28 @@ describe('workbookObjectPath', () => {
     )
   })
 })
+
+describe('an unsupported image format is a document rejection', () => {
+  test('IMAGE_FORMAT_UNSUPPORTED is not retryable and names the fix', () => {
+    const failure = describeSaveFailure('IMAGE_FORMAT_UNSUPPORTED')
+    assert.equal(failure.serverRejectedDocument, true, 'the workbook is what must change')
+    assert.equal(failure.retryable, false, 'pressing save again cannot help')
+    assert.ok(/PNG, JPG\/JPEG or WebP/.test(failure.message))
+  })
+
+  test('it is distinguishable from a transport failure', () => {
+    assert.equal(describeSaveFailure('IMAGE_UPLOAD_FAILED').serverRejectedDocument, false)
+    assert.equal(describeSaveFailure('IMAGE_FORMAT_UNSUPPORTED').serverRejectedDocument, true)
+  })
+
+  test('a save can never silently succeed with images missing', () => {
+    // The success shape carries no "skipped" concept at all: anything the
+    // server could not store stops the save instead of shrinking it.
+    const result = summariseSaveResult(
+      { submissionId: 'x', itemCount: 12, representativeImageCount: 12, customizationImageCount: 4 },
+      'x',
+    )
+    assert.ok(!('skippedImageCount' in result))
+    assert.ok(!/skip/i.test(result.summary))
+  })
+})

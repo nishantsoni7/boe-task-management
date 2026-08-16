@@ -40,6 +40,7 @@ import {
   WORKBOOK_PATH_PATTERN,
 } from './submissionPayload'
 import { sniffImageFormat } from '../xlsxMediaOptimizer'
+import { storableImageMime as storableImageMimeRule } from '../pi/imageFormats'
 import type {
   PiAmountOrText,
   PiCommercialSummary,
@@ -913,5 +914,37 @@ describe('the RPC payload', () => {
     assert.deepEqual(itemsOf(built), [])
     assert.deepEqual(imagesOf(built), [])
     assert.equal(built.counts.items, 0)
+  })
+})
+
+// ── One accepted set, shared with the parser ──────────────────────────────────
+
+describe('storable image formats', () => {
+  test('exactly PNG, JPEG and WebP are storable', () => {
+    assert.equal(storableImageMime('image/png'), 'image/png')
+    assert.equal(storableImageMime('image/jpeg'), 'image/jpeg')
+    assert.equal(storableImageMime('image/webp'), 'image/webp')
+  })
+
+  test('GIF, BMP and TIFF are refused rather than guessed at', () => {
+    for (const mime of ['image/gif', 'image/bmp', 'image/tiff', 'image/svg+xml', null]) {
+      assert.equal(storableImageMime(mime), null, String(mime))
+    }
+  })
+
+  test('the payload builder reads the SAME rule as the parser', () => {
+    // One source of truth: src/lib/pi/imageFormats.ts. Two copies disagreeing is
+    // how a GIF product photograph once reached this module already accepted.
+    assert.equal(storableImageMime, storableImageMimeRule)
+  })
+
+  test('an unstorable image is counted, never silently dropped', () => {
+    // Unreachable in practice — the parser blocks or warns first — but the
+    // counter is what lets the route refuse rather than save a partial draft.
+    const built = plan([product({
+      representativeImage: image({ format: 'gif', mimeType: 'image/gif' }),
+    })])
+    assert.equal(built.counts.skippedImages, 1)
+    assert.equal(built.counts.representativeImages, 0)
   })
 })
