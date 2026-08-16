@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -14,6 +15,11 @@ import {
   NO_FINANCE_CAPABILITIES,
   type FinanceCapabilities,
 } from '@/lib/permissions/finance'
+import {
+  deriveOrdersCapabilities,
+  NO_ORDERS_CAPABILITIES,
+  type OrdersCapabilities,
+} from '@/lib/permissions/orders'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -126,6 +132,11 @@ export default function OrdersDashboardPage() {
   // The unlinked-payments card reads Finance data, so it is gated on Finance
   // `view` rather than on the admin role. Starts empty so it cannot flash.
   const [financeCaps, setFinanceCaps] = useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)
+  // Drives the "New Order" entry point only. Starts empty so the button cannot
+  // flash for somebody who is not allowed to raise an order; /orders/import
+  // enforces the same `create` grant in its own right, because hiding a button
+  // is not access control.
+  const [ordersCaps, setOrdersCaps] = useState<OrdersCapabilities>(NO_ORDERS_CAPABILITIES)
   const [orders,      setOrders]      = useState<Order[]>([])
   const [stats,       setStats]       = useState<DashboardStats>({
     activeOrders: 0, runningValue: 0, readyToDispatch: 0, unlinkedPayments: 0, overdueOrders: 0,
@@ -208,8 +219,12 @@ export default function OrdersDashboardPage() {
 
       setProfile(me as UserProfile)
 
-      const financePerms = await getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => [])
+      const [financePerms, ordersPerms] = await Promise.all([
+        getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
+        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+      ])
       setFinanceCaps(deriveFinanceCapabilities(me?.role, financePerms))
+      setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
 
       await loadData()
       setPageLoading(false)
@@ -243,6 +258,20 @@ export default function OrdersDashboardPage() {
       subtitle="Running orders and operational overview."
       onSignOut={handleSignOut}
       onRefresh={loadData}
+      actions={
+        // Order Requests navigation is untouched: this is an additional way in,
+        // not a replacement for it.
+        ordersCaps.canCreateOrder ? (
+          <button
+            className="boe-btn boe-btn-primary"
+            onClick={() => router.push('/orders/import')}
+            title="Upload the approved PI to start a new order"
+          >
+            <Plus size={13} strokeWidth={2.2} />
+            New Order
+          </button>
+        ) : undefined
+      }
     >
       {/* ── Dashboard cards ── */}
       <div style={{

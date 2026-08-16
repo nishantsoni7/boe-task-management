@@ -105,11 +105,23 @@ export type PiWarningCode =
   | 'PRODUCT_DIMENSIONS_MISSING'
   /** Column G is empty. Same reasoning as dimensions. */
   | 'PRODUCT_MATERIAL_MISSING'
-  /** A picture's relationship resolves to a part that is not in the archive.
-   *  Explains WHY a row may also carry PRODUCT_IMAGE_REQUIRED. */
+  /** A REPRESENTATIVE picture's relationship resolves to a part that is not in
+   *  the archive. Explains WHY a row may also carry PRODUCT_IMAGE_REQUIRED. */
   | 'PRODUCT_IMAGE_UNREADABLE'
-  /** A picture's relationship target escapes the package or leaves xl/media. */
+  /** A REPRESENTATIVE picture's relationship target escapes the package or
+   *  leaves xl/media. */
   | 'PRODUCT_IMAGE_UNSAFE_PATH'
+  /**
+   * A CUSTOMIZATION picture could not be read. Deliberately its own code rather
+   * than reusing the two above: those two exist to explain a blocking
+   * PRODUCT_IMAGE_REQUIRED, and a customization image can never cause one. A
+   * reviewer seeing this needs to know the product is still submittable and
+   * that what is missing is an illustration of a change.
+   */
+  | 'CUSTOMIZATION_IMAGE_UNREADABLE'
+  /** A customization picture's target escapes the package or leaves xl/media.
+   *  Non-blocking, for the same reason. */
+  | 'CUSTOMIZATION_IMAGE_UNSAFE_PATH'
   /** The Master sheet declares no drawing part, so no picture can be mapped. */
   | 'DRAWING_PART_MISSING'
   /** A hidden row inside the product band carries real product content. The row
@@ -187,21 +199,55 @@ export type PiDateValue = {
  * convention for "nothing to charge" is a dash — a production workbook writes
  * "-" in I117 where another leaves the cell blank, and both mean the same
  * thing. For those two cells a blank, whitespace, or a dash resolves to
- * `amount: 0` with `notApplicable: true`, and is NOT reported as unexpected
- * text. Any OTHER wording there is still preserved verbatim and warned about,
- * because "to be confirmed" is not zero.
+ * `amount: 0` with `zeroMeaning: 'notApplicable'`, and is NOT reported as
+ * unexpected text.
+ *
+ * "INCLUSIVE". The same two cells also accept the words "Inclusive" or
+ * "Included": the charge exists but is already inside another figure. That
+ * resolves to `amount: 0` with `zeroMeaning: 'included'`, keeps the source
+ * wording in `text` for audit, and is likewise not a warning.
+ *
+ * Any OTHER wording in those cells is still preserved verbatim and warned
+ * about, because "to be confirmed" is neither zero nor included.
+ *
+ * PHASE 3B SCHEMA NOTE. 20260908000000 stores fabric_cost and packing_cost as
+ * plain numerics, which cannot tell these three apart — a nil charge, a charge
+ * folded into another line, and an unresolved note all become 0. Persisting a
+ * PI faithfully needs the meaning alongside the number: a companion
+ * classification column (or a small enum) per cost, plus the source text where
+ * text was allowed. That migration is NOT touched in this phase.
  */
+/**
+ * Why a cell with no number in it nonetheless resolves to a zero charge.
+ *
+ * TWO DIFFERENT COMMERCIAL FACTS, and they must never be collapsed:
+ *
+ *   notApplicable  Blank or a dash. There is NO such charge on this order.
+ *   included       "Inclusive" / "Included". There IS such a charge; it is
+ *                  already inside another figure on the PI and is not billed
+ *                  again here.
+ *
+ * Both add zero to the arithmetic, which is why both carry `amount: 0`. But a
+ * client asking "was packing charged?" gets opposite answers, so a screen that
+ * printed "Not applicable" for an "Inclusive" cell would misreport the
+ * document. Only the two "as per actual" rows (fabric I117, packing I118) can
+ * produce either; every other commercial cell treats the same words as
+ * unexpected text and warns.
+ */
+export type PiZeroMeaning = 'notApplicable' | 'included'
+
 export type PiAmountOrText = {
   amount: number | null
   text: string | null
   /**
-   * True when the cell said "nothing to charge here" rather than carrying a
-   * figure — blank or a dash, in a cell where that has an agreed meaning.
-   * `amount` is 0 whenever this is true, so callers doing arithmetic need not
-   * special-case it, while a caller rendering the PI can still show a dash
-   * rather than "₹0.00".
+   * Set when the cell stated a zero charge in words rather than in digits.
+   * `amount` is 0 whenever this is non-null, so callers doing arithmetic need
+   * not special-case it, while a caller rendering the PI can still show what
+   * the workbook actually said.
+   *
+   * null when the cell held a real figure, unexpected text, or nothing at all.
    */
-  notApplicable: boolean
+  zeroMeaning: PiZeroMeaning | null
   /** The cell this came from, so a reviewer can be pointed straight at it. */
   cell: string
 }
@@ -252,7 +298,24 @@ export type PiHeader = {
 
 // ── Products ──────────────────────────────────────────────────────────────────
 
+/**
+ * What a picture is FOR. Never inferred from the image itself — it is decided
+ * by the column the anchor originates in, and nothing downstream may guess it.
+ *
+ *   representative  Column E. The product. Exactly one per row, required.
+ *   customization   Column K. What should differ from the representative
+ *                   image. Any number, including none.
+ *
+ * The two are kept in separate fields on every shape below rather than in one
+ * array with a flag, because "the picture of the product" and "a picture of a
+ * change to it" are different facts with different rules, and a single list
+ * invites code that forgets which it is holding.
+ */
+export type PiImageRole = 'representative' | 'customization'
+
 export type PiProductImage = {
+  /** Which column this came from, and therefore what it means. */
+  role: PiImageRole
   /** 1-based worksheet row the picture is anchored to. */
   row: number
   /** Archive part the bytes came from, e.g. "xl/media/image28.png". */
@@ -295,10 +358,22 @@ export type PiProduct = {
   lineTotal: number | null
   /** J, from the hidden sequence column, e.g. "B001". */
   itemSequence: string | null
-  /** K — optional; most rows have none. */
+  /** K — optional; most rows have none. Text only; a picture anchored over
+   *  column K is a customizationImage and is never read as this. */
   customization: string | null
-  /** The picture anchored in column E on this row, when exactly one was found. */
-  image: PiProductImage | null
+  /** The picture anchored in column E on this row, when exactly one was found.
+   *  Required: a row without one carries PRODUCT_IMAGE_REQUIRED. */
+  representativeImage: PiProductImage | null
+  /**
+   * Pictures anchored over column K on this row, in document order.
+   *
+   * OPTIONAL AND UNLIMITED. Empty is the ordinary case and is never a warning
+   * or a blocking issue. Several on one row is legitimate — a client asking for
+   * three changes attaches three pictures — so unlike the representative image,
+   * more than one is NOT an ambiguity and nothing here refuses to choose,
+   * because there is nothing to choose between: all of them are kept.
+   */
+  customizationImages: readonly PiProductImage[]
 }
 
 // ── Commercial summary (rows 115–122) ─────────────────────────────────────────
@@ -374,10 +449,28 @@ export type PiWorkbook = {
   header: PiHeader
   products: readonly PiProduct[]
   commercial: PiCommercialSummary
-  /** Every product picture extracted, one entry per mapped product row. A media
-   *  part anchored to several rows appears once per row, sharing one byte
-   *  buffer. */
-  images: readonly PiProductImage[]
+  /**
+   * Every column-E picture that became a product's representative image — one
+   * entry per mapped product row. A media part anchored to several rows appears
+   * once per row, sharing one byte buffer.
+   *
+   * A row whose pictures were rejected (none, or more than one) contributes
+   * nothing here, which is why this can be shorter than `products`.
+   */
+  representativeImages: readonly PiProductImage[]
+  /**
+   * Every column-K picture, flattened across products in row order. One entry
+   * per anchored picture, NOT per media part — a photograph reused on three
+   * rows is three entries sharing one byte buffer.
+   *
+   * PHASE 3B SCHEMA NOTE. Persisting this needs a normalized child table —
+   * order_submission_product_images(product_id, role, storage_path, position)
+   * with role in ('representative','customization') — because a product may
+   * carry any number of customization images. A single image column on the
+   * product row cannot hold them, and the existing 20260908000000 migration
+   * has no such table. That migration is NOT touched in this phase.
+   */
+  customizationImages: readonly PiProductImage[]
 }
 
 /**

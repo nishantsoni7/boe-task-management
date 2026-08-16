@@ -19,6 +19,15 @@ type OrdersLayoutProps = {
   actions?: React.ReactNode
   onSignOut: () => void
   onRefresh?: () => Promise<void>
+  /**
+   * Whether the header shows the refresh control. Defaults to true, so every
+   * existing Orders page keeps exactly the header it had.
+   *
+   * Opt out on a screen with nothing to re-fetch — /orders/import reads a local
+   * workbook and holds no server data, so a refresh there would clear nothing
+   * and reload nothing.
+   */
+  showRefresh?: boolean
   children: React.ReactNode
 }
 
@@ -29,6 +38,7 @@ export function OrdersLayout({
   actions,
   onSignOut,
   onRefresh,
+  showRefresh = true,
   children,
 }: OrdersLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -223,6 +233,7 @@ export function OrdersLayout({
           <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
             <ModuleSwitchButton target="finance" profile={profile} />
             {actions}
+            {showRefresh && (
             <button
               onClick={handleRefresh}
               disabled={refreshing}
@@ -245,6 +256,7 @@ export function OrdersLayout({
                 style={refreshing ? { animation: 'boe-spin 0.7s linear infinite' } : undefined}
               />
             </button>
+            )}
           </div>
         </div>
 

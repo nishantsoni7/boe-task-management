@@ -13,11 +13,24 @@
 //           → xl/media/image28.png             the bytes
 //
 // WHAT COUNTS AS A PRODUCT IMAGE. Only a picture anchor whose ORIGIN cell is in
-// the representative-image column and inside the product row band. That single
+// one of the two image columns and inside the product row band. That single
 // rule is what keeps the BOE logo (row 1), the signature block (row 7) and the
 // footer artwork (rows 124+) out of the product data, without maintaining a list
-// of things to ignore. Text typed into column E is a cell value and is not a
-// picture; it is never mistaken for one because this module never looks at cells.
+// of things to ignore. Text typed into either column is a cell value and is not
+// a picture; it is never mistaken for one because this module never looks at
+// cells.
+//
+// TWO COLUMNS, TWO MEANINGS. Column E carries the representative image — the
+// product — and a row must have exactly one. Column K carries customization
+// images: pictures of what should DIFFER from the representative image. A row
+// may have none, one, or several, and several is not an ambiguity because
+// nothing has to be chosen between them. Column K also holds the customization
+// TEXT, which is a cell value and therefore invisible to this module.
+//
+// The role is decided by the anchor's origin column and by nothing else. No
+// heuristic reads the picture, its size, its name or its order to guess what it
+// is for, because a wrong guess attaches the wrong photograph to a commercial
+// document.
 //
 // Both anchor kinds are handled and both are real in production workbooks: one
 // observed BOE file mixes 51 twoCellAnchor and 11 oneCellAnchor elements, and
@@ -27,7 +40,7 @@
 
 import { isUnsafeEntryName, resolveRelTarget, sniffImageFormat, type ArchiveEntries } from '../xlsxMediaOptimizer'
 import { partText, relationshipMap, relationshipTarget, relsPathFor } from './workbookReader'
-import type { PiProductImage } from './types'
+import type { PiImageRole, PiProductImage } from './types'
 
 /** Media MUST live here. A relationship that resolves anywhere else is not a
  *  picture we are willing to read, however the drawing describes it. */
@@ -141,12 +154,19 @@ export type PiImageIssue = {
   /** The resolved part name, or the raw relationship target when it could not
    *  be resolved at all. */
   part: string
+  /** Which column the rejected picture came from. The caller turns this into
+   *  the right warning code: a representative failure explains a blocking
+   *  issue, a customization failure never does. */
+  role: PiImageRole
 }
 
 export type PiImageHarvest = {
-  /** 1-based worksheet row → every picture anchored there, in document order.
+  /** 1-based row → the column-E pictures anchored there, in document order.
    *  A row with two entries is a genuine ambiguity the caller must report. */
-  byRow: ReadonlyMap<number, PiProductImage[]>
+  representativeByRow: ReadonlyMap<number, PiProductImage[]>
+  /** 1-based row → the column-K pictures anchored there, in document order.
+   *  Several on one row is normal and is NOT an ambiguity. */
+  customizationByRow: ReadonlyMap<number, PiProductImage[]>
   issues: readonly PiImageIssue[]
 }
 
@@ -154,7 +174,11 @@ export type HarvestOptions = {
   entries: ArchiveEntries
   drawingPart: string
   /** 0-based column the representative image is anchored in (E → 4). */
-  imageColumn: number
+  representativeColumn: number
+  /** 0-based column customization images are anchored in (K → 10). The same
+   *  column also holds the customization TEXT; a cell value is never a picture
+   *  and this module never looks at cells, so the two cannot collide. */
+  customizationColumn: number
   /** Inclusive 1-based product row band. Anything outside is decorative. */
   firstRow: number
   lastRow: number
@@ -170,36 +194,48 @@ export type HarvestOptions = {
  * handed out by reference. Nothing is copied and nothing is decoded twice.
  */
 export function harvestProductImages(opts: HarvestOptions): PiImageHarvest {
-  const { entries, drawingPart, imageColumn, firstRow, lastRow } = opts
+  const { entries, drawingPart, representativeColumn, customizationColumn, firstRow, lastRow } = opts
 
   const anchors = parseDrawingAnchors(partText(entries, drawingPart))
   const rels = relationshipMap(partText(entries, relsPathFor(drawingPart)))
   const relsPath = relsPathFor(drawingPart)
 
-  const byRow = new Map<number, PiProductImage[]>()
+  const representativeByRow = new Map<number, PiProductImage[]>()
+  const customizationByRow = new Map<number, PiProductImage[]>()
   const issues: PiImageIssue[] = []
+  // ONE cache across BOTH columns. A workbook that uses the same photograph as
+  // a product shot and as a customization illustration reads and sniffs those
+  // bytes once, and the two records share the buffer by reference.
   const mediaCache = new Map<string, MediaFacts>()
 
   for (const anchor of anchors) {
     if (!anchor.isPicture) continue
-    if (anchor.fromCol !== imageColumn) continue
+
+    // The column decides the role, and nothing else does. Any other column is
+    // decoration and is dropped here — the same single rule that keeps the
+    // logo, the signature block and the footer artwork out.
+    const role: PiImageRole | null =
+      anchor.fromCol === representativeColumn ? 'representative'
+      : anchor.fromCol === customizationColumn ? 'customization'
+      : null
+    if (!role) continue
 
     const row = anchor.fromRow + 1
     if (row < firstRow || row > lastRow) continue
 
     const target = anchor.embedId ? rels.get(anchor.embedId) : undefined
     if (!target) {
-      issues.push({ code: 'PRODUCT_IMAGE_UNREADABLE', row, part: anchor.embedId ?? '(no r:embed)' })
+      issues.push({ code: 'PRODUCT_IMAGE_UNREADABLE', row, part: anchor.embedId ?? '(no r:embed)', role })
       continue
     }
 
     const resolved = resolveRelTarget(relsPath, target)
     if (!resolved || isUnsafeEntryName(resolved) || !resolved.startsWith(MEDIA_PREFIX)) {
-      issues.push({ code: 'PRODUCT_IMAGE_UNSAFE_PATH', row, part: resolved ?? target })
+      issues.push({ code: 'PRODUCT_IMAGE_UNSAFE_PATH', row, part: resolved ?? target, role })
       continue
     }
     if (!(resolved in entries)) {
-      issues.push({ code: 'PRODUCT_IMAGE_UNREADABLE', row, part: resolved })
+      issues.push({ code: 'PRODUCT_IMAGE_UNREADABLE', row, part: resolved, role })
       continue
     }
 
@@ -210,6 +246,7 @@ export function harvestProductImages(opts: HarvestOptions): PiImageHarvest {
     }
 
     const image: PiProductImage = {
+      role,
       row,
       part: resolved,
       bytes: facts.bytes,
@@ -222,12 +259,13 @@ export function harvestProductImages(opts: HarvestOptions): PiImageHarvest {
       anchorFromRow: anchor.fromRow,
     }
 
-    const list = byRow.get(row)
+    const target_ = role === 'representative' ? representativeByRow : customizationByRow
+    const list = target_.get(row)
     if (list) list.push(image)
-    else byRow.set(row, [image])
+    else target_.set(row, [image])
   }
 
-  return { byRow, issues }
+  return { representativeByRow, customizationByRow, issues }
 }
 
 type MediaFacts = {

@@ -38,6 +38,7 @@ import { zipSync } from 'fflate'
 import {
   parseBoePiWorkbook,
   isNotApplicableMarker,
+  isIncludedMarker,
   TEMPLATE_HEADERS,
   FIRST_PRODUCT_ROW,
   LAST_PRODUCT_ROW,
@@ -1044,7 +1045,7 @@ describe('submission-blocking product issues', () => {
     assert.equal(result.blockingIssues.length > 0, true)
     assert.equal(result.data.products.length, 2)
     assert.equal(result.data.products[0].productName, 'Good Item')
-    assert.equal(result.data.products[0].image?.row, 32)
+    assert.equal(result.data.products[0].representativeImage?.row, 32)
     assert.equal(result.data.header.sourceOrderNumber, '407')
     assert.equal(result.data.commercial.grossProductAmount > 0, true)
     assert.equal(result.data.template.genuineProductRows.length, 2)
@@ -1229,7 +1230,7 @@ describe('transportation', () => {
     const result = expectOk(await parseBoePiWorkbook(wb))
     assert.equal(result.data.commercial.transportation.text, '-')
     assert.equal(result.data.commercial.transportation.amount, null)
-    assert.equal(result.data.commercial.transportation.notApplicable, false)
+    assert.equal(result.data.commercial.transportation.zeroMeaning, null)
   })
 })
 
@@ -1249,7 +1250,7 @@ describe('fabric and packing cost — the "nothing to charge" cells', () => {
       const value = result.data.commercial[read]
       assert.equal(value.amount, 7250.5)
       assert.equal(value.text, null)
-      assert.equal(value.notApplicable, false)
+      assert.equal(value.zeroMeaning, null)
       assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 0)
     })
 
@@ -1261,7 +1262,7 @@ describe('fabric and packing cost — the "nothing to charge" cells', () => {
       const result = expectOk(await parseBoePiWorkbook(wb))
       const value = result.data.commercial[read]
       assert.equal(value.amount, 0)
-      assert.equal(value.notApplicable, true)
+      assert.equal(value.zeroMeaning, 'notApplicable')
       assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 0)
     })
 
@@ -1273,7 +1274,7 @@ describe('fabric and packing cost — the "nothing to charge" cells', () => {
       const result = expectOk(await parseBoePiWorkbook(wb))
       const value = result.data.commercial[read]
       assert.equal(value.amount, 0)
-      assert.equal(value.notApplicable, true)
+      assert.equal(value.zeroMeaning, 'notApplicable')
       assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 0)
     })
 
@@ -1286,7 +1287,7 @@ describe('fabric and packing cost — the "nothing to charge" cells', () => {
       const value = result.data.commercial[read]
       assert.equal(value.amount, 0)
       assert.equal(value.text, null)
-      assert.equal(value.notApplicable, true)
+      assert.equal(value.zeroMeaning, 'notApplicable')
       assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 0)
     })
 
@@ -1299,7 +1300,7 @@ describe('fabric and packing cost — the "nothing to charge" cells', () => {
       const value = result.data.commercial[read]
       assert.equal(value.amount, null)
       assert.equal(value.text, 'to be confirmed')
-      assert.equal(value.notApplicable, false)
+      assert.equal(value.zeroMeaning, null)
       assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 1)
       const warning = result.warnings.find(w => w.code === 'COMMERCIAL_VALUE_NON_NUMERIC')
       assert.equal(warning?.cell, cell)
@@ -1316,7 +1317,7 @@ describe('fabric and packing cost — the "nothing to charge" cells', () => {
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
     assert.equal(result.data.commercial.fabricCost.amount, 0)
-    assert.equal(result.data.commercial.fabricCost.notApplicable, true)
+    assert.equal(result.data.commercial.fabricCost.zeroMeaning, 'notApplicable')
     assert.deepEqual(codesOf(result.warnings), [])
   })
 
@@ -1328,7 +1329,7 @@ describe('fabric and packing cost — the "nothing to charge" cells', () => {
       })
       const result = expectOk(await parseBoePiWorkbook(wb))
       assert.equal(result.data.commercial.fabricCost.amount, 0, `marker ${JSON.stringify(marker)}`)
-      assert.equal(result.data.commercial.fabricCost.notApplicable, true)
+      assert.equal(result.data.commercial.fabricCost.zeroMeaning, 'notApplicable')
     }
   })
 
@@ -1342,7 +1343,7 @@ describe('fabric and packing cost — the "nothing to charge" cells', () => {
     const result = expectOk(await parseBoePiWorkbook(wb))
     assert.equal(result.data.commercial.grandTotal.amount, null)
     assert.equal(result.data.commercial.grandTotal.text, '-')
-    assert.equal(result.data.commercial.grandTotal.notApplicable, false)
+    assert.equal(result.data.commercial.grandTotal.zeroMeaning, null)
     assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 1)
   })
 
@@ -1352,6 +1353,170 @@ describe('fabric and packing cost — the "nothing to charge" cells', () => {
     }
     for (const no of ['0', 'n/a', 'N/A', 'nil', 'TBC', 'to be confirmed', '-1', 'as applicable']) {
       assert.equal(isNotApplicableMarker(no), false, JSON.stringify(no))
+    }
+  })
+})
+
+describe('fabric and packing cost — "Inclusive" is charged, not absent', () => {
+  const costCells = [
+    { label: 'fabric', cell: 'I117', read: 'fabricCost' as const },
+    { label: 'packing', cell: 'I118', read: 'packingCost' as const },
+  ]
+
+  const wordings = ['Inclusive', 'Included', 'INCLUSIVE', 'included', 'InClUdEd', '  Inclusive  ', 'Included\n']
+
+  for (const { label, cell, read } of costCells) {
+    for (const wording of wordings) {
+      test(`${JSON.stringify(wording)} in the ${label} cost is zero, included, and silent`, async () => {
+        const wb = buildPiWorkbook({
+          products: inventProducts(2), anchors: anchorsFor(2),
+          commercial: { [cell]: text(wording) },
+        })
+        const result = expectOk(await parseBoePiWorkbook(wb))
+        const value = result.data.commercial[read]
+
+        assert.equal(value.amount, 0, 'normalized to zero for the arithmetic')
+        assert.equal(value.zeroMeaning, 'included', 'and classified as included')
+        assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 0, 'no warning')
+      })
+    }
+
+    test(`the source wording of an included ${label} cost is kept for audit`, async () => {
+      const wb = buildPiWorkbook({
+        products: inventProducts(2), anchors: anchorsFor(2),
+        commercial: { [cell]: text('  Inclusive  ') },
+      })
+      const { data } = expectOk(await parseBoePiWorkbook(wb))
+      // Trimmed by the cell reader, but the WORD the workbook used survives —
+      // unlike a dash, which carries no information worth keeping.
+      assert.equal(data.commercial[read].text, 'Inclusive')
+    })
+
+    test(`an included ${label} cost is NOT the same fact as a dash`, async () => {
+      const included = buildPiWorkbook({
+        products: inventProducts(1), anchors: anchorsFor(1),
+        commercial: { [cell]: text('Inclusive') },
+      })
+      const dashed = buildPiWorkbook({
+        products: inventProducts(1), anchors: anchorsFor(1),
+        commercial: { [cell]: text('-') },
+      })
+      const a = expectOk(await parseBoePiWorkbook(included)).data.commercial[read]
+      const b = expectOk(await parseBoePiWorkbook(dashed)).data.commercial[read]
+
+      assert.equal(a.amount, b.amount, 'both add nothing to the total')
+      assert.notEqual(a.zeroMeaning, b.zeroMeaning, 'but they mean opposite things')
+      assert.equal(a.zeroMeaning, 'included')
+      assert.equal(b.zeroMeaning, 'notApplicable')
+    })
+  }
+
+  test('a formula CACHED as "Inclusive" is read the same way', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2),
+      commercial: { I118: { kind: 'formulaStr', value: 'Inclusive', formula: 'IF(X1=0,"Inclusive",X1)' } },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(result.data.commercial.packingCost.amount, 0)
+    assert.equal(result.data.commercial.packingCost.zeroMeaning, 'included')
+    assert.deepEqual(codesOf(result.warnings), [])
+  })
+
+  test('a formula CACHED as "Included" is read the same way', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2),
+      commercial: { I117: { kind: 'formulaStr', value: 'Included', formula: 'IF(X1=0,"Included",X1)' } },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(result.data.commercial.fabricCost.zeroMeaning, 'included')
+    assert.deepEqual(codesOf(result.warnings), [])
+  })
+
+  test('both cost cells can be included at once, still silently', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(2), anchors: anchorsFor(2),
+      commercial: { I117: text('Inclusive'), I118: text('Included') },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(result.data.commercial.fabricCost.zeroMeaning, 'included')
+    assert.equal(result.data.commercial.packingCost.zeroMeaning, 'included')
+    assert.deepEqual(codesOf(result.warnings), [])
+  })
+
+  test('genuinely unexpected wording in those cells still warns', async () => {
+    // The rule must not become "any word means zero". A qualification is
+    // something a person has to read.
+    for (const wording of ['inclusive of GST', 'included?', 'partly included', 'incl', 'to be confirmed']) {
+      const wb = buildPiWorkbook({
+        products: inventProducts(1), anchors: anchorsFor(1),
+        commercial: { I117: text(wording) },
+      })
+      const result = expectOk(await parseBoePiWorkbook(wb))
+
+      assert.equal(result.data.commercial.fabricCost.amount, null, JSON.stringify(wording))
+      assert.equal(result.data.commercial.fabricCost.text, wording)
+      assert.equal(result.data.commercial.fabricCost.zeroMeaning, null)
+      assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 1, JSON.stringify(wording))
+    }
+  })
+
+  test('the rule does NOT reach any other commercial cell', async () => {
+    // A grand total, a GST line or a subtotal that says "Inclusive" is a
+    // workbook somebody must look at — not a zero.
+    const others: { cell: string; read: 'subtotalAfterDiscount' | 'totalBeforeGst' | 'gst' | 'grandTotal' }[] = [
+      { cell: 'I116', read: 'subtotalAfterDiscount' },
+      { cell: 'I120', read: 'totalBeforeGst' },
+      { cell: 'I121', read: 'gst' },
+      { cell: 'I122', read: 'grandTotal' },
+    ]
+    for (const { cell, read } of others) {
+      const wb = buildPiWorkbook({
+        products: inventProducts(1), anchors: anchorsFor(1),
+        commercial: { [cell]: text('Inclusive') },
+      })
+      const result = expectOk(await parseBoePiWorkbook(wb))
+
+      assert.equal(result.data.commercial[read].amount, null, cell)
+      assert.equal(result.data.commercial[read].text, 'Inclusive', cell)
+      assert.equal(result.data.commercial[read].zeroMeaning, null, cell)
+      assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 1, cell)
+    }
+  })
+
+  test('the discount cell is unaffected — it has its own rule', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1), anchors: anchorsFor(1),
+      commercial: { I115: text('Inclusive') },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(result.data.commercial.discount, 0, 'a non-numeric discount is still 0')
+    assert.equal(countOf(result.warnings, 'DISCOUNT_NOT_NUMERIC'), 1, 'and still says so')
+  })
+
+  test('transportation keeps its numeric-or-text behaviour', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1), anchors: anchorsFor(1),
+      commercial: { I119: text('Inclusive') },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(result.data.commercial.transportation.text, 'Inclusive', 'preserved verbatim')
+    assert.equal(result.data.commercial.transportation.amount, null, 'not turned into a zero')
+    assert.equal(result.data.commercial.transportation.zeroMeaning, null)
+    // Transportation never warns on text: words are expected there.
+    assert.equal(countOf(result.warnings, 'COMMERCIAL_VALUE_NON_NUMERIC'), 0)
+  })
+
+  test('isIncludedMarker accepts exactly the two bare words', () => {
+    for (const yes of ['Inclusive', 'included', 'INCLUSIVE', '  Included  ', 'In cluded'.replace(' ', '')]) {
+      assert.equal(isIncludedMarker(yes), true, JSON.stringify(yes))
+    }
+    for (const no of [null, '', '   ', '-', '0', 'incl', 'inclusive of GST', 'included?', 'not included', 'excluded']) {
+      assert.equal(isIncludedMarker(no), false, JSON.stringify(no))
     }
   })
 })
@@ -1439,9 +1604,9 @@ describe('product images', () => {
       anchors: anchorsFor(3, 'two'),
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
-    assert.equal(result.data.images.length, 3)
-    assert.deepEqual(result.data.products.map(p => p.image?.row), [32, 33, 34])
-    assert.equal(result.data.products[0].image?.anchorKind, 'twoCellAnchor')
+    assert.equal(result.data.representativeImages.length, 3)
+    assert.deepEqual(result.data.products.map(p => p.representativeImage?.row), [32, 33, 34])
+    assert.equal(result.data.products[0].representativeImage?.anchorKind, 'twoCellAnchor')
     assert.deepEqual(blockingCodes(result.blockingIssues), [])
   })
 
@@ -1451,8 +1616,8 @@ describe('product images', () => {
       anchors: anchorsFor(2, 'one'),
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
-    assert.equal(result.data.products[0].image?.anchorKind, 'oneCellAnchor')
-    assert.equal(result.data.products[1].image?.anchorKind, 'oneCellAnchor')
+    assert.equal(result.data.products[0].representativeImage?.anchorKind, 'oneCellAnchor')
+    assert.equal(result.data.products[1].representativeImage?.anchorKind, 'oneCellAnchor')
   })
 
   test('handles a workbook mixing both anchor kinds, as production files do', async () => {
@@ -1467,11 +1632,11 @@ describe('product images', () => {
       media: { 'image1.png': fakeImage(PNG_SIG), 'image2.jpeg': fakeImage(JPEG_SIG, 80, 7) },
     })
     const { data } = expectOk(await parseBoePiWorkbook(wb))
-    assert.deepEqual(data.products.map(p => p.image?.anchorKind), [
+    assert.deepEqual(data.products.map(p => p.representativeImage?.anchorKind), [
       'twoCellAnchor', 'oneCellAnchor', 'twoCellAnchor', 'oneCellAnchor',
     ])
-    assert.deepEqual(data.products.map(p => p.image?.format), ['png', 'jpeg', 'png', 'jpeg'])
-    assert.deepEqual(data.products.map(p => p.image?.mimeType), [
+    assert.deepEqual(data.products.map(p => p.representativeImage?.format), ['png', 'jpeg', 'png', 'jpeg'])
+    assert.deepEqual(data.products.map(p => p.representativeImage?.mimeType), [
       'image/png', 'image/jpeg', 'image/png', 'image/jpeg',
     ])
   })
@@ -1483,7 +1648,7 @@ describe('product images', () => {
       anchors: [{ kind: 'two', col: 4, row: 32, media: 'image9.png' }],
       media: { 'image9.png': png },
     })
-    const image = expectOk(await parseBoePiWorkbook(wb)).data.products[0].image
+    const image = expectOk(await parseBoePiWorkbook(wb)).data.products[0].representativeImage
     assert.ok(image)
     assert.equal(image?.part, 'xl/media/image9.png')
     assert.equal(image?.format, 'png')
@@ -1501,7 +1666,7 @@ describe('product images', () => {
       anchors: [{ kind: 'two', col: 4, row: 32, media: 'image1.png' }],
       media: { 'image1.png': fakeImage(JPEG_SIG, 64, 5) },
     })
-    const image = expectOk(await parseBoePiWorkbook(wb)).data.products[0].image
+    const image = expectOk(await parseBoePiWorkbook(wb)).data.products[0].representativeImage
     assert.equal(image?.extension, 'png')
     assert.equal(image?.format, 'jpeg')
     assert.equal(image?.mimeType, 'image/jpeg')
@@ -1513,13 +1678,13 @@ describe('product images', () => {
       anchors: anchorsFor(3, 'two', 'image1.png'),
     })
     const { products } = expectOk(await parseBoePiWorkbook(wb)).data
-    const first = products[0].image?.bytes
+    const first = products[0].representativeImage?.bytes
     assert.ok(first)
     // Same part, so the identical buffer is handed out — read once, never copied.
-    assert.equal(products[1].image?.bytes, first)
-    assert.equal(products[2].image?.bytes, first)
+    assert.equal(products[1].representativeImage?.bytes, first)
+    assert.equal(products[2].representativeImage?.bytes, first)
     // Each row still gets its own record with its own row number.
-    assert.deepEqual(products.map(p => p.image?.row), [32, 33, 34])
+    assert.deepEqual(products.map(p => p.representativeImage?.row), [32, 33, 34])
   })
 
   test('a picture outside column E is not a product image', async () => {
@@ -1531,7 +1696,7 @@ describe('product images', () => {
       ],
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
-    assert.equal(result.data.images.length, 0)
+    assert.equal(result.data.representativeImages.length, 0)
     assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_REQUIRED'), 2)
   })
 
@@ -1547,8 +1712,8 @@ describe('product images', () => {
       ],
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
-    assert.equal(result.data.images.length, 2)
-    assert.deepEqual(result.data.images.map(i => i.row), [32, 33])
+    assert.equal(result.data.representativeImages.length, 2)
+    assert.deepEqual(result.data.representativeImages.map(i => i.row), [32, 33])
   })
 
   test('a shape anchored in column E is not treated as a picture', async () => {
@@ -1557,7 +1722,7 @@ describe('product images', () => {
       anchors: [{ kind: 'two', col: 4, row: 32, picture: false }],
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
-    assert.equal(result.data.images.length, 0)
+    assert.equal(result.data.representativeImages.length, 0)
     assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_REQUIRED'), 1)
   })
 
@@ -1570,8 +1735,8 @@ describe('product images', () => {
       anchors: [],
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
-    assert.equal(result.data.products[0].image, null)
-    assert.equal(result.data.images.length, 0)
+    assert.equal(result.data.products[0].representativeImage, null)
+    assert.equal(result.data.representativeImages.length, 0)
     assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_REQUIRED'), 1)
     // And that text does not leak into any product field.
     const values = Object.values(result.data.products[0])
@@ -1604,8 +1769,8 @@ describe('product images', () => {
     assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_AMBIGUOUS'), 1)
     // Guessing would attach the wrong photograph to a commercial document, so
     // nothing is attached and nothing is added to the extracted image list.
-    assert.equal(result.data.products[0].image, null)
-    assert.equal(result.data.images.length, 0)
+    assert.equal(result.data.products[0].representativeImage, null)
+    assert.equal(result.data.representativeImages.length, 0)
     assert.match(result.blockingIssues[0].message, /2 images/)
   })
 
@@ -1616,7 +1781,7 @@ describe('product images', () => {
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
     assert.equal(countOf(result.warnings, 'PRODUCT_IMAGE_UNSAFE_PATH'), 1)
-    assert.equal(result.data.products[0].image, null)
+    assert.equal(result.data.products[0].representativeImage, null)
     // The warning explains WHY; the blocking issue is what stops a submission.
     assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_REQUIRED'), 1)
   })
@@ -1630,7 +1795,7 @@ describe('product images', () => {
     const warning = result.warnings.find(w => w.code === 'PRODUCT_IMAGE_UNSAFE_PATH')
     assert.ok(warning, 'expected PRODUCT_IMAGE_UNSAFE_PATH')
     assert.equal(warning?.part, 'xl/worksheets/sheet3.xml')
-    assert.equal(result.data.products[0].image, null)
+    assert.equal(result.data.products[0].representativeImage, null)
   })
 
   test('a relationship to a part that is not in the archive is unreadable', async () => {
@@ -1640,7 +1805,7 @@ describe('product images', () => {
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
     assert.equal(countOf(result.warnings, 'PRODUCT_IMAGE_UNREADABLE'), 1)
-    assert.equal(result.data.products[0].image, null)
+    assert.equal(result.data.products[0].representativeImage, null)
     // "Unreadable" is blocking too — the row still has no usable image.
     assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_REQUIRED'), 1)
   })
@@ -1675,11 +1840,12 @@ describe('product images', () => {
     const harvest = harvestProductImages({
       entries: opened.archive.entries,
       drawingPart: drawingPart!,
-      imageColumn: 4,
+      representativeColumn: 4,
+      customizationColumn: 10,
       firstRow: FIRST_PRODUCT_ROW,
       lastRow: LAST_PRODUCT_ROW,
     })
-    assert.deepEqual([...harvest.byRow.keys()].sort((a, b) => a - b), [32, 33])
+    assert.deepEqual([...harvest.representativeByRow.keys()].sort((a, b) => a - b), [32, 33])
     assert.equal(harvest.issues.length, 0)
   })
 })
@@ -1723,5 +1889,315 @@ describe('the parser is read-only', () => {
     })
     const result = expectOk(await parseBoePiWorkbook(wb))
     assert.deepEqual(codesOf(result.warnings), [])
+  })
+})
+
+// ══ 9. Customization images (column K) ═══════════════════════════════════════
+//
+// Column E is the product. Column K is what should DIFFER from it. The two are
+// read from the same drawing part by the same walk, and everything below exists
+// to prove they never trade places: a customization image must never satisfy
+// the representative requirement, and a representative image must never appear
+// as a customization.
+//
+// Column K also holds the customization TEXT. A cell value is not a picture and
+// a picture is not a cell value, so a row can carry both, either, or neither.
+
+/** A column-K picture anchor. col 10 is K. */
+const customizationAnchor = (
+  row: number,
+  media: string,
+  kind: 'one' | 'two' = 'two',
+): AnchorFixture => ({ kind, col: 10, row, media })
+
+describe('customization images', () => {
+  test('column E and column K are classified separately', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(2),
+      anchors: [
+        ...anchorsFor(2, 'two', 'rep.png'),
+        customizationAnchor(FIRST_PRODUCT_ROW, 'cust.png'),
+      ],
+      media: { 'rep.png': fakeImage(PNG_SIG), 'cust.png': fakeImage(JPEG_SIG, 64, 9) },
+    })
+    const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(data.representativeImages.length, 2)
+    assert.equal(data.customizationImages.length, 1)
+    assert.equal(data.products[0].representativeImage?.part, 'xl/media/rep.png')
+    assert.equal(data.products[0].representativeImage?.role, 'representative')
+    assert.equal(data.products[0].customizationImages[0].part, 'xl/media/cust.png')
+    assert.equal(data.products[0].customizationImages[0].role, 'customization')
+  })
+
+  test('a customization image never satisfies the representative requirement', async () => {
+    // Column K only: the row still has no product photograph.
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: [customizationAnchor(FIRST_PRODUCT_ROW, 'cust.png')],
+      media: { 'cust.png': fakeImage(PNG_SIG) },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(result.data.products[0].representativeImage, null)
+    assert.equal(result.data.products[0].customizationImages.length, 1)
+    assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_REQUIRED'), 1)
+  })
+
+  test('customization text and a customization image coexist on one row', async () => {
+    const wb = buildPiWorkbook({
+      products: [{ ...inventProducts(1)[0], customization: 'Brass handles\nMatte finish' }],
+      anchors: [...anchorsFor(1), customizationAnchor(FIRST_PRODUCT_ROW, 'cust.png')],
+      media: { 'image1.png': fakeImage(PNG_SIG), 'cust.png': fakeImage(PNG_SIG, 64, 3) },
+    })
+    const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(data.products[0].customization, 'Brass handles\nMatte finish')
+    assert.equal(data.products[0].customizationImages.length, 1)
+  })
+
+  test('text in column K is never read as an image', async () => {
+    const wb = buildPiWorkbook({
+      products: [{ ...inventProducts(1)[0], customization: 'Taller by 6 inches' }],
+      anchors: anchorsFor(1),
+    })
+    const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(data.products[0].customization, 'Taller by 6 inches')
+    assert.deepEqual(data.products[0].customizationImages, [])
+    assert.equal(data.customizationImages.length, 0)
+  })
+
+  test('zero customization images is silent — no warning, no blocking issue', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(3),
+      anchors: anchorsFor(3),
+      commercial: { I115: num(0) },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.deepEqual(result.data.products.map(p => p.customizationImages.length), [0, 0, 0])
+    assert.deepEqual(codesOf(result.warnings), [])
+    assert.deepEqual(blockingCodes(result.blockingIssues), [])
+  })
+
+  test('one customization image on a row', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(2),
+      anchors: [...anchorsFor(2), customizationAnchor(FIRST_PRODUCT_ROW + 1, 'cust.png')],
+      media: { 'image1.png': fakeImage(PNG_SIG), 'cust.png': fakeImage(PNG_SIG, 64, 4) },
+    })
+    const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.deepEqual(data.products.map(p => p.customizationImages.length), [0, 1])
+    assert.equal(data.customizationImages.length, 1)
+    assert.equal(data.customizationImages[0].row, FIRST_PRODUCT_ROW + 1)
+  })
+
+  test('several customization images on ONE row are all kept, and none blocks', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: [
+        ...anchorsFor(1),
+        customizationAnchor(FIRST_PRODUCT_ROW, 'c1.png'),
+        customizationAnchor(FIRST_PRODUCT_ROW, 'c2.png'),
+        customizationAnchor(FIRST_PRODUCT_ROW, 'c3.png'),
+      ],
+      media: {
+        'image1.png': fakeImage(PNG_SIG),
+        'c1.png': fakeImage(PNG_SIG, 64, 11),
+        'c2.png': fakeImage(PNG_SIG, 64, 12),
+        'c3.png': fakeImage(PNG_SIG, 64, 13),
+      },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(result.data.products[0].customizationImages.length, 3)
+    // The representative-image ambiguity rule applies to column E ONLY.
+    assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_AMBIGUOUS'), 0)
+    assert.deepEqual(blockingCodes(result.blockingIssues), [])
+  })
+
+  test('several representative images on one row still block', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: [
+        { kind: 'two', col: 4, row: FIRST_PRODUCT_ROW, media: 'image1.png' },
+        { kind: 'one', col: 4, row: FIRST_PRODUCT_ROW, media: 'c1.png' },
+        customizationAnchor(FIRST_PRODUCT_ROW, 'c2.png'),
+      ],
+      media: {
+        'image1.png': fakeImage(PNG_SIG),
+        'c1.png': fakeImage(PNG_SIG, 64, 21),
+        'c2.png': fakeImage(PNG_SIG, 64, 22),
+      },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_AMBIGUOUS'), 1)
+    // …and the customization image on the same row is unaffected by it.
+    assert.equal(result.data.products[0].customizationImages.length, 1)
+  })
+
+  test('both anchor kinds work in column K', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: [
+        ...anchorsFor(1),
+        customizationAnchor(FIRST_PRODUCT_ROW, 'c1.png', 'one'),
+        customizationAnchor(FIRST_PRODUCT_ROW, 'c2.png', 'two'),
+      ],
+      media: {
+        'image1.png': fakeImage(PNG_SIG),
+        'c1.png': fakeImage(PNG_SIG, 64, 31),
+        'c2.png': fakeImage(JPEG_SIG, 64, 32),
+      },
+    })
+    const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.deepEqual(
+      data.products[0].customizationImages.map(i => i.anchorKind),
+      ['oneCellAnchor', 'twoCellAnchor'],
+    )
+    assert.deepEqual(data.products[0].customizationImages.map(i => i.format), ['png', 'jpeg'])
+  })
+
+  test('a media part used as BOTH roles is read once and shared by reference', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: [
+        ...anchorsFor(1, 'two', 'shared.png'),
+        customizationAnchor(FIRST_PRODUCT_ROW, 'shared.png'),
+      ],
+      media: { 'shared.png': fakeImage(PNG_SIG) },
+    })
+    const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+    const representative = data.products[0].representativeImage
+    const customization = data.products[0].customizationImages[0]
+    assert.equal(representative?.bytes, customization.bytes, 'one buffer, two records')
+    assert.notEqual(representative?.role, customization.role, 'and two distinct roles')
+  })
+
+  test('one customization photograph reused across rows is shared, and counted per row', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(3),
+      anchors: [
+        ...anchorsFor(3),
+        customizationAnchor(FIRST_PRODUCT_ROW, 'shared.png'),
+        customizationAnchor(FIRST_PRODUCT_ROW + 1, 'shared.png'),
+        customizationAnchor(FIRST_PRODUCT_ROW + 2, 'shared.png'),
+      ],
+      media: { 'image1.png': fakeImage(PNG_SIG), 'shared.png': fakeImage(PNG_SIG, 64, 41) },
+    })
+    const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(data.customizationImages.length, 3)
+    assert.equal(data.customizationImages[0].bytes, data.customizationImages[2].bytes)
+    assert.deepEqual(data.customizationImages.map(i => i.row), [32, 33, 34])
+  })
+
+  test('an unreadable customization image warns, and does NOT block', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: [
+        ...anchorsFor(1),
+        { kind: 'two', col: 10, row: FIRST_PRODUCT_ROW, rawTarget: '../media/absent.png' },
+      ],
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(countOf(result.warnings, 'CUSTOMIZATION_IMAGE_UNREADABLE'), 1)
+    assert.equal(countOf(result.warnings, 'PRODUCT_IMAGE_UNREADABLE'), 0,
+      'a customization failure must not borrow the representative code')
+    assert.deepEqual(blockingCodes(result.blockingIssues), [])
+    assert.equal(result.data.products[0].representativeImage?.row, FIRST_PRODUCT_ROW)
+  })
+
+  test('an unsafe customization relationship warns, and does NOT block', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: [
+        ...anchorsFor(1),
+        { kind: 'one', col: 10, row: FIRST_PRODUCT_ROW, rawTarget: '../../../../etc/passwd' },
+      ],
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(countOf(result.warnings, 'CUSTOMIZATION_IMAGE_UNSAFE_PATH'), 1)
+    assert.equal(countOf(result.warnings, 'PRODUCT_IMAGE_UNSAFE_PATH'), 0)
+    assert.deepEqual(blockingCodes(result.blockingIssues), [])
+    assert.equal(result.data.customizationImages.length, 0, 'the unsafe target is not read')
+  })
+
+  test('the warning names the row the customization image belongs to', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(3),
+      anchors: [
+        ...anchorsFor(3),
+        { kind: 'two', col: 10, row: FIRST_PRODUCT_ROW + 2, rawTarget: '../media/absent.png' },
+      ],
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+    const warning = result.warnings.find(w => w.code === 'CUSTOMIZATION_IMAGE_UNREADABLE')
+
+    assert.equal(warning?.row, FIRST_PRODUCT_ROW + 2, 'never attributed to another product')
+  })
+
+  test('decorative and wrong-column pictures are still excluded', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(2),
+      anchors: [
+        ...anchorsFor(2),
+        { kind: 'two', col: 1, row: 1, media: 'logo.png' },
+        { kind: 'one', col: 10, row: 7, media: 'signature.png' },
+        { kind: 'two', col: 10, row: LAST_PRODUCT_ROW + 13, media: 'footer.png' },
+        { kind: 'two', col: 7, row: FIRST_PRODUCT_ROW, media: 'stray.png' },
+      ],
+      media: {
+        'image1.png': fakeImage(PNG_SIG),
+        'logo.png': fakeImage(PNG_SIG, 64, 51),
+        'signature.png': fakeImage(PNG_SIG, 64, 52),
+        'footer.png': fakeImage(PNG_SIG, 64, 53),
+        'stray.png': fakeImage(PNG_SIG, 64, 54),
+      },
+    })
+    const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(data.customizationImages.length, 0,
+      'a column-K picture outside the product band is decoration')
+    assert.equal(data.representativeImages.length, 2)
+  })
+
+  test('a customization image is never attributed to a neighbouring row', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(4),
+      anchors: [
+        ...anchorsFor(4),
+        customizationAnchor(FIRST_PRODUCT_ROW + 1, 'c1.png'),
+        customizationAnchor(FIRST_PRODUCT_ROW + 3, 'c2.png'),
+      ],
+      media: {
+        'image1.png': fakeImage(PNG_SIG),
+        'c1.png': fakeImage(PNG_SIG, 64, 61),
+        'c2.png': fakeImage(PNG_SIG, 64, 62),
+      },
+    })
+    const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.deepEqual(data.products.map(p => p.customizationImages.length), [0, 1, 0, 1])
+    assert.equal(data.products[1].customizationImages[0].part, 'xl/media/c1.png')
+    assert.equal(data.products[3].customizationImages[0].part, 'xl/media/c2.png')
+  })
+
+  test('the input workbook bytes are not modified', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(2),
+      anchors: [...anchorsFor(2), customizationAnchor(FIRST_PRODUCT_ROW, 'c1.png')],
+      media: { 'image1.png': fakeImage(PNG_SIG), 'c1.png': fakeImage(PNG_SIG, 64, 71) },
+    })
+    const copy = Uint8Array.from(wb)
+    await parseBoePiWorkbook(wb)
+    assert.deepEqual(wb, copy)
   })
 })
