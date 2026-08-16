@@ -59,6 +59,13 @@ const bytesOf = (s: string) => enc.encode(s)
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 const JPEG_SIG = [0xff, 0xd8, 0xff]
 
+// Formats the sniffer RECOGNISES but the system cannot STORE. Recognised on
+// purpose: that is how a message can say "this is a GIF" rather than "this is
+// unreadable". See src/lib/pi/imageFormats.ts.
+const GIF_SIG  = [0x47, 0x49, 0x46, 0x38]              // GIF8
+const BMP_SIG  = [0x42, 0x4d]                          // BM
+const TIFF_SIG = [0x49, 0x49, 0x2a, 0x00]              // II*\0
+
 /** Deterministic bytes carrying a real image signature, so format sniffing has
  *  something honest to sniff. */
 function fakeImage(signature: readonly number[], size = 64, seed = 1): Uint8Array {
@@ -2199,5 +2206,151 @@ describe('customization images', () => {
     const copy = Uint8Array.from(wb)
     await parseBoePiWorkbook(wb)
     assert.deepEqual(wb, copy)
+  })
+})
+
+// ══ 10. Image formats that cannot be stored ══════════════════════════════════
+//
+// The sniffer recognises six raster formats; only PNG, JPEG and WebP can be
+// kept — that is what the order-files bucket admits and what
+// order_submission_item_images.mime_type allows.
+//
+// The gap between those two sets used to be silent: a GIF or BMP product
+// photograph raised no blocking issue, rendered in the preview, and then failed
+// to persist without a word, leaving a draft that could never be submitted.
+// These tests pin the correction — a representative image in an unstorable
+// format BLOCKS, a customization image in one WARNS and is left out, and both
+// name the product row.
+
+describe('unsupported image formats', () => {
+  const UNSTORABLE: [string, readonly number[]][] = [
+    ['GIF',  GIF_SIG],
+    ['BMP',  BMP_SIG],
+    ['TIFF', TIFF_SIG],
+  ]
+
+  for (const [label, signature] of UNSTORABLE) {
+    test(`a ${label} representative image BLOCKS, and says so`, async () => {
+      const wb = buildPiWorkbook({
+        products: inventProducts(1),
+        anchors: anchorsFor(1, 'two', 'shot.bin'),
+        media: { 'shot.bin': fakeImage(signature) },
+      })
+      const result = expectOk(await parseBoePiWorkbook(wb))
+
+      assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT'), 1)
+      // NOT reported as "no image": the picture is there, its format is wrong.
+      assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_REQUIRED'), 0)
+      assert.equal(countBlocking(result.blockingIssues, 'PRODUCT_IMAGE_AMBIGUOUS'), 0)
+
+      const issue = result.blockingIssues.find(i => i.code === 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT')
+      assert.equal(issue?.row, FIRST_PRODUCT_ROW, 'the affected product row is named')
+      assert.equal(issue?.cell, 'E32')
+      assert.ok(issue!.message.includes(label === 'TIFF' ? 'TIFF' : label))
+      assert.ok(/PNG, JPG\/JPEG or WebP/.test(issue!.message), 'tells the employee what to use')
+    })
+
+    test(`a ${label} representative image is never persisted`, async () => {
+      const wb = buildPiWorkbook({
+        products: inventProducts(1),
+        anchors: anchorsFor(1, 'two', 'shot.bin'),
+        media: { 'shot.bin': fakeImage(signature) },
+      })
+      const { data } = expectOk(await parseBoePiWorkbook(wb))
+
+      assert.equal(data.products[0].representativeImage, null,
+        'nothing downstream may store it')
+      assert.equal(data.representativeImages.length, 0)
+    })
+
+    test(`a ${label} customization image WARNS and is left out, without blocking`, async () => {
+      const wb = buildPiWorkbook({
+        products: inventProducts(1),
+        anchors: [
+          ...anchorsFor(1),
+          { kind: 'two', col: 10, row: FIRST_PRODUCT_ROW, media: 'cust.bin' },
+        ],
+        media: { 'image1.png': fakeImage(PNG_SIG), 'cust.bin': fakeImage(signature) },
+      })
+      const result = expectOk(await parseBoePiWorkbook(wb))
+
+      assert.equal(countOf(result.warnings, 'CUSTOMIZATION_IMAGE_UNSUPPORTED_FORMAT'), 1)
+      assert.deepEqual(blockingCodes(result.blockingIssues), [],
+        'an optional image never blocks')
+      assert.deepEqual(result.data.products[0].customizationImages, [],
+        'and is not carried as if it were storable')
+      assert.equal(result.data.customizationImages.length, 0)
+
+      const warning = result.warnings.find(w => w.code === 'CUSTOMIZATION_IMAGE_UNSUPPORTED_FORMAT')
+      assert.equal(warning?.row, FIRST_PRODUCT_ROW, 'the affected product row is named')
+      assert.ok(/PNG, JPG\/JPEG or WebP/.test(warning!.message))
+    })
+  }
+
+  test('PNG, JPEG and WebP are unaffected', async () => {
+    const WEBP_SIG = [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]
+    for (const [label, sig] of [['png', PNG_SIG], ['jpeg', JPEG_SIG], ['webp', WEBP_SIG]] as const) {
+      const wb = buildPiWorkbook({
+        products: inventProducts(1),
+        anchors: anchorsFor(1, 'two', 'shot.bin'),
+        media: { 'shot.bin': fakeImage(sig) },
+        commercial: { I115: num(0) },
+      })
+      const result = expectOk(await parseBoePiWorkbook(wb))
+      assert.deepEqual(blockingCodes(result.blockingIssues), [], label)
+      assert.equal(result.data.products[0].representativeImage?.format, label)
+    }
+  })
+
+  test('bytes no sniffer recognises block too, described honestly', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: anchorsFor(1, 'two', 'shot.bin'),
+      media: { 'shot.bin': fakeImage([0x00, 0x01, 0x02, 0x03]) },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+    const issue = result.blockingIssues.find(i => i.code === 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT')
+    assert.ok(issue, 'an unrecognised format is still a refusal')
+    assert.ok(issue!.message.includes('unrecognised'))
+  })
+
+  test('storable and unstorable customization images on one row are separated', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(1),
+      anchors: [
+        ...anchorsFor(1),
+        { kind: 'two', col: 10, row: FIRST_PRODUCT_ROW, media: 'good.png' },
+        { kind: 'one', col: 10, row: FIRST_PRODUCT_ROW, media: 'bad.bin' },
+      ],
+      media: {
+        'image1.png': fakeImage(PNG_SIG),
+        'good.png': fakeImage(PNG_SIG, 64, 5),
+        'bad.bin': fakeImage(GIF_SIG),
+      },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    assert.equal(result.data.products[0].customizationImages.length, 1, 'the PNG survives')
+    assert.equal(result.data.products[0].customizationImages[0].part, 'xl/media/good.png')
+    assert.equal(countOf(result.warnings, 'CUSTOMIZATION_IMAGE_UNSUPPORTED_FORMAT'), 1)
+    assert.deepEqual(blockingCodes(result.blockingIssues), [])
+  })
+
+  test('the row is named per product, so a reviewer knows which line to fix', async () => {
+    const wb = buildPiWorkbook({
+      products: inventProducts(3),
+      anchors: [
+        { kind: 'two', col: 4, row: FIRST_PRODUCT_ROW,     media: 'image1.png' },
+        { kind: 'two', col: 4, row: FIRST_PRODUCT_ROW + 1, media: 'bad.bin' },
+        { kind: 'two', col: 4, row: FIRST_PRODUCT_ROW + 2, media: 'image1.png' },
+      ],
+      media: { 'image1.png': fakeImage(PNG_SIG), 'bad.bin': fakeImage(BMP_SIG) },
+    })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+
+    const issues = result.blockingIssues.filter(i => i.code === 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT')
+    assert.equal(issues.length, 1)
+    assert.equal(issues[0].row, FIRST_PRODUCT_ROW + 1, 'only the middle product is named')
+    assert.equal(result.data.representativeImages.length, 2, 'the other two are kept')
   })
 })

@@ -22,6 +22,10 @@
 //   point it happens.
 
 import { createHash } from 'node:crypto'
+import {
+  PI_STORABLE_IMAGE_EXTENSION,
+  storableImageMime as storableImageMimeRule,
+} from '../pi/imageFormats'
 import type { PiAmountOrText, PiImageRole, PiProduct, PiProductImage, PiWorkbook } from '../pi/types'
 import type { PiBlockingIssue, PiWarning } from '../pi/types'
 
@@ -64,19 +68,17 @@ export function buildWorkbookPath(submissionId: string, objectId: string): strin
   return `submissions/${submissionId}/original/${objectId}.xlsx`
 }
 
-/** The extension an image is stored under, decided by its SNIFFED type. */
-const MIME_EXTENSION: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-}
+/**
+ * The extension an image is stored under, decided by its SNIFFED type.
+ *
+ * Re-exported from src/lib/pi/imageFormats so there is ONE accepted set. It
+ * used to be declared here as well, and the two copies disagreeing is exactly
+ * how a GIF product photograph reached this module as "skippable" after the
+ * parser had already accepted it.
+ */
+const MIME_EXTENSION = PI_STORABLE_IMAGE_EXTENSION
 
-/** The three types the bucket and the schema accept. Anything else is dropped
- *  rather than stored under a type we would be guessing at. */
-export function storableImageMime(mimeType: string | null): string | null {
-  if (!mimeType) return null
-  return mimeType in MIME_EXTENSION ? mimeType : null
-}
+export const storableImageMime = storableImageMimeRule
 
 /**
  * submissions/{submission_id}/images/{item_id}/{role}/{position}-{sha256}.{ext}
@@ -356,9 +358,15 @@ function planImagesForProduct(
 
   const add = (image: PiProductImage, role: PiImageRole, position: number) => {
     const mimeType = storableImageMime(image.mimeType)
-    // No sniffed type means no type we are willing to assert. The bucket would
-    // refuse the upload and the schema would refuse the row, so the picture is
-    // counted as skipped rather than stored under a guess.
+    // SHOULD BE UNREACHABLE, and counted rather than ignored so that it cannot
+    // become invisible again.
+    //
+    // The parser now refuses an unstorable representative image with a blocking
+    // issue, and drops an unstorable customization image with a warning, so a
+    // plan built from a parse the server accepted contains none. If one ever
+    // arrives the count is non-zero and the route refuses the whole save — see
+    // IMAGE_FORMAT_UNSUPPORTED there. What this must never do again is skip the
+    // picture quietly and let the draft look complete.
     if (!mimeType) { skipped += 1; return }
     const sha256 = sha256Hex(image.bytes)
     images.push({

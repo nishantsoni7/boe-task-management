@@ -97,6 +97,9 @@ const FAILURE_MESSAGES: Record<string, { message: string; retryable: boolean; do
   WORKBOOK_NOT_XLSX:   { message: 'The uploaded file is not an .xlsx workbook.', retryable: false },
   PARSE_FAILED:        { message: 'The server could not read this PI. Check the file and upload it again.', retryable: false, document: true },
   BLOCKING_ISSUES:     { message: 'The server found issues in this PI that must be fixed before it can be saved.', retryable: false, document: true },
+  // A product image the system cannot store. The workbook has to change, so
+  // this is a document rejection and retrying the same file cannot help.
+  IMAGE_FORMAT_UNSUPPORTED: { message: 'This PI has a product image in a format that cannot be saved. Replace it with a PNG, JPG/JPEG or WebP image and upload the PI again.', retryable: false, document: true },
   // Not a failure at all: another attempt on this draft got there first. The
   // employee keeps their draft, their upload and their preview, and simply
   // waits. Never a document rejection.

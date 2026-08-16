@@ -27,6 +27,7 @@
 //      and no caller may pass these strings to dangerouslySetInnerHTML.
 
 import { PI_MAX_WORKBOOK_BYTES } from './workbookReader'
+import { storableImageMime } from './imageFormats'
 import type {
   PiAmountOrText,
   PiBlockingIssue,
@@ -627,15 +628,23 @@ export function createPiImageUrls(
   const representativeByRow = new Map<number, string>()
   const customizationByRow = new Map<number, string[]>()
 
-  /** The URL for a part, created once. null when the format was unsniffable. */
+  /** The URL for a part, created once. null when the format cannot be stored. */
   const urlFor = (image: PiProductImage): string | null => {
-    // No sniffed format means no MIME type we are willing to assert. An <img>
-    // fed application/octet-stream renders a broken icon; the table's
-    // placeholder says "no preview" honestly instead.
-    if (!image.mimeType) return null
+    // THE PREVIEW SHOWS WHAT CAN BE SAVED, and nothing else.
+    //
+    // A GIF or a BMP renders perfectly well in a browser, so showing it here
+    // would tell an employee their picture is fine right up until the moment it
+    // silently failed to persist. Restricting the preview to the storable set
+    // keeps the thumbnail, the coverage count and the saved record agreeing
+    // with one another; the parser's blocking issue explains the gap.
+    //
+    // An unsniffable format lands here too: no MIME type we are willing to
+    // assert, so the table's placeholder says "no image" honestly instead.
+    const mimeType = storableImageMime(image.mimeType)
+    if (!mimeType) return null
     let url = byPart.get(image.part)
     if (url === undefined) {
-      url = factory.create(new Blob([image.bytes as unknown as BlobPart], { type: image.mimeType }))
+      url = factory.create(new Blob([image.bytes as unknown as BlobPart], { type: mimeType }))
       byPart.set(image.part, url)
     }
     return url

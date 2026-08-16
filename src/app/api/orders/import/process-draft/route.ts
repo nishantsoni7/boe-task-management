@@ -291,6 +291,19 @@ async function processUnderLease(ctx: {
     },
   })
 
+  // ── 15. NOTHING IS SKIPPED SILENTLY ──
+  //
+  // The server-side parse above already refuses an unstorable representative
+  // image with a blocking issue and drops an unstorable customization image
+  // with a warning, so this count is zero for every workbook that reaches here.
+  // It is checked anyway: a plan that quietly lost a picture must never become
+  // a draft that looks saved and complete. Nothing has been uploaded yet at
+  // this point, so refusing costs nothing and leaves no cleanup.
+  if (plan.counts.skippedImages > 0) {
+    return fail(422, 'IMAGE_FORMAT_UNSUPPORTED',
+      'This PI contains a product image in a format that cannot be saved. Replace it with a PNG, JPG/JPEG or WebP image and upload the PI again.')
+  }
+
   // THE LEASE TOKEN, attached AFTER the fingerprint was computed.
   //
   // Order matters: the fingerprint exists to recognise a replay, and the token
@@ -430,7 +443,6 @@ async function processUnderLease(ctx: {
     itemCount: plan.counts.items,
     representativeImageCount: plan.counts.representativeImages,
     customizationImageCount: plan.counts.customizationImages,
-    skippedImageCount: plan.counts.skippedImages,
     // Codes only. A parser message can quote a product name or a cell value.
     warningCodes: [...new Set(parsed.warnings.map(w => w.code))],
     savedItemCount: typeof result.item_count === 'number' ? result.item_count : plan.counts.items,

@@ -407,28 +407,28 @@ describe('the number printed on the supplied workbook', () => {
 describe('buildHeaderRows', () => {
   test('carries the fields a reviewer checks, and no personal contact details', () => {
     const rows = buildHeaderRows(header({
-      billToName: 'Vishal Interiors',
-      shipToName: 'Vishal Interiors — Site',
-      createdBy: 'Santosh',
-      billToPhone: '9876543210',
-      billToGst: '08AABCU9603R1ZM',
-      billingAddress: '12 Station Road, Jaipur',
+      billToName: 'Zzyzx Fixture Co',
+      shipToName: 'Zzyzx Fixture Co — Site B',
+      createdBy: 'Fixture Operator',
+      billToPhone: '0000000001',
+      billToGst: '99ZZZZZ9999Z9ZZ',
+      billingAddress: '404 Nowhere Lane, Testville',
       creationDate: { iso: '2026-08-16', text: '16/08/2026', source: 'serial' },
       dispatchCommitment: { iso: null, text: '6 weeks from date of confirmation', source: 'text' },
     }))
 
     const byKey = Object.fromEntries(rows.map(r => [r.key, r.value]))
-    assert.equal(byKey.client, 'Vishal Interiors')
-    assert.equal(byKey.billTo, 'Vishal Interiors')
-    assert.equal(byKey.shipTo, 'Vishal Interiors — Site')
-    assert.equal(byKey.createdBy, 'Santosh')
+    assert.equal(byKey.client, 'Zzyzx Fixture Co')
+    assert.equal(byKey.billTo, 'Zzyzx Fixture Co')
+    assert.equal(byKey.shipTo, 'Zzyzx Fixture Co — Site B')
+    assert.equal(byKey.createdBy, 'Fixture Operator')
     assert.equal(byKey.created, '16 Aug 2026')
     assert.equal(byKey.dispatch, '6 weeks from date of confirmation')
 
     const rendered = rows.map(r => r.value).join(' | ')
-    assert.ok(!rendered.includes('9876543210'), 'phone numbers stay off the preview')
-    assert.ok(!rendered.includes('08AABCU9603R1ZM'), 'GST registrations stay off the preview')
-    assert.ok(!rendered.includes('Station Road'), 'postal addresses stay off the preview')
+    assert.ok(!rendered.includes('0000000001'), 'phone numbers stay off the preview')
+    assert.ok(!rendered.includes('99ZZZZZ9999Z9ZZ'), 'GST registrations stay off the preview')
+    assert.ok(!rendered.includes('Nowhere Lane'), 'postal addresses stay off the preview')
   })
 
   test('an empty header renders em dashes rather than blanks or "null"', () => {
@@ -1334,5 +1334,65 @@ describe('the viewer sequence with both roles', () => {
 
     assert.deepEqual(items.map(i => i.role), ['customization'])
     assert.equal(items[0].roleLabel, 'Customization image')
+  })
+})
+
+// ── Formats the preview will not show ─────────────────────────────────────────
+//
+// The preview shows only what can be SAVED. A GIF or BMP renders perfectly well
+// in a browser, so displaying one would tell an employee their picture is fine
+// right up to the moment it silently failed to persist. The parser raises a
+// blocking issue for the representative case; here the thumbnail, the coverage
+// count and the saved record simply agree with each other.
+
+describe('unstorable image formats are not previewed', () => {
+  for (const format of ['gif', 'bmp', 'tiff'] as const) {
+    test(`a ${format} image gets no object URL`, () => {
+      const { factory, created } = fakeUrlFactory()
+      const bag = urlsFor([image({ row: 32, format, mimeType: `image/${format}` })], factory)
+
+      assert.equal(created.length, 0, 'no blob is allocated for bytes that cannot be saved')
+      assert.equal(bag.representativeByRow.has(32), false)
+      assert.equal(bag.urls.length, 0)
+    })
+  }
+
+  test('an unstorable customization image is not previewed either', () => {
+    const { factory, created } = fakeUrlFactory()
+    const bag = urlsFor([], factory, [
+      customizationImage({ row: 32, part: 'a.gif', format: 'gif', mimeType: 'image/gif' }),
+      customizationImage({ row: 32, part: 'b.png' }),
+    ])
+
+    assert.equal(created.length, 1, 'only the PNG')
+    assert.equal(bag.customizationByRow.get(32)?.length, 1)
+  })
+
+  test('coverage counts an unstorable representative image as unmatched', () => {
+    const { factory } = fakeUrlFactory()
+    const bag = urlsFor([
+      image({ row: 32, part: 'ok.png' }),
+      image({ row: 33, part: 'bad.bmp', format: 'bmp', mimeType: 'image/bmp' }),
+    ], factory)
+
+    const coverage = describeImageCoverage(sampleProducts(2), bag.representativeByRow)
+    assert.equal(coverage.matched, 1)
+    assert.equal(coverage.label, '1 of 2 representative images matched')
+    assert.equal(coverage.complete, false, 'the screen must not read as complete')
+  })
+
+  test('an unstorable image is never openable in the viewer', () => {
+    const { factory } = fakeUrlFactory()
+    const bag = urlsFor([image({ row: 32, format: 'tiff', mimeType: 'image/tiff' })], factory)
+    assert.deepEqual(buildImageViewerItems(sampleProducts(1), bag), [])
+  })
+
+  test('PNG, JPEG and WebP still preview normally', () => {
+    for (const [format, mime] of [['png', 'image/png'], ['jpeg', 'image/jpeg'], ['webp', 'image/webp']] as const) {
+      const { factory, created } = fakeUrlFactory()
+      const bag = urlsFor([image({ row: 32, format, mimeType: mime })], factory)
+      assert.equal(created.length, 1, format)
+      assert.equal(bag.representativeByRow.get(32), created[0])
+    }
   })
 })

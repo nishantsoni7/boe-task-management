@@ -89,6 +89,16 @@ export type PiBlockingIssueCode =
    *  picking the first would silently attach the wrong photograph to a
    *  commercial document. A person has to remove the extra. */
   | 'PRODUCT_IMAGE_AMBIGUOUS'
+  /**
+   * The representative picture is in a format that cannot be stored — GIF, BMP,
+   * TIFF, or bytes no sniffer recognised.
+   *
+   * BLOCKING, not a warning. The representative image is required, and a
+   * format the system cannot persist is the same outcome as no image at all —
+   * except that it LOOKS fine in a spreadsheet, which is precisely why it has
+   * to be said out loud. The message names the format and the replacement.
+   */
+  | 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT'
 
 /** Things a reviewer should see. None of these stops a submission. */
 export type PiWarningCode =
@@ -105,6 +115,14 @@ export type PiWarningCode =
   | 'PRODUCT_DIMENSIONS_MISSING'
   /** Column G is empty. Same reasoning as dimensions. */
   | 'PRODUCT_MATERIAL_MISSING'
+  /**
+   * A CUSTOMIZATION picture is in a format that cannot be stored — GIF, BMP,
+   * TIFF or anything else outside PNG/JPEG/WebP. The picture is left out of the
+   * product rather than dropped in silence, and this says which row lost it.
+   * Non-blocking: a customization image is optional, so the order is still
+   * submittable without it.
+   */
+  | 'CUSTOMIZATION_IMAGE_UNSUPPORTED_FORMAT'
   /** A REPRESENTATIVE picture's relationship resolves to a part that is not in
    *  the archive. Explains WHY a row may also carry PRODUCT_IMAGE_REQUIRED. */
   | 'PRODUCT_IMAGE_UNREADABLE'
