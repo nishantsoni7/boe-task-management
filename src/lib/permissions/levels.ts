@@ -99,6 +99,11 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   'view_quotations',
   'manage_quotations',
   'view_all',
+  // Reviewing and approving an imported PI submission. Protected because
+  // approval is what eventually brings an Order into existence and burns an
+  // order number; nobody should acquire it by picking "Manager" from a
+  // dropdown. Registered by 20260908000000.
+  'approve_order',
 ])
 
 export function isProtectedAction(actionKey: string): boolean {
@@ -122,6 +127,10 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   manage_quotations: 'view_quotations',
   view_quotations:   'view',
   view_all:          'view',
+  // A reviewer who cannot open Order Management cannot review anything, and
+  // the RLS on order_submissions is gated on module entry as well — so the
+  // grant would be one that could never land.
+  approve_order:     'view',
 }
 
 /** Every action `actionKey` depends on, nearest first. Cycle-safe. */

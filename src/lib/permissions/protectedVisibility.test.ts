@@ -33,7 +33,13 @@ const MIGRATION = join(
   process.cwd(), 'supabase', 'migrations',
   '20260903000000_protected_visibility_actions.sql',
 )
-const migrationSql = readFileSync(MIGRATION, 'utf8')
+// Normalised to LF at read time. Several assertions below locate a statement
+// with indexOf('on public.<table>\n'), which silently finds nothing on a Windows
+// checkout where Git has written CRLF — indexOf returns -1, slice(-1) yields the
+// last character of the file, and the assertion fails for a reason that has
+// nothing to do with the migration. migrationContract.test.ts already normalises
+// for exactly this reason; this file did not.
+const migrationSql = readFileSync(MIGRATION, 'utf8').replace(/\r\n/g, '\n')
 
 /** The file with `--` comments removed — the ROLLBACK block is comments too. */
 const executableSql = migrationSql.replace(/^\s*--.*$/gm, '')

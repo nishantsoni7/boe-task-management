@@ -94,10 +94,22 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // policies on orders and order_activity_log now require. Before that
   // migration those policies keyed on 'view', so module entry silently carried
   // company-wide sight — the defect this corrects.
+  // 'approve_order' added by 20260908000000: it is the authority to review an
+  // imported PI submission, checked by request_order_submission_changes() and
+  // by the order_submissions / order-files visibility rules. It is a SEPARATE
+  // action from 'approve', which remains the Order Request conversion
+  // authority — see the note in modules.ts.
+  //
+  // 'create' becomes enforced for the SUBMISSION path only: create_order_submission()
+  // and submit_order_submission() both require it. It is still NOT enforced for
+  // Order Requests, which keep the admin-or-assigned ownership rule, so this
+  // entry cannot claim create is enforced module-wide.
   orders: {
     state: 'partial',
-    enforcedActions: ['view', 'view_all', 'approve', 'manage', 'delete', 'can_be_order_assignee'],
-    detail: 'Opening the module, seeing all company orders, approving, managing, deleting and assignee eligibility are enforced. Create and edit still follow the admin-or-assigned rule.',
+    enforcedActions: [
+      'view', 'view_all', 'approve', 'approve_order', 'manage', 'delete', 'can_be_order_assignee',
+    ],
+    detail: 'Opening the module, seeing all company orders, approving Order Requests, reviewing PI submissions, managing, deleting and assignee eligibility are enforced. Create and edit still follow the admin-or-assigned rule for Order Requests.',
   },
 
   // Cut over by the same migration:
