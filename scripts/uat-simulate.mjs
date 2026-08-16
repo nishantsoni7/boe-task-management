@@ -3,19 +3,21 @@
  * Exercises every user flow: Owner, Manager, Sales, Operations, Accounts, After-Sales, Dispatch.
  * Tests: task creation, updates, completion, restore, edit, delete, delegation, manager review.
  *
+ * Credentials and target come from the environment (see .env.example) and are
+ * validated by scripts/lib/uatEnv.mjs, which also refuses to run against a
+ * hosted project without an explicit override.
+ *
  * Run: node scripts/uat-simulate.mjs
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { createUatAdminClient, resolveUatEnvOrExit } from './lib/uatEnv.mjs'
 
-const SUPABASE_URL = 'https://albnsrohngkljfsrrrhf.supabase.co'
-const SERVICE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsYm5zcm9obmdrbGpmc3JycmhmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTI4MDk2MywiZXhwIjoyMDk0ODU2OTYzfQ.pNOzEyuqTAYaCRd1Fa1TMdJFW8YVgfNrq07PHq3GGMA'
-const UAT_PASSWORD = 'UATTest@2026'
+const env = resolveUatEnvOrExit({ requireAnonKey: true, requireUserPassword: true })
+const UAT_PASSWORD = env.userPassword
 
 // Admin client for reading/checking
-const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-})
+const admin = createUatAdminClient(env, createClient)
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const log  = (msg)        => console.log(msg)
@@ -43,10 +45,9 @@ function assert(condition, passMsg, failMsg, observation = null) {
 
 // Login as a specific user and return their Supabase client
 async function loginAs(email, label) {
-  const userClient = createClient(SUPABASE_URL,
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsYm5zcm9obmdrbGpmc3JycmhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyODA5NjMsImV4cCI6MjA5NDg1Njk2M30.Aw1SRbq8ta1xze_OU2IO0PjSFv7xdi7clv4OHDZFWqM',
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
+  const userClient = createClient(env.url, env.anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
   const { data, error } = await userClient.auth.signInWithPassword({ email, password: UAT_PASSWORD })
   if (error || !data?.user) {
     fail(`Login failed for ${label}: ${error?.message}`)

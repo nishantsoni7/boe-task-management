@@ -3,19 +3,20 @@
  * Creates 12 dummy users, 100 tasks, and 150+ activity logs.
  * All records tagged [TEST-UAT].
  *
+ * Credentials and target come from the environment (see .env.example) and are
+ * validated by scripts/lib/uatEnv.mjs, which also refuses to run against a
+ * hosted project without an explicit override.
+ *
  * Run: node scripts/uat-seed.mjs
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { createUatAdminClient, resolveUatEnvOrExit } from './lib/uatEnv.mjs'
 
-const SUPABASE_URL = 'https://albnsrohngkljfsrrrhf.supabase.co'
-const SERVICE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsYm5zcm9obmdrbGpmc3JycmhmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTI4MDk2MywiZXhwIjoyMDk0ODU2OTYzfQ.pNOzEyuqTAYaCRd1Fa1TMdJFW8YVgfNrq07PHq3GGMA'
+const env = resolveUatEnvOrExit({ requireUserPassword: true })
+const sb = createUatAdminClient(env, createClient)
 
-const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-})
-
-const UAT_PASSWORD = 'UATTest@2026'
+const UAT_PASSWORD = env.userPassword
 
 // ─── Test Users ───────────────────────────────────────────────────────────────
 const TEST_USERS = [
@@ -409,11 +410,11 @@ async function main() {
   console.log(`  Tasks completed     : ${completed}`)
   console.log(`  Tasks set working   : ${nWorking}`)
   console.log(`  Activity logs added : ${logCount}`)
-  console.log(`  Test password       : ${UAT_PASSWORD}`)
+  console.log('  Test password       : the value of UAT_USER_PASSWORD')
   console.log('═══════════════════════════════════════════════')
-  console.log('\nLogin credentials:')
+  console.log('\nLogin emails (password is UAT_USER_PASSWORD, not printed):')
   for (const u of createdUsers) {
-    console.log(`  ${u.role.padEnd(8)} | ${u.email.padEnd(34)} | ${UAT_PASSWORD}`)
+    console.log(`  ${u.role.padEnd(8)} | ${u.email}`)
   }
   console.log('\n⚠  Remember to clean up with: node scripts/uat-cleanup.mjs\n')
 }
