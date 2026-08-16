@@ -39,12 +39,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   FileSpreadsheet, Upload, AlertTriangle, CheckCircle2, Info, Loader2,
-  X, ChevronLeft, ChevronRight, ImageOff, Images,
+  ImageOff, Images,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
+// The preview furniture is shared with /orders/drafts/[submissionId], which
+// renders the SERVER'S copy of this same document. One set of components, so a
+// picture, a figure or a customization cell cannot look like one thing before
+// the save and another thing after it.
+import {
+  PiCard as Card,
+  PiCardHeader as CardHeader,
+  PiFieldRow as FieldRow,
+  PiProductThumbnail as ProductThumbnail,
+  PiCustomizationCell as CustomizationCell,
+  PiDiagnosticList as DiagnosticList,
+  PiCommercialSummary,
+  PiImageViewer as ImageViewer,
+} from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -57,7 +71,6 @@ import {
   describePiFailure,
   formatByteLimit,
   formatInr,
-  formatCustomization,
   orDash,
   buildHeaderRows,
   buildCommercialRows,
@@ -72,7 +85,6 @@ import {
   READY_TITLE,
   PI_FILE_INPUT_ACCEPT,
   type PiFailureDisplay,
-  type PiDiagnosticEntry,
   type PiDiagnosticGroups,
   type PiImageUrls,
   type PiImageCoverage,
@@ -95,6 +107,7 @@ import {
   type SaveFailure,
   type SaveSuccess,
 } from '@/lib/orders/saveDraftFlow'
+import { draftDetailHref, draftSavedHref } from '@/lib/orders/draftsView'
 
 // ── Screen state ──────────────────────────────────────────────────────────────
 
@@ -123,390 +136,12 @@ type Stage =
 const MOBILE_BREAKPOINT = 768
 
 // ── Small presentational pieces ───────────────────────────────────────────────
-
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return (
-    <div style={{
-      background: colors.base,
-      border: `1px solid ${colors.border}`,
-      borderRadius: '10px',
-      overflow: 'hidden',
-      ...style,
-    }}>
-      {children}
-    </div>
-  )
-}
-
-function CardHeader({ title, right }: { title: string; right?: React.ReactNode }) {
-  return (
-    <div style={{
-      padding: '14px 20px',
-      borderBottom: `1px solid ${colors.border}`,
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-    }}>
-      <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{title}</div>
-      {right}
-    </div>
-  )
-}
-
-function FieldRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-      <div style={{
-        fontSize: '10px', fontWeight: 600, color: colors.muted,
-        textTransform: 'uppercase', letterSpacing: '0.05em',
-      }}>
-        {label}
-      </div>
-      {/* Workbook text is rendered as TEXT. React escapes it, so a cell
-          containing <b>x</b> shows those characters; nothing on this screen
-          uses dangerouslySetInnerHTML. */}
-      <MultilineText style={{ fontSize: '13px', color: colors.primary, margin: 0 }}>
-        {value}
-      </MultilineText>
-    </div>
-  )
-}
-
-/**
- * The picture anchored to a product row, or an honest gap where one is missing.
- *
- * CONTAIN, NEVER COVER. A PI carries furniture photographed in every shape
- * there is — a tall wardrobe, a wide sideboard — and `cover` fills the square by
- * cropping whatever does not fit, which on a wardrobe means showing its middle
- * and hiding the thing being ordered. The box keeps a fixed size so rows stay
- * aligned; the picture is fitted inside it whole, and the full image is one
- * click away.
- *
- * A row without a picture keeps the SAME box. Collapsing it would shorten the
- * row and slide the next product's photograph up into the gap, which is the one
- * failure that would matter here: an order line showing another line's picture.
- */
-type ThumbnailProps = {
-  url: string | undefined
-  label?: string
-  onOpen?: () => void
-  buttonRef?: (el: HTMLButtonElement | null) => void
-}
-
-function ProductThumbnail({
-  url,
-  label,
-  onOpen,
-  buttonRef,
-  size = 56,
-}: ThumbnailProps & { size?: number }) {
-  const box: React.CSSProperties = {
-    width: size, height: size, flexShrink: 0,
-    borderRadius: '6px', border: `1px solid ${colors.border}`,
-    background: colors.raised, overflow: 'hidden',
-  }
-
-  if (!url) {
-    return (
-      <div
-        style={{
-          ...box,
-          borderStyle: 'dashed',
-          borderColor: 'rgba(217,79,79,0.35)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '9px', color: colors.red, textAlign: 'center', padding: '4px', lineHeight: 1.2,
-        }}
-      >
-        No image
-      </div>
-    )
-  }
-
-  return (
-    <button
-      type="button"
-      ref={buttonRef}
-      onClick={onOpen}
-      aria-label={label}
-      title={label}
-      style={{
-        ...box,
-        padding: 0,
-        cursor: 'zoom-in',
-        display: 'block',
-        position: 'relative',
-        transition: 'border-color 0.15s, box-shadow 0.15s',
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.borderColor = colors.blue
-        e.currentTarget.style.boxShadow = '0 0 0 2px rgba(85,133,232,0.18)'
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.borderColor = colors.border
-        e.currentTarget.style.boxShadow = 'none'
-      }}
-    >
-      {/* A plain <img>, not next/image: the source is a blob: URL for bytes this
-          tab already holds, so there is nothing for the optimizer to fetch. alt
-          is empty because the button already carries the accessible name. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={url}
-        alt=""
-        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-      />
-    </button>
-  )
-}
-
-/**
- * The full picture, at a size a person can actually judge.
- *
- * Reuses the object URL the table already holds — a modal that created its own
- * blob would double the memory for the same bytes and leave a second URL to
- * leak. Since it borrows, it must never outlive the bag it borrowed from, which
- * is why replacing the PI closes this before revoking anything.
- *
- * Dialog semantics by hand rather than by dependency: role, aria-modal, a
- * labelled title, focus moved in on open and returned to the thumbnail on
- * close. That is the whole contract, and it is smaller than any carousel
- * library this screen would otherwise carry.
- */
-function ImageViewer({
-  item,
-  nav,
-  onClose,
-  onPrev,
-  onNext,
-}: {
-  item: PiViewerItem
-  nav: PiViewerNav
-  onClose: () => void
-  onPrev: () => void
-  onNext: () => void
-}) {
-  const closeRef = useRef<HTMLButtonElement | null>(null)
-
-  // Focus lands on Close: it is the control every keyboard user wants first,
-  // and it anchors Tab inside the dialog's own controls.
-  useEffect(() => { closeRef.current?.focus() }, [])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
-      if (e.key === 'ArrowLeft' && nav.canPrev) { e.preventDefault(); onPrev(); return }
-      if (e.key === 'ArrowRight' && nav.canNext) { e.preventDefault(); onNext() }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [nav.canPrev, nav.canNext, onClose, onPrev, onNext])
-
-  const navButton = (enabled: boolean, onClick: () => void, label: string, glyph: React.ReactNode) => (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!enabled}
-      aria-label={label}
-      className="boe-btn boe-btn-ghost"
-      style={{
-        background: colors.base,
-        opacity: enabled ? 1 : 0.4,
-        cursor: enabled ? 'pointer' : 'not-allowed',
-      }}
-    >
-      {glyph}
-    </button>
-  )
-
-  return (
-    <div
-      // Clicking the backdrop closes. The dialog panel below stops propagation,
-      // so a click that lands on the picture, the caption or a button does not
-      // reach here and does not close the viewer.
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(17,19,24,0.72)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '16px',
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="pi-image-viewer-title"
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: colors.base,
-          border: `1px solid ${colors.border}`,
-          borderRadius: '12px',
-          maxWidth: '90vw',
-          maxHeight: '85vh',
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{
-          padding: '12px 16px',
-          borderBottom: `1px solid ${colors.border}`,
-          display: 'flex', alignItems: 'center', gap: '12px',
-        }}>
-          <div id="pi-image-viewer-title" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-              {/* WHAT AM I LOOKING AT. Stated on every frame, because a single
-                  sequence mixes the product with pictures of changes to it and
-                  a reviewer must never have to infer which. */}
-              <span style={{
-                padding: '1px 6px', borderRadius: '4px',
-                fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
-                textTransform: 'uppercase', letterSpacing: '0.04em',
-                background: item.role === 'customization' ? colors.amberTint : colors.blueTint,
-                color: item.role === 'customization' ? '#9A6212' : '#2F5BB7',
-                border: `1px solid ${item.role === 'customization' ? 'rgba(232,160,48,0.3)' : 'rgba(85,133,232,0.3)'}`,
-              }}>
-                {item.roleLabel}
-              </span>
-              <span style={{ fontSize: '11px', color: colors.muted, fontFamily: 'var(--font-mono)' }}>
-                {item.sequence}
-              </span>
-            </div>
-            <div style={{
-              fontSize: '13px', fontWeight: 600, color: colors.primary,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {item.name}
-            </div>
-          </div>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
-              {nav.position}
-            </span>
-            <button
-              type="button"
-              ref={closeRef}
-              onClick={onClose}
-              className="boe-btn boe-btn-ghost"
-              aria-label="Close image viewer"
-            >
-              <X size={13} strokeWidth={2} />
-              Close
-            </button>
-          </div>
-        </div>
-
-        <div style={{
-          flex: 1, minHeight: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '12px', background: colors.raised,
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={item.url}
-            alt={`${item.roleLabel} — ${item.sequence} ${item.name}`}
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
-          />
-        </div>
-
-        {(nav.canPrev || nav.canNext) && (
-          <div style={{
-            padding: '10px 16px',
-            borderTop: `1px solid ${colors.border}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-          }}>
-            {navButton(nav.canPrev, onPrev, 'Previous product image', <><ChevronLeft size={13} strokeWidth={2} />Previous</>)}
-            {navButton(nav.canNext, onNext, 'Next product image', <>Next<ChevronRight size={13} strokeWidth={2} /></>)}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/**
- * The customization cell: what should change, and pictures of it.
- *
- * TEXT FIRST, then the illustrations, because the words say what to do and the
- * pictures show it. The three states are distinct on purpose:
- *
- *   text, no images    → the text, alone
- *   images, no text    → the thumbnails, with NO "No customization" above them.
- *                        A row that plainly carries four pictures must not also
- *                        announce that it has no customization.
- *   neither            → "No customization", which says the PI was read and
- *                        there is none — not that something is missing.
- *
- * Thumbnails are small and wrap, so a product with several changes does not
- * stretch its table row past the others.
- */
-function CustomizationCell({
-  text,
-  thumbnails,
-  compact,
-}: {
-  text: string | null
-  thumbnails: readonly { key: string; props: ThumbnailProps }[]
-  compact: boolean
-}) {
-  const hasText = !!text && text.trim() !== ''
-  const hasImages = thumbnails.length > 0
-
-  if (!hasText && !hasImages) {
-    // Through the shared helper rather than the constant directly, so the
-    // "blank means none" rule has ONE implementation and its unit tests cover
-    // the string this screen actually renders.
-    return (
-      <MultilineText style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
-        {formatCustomization(text)}
-      </MultilineText>
-    )
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: hasText && hasImages ? '6px' : 0 }}>
-      {hasText && (
-        <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
-          {text}
-        </MultilineText>
-      )}
-      {hasImages && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-          {thumbnails.map(t => (
-            <ProductThumbnail key={t.key} {...t.props} size={compact ? 34 : 30} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function DiagnosticList({ entries, tone }: { entries: readonly PiDiagnosticEntry[]; tone: 'red' | 'amber' }) {
-  const accent = tone === 'red' ? colors.red : colors.amber
-  return (
-    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
-      {entries.map((entry, i) => (
-        <li
-          key={`${entry.code}-${entry.row ?? 'x'}-${i}`}
-          style={{
-            display: 'flex', gap: '10px', alignItems: 'flex-start',
-            padding: '10px 20px',
-            borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
-          }}
-        >
-          <span style={{
-            flexShrink: 0, marginTop: '2px',
-            width: '6px', height: '6px', borderRadius: '50%', background: accent,
-          }} />
-          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            {entry.location && (
-              <div style={{ fontSize: '11px', fontWeight: 600, color: accent }}>{entry.location}</div>
-            )}
-            <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
-              {entry.message}
-            </MultilineText>
-          </div>
-        </li>
-      ))}
-    </ul>
-  )
-}
+//
+// Card, CardHeader, FieldRow, ProductThumbnail, CustomizationCell, the image
+// viewer and the commercial summary all live in @/components/orders/piPreview,
+// because the saved-draft screen renders the same document from the server copy
+// and the two readings must be indistinguishable. Only the pieces this screen
+// alone uses are defined below.
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -838,12 +473,23 @@ export default function NewOrderPiImportPage() {
         return
       }
 
-      setSaveSuccess(summariseSaveResult(body, draft.submissionId))
+      const success = summariseSaveResult(body, draft.submissionId)
+      setSaveSuccess(success)
+
+      // ── 4. Take the employee to the record that now exists ──
+      //
+      // A saved draft that the person who saved it cannot find is the defect
+      // this navigation closes. The destination is built from the SERVER'S
+      // submission id — summariseSaveResult reads it off the response — and the
+      // detail page then loads the persisted rows for itself. Nothing about the
+      // preview travels with it: the route carries an id, and the id is only
+      // useful to somebody the database already lets read that submission.
+      router.push(draftSavedHref(success.submissionId))
     } finally {
       savingRef.current = false
       setSaveStage(null)
     }
-  }, [stage, supabase])
+  }, [stage, supabase, router])
 
   const acceptFile = useCallback((file: File | null | undefined) => {
     if (!file || parsing) return
@@ -1214,51 +860,13 @@ export default function NewOrderPiImportPage() {
         )}
       </Card>
 
-      {/* Commercial summary */}
-      <Card>
-        <CardHeader title="Commercial summary" />
-        <div style={{ padding: '8px 0' }}>
-          {buildCommercialRows(preview.data.commercial).map(row => (
-            <div
-              key={row.key}
-              style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px',
-                padding: row.emphasis ? '12px 20px' : '7px 20px',
-                borderTop: row.emphasis === 'total' ? `1px solid ${colors.borderSoft}` : 'none',
-                background: row.emphasis === 'advance' ? colors.amberTint : 'transparent',
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div style={{
-                  fontSize: row.emphasis ? '13px' : '12px',
-                  fontWeight: row.emphasis ? 700 : 400,
-                  color: row.emphasis ? colors.primary : colors.secondary,
-                }}>
-                  {row.label}
-                </div>
-                {row.note && (
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                    {row.note}
-                  </div>
-                )}
-              </div>
-              <div style={{
-                whiteSpace: row.kind === 'text' ? 'normal' : 'nowrap',
-                textAlign: 'right',
-                fontSize: row.emphasis ? '14px' : '13px',
-                fontWeight: row.emphasis ? 700 : 500,
-                // The two worded zeroes read as settled facts, like a figure,
-                // so they take the primary colour; italic marks all three
-                // non-numeric renderings as words rather than amounts.
-                color: row.kind === 'text' || row.kind === 'missing' ? colors.secondary : colors.primary,
-                fontStyle: row.kind === 'amount' || row.kind === 'missing' ? 'normal' : 'italic',
-              }}>
-                {row.value}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      {/* Commercial summary.
+
+          Constrained and right-aligned by the shared component: full width on a
+          phone, capped on a desktop so the labels and their figures stay close
+          enough to read as pairs. The ROWS are unchanged — buildCommercialRows
+          decides every label, figure and emphasis, here as on the saved draft. */}
+      <PiCommercialSummary rows={buildCommercialRows(preview.data.commercial)} />
 
       {/* Blocking issues — always above the warnings, never merged with them. */}
       {preview.groups.blocking.length > 0 && (
@@ -1332,12 +940,22 @@ export default function NewOrderPiImportPage() {
                       {saveSuccess.warningCodes.length === 1 ? '' : 's'} recorded on the draft.
                     </div>
                   )}
+                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '4px' }}>
+                    Opening the saved draft…
+                  </div>
                   <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {/* No "View Draft": a draft-detail route is not part of this
-                        phase, and a link to a page that does not exist is worse
-                        than no link. */}
-                    <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders')}>
-                      Return to Orders
+                    {/* The save already navigates to the draft. This is the
+                        fallback for the one case where it cannot — a blocked or
+                        cancelled client-side navigation — so a saved record is
+                        never left with nothing pointing at it. */}
+                    <button
+                      className="boe-btn boe-btn-primary"
+                      onClick={() => router.push(draftDetailHref(saveSuccess.submissionId))}
+                    >
+                      Open saved draft
+                    </button>
+                    <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
+                      All PI Drafts
                     </button>
                   </div>
                 </>

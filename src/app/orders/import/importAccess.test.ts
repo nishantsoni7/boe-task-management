@@ -53,6 +53,18 @@ const ORDERS_LAYOUT = 'src/app/orders/layout.tsx'
 const ORDERS_NAV = 'src/components/layout/OrdersLayout.tsx'
 const PREVIEW_VIEW = 'src/lib/pi/previewView.ts'
 const SAVE_FLOW = 'src/lib/orders/saveDraftFlow.ts'
+/**
+ * The preview furniture — cards, thumbnails, the customization cell, the image
+ * viewer and the commercial summary — moved here when the saved-draft screen
+ * arrived, because both screens render the same document and must render it the
+ * same way. The assertions that used to read them off the import page now read
+ * them off the component, and the page keeps the assertions about what the PAGE
+ * still decides: which URL bag exists, when it is revoked, and what is keyed by
+ * what.
+ */
+const PI_PARTS = 'src/components/orders/piPreview.tsx'
+const DRAFT_DETAIL_PAGE = 'src/app/orders/drafts/[submissionId]/page.tsx'
+const DRAFTS_VIEW = 'src/lib/orders/draftsView.ts'
 
 const perms = (allowedActions: string[]): EffectivePermission[] =>
   allowedActions.map(actionKey => ({ actionKey, allowed: true, source: 'role' }))
@@ -148,6 +160,13 @@ describe('the New Order entry point', () => {
     assert.ok(source.includes("router.push('/orders/import')"), 'and lead to the import route')
     assert.ok(source.includes('NO_ORDERS_CAPABILITIES'),
       'capabilities must start empty so the button cannot flash before they resolve')
+  })
+
+  test('PI Drafts is reachable from the Orders sidebar', () => {
+    const nav = read(ORDERS_NAV)
+    assert.ok(nav.includes("label: 'PI Drafts'"), 'the destination must exist in the nav')
+    assert.ok(nav.includes("path: '/orders/drafts'"))
+    assert.ok(nav.includes('FileText'), 'with a document icon')
   })
 
   test('Order Requests navigation is untouched', () => {
@@ -338,9 +357,30 @@ describe('the Save Draft action', () => {
     assert.ok(read(SAVE_FLOW).includes('No official order number has been assigned'))
   })
 
-  test('no "View Draft" link is offered, because no draft route exists yet', () => {
-    assert.ok(!source.includes('View Draft'))
-    assert.ok(source.includes('Return to Orders'))
+  test('a successful save takes the employee to the record it created', () => {
+    // THE DEFECT THIS PINS. A real PI was saved in production and then could
+    // not be found: the success card said "Draft saved" and offered a way back
+    // to the Orders dashboard, and the only pointer to the new record lived in
+    // the memory of the tab that made it.
+    assert.ok(source.includes('router.push(draftSavedHref(success.submissionId))'),
+      'the save must navigate to the saved draft')
+    assert.ok(source.includes('const success = summariseSaveResult(body, draft.submissionId)'),
+      'and the id it navigates to is the SERVER’S, read off the response')
+    assert.ok(!source.includes("router.push('/orders')"),
+      'a dead end back to the dashboard is what left the draft unreachable')
+  })
+
+  test('the route it navigates to is built in one place', () => {
+    const flow = read(DRAFTS_VIEW)
+    assert.ok(flow.includes('return `/orders/drafts/${submissionId}`'))
+    assert.ok(flow.includes("return `${draftDetailHref(submissionId)}?saved=1`"))
+    assert.ok(!source.includes('/orders/drafts/${'),
+      'the page must not hand-build the path beside the helper that owns it')
+  })
+
+  test('a fallback link survives a navigation that does not happen', () => {
+    assert.ok(source.includes('Open saved draft'))
+    assert.ok(source.includes("router.push('/orders/drafts')"))
   })
 
   test('the chosen file is held in memory only', () => {
@@ -490,7 +530,7 @@ describe('the shared Orders layout is unchanged in what it renders by default', 
 // ── The full-image viewer ─────────────────────────────────────────────────────
 
 describe('product thumbnails', () => {
-  const source = read(IMPORT_PAGE)
+  const source = read(PI_PARTS)
 
   test('the whole picture is shown, never cropped', () => {
     assert.ok(source.includes("objectFit: 'contain'"),
@@ -521,7 +561,8 @@ describe('product thumbnails', () => {
 })
 
 describe('the image viewer', () => {
-  const source = read(IMPORT_PAGE)
+  const source = read(PI_PARTS)
+  const page = read(IMPORT_PAGE)
 
   test('uses dialog semantics', () => {
     assert.ok(source.includes('role="dialog"'))
@@ -530,8 +571,48 @@ describe('the image viewer', () => {
   })
 
   test('shows the full picture uncropped, within the viewport budget', () => {
-    assert.ok(source.includes("maxWidth: '90vw'"))
-    assert.ok(source.includes("maxHeight: '85vh'"))
+    // THE REGRESSION THIS PINS. The picture used to be capped with
+    // `maxHeight: '100%'` inside a flex stage of indeterminate height, which
+    // computes to `none` — so a portrait photograph was laid out at its natural
+    // size and the panel's own overflow clipped the bottom of it. The cap is
+    // now against the VIEWPORT, which is definite everywhere.
+    assert.ok(source.includes('PI_VIEWER_IMAGE_MAX_HEIGHT'))
+    assert.ok(source.includes('PI_VIEWER_IMAGE_MAX_WIDTH'))
+    assert.ok(/PI_VIEWER_IMAGE_MAX_HEIGHT\s*=\s*`max\(160px, calc\(100dvh/.test(source),
+      'the height budget is viewport-based, and dvh so a phone toolbar cannot cover the last strip')
+    assert.ok(/PI_VIEWER_IMAGE_MAX_WIDTH\s*=\s*`min\(/.test(source) && source.includes('calc(100vw -'),
+      'and so is the width budget')
+    assert.ok(!/maxHeight:\s*'100%'\s*,?\s*\n?\s*width:/.test(source))
+    assert.ok(source.includes("width: 'auto', height: 'auto'"),
+      'a picture smaller than the budget is centred at its own size, never stretched')
+  })
+
+  test('the picture is fitted, never cropped, in the viewer as in the table', () => {
+    assert.ok(source.includes("objectFit: 'contain'"))
+    assert.ok(!source.includes("objectFit: 'cover'"),
+      'cover would hide the top and bottom of a tall wardrobe')
+  })
+
+  test('the panel itself cannot exceed the viewport', () => {
+    assert.ok(source.includes("height: '100dvh'"), 'the backdrop is the small viewport')
+    assert.ok(source.includes("maxHeight: '100%'"), 'and the panel is capped inside it')
+    assert.ok(source.includes("overflow: 'hidden'"))
+  })
+
+  test('the page behind does not scroll while it is open', () => {
+    assert.ok(source.includes('useScrollLock(true)'),
+      'through the shared reference-counted lock, not a private overflow swap')
+  })
+
+  test('the step controls are always rendered, so nothing hides behind them', () => {
+    // Always present rather than conditional: the height budget above only
+    // adds up if the footer is always there, and a control that comes and goes
+    // is one people stop reaching for.
+    assert.ok(!source.includes('{(nav.canPrev || nav.canNext) && ('),
+      'the footer must not be conditional on there being somewhere to step')
+    assert.ok(source.includes("'Previous product image'"))
+    assert.ok(source.includes("'Next product image'"))
+    assert.ok(source.includes('aria-label="Close image viewer"'))
   })
 
   test('closes on Escape, on the backdrop, and on the Close button', () => {
@@ -562,19 +643,25 @@ describe('the image viewer', () => {
 
   test('focus moves in on open and returns to the thumbnail on close', () => {
     assert.ok(source.includes('closeRef.current?.focus()'), 'focus moves into the dialog')
-    assert.ok(source.includes('thumbnailRefs.current.get(key)?.focus()'), 'and comes back')
+    // Focus RETURN belongs to whichever screen owns the thumbnails, so it is
+    // asserted on both of them rather than on the shared dialog.
+    for (const file of [IMPORT_PAGE, DRAFT_DETAIL_PAGE]) {
+      assert.ok(read(file).includes('thumbnailRefs.current.get(key)?.focus()'),
+        `${file} must hand focus back to the thumbnail that opened the viewer`)
+    }
   })
 
   test('it reuses the existing object URL and creates no blob of its own', () => {
     assert.ok(source.includes('src={item.url}'), 'the viewer shows the URL the table already holds')
-    assert.ok(!source.includes('createObjectURL'), 'no second blob for the same bytes')
-    const bagCalls = source.match(/createPiImageUrls\(/g) ?? []
+    assert.ok(!source.includes('createObjectURL'), 'the viewer creates nothing')
+    assert.ok(!page.includes('createObjectURL'), 'no second blob for the same bytes')
+    const bagCalls = page.match(/createPiImageUrls\(/g) ?? []
     assert.equal(bagCalls.length, 1, 'URLs are created once, when the PI is read')
   })
 
   test('replacing the PI closes the viewer BEFORE anything is revoked', () => {
-    const closeAt = source.indexOf('setViewerIndex(null)')
-    const releaseAt = source.indexOf('releaseImages()')
+    const closeAt = page.indexOf('setViewerIndex(null)')
+    const releaseAt = page.indexOf('releaseImages()')
     assert.ok(closeAt > -1 && releaseAt > -1)
     assert.ok(closeAt < releaseAt,
       'a dialog must never be left holding a revoked blob')
@@ -583,6 +670,7 @@ describe('the image viewer', () => {
   test('no modal or carousel dependency was added', () => {
     for (const dep of ['react-modal', 'lightbox', 'swiper', 'react-image', 'headlessui']) {
       assert.ok(!source.toLowerCase().includes(dep), `${dep} must not be introduced`)
+      assert.ok(!page.toLowerCase().includes(dep), `${dep} must not be introduced`)
     }
   })
 })
@@ -619,13 +707,49 @@ describe('image coverage is shown near the products', () => {
 })
 
 describe('the commercial summary renders worded zeroes distinctly', () => {
-  const source = read(IMPORT_PAGE)
+  const source = read(PI_PARTS)
 
   test('the screen branches on the value kind, not on a boolean', () => {
     assert.ok(source.includes("row.kind === 'text'"))
     assert.ok(source.includes("row.kind === 'amount'"))
     assert.ok(!source.includes('notApplicable'),
-      'the page must not hard-code either worded zero; the helper supplies the words')
+      'the component must not hard-code either worded zero; the helper supplies the words')
+  })
+
+  test('it is compact and right-aligned on a desktop, full width on a phone', () => {
+    // Across a 1920px monitor each row was a label at one edge and a figure at
+    // the other, which is not merely sparse: pairing the two costs an eye
+    // movement per row. Capped and pushed right, it sits under the money column
+    // of the table above it. The cap does nothing below its own width, so the
+    // phone case needs no media query and no JavaScript.
+    assert.ok(source.includes('PI_COMMERCIAL_MAX_WIDTH_PX = 780'))
+    assert.ok(source.includes("width: '100%'"))
+    assert.ok(source.includes('maxWidth: `${PI_COMMERCIAL_MAX_WIDTH_PX}px`'))
+    assert.ok(source.includes("marginLeft: 'auto'"))
+  })
+
+  test('every commercial row still comes from the one builder', () => {
+    // The width changed; the figures did not. The component renders the rows it
+    // is handed and computes nothing — no subtotal, no GST, no grand total, and
+    // no advance.
+    assert.ok(source.includes('rows.map(row => ('))
+    for (const arithmetic of ['* 0.4', 'PI_ADVANCE_PERCENT', 'Math.round', 'reduce(']) {
+      assert.ok(!source.includes(arithmetic),
+        `${arithmetic} must not appear — this component renders figures, it does not derive them`)
+    }
+  })
+
+  test('the grand total and the required advance stay emphasised', () => {
+    assert.ok(source.includes("row.emphasis === 'total'"))
+    assert.ok(source.includes("row.emphasis === 'advance'"))
+    assert.ok(source.includes('row.emphasis ? 700 : '))
+  })
+
+  test('both PI screens render it through the same component', () => {
+    for (const page of [IMPORT_PAGE, DRAFT_DETAIL_PAGE]) {
+      assert.ok(read(page).includes('<PiCommercialSummary rows={buildCommercialRows('),
+        `${page} must render the shared summary from the shared row builder`)
+    }
   })
 
   test('"Included" and "Not applicable" come from the one formatter', () => {
@@ -648,10 +772,11 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
 // ── Customization images ──────────────────────────────────────────────────────
 
 describe('the customization column', () => {
-  const source = read(IMPORT_PAGE)
+  const source = read(PI_PARTS)
+  const page = read(IMPORT_PAGE)
 
   test('text comes first, then the pictures', () => {
-    assert.ok(source.includes('CustomizationCell'))
+    assert.ok(page.includes('CustomizationCell'))
     assert.ok(source.includes('{hasText && ('))
     assert.ok(source.includes('{hasImages && ('))
   })
@@ -669,26 +794,27 @@ describe('the customization column', () => {
   })
 
   test('the representative image keeps its own column and its own lookup', () => {
-    assert.ok(source.includes('representativeThumbnail'))
-    assert.ok(source.includes('images.representativeByRow.get(row)'))
-    assert.ok(source.includes('images.customizationByRow.get(row)'))
+    assert.ok(page.includes('representativeThumbnail'))
+    assert.ok(page.includes('images.representativeByRow.get(row)'))
+    assert.ok(page.includes('images.customizationByRow.get(row)'))
   })
 
   test('a customization thumbnail is addressed by its own key, not by row', () => {
     // A row now owns several pictures; a row-keyed lookup would always resolve
     // to the representative one.
-    assert.ok(source.includes('customization-${row}-${index}'))
-    assert.ok(source.includes('item.key === key'))
+    assert.ok(page.includes('customization-${row}-${index}'))
+    assert.ok(page.includes('item.key === key'))
   })
 
   test('every customization image gets its own thumbnail, even when they share bytes', () => {
-    assert.ok(source.includes('.map((url, index) =>'),
+    assert.ok(page.includes('.map((url, index) =>'),
       'the map is over IMAGES, so two changes sharing one photograph render twice')
   })
 })
 
 describe('the viewer distinguishes the two roles', () => {
-  const source = read(IMPORT_PAGE)
+  const source = read(PI_PARTS)
+  const page = read(IMPORT_PAGE)
 
   test('the role is stated on every frame', () => {
     assert.ok(source.includes('{item.roleLabel}'))
@@ -704,17 +830,19 @@ describe('the viewer distinguishes the two roles', () => {
   })
 
   test('the dialog is keyed by the picture, not by the product row', () => {
-    assert.ok(source.includes('key={viewerItem.key}'),
-      'a row owns several pictures; keying by row would leave the dialog stale')
+    for (const file of [IMPORT_PAGE, DRAFT_DETAIL_PAGE]) {
+      assert.ok(read(file).includes('key={viewerItem.key}'),
+        'a row owns several pictures; keying by row would leave the dialog stale')
+    }
   })
 
   test('focus return is per picture', () => {
-    assert.ok(source.includes('thumbnailRefs.current.get(key)?.focus()'))
+    assert.ok(page.includes('thumbnailRefs.current.get(key)?.focus()'))
   })
 
   test('still one URL bag, created once, for both roles', () => {
-    const bagCalls = source.match(/createPiImageUrls\(/g) ?? []
+    const bagCalls = page.match(/createPiImageUrls\(/g) ?? []
     assert.equal(bagCalls.length, 1)
-    assert.ok(!source.includes('createObjectURL'))
+    assert.ok(!page.includes('createObjectURL'))
   })
 })

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, List, ClipboardList, Home, RefreshCw, Bell } from 'lucide-react'
+import { LayoutDashboard, List, ClipboardList, FileText, Home, RefreshCw, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -88,6 +88,11 @@ export function OrdersLayout({
     // badge stays undefined only while the count query is still loading; a real
     // 0 is passed through and rendered.
     { label: 'Order Requests',  path: '/orders/requests', icon: <ClipboardList   size={15} strokeWidth={1.8} />, exact: false, badge: orderRequestsCount },
+    // Saved PI submissions. NO BADGE, deliberately: the Order Requests count
+    // above is a company-wide volume figure, and drafts are a personal working
+    // set whose size is nobody else's business — a number here would also cost a
+    // query on every Orders page for something with no decision attached to it.
+    { label: 'PI Drafts',       path: '/orders/drafts',   icon: <FileText        size={15} strokeWidth={1.8} />, exact: false },
   ]
 
   return (
