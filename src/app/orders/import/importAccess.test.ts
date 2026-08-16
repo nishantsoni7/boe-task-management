@@ -52,6 +52,7 @@ const ORDERS_DASHBOARD = 'src/app/orders/page.tsx'
 const ORDERS_LAYOUT = 'src/app/orders/layout.tsx'
 const ORDERS_NAV = 'src/components/layout/OrdersLayout.tsx'
 const PREVIEW_VIEW = 'src/lib/pi/previewView.ts'
+const SAVE_FLOW = 'src/lib/orders/saveDraftFlow.ts'
 
 const perms = (allowedActions: string[]): EffectivePermission[] =>
   allowedActions.map(actionKey => ({ actionKey, allowed: true, source: 'role' }))
@@ -167,22 +168,40 @@ describe('nothing is persisted, uploaded or logged', () => {
     }
   })
 
-  test('the workbook is never sent anywhere', () => {
-    for (const api of ['fetch(', 'XMLHttpRequest', '.storage.from(', 'FormData']) {
-      assert.ok(!source.includes(api), `${api} must not appear — Phase 3A uploads nothing`)
-    }
+  test('the workbook leaves this tab ONLY as a private storage upload', () => {
+    // Phase 3B uploads the workbook the employee chose to save. It goes
+    // straight to the private order-files bucket — never as a request body,
+    // and never to anything but Supabase.
+    assert.ok(!source.includes('FormData'), 'a 10 MiB multipart body would be refused by the platform')
+    assert.ok(!source.includes('XMLHttpRequest'))
+    assert.ok(!source.includes('base64'))
+    assert.ok(source.includes(".from('order-files')"), 'the one destination is the private bucket')
+
+    const hosts = source.match(/https?:\/\/[^'"`\s]+/g) ?? []
+    assert.deepEqual(hosts, [], 'no absolute URL — nothing is sent to a third party')
   })
 
-  test('nothing is written to the database', () => {
-    for (const call of ['.insert(', '.upsert(', '.update(', '.delete(', '.rpc(']) {
-      assert.ok(!source.includes(call), `${call} must not appear — Phase 3A saves nothing`)
-    }
+  test('the only fetch is the project’s own trusted endpoint', () => {
+    const fetches = [...source.matchAll(/fetch\(\s*'([^']+)'/g)].map(m => m[1])
+    assert.deepEqual(fetches, ['/api/orders/import/process-draft'])
   })
 
-  test('the only database read is the access check', () => {
-    const reads = source.match(/\.from\(/g) ?? []
-    assert.equal(reads.length, 1, 'exactly one table read: the signed-in user profile')
-    assert.ok(source.includes(".from('users')"))
+  test('the only database writes are the draft row and its own storage upload', () => {
+    for (const call of ['.insert(', '.upsert(', '.update(', '.delete(']) {
+      assert.ok(!source.includes(call), `${call} must not appear — this screen writes no table directly`)
+    }
+    const rpcs = [...source.matchAll(/\.rpc\(\s*'([^']+)'/g)].map(m => m[1])
+    assert.deepEqual(rpcs, ['create_order_submission'],
+      'the one RPC creates an empty draft; every figure is written by the server')
+  })
+
+  test('the only table read is the access check', () => {
+    // Two `.from()` calls exist: one names a TABLE, one names the storage
+    // bucket. Listing both and asserting the pair is what keeps a third from
+    // appearing unnoticed.
+    const targets = [...source.matchAll(/\.from\(\s*'([^']+)'/g)].map(m => m[1]).sort()
+    assert.deepEqual(targets, ['order-files', 'users'])
+    assert.ok(source.includes(".from('users')"), 'the signed-in user profile')
   })
 
   test('no parsed workbook content reaches a log or telemetry sink', () => {
@@ -252,6 +271,131 @@ describe('replacing the PI', () => {
   })
 })
 
+// ── Save Draft ────────────────────────────────────────────────────────────────
+
+describe('the Save Draft action', () => {
+  const source = read(IMPORT_PAGE)
+
+  test('is gated through the shared helper, not an inline condition', () => {
+    assert.ok(source.includes('canSaveDraft({'))
+    assert.ok(source.includes('blockingCount: preview.groups.blocking.length'))
+    assert.ok(source.includes('saving,'))
+  })
+
+  test('only appears in the ready state, so a blocked PI has no save control', () => {
+    const readyAt = source.indexOf('preview.groups.readyToSubmit &&')
+    // The rendered button, not the import at the top of the file.
+    const buttonAt = source.indexOf("{saving ? 'Saving…' : SAVE_BUTTON_LABEL}")
+    assert.ok(readyAt > -1, 'the ready block exists')
+    assert.ok(buttonAt > readyAt, 'the save button is rendered inside it')
+  })
+
+  test('a second click cannot start a second save', () => {
+    assert.ok(source.includes('if (savingRef.current) return'),
+      'a ref, because state updates are async and two clicks share a tick')
+    assert.ok(source.includes('savingRef.current = true'))
+    assert.ok(source.includes('savingRef.current = false'))
+  })
+
+  test('it re-checks the blocking count at the moment of the click', () => {
+    assert.ok(source.includes("if (stage.kind !== 'ready' || stage.preview.groups.blocking.length > 0) return"))
+  })
+
+  test('all four progress stages are shown', () => {
+    for (const stage of ['creating', 'uploading', 'verifying', 'saving']) {
+      assert.ok(source.includes(`setSaveStage('${stage}')`), `stage ${stage}`)
+    }
+    assert.ok(source.includes('saveStageLabel(saveStage!)'))
+    assert.ok(source.includes('saveStageIndex(saveStage!)'))
+  })
+
+  test('the workbook goes straight to storage, not through an API route', () => {
+    assert.ok(source.includes(".from('order-files')"))
+    assert.ok(source.includes('.upload(path, workbookFileRef.current'))
+    assert.ok(!source.includes('FormData'), 'a 10 MiB body would be refused by the platform')
+  })
+
+  test('the draft row is created through the authenticated RPC', () => {
+    assert.ok(source.includes("supabase.rpc('create_order_submission'"))
+    assert.ok(!source.includes('replace_order_submission_parse'),
+      'the privileged RPC is unreachable from here')
+  })
+
+  test('an upload failure keeps the preview and offers a retry', () => {
+    assert.ok(source.includes("describeSaveFailure('UPLOAD_FAILED')"))
+    // The stage returns to null in `finally`, so the button becomes live again.
+    assert.ok(source.includes('setSaveStage(null)'))
+  })
+
+  test('the server response overrides the browser’s assumptions', () => {
+    assert.ok(source.includes('summariseSaveResult(body, draft.submissionId)'),
+      'the success panel is built from the RESPONSE, not from the preview')
+    assert.ok(source.includes('saveFailure.serverRejectedDocument'))
+  })
+
+  test('a saved draft never claims an order number', () => {
+    assert.ok(source.includes('saveSuccess.note'))
+    assert.ok(read(SAVE_FLOW).includes('No official order number has been assigned'))
+  })
+
+  test('no "View Draft" link is offered, because no draft route exists yet', () => {
+    assert.ok(!source.includes('View Draft'))
+    assert.ok(source.includes('Return to Orders'))
+  })
+
+  test('the chosen file is held in memory only', () => {
+    assert.ok(source.includes('workbookFileRef'))
+    for (const api of ['localStorage', 'sessionStorage', 'indexedDB', 'document.cookie']) {
+      assert.ok(!source.includes(api), `${api} must not appear on the PI import screen`)
+    }
+  })
+
+  test('replacing the PI clears the previous outcome and the held file', () => {
+    assert.ok(source.includes('workbookFileRef.current = null'))
+    assert.ok(source.includes('setSaveSuccess(null)'))
+    assert.ok(source.includes('draftRef.current.workbookPath = null'),
+      'a new workbook is uploaded, and the draft row is reused')
+  })
+
+  test('Change PI never discards the draft, so no second submission is created', () => {
+    assert.ok(!source.includes('draftRef.current = null'),
+      'a changed file is a new reading of the SAME editable draft')
+    // The only place a draft is created is guarded on there being none.
+    const creations = source.match(/create_order_submission/g) ?? []
+    assert.equal(creations.length, 1)
+    assert.ok(source.includes('if (!draftRef.current) {'))
+  })
+
+  test('a retry after a successful upload does not upload again', () => {
+    const uploadAt = source.indexOf('.upload(path, workbookFileRef.current')
+    const recordAt = source.indexOf('draft.workbookPath = path')
+    const failAt = source.indexOf("describeSaveFailure('UPLOAD_FAILED')")
+    assert.ok(source.includes('if (!draft.workbookPath) {'), 'the upload step is skipped when the key is known')
+    assert.ok(recordAt > uploadAt && recordAt > failAt,
+      'the key is recorded only on the success branch, so a failed upload retries properly')
+  })
+
+  test('a retry after a process failure reuses the stored workbook', () => {
+    // Only the outcome is cleared on retry; the attempt state is not.
+    assert.ok(source.includes('setSaveFailure(null)'))
+    const saveAt = source.indexOf('const saveDraft = useCallback')
+    const body = source.slice(saveAt, source.indexOf('}, [stage, supabase])', saveAt))
+    assert.ok(!body.includes('draftRef.current = null'), 'attempt state survives a failure')
+  })
+
+  test('attempt state lives in memory only', () => {
+    for (const api of ['localStorage', 'sessionStorage', 'indexedDB', 'document.cookie']) {
+      assert.ok(!source.includes(api), `${api} must not hold attempt state`)
+    }
+    assert.ok(source.includes('useRef<{ submissionId: string; workbookPath: string | null } | null>(null)'))
+  })
+
+  test('this phase still submits nothing for approval', () => {
+    assert.ok(!source.includes('submit_order_submission'))
+    assert.ok(!/Submit for Approval/i.test(source))
+  })
+})
+
 describe('no order number is shown or invented', () => {
   const source = read(IMPORT_PAGE)
 
@@ -266,11 +410,13 @@ describe('no order number is shown or invented', () => {
     assert.ok(!/order\s*(number|no\.?|#)/i.test(source), 'and nothing is labelled as one')
   })
 
-  test('the submission control is inert', () => {
-    assert.ok(source.includes('Continue to Submission'))
-    assert.ok(/<button[^>]*\n?[^>]*disabled[^>]*>\s*\n?\s*Continue to Submission/.test(source)
-      || source.includes('disabled title="Available in the next phase"'),
-      'the button must be disabled — Phase 3A cannot submit')
+  test('the action saves a DRAFT and does not submit it', () => {
+    // Phase 3B replaces the inert "Continue to Submission" with a real save.
+    // What stays inert is approval: nothing here calls submit_order_submission.
+    assert.ok(!source.includes('Continue to Submission'))
+    assert.ok(!source.includes('submit_order_submission'))
+    assert.ok(source.includes('SAVE_BUTTON_LABEL'))
+    assert.ok(read(SAVE_FLOW).includes("SAVE_BUTTON_LABEL = 'Save Draft'"))
   })
 })
 
