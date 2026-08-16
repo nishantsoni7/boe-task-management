@@ -2,17 +2,18 @@
  * UAT CLEANUP SCRIPT — BOE Task Management
  * Removes all [TEST-UAT] users and tasks.
  *
+ * Credentials and target come from the environment (see .env.example) and are
+ * validated by scripts/lib/uatEnv.mjs, which also refuses to run against a
+ * hosted project without an explicit override.
+ *
  * Run: node scripts/uat-cleanup.mjs
  */
 
 import { createClient } from '@supabase/supabase-js'
+import { createUatAdminClient, resolveUatEnvOrExit } from './lib/uatEnv.mjs'
 
-const SUPABASE_URL = 'https://albnsrohngkljfsrrrhf.supabase.co'
-const SERVICE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsYm5zcm9obmdrbGpmc3JycmhmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTI4MDk2MywiZXhwIjoyMDk0ODU2OTYzfQ.pNOzEyuqTAYaCRd1Fa1TMdJFW8YVgfNrq07PHq3GGMA'
-
-const sb = createClient(SUPABASE_URL, SERVICE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-})
+const env = resolveUatEnvOrExit()
+const sb = createUatAdminClient(env, createClient)
 
 async function main() {
   console.log('🧹 UAT Cleanup Starting...\n')
