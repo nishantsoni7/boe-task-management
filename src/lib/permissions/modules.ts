@@ -211,6 +211,16 @@ registerModule({
     // never via role_permissions — so it never broadens to every admin/
     // manager/operations/bdm employee.
     { actionKey: 'can_be_order_assignee', displayName: 'Can Be Order Assignee' },
+    // Authority to review an imported PI submission — the workbook an employee
+    // uploads with no official order number — and eventually to approve it into
+    // a numbered Order. Registered by 20260908000000.
+    //
+    // DELIBERATELY NOT `approve`. That action already means "convert an Order
+    // Request" and is checked by convert_order_request_to_order,
+    // reject_order_request and request_order_request_clarification
+    // (20260901000000). Reusing it would hand PI approval to everyone who can
+    // convert an Order Request today, silently and without anyone choosing it.
+    { actionKey: 'approve_order', displayName: 'Approve Order Submissions' },
     // Company-wide sight of every order. Until 20260903000000, plain 'view'
     // carried this through the blanket SELECT policies added by 20260685000000
     // and 20260686000000 — module entry and seeing the whole company were the

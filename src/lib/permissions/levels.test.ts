@@ -31,7 +31,7 @@ import {
 // Real module action sets, mirroring what production registers (verified
 // against permission_modules / module_permission_actions).
 const FINANCE = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']
-const ORDERS = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee']
+const ORDERS = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee', 'approve_order']
 const ASSETS = ['view', 'create', 'edit', 'delete', 'manage', 'assign']
 const SAMPLES = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'dispatch', 'receive', 'mark_lost', 'close']
 const PAYROLL = ['view', 'edit', 'approve', 'export', 'manage', 'admin']
@@ -157,10 +157,16 @@ describe('Manager never receives a protected action', () => {
     // set growing is a decision someone must make on purpose, and an action
     // silently becoming protected would take authority away from whoever holds
     // it the next time an administrator picks a preset.
+    //
+    // Grew by one again in 20260908000000: `orders.approve_order`, the
+    // authority to review an imported PI submission and — from the approval
+    // phase — to turn it into a numbered Order. It is a SEPARATE action from
+    // `approve`, which is Order Request conversion, precisely so that neither
+    // implies the other.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
-      'admin', 'assign', 'can_be_order_assignee', 'close', 'delete',
-      'dispatch', 'manage', 'manage_quotations', 'mark_lost', 'receive',
-      'view_all', 'view_quotations',
+      'admin', 'approve_order', 'assign', 'can_be_order_assignee', 'close',
+      'delete', 'dispatch', 'manage', 'manage_quotations', 'mark_lost',
+      'receive', 'view_all', 'view_quotations',
     ])
   })
 

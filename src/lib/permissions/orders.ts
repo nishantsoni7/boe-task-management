@@ -55,7 +55,18 @@ export type OrdersCapabilities = {
    * is still decided by the existing assignment rule and by RLS.
    */
   canEditOrder: boolean
+  /** Convert an Order Request into a Confirmed Order. The `approve` action. */
   canApproveOrder: boolean
+  /**
+   * Review an imported PI submission — send it back for changes, and (from the
+   * approval phase) approve it into a numbered Order. Backed by the protected
+   * `approve_order` action, which 20260908000000 registers.
+   *
+   * NOT the same authority as canApproveOrder. Order Request conversion and PI
+   * approval are separate decisions on separate records, and one must never
+   * imply the other.
+   */
+  canApproveOrderSubmission: boolean
   canExportOrders: boolean
   canDeleteOrder: boolean
   /** Administrative control of the module. */
@@ -73,6 +84,7 @@ export const NO_ORDERS_CAPABILITIES: OrdersCapabilities = {
   canCreateOrder: false,
   canEditOrder: false,
   canApproveOrder: false,
+  canApproveOrderSubmission: false,
   canExportOrders: false,
   canDeleteOrder: false,
   canManageOrders: false,
@@ -96,6 +108,7 @@ export function deriveOrdersCapabilities(
       canCreateOrder: true,
       canEditOrder: true,
       canApproveOrder: true,
+      canApproveOrderSubmission: true,
       canExportOrders: true,
       canDeleteOrder: true,
       canManageOrders: true,
@@ -117,6 +130,7 @@ export function deriveOrdersCapabilities(
     canCreateOrder: withEntry('create'),
     canEditOrder: withEntry('edit'),
     canApproveOrder: withEntry('approve'),
+    canApproveOrderSubmission: withEntry('approve_order'),
     canExportOrders: withEntry('export'),
     canDeleteOrder: withEntry('delete'),
     canManageOrders: withEntry('manage'),
