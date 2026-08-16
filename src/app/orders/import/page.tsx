@@ -81,6 +81,20 @@ import {
   type PiViewerNav,
 } from '@/lib/pi/previewView'
 import type { PiWorkbook } from '@/lib/pi/types'
+import {
+  SAVE_STAGES,
+  SAVE_BUTTON_LABEL,
+  canSaveDraft,
+  describeSaveFailure,
+  summariseSaveResult,
+  saveStageLabel,
+  saveStageIndex,
+  workbookObjectPath,
+  WORKBOOK_UPLOAD_MIME,
+  type SaveStageKey,
+  type SaveFailure,
+  type SaveSuccess,
+} from '@/lib/orders/saveDraftFlow'
 
 // ── Screen state ──────────────────────────────────────────────────────────────
 
@@ -509,6 +523,34 @@ export default function NewOrderPiImportPage() {
   /** Index into the current preview's viewerItems, or null when closed. */
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
 
+  // ── Save Draft ──
+  const [saveStage, setSaveStage] = useState<SaveStageKey | null>(null)
+  const [saveFailure, setSaveFailure] = useState<SaveFailure | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState<SaveSuccess | null>(null)
+  /**
+   * ATTEMPT STATE. In memory only — never localStorage, sessionStorage,
+   * IndexedDB or a cookie.
+   *
+   * It exists so Retry means retry. `submissionId` is created once and reused
+   * by every subsequent attempt, including after Change PI: a different file is
+   * a new reading of the SAME editable draft, not a new draft. `workbookPath`
+   * is set only once its upload has actually succeeded, so a retry after a
+   * server or network failure skips straight to processing rather than
+   * uploading a second copy of a file that is already there.
+   *
+   * Cleared only on a successful save or on deliberate abandonment (leaving the
+   * screen). See the limitation note in the report: a full browser reload
+   * before any save leaves an empty draft row behind.
+   */
+  const draftRef = useRef<{ submissionId: string; workbookPath: string | null } | null>(null)
+  /** Belt and braces against a double click: state updates are async, this is
+   *  not, so two clicks in the same tick cannot both start a save. */
+  const savingRef = useRef(false)
+  /** The chosen File, held in memory only so it can be uploaded if the employee
+   *  saves. Never written to localStorage, sessionStorage or IndexedDB, and
+   *  dropped when the PI is replaced or the screen unmounts. */
+  const workbookFileRef = useRef<File | null>(null)
+
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -631,6 +673,18 @@ export default function NewOrderPiImportPage() {
     viewerOpenedFrom.current = null
     thumbnailRefs.current.clear()
 
+    // A NEW WORKBOOK IS A NEW READING OF THE SAME DRAFT. The draft ROW is
+    // deliberately kept — replacing the parse is exactly what the endpoint
+    // supports, and creating a second submission because a file changed would
+    // leave an abandoned row behind every time somebody corrected their PI.
+    // Only the uploaded key is cleared, so the new file is uploaded under its
+    // own path; the superseded original is removed by the server once the new
+    // one has been parsed and saved.
+    workbookFileRef.current = null
+    if (draftRef.current) draftRef.current.workbookPath = null
+    setSaveSuccess(null)
+    setSaveFailure(null)
+
     const accepted = checkPiFile({ name: file.name, size: file.size })
     if (!accepted.ok) {
       releaseImages()
@@ -654,6 +708,9 @@ export default function NewOrderPiImportPage() {
         setStage({ kind: 'failed', failure: describePiFailure(result.errors) })
         return
       }
+
+      // Kept only now that the parse succeeded, so a rejected file is not held.
+      workbookFileRef.current = file
 
       const images = createPiImageUrls({
         representativeImages: result.data.representativeImages,
@@ -692,6 +749,101 @@ export default function NewOrderPiImportPage() {
   }, [releaseImages])
 
   const parsing = stage.kind === 'parsing'
+  const saving = saveStage !== null
+
+  // ── Save Draft ──
+  //
+  // THREE STEPS, AND ONLY THE THIRD DECIDES ANYTHING. The draft row and the
+  // upload exist so the server has something to read; the server then re-parses
+  // that same workbook and persists its OWN reading. Nothing the browser
+  // computed for the preview is sent, and the server's verdict overrides it.
+  //
+  // Retry is safe at every step: the submission id and the uploaded key are
+  // remembered, so pressing Save Draft again resumes rather than starting over —
+  // no second draft, no second copy of the workbook, and the server's item and
+  // image keys are deterministic so a repeat write overwrites itself.
+  const saveDraft = useCallback(async () => {
+    if (savingRef.current) return
+    if (stage.kind !== 'ready' || stage.preview.groups.blocking.length > 0) return
+    if (!workbookFileRef.current) return
+
+    savingRef.current = true
+    setSaveFailure(null)
+
+    try {
+      // ── 1. The draft row, so the storage key can name it ──
+      setSaveStage('creating')
+      if (!draftRef.current) {
+        const { data, error } = await supabase.rpc('create_order_submission', { p_client_name: null })
+        if (error || !data || typeof (data as { id?: unknown }).id !== 'string') {
+          setSaveFailure(describeSaveFailure('CREATE_FAILED'))
+          return
+        }
+        draftRef.current = { submissionId: (data as { id: string }).id, workbookPath: null }
+      }
+      const draft = draftRef.current
+
+      // ── 2. The workbook, straight to private storage ──
+      //
+      // Direct to Storage, not through an API route: a 10 MiB body is beyond a
+      // serverless request limit, and routing it through a function would hold
+      // the bytes in memory twice for no benefit. The order-files policies
+      // already authorize exactly this employee for exactly this draft.
+      setSaveStage('uploading')
+      if (!draft.workbookPath) {
+        const path = workbookObjectPath(draft.submissionId, crypto.randomUUID())
+        const { error } = await supabase.storage
+          .from('order-files')
+          .upload(path, workbookFileRef.current, { contentType: WORKBOOK_UPLOAD_MIME })
+        if (error) {
+          // The path is NOT recorded, so a retry uploads afresh rather than
+          // pointing the server at a key that may hold nothing. The preview
+          // stays on screen — the parse is still valid.
+          setSaveFailure(describeSaveFailure('UPLOAD_FAILED'))
+          return
+        }
+        // Recorded only on success. Every later retry — network failure, server
+        // error, a second click — reuses this exact object instead of uploading
+        // the same 10 MiB again.
+        draft.workbookPath = path
+      }
+
+      // ── 3. The trusted server pass ──
+      setSaveStage('verifying')
+      let response: Response
+      try {
+        response = await fetch('/api/orders/import/process-draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // The submission and the key. No parsed values, no workbook bytes.
+          body: JSON.stringify({
+            submissionId: draft.submissionId,
+            sourceWorkbookPath: draft.workbookPath,
+          }),
+        })
+      } catch {
+        setSaveFailure(describeSaveFailure('NETWORK'))
+        return
+      }
+
+      setSaveStage('saving')
+      const body = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        // The SERVER is authoritative. When it rejects the document, the
+        // preview's "ready" verdict was wrong and the success state is never
+        // shown — describeSaveFailure marks those codes so the screen can say
+        // so plainly.
+        setSaveFailure(describeSaveFailure(typeof body?.error === 'string' ? body.error : null))
+        return
+      }
+
+      setSaveSuccess(summariseSaveResult(body, draft.submissionId))
+    } finally {
+      savingRef.current = false
+      setSaveStage(null)
+    }
+  }, [stage, supabase])
 
   const acceptFile = useCallback((file: File | null | undefined) => {
     if (!file || parsing) return
@@ -1151,24 +1303,106 @@ export default function NewOrderPiImportPage() {
         </Card>
       )}
 
-      {/* Ready state. The button is inert on purpose: this phase saves nothing,
-          and a control that looked like it did would be a lie about a
-          commercial record. */}
+      {/* Ready state, and the one action this phase performs. Saving stores a
+          PRIVATE DRAFT — it does not submit for approval, take a payment or
+          allocate an order number, and the success state says so. */}
       {preview.groups.readyToSubmit && (
-        <Card style={{ borderColor: 'rgba(69,168,112,0.3)' }}>
+        <Card style={{ borderColor: saveSuccess ? 'rgba(69,168,112,0.4)' : 'rgba(69,168,112,0.3)' }}>
           <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
             <CheckCircle2 size={18} strokeWidth={1.8} color={colors.green} style={{ flexShrink: 0, marginTop: '1px' }} />
-            <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{READY_TITLE}</div>
-              <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
-                Nothing blocks this PI. Saving it and sending it for management approval is not available
-                yet — it arrives in the next phase. Nothing has been stored.
+            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+                {saveSuccess ? 'Draft saved' : READY_TITLE}
               </div>
-              <div style={{ marginTop: '8px' }}>
-                <button className="boe-btn boe-btn-primary" disabled title="Available in the next phase">
-                  Continue to Submission
-                </button>
-              </div>
+
+              {saveSuccess ? (
+                <>
+                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+                    {/* The SERVER's counts, from its own re-parse — not the
+                        browser's. If the two ever disagreed, what was saved is
+                        what must be shown. */}
+                    {saveSuccess.summary} were saved to a private draft.
+                  </div>
+                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '2px' }}>
+                    {saveSuccess.note}
+                  </div>
+                  {saveSuccess.warningCodes.length > 0 && (
+                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                      Saved with {saveSuccess.warningCodes.length} warning
+                      {saveSuccess.warningCodes.length === 1 ? '' : 's'} recorded on the draft.
+                    </div>
+                  )}
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {/* No "View Draft": a draft-detail route is not part of this
+                        phase, and a link to a page that does not exist is worse
+                        than no link. */}
+                    <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders')}>
+                      Return to Orders
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+                    Nothing blocks this PI. Saving stores it as a private draft — the server reads the
+                    workbook again and saves its own verified copy. Submitting for approval comes later.
+                  </div>
+
+                  {saving && (
+                    <div style={{
+                      marginTop: '8px', padding: '10px 12px',
+                      background: colors.raised, border: `1px solid ${colors.border}`,
+                      borderRadius: '8px',
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                    }}>
+                      <Loader2 size={14} strokeWidth={2} color={colors.blue}
+                               style={{ animation: 'boe-spin 0.8s linear infinite', flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', color: colors.primary, fontWeight: 600 }}>
+                        {saveStageLabel(saveStage!)}
+                      </span>
+                      <span style={{ fontSize: '11px', color: colors.muted, marginLeft: 'auto' }}>
+                        Step {saveStageIndex(saveStage!)} of {SAVE_STAGES.length}
+                      </span>
+                    </div>
+                  )}
+
+                  {saveFailure && (
+                    <div style={{
+                      marginTop: '8px', padding: '10px 12px',
+                      background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+                      borderRadius: '8px',
+                    }}>
+                      <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
+                        {saveFailure.message}
+                      </div>
+                      {saveFailure.serverRejectedDocument && (
+                        <div style={{ fontSize: '11px', color: colors.red, marginTop: '4px', lineHeight: 1.5 }}>
+                          The server checked the workbook itself and its result is the one that counts.
+                          This PI is not ready to save.
+                        </div>
+                      )}
+                      <div style={{ fontSize: '10px', color: colors.muted, marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
+                        {saveFailure.code}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: '10px' }}>
+                    <button
+                      className="boe-btn boe-btn-primary"
+                      onClick={saveDraft}
+                      disabled={!canSaveDraft({
+                        hasPreview: true,
+                        blockingCount: preview.groups.blocking.length,
+                        saving,
+                        saved: false,
+                      })}
+                    >
+                      {saving ? 'Saving…' : SAVE_BUTTON_LABEL}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </Card>

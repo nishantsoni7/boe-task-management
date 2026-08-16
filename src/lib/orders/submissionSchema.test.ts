@@ -157,9 +157,30 @@ const INTERNAL_FUNCTIONS = [
 // ══ 1. It is exactly one new migration ══════════════════════════════════════
 
 describe('the migration itself', () => {
-  test('is a single new file with a timestamp after every existing one', () => {
+  test('is ordered after everything that predates the PI submission work', () => {
+    // It WAS the newest when it was written. Later phases of this same feature
+    // legitimately sort after it — phase 3B adds the normalized image table —
+    // so the durable rule is narrower than "newest": nothing UNRELATED may be
+    // inserted after it, because a migration that lands later cannot depend on
+    // tables this one creates unless it is part of the same work.
     const all = readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(all[all.length - 1], MIGRATION_FILE, 'must be the newest migration')
+    const later = all.slice(all.indexOf(MIGRATION_FILE) + 1)
+
+    for (const file of later) {
+      const text = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
+      assert.ok(
+        /order_submission/i.test(text),
+        `${file} sorts after the submission migration but is not part of that feature`,
+      )
+    }
+  })
+
+  test('is still the only migration that creates the submission tables', () => {
+    const creators = readdirSync(MIGRATIONS_DIR)
+      .filter(f => f.endsWith('.sql'))
+      .filter(f => /create table public\.order_submissions\b/i
+        .test(lf(readFileSync(join(MIGRATIONS_DIR, f), 'utf8'))))
+    assert.deepEqual(creators, [MIGRATION_FILE])
   })
 
   test('creates all three submission tables', () => {
