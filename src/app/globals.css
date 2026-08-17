@@ -31,7 +31,11 @@
   --color-boe-border-soft: rgba(0,0,0,0.13);
   --color-boe-border-med:  rgba(0,0,0,0.18);
 
-  --font-display: 'Syne', sans-serif;
+  /* Syne is no longer downloaded at build time — see the note in
+     src/app/layout.tsx. It is still preferred when a reader happens to have it
+     installed; otherwise display text falls to the app's own body face, which
+     IS loaded, rather than to whatever sans the operating system supplies. */
+  --font-display: 'Syne', var(--font-body), sans-serif;
   --font-body:    'DM Sans', sans-serif;
   --font-mono:    'DM Mono', monospace;
 
@@ -387,7 +391,7 @@ body {
 .boe-kpi-red   .boe-kpi-label { color: rgba(217,79,79,0.85); }
 
 .boe-kpi-value {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 28px;
   font-weight: 700;
   line-height: 1;
@@ -1349,7 +1353,7 @@ body {
 .boe-page-title-group {}
 
 .boe-page-title {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-display);
   font-size: 18px;
   font-weight: 600;
   color: #111318;
