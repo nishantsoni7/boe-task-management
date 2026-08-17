@@ -53,6 +53,8 @@ const ORDERS_LAYOUT = 'src/app/orders/layout.tsx'
 const ORDERS_NAV = 'src/components/layout/OrdersLayout.tsx'
 const PREVIEW_VIEW = 'src/lib/pi/previewView.ts'
 const SAVE_FLOW = 'src/lib/orders/saveDraftFlow.ts'
+/** The Phase A action rules: who may submit, replace, return or reject. */
+const WORKFLOW = 'src/lib/orders/submissionWorkflow.ts'
 /**
  * The preview furniture — cards, thumbnails, the customization cell, the image
  * viewer and the commercial summary — moved here when the saved-draft screen
@@ -214,13 +216,15 @@ describe('nothing is persisted, uploaded or logged', () => {
       'the one RPC creates an empty draft; every figure is written by the server')
   })
 
-  test('the only table read is the access check', () => {
-    // Two `.from()` calls exist: one names a TABLE, one names the storage
-    // bucket. Listing both and asserting the pair is what keeps a third from
-    // appearing unnoticed.
-    const targets = [...source.matchAll(/\.from\(\s*'([^']+)'/g)].map(m => m[1]).sort()
-    assert.deepEqual(targets, ['order-files', 'users'])
+  test('the tables read are the access check and the record being replaced', () => {
+    // Three `.from()` targets exist: the signed-in profile, the submission a
+    // Change PI link names, and the storage bucket. Asserting the set is what
+    // keeps a fourth from appearing unnoticed.
+    const targets = [...new Set([...source.matchAll(/\.from\(\s*'([^']+)'/g)].map(m => m[1]))].sort()
+    assert.deepEqual(targets, ['order-files', 'order_submissions', 'users'])
     assert.ok(source.includes(".from('users')"), 'the signed-in user profile')
+    assert.ok(source.includes(".from('order_submissions')"),
+      'and the record a replacement attaches to, read under the caller’s own RLS')
   })
 
   test('no parsed workbook content reaches a log or telemetry sink', () => {
@@ -430,9 +434,79 @@ describe('the Save Draft action', () => {
     assert.ok(source.includes('useRef<{ submissionId: string; workbookPath: string | null } | null>(null)'))
   })
 
-  test('this phase still submits nothing for approval', () => {
+  test('this screen still submits nothing for approval', () => {
+    // Submission is a decision taken on the RECORD, in front of the stored copy
+    // the reviewer will see — not on a preview of a file that has not been
+    // saved yet. So the upload screen has no submit control and calls no submit
+    // RPC, even now that submission exists.
     assert.ok(!source.includes('submit_order_submission'))
     assert.ok(!/Submit for Approval/i.test(source))
+  })
+})
+
+// ── Change PI on an existing record ───────────────────────────────────────────
+
+describe('replacing the PI on a record that already exists', () => {
+  const source = read(IMPORT_PAGE)
+
+  test('the target comes from the URL and is validated before it is used', () => {
+    assert.ok(source.includes('readChangePiTarget(searchParams.get(CHANGE_PI_PARAM))'),
+      'anything that is not a uuid never reaches the database')
+    assert.ok(read(WORKFLOW).includes("export const CHANGE_PI_PARAM = 'submissionId'"),
+      'the parameter name is defined once, beside the helper that builds the link')
+  })
+
+  test('the record is re-read under the caller’s own policies', () => {
+    assert.ok(source.includes(".from('order_submissions')"))
+    assert.ok(source.includes(".eq('id', target)"))
+    assert.ok(!source.includes('SERVICE_ROLE'), 'no privileged client on a screen')
+  })
+
+  test('only the OWNER of an editable record may replace its PI', () => {
+    assert.ok(source.includes('record.created_by === session.user.id || record.submitted_by === session.user.id'),
+      'the same ownership pair the storage write policy uses')
+    assert.ok(source.includes('canReplaceSubmissionPi(record.status)'),
+      'and the same two editable states')
+    assert.ok(!/role === 'admin'/.test(source),
+      'no admin branch: can_write_order_submission_file has none either, so one here would fail at the upload')
+  })
+
+  test('a refused target says the same thing for all three reasons', () => {
+    assert.ok(source.includes("setReplaceTarget({ kind: 'unavailable' })"))
+    assert.ok(!/not\s+allowed|no\s+permission|forbidden/i.test(source),
+      'the screen must not confirm that somebody else’s submission exists')
+  })
+
+  test('a refused target can never fall through to creating a second record', () => {
+    assert.ok(source.includes("if (replaceTarget.kind === 'checking' || replaceTarget.kind === 'unavailable') return"),
+      'the save handler refuses outright')
+    assert.ok(source.includes('disabled={replaceBlocked || !canSaveDraft({'),
+      'and the button is disabled, so it is not merely a silent no-op')
+  })
+
+  test('an adopted target is the draft the save reuses', () => {
+    assert.ok(source.includes('draftRef.current = { submissionId: record.id, workbookPath: null }'),
+      'the existing submission is in hand before the first save')
+    assert.ok(source.includes('if (!draftRef.current) {'),
+      'so create_order_submission is skipped — no second submission for a replacement')
+    const creations = source.match(/create_order_submission/g) ?? []
+    assert.equal(creations.length, 1, 'and there is still exactly one place a draft is created')
+  })
+
+  test('the replacement reuses every existing safeguard, adding none of its own', () => {
+    // The lease, the trusted re-parse, the image integrity checks, the rollback
+    // and the cleanup all live behind this one endpoint. A replacement takes the
+    // identical path; what differs is only which submission row it lands on.
+    const fetches = [...source.matchAll(/fetch\(\s*'([^']+)'/g)].map(m => m[1])
+    assert.deepEqual(fetches, ['/api/orders/import/process-draft'])
+    assert.ok(!source.includes('replace_order_submission_parse'),
+      'the privileged RPC stays unreachable from the browser')
+  })
+
+  test('it says which record is being replaced, and offers the way back', () => {
+    assert.ok(source.includes('Replacing the PI on an existing record'))
+    assert.ok(source.includes('draftDetailHref(replaceTarget.submissionId)'),
+      'the way back is to the same record, built by the shared helper')
   })
 })
 

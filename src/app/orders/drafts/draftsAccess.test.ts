@@ -32,7 +32,9 @@ import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import type { EffectivePermission } from '@/lib/permissions/types'
 import { buildCommercialRows, buildHeaderRows, buildImageViewerItems, formatInr } from '@/lib/pi/previewView'
 import {
+  PI_DRAFTS_EMPTY_NOTE,
   PI_DRAFTS_EMPTY_TEXT,
+  PI_DRAFTS_SUBTITLE,
   PI_DRAFT_LIST_STATUSES,
   PI_DRAFT_STATUS_LABEL,
   describeDraftListEntry,
@@ -80,12 +82,20 @@ const IMAGES_MIGRATION = 'supabase/migrations/20260909000000_order_submission_it
 const perms = (allowedActions: string[]): EffectivePermission[] =>
   allowedActions.map(actionKey => ({ actionKey, allowed: true, source: 'role' }))
 
+/** The employee whose submission the fixtures below belong to. */
+const OWNER = '99999999-9999-4999-8999-999999999999'
+
 // A minimal saved submission. Fields the case under test does not care about
 // are null, which is also the honest state of a draft whose PI said nothing.
 const submission = (over: Partial<PersistedSubmission> = {}): PersistedSubmission => ({
   id: '11111111-1111-4111-8111-111111111111',
   status: 'draft',
   client_name: 'Meridian Hotels',
+  created_by: OWNER,
+  submitted_by: OWNER,
+  submitted_at: null,
+  rejected_by: null,
+  rejected_at: null,
   creation_date: '2026-08-10',
   source_created_by: 'Ravi',
   bill_to_name: 'Meridian Hotels',
@@ -253,12 +263,15 @@ describe('the detail page renders only what it fetched', () => {
     assert.ok(source.includes("from('order_submission_item_images')"))
   })
 
-  test('the four reads are the only tables either screen touches', () => {
+  test('the reads are the only tables either screen touches', () => {
     const targets = new Set<string>()
     for (const page of [LIST_PAGE, DETAIL_PAGE]) {
       for (const m of read(page).matchAll(/\.from\('([^']+)'\)/g)) targets.add(m[1])
     }
+    // order_submission_activity joined the list when the history section did,
+    // and `users` is read to turn actor ids into names. Nothing else.
     assert.deepEqual([...targets].sort(), [
+      'order_submission_activity',
       'order_submission_item_images', 'order_submission_items', 'order_submissions', 'users',
     ])
     // The one storage bucket, named through the shared constant so a second
@@ -267,19 +280,50 @@ describe('the detail page renders only what it fetched', () => {
     assert.ok(read(DRAFTS_VIEW).includes("ORDER_FILES_BUCKET = 'order-files'"))
   })
 
-  test('neither screen writes anything, anywhere', () => {
+  test('neither screen writes a table, a row or a file — ever', () => {
     for (const page of [LIST_PAGE, DETAIL_PAGE]) {
       const s = read(page)
-      for (const call of ['.insert(', '.update(', '.upsert(', '.delete(', '.rpc(', '.upload(']) {
-        assert.ok(!s.includes(call), `${call} must not appear in ${page} — these screens are read-only`)
+      for (const call of ['.insert(', '.update(', '.upsert(', '.delete(', '.upload(']) {
+        assert.ok(!s.includes(call),
+          `${call} must not appear in ${page} — every write goes through a database function`)
       }
     }
   })
 
-  test('there is no editing path invented for a saved draft', () => {
-    assert.ok(!source.includes('Change PI'),
-      'replacement belongs to the upload screen, which has the workbook in hand')
-    assert.ok(!source.includes('<textarea'))
+  test('the list stays entirely read-only', () => {
+    assert.ok(!read(LIST_PAGE).includes('.rpc('),
+      'a list is a list; every decision is taken on the record itself')
+  })
+
+  test('the only writes on the record page are the three status RPCs', () => {
+    // THE POINT OF THIS ASSERTION. Each of these three moves a submission
+    // between states and writes nothing else — no price, no product line, no
+    // image mapping. Those come only from the server's own re-parse through
+    // replace_order_submission_parse, which no browser can execute. A fourth
+    // name appearing here would mean this screen had grown a write of its own.
+    const rpcs = [...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]).sort()
+    assert.deepEqual(rpcs, [
+      'reject_order_submission',
+      'request_order_submission_changes',
+      'submit_order_submission',
+    ])
+    assert.ok(!source.includes('replace_order_submission_parse'),
+      'the parsed-data writer is service-role only and unreachable from here')
+    assert.ok(!/approve_order_submission/.test(source),
+      'there is no approval RPC in this phase, so nothing may call one')
+  })
+
+  test('the PI itself is still never edited on this screen', () => {
+    // Change PI is a LINK to the upload screen carrying this submission's id.
+    // It is not a second parser, a second upload or a second persistence path.
+    assert.ok(source.includes('changePiHref(submissionId)'),
+      'replacement routes to the screen that has the workbook, the parser and the lease')
+    assert.ok(!source.includes('parseBoePiWorkbook'))
+    assert.ok(!source.includes("type=\"file\""), 'no file picker lives on the record page')
+    // The one free-text field in the flow is the reviewer's note, and it lives
+    // in the dialog component — never beside a price or a product line.
+    assert.ok(!source.includes('<textarea'),
+      'a note is typed in the decision dialog, not on the record')
     assert.ok(!source.includes('<input'))
   })
 
@@ -344,9 +388,10 @@ describe('the drafts list', () => {
       assert.equal(draftStatusLabel(status), label)
     }
     assert.equal(draftStatusLabel('draft'), 'Draft')
-    assert.equal(draftStatusLabel('needs_changes'), 'Needs changes')
-    assert.equal(draftStatusLabel('submitted'), 'Submitted for review')
+    assert.equal(draftStatusLabel('needs_changes'), 'Needs Changes')
+    assert.equal(draftStatusLabel('submitted'), 'Submitted for Review')
     assert.equal(draftStatusLabel('rejected'), 'Rejected')
+    assert.equal(draftStatusLabel('approved'), 'Approved')
   })
 
   test('an unrecognised status is shown as itself, not mislabelled', () => {
@@ -410,10 +455,27 @@ describe('the drafts list', () => {
       'and it is rendered from the constant, not typed twice')
   })
 
+  test('the page no longer claims that nothing here has been submitted', () => {
+    // It became a false statement the day submission shipped: this list now
+    // holds submitted, returned and rejected records, and for a reviewer it
+    // holds the queue as well.
+    const source = read(LIST_PAGE)
+    assert.ok(!/Nothing here has been submitted/i.test(source))
+    assert.ok(!/Nothing is submitted\s+for approval at this stage/i.test(source))
+    assert.ok(!/Nothing is submitted for approval at this stage/i.test(PI_DRAFTS_EMPTY_NOTE))
+    assert.ok(!/nothing here has been submitted/i.test(PI_DRAFTS_SUBTITLE))
+    assert.ok(source.includes('{PI_DRAFTS_SUBTITLE}') || source.includes('subtitle={PI_DRAFTS_SUBTITLE}'),
+      'the subtitle is a constant, so the sentence and its test read the same string')
+  })
+
   test('the empty state is shown only for a successful, empty read', () => {
     const source = read(LIST_PAGE)
-    assert.ok(source.includes('failed ? failureState : (entries && entries.length === 0 ? emptyState'),
+    assert.ok(source.includes('{failed ? failureState : (entries && entries.length === 0 ? ('),
       'a failed load must never be reported as "no drafts saved yet"')
+    const failureAt = source.indexOf('failed ? failureState')
+    const emptyAt = source.indexOf('entries.length === 0', failureAt)
+    assert.ok(failureAt > -1 && emptyAt > failureAt,
+      'the failure branch is decided before the emptiness branch')
   })
 
   test('the item count cannot be silently truncated by PostgREST', () => {
@@ -431,7 +493,8 @@ describe('the drafts list', () => {
 
   test('a phone gets rows it can actually use', () => {
     const source = read(LIST_PAGE)
-    assert.ok(source.includes('isMobile ? cards : table'))
+    assert.ok(source.includes('(isMobile ? listCards : listTable)('),
+      'both sections choose the same way, so the queue is as usable as the list')
     assert.ok(source.includes('MOBILE_BREAKPOINT = 768'))
   })
 })
@@ -714,8 +777,8 @@ describe('the draft overview reads as three bands, not a field dump', () => {
     assert.ok(source.includes("const workbookName = submission.source_workbook_name?.trim() || null"))
     assert.ok(source.includes('{workbookName && ('),
       'the block is conditional on there being a name')
-    assert.ok(source.includes('`repeat(${workbookName ? 4 : 3}, minmax(0, 1fr))`'),
-      'and the strip closes up to three columns rather than leaving a gap')
+    assert.ok(source.includes('${Math.min(3 + (workbookName ? 1 : 0) + (submittedAt ? 1 : 0), 4)}'),
+      'and the strip closes up rather than leaving a gap where a fact is absent')
   })
 
   test('order information is three columns, not six', () => {
@@ -938,6 +1001,161 @@ describe('coming back to the tab does not reload anything', () => {
     const closers = [...source.matchAll(/setViewerIndex\(null\)/g)]
     assert.equal(closers.length, 1, 'exactly one place closes the viewer: closeViewer')
     assert.ok(source.includes('const closeViewer = useCallback'))
+  })
+})
+
+// ── Phase A: the controls, the queue and the history ──────────────────────────
+
+describe('the record page draws controls from one rule, and from nothing else', () => {
+  const source = read(DETAIL_PAGE)
+
+  test('every control branches on the shared helper', () => {
+    assert.ok(source.includes('const actions = describeSubmissionActions({'))
+    for (const gate of [
+      '{(actions.canSubmit || actions.canChangePi) && (',
+      '{(actions.canRequestChanges || actions.canReject) && (',
+    ]) {
+      assert.ok(source.includes(gate), `${gate} must gate its card`)
+    }
+    assert.ok(!/status === 'submitted' &&\s*canReview/.test(source),
+      'no second, looser copy of the rule in a JSX condition')
+  })
+
+  test('capabilities are resolved for the signed-in account', () => {
+    assert.ok(source.includes('getEffectivePermissions(supabase, session.user.id, \'orders\')'))
+    assert.ok(source.includes('setCanReview(caps.canApproveOrderSubmission)'))
+    assert.ok(source.includes('setViewerId(session.user.id)'),
+      'ownership compares the signed-in id, never a View As target')
+    assert.ok(source.includes('.catch(() => [])'),
+      'a failed permission read must deny rather than admit')
+  })
+
+  test('approval is present, inert, and explains itself', () => {
+    assert.ok(source.includes('{APPROVE_DISABLED_REASON}'))
+    assert.ok(!/onClick=\{[^}]*approve/i.test(source), 'the approve control has no handler at all')
+    assert.ok(!source.includes('<button') || !/APPROVE_BUTTON_LABEL[\s\S]{0,80}onClick/.test(source))
+  })
+
+  test('a second click cannot start a second write', () => {
+    assert.ok(source.includes('if (actingRef.current) return'),
+      'a ref, because state updates are async and two clicks share a tick')
+    assert.ok(source.includes('actingRef.current = true'))
+    assert.ok(source.includes('actingRef.current = false'))
+    assert.ok(source.includes('disabled={acting'), 'and the controls show it')
+  })
+
+  test('a success re-reads the record quietly', () => {
+    assert.ok(source.includes('await loadDraft({ quiet: true })'),
+      'the status, the banner and the history come from the persisted row')
+    assert.ok(!source.includes('window.location.reload'))
+    assert.ok(!source.includes('router.refresh()'),
+      'and the page is not blanked, so the scroll position and an open viewer survive')
+  })
+
+  test('a failure shows a fixed sentence, never the database’s own message', () => {
+    assert.ok(source.includes('describeSubmissionFailure(error, action).message'))
+    assert.ok(!source.includes('error.message'),
+      'the raw message never reaches this file, let alone the screen')
+  })
+
+  test('Change PI routes to the upload screen with this submission’s id', () => {
+    assert.ok(source.includes('router.push(changePiHref(submissionId))'))
+    assert.ok(!source.includes('/orders/import?'),
+      'the link is built by the helper, not hand-assembled beside it')
+  })
+})
+
+describe('the submitter and the submission time are shown', () => {
+  const source = read(DETAIL_PAGE)
+
+  test('the time comes from the column the database writes', () => {
+    assert.ok(source.includes('submission.submitted_at ? formatSavedAt(submission.submitted_at) : null'))
+    assert.ok(read(DRAFTS_VIEW).includes("'submitted_by', 'submitted_at'"),
+      'and the list selects it too, for the queue order')
+  })
+
+  test('the name is batch-fetched, not one query per row', () => {
+    assert.ok(source.includes('activityActorIds(history, [row.submitted_by, row.rejected_by])'))
+    assert.ok(source.includes(".in('id', actorIds)"), 'one read for every name on the page')
+    assert.ok(source.includes(".select('id, full_name')"),
+      'named safe columns: select(*) on public.users is a permission error')
+  })
+
+  test('a banner states where the record stands', () => {
+    assert.ok(source.includes('const banner = describeSubmissionBanner({'))
+    assert.ok(source.includes('{banner && ('), 'and a draft gets none')
+  })
+
+  test('the management note keeps its own place, rendered verbatim', () => {
+    assert.ok(source.includes('{submission.review_note && ('))
+    assert.ok(source.includes('{reviewNoteHeading}'),
+      'the same column carries both decisions, so the heading says which wrote it')
+    assert.ok(source.includes('<MultilineText'), 'somebody’s own words, not collapsed')
+  })
+})
+
+describe('the activity history', () => {
+  const source = read(DETAIL_PAGE)
+
+  test('is read under the same RLS as everything else, and paged', () => {
+    assert.ok(source.includes(".from('order_submission_activity')"))
+    assert.ok(source.includes('fetchAllRows<PersistedActivity>'),
+      'a silently capped response would look like a complete history')
+    assert.ok(source.includes(".order('id', { ascending: true })"),
+      'paging needs a deterministic order on a unique column')
+  })
+
+  test('shows the action, the actor, the time and any note', () => {
+    for (const field of ['{entry.label}', '{entry.actor}', '{entry.at}', '{entry.note}']) {
+      assert.ok(source.includes(field), `${field} belongs on an activity row`)
+    }
+  })
+
+  test('shows no id and no raw metadata', () => {
+    assert.ok(!source.includes('entry.metadata'))
+    assert.ok(!/\{entry\.(id|submissionId|actorId)\}/.test(source))
+    assert.ok(!source.includes('previous_status'))
+  })
+})
+
+describe('the drafts list carries the review queue', () => {
+  const source = read(LIST_PAGE)
+
+  test('the split is the shared helper’s, and only a reviewer gets one', () => {
+    assert.ok(source.includes('splitDraftsForReview(entries ?? [], canReview)'))
+    assert.ok(source.includes('reviewerRef.current = caps.canApproveOrderSubmission'))
+    assert.ok(source.includes('const reviewSection = canReview && ('))
+  })
+
+  test('the queue is still the same RLS-filtered read, not a second query', () => {
+    const froms = [...source.matchAll(/\.from\('([^']+)'\)/g)].map(m => m[1])
+    assert.equal(froms.filter(t => t === 'order_submissions').length, 1,
+      'one read of the submissions; the sections are a rendering decision')
+    assert.ok(!source.includes(".eq('status', 'submitted')"),
+      'and no second, narrower server filter for the queue')
+  })
+
+  test('a queue row says who submitted it and when', () => {
+    assert.ok(source.includes('{entry.submittedAt}'))
+    assert.ok(source.includes('{entry.submitter}'))
+    assert.ok(source.includes('renderList(review, REVIEW_ACTION_LABEL, true)'),
+      'and its action is Review PI, from the shared constant')
+    assert.ok(source.includes("renderList(working, 'Open Draft', false)"),
+      'while the working list keeps the wording it had')
+  })
+
+  test('names are read only when there is a queue to read', () => {
+    assert.ok(source.includes('reviewerRef.current\n      ? [...new Set(rows.filter(r => r.status === \'submitted\''),
+      'an employee’s own list names nobody, so the query is skipped')
+  })
+
+  test('no navigation entry or dashboard was added', () => {
+    const nav = read(ORDERS_NAV)
+    assert.ok(!nav.includes('/orders/review'))
+    assert.ok(!nav.includes('Approvals'))
+    const items = [...nav.matchAll(/\{ label: '([^']+)',\s*path:/g)].map(m => m[1])
+    assert.deepEqual(items, ['Dashboard', 'Confirmed Orders', 'Order Requests', 'PI Drafts'],
+      'one page, and the sidebar is untouched')
   })
 })
 

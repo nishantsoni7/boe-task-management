@@ -18,13 +18,23 @@
 // "may this person see this submission" — the owner, the named reviewer, an
 // orders.approve_order holder, or an active admin — and the module entry gate
 // ANDs on top of it. A `.eq('created_by', me)` here would be a second, weaker
-// copy of that rule that would quietly hide a reviewer's queue the day review
-// ships. What the page filters on is STATUS, which is a product decision about
-// what belongs in a drafts list, not an access decision.
+// copy of that rule that would quietly hide a reviewer's queue. What the page
+// filters on is STATUS, which is a product decision about what belongs in this
+// list, not an access decision.
+//
+// THE REVIEW QUEUE IS A SECTION OF THIS PAGE, NOT A SEPARATE SCREEN.
+//
+// A holder of orders.approve_order sees the submissions waiting on them at the
+// top, and the ordinary working list below it. That is deliberate: a second
+// route would mean a second query, a second empty state and a second place for a
+// record to hide, and the reviewer would still have to come here for anything
+// not currently submitted. The queue is drawn from the SAME rows this page
+// already reads — RLS put them there — and splitDraftsForReview only decides
+// where each row is printed.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, Plus } from 'lucide-react'
+import { FileText, Inbox, Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
@@ -37,14 +47,22 @@ import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { formatInr } from '@/lib/pi/previewView'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import {
+  PI_DRAFTS_EMPTY_NOTE,
   PI_DRAFTS_EMPTY_TEXT,
+  PI_DRAFTS_SUBTITLE,
   PI_DRAFT_LIST_COLUMNS,
   PI_DRAFT_LIST_STATUSES,
+  PI_REVIEW_EMPTY_TEXT,
   describeDraftListEntry,
   type PersistedSubmission,
   type PiDraftListEntry,
   type PiDraftStatusTone,
 } from '@/lib/orders/draftsView'
+import {
+  REVIEW_ACTION_LABEL,
+  REVIEW_QUEUE_TITLE,
+  splitDraftsForReview,
+} from '@/lib/orders/submissionWorkflow'
 
 const MOBILE_BREAKPOINT = 768
 
@@ -76,9 +94,21 @@ function StatusPill({ label, tone }: { label: string; tone: PiDraftStatusTone })
 export default function PiDraftsPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [canCreate, setCanCreate] = useState(false)
+  const [canReview, setCanReview] = useState(false)
   const [entries, setEntries] = useState<PiDraftListEntry[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+
+  /**
+   * The same answer as `canReview`, in a ref.
+   *
+   * `load` is a stable callback the header's refresh control also calls, and it
+   * runs for the first time in the same tick that resolves the permission — a
+   * state read there would still be the initial `false` and the reviewer's very
+   * first page load would fetch no submitter names. The ref is written before
+   * the first load and read by every one, so both agree.
+   */
+  const reviewerRef = useRef(false)
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -134,7 +164,35 @@ export default function PiDraftsPage() {
       }
     }
 
-    setEntries(rows.map(row => describeDraftListEntry(row, counts.get(row.id) ?? 0, formatInr)))
+    // ── Who submitted the ones waiting for review ──
+    //
+    // Read ONLY for somebody who has a queue to read. An employee's own list
+    // names nobody — every record in it is theirs — so the query is skipped
+    // rather than made and discarded.
+    //
+    // One read for every name, not one per row. A failed or partial read leaves
+    // the name unresolved and the row renders an honest dash: a queue entry
+    // without a name is still a queue entry, and hiding it would be worse.
+    const names = new Map<string, string>()
+    const submitterIds = reviewerRef.current
+      ? [...new Set(rows.filter(r => r.status === 'submitted' && r.submitted_by).map(r => r.submitted_by as string))]
+      : []
+    if (submitterIds.length > 0) {
+      const { data: people } = await supabase
+        .from('users')
+        .select('id, full_name')
+        .in('id', submitterIds)
+      for (const person of (people ?? []) as { id: string; full_name: string | null }[]) {
+        if (person?.id && person.full_name) names.set(person.id, person.full_name)
+      }
+    }
+
+    setEntries(rows.map(row => describeDraftListEntry(
+      row,
+      counts.get(row.id) ?? 0,
+      formatInr,
+      row.submitted_by ? names.get(row.submitted_by) ?? null : null,
+    )))
   }, [supabase])
 
   useEffect(() => {
@@ -159,6 +217,10 @@ export default function PiDraftsPage() {
       if (!active) return
       setProfile((me as UserProfile) ?? null)
       setCanCreate(caps.canCreateOrder)
+      // Written before the first load, so that load — which is a stable
+      // callback — sees the answer rather than the initial false.
+      reviewerRef.current = caps.canApproveOrderSubmission
+      setCanReview(caps.canApproveOrderSubmission)
       await load()
     }
 
@@ -187,9 +249,10 @@ export default function PiDraftsPage() {
         <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
           {PI_DRAFTS_EMPTY_TEXT}
         </div>
-        <div style={{ fontSize: '12px', color: colors.secondary, maxWidth: '420px', lineHeight: 1.5 }}>
-          A draft appears here as soon as a PI has been uploaded and saved. Nothing is submitted
-          for approval at this stage.
+        <div style={{ fontSize: '12px', color: colors.secondary, maxWidth: '440px', lineHeight: 1.5 }}>
+          {/* This used to end "Nothing is submitted for approval at this stage",
+              which stopped being true the day submission shipped. */}
+          {PI_DRAFTS_EMPTY_NOTE}
         </div>
       </div>
     </PiCard>
@@ -215,13 +278,23 @@ export default function PiDraftsPage() {
     </PiCard>
   )
 
-  const table = entries && entries.length > 0 && (
+  /**
+   * One table of PI records.
+   *
+   * The review queue and the working list are the SAME rows in the same shape —
+   * a client, a file, a count, a total, a state and a way in — so they are one
+   * table rendered twice rather than two tables to keep in step. What differs is
+   * the third-from-last column (when it was submitted, which only matters to a
+   * reviewer) and the wording on the button.
+   */
+  const listTable = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) => (
     <PiCard>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {['Client', 'PI file', 'Products', 'Grand total', 'Status', 'Saved', ''].map((h, i) => (
+              {['Client', 'PI file', 'Products', 'Grand total', 'Status',
+                ...(showSubmission ? ['Submitted', 'Submitted by'] : ['Saved']), ''].map((h, i) => (
                 <th key={h || 'action'} style={{
                   padding: '8px 14px',
                   textAlign: i === 2 || i === 3 ? 'right' : 'left',
@@ -233,7 +306,7 @@ export default function PiDraftsPage() {
             </tr>
           </thead>
           <tbody>
-            {entries.map(entry => (
+            {rows.map(entry => (
               <tr key={entry.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                 <td style={{ padding: '10px 14px', fontWeight: 600, color: colors.primary, minWidth: '160px' }}>
                   {entry.client}
@@ -253,12 +326,23 @@ export default function PiDraftsPage() {
                 <td style={{ padding: '10px 14px' }}>
                   <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
                 </td>
-                <td style={{ padding: '10px 14px', color: colors.muted, whiteSpace: 'nowrap', fontSize: '12px' }}>
-                  {entry.savedAt}
-                </td>
+                {showSubmission ? (
+                  <>
+                    <td style={{ padding: '10px 14px', color: colors.muted, whiteSpace: 'nowrap', fontSize: '12px' }}>
+                      {entry.submittedAt}
+                    </td>
+                    <td style={{ padding: '10px 14px', color: colors.secondary, whiteSpace: 'nowrap', fontSize: '12px' }}>
+                      {entry.submitter}
+                    </td>
+                  </>
+                ) : (
+                  <td style={{ padding: '10px 14px', color: colors.muted, whiteSpace: 'nowrap', fontSize: '12px' }}>
+                    {entry.savedAt}
+                  </td>
+                )}
                 <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                   <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)}>
-                    Open Draft
+                    {actionLabel}
                   </button>
                 </td>
               </tr>
@@ -269,10 +353,10 @@ export default function PiDraftsPage() {
     </PiCard>
   )
 
-  const cards = entries && entries.length > 0 && (
+  const listCards = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) => (
     <PiCard>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {entries.map((entry, i) => (
+        {rows.map((entry, i) => (
           <div
             key={entry.id}
             style={{
@@ -302,9 +386,13 @@ export default function PiDraftsPage() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-              <span style={{ fontSize: '11px', color: colors.muted }}>{entry.savedAt}</span>
+              <span style={{ fontSize: '11px', color: colors.muted }}>
+                {showSubmission
+                  ? `${entry.submittedAt}${entry.submitter !== '—' ? ` · ${entry.submitter}` : ''}`
+                  : entry.savedAt}
+              </span>
               <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)}>
-                Open Draft
+                {actionLabel}
               </button>
             </div>
           </div>
@@ -313,11 +401,60 @@ export default function PiDraftsPage() {
     </PiCard>
   )
 
+  const renderList = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) =>
+    (isMobile ? listCards : listTable)(rows, actionLabel, showSubmission)
+
+  // Which rows go where. RLS already decided what is in `entries` at all; this
+  // decides only where each row is printed, and for a viewer without review
+  // authority it changes nothing — `review` is empty and `working` is the list
+  // exactly as it was.
+  const { review, working } = splitDraftsForReview(entries ?? [], canReview)
+
+  const reviewSection = canReview && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 2px' }}>
+        <Inbox size={15} strokeWidth={1.9} color="#2F5BB7" />
+        <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+          {REVIEW_QUEUE_TITLE}
+        </span>
+        <span style={{
+          fontSize: '11px', fontWeight: 700, color: '#2F5BB7',
+          background: colors.blueTint, border: '1px solid rgba(85,133,232,0.3)',
+          borderRadius: '999px', padding: '1px 8px',
+        }}>
+          {review.length}
+        </span>
+      </div>
+      {review.length === 0 ? (
+        <PiCard>
+          <div style={{ padding: '18px 20px', fontSize: '12px', color: colors.secondary }}>
+            {PI_REVIEW_EMPTY_TEXT}
+          </div>
+        </PiCard>
+      ) : renderList(review, REVIEW_ACTION_LABEL, true)}
+    </div>
+  )
+
+  const workingSection = working.length > 0 && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* The heading appears only when there is a queue above it to tell this
+          list apart from. On an employee's page there is one list and it needs
+          no label — the page title is already "PI Drafts". */}
+      {canReview && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 2px 0' }}>
+          <FileText size={15} strokeWidth={1.9} color={colors.tertiary} />
+          <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>PI Drafts</span>
+        </div>
+      )}
+      {renderList(working, 'Open Draft', false)}
+    </div>
+  )
+
   return (
     <OrdersLayout
       profile={profile}
       title="PI Drafts"
-      subtitle="Saved PI submissions. Nothing here has been submitted for approval."
+      subtitle={PI_DRAFTS_SUBTITLE}
       onSignOut={handleSignOut}
       onRefresh={load}
       actions={canCreate ? (
@@ -328,7 +465,16 @@ export default function PiDraftsPage() {
       ) : undefined}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '24px' }}>
-        {failed ? failureState : (entries && entries.length === 0 ? emptyState : (isMobile ? cards : table))}
+        {failed ? failureState : (entries && entries.length === 0 ? (
+          // A reviewer with an empty queue and no records of their own gets the
+          // ordinary empty state, not two empty boxes.
+          emptyState
+        ) : (
+          <>
+            {reviewSection}
+            {workingSection}
+          </>
+        ))}
       </div>
     </OrdersLayout>
   )
