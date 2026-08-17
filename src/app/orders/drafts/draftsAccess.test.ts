@@ -70,6 +70,10 @@ const DETAIL_PAGE = 'src/app/orders/drafts/[submissionId]/page.tsx'
 const DRAFTS_VIEW = 'src/lib/orders/draftsView.ts'
 const IMPORT_PAGE = 'src/app/orders/import/page.tsx'
 const ORDERS_NAV = 'src/components/layout/OrdersLayout.tsx'
+const ORDERS_LAYOUT = ORDERS_NAV
+const PI_PARTS = 'src/components/orders/piPreview.tsx'
+const ROOT_LAYOUT = 'src/app/layout.tsx'
+const GLOBALS_CSS = 'src/app/globals.css'
 const SUBMISSIONS_MIGRATION = 'supabase/migrations/20260908000000_order_pi_submissions.sql'
 const IMAGES_MIGRATION = 'supabase/migrations/20260909000000_order_submission_item_images.sql'
 
@@ -680,77 +684,260 @@ describe('what the server thought of the document is kept', () => {
   })
 })
 
-// ── The identity card ─────────────────────────────────────────────────────────
+// ── The draft overview section ────────────────────────────────────────────────
 
-describe('identity and order information are one card', () => {
+describe('the draft overview reads as three bands, not a field dump', () => {
   const source = read(DETAIL_PAGE)
 
-  test('there is a single card, headed "PI Draft", with the status on its header', () => {
-    assert.ok(source.includes('title="PI Draft"'))
-    assert.ok(source.includes('{draftStatusLabel(submission.status)}'))
-    // The status sits in the header's `right` slot rather than in a row of its
-    // own, which is what removed the band of empty space at the top.
-    assert.ok(
-      /<PiCardHeader\s+title="PI Draft"\s+right=\{[\s\S]{0,600}?draftStatusLabel\(submission\.status\)/.test(source),
+  test('one card, headed "Draft overview", with the status on its header line', () => {
+    assert.ok(source.includes('Draft overview'))
+    // The layout's own page title in the error state is still "PI Draft" — that
+    // one IS the page. What is gone is the card repeating it a second time.
+    assert.ok(!/<PiCardHeader\s+title="PI Draft"/.test(source),
+      'the page title, its subtitle and the badge already say what this is')
+    assert.ok(/<PiCardHeader[\s\S]{0,900}?draftStatusLabel\(submission\.status\)/.test(source),
       'the badge belongs to the card header')
-  })
-
-  test('the second card is gone, not merely restyled', () => {
     assert.ok(!source.includes('<PiCardHeader title="Order information" />'),
-      'Order information must no longer open a card of its own')
-    assert.ok(source.includes('Order information'), 'but it keeps its section label')
-    assert.ok(source.includes("borderTop: `1px solid ${colors.border}`"),
-      'separated by a divider inside the same card')
+      'order information is a band inside this card, not a second card')
   })
 
-  test('nothing that was on either card has been dropped', () => {
+  test('the metadata strip carries the four facts about the FILE', () => {
+    for (const label of ['Last saved', 'Products', 'Created by', 'Original PI file']) {
+      assert.ok(source.includes(`label="${label}"`), `${label} must be in the strip`)
+    }
+    assert.ok(source.includes('<MetaItem'), 'rendered as icon-and-label blocks')
+  })
+
+  test('an absent filename shows no block at all', () => {
+    // A labelled hole is worse than the absence it reports. The Rivoli draft has
+    // no stored filename, which is exactly the case this covers.
+    assert.ok(source.includes("const workbookName = submission.source_workbook_name?.trim() || null"))
+    assert.ok(source.includes('{workbookName && ('),
+      'the block is conditional on there being a name')
+    assert.ok(source.includes('`repeat(${workbookName ? 4 : 3}, minmax(0, 1fr))`'),
+      'and the strip closes up to three columns rather than leaving a gap')
+  })
+
+  test('order information is three columns, not six', () => {
+    assert.ok(source.includes("gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))'"),
+      'six auto-filled columns is what scattered the fields in the first place')
+  })
+
+  test('the two rows group the fields that belong together', () => {
+    const order = ['client', 'billTo', 'shipTo', 'created', 'confirmed', 'dispatch']
+        .map(key => source.indexOf(`headerValue('${key}')`))
+    assert.ok(order.every(i => i > -1), 'all six fields are rendered')
+    assert.deepEqual([...order].sort((a, b) => a - b), order,
+      'who it is for first, then when it happens')
+  })
+
+  test('client and destination read heavier than the dates', () => {
+    for (const key of ['client', 'billTo', 'shipTo']) {
+      assert.ok(new RegExp(`headerValue\\('${key}'\\)} strong`).test(source),
+        `${key} is part of the primary row`)
+    }
+    for (const key of ['created', 'confirmed', 'dispatch']) {
+      assert.ok(!new RegExp(`headerValue\\('${key}'\\)} strong`).test(source),
+        `${key} stays in the quieter secondary row`)
+    }
+  })
+
+  test('a missing value says so instead of showing a bare dash', () => {
+    assert.ok(source.includes("value.trim() === '—'"))
+    assert.ok(source.includes('Not provided'))
+    assert.ok(source.includes('fontStyle: \'italic\''), 'in subtle muted text')
+  })
+
+  test('every value still comes from the shared header builder', () => {
+    // The arrangement is this page's; the wording, the date formatting and the
+    // rule that the workbook's own order number never appears are still the
+    // shared helper's, so the two PI screens cannot disagree.
+    assert.ok(source.includes('const headerRows = buildHeaderRows(persistedHeader(submission))'))
+    assert.ok(source.includes("headerRows.find(row => row.key === key)?.value ?? '—'"))
+  })
+
+  test('nothing that the old card showed has been lost', () => {
     for (const fact of [
-      'Original PI file',
-      '{orDash(submission.source_workbook_name)}',
-      'label="Saved" value={savedAt}',
-      'buildHeaderRows(persistedHeader(submission))',
+      'label="Last saved"', 'label="Products"', 'label="Created by"',
+      "headerValue('client')", "headerValue('billTo')", "headerValue('shipTo')",
+      "headerValue('created')", "headerValue('confirmed')", "headerValue('dispatch')",
       '{submission.review_note && (',
     ]) {
-      assert.ok(source.includes(fact), `${fact} must survive the merge`)
+      assert.ok(source.includes(fact), `${fact} must survive the redesign`)
     }
   })
 
-  test('no label or value is stated twice inside the card', () => {
-    // The merge's one real risk: two sections that each carried a client name,
-    // a date or a filename. They carry disjoint field sets, and buildHeaderRows
-    // owns everything on the lower half.
-    for (const label of ['Original PI file', 'Saved', 'Products']) {
-      const uses = source.split(`label="${label}"`).length - 1
-      assert.equal(uses, 1, `${label} must appear exactly once`)
+  test('"Created by" is stated once, in the strip', () => {
+    assert.equal(source.split('Created by').length - 1, 1,
+      'it is a fact about the document, so it does not also sit among the order fields')
+    assert.ok(!source.includes("headerValue('createdBy')"))
+  })
+
+  test('the section uses red as an accent only', () => {
+    // One 15px icon. No coloured panel, no tinted band behind the fields.
+    assert.ok(source.includes('<FileText size={15} strokeWidth={1.9} color={colors.red} />'))
+    assert.ok(!/background: colors\.redTint[\s\S]{0,200}Draft overview/.test(source))
+  })
+})
+
+// ── Thumbnails ────────────────────────────────────────────────────────────────
+
+describe('thumbnails are large enough to tell two chairs apart', () => {
+  const parts = read(PI_PARTS)
+
+  test('the sizes are defined once and shared by both PI screens', () => {
+    assert.ok(parts.includes('export const PI_THUMBNAIL_SIZE = {'))
+    assert.ok(parts.includes('representative: 84'))
+    assert.ok(parts.includes('representativeCompact: 72'))
+    assert.ok(parts.includes('customization: 56'))
+    assert.ok(parts.includes('customizationCompact: 48'))
+    for (const page of [DETAIL_PAGE, IMPORT_PAGE]) {
+      assert.ok(read(page).includes('PI_THUMBNAIL_SIZE'), `${page} uses the shared table`)
     }
   })
 
-  test('the status badge is legible without being a banner', () => {
-    assert.ok(source.includes("fontSize: '11px', fontWeight: 700"))
-    assert.ok(!/fontSize: '1[4-9]px'[^}]*background: tone\.bg/.test(source),
-      'a status is a fact to note, not the subject of the page')
+  test('the representative thumbnail is within the agreed desktop range', () => {
+    const size = Number(/representative: (\d+)/.exec(parts)?.[1])
+    assert.ok(size >= 80 && size <= 88, `expected 80–88px, got ${size}`)
   })
 
-  test('both halves of the card share one column rhythm, and stack on a phone', () => {
-    // The same track definition twice, so the provenance fields land on the
-    // same columns as the order information below them rather than being two
-    // grids that happen to share a border.
-    const grids = source.match(/gridTemplateColumns: isMobile \? '1fr 1fr' : 'repeat\(auto-fill, minmax\(180px, 1fr\)\)'/g) ?? []
-    assert.equal(grids.length, 2, 'provenance and order information use identical tracks')
-    assert.ok(source.includes("gridColumn: 'span 2'"),
-      'a filename is the one long value, so it takes two of those columns')
+  test('the customization thumbnail is within its own range', () => {
+    const size = Number(/\n  customization: (\d+)/.exec(parts)?.[1])
+    assert.ok(size >= 52 && size <= 60, `expected 52–60px, got ${size}`)
   })
 
-  test('the fields are rendered by the shared field component', () => {
-    assert.ok(source.includes('<PiFieldRow label="Original PI file"'))
-    assert.ok(source.includes('<PiFieldRow key={row.key}'),
-      'one label/value treatment for both halves of the card')
+  test('a phone gets smaller ones, so a product line stays one readable card', () => {
+    const compact = Number(/representativeCompact: (\d+)/.exec(parts)?.[1])
+    const desktop = Number(/representative: (\d+)/.exec(parts)?.[1])
+    assert.ok(compact < desktop)
+    assert.ok(compact >= 64, 'but still big enough to identify the product')
   })
 
-  test('the product count is a fact about the record, and is not repeated as a label', () => {
-    assert.ok(source.includes('label="Products"'))
-    assert.ok(source.includes('${products.length} line${products.length === 1'),
-      'counted from the rows actually loaded, never from a stored number')
+  test('growing them changed nothing about how a picture is fitted', () => {
+    assert.ok(parts.includes("objectFit: 'contain'"))
+    assert.ok(!parts.includes("objectFit: 'cover'"))
+    assert.ok(parts.includes("borderRadius: '6px'"), 'the rounded box is retained')
+    assert.ok(parts.includes('width: size, height: size'), 'and it is still square')
+  })
+
+  test('the customization accent and the click both survive', () => {
+    assert.ok(parts.includes('accent="customization"'))
+    assert.ok(parts.includes('CUSTOMIZATION_BORDER'))
+    assert.ok(parts.includes('onClick={onOpen}'))
+    assert.ok(parts.includes("cursor: 'zoom-in'"))
+  })
+
+  test('the full-size viewer is untouched', () => {
+    assert.ok(parts.includes('PI_VIEWER_IMAGE_MAX_HEIGHT'))
+    assert.ok(parts.includes('PI_VIEWER_IMAGE_MAX_WIDTH'))
+    assert.ok(parts.includes("height: '100dvh'"))
+  })
+})
+
+// ── The font build fix ────────────────────────────────────────────────────────
+
+describe('no font is fetched from Google for the display face', () => {
+  const layout = read(ROOT_LAYOUT)
+  const css = read(GLOBALS_CSS)
+
+  test('Syne is no longer loaded through next/font/google', () => {
+    // This is the exact module the production build failed to resolve:
+    //   [next]/internal/font/google/syne_aea35505.module.css
+    assert.ok(!/import \{[^}]*\bSyne\b[^}]*\} from 'next\/font\/google'/.test(layout),
+      'the Syne loader must be gone from the import')
+    assert.ok(!layout.includes('Syne({'), 'and no loader call may remain')
+    assert.ok(!layout.includes('syne.variable'), 'nor the variable it produced')
+  })
+
+  test('the families that did build are untouched', () => {
+    assert.ok(layout.includes("import { DM_Sans, DM_Mono, Inter } from 'next/font/google'"),
+      'only the family that failed was removed')
+    for (const v of ['dmSans.variable', 'dmMono.variable', 'inter.variable']) {
+      assert.ok(layout.includes(v), `${v} must still be applied`)
+    }
+  })
+
+  test('display text falls back to a face the app actually loads', () => {
+    assert.ok(css.includes("--font-display: 'Syne', var(--font-body), sans-serif;"),
+      'a locally-installed Syne is still preferred; otherwise the app’s own body face')
+    const hardCoded = css.match(/font-family: 'Syne'/g) ?? []
+    assert.equal(hardCoded.length, 0,
+      'no rule may ask for a family name that nothing registers')
+  })
+
+  test('no font binary was added to the repository', () => {
+    // Fetching a brand face from an unverified source is not a decision a build
+    // fix gets to make. If Syne is wanted back, a licensed file plus
+    // next/font/local is the supported route.
+    assert.ok(!layout.includes('next/font/local'),
+      'no local loader was introduced without a licensed file to point it at')
+  })
+})
+
+// ── Returning to the tab ──────────────────────────────────────────────────────
+
+describe('coming back to the tab does not reload anything', () => {
+  const layout = read(ORDERS_LAYOUT)
+  const source = read(DETAIL_PAGE)
+
+  test('the Orders layout no longer refreshes on visibilitychange', () => {
+    // THE DEFECT THIS PINS. The layout used to call handleRefresh() every time
+    // the document became visible. On a record page that meant glancing at
+    // another tab and coming back blanked the screen, lost the scroll position
+    // and closed an open image viewer.
+    assert.ok(!layout.includes('visibilitychange'),
+      'returning to a tab is not a request for anything')
+    assert.ok(!layout.includes("addEventListener('focus'"))
+    assert.ok(!layout.includes('pageshow'))
+  })
+
+  test('no PI screen listens for focus or visibility either', () => {
+    for (const page of [DETAIL_PAGE, LIST_PAGE, IMPORT_PAGE]) {
+      const s = read(page)
+      for (const trigger of ['visibilitychange', "addEventListener('focus'", 'pageshow', 'router.refresh()']) {
+        assert.ok(!s.includes(trigger), `${page} must not re-fetch on ${trigger}`)
+      }
+    }
+  })
+
+  test('window listeners on the detail page are for layout only', () => {
+    // The one listener that remains is the width probe that chooses the mobile
+    // layout. It sets a breakpoint flag and fetches nothing.
+    const listeners = [...source.matchAll(/addEventListener\('([^']+)'/g)].map(m => m[1])
+    assert.deepEqual(listeners, ['resize'])
+    assert.ok(source.includes('setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)'))
+  })
+
+  test('React Query does not refetch on focus anywhere', () => {
+    assert.ok(read('src/components/layout/Providers.tsx').includes('refetchOnWindowFocus: false'),
+      'so the badge counts agree with the layout')
+  })
+
+  test('the initial load still happens on mount', () => {
+    assert.ok(source.includes('await loadDraft()'),
+      'arriving at the page still reads the record')
+    assert.ok(source.includes('}, [submissionId])'),
+      'and re-reads only when the route id changes')
+  })
+
+  test('the manual refresh control still re-reads, in place', () => {
+    assert.ok(source.includes('onRefresh={() => loadDraft({ quiet: true })}'),
+      'the header control is still wired to a real re-read')
+    assert.ok(source.includes('if (!quiet) setLoad({ kind: \'loading\' })'),
+      'and a refresh keeps the record on screen instead of blanking it')
+  })
+
+  test('only the first load shows the full-screen loading state', () => {
+    assert.ok(source.includes("if (load.kind === 'loading') return <LoadingScreen />"))
+    // A quiet re-read never enters that state, so nothing can flash, no scroll
+    // position is lost, and an open viewer is not unmounted underneath somebody.
+    assert.ok(source.includes('quiet = false'))
+  })
+
+  test('the viewer is closed only by its own controls', () => {
+    const closers = [...source.matchAll(/setViewerIndex\(null\)/g)]
+    assert.equal(closers.length, 1, 'exactly one place closes the viewer: closeViewer')
+    assert.ok(source.includes('const closeViewer = useCallback'))
   })
 })
 

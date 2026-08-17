@@ -33,7 +33,10 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { AlertTriangle, CheckCircle2, Info, ArrowLeft } from 'lucide-react'
+import {
+  AlertTriangle, CheckCircle2, Info, ArrowLeft,
+  FileText, FileSpreadsheet, Clock, Package, User,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -48,6 +51,7 @@ import {
   PiDiagnosticList,
   PiCommercialSummary,
   PiImageViewer,
+  PI_THUMBNAIL_SIZE,
   type PiThumbnailProps,
 } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
@@ -95,6 +99,94 @@ const TONE_STYLE: Record<PiDraftStatusTone, { bg: string; color: string; border:
   amber:   { bg: colors.amberTint, color: '#9A6212',        border: 'rgba(232,160,48,0.3)' },
   red:     { bg: colors.redTint,   color: colors.red,       border: 'rgba(217,79,79,0.3)' },
   green:   { bg: colors.greenTint, color: '#2F7A52',        border: 'rgba(69,168,112,0.25)' },
+}
+
+// ── The overview section ──────────────────────────────────────────────────────
+//
+// WHAT WAS WRONG WITH THE VERSION THIS REPLACES. Ten fields were poured into one
+// auto-filling grid, so on a wide monitor they scattered across six columns of
+// roughly equal weight: the client, a date, a filename and a dispatch promise
+// all looked like the same kind of fact, related fields sat nowhere near each
+// other, and half the cells were an em dash — which reads as "unfinished", not
+// as "the PI did not say". The card was large and told you very little quickly.
+//
+// The replacement has three bands and one scan order:
+//
+//   status  →  what this record is, on the header line
+//   saved   →  a strip of four small facts about the file itself
+//   order   →  the client and destination, then the dates, three to a row
+//
+// EMPTY IS NOT A DASH. A missing value says "Not provided" in muted text, and a
+// missing FILENAME is not shown at all — a labelled block with nothing in it is
+// worse than the absence it is reporting.
+
+/** A label with its value, or an honest muted note when the PI did not say. */
+function InfoField({ label, value, strong = false }: {
+  label: string
+  /** The shared header builder returns an em dash for anything absent. */
+  value: string
+  /** Client and destination read heavier than the dates below them. */
+  strong?: boolean
+}) {
+  const missing = value.trim() === '' || value.trim() === '—'
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+      <div style={{
+        fontSize: '10px', fontWeight: 600, color: colors.muted,
+        textTransform: 'uppercase', letterSpacing: '0.05em',
+      }}>
+        {label}
+      </div>
+      {missing ? (
+        <div style={{ fontSize: '13px', color: colors.muted, fontStyle: 'italic' }}>
+          Not provided
+        </div>
+      ) : (
+        <MultilineText style={{
+          fontSize: strong ? '14px' : '13px',
+          fontWeight: strong ? 600 : 400,
+          color: strong ? colors.primary : colors.secondary,
+          margin: 0,
+        }}>
+          {value}
+        </MultilineText>
+      )}
+    </div>
+  )
+}
+
+/** One fact in the metadata strip: an icon, a label, and a short value. */
+function MetaItem({ icon, label, value }: {
+  icon: React.ReactNode
+  label: string
+  value: string
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', minWidth: 0 }}>
+      <span style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 26, height: 26, flexShrink: 0, marginTop: '1px',
+        borderRadius: '7px', background: colors.raised,
+        border: `1px solid ${colors.border}`, color: colors.tertiary,
+      }}>
+        {icon}
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          fontSize: '10px', fontWeight: 600, color: colors.muted,
+          textTransform: 'uppercase', letterSpacing: '0.05em',
+        }}>
+          {label}
+        </div>
+        <div style={{
+          fontSize: '12.5px', color: colors.primary, marginTop: '1px',
+          overflowWrap: 'anywhere',
+        }}>
+          {value}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** Everything the screen renders, assembled from the four reads. */
@@ -186,9 +278,16 @@ function PiDraftDetailPageInner() {
    * so the storage policies decide again, per object, whether this person may
    * see this picture. A refusal yields no URL and the table shows its honest
    * "No image" box rather than a broken one.
+   *
+   * `quiet` keeps the record on screen while it is re-read. The first load has
+   * nothing to show and correctly shows the loading screen; a REFRESH does, and
+   * blanking a page somebody is reading — losing their scroll position and
+   * closing whatever they had open — is not what pressing refresh asks for. The
+   * header's own spinner is the feedback, and the new data replaces the old in
+   * one commit when it arrives.
    */
-  const loadDraft = useCallback(async () => {
-    setLoad({ kind: 'loading' })
+  const loadDraft = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    if (!quiet) setLoad({ kind: 'loading' })
 
     const { data: submission, error } = await supabase
       .from('order_submissions')
@@ -376,13 +475,27 @@ function PiDraftDetailPageInner() {
   const tone = TONE_STYLE[draftStatusTone(submission.status)]
   const savedAt = formatSavedAt(submission.updated_at ?? submission.created_at)
 
+  /** Null unless the record actually names a workbook, so the strip can omit it. */
+  const workbookName = submission.source_workbook_name?.trim() || null
+  /** Whoever the PI itself named. Absent on plenty of real workbooks. */
+  const createdBy = submission.source_created_by?.trim() || null
+
+  // The shared builder still decides every LABEL and every formatted VALUE —
+  // the dates, the em dash for an absent cell, and the rule that the workbook's
+  // own order number is never among them. This page only picks the order it
+  // shows them in, so the two PI screens cannot disagree about what a field says.
+  const headerRows = buildHeaderRows(persistedHeader(submission))
+  const headerValue = (key: string) => headerRows.find(row => row.key === key)?.value ?? '—'
+
   return (
     <OrdersLayout
       profile={profile}
       title={orDash(submission.client_name ?? submission.bill_to_name)}
       subtitle="Saved PI draft. Not submitted for approval."
       onSignOut={handleSignOut}
-      onRefresh={loadDraft}
+      // The header control re-reads in place: the record stays on screen, the
+      // scroll position is kept, and the spinner in the header is the feedback.
+      onRefresh={() => loadDraft({ quiet: true })}
       actions={backButton}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '24px' }}>
@@ -404,20 +517,22 @@ function PiDraftDetailPageInner() {
           </PiCard>
         )}
 
-        {/* ── What this record IS, in one card ──
+        {/* ── Draft overview ──
 
-            Identity (which PI, what state, when it was written, how big) and the
-            order's own details were two cards with a gap between them, which
-            made the top of the page look like two unrelated summaries and cost a
-            band of empty space before the reader reached anything. They are one
-            card now, in one scan path: the status on the header line, the
-            provenance under it, then the order's own fields below a divider.
+            Three bands, one scan order: what state this record is in, what file
+            it came from and when, then who it is for and when it is due.
 
-            The two halves keep their own field sets — nothing is repeated
-            between them, and nothing has been dropped. */}
+            The heading is "Draft overview" and not "PI Draft": the page title,
+            its subtitle and the status badge already say what this is, and a
+            fourth restatement was a line of the card spent on nothing. */}
         <PiCard>
           <PiCardHeader
-            title="PI Draft"
+            title={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <FileText size={15} strokeWidth={1.9} color={colors.red} />
+                Draft overview
+              </span>
+            }
             right={
               // Present, legible, and not a banner. This is a state to note in
               // passing, not the subject of the page.
@@ -432,48 +547,72 @@ function PiDraftDetailPageInner() {
             }
           />
 
-          {/* Provenance. THE SAME COLUMN RHYTHM as the order information below,
-              so the two halves of the card line up instead of being two grids
-              that happen to share a border. A filename is the one long value
-              here, so it takes two columns; on a phone that is the full width. */}
+          {/* The metadata strip: small facts about the FILE, not about the
+              order. Four across on a desktop, two on a phone.
+
+              The filename block is rendered only when there is a filename. A
+              draft saved before the server recorded one has no file to name,
+              and an "Original PI file —" block would be a labelled hole. */}
           <div style={{ padding: '13px 20px' }}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))',
-              gap: '12px 14px',
+              gridTemplateColumns: isMobile ? '1fr 1fr' : `repeat(${workbookName ? 4 : 3}, minmax(0, 1fr))`,
+              gap: '14px 18px',
             }}>
-              <div style={{ gridColumn: 'span 2', minWidth: 0 }}>
-                <PiFieldRow label="Original PI file" value={orDash(submission.source_workbook_name)} />
-              </div>
-              <PiFieldRow label="Saved" value={savedAt} />
-              {/* The size of the thing being read, where the eye already is.
-                  The Products card below counts its own rows as a table caption;
-                  this is part of the record's identity. */}
-              <PiFieldRow
+              <MetaItem
+                icon={<Clock size={13} strokeWidth={1.9} />}
+                label="Last saved"
+                value={savedAt}
+              />
+              <MetaItem
+                icon={<Package size={13} strokeWidth={1.9} />}
                 label="Products"
                 value={`${products.length} line${products.length === 1 ? '' : 's'}`}
               />
+              <MetaItem
+                icon={<User size={13} strokeWidth={1.9} />}
+                label="Created by"
+                value={createdBy ?? 'Not provided'}
+              />
+              {workbookName && (
+                <MetaItem
+                  icon={<FileSpreadsheet size={13} strokeWidth={1.9} />}
+                  label="Original PI file"
+                  value={workbookName}
+                />
+              )}
             </div>
           </div>
 
-          {/* Order information — the same fields, in the same words, as the
-              import preview. buildHeaderRows decides which; this page only hands
-              it the persisted header. */}
-          <div style={{ padding: '13px 20px 16px', borderTop: `1px solid ${colors.border}` }}>
+          {/* Order information — the same VALUES and the same wording as the
+              import preview, because buildHeaderRows still produces them. What
+              this page chooses is the arrangement: who the order is for on one
+              row, when it happens on the next, three to a row so each field has
+              the width to be read rather than guessed at.
+
+              "Created by" is deliberately absent here — it is a fact about the
+              document and lives in the strip above, so it is stated once. */}
+          <div style={{ padding: '14px 20px 16px', borderTop: `1px solid ${colors.border}` }}>
             <div style={{
               fontSize: '11px', fontWeight: 700, color: colors.secondary,
-              marginBottom: '11px',
+              marginBottom: '12px',
             }}>
               Order information
             </div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))',
-              gap: '13px 14px',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))',
+              gap: '16px 20px',
             }}>
-              {buildHeaderRows(persistedHeader(submission)).map(row => (
-                <PiFieldRow key={row.key} label={row.label} value={row.value} />
-              ))}
+              {/* Row 1 — who it is for and where it goes. Heavier, because this
+                  is what a reader checks first and compares across. */}
+              <InfoField label="Client"    value={headerValue('client')} strong />
+              <InfoField label="Bill to"   value={headerValue('billTo')} strong />
+              <InfoField label="Ship to"   value={headerValue('shipTo')} strong />
+              {/* Row 2 — the dates, as a quieter secondary band. */}
+              <InfoField label="PI created"          value={headerValue('created')} />
+              <InfoField label="Order confirmed"     value={headerValue('confirmed')} />
+              <InfoField label="Dispatch commitment" value={headerValue('dispatch')} />
             </div>
           </div>
 
@@ -532,7 +671,7 @@ function PiDraftDetailPageInner() {
                   }}
                 >
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                    <PiProductThumbnail {...representativeThumbnail(p.row)} size={64} />
+                    <PiProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
                     <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                       <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'var(--font-mono)' }}>
                         {orDash(p.itemSequence)}

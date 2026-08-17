@@ -42,7 +42,11 @@ export function PiCard({ children, style }: { children: React.ReactNode; style?:
   )
 }
 
-export function PiCardHeader({ title, right }: { title: string; right?: React.ReactNode }) {
+export function PiCardHeader({ title, right }: {
+  /** Usually a string; a node when the heading carries a small leading icon. */
+  title: React.ReactNode
+  right?: React.ReactNode
+}) {
   return (
     <div style={{
       padding: '14px 20px',
@@ -110,6 +114,33 @@ export const PI_CUSTOMIZATION_TEXT_RED = '#9B1C25'
 const CUSTOMIZATION_BORDER = 'rgba(217,79,79,0.45)'
 const CUSTOMIZATION_RING = '0 0 0 2px rgba(217,79,79,0.16)'
 
+// ── Thumbnail sizes ───────────────────────────────────────────────────────────
+//
+// A PI is a document about FURNITURE, and at 56px a wingback chair and an arm
+// chair are two brown rectangles. These are the sizes at which a person can tell
+// one product from another without opening anything — the table is meant to be
+// read image-first, which is how the workbook itself is read.
+//
+// Bigger than this starts to cost more than it gives: the row grows taller than
+// the text beside it, twelve products stop fitting on a screen, and the rate and
+// line-total columns — the other thing this table is for — get pushed to where
+// they have to be hunted for. These are the largest sizes that keep a product
+// line one comfortable row.
+//
+// The phone values are smaller because the row is a stacked card there, and a
+// full-width photograph would push the price below the fold on every product.
+
+export const PI_THUMBNAIL_SIZE = {
+  /** The product's own photograph, in the desktop table's Image column. */
+  representative: 84,
+  /** The same photograph in a stacked mobile card. */
+  representativeCompact: 72,
+  /** A picture of a requested change, beside the customization text. */
+  customization: 56,
+  /** The same, stacked on a phone. */
+  customizationCompact: 48,
+} as const
+
 // ── Thumbnails ────────────────────────────────────────────────────────────────
 
 /**
@@ -145,7 +176,7 @@ export function PiProductThumbnail({
   onOpen,
   buttonRef,
   accent = 'neutral',
-  size = 56,
+  size = PI_THUMBNAIL_SIZE.representative,
 }: PiThumbnailProps & { size?: number }) {
   const marked = accent === 'customization'
   const restingBorder = marked ? CUSTOMIZATION_BORDER : colors.border
@@ -288,7 +319,9 @@ export function PiCustomizationCell({
                 key={t.key}
                 {...t.props}
                 accent="customization"
-                size={compact ? 34 : 30}
+                size={compact
+                  ? PI_THUMBNAIL_SIZE.customizationCompact
+                  : PI_THUMBNAIL_SIZE.customization}
               />
             ))}
           </div>

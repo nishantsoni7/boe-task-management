@@ -792,7 +792,14 @@ describe('the customization column', () => {
 
   test('several thumbnails wrap instead of stretching the row', () => {
     assert.ok(source.includes("flexWrap: 'wrap'"))
-    assert.ok(source.includes('compact ? 34 : 30'), 'customization thumbnails are small')
+    // Sized from the shared table, and still smaller than the product's own
+    // photograph so a row of four changes does not outweigh the product.
+    assert.ok(source.includes('PI_THUMBNAIL_SIZE.customizationCompact'))
+    assert.ok(source.includes('PI_THUMBNAIL_SIZE.customization'))
+    const customization = Number(/\n  customization: (\d+)/.exec(source)?.[1])
+    const representative = Number(/representative: (\d+)/.exec(source)?.[1])
+    assert.ok(customization < representative,
+      'a picture of a change must not compete with the product itself')
   })
 
   test('the representative image keeps its own column and its own lookup', () => {
