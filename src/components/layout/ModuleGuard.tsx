@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 
 // THE PARENT GATE, as a route guard.
@@ -48,57 +47,43 @@ export default function ModuleGuard({
    *  "not available" page, matching the Orders and Meetings guards. */
   deniedRoute?: string
 }) {
-  const [state, setState] = useState<'checking' | 'allowed' | 'denied'>('checking')
   const router = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+
+  // The two reads this used to make itself — users.role, then
+  // resolve_effective_permissions for one module — are now resolved once per
+  // session for every module at a time and shared with /modules and
+  // DashboardLayout. The decision below is unchanged: same inputs, same
+  // function, same fail-closed defaults. What changed is that returning to this
+  // route inside the cache window costs no round trip at all.
+  const { ready, userId, role, permissionsByModule } = usePermissionContext()
+
+  // An inactive or unregistered module makes the resolver return no rows at
+  // all, so `permissions` is empty and the `view` test inside fails. That is
+  // the correct answer, which is why `isModuleActive` is passed as true rather
+  // than fetched separately: the engine has already applied it.
+  const allowed =
+    ready &&
+    userId !== null &&
+    canAccessManagementModule({
+      role,
+      moduleKey,
+      isModuleActive: true,
+      permissions: permissionsByModule.get(moduleKey) ?? [],
+    })
 
   useEffect(() => {
-    let active = true
+    // Nothing is decided until the context has resolved. `ready` false reports
+    // a null role and an empty permission map, which is indistinguishable from
+    // a genuine denial — redirecting on it would bounce authorized people.
+    if (!ready) return
+    if (userId === null) { router.replace('/login'); return }
+    if (!allowed) router.replace(deniedRoute)
+  }, [ready, userId, allowed, router, deniedRoute])
 
-    const check = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-
-      const { data: profile } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', session.user.id)
-        .single()
-
-      // An inactive or unregistered module makes the resolver return no rows at
-      // all, so `permissions` is empty and the `view` test below fails. That is
-      // the correct answer, which is why `isModuleActive` is passed as true
-      // rather than fetched separately: the engine has already applied it.
-      const permissions = await getEffectivePermissions(
-        supabase,
-        session.user.id,
-        moduleKey,
-      ).catch(() => [])
-
-      const allowed = canAccessManagementModule({
-        role: profile?.role ?? null,
-        moduleKey,
-        isModuleActive: true,
-        permissions,
-      })
-
-      if (!active) return
-
-      if (!allowed) {
-        setState('denied')
-        router.replace(deniedRoute)
-        return
-      }
-
-      setState('allowed')
-    }
-
-    check()
-
-    return () => { active = false }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleKey])
-
-  if (state !== 'allowed') return <LoadingScreen />
+  // Unchanged, and load-bearing: `children` render in no state but `allowed`.
+  // A child that fetches on mount cannot start early because it has not
+  // mounted, and the protected screen never appears for a frame before the
+  // redirect lands.
+  if (!allowed) return <LoadingScreen />
   return <>{children}</>
 }

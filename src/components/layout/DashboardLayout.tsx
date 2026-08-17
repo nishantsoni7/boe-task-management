@@ -19,6 +19,7 @@ import { MobileBottomNav } from './MobileBottomNav'
 import { NotificationsNavItem } from './NotificationsNavItem'
 import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
 import { useRecordAppOpen } from '@/hooks/useRecordAppOpen'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveQuotationCapabilities, NO_QUOTATION_CAPABILITIES } from '@/lib/permissions/quotations'
 
@@ -54,18 +55,36 @@ export function DashboardLayout({
   // notifications/page.tsx invalidate the same key.
   const unreadNotifs = useUnreadNotifications()
 
-  const { triggerRefresh } = useRefresh()
+  const { triggerRefresh, triggerManualRefresh } = useRefresh()
 
+  // THE BUTTON. Bumps the manual counter as well as the shared one, so a
+  // consumer that must re-read only on an explicit press can tell this apart
+  // from the tab-visibility path below. Every existing `refreshKey` consumer
+  // still sees this press exactly as it did before.
   const handleRefresh = useCallback(() => {
+    if (refreshing) return
+    setRefreshing(true)
+    triggerManualRefresh()
+    setTimeout(() => setRefreshing(false), 1000)
+  }, [refreshing, triggerManualRefresh])
+
+  // TAB VISIBILITY. Deliberately a different call: the shared counter only,
+  // never the manual one. Returning to a tab is not a request for anything, so
+  // it must not reach consumers that opted out of automatic re-reads — the
+  // dashboard's cached task list in particular. Behaviour for every page that
+  // reads `refreshKey` (/tasks/my, NotificationsView) is unchanged, spinner
+  // included.
+  const handleVisibilityRefresh = useCallback(() => {
     if (refreshing) return
     setRefreshing(true)
     triggerRefresh()
     setTimeout(() => setRefreshing(false), 1000)
-  }, [refreshing, triggerRefresh])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerRefresh])
 
   // Auto-refresh when the tab/app becomes visible again
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') handleRefresh() }
+    const onVisible = () => { if (document.visibilityState === 'visible') handleVisibilityRefresh() }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,15 +113,25 @@ export function DashboardLayout({
   const canViewTeamPerformance =
     !inViewMode && (realRole === 'admin' || realRole === 'manager')
 
-  // Resolve the real logged-in user's id fresh on every mount (matching the
-  // auth-check pattern used elsewhere in the app) — not cached via React Query,
-  // so a same-tab account switch can't serve a stale identity.
-  const [authUserId, setAuthUserId] = useState<string | null>(null)
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
-      setAuthUserId(data.user?.id ?? null)
-    })
-  }, [supabase])
+  // The real logged-in user, plus their role and effective permissions, from the
+  // one session-scoped resolution shared with ModuleGuard and /modules.
+  //
+  // This replaces a per-mount auth.getUser(), which was a NETWORK call to the
+  // auth server on every navigation. The property that call was there to
+  // guarantee — that a same-tab account switch cannot serve a stale identity —
+  // is now held by the auth listener in Providers.tsx, which drops the client
+  // cache when the signed-in identity actually changes or the user signs out.
+  // Ordinary token refreshes, and repeated SIGNED_IN events for the same person,
+  // no longer throw the cache away — which is the whole gain.
+  const {
+    ready: permsReady,
+    userId: authUserId,
+    role: signedInRole,
+    permissionsByModule,
+  } = usePermissionContext()
+
+  // Getting back to the launcher should not begin with a chunk download.
+  useEffect(() => { router.prefetch('/modules') }, [router])
 
   // Effective user for nav counts: the viewed user in View As mode, otherwise
   // the real logged-in user. Used as the query key so counts are cached per
@@ -160,7 +189,10 @@ export function DashboardLayout({
   // query is in flight and if it fails. Hiding is not the enforcement boundary
   // — the two routes gate themselves — but a nav item that flashes on before a
   // permission resolves is still a leak of what exists.
-  const { data: quotationCaps = NO_QUOTATION_CAPABILITIES } = useQuery({
+  // In View As the navigation must show what the VIEWED employee would get, so
+  // that person's capabilities are still resolved on their own — this query is
+  // unchanged apart from now running only in view mode.
+  const { data: viewedQuotationCaps = NO_QUOTATION_CAPABILITIES } = useQuery({
     queryKey: ['nav-quotation-caps', effectiveNavUserId],
     queryFn: async () => {
       const uid = effectiveNavUserId
@@ -171,10 +203,26 @@ export function DashboardLayout({
       ])
       return deriveQuotationCapabilities(me?.role, perms)
     },
-    enabled: effectiveNavUserId != null,
+    enabled: inViewMode && effectiveNavUserId != null,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
   })
+
+  // Outside view mode the answer is already in the shared context — the same
+  // role and the same task_management permissions the query above would have
+  // fetched, from the same resolver. Deriving it here removes the duplicate
+  // users.role read and the duplicate resolve_effective_permissions call that
+  // ModuleGuard had just made on the very same navigation.
+  //
+  // Still defaults to NO capabilities while unresolved, so the quotation items
+  // stay hidden until the answer is known. Hiding is not the enforcement
+  // boundary — the two routes gate themselves — but a nav item that flashes on
+  // before a permission resolves is still a leak of what exists.
+  const quotationCaps = inViewMode
+    ? viewedQuotationCaps
+    : permsReady
+      ? deriveQuotationCapabilities(signedInRole, permissionsByModule.get('task_management') ?? [])
+      : NO_QUOTATION_CAPABILITIES
 
   const navTo = (path: string) => {
     router.push(path)

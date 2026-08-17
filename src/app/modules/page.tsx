@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -9,9 +10,12 @@ import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
 import DailyQuoteLoader from '@/components/DailyQuoteLoader'
 import { useViewAs } from '@/hooks/useViewAs'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
-import { getEffectivePermissionsForUser } from '@/lib/permissions/resolver'
+import {
+  usePermissionContext,
+  PERMISSION_STALE_MS,
+  PERMISSION_GC_MS,
+} from '@/hooks/queries/usePermissionContext'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
-import type { EffectivePermission } from '@/lib/permissions/types'
 
 // ── Module definition ─────────────────────────────────────────────────────────
 
@@ -40,7 +44,12 @@ type ModuleDef = {
   href: string
   accent: string
   icon: React.ReactNode
-  notificationCount?: number | null  // null = no API yet → "No pending", 0 = confirmed zero, >0 = badge
+  // undefined = not resolved YET → the footer line stays empty, because the
+  //             card is now shown before its count has arrived and printing
+  //             "No notifications" there would be asserting something we do
+  //             not know. null = there is no count API for this module at all
+  //             → "No notifications", as before. 0 = confirmed zero, >0 = badge.
+  notificationCount?: number | null
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -80,124 +89,85 @@ function canSeeModule(
   return resolveModuleAccess(key, modVis[key], effectiveProfile, fallback)
 }
 
+/** Unread counts for the four modules that publish one. */
+type ModuleCounts = {
+  task?: number | null
+  sample?: number | null
+  finance?: number | null
+  order?: number | null
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function BoeOsHomePage() {
-  const [profile,  setProfile]  = useState<UserProfile | null>(null)
-  const [loading,  setLoading]  = useState(true)
-  // null = count unavailable (no API), number = real count from module's own API
-  const [taskNotif,   setTaskNotif]   = useState<number | null>(null)
-  const [sampleNotif, setSampleNotif] = useState<number | null>(null)
-  const [financeNotif, setFinanceNotif] = useState<number | null>(null)
-  const [orderNotif, setOrderNotif] = useState<number | null>(null)
-  const [modVis,      setModVis]      = useState<Record<string, ModVisRow>>({})
-  // Effective permissions for the SIGNED-IN user, every module at once (one RPC
-  // round trip). View As is a preview of somebody else's screen and never lends
-  // or removes authority, so the gate below always reads the real caller —
-  // exactly as the Orders and Meetings cards already did.
-  const [permsByModule, setPermsByModule] =
-    useState<Map<string, readonly EffectivePermission[]>>(new Map())
-  const [signedInRole, setSignedInRole] = useState<string | null>(null)
+  // ── Notification counts, tagged with the user they belong to ────────────────
+  //
+  // A missing field = not resolved yet → the footer line stays empty. null = the
+  // request failed → "No notifications", the pre-existing rule. A number is a
+  // real count.
+  //
+  // They are stored together WITH the user id they were fetched for, rather than
+  // as four loose values, so that signing in as somebody else cannot show the
+  // previous user's numbers. The derivation below discards them in the same
+  // render the identity changes — not one effect later — so there is no frame in
+  // which the wrong person's counts are on screen.
+  const [countState, setCountState] =
+    useState<{ userId: string | null; counts: ModuleCounts }>({ userId: null, counts: {} })
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const { viewAsUserId, viewAsProfile } = useViewAs()
 
+  // ── PHASE 1: who are you, and what may you open ─────────────────────────────
+  //
+  // THE PARENT GATE for every engine-gated module, resolved for the SIGNED-IN
+  // user in one round trip, and now shared with ModuleGuard and DashboardLayout
+  // through one cache entry instead of each resolving it again. View As is a
+  // preview of somebody else's screen and never lends or removes authority, so
+  // the gate below still always reads the real caller.
+  //
+  // A failed profile read leaves role null and canAccessManagementModule denies
+  // — fail-closed for non-admins, while an admin still short-circuits on role
+  // alone and so is unaffected by a permissions RPC failure. Both behaviours are
+  // preserved inside usePermissionContext.
+  const {
+    ready: permsReady,
+    userId,
+    profile,
+    role: signedInRole,
+    permissionsByModule: permsByModule,
+  } = usePermissionContext()
+
+  // Counts belong to the user they were fetched for. If the signed-in user has
+  // changed, the previous user's numbers are discarded in this very render —
+  // the cards fall back to the unresolved (empty) footer line rather than
+  // briefly showing somebody else's totals while the new requests are in
+  // flight. This is a derivation, not a reset, so there is no intermediate
+  // state and no extra render.
+  const counts: ModuleCounts = countState.userId === userId ? countState.counts : {}
+
+  // Still needed, but only for the Attendance/Payroll self-service card — the
+  // one module family app_modules legitimately still governs. Keyed by the
+  // signed-in user because RLS decides which rows this caller may read.
+  const { data: modVis = {}, isPending: modVisPending } = useQuery<Record<string, ModVisRow>>({
+    queryKey: ['app-modules-visibility', userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('app_modules')
+        .select('module_key, visibility_type, allowed_department, allowed_user_ids')
+        .order('sort_order')
+      const vis: Record<string, ModVisRow> = {}
+      for (const m of data ?? []) vis[m.module_key] = m
+      return vis
+    },
+    staleTime: PERMISSION_STALE_MS,
+    gcTime: PERMISSION_GC_MS,
+  })
+
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-
-      const uid = session.user.id
-
-      // ── PHASE 1: who are you, and what may you open ───────────────────────
-      //
-      // NOTHING module-specific is requested here. The counts below are module
-      // data, and asking for them before the gate is resolved would mean a
-      // disabled module still issued its request and merely threw the answer
-      // away — which is not the same as not fetching it.
-      const [
-        { data: profileData },
-        { data: appModulesData },
-        effectivePermissions,
-      ] = await Promise.all([
-        supabase
-          .from('users')
-          .select('id, full_name, email, phone, role, team, is_active, created_at')
-          .eq('id', uid)
-          .single(),
-        // Still needed, but only for the Attendance/Payroll self-service card —
-        // the one module family app_modules legitimately still governs.
-        supabase
-          .from('app_modules')
-          .select('module_key, visibility_type, allowed_department, allowed_user_ids')
-          .order('sort_order'),
-        // THE PARENT GATE for every engine-gated module, resolved in one round
-        // trip. This is the model Orders and Meetings already used — two
-        // hasPermission() calls — generalised to the other seven, which were
-        // reading app_modules and so ignored Access Control entirely.
-        getEffectivePermissionsForUser(supabase, uid).catch(
-          () => new Map<string, EffectivePermission[]>(),
-        ),
-      ])
-
-      const role = (profileData as UserProfile | null)?.role ?? null
-
-      // The same rule canOpenModule applies during render, available here
-      // before any module request is made. A failed profile read leaves role
-      // null and canAccessManagementModule denies — fail-closed for non-admins,
-      // while an admin still short-circuits on role alone and so is unaffected
-      // by a permissions RPC failure.
-      const mayOpen = (moduleKey: string): boolean =>
-        canAccessManagementModule({
-          role,
-          moduleKey,
-          isModuleActive: true,
-          permissions: effectivePermissions.get(moduleKey) ?? [],
-        })
-
-      if (profileData) setProfile(profileData as UserProfile)
-      setSignedInRole(role)
-      setPermsByModule(effectivePermissions)
-
-      if (appModulesData) {
-        const vis: Record<string, ModVisRow> = {}
-        for (const m of appModulesData) vis[m.module_key] = m
-        setModVis(vis)
-      }
-
-      // ── PHASE 2: counts, only for the modules this person may open ────────
-      //
-      // `null` means "no number to show", which is exactly what a module the
-      // employee cannot open should contribute — and its card is not rendered
-      // anyway. Kept as one Promise.all so the authorized counts still resolve
-      // in parallel and the screen reveals in a single pass.
-      const countIfAllowed = (moduleKey: string, url: string): Promise<{ unreadCount?: number } | null> =>
-        mayOpen(moduleKey)
-          ? fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null)
-          : Promise.resolve(null)
-
-      const [taskNotifsRes, sampleNotifsRes, financeNotifsRes, orderNotifsRes] = await Promise.all([
-        // Task Management: same unread count the /notifications page shows
-        countIfAllowed('task_management', '/api/notifications?count=1&category=task'),
-        // Sample Tracking: unread sample notification count
-        countIfAllowed('sample_tracking', '/api/samples/notifications?count=1'),
-        // Finance: unread count scoped to Finance events (type finance_%)
-        countIfAllowed('finance', '/api/notifications?count=1&category=finance'),
-        // Orders: unread count scoped to Order Management events (type order_%)
-        countIfAllowed('orders', '/api/notifications?count=1&category=order'),
-      ])
-
-      // Keep null if the API failed so the card shows "No pending" rather than a wrong number
-      setTaskNotif(taskNotifsRes != null ? (taskNotifsRes.unreadCount ?? 0) : null)
-      setSampleNotif(sampleNotifsRes != null ? (sampleNotifsRes.unreadCount ?? 0) : null)
-      setFinanceNotif(financeNotifsRes != null ? (financeNotifsRes.unreadCount ?? 0) : null)
-      setOrderNotif(orderNotifsRes != null ? (orderNotifsRes.unreadCount ?? 0) : null)
-      setLoading(false)
-    }
-    init()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (permsReady && userId === null) router.push('/login')
+  }, [permsReady, userId, router])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -290,7 +260,7 @@ export default function BoeOsHomePage() {
       href: '/dashboard',
       accent: '#1A2035',
       icon: <TaskIcon />,
-      notificationCount: taskNotif,
+      notificationCount: counts.task,
     }] : []),
     ...(canOpenModule('sample_tracking') ? [{
       key: 'samples',
@@ -299,7 +269,7 @@ export default function BoeOsHomePage() {
       href: '/samples',
       accent: '#B45309',
       icon: <BoxIcon />,
-      notificationCount: sampleNotif,
+      notificationCount: counts.sample,
     }] : []),
     ...(attendancePayroll ? [attendancePayroll] : []),
     ...(canOpenModule('showroom_qr') ? [{
@@ -349,7 +319,7 @@ export default function BoeOsHomePage() {
       href: '/finance',
       accent: '#065F46',
       icon: <FinanceIcon />,
-      notificationCount: financeNotif,
+      notificationCount: counts.finance,
     }] : []),
     ...(canOpenModule('meetings') ? [{
       key: 'meetings',
@@ -367,7 +337,7 @@ export default function BoeOsHomePage() {
       href: '/orders',
       accent: '#DC1F2E',
       icon: <OrdersIcon />,
-      notificationCount: orderNotif,
+      notificationCount: counts.order,
     }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{
       key: 'control_center',
@@ -379,6 +349,84 @@ export default function BoeOsHomePage() {
       notificationCount: null,
     }] : []),
   ]
+
+  // ── PHASE 2: counts, only for the modules this person may open ──────────────
+  //
+  // These no longer gate the screen. The cards are the answer to "what may I
+  // open", and that answer is complete the moment the gate resolves; a badge is
+  // ambient information about one of them. Blocking the whole launcher on four
+  // notification endpoints — each of which re-authenticates server-side before
+  // it counts anything — meant the slowest of them decided when anyone could
+  // click anything.
+  //
+  // The authorization rule is UNCHANGED: a module the employee cannot open
+  // still issues no request, so the deferral did not turn a skipped fetch into
+  // a fetch whose answer is discarded. Each count is stored on arrival rather
+  // than awaited together, so one slow endpoint no longer holds the other three.
+  const mayOpenTask    = permsReady && canOpenModule('task_management')
+  const mayOpenSample  = permsReady && canOpenModule('sample_tracking')
+  const mayOpenFinance = permsReady && canOpenModule('finance')
+  const mayOpenOrders  = permsReady && canOpenModule('orders')
+
+  useEffect(() => {
+    if (!permsReady || !userId) return
+    // Guards against a response for the PREVIOUS user landing after the switch:
+    // cleanup runs before the next effect, so that run's `active` is already
+    // false and its `store` calls become no-ops.
+    let active = true
+
+    // Each count is written on arrival, tagged with the user it belongs to, so
+    // one slow endpoint no longer holds up the other three. Keep null if the
+    // request failed so the card reads "No notifications" rather than showing a
+    // wrong number — the pre-existing rule, unchanged.
+    const store = (field: keyof ModuleCounts, value: number | null) => {
+      if (!active) return
+      setCountState(prev => ({
+        userId,
+        // Discard anything belonging to a different user rather than merging
+        // this field into their object.
+        counts: { ...(prev.userId === userId ? prev.counts : {}), [field]: value },
+      }))
+    }
+
+    // A module this employee cannot open issues NO request — unchanged — and
+    // stores nothing either: its card is not rendered, so there is no footer
+    // line for a value to appear on.
+    const load = (allowed: boolean, url: string, field: keyof ModuleCounts) => {
+      if (!allowed) return
+      fetch(url)
+        .then(r => (r.ok ? r.json() : null))
+        .then((json: { unreadCount?: number } | null) =>
+          store(field, json != null ? (json.unreadCount ?? 0) : null))
+        .catch(() => store(field, null))
+    }
+
+    // Task Management: same unread count the /notifications page shows
+    load(mayOpenTask,    '/api/notifications?count=1&category=task',    'task')
+    // Sample Tracking: unread sample notification count
+    load(mayOpenSample,  '/api/samples/notifications?count=1',          'sample')
+    // Finance: unread count scoped to Finance events (type finance_%)
+    load(mayOpenFinance, '/api/notifications?count=1&category=finance', 'finance')
+    // Orders: unread count scoped to Order Management events (type order_%)
+    load(mayOpenOrders,  '/api/notifications?count=1&category=order',   'order')
+
+    return () => { active = false }
+  }, [permsReady, userId, mayOpenTask, mayOpenSample, mayOpenFinance, mayOpenOrders])
+
+  // Warm the routes behind the cards that are actually on screen, so the click
+  // does not begin with a chunk download. `modules` contains ONLY authorized
+  // entries — an unauthorized destination is never in this list and so is never
+  // prefetched. Runs after the gate for the same reason the counts do.
+  const moduleHrefs = modules.map(mod => mod.href).join('|')
+  useEffect(() => {
+    if (!permsReady) return
+    for (const href of moduleHrefs.split('|').filter(Boolean)) router.prefetch(href)
+  }, [permsReady, moduleHrefs, router])
+
+  // The gate, and only the gate. app_modules is included because the
+  // Attendance & Payroll card's visibility comes from it, so rendering before
+  // it lands could omit a card the employee is entitled to.
+  const loading = !permsReady || modVisPending
 
   return (
     <DailyQuoteLoader>
@@ -510,6 +558,14 @@ function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
         {/* Left: notification signal. The status pill that used to sit here is
             gone — see the note on ModuleDef. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          {/* An unresolved count (undefined) renders a non-breaking space, not
+              "No notifications": the card is on screen before its badge is
+              known, and printing a zero-state we have not confirmed would be
+              stating something false for as long as the request is in flight.
+              The nbsp keeps the line box — and so the card — exactly the height
+              it will be once the number lands, so nothing moves. A resolved
+              null still reads "No notifications", as it always did: that is a
+              module with no count API rather than one still being counted. */}
           <span style={{
             fontSize: '11px',
             color: hasNotif ? '#D94F4F' : '#B0B8C8',
@@ -517,11 +573,13 @@ function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
             whiteSpace: 'nowrap',
             overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
-            {count == null
-              ? 'No notifications'
-              : hasNotif
-                ? `${count} ${count === 1 ? 'notification' : 'notifications'}`
-                : 'No notifications'}
+            {count === undefined
+              ? ' '
+              : count == null
+                ? 'No notifications'
+                : hasNotif
+                  ? `${count} ${count === 1 ? 'notification' : 'notifications'}`
+                  : 'No notifications'}
           </span>
         </div>
 
