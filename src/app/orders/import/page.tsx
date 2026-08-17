@@ -35,8 +35,8 @@
 // Refreshing the page therefore clears everything, because nowhere is where it
 // was kept.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   FileSpreadsheet, Upload, AlertTriangle, CheckCircle2, Info, Loader2,
   ImageOff, Images,
@@ -110,6 +110,7 @@ import {
   type SaveSuccess,
 } from '@/lib/orders/saveDraftFlow'
 import { draftDetailHref, draftSavedHref } from '@/lib/orders/draftsView'
+import { CHANGE_PI_PARAM, canReplaceSubmissionPi, readChangePiTarget } from '@/lib/orders/submissionWorkflow'
 
 // ── Screen state ──────────────────────────────────────────────────────────────
 
@@ -145,9 +146,57 @@ const MOBILE_BREAKPOINT = 768
 // and the two readings must be indistinguishable. Only the pieces this screen
 // alone uses are defined below.
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── Replacing the PI on a record that already exists ──────────────────────────
+//
+// THE SAME SCREEN, POINTED AT AN EXISTING SUBMISSION.
+//
+// A draft that management has returned needs a corrected workbook, and this is
+// the only screen that can take one: it has the file picker, the parser, the
+// private upload, the trusted server pass, the processing lease and the
+// rollback rules. Building a second replacement path on the record page would
+// mean a second copy of every one of those.
+//
+// So Change PI navigates here with ?submissionId=…, and the ONLY thing that
+// changes about this screen is which draft row the save attaches to: the
+// existing one, instead of a new one created on the first save. NO SECOND
+// SUBMISSION IS EVER CREATED for a replacement — create_order_submission is
+// still guarded on there being no draft in hand, and the adoption below is what
+// puts one there.
+//
+// THE ID IN THE URL IS NOT A CAPABILITY. It is checked three times, and this
+// browser check is the weakest of them:
+//
+//   here     the row is re-read under the caller's OWN RLS, and refused unless
+//            it is theirs and still in an editable state — so somebody pasting a
+//            colleague's id gets the same "not available" answer the drafts
+//            pages give a stranger, before any file is chosen;
+//   storage  order_files_insert calls can_write_order_submission_file, which
+//            admits the OWNER only, only while the record is a draft or has been
+//            returned, and only while they hold orders.create;
+//   server   /api/orders/import/process-draft re-derives all of it again, and
+//            the privileged parse replacement re-derives it a fourth time,
+//            under a row lock and holding the processing lease.
+//
+// The owner test below deliberately has NO admin branch, because the storage
+// policy has none either: an administrator is not the author of somebody's
+// submission, and a control that promised otherwise would fail at the upload.
+
+type ReplaceTarget =
+  | { kind: 'none' }
+  | { kind: 'checking' }
+  | { kind: 'ready'; submissionId: string; client: string | null }
+  /** Missing, not theirs, or no longer editable. One answer for all three. */
+  | { kind: 'unavailable' }
 
 export default function NewOrderPiImportPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <NewOrderPiImportPageInner />
+    </Suspense>
+  )
+}
+
+function NewOrderPiImportPageInner() {
   // 'checking' renders the loading screen, never the children — the same
   // discipline ModuleGuard uses, so a person without create authority never
   // sees this screen for a frame before the redirect lands.
@@ -188,7 +237,11 @@ export default function NewOrderPiImportPage() {
    *  dropped when the PI is replaced or the screen unmounts. */
   const workbookFileRef = useRef<File | null>(null)
 
+  /** Which existing submission this upload replaces the PI on, if any. */
+  const [replaceTarget, setReplaceTarget] = useState<ReplaceTarget>({ kind: 'none' })
+
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   /** The thumbnail that opened the viewer, so focus can go back where it came
@@ -281,6 +334,48 @@ export default function NewOrderPiImportPage() {
         return
       }
 
+      // ── Change PI: adopt the record this upload belongs to ──
+      //
+      // Read under the caller's own policies, so a submission they may not see
+      // comes back as no row and is refused exactly like one that does not
+      // exist. An id that is not a uuid never reaches the database at all.
+      const target = readChangePiTarget(searchParams.get(CHANGE_PI_PARAM))
+      if (target) {
+        setReplaceTarget({ kind: 'checking' })
+        const { data: row, error } = await supabase
+          .from('order_submissions')
+          .select('id, status, client_name, created_by, submitted_by')
+          .eq('id', target)
+          .maybeSingle()
+
+        if (!active) return
+
+        const record = row as {
+          id: string; status: string; client_name: string | null
+          created_by: string | null; submitted_by: string | null
+        } | null
+
+        // Owner only, and only while the record is still the employee's to
+        // change — the same pair of conditions can_write_order_submission_file
+        // enforces on the upload itself.
+        const owns = !!record
+          && (record.created_by === session.user.id || record.submitted_by === session.user.id)
+
+        if (error || !record || !owns || !canReplaceSubmissionPi(record.status)) {
+          setReplaceTarget({ kind: 'unavailable' })
+        } else {
+          // THE EXISTING DRAFT, IN HAND BEFORE THE FIRST SAVE. This is what
+          // makes the save reuse the record instead of creating a second one:
+          // saveDraft only calls create_order_submission when this ref is empty.
+          // The workbook key starts null so the new file is uploaded under its
+          // own path; the server removes the superseded original once it has
+          // parsed and stored the replacement.
+          draftRef.current = { submissionId: record.id, workbookPath: null }
+          setReplaceTarget({ kind: 'ready', submissionId: record.id, client: record.client_name })
+        }
+      }
+
+      if (!active) return
       setProfile(me as UserProfile)
       setAccess('allowed')
     }
@@ -403,6 +498,10 @@ export default function NewOrderPiImportPage() {
     if (savingRef.current) return
     if (stage.kind !== 'ready' || stage.preview.groups.blocking.length > 0) return
     if (!workbookFileRef.current) return
+    // A replacement that could not be adopted must not fall through to creating
+    // a NEW submission — that is how somebody ends up with two records for one
+    // PI, one of which management is waiting on.
+    if (replaceTarget.kind === 'checking' || replaceTarget.kind === 'unavailable') return
 
     savingRef.current = true
     setSaveFailure(null)
@@ -491,7 +590,7 @@ export default function NewOrderPiImportPage() {
       savingRef.current = false
       setSaveStage(null)
     }
-  }, [stage, supabase, router])
+  }, [stage, supabase, router, replaceTarget])
 
   const acceptFile = useCallback((file: File | null | undefined) => {
     if (!file || parsing) return
@@ -522,6 +621,64 @@ export default function NewOrderPiImportPage() {
   if (access !== 'allowed') return <LoadingScreen />
 
   const limitText = formatByteLimit(PI_MAX_WORKBOOK_BYTES)
+
+  /** A replacement that cannot proceed. Saving is refused while this is true,
+   *  in the handler as well as on the button. */
+  const replaceBlocked = replaceTarget.kind === 'checking' || replaceTarget.kind === 'unavailable'
+
+  // ── What this upload is for ──
+  //
+  // A replacement looks like an ordinary upload, and without saying so the
+  // employee has no way to tell whether they are about to correct their returned
+  // PI or start a second one beside it.
+  const replaceNotice = replaceTarget.kind === 'ready' ? (
+    <Card style={{ borderColor: 'rgba(85,133,232,0.35)' }}>
+      <div style={{ padding: '13px 20px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+        <Info size={16} strokeWidth={1.9} color="#2F5BB7" style={{ flexShrink: 0, marginTop: '1px' }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+            Replacing the PI on an existing record
+          </div>
+          <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, marginTop: '2px' }}>
+            {replaceTarget.client ? `${replaceTarget.client}. ` : ''}
+            The new workbook replaces the stored one on this same record — no second record is
+            created — and the server reads it again and saves its own verified copy.
+          </div>
+          <div style={{ marginTop: '9px' }}>
+            <button
+              className="boe-btn boe-btn-ghost"
+              onClick={() => router.push(draftDetailHref(replaceTarget.submissionId))}
+            >
+              Back to the record
+            </button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  ) : replaceTarget.kind === 'unavailable' ? (
+    <Card style={{ borderColor: 'rgba(217,79,79,0.3)' }}>
+      <div style={{ padding: '16px 20px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+        <AlertTriangle size={16} strokeWidth={1.9} color={colors.red} style={{ flexShrink: 0, marginTop: '1px' }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+            This PI cannot be replaced
+          </div>
+          <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, marginTop: '2px' }}>
+            {/* One sentence for all three cases — missing, somebody else's, or
+                already submitted — so the screen cannot be used to find out
+                which. */}
+            It may have been removed, it may belong to someone else, or it may already be with
+            management. Open PI Drafts to see the records you can work with.
+          </div>
+          <div style={{ marginTop: '9px' }}>
+            <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
+              Go to PI Drafts
+            </button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  ) : null
 
   // ── Upload surface ──
   const uploader = (
@@ -998,7 +1155,7 @@ export default function NewOrderPiImportPage() {
                     <button
                       className="boe-btn boe-btn-primary"
                       onClick={saveDraft}
-                      disabled={!canSaveDraft({
+                      disabled={replaceBlocked || !canSaveDraft({
                         hasPreview: true,
                         blockingCount: preview.groups.blocking.length,
                         saving,
@@ -1058,6 +1215,7 @@ export default function NewOrderPiImportPage() {
           disabled={parsing}
           style={{ display: 'none' }}
         />
+        {replaceNotice}
         {stage.kind !== 'ready' && uploader}
         {failureBlock}
         {previewBlock}

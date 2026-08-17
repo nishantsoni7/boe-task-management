@@ -65,10 +65,20 @@ const code = phase3b.sql.replace(/--[^\n]*/g, '')
 // ══ 1. Ordering and additivity ═══════════════════════════════════════════════
 
 describe('the migration itself', () => {
-  test('is the newest migration, and comes after phase 2', () => {
+  test('comes after phase 2, and anything later is additive', () => {
     const all = readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(all[all.length - 1], phase3b.file, 'must be the newest migration')
     assert.ok(phase3b.file > phase2.file, 'must sort after the phase 2 migration')
+
+    // Later migrations are allowed — Phase A review is one — but none of them
+    // may take over what this file owns. The image table, its constraints and
+    // the lease functions are defined HERE and nowhere else.
+    for (const file of all.filter(f => f > phase3b.file)) {
+      const later = readFileSync(join(MIGRATIONS_DIR, file), 'utf8')
+      assert.ok(!/create table public\.order_submission_item_images\b/.test(later),
+        `${file} must not redefine the image table`)
+      assert.ok(!later.includes('begin_order_submission_processing('),
+        `${file} must not redefine the processing lease`)
+    }
   })
 
   test('does not edit the phase 2 file', () => {

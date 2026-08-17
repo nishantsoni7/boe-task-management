@@ -76,8 +76,8 @@ export const PI_DRAFT_LIST_STATUSES: readonly PiDraftStatus[] = [
 /** Friendly labels. Never a raw enum value on screen. */
 export const PI_DRAFT_STATUS_LABEL: Record<PiDraftStatus, string> = {
   draft: 'Draft',
-  submitted: 'Submitted for review',
-  needs_changes: 'Needs changes',
+  submitted: 'Submitted for Review',
+  needs_changes: 'Needs Changes',
   rejected: 'Rejected',
   approved: 'Approved',
 }
@@ -108,6 +108,24 @@ export function draftStatusTone(status: string | null | undefined): PiDraftStatu
 // ── The empty state ───────────────────────────────────────────────────────────
 
 export const PI_DRAFTS_EMPTY_TEXT = 'No PI drafts saved yet.'
+
+/**
+ * The page's own subtitle.
+ *
+ * It used to end "Nothing here has been submitted for approval", which stopped
+ * being true the day submission shipped: this list now holds submitted records,
+ * returned ones and rejected ones, and for a reviewer it holds the queue as
+ * well. Kept as a constant so the sentence and the test that pins it read the
+ * same string.
+ */
+export const PI_DRAFTS_SUBTITLE = 'Saved PI submissions, and anything waiting on you.'
+
+/** What the list says when a person can see nothing here yet. */
+export const PI_DRAFTS_EMPTY_NOTE =
+  'A record appears here as soon as a PI has been uploaded and saved. It stays here through submission, review and any changes management asks for.'
+
+/** The empty state of a reviewer's queue: a real, and good, answer. */
+export const PI_REVIEW_EMPTY_TEXT = 'No PI is waiting for review.'
 
 // ── Row shapes, as PostgREST returns them ─────────────────────────────────────
 
@@ -142,6 +160,19 @@ export type PersistedSubmission = {
   id: string
   status: string
   client_name: string | null
+
+  // ── Who filed it, and when it last reached a reviewer ──
+  //
+  // created_by and submitted_by are the pair can_edit_order_submission uses, so
+  // the screens can offer an owner their own controls without inventing a
+  // second, weaker ownership rule. submitted_at is written by the status
+  // transition trigger (20260910000000) and by nothing else, so it is a fact
+  // about the record rather than a claim the browser was handed.
+  created_by: string | null
+  submitted_by: string | null
+  submitted_at: string | null
+  rejected_by: string | null
+  rejected_at: string | null
 
   creation_date: string | null
   source_created_by: string | null
@@ -213,10 +244,15 @@ export type PersistedItemImage = {
 export const PI_DRAFT_LIST_COLUMNS = [
   'id', 'status', 'client_name', 'bill_to_name',
   'source_workbook_name', 'grand_total', 'created_at', 'updated_at',
+  // Who filed it and when it reached review. The list needs both because the
+  // review section states them on every row, and because the queue is ordered
+  // by the submission time rather than by when the row was last written.
+  'submitted_by', 'submitted_at',
 ].join(', ')
 
 export const PI_DRAFT_DETAIL_COLUMNS = [
   'id', 'status', 'client_name',
+  'created_by', 'submitted_by', 'submitted_at', 'rejected_by', 'rejected_at',
   'creation_date', 'source_created_by', 'bill_to_name', 'ship_to_name',
   'order_confirmation_date', 'dispatch_commitment',
   'source_workbook_name',
@@ -276,6 +312,20 @@ export type PiDraftListEntry = {
   statusTone: PiDraftStatusTone
   /** "16 Aug 2026, 04:12 PM" in IST, or "—". */
   savedAt: string
+  /**
+   * When this record last reached a reviewer, formatted, or "—".
+   *
+   * Separate from `savedAt`, which is the last WRITE of any kind. A returned
+   * submission is written again the moment its PI is replaced, so the two
+   * diverge, and a review queue ordered by the wrong one puts a corrected draft
+   * above a PI that has been waiting since Monday.
+   */
+  submittedAt: string
+  /** The raw stamp, for ordering only. Never rendered. */
+  submittedAtIso: string | null
+  /** Who submitted it, resolved from users, or "—" when it has not been
+   *  submitted and there is nobody to name. */
+  submitter: string
 }
 
 /**
@@ -330,8 +380,16 @@ export function describeDraftListEntry(
   row: PersistedSubmission,
   itemCount: number,
   formatMoney: (amount: number | null) => string,
+  /**
+   * The submitter's display name, already batch-fetched by the caller. Optional
+   * because the employee's own list has no use for it — it is their own record —
+   * and because a name the caller could not resolve must render as an honest
+   * dash rather than as an id.
+   */
+  submitterName?: string | null,
 ): PiDraftListEntry {
   const count = Number.isFinite(itemCount) && itemCount > 0 ? Math.trunc(itemCount) : 0
+  const submittedIso = text(row.submitted_at)
   return {
     id: row.id,
     href: draftDetailHref(row.id),
@@ -344,6 +402,9 @@ export function describeDraftListEntry(
     statusLabel: draftStatusLabel(row.status),
     statusTone: draftStatusTone(row.status),
     savedAt: formatSavedAt(row.updated_at ?? row.created_at),
+    submittedAt: submittedIso ? formatSavedAt(submittedIso) : '—',
+    submittedAtIso: submittedIso,
+    submitter: text(submitterName ?? null) ?? '—',
   }
 }
 

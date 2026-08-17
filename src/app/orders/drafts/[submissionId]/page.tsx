@@ -25,17 +25,30 @@
 // as no rows, and no rows renders as "not found" — the same answer a genuinely
 // missing id gets, so the page cannot be used to discover that a draft exists.
 //
-// READ-ONLY, DELIBERATELY. There is no Change PI here and no other mutation. The
-// replacement flow is three steps that belong to the upload screen (upload the
-// new workbook, ask the server to re-parse it, replace the stored parse), and
-// half of one of them cannot safely live on a page that has no workbook in hand.
-// Nothing on this screen writes.
+// THE PI ITSELF IS STILL NEVER EDITED HERE. Not a price, not a product, not a
+// picture. Replacing the document is the upload screen's job — it is the screen
+// with a workbook in hand, a parser, a lease and a rollback — so "Change PI"
+// below is a LINK to it carrying this submission's id, and not a second
+// persistence path grown on a page that has no file.
+//
+// WHAT THE PAGE NOW WRITES, AND ONLY THROUGH THE DATABASE'S OWN DOORS:
+//
+//   submit_order_submission           the owner hands it to management
+//   request_order_submission_changes  a reviewer sends it back, with a note
+//   reject_order_submission           a reviewer ends it, with a reason
+//
+// Each of those is a status move and nothing else. None of them writes a figure,
+// a line or an image mapping — those come only from the server's own re-parse —
+// and each re-derives the actor, the permission and the record's state inside
+// the database before it writes. What this file decides is which controls to
+// draw, which is a question about screens and never about authority.
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertTriangle, CheckCircle2, Info, ArrowLeft,
   FileText, FileSpreadsheet, Clock, Package, User,
+  History, Send, Upload, Undo2, Ban, Lock,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -54,9 +67,34 @@ import {
   PI_THUMBNAIL_SIZE,
   type PiThumbnailProps,
 } from '@/components/orders/piPreview'
+import { PiSubmitConfirmModal, PiNoteModal, type PiNoteIntent } from '@/components/orders/piReviewModals'
 import { colors } from '@/lib/tokens'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
+import { fetchAllRows } from '@/lib/supabasePaging'
+import {
+  APPROVE_BUTTON_LABEL,
+  APPROVE_DISABLED_REASON,
+  CHANGE_PI_BUTTON_LABEL,
+  REJECT_BUTTON_LABEL,
+  REQUEST_CHANGES_BUTTON_LABEL,
+  SUBMIT_BUTTON_LABEL,
+  changePiHref,
+  describeSubmissionActions,
+  describeSubmissionBanner,
+  describeSubmissionFailure,
+  type SubmissionAction,
+  type SubmissionBannerTone,
+} from '@/lib/orders/submissionWorkflow'
+import {
+  PI_ACTIVITY_COLUMNS,
+  activityActorIds,
+  describeActivityEntries,
+  type ActivityEntry,
+  type PersistedActivity,
+} from '@/lib/orders/submissionActivity'
 import {
   buildCommercialRows,
   buildHeaderRows,
@@ -84,6 +122,7 @@ import {
   persistedHeader,
   persistedImageUrlMaps,
   persistedProducts,
+  toNumber,
   type PersistedItem,
   type PersistedItemImage,
   type PersistedProduct,
@@ -200,6 +239,12 @@ type Draft = {
   viewerItems: readonly PiViewerItem[]
   blocking: PiDiagnosticEntry[]
   warnings: PiDiagnosticEntry[]
+  /** The append-only history, newest first, already resolved to names. */
+  activity: ActivityEntry[]
+  /** Who submitted it, and who rejected it. Null when the record has not
+   *  reached that state, or when the name could not be resolved. */
+  submitterName: string | null
+  rejectedByName: string | null
 }
 
 type Load =
@@ -259,8 +304,28 @@ function PiDraftDetailPageInner() {
   const [isMobile, setIsMobile] = useState(false)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
 
+  /**
+   * WHO IS LOOKING, AND WHAT THEY MAY DO — resolved for the SIGNED-IN account.
+   *
+   * Never a View As target: impersonation shows an administrator what somebody
+   * else sees and must not lend or borrow the authority to submit or to review.
+   * Both values decide which controls are drawn and nothing more; every RPC
+   * behind those controls re-derives the same facts in the database.
+   */
+  const [viewerId, setViewerId] = useState<string | null>(null)
+  const [canCreate, setCanCreate] = useState(false)
+  const [canReview, setCanReview] = useState(false)
+
+  /** Which decision dialog is open, if any. */
+  const [dialog, setDialog] = useState<'submit' | PiNoteIntent | null>(null)
+  const [acting, setActing] = useState(false)
+  const [actionFailure, setActionFailure] = useState<string | null>(null)
+
   const thumbnailRefs = useRef(new Map<string, HTMLButtonElement | null>())
   const viewerOpenedFrom = useRef<string | null>(null)
+  /** Belt and braces against a double click: state updates are async, this is
+   *  not, so two clicks in the same tick cannot both start a write. */
+  const actingRef = useRef(false)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
@@ -333,10 +398,49 @@ function PiDraftDetailPageInner() {
     const urls = persistedImageUrlMaps(products, images, signedByPath)
     const row = submission as unknown as PersistedSubmission
 
+    // ── The history, and the names it refers to ──
+    //
+    // PAGED, because a submission that goes back and forth a few times
+    // accumulates rows and PostgREST silently caps a response at 1000. A
+    // truncated history is worse than none: it looks complete.
+    //
+    // Ordered by id for paging — a deterministic unique column is what makes
+    // range paging return each row exactly once — and re-ordered by time for
+    // display, which describeActivityEntries does.
+    const activityRows = await fetchAllRows<PersistedActivity>((from, to) =>
+      supabase
+        .from('order_submission_activity')
+        .select(PI_ACTIVITY_COLUMNS)
+        .eq('submission_id', submissionId)
+        .order('id', { ascending: true })
+        .range(from, to))
+
+    const history = activityRows.ok ? activityRows.rows : []
+
+    // ONE users read for every name on the page: the actors in the history, the
+    // submitter and the reviewer who rejected it. A query per row would be a
+    // dozen round trips to print four names.
+    const namesById = new Map<string, string>()
+    const actorIds = activityActorIds(history, [row.submitted_by, row.rejected_by])
+    if (actorIds.length > 0) {
+      // Two safe columns, named explicitly: `select('*')` on public.users is a
+      // permission error, and a display name is all this page needs.
+      const { data: people } = await supabase
+        .from('users')
+        .select('id, full_name')
+        .in('id', actorIds)
+      for (const person of (people ?? []) as { id: string; full_name: string | null }[]) {
+        if (person?.id && person.full_name) namesById.set(person.id, person.full_name)
+      }
+    }
+
     setLoad({
       kind: 'ready',
       draft: {
         submission: row,
+        activity: describeActivityEntries(history, namesById, formatSavedAt),
+        submitterName: row.submitted_by ? namesById.get(row.submitted_by) ?? null : null,
+        rejectedByName: row.rejected_by ? namesById.get(row.rejected_by) ?? null : null,
         products,
         representativeByRow: urls.representativeByRow,
         customizationByRow: urls.customizationByRow,
@@ -363,8 +467,17 @@ function PiDraftDetailPageInner() {
         .eq('id', session.user.id)
         .single()
 
+      // A failed permission read resolves to no capabilities, so the page falls
+      // back to what it has always been — a read-only record — rather than
+      // offering a control the caller may not have.
+      const permissions = await getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => [])
+      const caps = deriveOrdersCapabilities((me as UserProfile | null)?.role, permissions)
+
       if (!active) return
       setProfile((me as UserProfile) ?? null)
+      setViewerId(session.user.id)
+      setCanCreate(caps.canCreateOrder)
+      setCanReview(caps.canApproveOrderSubmission)
       await loadDraft()
     }
 
@@ -377,6 +490,73 @@ function PiDraftDetailPageInner() {
     await supabase.auth.signOut()
     router.replace('/login')
   }
+
+  /**
+   * Run one decision, then re-read the record QUIETLY.
+   *
+   * THE RPC IS THE AUTHORITY, not the button that called it. Each of the three
+   * re-derives the actor, the permission, the ownership and the status inside
+   * the database under a row lock, so a stale screen, a second tab or a
+   * hand-crafted call all end in the same refusal.
+   *
+   * On success the record is re-read in place: the status, the banner, the
+   * controls and the history all come from the persisted row rather than from an
+   * optimistic guess, and the page does not blank, scroll or lose an open image
+   * viewer while it happens.
+   *
+   * On failure the dialog stays open with the typed note intact, and what is
+   * shown is a fixed sentence chosen by describeSubmissionFailure — never the
+   * database's own message, which carries statement text and ids.
+   */
+  const runAction = useCallback(async (
+    action: SubmissionAction,
+    call: () => Promise<{ error: unknown }>,
+  ) => {
+    if (actingRef.current) return
+    actingRef.current = true
+    setActing(true)
+    setActionFailure(null)
+
+    try {
+      const { error } = await call()
+      if (error) {
+        setActionFailure(describeSubmissionFailure(error, action).message)
+        return
+      }
+      setDialog(null)
+      await loadDraft({ quiet: true })
+    } finally {
+      actingRef.current = false
+      setActing(false)
+    }
+  }, [loadDraft])
+
+  const submitForApproval = useCallback(() => runAction('submit', async () => {
+    const { error } = await supabase.rpc('submit_order_submission', { p_submission_id: submissionId })
+    return { error }
+  }), [runAction, supabase, submissionId])
+
+  const requestChanges = useCallback((note: string) => runAction('request_changes', async () => {
+    const { error } = await supabase.rpc('request_order_submission_changes', {
+      p_submission_id: submissionId,
+      p_note: note,
+    })
+    return { error }
+  }), [runAction, supabase, submissionId])
+
+  const rejectSubmission = useCallback((reason: string) => runAction('reject', async () => {
+    const { error } = await supabase.rpc('reject_order_submission', {
+      p_submission_id: submissionId,
+      p_reason: reason,
+    })
+    return { error }
+  }), [runAction, supabase, submissionId])
+
+  const closeDialog = useCallback(() => {
+    if (actingRef.current) return
+    setDialog(null)
+    setActionFailure(null)
+  }, [])
 
   const draft = load.kind === 'ready' ? load.draft : null
 
@@ -487,11 +667,56 @@ function PiDraftDetailPageInner() {
   const headerRows = buildHeaderRows(persistedHeader(submission))
   const headerValue = (key: string) => headerRows.find(row => row.key === key)?.value ?? '—'
 
+  // ── What this viewer may do with this record ──
+  //
+  // One answer, from one helper, shared with its tests. The controls below
+  // branch on it and on nothing else, so there is no second, looser rule living
+  // in a JSX condition.
+  const actions = describeSubmissionActions({
+    status: submission.status,
+    createdBy: submission.created_by,
+    submittedBy: submission.submitted_by,
+    viewerId,
+    canCreate,
+    canApproveSubmission: canReview,
+  })
+
+  const submittedAt = submission.submitted_at ? formatSavedAt(submission.submitted_at) : null
+  const rejectedAt = submission.rejected_at ? formatSavedAt(submission.rejected_at) : null
+
+  const banner = describeSubmissionBanner({
+    status: submission.status,
+    submittedAt,
+    submitterName: draft.submitterName,
+    rejectedAt,
+    rejectedByName: draft.rejectedByName,
+  })
+
+  const bannerTone: Record<SubmissionBannerTone, { bg: string; border: string; icon: React.ReactNode }> = {
+    blue:  { bg: colors.blueTint,  border: 'rgba(85,133,232,0.35)', icon: <Clock size={16} strokeWidth={1.9} color="#2F5BB7" /> },
+    amber: { bg: colors.amberTint, border: 'rgba(232,160,48,0.35)', icon: <AlertTriangle size={16} strokeWidth={1.9} color="#9A6212" /> },
+    red:   { bg: colors.redTint,   border: 'rgba(217,79,79,0.35)',  icon: <Ban size={16} strokeWidth={1.9} color={colors.red} /> },
+    green: { bg: colors.greenTint, border: 'rgba(69,168,112,0.35)', icon: <CheckCircle2 size={16} strokeWidth={1.9} color={colors.green} /> },
+  }
+
+  /** The heading over the stored note: the same field means two different
+   *  things depending on which decision wrote it. */
+  const reviewNoteHeading = submission.status === 'rejected'
+    ? 'Why this was rejected'
+    : 'What the reviewer asked for'
+
+  const clientLabel = orDash(submission.client_name ?? submission.bill_to_name)
+  const grandTotalLabel = formatInr(toNumber(submission.grand_total))
+
   return (
     <OrdersLayout
       profile={profile}
-      title={orDash(submission.client_name ?? submission.bill_to_name)}
-      subtitle="Saved PI draft. Not submitted for approval."
+      title={clientLabel}
+      // The subtitle states what this record IS now. It used to say "Not
+      // submitted for approval", which became a false statement the moment a
+      // record could be submitted, and the page would have gone on saying it
+      // over a rejected PI.
+      subtitle={`Saved PI submission · ${draftStatusLabel(submission.status)}`}
       onSignOut={handleSignOut}
       // The header control re-reads in place: the record stays on screen, the
       // scroll position is kept, and the spinner in the header is the feedback.
@@ -511,6 +736,38 @@ function PiDraftDetailPageInner() {
                 <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, marginTop: '2px' }}>
                   This is the copy the server verified and stored. It is listed under PI Drafts and can be
                   reopened at any time. No official order number has been assigned.
+                </div>
+              </div>
+            </div>
+          </PiCard>
+        )}
+
+        {/* ── Where this record stands ──
+
+            One compact strip, above the overview it describes, and only when
+            there is something to say: a draft gets none, because the badge in
+            the card below already says "Draft" and a permanent banner repeating
+            the state every record starts in is a line of screen spent on
+            nothing.
+
+            The management NOTE is not in here. It lives on the overview card,
+            rendered verbatim, so a long paragraph is not squeezed into a strip
+            built for a sentence — and so it is shown once rather than twice. */}
+        {banner && (
+          <PiCard style={{ borderColor: bannerTone[banner.tone].border }}>
+            <div style={{
+              padding: '13px 20px', display: 'flex', gap: '10px', alignItems: 'flex-start',
+              background: bannerTone[banner.tone].bg,
+            }}>
+              <span style={{ flexShrink: 0, marginTop: '1px', display: 'flex' }}>
+                {bannerTone[banner.tone].icon}
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+                  {banner.title}
+                </div>
+                <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, marginTop: '2px' }}>
+                  {banner.body}
                 </div>
               </div>
             </div>
@@ -556,7 +813,10 @@ function PiDraftDetailPageInner() {
           <div style={{ padding: '13px 20px' }}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr 1fr' : `repeat(${workbookName ? 4 : 3}, minmax(0, 1fr))`,
+              // Four across at most, so a fifth fact wraps onto its own row
+              // rather than shrinking every block until none of them can be
+              // read. Two across on a phone, as before.
+              gridTemplateColumns: isMobile ? '1fr 1fr' : `repeat(${Math.min(3 + (workbookName ? 1 : 0) + (submittedAt ? 1 : 0), 4)}, minmax(0, 1fr))`,
               gap: '14px 18px',
             }}>
               <MetaItem
@@ -579,6 +839,18 @@ function PiDraftDetailPageInner() {
                   icon={<FileSpreadsheet size={13} strokeWidth={1.9} />}
                   label="Original PI file"
                   value={workbookName}
+                />
+              )}
+              {/* WHO SENT IT AND WHEN, on the record itself rather than only in
+                  the banner — a returned or rejected PI still has a submission
+                  behind it, and that is the fact a reviewer asks for first. The
+                  time comes from submitted_at, which only the database's status
+                  transition writes. */}
+              {submittedAt && (
+                <MetaItem
+                  icon={<Send size={13} strokeWidth={1.9} />}
+                  label="Submitted"
+                  value={`${submittedAt}${draft.submitterName ? ` · ${draft.submitterName}` : ''}`}
                 />
               )}
             </div>
@@ -616,13 +888,19 @@ function PiDraftDetailPageInner() {
             </div>
           </div>
 
+          {/* Management's own words, verbatim and prominent, on the card the
+              employee reads first. The same column carries both decisions, so
+              the heading says which one wrote it. */}
           {submission.review_note && (
             <div style={{
               padding: '12px 20px', borderTop: `1px solid ${colors.border}`,
-              background: colors.amberTint,
+              background: submission.status === 'rejected' ? colors.redTint : colors.amberTint,
             }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#9A6212', marginBottom: '2px' }}>
-                What the reviewer asked for
+              <div style={{
+                fontSize: '11px', fontWeight: 700, marginBottom: '2px',
+                color: submission.status === 'rejected' ? '#991B1B' : '#9A6212',
+              }}>
+                {reviewNoteHeading}
               </div>
               <MultilineText style={{ fontSize: '12px', color: colors.primary, margin: 0 }}>
                 {submission.review_note}
@@ -811,11 +1089,212 @@ function PiDraftDetailPageInner() {
           </PiCard>
         )}
 
+        {/* ── The employee's actions ──
+
+            One compact card, at the foot of the record, for the person who owns
+            it. Present only while the record is theirs to act on — a draft or
+            one management has returned — and absent entirely for everybody else,
+            including a reviewer looking at somebody's draft.
+
+            Submitting is guarded here by the stored blocking issues, which is a
+            courtesy: submit_order_submission re-derives them, re-checks the
+            workbook and every image in storage, and refuses on its own. */}
+        {(actions.canSubmit || actions.canChangePi) && (
+          <PiCard>
+            <div style={{
+              padding: '14px 20px',
+              display: 'flex', gap: '14px', flexWrap: 'wrap',
+              alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div style={{ minWidth: '220px', flex: 1 }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+                  {submission.status === 'needs_changes'
+                    ? 'Correct this PI and send it back'
+                    : 'Ready for management?'}
+                </div>
+                <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, marginTop: '2px' }}>
+                  {draft.blocking.length > 0
+                    ? 'The issues above must be fixed in the Excel PI first. Use Change PI to upload the corrected file.'
+                    : 'Submitting hands this PI to management for review. Nothing is numbered and no order is created.'}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  className="boe-btn boe-btn-ghost"
+                  onClick={() => router.push(changePiHref(submissionId))}
+                  disabled={acting}
+                >
+                  <Upload size={13} strokeWidth={2} />
+                  {CHANGE_PI_BUTTON_LABEL}
+                </button>
+                <button
+                  className="boe-btn boe-btn-primary"
+                  onClick={() => { setActionFailure(null); setDialog('submit') }}
+                  disabled={acting || draft.blocking.length > 0}
+                  title={draft.blocking.length > 0 ? 'Fix the issues in the PI first' : undefined}
+                >
+                  <Send size={13} strokeWidth={2} />
+                  {SUBMIT_BUTTON_LABEL}
+                </button>
+              </div>
+            </div>
+          </PiCard>
+        )}
+
+        {/* ── The management review bar ──
+
+            Shown to a holder of orders.approve_order, and only while the record
+            is actually submitted. Three controls, one of which does nothing yet
+            and says so: approval is the phase that creates an Order, allocates a
+            number and settles the advance rule, and none of that exists. A
+            control that looked live and then failed would be worse than one that
+            explains why it is waiting. */}
+        {(actions.canRequestChanges || actions.canReject) && (
+          <PiCard style={{ borderColor: 'rgba(85,133,232,0.35)' }}>
+            <div style={{
+              padding: '14px 20px',
+              display: 'flex', gap: '14px', flexWrap: 'wrap',
+              alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div style={{ minWidth: '220px', flex: 1 }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+                  Management review
+                </div>
+                <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, marginTop: '2px' }}>
+                  Send it back with a note, or reject it with a reason. Both are recorded against this PI.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span
+                  title={APPROVE_DISABLED_REASON}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '6px 12px', borderRadius: '7px',
+                    fontSize: '12.5px', fontWeight: 600,
+                    background: colors.raised, color: colors.muted,
+                    border: `1px solid ${colors.border}`,
+                    cursor: 'not-allowed',
+                  }}
+                >
+                  <Lock size={12} strokeWidth={2} />
+                  {APPROVE_BUTTON_LABEL}
+                  <span style={{ fontSize: '11px', fontWeight: 500 }}>· {APPROVE_DISABLED_REASON}</span>
+                </span>
+
+                <button
+                  className="boe-btn boe-btn-ghost"
+                  onClick={() => { setActionFailure(null); setDialog('needs_changes') }}
+                  disabled={acting}
+                >
+                  <Undo2 size={13} strokeWidth={2} />
+                  {REQUEST_CHANGES_BUTTON_LABEL}
+                </button>
+                <button
+                  className="boe-btn boe-btn-ghost"
+                  onClick={() => { setActionFailure(null); setDialog('reject') }}
+                  disabled={acting}
+                  style={{ color: colors.red, borderColor: 'rgba(217,79,79,0.35)' }}
+                >
+                  <Ban size={13} strokeWidth={2} />
+                  {REJECT_BUTTON_LABEL}
+                </button>
+              </div>
+            </div>
+          </PiCard>
+        )}
+
+        {/* ── Activity ──
+
+            The append-only trail, read under the same RLS as everything else on
+            this page, newest first. It is a history and not a control: no ids,
+            no raw metadata, no status enums — just what happened, who did it,
+            when, and whatever note they left. */}
+        <PiCard>
+          <PiCardHeader
+            title={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <History size={15} strokeWidth={1.9} color={colors.tertiary} />
+                Activity
+              </span>
+            }
+            right={
+              <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                {draft.activity.length} event{draft.activity.length === 1 ? '' : 's'}
+              </span>
+            }
+          />
+          {draft.activity.length === 0 ? (
+            <div style={{ padding: '16px 20px', fontSize: '12px', color: colors.secondary }}>
+              No activity has been recorded against this PI yet.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {draft.activity.map((entry, i) => (
+                <div
+                  key={entry.key}
+                  style={{
+                    padding: '11px 20px',
+                    borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
+                    display: 'flex', flexDirection: 'column', gap: '3px',
+                  }}
+                >
+                  <div style={{
+                    display: 'flex', gap: '10px', flexWrap: 'wrap',
+                    alignItems: 'baseline', justifyContent: 'space-between',
+                  }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
+                      {entry.label}
+                    </span>
+                    <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                      {entry.at}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: colors.secondary }}>
+                    {entry.actor}
+                  </div>
+                  {entry.note && (
+                    <MultilineText style={{
+                      fontSize: '12px', color: colors.secondary, margin: '2px 0 0',
+                      paddingLeft: '10px', borderLeft: `2px solid ${colors.border}`,
+                    }}>
+                      {entry.note}
+                    </MultilineText>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </PiCard>
+
         <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.6, padding: '0 4px' }}>
           This is the stored copy of the PI, read back from the server. It carries no official order
           number: numbering happens only after management approval.
         </div>
       </div>
+
+      {dialog === 'submit' && (
+        <PiSubmitConfirmModal
+          client={clientLabel}
+          grandTotal={grandTotalLabel}
+          submitting={acting}
+          failure={actionFailure}
+          onCancel={closeDialog}
+          onConfirm={submitForApproval}
+        />
+      )}
+
+      {(dialog === 'needs_changes' || dialog === 'reject') && (
+        <PiNoteModal
+          intent={dialog}
+          client={clientLabel}
+          saving={acting}
+          failure={actionFailure}
+          onCancel={closeDialog}
+          onConfirm={note => { if (dialog === 'reject') rejectSubmission(note); else requestChanges(note) }}
+        />
+      )}
 
       {viewerItem && nav && (
         <PiImageViewer
