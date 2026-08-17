@@ -67,16 +67,185 @@ create index order_submissions_submitted_at_idx
 -- 'submitted' activity gets NOTHING: an invented timestamp on a commercial
 -- record is worse than an honest blank, and the screens already render an absent
 -- time as "—".
-update public.order_submissions s
-   set submitted_at = latest.at
-  from (
+--
+-- THE DEFECT THIS BLOCK EXISTS TO AVOID
+-- -------------------------------------
+-- public.order_submissions carries order_submissions_set_updated_at, a BEFORE
+-- UPDATE trigger running public.set_updated_at(), whose entire body is
+-- `NEW.updated_at = now()`. It does not consult which columns changed, so a
+-- plain UPDATE here would silently restamp updated_at on every record it
+-- touched — replacing the genuine "last written" time of a real commercial
+-- record with the moment this migration happened to run, irreversibly. The
+-- drafts screens read that column as "Last saved" and order the working list by
+-- it, so the damage would be visible and permanent: records would jump to the
+-- top of the list carrying a time nobody wrote.
+--
+-- Restoring the value afterwards is not an option, because restoring it is
+-- itself an UPDATE and fires the same trigger. Writing `updated_at = <old>` in
+-- this statement does not work either: a BEFORE trigger runs after the SET list
+-- is evaluated and overwrites it. The only correct approach is for the trigger
+-- not to fire for this one statement.
+--
+-- WHY THIS IS NARROW, AND WHY IT CANNOT LEAK
+--
+--   * exactly ONE trigger is disabled, by name. The transition trigger and the
+--     frozen-column guard stay armed throughout — this write is checked by both
+--     and legitimately passes: it changes no frozen column, and it does not move
+--     the status, so the transition trigger returns early. session_replication_
+--     role is deliberately NOT used: it would switch off every trigger on the
+--     table, including those two, and RLS behaviour with it.
+--   * disable, backfill and re-enable are one DO block, which is ONE statement.
+--     A statement is atomic: if the UPDATE raises, the whole block is rolled
+--     back and the trigger is enabled again, whether or not the migration runner
+--     wraps the file in its own transaction (it does). There is no failure path
+--     that commits a disabled trigger.
+--   * it FAILS CLOSED. If the trigger is missing, is not the definition
+--     inspected when this was written, or is not in its normal enabled state,
+--     nothing is disabled and nothing is backfilled — the migration raises.
+--   * it PROVES ITSELF. Every affected row's updated_at is snapshotted first and
+--     compared afterwards; a single moved value aborts the migration.
+
+do $$
+declare
+  v_def     text;
+  v_state   "char";
+  v_moved   integer;
+  v_rows    integer;
+begin
+  -- ── 1. The trigger must be exactly what was inspected ──
+  --
+  -- Read from the catalog rather than assumed from the migration that created
+  -- it, because what matters is the trigger that is actually installed on the
+  -- database being migrated.
+  select pg_get_triggerdef(t.oid), t.tgenabled
+    into v_def, v_state
+  from pg_trigger t
+  join pg_class c     on c.oid = t.tgrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'order_submissions'
+    and t.tgname  = 'order_submissions_set_updated_at'
+    and not t.tgisinternal;
+
+  if v_def is null then
+    raise exception
+      'ORDER_SUBMISSION_BACKFILL_UNSAFE: order_submissions_set_updated_at is not installed; refusing to touch updated_at blindly'
+      using errcode = 'P0001';
+  end if;
+
+  -- BEFORE UPDATE, per row, calling the timestamp stamper.
+  --
+  -- THE SCHEMA PREFIX IS OPTIONAL IN BOTH PATTERNS, and that is not laziness.
+  -- pg_get_triggerdef renders each name against the CURRENT search_path, so on a
+  -- connection whose path includes public it prints
+  --
+  --   … ON public.order_submissions FOR EACH ROW EXECUTE FUNCTION set_updated_at()
+  --
+  -- with the function unqualified — and a pattern demanding `public.set_updated_at()`
+  -- would refuse a perfectly correct trigger and block this migration. The
+  -- IDENTITY of the trigger and its table is already pinned by the catalog join
+  -- above; these patterns confirm its SHAPE. "EXECUTE PROCEDURE" is accepted
+  -- alongside "EXECUTE FUNCTION" for the same reason: the wording belongs to the
+  -- server version, not to this trigger. The function itself is pinned to
+  -- public.set_updated_at by the pg_proc check below.
+  if v_def !~ 'BEFORE UPDATE ON (public\.)?order_submissions[[:space:]]'
+     or v_def !~ 'FOR EACH ROW'
+     or v_def !~ 'EXECUTE (FUNCTION|PROCEDURE) (public\.)?set_updated_at\(\)' then
+    raise exception
+      'ORDER_SUBMISSION_BACKFILL_UNSAFE: order_submissions_set_updated_at is not the definition this migration was written against'
+      using errcode = 'P0001';
+  end if;
+
+  -- 'O' is the ordinary enabled state. Anything else — already disabled, or set
+  -- to replica/always — is a database this migration has not reasoned about, and
+  -- re-enabling it afterwards would CHANGE that state rather than restore it.
+  if v_state <> 'O' then
+    raise exception
+      'ORDER_SUBMISSION_BACKFILL_UNSAFE: order_submissions_set_updated_at is in state %, not the ordinary enabled state', v_state
+      using errcode = 'P0001';
+  end if;
+
+  -- And the function really is the timestamp stamper, not something that shares
+  -- its name and does other work that this block would be suppressing.
+  if not exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'set_updated_at'
+      and p.prosrc like '%updated_at%'
+      and p.prosrc not like '%insert%'
+      and p.prosrc not like '%delete%'
+  ) then
+    raise exception
+      'ORDER_SUBMISSION_BACKFILL_UNSAFE: public.set_updated_at() is not the simple timestamp trigger this migration expects'
+      using errcode = 'P0001';
+  end if;
+
+  -- ── 2. Snapshot exactly what is about to change ──
+  --
+  -- The rows AND their current updated_at, so the preservation can be proved
+  -- rather than asserted. Local to this block; dropped at its end, and gone with
+  -- the transaction on any failure.
+  create temporary table _phase_a_updated_at_before as
+  select s.id, s.updated_at, latest.at as submitted_at
+  from public.order_submissions s
+  join (
     select a.submission_id, max(a.created_at) as at
     from public.order_submission_activity a
     where a.action = 'submitted'
     group by a.submission_id
-  ) as latest
- where latest.submission_id = s.id
-   and s.submitted_at is null;
+  ) as latest on latest.submission_id = s.id
+  where s.submitted_at is null;
+
+  -- ── 3. Disable ONLY the timestamp trigger ──
+  alter table public.order_submissions
+    disable trigger order_submissions_set_updated_at;
+
+  -- ── 4. The backfill itself ──
+  --
+  -- submitted_at and nothing else. No other column appears in the SET list, so
+  -- no other value on a commercial record can move.
+  update public.order_submissions s
+     set submitted_at = b.submitted_at
+    from _phase_a_updated_at_before b
+   where b.id = s.id;
+  get diagnostics v_rows = row_count;
+
+  -- ── 5. Re-enable immediately, in the same statement ──
+  alter table public.order_submissions
+    enable trigger order_submissions_set_updated_at;
+
+  -- ── 6. Prove updated_at did not move ──
+  select count(*) into v_moved
+  from _phase_a_updated_at_before b
+  join public.order_submissions s on s.id = b.id
+  where s.updated_at is distinct from b.updated_at;
+
+  if v_moved > 0 then
+    raise exception
+      'ORDER_SUBMISSION_BACKFILL_UNSAFE: % of % backfilled record(s) had updated_at changed; the historical value must be preserved',
+      v_moved, v_rows
+      using errcode = 'P0001';
+  end if;
+
+  -- ── 7. Prove the trigger is armed again ──
+  select t.tgenabled into v_state
+  from pg_trigger t
+  join pg_class c     on c.oid = t.tgrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'order_submissions'
+    and t.tgname  = 'order_submissions_set_updated_at'
+    and not t.tgisinternal;
+
+  if v_state is distinct from 'O' then
+    raise exception
+      'ORDER_SUBMISSION_BACKFILL_UNSAFE: order_submissions_set_updated_at was not restored to its enabled state'
+      using errcode = 'P0001';
+  end if;
+
+  drop table _phase_a_updated_at_before;
+end $$;
 
 -- ═══ 2. The transition graph, with one move added ═══════════════════════════
 --
@@ -548,6 +717,58 @@ begin
     );
   if v_n > 0 then
     raise exception '% submission(s) carry a submitted time with no submission in their history', v_n;
+  end if;
+
+  -- ── The backfill left no trigger disabled ──
+  --
+  -- All three triggers on order_submissions must be back in the ordinary
+  -- enabled state: the timestamp stamper this migration briefly suppressed, and
+  -- the two protections it deliberately did not touch. A disabled trigger is a
+  -- silently missing invariant, which is exactly the failure this checks for.
+  select string_agg(format('%s(%s)', t.tgname, t.tgenabled), ', ') into v_bad
+  from pg_trigger t
+  join pg_class c     on c.oid = t.tgrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'order_submissions'
+    and not t.tgisinternal
+    and t.tgenabled <> 'O';
+  if v_bad is not null then
+    raise exception 'These triggers on order_submissions are not enabled: %', v_bad;
+  end if;
+
+  select count(*) into v_n
+  from pg_trigger t
+  join pg_class c     on c.oid = t.tgrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'order_submissions'
+    and not t.tgisinternal;
+  if v_n <> 3 then
+    raise exception 'Expected 3 triggers on order_submissions, found %', v_n;
+  end if;
+
+  -- The snapshot table was local to the backfill and must not survive it.
+  if exists (
+    select 1 from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where c.relname = '_phase_a_updated_at_before'
+      and n.nspname like 'pg_temp%'
+  ) then
+    raise exception 'the backfill snapshot table was left behind';
+  end if;
+
+  -- RLS is still on, and no policy was disabled, on every table this migration
+  -- can reach.
+  select string_agg(c.relname, ', ') into v_bad
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname in ('order_submissions', 'order_submission_items',
+                      'order_submission_activity', 'order_submission_item_images')
+    and c.relforcerowsecurity is not false and not c.relrowsecurity;
+  if v_bad is not null then
+    raise exception 'RLS was weakened on: %', v_bad;
   end if;
 
   -- ── The permission this phase reviews under is still deny-by-default ──
