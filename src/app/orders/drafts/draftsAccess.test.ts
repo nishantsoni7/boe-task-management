@@ -680,6 +680,80 @@ describe('what the server thought of the document is kept', () => {
   })
 })
 
+// ── The identity card ─────────────────────────────────────────────────────────
+
+describe('identity and order information are one card', () => {
+  const source = read(DETAIL_PAGE)
+
+  test('there is a single card, headed "PI Draft", with the status on its header', () => {
+    assert.ok(source.includes('title="PI Draft"'))
+    assert.ok(source.includes('{draftStatusLabel(submission.status)}'))
+    // The status sits in the header's `right` slot rather than in a row of its
+    // own, which is what removed the band of empty space at the top.
+    assert.ok(
+      /<PiCardHeader\s+title="PI Draft"\s+right=\{[\s\S]{0,600}?draftStatusLabel\(submission\.status\)/.test(source),
+      'the badge belongs to the card header')
+  })
+
+  test('the second card is gone, not merely restyled', () => {
+    assert.ok(!source.includes('<PiCardHeader title="Order information" />'),
+      'Order information must no longer open a card of its own')
+    assert.ok(source.includes('Order information'), 'but it keeps its section label')
+    assert.ok(source.includes("borderTop: `1px solid ${colors.border}`"),
+      'separated by a divider inside the same card')
+  })
+
+  test('nothing that was on either card has been dropped', () => {
+    for (const fact of [
+      'Original PI file',
+      '{orDash(submission.source_workbook_name)}',
+      'label="Saved" value={savedAt}',
+      'buildHeaderRows(persistedHeader(submission))',
+      '{submission.review_note && (',
+    ]) {
+      assert.ok(source.includes(fact), `${fact} must survive the merge`)
+    }
+  })
+
+  test('no label or value is stated twice inside the card', () => {
+    // The merge's one real risk: two sections that each carried a client name,
+    // a date or a filename. They carry disjoint field sets, and buildHeaderRows
+    // owns everything on the lower half.
+    for (const label of ['Original PI file', 'Saved', 'Products']) {
+      const uses = source.split(`label="${label}"`).length - 1
+      assert.equal(uses, 1, `${label} must appear exactly once`)
+    }
+  })
+
+  test('the status badge is legible without being a banner', () => {
+    assert.ok(source.includes("fontSize: '11px', fontWeight: 700"))
+    assert.ok(!/fontSize: '1[4-9]px'[^}]*background: tone\.bg/.test(source),
+      'a status is a fact to note, not the subject of the page')
+  })
+
+  test('both halves of the card share one column rhythm, and stack on a phone', () => {
+    // The same track definition twice, so the provenance fields land on the
+    // same columns as the order information below them rather than being two
+    // grids that happen to share a border.
+    const grids = source.match(/gridTemplateColumns: isMobile \? '1fr 1fr' : 'repeat\(auto-fill, minmax\(180px, 1fr\)\)'/g) ?? []
+    assert.equal(grids.length, 2, 'provenance and order information use identical tracks')
+    assert.ok(source.includes("gridColumn: 'span 2'"),
+      'a filename is the one long value, so it takes two of those columns')
+  })
+
+  test('the fields are rendered by the shared field component', () => {
+    assert.ok(source.includes('<PiFieldRow label="Original PI file"'))
+    assert.ok(source.includes('<PiFieldRow key={row.key}'),
+      'one label/value treatment for both halves of the card')
+  })
+
+  test('the product count is a fact about the record, and is not repeated as a label', () => {
+    assert.ok(source.includes('label="Products"'))
+    assert.ok(source.includes('${products.length} line${products.length === 1'),
+      'counted from the rows actually loaded, never from a stored number')
+  })
+})
+
 // ── The route ─────────────────────────────────────────────────────────────────
 
 describe('the draft route', () => {

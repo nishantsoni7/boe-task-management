@@ -74,6 +74,42 @@ export function PiFieldRow({ label, value }: { label: string; value: string }) {
   )
 }
 
+// ── The customization accent ──────────────────────────────────────────────────
+//
+// WHAT IS BEING SOLVED. Customization is the one column on a PI that changes what
+// a factory builds, and in a nine-column table of names, sizes and figures it
+// read exactly like the eight columns that do not. A missed line here is a piece
+// of furniture made wrong.
+//
+// WHERE THE RED GOES, AND WHERE IT DOES NOT. Colour only means "look here" while
+// it is scarce, so it is spent on three things and nothing else: the column
+// heading, customization text that actually exists, and the border of a
+// customization photograph. A product with no customization stays completely
+// neutral — no tint, no border, no chip — because a table where every row is red
+// has said nothing. There is no solid red column and no red row background: the
+// product name and its picture must stay the dominant thing on the line.
+//
+// NO REPEATED LABEL. The desktop column already says "Customization" in its
+// heading and the mobile card already says it above the value, so a per-row chip
+// saying it a third time would be noise. What the accent does instead is colour
+// the label that is ALREADY there, and only when there is something to point at.
+//
+// THE TWO REDS ARE MEASURED, NOT PICKED BY EYE. BOE red (#DC1F2E) on the tint
+// lands at 4.50:1 — exactly on the AA line, for 10px uppercase text, which is not
+// a margin worth having. These are darker members of the same family:
+//
+//   header  #B3222E   6.59:1 on white, 6.05:1 on the tint
+//   text    #9B1C25   8.12:1 on white
+//
+// Both clear AA for normal text with room to spare, and the deeper of the two
+// carries the value rather than the label.
+
+export const PI_CUSTOMIZATION_TINT = colors.redTint
+export const PI_CUSTOMIZATION_HEADER_RED = '#B3222E'
+export const PI_CUSTOMIZATION_TEXT_RED = '#9B1C25'
+const CUSTOMIZATION_BORDER = 'rgba(217,79,79,0.45)'
+const CUSTOMIZATION_RING = '0 0 0 2px rgba(217,79,79,0.16)'
+
 // ── Thumbnails ────────────────────────────────────────────────────────────────
 
 /**
@@ -95,6 +131,12 @@ export type PiThumbnailProps = {
   label?: string
   onOpen?: () => void
   buttonRef?: (el: HTMLButtonElement | null) => void
+  /**
+   * 'customization' marks a picture of a requested CHANGE rather than of the
+   * product. It only ever changes the border, so the two kinds of picture are
+   * told apart at a glance without either being tinted or dimmed.
+   */
+  accent?: 'neutral' | 'customization'
 }
 
 export function PiProductThumbnail({
@@ -102,11 +144,14 @@ export function PiProductThumbnail({
   label,
   onOpen,
   buttonRef,
+  accent = 'neutral',
   size = 56,
 }: PiThumbnailProps & { size?: number }) {
+  const marked = accent === 'customization'
+  const restingBorder = marked ? CUSTOMIZATION_BORDER : colors.border
   const box: React.CSSProperties = {
     width: size, height: size, flexShrink: 0,
-    borderRadius: '6px', border: `1px solid ${colors.border}`,
+    borderRadius: '6px', border: `1px solid ${restingBorder}`,
     background: colors.raised, overflow: 'hidden',
   }
 
@@ -142,11 +187,14 @@ export function PiProductThumbnail({
         transition: 'border-color 0.15s, box-shadow 0.15s',
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.borderColor = colors.blue
-        e.currentTarget.style.boxShadow = '0 0 0 2px rgba(85,133,232,0.18)'
+        // A customization thumbnail keeps its own hue on hover. Turning it blue
+        // would make the one picture that is marked look like every other one at
+        // the moment somebody reaches for it.
+        e.currentTarget.style.borderColor = marked ? PI_CUSTOMIZATION_HEADER_RED : colors.blue
+        e.currentTarget.style.boxShadow = marked ? CUSTOMIZATION_RING : '0 0 0 2px rgba(85,133,232,0.18)'
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.borderColor = colors.border
+        e.currentTarget.style.borderColor = restingBorder
         e.currentTarget.style.boxShadow = 'none'
       }}
     >
@@ -176,45 +224,146 @@ export function PiProductThumbnail({
  *                        announce that it has no customization.
  *   neither            → "No customization", which says the PI was read and
  *                        there is none — not that something is missing.
+ *
+ * THE ACCENT IS CARRIED BY THE VALUE, NOT BY THE CELL. Where there is something
+ * to do, the words are dark red and semibold and the pictures are red-bordered.
+ * Where there is not, the cell is muted grey italic exactly as before — no tint,
+ * no border, nothing to look at, which is what makes the rows that DO carry an
+ * instruction findable at a glance.
+ *
+ * `label` exists for the stacked (mobile) layout, which has no column heading to
+ * colour. Passing it makes the cell render its own heading and take the accent
+ * onto it, so the rule about when the red appears lives here and not in two
+ * copies of a card layout.
  */
 export function PiCustomizationCell({
   text,
   thumbnails,
   compact,
+  label,
 }: {
   text: string | null
   thumbnails: readonly { key: string; props: PiThumbnailProps }[]
   compact: boolean
+  /** Rendered above the value, tinted when there is a customization. */
+  label?: string
 }) {
   const hasText = !!text && text.trim() !== ''
   const hasImages = thumbnails.length > 0
+  const marked = hasText || hasImages
 
-  if (!hasText && !hasImages) {
+  const heading = label && (
+    <div style={{
+      fontSize: '10px', fontWeight: marked ? 700 : 600,
+      color: marked ? PI_CUSTOMIZATION_HEADER_RED : colors.muted,
+      textTransform: 'uppercase', letterSpacing: '0.05em',
+    }}>
+      {label}
+    </div>
+  )
+
+  const body = !marked
     // Through the shared helper rather than the constant directly, so the
     // "blank means none" rule has ONE implementation and its unit tests cover
     // the string these screens actually render.
-    return (
+    ? (
       <MultilineText style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
         {formatCustomization(text)}
       </MultilineText>
     )
-  }
+    : (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: hasText && hasImages ? '6px' : 0 }}>
+        {hasText && (
+          <MultilineText style={{
+            fontSize: '12px', margin: 0,
+            color: PI_CUSTOMIZATION_TEXT_RED, fontWeight: 600,
+          }}>
+            {text}
+          </MultilineText>
+        )}
+        {hasImages && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+            {thumbnails.map(t => (
+              <PiProductThumbnail
+                key={t.key}
+                {...t.props}
+                accent="customization"
+                size={compact ? 34 : 30}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+
+  if (!heading) return body
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: hasText && hasImages ? '6px' : 0 }}>
-      {hasText && (
-        <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
-          {text}
-        </MultilineText>
-      )}
-      {hasImages && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-          {thumbnails.map(t => (
-            <PiProductThumbnail key={t.key} {...t.props} size={compact ? 34 : 30} />
-          ))}
-        </div>
-      )}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+      {heading}
+      {body}
     </div>
+  )
+}
+
+// ── The product table's heading row ───────────────────────────────────────────
+
+export type PiProductColumn = {
+  key: string
+  label: string
+  align: 'left' | 'right'
+  /** The one column that gets the accent. */
+  accent?: 'customization'
+}
+
+/**
+ * The nine columns, defined ONCE.
+ *
+ * Both PI screens render the same table over the same document, so the columns,
+ * their order, their alignment and the customization heading's treatment are
+ * defined here rather than twice. Two copies is how the accent gets applied to
+ * the upload preview and forgotten on the saved draft.
+ */
+export const PI_PRODUCT_COLUMNS: readonly PiProductColumn[] = [
+  { key: 'sequence',      label: '#',            align: 'left' },
+  { key: 'image',         label: 'Image',        align: 'left' },
+  { key: 'product',       label: 'Product',      align: 'left' },
+  { key: 'quantity',      label: 'Qty',          align: 'left' },
+  { key: 'dimensions',    label: 'Dimensions',   align: 'left' },
+  { key: 'material',      label: 'Material',     align: 'left' },
+  { key: 'customization', label: 'Customization', align: 'left', accent: 'customization' },
+  { key: 'cost',          label: 'Cost / piece', align: 'right' },
+  { key: 'lineTotal',     label: 'Line total',   align: 'right' },
+]
+
+export function PiProductTableHead() {
+  return (
+    <thead>
+      <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+        {PI_PRODUCT_COLUMNS.map(column => {
+          const marked = column.accent === 'customization'
+          return (
+            <th
+              key={column.key}
+              style={{
+                padding: '8px 14px',
+                textAlign: column.align,
+                fontSize: '10px', fontWeight: marked ? 700 : 600,
+                // A light tint, not a filled column: the heading is what is
+                // marked, and the cells below stay white so an ordinary product
+                // line reads as ordinary.
+                background: marked ? PI_CUSTOMIZATION_TINT : 'transparent',
+                color: marked ? PI_CUSTOMIZATION_HEADER_RED : colors.muted,
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {column.label}
+            </th>
+          )
+        })}
+      </tr>
+    </thead>
   )
 }
 

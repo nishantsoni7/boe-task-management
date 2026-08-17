@@ -56,6 +56,7 @@ import {
   PiProductThumbnail as ProductThumbnail,
   PiCustomizationCell as CustomizationCell,
   PiDiagnosticList as DiagnosticList,
+  PiProductTableHead,
   PiCommercialSummary,
   PiImageViewer as ImageViewer,
 } from '@/components/orders/piPreview'
@@ -766,20 +767,17 @@ export default function NewOrderPiImportPage() {
                 </div>
                 {/* Material and customization are separate fields on the PI and
                     stay separate here — merging them would hide which of the two
-                    a client actually asked for. */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-                  <div style={{
-                    fontSize: '10px', fontWeight: 600, color: colors.muted,
-                    textTransform: 'uppercase', letterSpacing: '0.05em',
-                  }}>
-                    Customization
-                  </div>
-                  <CustomizationCell
-                    text={p.customization}
-                    thumbnails={customizationThumbnails(p.row)}
-                    compact
-                  />
-                </div>
+                    a client actually asked for.
+
+                    The heading is the cell's own, so the accent appears on the
+                    label exactly when there is a customization to point at — the
+                    same rule the desktop column heading follows. */}
+                <CustomizationCell
+                  label="Customization"
+                  text={p.customization}
+                  thumbnails={customizationThumbnails(p.row)}
+                  compact
+                />
 
                 <div style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
@@ -796,19 +794,9 @@ export default function NewOrderPiImportPage() {
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  {['#', 'Image', 'Product', 'Qty', 'Dimensions', 'Material', 'Customization', 'Cost / piece', 'Line total'].map((h, i) => (
-                    <th key={h} style={{
-                      padding: '8px 14px',
-                      textAlign: i >= 7 ? 'right' : 'left',
-                      fontSize: '10px', fontWeight: 600, color: colors.muted,
-                      textTransform: 'uppercase', letterSpacing: '0.05em',
-                      whiteSpace: 'nowrap',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
+              {/* The columns, and the customization accent, come from the shared
+                  definition — the saved-draft table renders the identical head. */}
+              <PiProductTableHead />
               <tbody>
                 {preview.data.products.map(p => (
                   <tr key={p.row} style={{
