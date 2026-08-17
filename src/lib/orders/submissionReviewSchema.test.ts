@@ -81,6 +81,18 @@ const statements = code.replace(/comment on [\s\S]*?is\s+'(?:[^']|'')*'\s*;/g, '
 const assertionsAt = statements.lastIndexOf('do $$')
 const declarations = statements.slice(0, assertionsAt)
 
+/**
+ * The backfill's own DO block — the first one in the file.
+ *
+ * Read as its own unit because what is being asserted about it is an ORDER:
+ * inspect, then disable, then write, then re-enable, then prove. A search across
+ * the whole migration would happily find those five things in the wrong
+ * sequence, which is the one arrangement that would be unsafe.
+ */
+const backfillBlockStart = code.indexOf('do $$')
+const backfillBlockEnd = code.indexOf('end $$;', backfillBlockStart) + 'end $$;'.length
+const backfill = code.slice(backfillBlockStart, backfillBlockEnd)
+
 /** The full text of one `create or replace function public.<name>(…) … $$;` */
 function functionBlock(name: string): string {
   const needle = `create or replace function public.${name}(`
@@ -122,13 +134,21 @@ describe('Phase A is one additive migration', () => {
     assert.ok(!images.includes('submitted_at'))
   })
 
-  test('it creates no table, drops no column and touches no unrelated object', () => {
-    assert.ok(!/create table/i.test(declarations), 'Phase A adds behaviour, not structure')
+  test('it creates no persistent table, drops no column and touches no unrelated object', () => {
     assert.ok(!/drop column/i.test(declarations))
-    assert.ok(!/drop table/i.test(declarations))
     assert.ok(!/drop function/i.test(declarations))
     assert.ok(!/drop policy/i.test(declarations))
-    // The one thing it drops is the action CHECK, so it can be re-added wider.
+
+    // The only table it creates is the backfill's own snapshot, and it is
+    // TEMPORARY and dropped in the same block. Nothing persistent is added.
+    const creates = declarations.match(/create (temporary )?table/gi) ?? []
+    assert.deepEqual(creates.map(s => s.toLowerCase()), ['create temporary table'],
+      'Phase A adds behaviour, not structure')
+    const dropped = declarations.match(/drop table (\w+)/g) ?? []
+    assert.deepEqual(dropped, ['drop table _phase_a_updated_at_before'],
+      'and the snapshot is the only thing dropped')
+
+    // The one constraint it replaces is the activity action CHECK.
     const drops = declarations.match(/drop constraint/g) ?? []
     assert.equal(drops.length, 1, 'exactly one constraint is replaced: the activity action set')
   })
@@ -238,13 +258,151 @@ describe('the submission time is the database’s to write', () => {
   test('the backfill takes history, never a guess, and runs before the guard tightens', () => {
     assert.ok(code.includes("where a.action = 'submitted'"),
       'the source is the append-only trail, which no client role can write')
-    assert.ok(code.includes('and s.submitted_at is null'), 'and it never overwrites a real value')
+    assert.ok(code.includes('where s.submitted_at is null'), 'and it never overwrites a real value')
     const backfillAt = code.indexOf('update public.order_submissions s')
     const guardAt = code.indexOf('create or replace function public.order_submissions_guard_frozen_columns')
     assert.ok(backfillAt > -1 && guardAt > backfillAt,
       'the recovery runs under the old guard, so the new rule needs no exception carved into it')
     assert.ok(sql.includes('carry a submitted time with no submission in their history'),
       'and the migration fails if anything was invented')
+  })
+
+  test('records with no reliable submitted activity are left null', () => {
+    // An inner JOIN against the trail, not a left join with a fallback: a record
+    // the history cannot vouch for gets nothing rather than an invented time.
+    assert.ok(code.includes('join (\n    select a.submission_id, max(a.created_at) as at'),
+      'the newest submitted event, and only for records that have one')
+    assert.ok(!/coalesce\([^)]*now\(\)/.test(code.slice(backfillBlockStart, backfillBlockEnd)),
+      'nothing substitutes the migration time for a missing event')
+  })
+})
+
+// ── The backfill must not restamp updated_at ──────────────────────────────────
+
+describe('the backfill preserves the historical updated_at', () => {
+  test('the migration knows exactly which trigger would restamp it', () => {
+    // public.order_submissions carries a BEFORE UPDATE trigger whose whole body
+    // is `NEW.updated_at = now()`. A plain UPDATE here would replace the genuine
+    // "last written" time of a real commercial record with the migration's own,
+    // irreversibly — and the drafts screens read that column as "Last saved" and
+    // order the working list by it.
+    const base = readMigration(SUBMISSIONS_FILE)
+    assert.ok(base.includes('create trigger order_submissions_set_updated_at'))
+    assert.ok(base.includes('before update on public.order_submissions'))
+    assert.ok(base.includes('for each row execute function public.set_updated_at();'))
+    assert.ok(backfill.includes('order_submissions_set_updated_at'),
+      'and Phase A names that exact trigger')
+  })
+
+  test('exactly one trigger is disabled, by name', () => {
+    const disables = declarations.match(/disable trigger [\w.]+/g) ?? []
+    assert.deepEqual(disables, ['disable trigger order_submissions_set_updated_at'],
+      'the transition trigger and the frozen-column guard stay armed throughout')
+  })
+
+  test('the blunt instruments are refused', () => {
+    // session_replication_role would switch off EVERY trigger on the table —
+    // the status transition and the frozen-column guard with it — and change
+    // RLS behaviour. `disable trigger all` and `disable trigger user` are the
+    // same mistake spelled differently.
+    assert.ok(!/session_replication_role/i.test(declarations))
+    assert.ok(!/disable trigger all/i.test(declarations))
+    assert.ok(!/disable trigger user/i.test(declarations))
+    assert.ok(!/disable row level security/i.test(declarations))
+    assert.ok(!/alter table[\s\S]{0,80}disable trigger order_submissions_(enforce|guard)/i.test(declarations),
+      'the two protections are never suppressed')
+  })
+
+  test('it is re-enabled in the same statement that disabled it', () => {
+    const disableAt = backfill.indexOf('disable trigger order_submissions_set_updated_at')
+    const updateAt = backfill.indexOf('update public.order_submissions s')
+    const enableAt = backfill.indexOf('enable trigger order_submissions_set_updated_at')
+    assert.ok(disableAt > -1 && updateAt > disableAt && enableAt > updateAt,
+      'disable, backfill, re-enable — in that order')
+
+    // All three live inside ONE do-block. A DO block is a single statement and
+    // is therefore atomic on its own: a failure in the UPDATE rolls the disable
+    // back, whether or not the migration runner wraps the file in its own
+    // transaction. There is no failure path that commits a disabled trigger.
+    assert.ok(backfill.trim().startsWith('do $$'))
+    assert.ok(backfill.trim().endsWith('end $$;'))
+  })
+
+  test('it fails closed when the trigger is missing or has changed', () => {
+    for (const guard of [
+      'ORDER_SUBMISSION_BACKFILL_UNSAFE',
+      'BEFORE UPDATE ON (public\\.)?order_submissions[[:space:]]',
+      'FOR EACH ROW',
+      'EXECUTE (FUNCTION|PROCEDURE) (public\\.)?set_updated_at\\(\\)',
+    ]) {
+      assert.ok(backfill.includes(guard), `the definition check must assert: ${guard}`)
+    }
+    // Anything other than the ordinary enabled state is a database this
+    // migration has not reasoned about: re-enabling would CHANGE that state
+    // rather than restore it.
+    assert.ok(backfill.includes("if v_state <> 'O' then"))
+    const checkAt = backfill.indexOf('pg_get_triggerdef')
+    const disableAt = backfill.indexOf('disable trigger')
+    assert.ok(checkAt > -1 && disableAt > checkAt,
+      'the trigger is inspected BEFORE anything is disabled')
+  })
+
+  test('the definition check tolerates how the catalog actually renders names', () => {
+    // THE DEFECT THIS PINS. pg_get_triggerdef renders each name against the
+    // CURRENT search_path, so on a connection whose path includes public it
+    // prints the function UNQUALIFIED:
+    //
+    //   … ON public.order_submissions FOR EACH ROW EXECUTE FUNCTION set_updated_at()
+    //
+    // An earlier draft of this check demanded `public.set_updated_at()` and
+    // therefore fail-closed on a perfectly correct trigger — which would have
+    // blocked the whole migration on a real database. Verified against a
+    // disposable PostgreSQL 16 instance, which prints exactly that.
+    assert.ok(backfill.includes('(public\\.)?set_updated_at'),
+      'the schema prefix on the FUNCTION must be optional')
+    assert.ok(backfill.includes('(public\\.)?order_submissions'),
+      'and on the table, for the same reason')
+    assert.ok(!/[^)]public\\\.set_updated_at/.test(backfill),
+      'no pattern may require the qualified form')
+
+    // Identity is not left to the regex: the catalog join pins the schema, the
+    // table and the trigger name, and a separate pg_proc check pins the
+    // function to public.set_updated_at.
+    assert.ok(backfill.includes("where n.nspname = 'public'"))
+    assert.ok(backfill.includes("and c.relname = 'order_submissions'"))
+    assert.ok(backfill.includes("and t.tgname  = 'order_submissions_set_updated_at'"))
+    assert.ok(backfill.includes("and p.proname = 'set_updated_at'"))
+  })
+
+  test('preservation is proved at apply time, not merely intended', () => {
+    assert.ok(backfill.includes('create temporary table _phase_a_updated_at_before'),
+      'every affected row’s updated_at is snapshotted first')
+    assert.ok(backfill.includes('where s.updated_at is distinct from b.updated_at'),
+      'and compared afterwards')
+    assert.ok(backfill.includes('had updated_at changed'),
+      'a single moved value aborts the migration')
+    const enableAt = backfill.indexOf('enable trigger')
+    const proveAt = backfill.indexOf('is distinct from b.updated_at')
+    assert.ok(proveAt > enableAt, 'and the proof runs after the trigger is back')
+  })
+
+  test('only submitted_at is written', () => {
+    assert.ok(backfill.includes('set submitted_at = b.submitted_at'))
+    const setList = backfill.slice(backfill.indexOf('set submitted_at = b.submitted_at'))
+      .slice(0, backfill.slice(backfill.indexOf('set submitted_at = b.submitted_at')).indexOf(';'))
+    assert.ok(!/updated_at\s*=/.test(setList),
+      'updated_at is never assigned — a BEFORE trigger would overwrite it anyway')
+    assert.ok(!/status\s*=|review_note\s*=|rejected_/.test(setList),
+      'no other value on a commercial record can move')
+  })
+
+  test('the migration asserts no trigger was left disabled', () => {
+    assert.ok(sql.includes('These triggers on order_submissions are not enabled'))
+    assert.ok(sql.includes("and t.tgenabled <> 'O'"))
+    assert.ok(sql.includes('Expected 3 triggers on order_submissions'),
+      'the timestamp stamper, the transition trigger and the frozen-column guard')
+    assert.ok(sql.includes('the backfill snapshot table was left behind'))
+    assert.ok(sql.includes('RLS was weakened on'))
   })
 })
 
