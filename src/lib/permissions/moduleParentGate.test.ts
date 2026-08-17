@@ -31,6 +31,28 @@ import type { EffectivePermission } from './types'
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
 
+/** Escape a literal (URLs carry ? . & /) for use inside a RegExp. */
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// ── THE AUTHORIZATION PATH, AS OF THE SHARED-RESOLUTION REFACTOR ─────────────
+//
+// The rule and its two enforcement points are unchanged. What moved is WHERE the
+// engine is resolved: ModuleGuard and the launcher each used to call the
+// resolver themselves, and now both read one session-scoped resolution. So the
+// source contract this file pins is a three-hop path, and every assertion below
+// pins the hop it is responsible for:
+//
+//   ModuleGuard  ─┐
+//                 ├─→ usePermissionContext ─→ getEffectivePermissionsForUser
+//   /modules     ─┘        (one cache entry)        (the existing resolver)
+//
+// Pinning only the two ends would let a future edit sever the middle and still
+// pass, which is exactly the class of defect this file exists for: a rule that
+// nothing calls.
+const GUARD_PATH    = 'src/components/layout/ModuleGuard.tsx'
+const LAUNCHER_PATH = 'src/app/modules/page.tsx'
+const CONTEXT_PATH  = 'src/hooks/queries/usePermissionContext.ts'
+
 const perms = (allowed: string[], denied: string[] = []): EffectivePermission[] => [
   ...allowed.map(actionKey => ({ actionKey, allowed: true, source: 'employee_override' as const })),
   ...denied.map(actionKey => ({ actionKey, allowed: false, source: 'employee_override' as const })),
@@ -139,6 +161,42 @@ describe('the gated registry', () => {
   })
 })
 
+// The two states the shared resolution can be in besides "answered": not yet
+// resolved, and failed. Both surface to callers as an EMPTY permission map (and,
+// for a failed profile read, a null role), so the rule itself has to deny on
+// exactly those inputs — for every gated module, not just the four with counts.
+describe('an unresolved or failed resolution denies, for every gated module', () => {
+  test('an empty permission map denies a non-admin', () => {
+    for (const moduleKey of [...MIGRATED, ...CONTROLS]) {
+      assert.equal(canOpen('member', moduleKey, []), false, moduleKey)
+    }
+  })
+
+  test('a null role denies, even with a stored view grant', () => {
+    for (const moduleKey of [...MIGRATED, ...CONTROLS]) {
+      assert.equal(canOpen(null, moduleKey, []), false, `${moduleKey} with no role`)
+      assert.equal(
+        canOpen(null, moduleKey, perms(['view'])), false,
+        `${moduleKey}: a stored view grant must not open a module for an unidentified caller`,
+      )
+    }
+  })
+
+  test('an admin still passes on the role short-circuit alone', () => {
+    // A permissions RPC failure yields an empty map. It must not take an
+    // administrator's access away — that is the other direction of the defect.
+    for (const moduleKey of [...MIGRATED, ...CONTROLS]) {
+      assert.equal(canOpen('admin', moduleKey, []), true, moduleKey)
+    }
+  })
+
+  test('an explicit view grant still opens every gated module for a member', () => {
+    for (const moduleKey of [...MIGRATED, ...CONTROLS]) {
+      assert.equal(canOpen('member', moduleKey, perms(['view'])), true, moduleKey)
+    }
+  })
+})
+
 // ── The wiring ──────────────────────────────────────────────────────────────
 
 describe('every engine-gated module has a route guard', () => {
@@ -182,24 +240,62 @@ describe('every engine-gated module has a route guard', () => {
 })
 
 describe('ModuleGuard cannot leak the page or its data', () => {
-  const guard = read('src/components/layout/ModuleGuard.tsx')
+  const guard = read(GUARD_PATH)
 
   test('children render only in the allowed state', () => {
+    // The guard no longer carries a three-valued state machine; `allowed` is
+    // derived. THE RULE IS UNCHANGED and is if anything stated more directly:
+    // ONE early return covers both "not resolved yet" and "denied", so children
+    // mount in neither, and a child that fetches on mount cannot start early.
     assert.ok(
-      guard.includes("if (state !== 'allowed') return <LoadingScreen />"),
+      guard.includes('if (!allowed) return <LoadingScreen />'),
       'children must not render while checking or denied — that is the content flash, ' +
       'and it is also what would let a child start fetching before authorization',
     )
+
+    // …and `allowed` is false unless all three hold. Without the first two
+    // conjuncts an unresolved context would read as a grant.
+    const decision = guard.slice(guard.indexOf('const allowed ='), guard.indexOf('useEffect('))
+    assert.ok(decision.includes('ready &&'), 'an unresolved context must not read as allowed')
+    assert.ok(decision.includes('userId !== null &&'), 'an unidentified caller must not read as allowed')
+    assert.ok(decision.includes('canAccessManagementModule({'), 'the grant must come from the shared rule')
+
+    // The protected tree has exactly one render site, and it is past the gate.
+    const gateAt     = guard.indexOf('if (!allowed) return <LoadingScreen />')
+    const childrenAt = guard.indexOf('return <>{children}</>')
+    assert.equal((guard.match(/\{children\}/g) ?? []).length, 1, 'children must have a single render site')
+    assert.ok(gateAt > -1 && childrenAt > gateAt, 'the protected tree must render only past the gate')
   })
 
   test('a denial redirects rather than rendering the protected tree', () => {
-    assert.ok(guard.includes("setState('denied')"))
-    assert.ok(guard.includes('router.replace(deniedRoute)'))
+    assert.ok(guard.includes('router.replace(deniedRoute)'), 'a denied module must redirect')
+    assert.ok(guard.includes("router.replace('/login')"), 'an unidentified caller must be sent to sign in')
+
+    // The redirect is driven by the same `allowed` the render gate uses, and is
+    // WITHHELD until the context resolves. Redirecting while unresolved would
+    // bounce authorized people, which is the mirror image of the leak.
+    const effect = guard.slice(guard.indexOf('useEffect('), guard.indexOf('if (!allowed) return <LoadingScreen />'))
+    assert.ok(effect.includes('if (!ready) return'), 'an unresolved context must not trigger a redirect')
+    assert.ok(effect.includes('if (!allowed) router.replace(deniedRoute)'))
   })
 
   test('the decision comes from the shared rule, not a local reimplementation', () => {
-    assert.ok(guard.includes('canAccessManagementModule'))
-    assert.ok(guard.includes('getEffectivePermissions'))
+    assert.ok(guard.includes('canAccessManagementModule'), 'the guard must ask the shared rule')
+
+    // HOP 1 of the path. The engine resolution moved into the shared context, so
+    // the guard reads it from there instead of resolving a second time. The far
+    // end — that the context really calls the resolver — is pinned by the
+    // usePermissionContext describe below; together they pin the whole path.
+    assert.ok(guard.includes('usePermissionContext()'), 'the guard must read the shared resolution')
+    assert.ok(
+      guard.includes('permissionsByModule.get(moduleKey) ?? []'),
+      'the permissions handed to the rule must come from that shared resolution',
+    )
+
+    // And no second opinion of any kind, from any source.
+    for (const forbidden of ["from('app_modules')", 'resolveModuleAccess(', '.rpc(']) {
+      assert.ok(!guard.includes(forbidden), `the guard must not resolve module entry via ${forbidden}`)
+    }
   })
 
   test('it reads the signed-in user, never a View As target', () => {
@@ -210,8 +306,55 @@ describe('ModuleGuard cannot leak the page or its data', () => {
   })
 })
 
+// HOP 2 of the path, and the fail-closed defaults every caller inherits from it.
+describe('usePermissionContext is the one resolution, and it fails closed', () => {
+  const context = read(CONTEXT_PATH)
+
+  test('it resolves the real engine, for the signed-in user only', () => {
+    assert.ok(
+      context.includes('getEffectivePermissionsForUser(supabase, userId)'),
+      'the shared context must call the EXISTING resolver — this is the far end of the path ' +
+      'ModuleGuard and the launcher now depend on, and severing it would silently ungate both',
+    )
+    assert.ok(
+      context.includes("queryKey: ['permission-context', userId ?? null]"),
+      'the resolution must be keyed by the signed-in user, so one user cannot read another\'s entry',
+    )
+    assert.ok(
+      !context.includes('useViewAs') && !context.includes('viewAsUserId'),
+      'View As must not reach the single resolution both guards depend on',
+    )
+  })
+
+  test('an unresolved context reports denial, not permission', () => {
+    assert.ok(context.includes('ready: !idPending && !contextPending'), 'ready must mean BOTH halves resolved')
+    assert.ok(
+      /const NO_PERMISSIONS[^=]*=\s*new Map\(\)/.test(context),
+      'the unresolved default must be an EMPTY permission map',
+    )
+    assert.ok(context.includes('permissionsByModule: data?.permissionsByModule ?? NO_PERMISSIONS'))
+    assert.ok(context.includes('role: profile?.role ?? null'), 'an unresolved profile must report a null role')
+  })
+
+  test('a failed resolution fails closed on each half independently', () => {
+    // Permissions: degrade to an empty map. That denies every non-admin, while
+    // an admin still passes on the role short-circuit alone.
+    assert.ok(
+      /getEffectivePermissionsForUser\(supabase, userId\)\.catch\(\s*\(\) => new Map/.test(context),
+      'a permissions RPC failure must degrade to an empty map, not resolve as a grant',
+    )
+    // Profile: reject rather than return a fail-closed object, so a blipped
+    // refetch cannot overwrite a good cached answer with a denial — while a
+    // FIRST failure still leaves no data, hence a null role, hence denial.
+    assert.ok(
+      context.includes('if (profileResult.error) throw profileResult.error'),
+      'a failed profile read must reject rather than resolve to a denial that gets cached',
+    )
+  })
+})
+
 describe('the launcher agrees with the guards', () => {
-  const launcher = read('src/app/modules/page.tsx')
+  const launcher = read(LAUNCHER_PATH)
 
   test('every engine-gated module is gated by canOpenModule', () => {
     for (const moduleKey of Object.keys(MODULE_ROUTES)) {
@@ -223,8 +366,48 @@ describe('the launcher agrees with the guards', () => {
   })
 
   test('canOpenModule is the shared rule', () => {
-    assert.ok(launcher.includes('canAccessManagementModule'))
-    assert.ok(launcher.includes('getEffectivePermissionsForUser'))
+    assert.ok(launcher.includes('canAccessManagementModule'), 'the card gate must ask the shared rule')
+
+    // HOP 1 of the path, launcher side. The resolver call moved out of this file
+    // and into usePermissionContext; the launcher reaches it through the hook.
+    // That hop is what makes a card and a route agree BY CONSTRUCTION — both now
+    // read one resolution — rather than by two implementations that look alike.
+    assert.ok(launcher.includes('usePermissionContext()'), 'the launcher must read the shared resolution')
+    assert.ok(
+      !launcher.includes('getEffectivePermissionsForUser('),
+      'the launcher must not resolve the engine a second time — that is what the shared context is for',
+    )
+
+    const gate = launcher.slice(launcher.indexOf('const canOpenModule'), launcher.indexOf('const isAdminFallback'))
+    assert.ok(gate.includes('role: signedInRole'), 'the gate must read the SIGNED-IN role')
+    assert.ok(gate.includes('permissions: permsByModule.get(moduleKey) ?? []'))
+    assert.ok(gate.includes('isModuleActive: true'))
+  })
+
+  test('View As never lends authority to a launcher card', () => {
+    // The launcher does hold an effectiveProfile, and legitimately uses it for
+    // presentation and for the Attendance/Payroll self-service card. It must
+    // never reach the parent gate: previewing somebody's screen must not open a
+    // module for them, nor close one the administrator holds.
+    const gate = launcher.slice(launcher.indexOf('const canOpenModule'), launcher.indexOf('const isAdminFallback'))
+    for (const viewAs of ['effectiveProfile', 'viewAsProfile', 'viewAsUserId']) {
+      assert.ok(!gate.includes(viewAs), `the parent gate must not read ${viewAs}`)
+    }
+  })
+
+  test('no card is rendered before authorization resolves', () => {
+    // A card that appears before the gate has an answer is an unauthorized flash
+    // — and, since the card is clickable, an invitation to a route that will
+    // then bounce. The launcher holds the whole screen instead.
+    assert.ok(
+      launcher.includes('const loading = !permsReady || modVisPending'),
+      'the launcher must hold the screen until the gate has an answer',
+    )
+    const render = launcher.slice(launcher.indexOf('return ('))
+    assert.ok(
+      render.includes('loading ? <LoadingScreen /> :'),
+      'an unresolved gate must show the loading screen, not a partial card list',
+    )
   })
 
   test('no engine-gated module is still gated by app_modules', () => {
@@ -243,22 +426,35 @@ describe('the launcher agrees with the guards', () => {
 })
 
 describe('a disabled module never starts its count request', () => {
-  const launcher = read('src/app/modules/page.tsx')
+  const launcher = read(LAUNCHER_PATH)
 
   // The four module-specific endpoints the launcher used to call for everyone,
-  // paired with the module whose gate must now decide them.
-  const COUNT_ENDPOINTS: [string, string][] = [
-    ['task_management', '/api/notifications?count=1&category=task'],
-    ['sample_tracking', '/api/samples/notifications?count=1'],
-    ['finance',         '/api/notifications?count=1&category=finance'],
-    ['orders',          '/api/notifications?count=1&category=order'],
+  // paired with the module whose gate must decide them and with the flag that
+  // gate is stored in. The helper is now `load(<flag>, <url>, <field>)`; what
+  // must hold is unchanged — no request for a module this person cannot open.
+  const COUNT_ENDPOINTS: [string, string, string][] = [
+    ['task_management', '/api/notifications?count=1&category=task',    'mayOpenTask'],
+    ['sample_tracking', '/api/samples/notifications?count=1',          'mayOpenSample'],
+    ['finance',         '/api/notifications?count=1&category=finance', 'mayOpenFinance'],
+    ['orders',          '/api/notifications?count=1&category=order',   'mayOpenOrders'],
   ]
 
-  test('every module endpoint is requested only through countIfAllowed', () => {
-    for (const [moduleKey, url] of COUNT_ENDPOINTS) {
+  test('every module endpoint is requested only through its own module gate', () => {
+    for (const [moduleKey, url, flag] of COUNT_ENDPOINTS) {
+      // The flag IS the gate: permissions resolved AND this module openable.
       assert.ok(
-        launcher.includes(`countIfAllowed('${moduleKey}', '${url}')`),
-        `${url} must be gated on ${moduleKey}`,
+        new RegExp(`const ${flag}\\s*=\\s*permsReady && canOpenModule\\('${moduleKey}'\\)`).test(launcher),
+        `${flag} must be defined as permsReady && canOpenModule('${moduleKey}')`,
+      )
+      // The endpoint exists in exactly one place…
+      assert.equal(
+        (launcher.match(new RegExp(esc(url), 'g')) ?? []).length, 1,
+        `${url} must appear exactly once — a second call site would be ungated`,
+      )
+      // …and that place is behind this module's flag.
+      assert.ok(
+        new RegExp(`load\\(${flag},\\s*'${esc(url)}'`).test(launcher),
+        `${url} must be requested through ${flag}`,
       )
     }
   })
@@ -267,36 +463,51 @@ describe('a disabled module never starts its count request', () => {
     // The strongest form of "does not fetch": there is no second place a
     // request could be issued from. If someone adds a bare fetch() back to this
     // page, this fails regardless of what they name it.
-    const fetchSites = launcher.match(/fetch\(/g) ?? []
+    //
+    // `router.prefetch(` also ends in "fetch(" and is route warming, not a data
+    // request, so it is excluded rather than counted.
+    const fetchSites = launcher.match(/(?<!pre)fetch\(/g) ?? []
     assert.equal(fetchSites.length, 1, 'the launcher must have a single fetch call site')
 
     const gate = launcher.slice(
-      launcher.indexOf('const countIfAllowed'),
-      launcher.indexOf('const [taskNotifsRes'),
+      launcher.indexOf('const load ='),
+      launcher.indexOf('load(mayOpenTask'),
     )
-    assert.ok(gate.includes('fetch(url)'), 'the one fetch must live inside countIfAllowed')
+    assert.ok(gate.includes('fetch(url)'), 'the one fetch must live inside the load gate')
     assert.ok(
-      gate.includes('mayOpen(moduleKey)') && gate.includes('Promise.resolve(null)'),
-      'a disallowed module must short-circuit to null without issuing a request',
+      gate.includes('if (!allowed) return'),
+      'a disallowed module must short-circuit before issuing a request',
     )
   })
 
   test('the gate is the shared rule, not a second opinion', () => {
-    const mayOpen = launcher.slice(
-      launcher.indexOf('const mayOpen'),
-      launcher.indexOf('if (profileData) setProfile'),
+    const gate = launcher.slice(launcher.indexOf('const canOpenModule'), launcher.indexOf('const isAdminFallback'))
+    assert.ok(gate.includes('canAccessManagementModule'))
+    assert.ok(gate.includes('permissions: permsByModule.get(moduleKey) ?? []'))
+    // …and that map is the shared resolution, not a launcher-local lookup.
+    assert.ok(
+      launcher.includes('permissionsByModule: permsByModule'),
+      'the permission map must come from usePermissionContext',
     )
-    assert.ok(mayOpen.includes('canAccessManagementModule'))
-    assert.ok(mayOpen.includes("permissions: effectivePermissions.get(moduleKey) ?? []"))
   })
 
   test('permissions resolve BEFORE any count is requested', () => {
-    const permsAt = launcher.indexOf('getEffectivePermissionsForUser(supabase, uid)')
-    const gateAt  = launcher.indexOf('const mayOpen')
-    const fetchAt = launcher.indexOf('const countIfAllowed')
-    assert.ok(permsAt > -1 && gateAt > -1 && fetchAt > -1)
-    assert.ok(permsAt < gateAt, 'the permission fetch must precede the gate')
-    assert.ok(gateAt < fetchAt, 'the gate must precede the count requests')
+    const contextAt = launcher.indexOf('} = usePermissionContext()')
+    const gateAt    = launcher.indexOf('const canOpenModule')
+    const flagAt    = launcher.indexOf('const mayOpenTask')
+    const loadAt    = launcher.indexOf('const load =')
+    assert.ok(contextAt > -1 && gateAt > -1 && flagAt > -1 && loadAt > -1)
+    assert.ok(contextAt < gateAt, 'the shared resolution must precede the gate')
+    assert.ok(gateAt    < flagAt, 'the gate must precede the per-module flags')
+    assert.ok(flagAt    < loadAt, 'the flags must precede the count requests')
+
+    // Belt and braces: the effect that issues them refuses to start at all until
+    // there is an answer, so an unresolved gate cannot leak a request either.
+    const effectGuardAt = launcher.indexOf('if (!permsReady || !userId) return')
+    assert.ok(
+      effectGuardAt > -1 && effectGuardAt < loadAt,
+      'the counts effect must refuse to run before permissions resolve',
+    )
   })
 
   // The behavioural half: the predicate countIfAllowed branches on. A module

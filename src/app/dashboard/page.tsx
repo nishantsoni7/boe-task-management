@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, User, CalendarDays } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Task } from '@/lib/types'
@@ -14,6 +14,8 @@ import { useViewAs } from '@/hooks/useViewAs'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers } from '@/hooks/queries/useMyTasks'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useRefresh } from '@/contexts/RefreshContext'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -63,17 +65,29 @@ const PRIORITY_PILL: Record<string, { color: string; bg: string }> = {
 }
 const BLOCKED_PILL = { color: '#991B1B', bg: '#FEF2F2' }
 
+// ── The dashboard's own data, as ONE cache entry ─────────────────────────────
+//
+// Task rows and the creator names derived from them are two round trips that
+// cannot be parallelised — the second query's `in` list comes out of the first
+// query's rows — so they are cached together. One entry means a warm reopen
+// costs zero requests rather than one, and it is impossible to end up with rows
+// from one fetch and names from another.
+type DashboardTaskData = {
+  tasks: Task[]
+  assignerNames: Record<string, string>
+}
+
+// Stable empty fallbacks. An unresolved query must not hand every memo, filter
+// and child component a brand-new [] / {} on each render.
+const NO_TASKS: Task[] = []
+const NO_ASSIGNER_NAMES: Record<string, string> = {}
+
 export default function DashboardPage() {
   const [escalationsNowMs]   = useState(() => Date.now())
-  const [loggedInId,         setLoggedInId]         = useState('')
-  const [tasks,              setTasks]              = useState<Task[]>([])
-  const [loading,            setLoading]            = useState(true)
-  const [currentUserId,      setCurrentUserId]      = useState('')
   const [selectedTask,       setSelectedTask]       = useState<Task | null>(null)
   const [escalationTasks,    setEscalationTasks]    = useState<Task[]>([])
   const [previewList,        setPreviewList]        = useState<{ title: string; items: Task[] } | null>(null)
   const [escalationPreview,  setEscalationPreview]  = useState(false)
-  const [assignerNames,      setAssignerNames]      = useState<Record<string, string>>({})
   const [acknowledgingIds,   setAcknowledgingIds]   = useState<Set<string>>(new Set())
   const [isMobile,           setIsMobile]           = useState(false)
 
@@ -81,6 +95,116 @@ export default function DashboardPage() {
   const supabase    = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
   const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
+  const { manualRefreshKey } = useRefresh()
+
+  // ── WHO, resolved before the first render instead of one await later ───────
+  //
+  // This page used to open with `await supabase.auth.getSession()` inside an
+  // effect, purely to learn its own user id. ModuleGuard — the layout directly
+  // above this page — has already resolved that id through usePermissionContext
+  // and holds it in the query cache, so asking for it here is free and, more to
+  // the point, ANSWERED SYNCHRONOUSLY ON THE FIRST RENDER. That is what lets the
+  // task query below be keyed and read from cache in render 1; behind an await
+  // there is necessarily a render with no key, no data and therefore a spinner.
+  //
+  // The session check that came with it is not lost: ModuleGuard already sends a
+  // caller with no session to /login and does not render this page at all.
+  const { ready: permsReady, userId: signedInUserId } = usePermissionContext()
+
+  // Unchanged semantics: `loggedInId` is the real signed-in user (profile, Top 3,
+  // top-tasks invalidation), `currentUserId` is the EFFECTIVE one — the viewed
+  // user under View As — and a non-UUID placeholder resolves to '' exactly as the
+  // old `isValidUUID` bail-out did.
+  const loggedInId      = signedInUserId ?? ''
+  const effectiveUserId = viewAsUserId ?? signedInUserId
+  const currentUserId   = isValidUUID(effectiveUserId) ? effectiveUserId : ''
+
+  // ── The page's primary data ───────────────────────────────────────────────
+  //
+  // KEY. `['tasks', 'assigned-to', <effective uid>, 'dashboard-active']`. The
+  // first three segments are the key family every task mutation in the app
+  // already invalidates (tasks/[id], tasks/my, tasks/assigned-by-me, and the
+  // acknowledge below), and invalidateQueries matches by PREFIX — so this entry
+  // is invalidated by all of them without one mutation site changing.
+  //
+  // IDENTITY. The uid is in the key, so View As and the administrator address
+  // separate entries and neither can render the other's rows. A genuine identity
+  // change or sign-out is handled a level up, by the auth listener in
+  // Providers.tsx, which clears the whole cache.
+  //
+  // FAIL CLOSED. Until the identity resolves the query is disabled, has no data,
+  // and the loading gate below holds the screen — it never renders an empty
+  // dashboard as though the answer were "you have no tasks".
+  const dashboardTasksKey = useMemo(
+    () => ['tasks', 'assigned-to', currentUserId, 'dashboard-active'] as const,
+    [currentUserId],
+  )
+
+  const dashboardTasks = useQuery<DashboardTaskData>({
+    queryKey: dashboardTasksKey,
+    enabled: permsReady && isValidUUID(currentUserId),
+    queryFn: async (): Promise<DashboardTaskData> => {
+      const uid = currentUserId
+
+      // ── A FAILED READ MUST REJECT, NOT RESOLVE EMPTY ────────────────────────
+      //
+      // supabase-js returns { data: null, error } and does not throw, so an
+      // ignored `error` reads exactly like "this person has no tasks". That was
+      // survivable while nothing was cached — the next mount simply tried again.
+      // It is not survivable now: a resolved empty result would be STORED as the
+      // answer for the full staleTime, and React Query's configured retry would
+      // never engage because nothing failed.
+      //
+      // Rejecting gets all three properties: no empty success is cached, the one
+      // configured retry runs, and a failure during a BACKGROUND refetch leaves
+      // the last good rows on screen untouched.
+      //
+      // The error object is thrown as-is for React Query to hold; it is never
+      // logged or rendered, so nothing it carries reaches the console or the UI.
+      // What the user sees on a first-load failure is unchanged by this commit.
+      const { data: taskData, error: tasksError } = await supabase
+        .from('tasks')
+        .select(TASK_COLUMNS)
+        .eq('assigned_to', uid)
+        .not('status', 'eq', 'completed')
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: false })
+
+      if (tasksError) throw tasksError
+
+      const rows = (taskData as unknown as Task[] | null) ?? NO_TASKS
+
+      // Creator names for tasks somebody else delegated. Still skipped entirely
+      // when there are none — a self-only list needs no lookup and issues no
+      // request — and still the same two-column projection.
+      const creatorIds = [...new Set(
+        rows.filter(t => t.created_by !== uid).map(t => t.created_by)
+      )]
+      if (creatorIds.length === 0) return { tasks: rows, assignerNames: NO_ASSIGNER_NAMES }
+
+      const { data: creators, error: creatorsError } = await supabase
+        .from('users')
+        .select('id, full_name')
+        .in('id', creatorIds)
+
+      // Same rule for the dependent half. Caching rows whose "Delegated by"
+      // names are missing would store a half-answer as though it were the whole
+      // one, and hold it for the staleTime; the two are one cache entry
+      // precisely so they cannot disagree.
+      if (creatorsError) throw creatorsError
+
+      const assignerNames: Record<string, string> = {}
+      for (const u of (creators ?? []) as { id: string; full_name: string }[]) {
+        assignerNames[u.id] = u.full_name
+      }
+      return { tasks: rows, assignerNames }
+    },
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+  })
+
+  const tasks         = dashboardTasks.data?.tasks         ?? NO_TASKS
+  const assignerNames = dashboardTasks.data?.assignerNames ?? NO_ASSIGNER_NAMES
 
   // ── Cached queries ────────────────────────────────────────────────────────
   const { data: profile = null } = useProfile(loggedInId)
@@ -97,65 +221,64 @@ export default function DashboardPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // ── EXPLICIT MANUAL REFRESH ONLY. NOT TAB VISIBILITY. ──────────────────────
+  //
+  // `manualRefreshKey` is bumped by the header Refresh button and by nothing
+  // else. The undifferentiated `refreshKey` is deliberately NOT read here: it is
+  // also bumped by DashboardLayout's visibilitychange handler, so subscribing to
+  // it would refetch this list every time the user glanced at another tab and
+  // came back — automatic focus refresh, which this screen does not have and
+  // must not acquire. Returning to a tab is not a request for anything.
+  //
+  // The ref is seeded with the CURRENT key, so the effect's mandatory first run
+  // — on mount — finds no change and returns. Without it, every mount would
+  // fire a second task query on top of the one useQuery just made.
+  //
+  // refetch() ignores staleTime (a press must be a real refresh), keeps the
+  // existing rows on screen while it runs, and is deduplicated by React Query if
+  // several presses land together.
+  const refetchDashboardTasks = dashboardTasks.refetch
+  const lastManualRefreshKey = useRef(manualRefreshKey)
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
+    if (lastManualRefreshKey.current === manualRefreshKey) return
+    lastManualRefreshKey.current = manualRefreshKey
+    void refetchDashboardTasks()
+  }, [manualRefreshKey, refetchDashboardTasks])
 
-      const lid = session.user.id
-      setLoggedInId(lid)
-      const uid = viewAsUserId ?? lid
-      if (!isValidUUID(uid)) { setLoading(false); return }
-      setCurrentUserId(uid)
+  // Warm the two routes this page leads to most often. These ran at the end of
+  // the old load effect; with the load now frequently instant there is nothing
+  // left to run "after", so they run on mount. Same two routes, unchanged.
+  useEffect(() => {
+    router.prefetch('/tasks/my')
+    router.prefetch('/notifications')
+  }, [router])
 
-      // Batch 1: my active tasks (profile is now handled by useProfile hook)
-      const { data: taskData } = await supabase
-        .from('tasks')
-        .select(TASK_COLUMNS)
-        .eq('assigned_to', uid)
-        .not('status', 'eq', 'completed')
-        .neq('status', 'cancelled')
-        .order('created_at', { ascending: false })
+  // ── Escalations: fetched only when the drawer is actually opened ────────────
+  //
+  // This is the heaviest query on the page — every non-completed task in the
+  // company, all 24 columns, no limit — and it used to run during the initial
+  // load of every admin's dashboard, blocking the whole screen, to populate a
+  // drawer that is closed when the page arrives. It now runs when, and only
+  // when, escalationPreview turns true. What the drawer shows once opened is
+  // unchanged.
+  useEffect(() => {
+    if (!escalationPreview) return
+    // Same admin condition the init effect applied, and the same one
+    // adminEscalations re-applies before rendering anything.
+    if ((viewAsProfile ?? profile)?.role !== 'admin') return
+    // Already loaded for this session — the drawer reopens without refetching.
+    if (escalationTasks.length > 0) return
 
-      if (taskData) setTasks(taskData as unknown as Task[])
-
-      // Batch 2: role-specific queries + creator names — all in parallel
-      const creatorIds = [...new Set(
-        (taskData as { created_by: string; assigned_to: string }[] ?? [])
-          .filter(t => t.created_by !== uid)
-          .map(t => t.created_by)
-      )]
-
-      const batch2: Promise<unknown>[] = []
-
-      if (creatorIds.length > 0) {
-        batch2.push(
-          supabase.from('users').select('id, full_name').in('id', creatorIds).then(({ data: creators }: { data: { id: string; full_name: string }[] | null }) => {
-            if (creators) {
-              const map: Record<string, string> = {}
-              for (const u of creators) map[u.id] = u.full_name
-              setAssignerNames(map)
-            }
-          })
-        )
-      }
-
-      const viewedRole = viewAsProfile?.role ?? profile?.role
-      if (viewedRole === 'admin') {
-        batch2.push(
-          supabase.from('tasks').select(TASK_COLUMNS).not('status', 'eq', 'completed').then(({ data: eTasks }: { data: unknown[] | null }) => {
-            if (eTasks) setEscalationTasks(eTasks as unknown as Task[])
-          }),
-        )
-      }
-
-      await Promise.all(batch2)
-      setLoading(false)
-      router.prefetch('/tasks/my')
-      router.prefetch('/notifications')
-    }
-    init()
-  }, [viewAsUserId, profile?.role, viewAsProfile?.role, router, supabase])
+    let active = true
+    supabase
+      .from('tasks')
+      .select(TASK_COLUMNS)
+      .not('status', 'eq', 'completed')
+      .then(({ data: eTasks }: { data: unknown[] | null }) => {
+        if (active && eTasks) setEscalationTasks(eTasks as unknown as Task[])
+      })
+    return () => { active = false }
+  }, [escalationPreview, profile, viewAsProfile, escalationTasks.length, supabase])
 
   // Guard view-as against non-admins
   useEffect(() => {
@@ -198,7 +321,16 @@ export default function DashboardPage() {
     }
     const patch = { acknowledged_at: now, status: 'working' as const, last_update_at: now }
     setSelectedTask(prev => prev && prev.id === task.id ? { ...prev, ...patch } : prev)
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...patch } : t))
+    // Write through to the cache entry the page now reads from. Nothing is
+    // rolled back on failure because nothing is written before success — the
+    // error branch above returns before reaching here, exactly as it did when
+    // this was a setTasks call. The whole {tasks, assignerNames} shape is
+    // preserved and only the acknowledged row is replaced.
+    queryClient.setQueryData<DashboardTaskData>(dashboardTasksKey, prev =>
+      prev
+        ? { ...prev, tasks: prev.tasks.map(t => t.id === task.id ? { ...t, ...patch } : t) }
+        : prev
+    )
     setAcknowledgingIds(prev => { const next = new Set(prev); next.delete(task.id); return next })
     queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', currentUserId] })
     queryClient.invalidateQueries({ queryKey: ['top-tasks', loggedInId] })
@@ -254,6 +386,18 @@ export default function DashboardPage() {
     syncSelectedTask()
   }, [tasks, escalationTasks, selectedTask])
 
+  // THE LOADING GATE, AND WHAT IT DELIBERATELY NO LONGER COVERS.
+  //
+  // `isPending` is true only while there is NO data for this key — a genuinely
+  // first load. It is false during every background refetch, stale revalidation,
+  // manual refresh and focus refresh, so valid rows are never replaced by a
+  // spinner and a warm reopen paints real content on its first render.
+  //
+  // The uid test keeps the two "no answer yet" cases apart. Unresolved identity
+  // holds the screen (fail closed). A resolved but non-UUID placeholder id
+  // disables the query for good, and renders the dashboard empty — which is what
+  // the old `if (!isValidUUID(uid)) { setLoading(false); return }` did.
+  const loading = !permsReady || (isValidUUID(currentUserId) && dashboardTasks.isPending)
   if (loading) return <LoadingScreen />
 
   const overdueTasks   = tasks.filter(t => isOverdue(t.due_date, t.status)).sort(compareByUrgency)
