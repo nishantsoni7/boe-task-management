@@ -782,7 +782,9 @@ describe('the customization column', () => {
   })
 
   test('"No customization" appears only when there is neither text nor images', () => {
-    assert.ok(source.includes('if (!hasText && !hasImages) {'),
+    assert.ok(source.includes('const marked = hasText || hasImages'),
+      'one predicate decides both the wording and the accent')
+    assert.ok(source.includes('const body = !marked'),
       'a row plainly showing four pictures must not also say it has none')
     assert.ok(source.includes('formatCustomization(text)'),
       'and the wording comes from the one tested helper, not a second copy of the rule')
@@ -809,6 +811,123 @@ describe('the customization column', () => {
   test('every customization image gets its own thumbnail, even when they share bytes', () => {
     assert.ok(page.includes('.map((url, index) =>'),
       'the map is over IMAGES, so two changes sharing one photograph render twice')
+  })
+})
+
+// ── The customization accent ──────────────────────────────────────────────────
+
+describe('customization is marked in red, and only where there is one', () => {
+  const source = read(PI_PARTS)
+
+  test('the accent is spent on the heading, the words and the pictures', () => {
+    assert.ok(source.includes('PI_CUSTOMIZATION_TINT = colors.redTint'),
+      'the column heading takes a light tint from the existing token')
+    assert.ok(source.includes("PI_CUSTOMIZATION_HEADER_RED = '#B3222E'"))
+    assert.ok(source.includes("PI_CUSTOMIZATION_TEXT_RED = '#9B1C25'"))
+    assert.ok(source.includes("CUSTOMIZATION_BORDER = 'rgba(217,79,79,0.45)'"),
+      'and a customization thumbnail is bordered, not filled')
+  })
+
+  test('a row with no customization gets no red at all', () => {
+    // The quiet case is the one that keeps the loud case meaningful. The empty
+    // state renders the muted grey italic it always did.
+    assert.ok(source.includes("color: colors.muted, fontStyle: 'italic'"))
+    assert.ok(source.includes('color: marked ? PI_CUSTOMIZATION_HEADER_RED : colors.muted'),
+      'the stacked label is red only when there is something to point at')
+    assert.ok(source.includes("background: marked ? PI_CUSTOMIZATION_TINT : 'transparent'"),
+      'and only the customization HEADING is tinted')
+  })
+
+  test('the cells below the heading are never filled red', () => {
+    // A tinted heading marks a column; a tinted column shouts over the product
+    // name and its picture, which must stay the dominant thing on the line.
+    const tintUses = source.match(/PI_CUSTOMIZATION_TINT/g) ?? []
+    assert.equal(tintUses.length, 2, 'the tint is declared once and used once, on the <th>')
+    for (const page of [IMPORT_PAGE, DRAFT_DETAIL_PAGE]) {
+      const s = read(page)
+      assert.ok(!s.includes('redTint') || !/<td[^>]*redTint/.test(s),
+        `${page} must not fill a customization cell`)
+    }
+  })
+
+  test('customization TEXT is the heavier of the two reds', () => {
+    assert.ok(source.includes('color: PI_CUSTOMIZATION_TEXT_RED, fontWeight: 600'),
+      'the instruction itself is semibold and the darkest red on the row')
+  })
+
+  test('the two reds clear AA against what they sit on', () => {
+    // Measured, not chosen by eye. BOE red #DC1F2E on the tint is 4.50:1 —
+    // exactly on the line for 10px uppercase text — so both values here are
+    // darker members of the same family.
+    const luminance = (hex: string) => {
+      const channels = [1, 3, 5]
+        .map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)))
+      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+    }
+    const contrast = (a: string, b: string) => {
+      const [x, y] = [luminance(a), luminance(b)]
+      return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+    }
+    // rgba(217,79,79,0.07) composited over white.
+    const tintOverWhite = '#FCF3F3'
+
+    assert.ok(contrast('#B3222E', tintOverWhite) >= 4.5,
+      'the tinted heading is legible on its own background')
+    assert.ok(contrast('#9B1C25', '#FFFFFF') >= 4.5,
+      'and the instruction is legible on the row')
+  })
+
+  test('a marked thumbnail keeps its own hue on hover', () => {
+    assert.ok(source.includes('e.currentTarget.style.borderColor = marked ? PI_CUSTOMIZATION_HEADER_RED : colors.blue'),
+      'turning it blue would un-mark the one picture that was marked')
+    assert.ok(source.includes('e.currentTarget.style.borderColor = restingBorder'),
+      'and it returns to its own resting border, not to the neutral one')
+  })
+
+  test('a customization thumbnail is still a button that opens the viewer', () => {
+    // The accent is a border. It must not have cost the click.
+    assert.ok(source.includes('accent="customization"'))
+    assert.ok(source.includes('onClick={onOpen}'))
+    assert.ok(source.includes("cursor: 'zoom-in'"))
+    assert.ok(source.includes('aria-label={label}'))
+  })
+
+  test('the representative image is left neutral', () => {
+    assert.ok(source.includes("accent = 'neutral'"), 'neutral is the default')
+    for (const page of [IMPORT_PAGE, DRAFT_DETAIL_PAGE]) {
+      assert.ok(!/representativeThumbnail\([^)]*\)[^>]*accent=/.test(read(page)),
+        `${page} must not accent the product's own photograph`)
+    }
+  })
+})
+
+describe('both PI tables share one head', () => {
+  const source = read(PI_PARTS)
+
+  test('the columns are defined once', () => {
+    assert.ok(source.includes('PI_PRODUCT_COLUMNS'))
+    assert.ok(source.includes("{ key: 'customization', label: 'Customization', align: 'left', accent: 'customization' }"))
+  })
+
+  test('every column the tables had is still there, in order', () => {
+    const labels = [...source.matchAll(/\{ key: '[^']+',\s+label: '([^']+)'/g)].map(m => m[1])
+    assert.deepEqual(labels,
+      ['#', 'Image', 'Product', 'Qty', 'Dimensions', 'Material', 'Customization', 'Cost / piece', 'Line total'])
+  })
+
+  test('money stays right-aligned', () => {
+    assert.ok(source.includes("{ key: 'cost',          label: 'Cost / piece', align: 'right' }"))
+    assert.ok(source.includes("{ key: 'lineTotal',     label: 'Line total',   align: 'right' }"))
+  })
+
+  test('neither screen hand-rolls its own heading row any more', () => {
+    for (const page of [IMPORT_PAGE, DRAFT_DETAIL_PAGE]) {
+      const s = read(page)
+      assert.ok(s.includes('<PiProductTableHead />'), `${page} must render the shared head`)
+      assert.ok(!s.includes("'Cost / piece'"),
+        `${page} must not keep a second copy of the column list`)
+    }
   })
 })
 

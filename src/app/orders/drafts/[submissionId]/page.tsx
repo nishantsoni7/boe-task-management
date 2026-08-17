@@ -44,6 +44,7 @@ import {
   PiFieldRow,
   PiProductThumbnail,
   PiCustomizationCell,
+  PiProductTableHead,
   PiDiagnosticList,
   PiCommercialSummary,
   PiImageViewer,
@@ -403,33 +404,76 @@ function PiDraftDetailPageInner() {
           </PiCard>
         )}
 
-        {/* Status, provenance and when it was last written. */}
+        {/* ── What this record IS, in one card ──
+
+            Identity (which PI, what state, when it was written, how big) and the
+            order's own details were two cards with a gap between them, which
+            made the top of the page look like two unrelated summaries and cost a
+            band of empty space before the reader reached anything. They are one
+            card now, in one scan path: the status on the header line, the
+            provenance under it, then the order's own fields below a divider.
+
+            The two halves keep their own field sets — nothing is repeated
+            between them, and nothing has been dropped. */}
         <PiCard>
-          <div style={{
-            padding: '14px 20px',
-            display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 16px',
-          }}>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center',
-              padding: '3px 10px', borderRadius: '6px',
-              fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap',
-              background: tone.bg, color: tone.color, border: `1px solid ${tone.border}`,
+          <PiCardHeader
+            title="PI Draft"
+            right={
+              // Present, legible, and not a banner. This is a state to note in
+              // passing, not the subject of the page.
+              <span style={{
+                display: 'inline-flex', alignItems: 'center',
+                padding: '2px 9px', borderRadius: '5px',
+                fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
+                background: tone.bg, color: tone.color, border: `1px solid ${tone.border}`,
+              }}>
+                {draftStatusLabel(submission.status)}
+              </span>
+            }
+          />
+
+          {/* Provenance. THE SAME COLUMN RHYTHM as the order information below,
+              so the two halves of the card line up instead of being two grids
+              that happen to share a border. A filename is the one long value
+              here, so it takes two columns; on a phone that is the full width. */}
+          <div style={{ padding: '13px 20px' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: '12px 14px',
             }}>
-              {draftStatusLabel(submission.status)}
-            </span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
-              <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Original PI file
-              </span>
-              <span style={{ fontSize: '12px', color: colors.primary, overflowWrap: 'anywhere' }}>
-                {orDash(submission.source_workbook_name)}
-              </span>
+              <div style={{ gridColumn: 'span 2', minWidth: 0 }}>
+                <PiFieldRow label="Original PI file" value={orDash(submission.source_workbook_name)} />
+              </div>
+              <PiFieldRow label="Saved" value={savedAt} />
+              {/* The size of the thing being read, where the eye already is.
+                  The Products card below counts its own rows as a table caption;
+                  this is part of the record's identity. */}
+              <PiFieldRow
+                label="Products"
+                value={`${products.length} line${products.length === 1 ? '' : 's'}`}
+              />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-              <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Saved
-              </span>
-              <span style={{ fontSize: '12px', color: colors.primary }}>{savedAt}</span>
+          </div>
+
+          {/* Order information — the same fields, in the same words, as the
+              import preview. buildHeaderRows decides which; this page only hands
+              it the persisted header. */}
+          <div style={{ padding: '13px 20px 16px', borderTop: `1px solid ${colors.border}` }}>
+            <div style={{
+              fontSize: '11px', fontWeight: 700, color: colors.secondary,
+              marginBottom: '11px',
+            }}>
+              Order information
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: '13px 14px',
+            }}>
+              {buildHeaderRows(persistedHeader(submission)).map(row => (
+                <PiFieldRow key={row.key} label={row.label} value={row.value} />
+              ))}
             </div>
           </div>
 
@@ -446,24 +490,6 @@ function PiDraftDetailPageInner() {
               </MultilineText>
             </div>
           )}
-        </PiCard>
-
-        {/* Order information — the same fields, in the same words, as the
-            import preview. buildHeaderRows decides which; this page only hands
-            it the persisted header. */}
-        <PiCard>
-          <PiCardHeader title="Order information" />
-          <div style={{ padding: '16px 20px' }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(180px, 1fr))',
-              gap: '14px',
-            }}>
-              {buildHeaderRows(persistedHeader(submission)).map(row => (
-                <PiFieldRow key={row.key} label={row.label} value={row.value} />
-              ))}
-            </div>
-          </div>
         </PiCard>
 
         {/* Products */}
@@ -525,19 +551,14 @@ function PiDraftDetailPageInner() {
                     <PiFieldRow label="Material" value={orDash(p.material)} />
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-                    <div style={{
-                      fontSize: '10px', fontWeight: 600, color: colors.muted,
-                      textTransform: 'uppercase', letterSpacing: '0.05em',
-                    }}>
-                      Customization
-                    </div>
-                    <PiCustomizationCell
-                      text={p.customization}
-                      thumbnails={customizationThumbnails(p.row)}
-                      compact
-                    />
-                  </div>
+                  {/* The cell renders its own heading, so the accent follows the
+                      same rule it does on the desktop column. */}
+                  <PiCustomizationCell
+                    label="Customization"
+                    text={p.customization}
+                    thumbnails={customizationThumbnails(p.row)}
+                    compact
+                  />
 
                   <div style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
@@ -554,19 +575,8 @@ function PiDraftDetailPageInner() {
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                    {['#', 'Image', 'Product', 'Qty', 'Dimensions', 'Material', 'Customization', 'Cost / piece', 'Line total'].map((h, i) => (
-                      <th key={h} style={{
-                        padding: '8px 14px',
-                        textAlign: i >= 7 ? 'right' : 'left',
-                        fontSize: '10px', fontWeight: 600, color: colors.muted,
-                        textTransform: 'uppercase', letterSpacing: '0.05em',
-                        whiteSpace: 'nowrap',
-                      }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
+                {/* The identical head the upload preview renders. */}
+                <PiProductTableHead />
                 <tbody>
                   {products.map(p => (
                     <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
