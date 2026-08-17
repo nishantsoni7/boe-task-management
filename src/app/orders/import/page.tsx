@@ -59,6 +59,7 @@ import {
   PiProductTableHead,
   PiCommercialSummary,
   PiImageViewer as ImageViewer,
+  PI_THUMBNAIL_SIZE,
 } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
 import type { UserProfile } from '@/lib/types'
@@ -747,7 +748,7 @@ export default function NewOrderPiImportPage() {
                 }}
               >
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                  <ProductThumbnail {...representativeThumbnail(p.row)} size={64} />
+                  <ProductThumbnail {...representativeThumbnail(p.row)} size={PI_THUMBNAIL_SIZE.representativeCompact} />
                   <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'var(--font-mono)' }}>
                       {orDash(p.itemSequence)}

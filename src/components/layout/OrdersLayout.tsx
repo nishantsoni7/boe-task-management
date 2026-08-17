@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { LayoutDashboard, List, ClipboardList, FileText, Home, RefreshCw, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
@@ -70,12 +70,32 @@ export function OrdersLayout({
     setRefreshing(false)
   }, [refreshing, onRefresh, triggerRefresh, router])
 
-  useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') handleRefresh() }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // ── NOTHING RE-FETCHES WHEN THE TAB COMES BACK ──
+  //
+  // There used to be a `visibilitychange` listener here that called
+  // handleRefresh() every time this document became visible again. It was
+  // written for the dashboard, where a re-read is cheap and invisible, and it
+  // was quietly wrong for every screen that owns state:
+  //
+  //   * on a record page it called the page's own onRefresh, which swaps the
+  //     record for a loading state — so glancing at another tab and coming back
+  //     blanked the screen, threw away the scroll position, and closed an open
+  //     image viewer mid-comparison;
+  //   * it fired on EVERY return, however brief, including an alt-tab to copy a
+  //     value out of another window;
+  //   * it captured handleRefresh from the first render (the effect has no
+  //     dependencies and an eslint-disable to match), so what it called was not
+  //     necessarily the handler the screen had by then.
+  //
+  // Returning to a tab is not a request for anything. A person who wants fresh
+  // data presses the refresh control in the header, which still does exactly
+  // what it always did; a page that needs fresh data on arrival loads it on
+  // mount, which is untouched. Nothing here interferes with session expiry
+  // either — that is the Supabase client's business, not this layout's.
+  //
+  // React Query is already configured with refetchOnWindowFocus: false in
+  // Providers.tsx, so the badge counts above agree with this and there is one
+  // answer to "does focus refetch": no.
 
   const navTo = (path: string) => {
     router.push(path)
