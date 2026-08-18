@@ -629,12 +629,38 @@ export function PiWarningPanel({ entries }: { entries: readonly PiDiagnosticEntr
 
 // ── 6. Activity ───────────────────────────────────────────────────────────────
 
+/**
+ * The trail's markers — the SAME five meanings, at lower intensity.
+ *
+ * These are the accent tokens softened towards their own ground. The trail is
+ * the page's secondary reference and a column of full-strength dots was pulling
+ * the eye away from the money card beside it; at this saturation they still
+ * separate one kind of event from another at a glance without competing.
+ *
+ * COLOUR IS NEVER THE ONLY CHANNEL HERE. Every dot sits beside the event's name
+ * in words — "Rejected", "Advance exception approved" — and the rail itself is
+ * aria-hidden, so nothing is communicated by hue alone and nothing is lost to a
+ * reader who cannot distinguish these five.
+ */
 const TIMELINE_MARKER: Record<PiActivityTone, string> = {
-  neutral: colors.muted,
-  blue: colors.blue,
-  amber: colors.amber,
-  green: colors.green,
-  red: colors.red,
+  neutral: '#A4ABB9',
+  blue: '#7A9DE0',
+  amber: '#D9A552',
+  green: '#6BB68C',
+  red: '#CE7272',
+}
+
+/**
+ * ACTIVITY IS THE SECONDARY REFERENCE, and now looks like it.
+ *
+ * A very light cool grey rather than the strong white the commercial card keeps,
+ * a neutral hairline, and no shadow at all. The difference is one step — the
+ * card must still read as a card, and every word in it must stay legible.
+ */
+const ACTIVITY_CARD_STYLE: React.CSSProperties = {
+  background: colors.raised,
+  borderColor: 'rgba(0,0,0,0.09)',
+  boxShadow: 'none',
 }
 
 /**
@@ -657,22 +683,28 @@ const TIMELINE_MARKER: Record<PiActivityTone, string> = {
  */
 export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntry[] }) {
   return (
-    <PiCard>
+    <PiCard style={ACTIVITY_CARD_STYLE}>
       <PiCardHeader
         title={
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-            <History size={15} strokeWidth={1.9} color={colors.tertiary} />
+          // Softer than the commercial card's heading by a weight and a shade —
+          // the two sit side by side, and which one is the reference should be
+          // answerable without reading either.
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            fontWeight: 600, color: colors.secondary,
+          }}>
+            <History size={15} strokeWidth={1.9} color={colors.muted} />
             Activity
           </span>
         }
         right={
-          <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: '12px', color: colors.tertiary, whiteSpace: 'nowrap' }}>
             {entries.length} event{entries.length === 1 ? '' : 's'}
           </span>
         }
       />
       {entries.length === 0 ? (
-        <div style={{ padding: '16px 20px', fontSize: '12px', color: colors.secondary }}>
+        <div style={{ padding: '16px 20px', fontSize: '12px', color: colors.tertiary }}>
           No activity has been recorded against this PI yet.
         </div>
       ) : (
@@ -694,11 +726,15 @@ export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntr
                   <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
                     {entry.label}
                   </span>
-                  <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                  {/* Darkened, not lightened. The card's ground moved off pure
+                      white, and a muted grey on it would have fallen below the
+                      contrast this text had before — quieter must not mean
+                      harder to read. */}
+                  <span style={{ fontSize: '11px', color: colors.tertiary, whiteSpace: 'nowrap' }}>
                     {entry.at}
                   </span>
                 </div>
-                <div style={{ fontSize: '11.5px', color: colors.secondary, marginTop: '2px' }}>
+                <div style={{ fontSize: '11.5px', color: colors.tertiary, marginTop: '2px' }}>
                   {entry.actor}
                   {entry.figures && (
                     <span style={{ fontVariantNumeric: 'tabular-nums' }}> · {entry.figures}</span>

@@ -42,16 +42,25 @@ export function PiCard({ children, style }: { children: React.ReactNode; style?:
   )
 }
 
-export function PiCardHeader({ title, right }: {
+export function PiCardHeader({ title, right, style }: {
   /** Usually a string; a node when the heading carries a small leading icon. */
   title: React.ReactNode
   right?: React.ReactNode
+  /**
+   * Overrides for the header strip itself — a ground, a border colour.
+   *
+   * Omitted by every existing caller, so their markup is unchanged. It exists
+   * so a card that has been given greater weight on one page can say so on its
+   * header line without a second copy of this component.
+   */
+  style?: React.CSSProperties
 }) {
   return (
     <div style={{
       padding: '14px 20px',
       borderBottom: `1px solid ${colors.border}`,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+      ...style,
     }}>
       <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{title}</div>
       {right}
@@ -722,6 +731,36 @@ export const PI_COMMERCIAL_MAX_WIDTH_PX = 780
  */
 export type PiCommercialVariant = 'preview' | 'detail'
 
+/**
+ * THE DETAIL PAGE'S COMMERCIAL CARD IS THE PRIMARY FINANCIAL REFERENCE.
+ *
+ * It sits beside the activity trail at the foot of the saved-PI screen, and the
+ * two were reading at identical strength — a reader scanning for the total found
+ * two equally-weighted white cards and had to look twice. This gives the money
+ * card the small amount of extra presence that settles the question: a warm
+ * hairline instead of a neutral one, and a shadow shallow enough to read as
+ * "raised slightly" rather than as a dialog.
+ *
+ * RESTRAINT IS THE POINT. No gradient, no filled bar, no icon, no heavier
+ * heading. On a phone this card goes full width and must still look like part of
+ * the page rather than an advertisement, which is why every value here is low
+ * alpha over white.
+ *
+ * NONE OF IT REACHES THE IMPORT PREVIEW, which renders the 'preview' variant and
+ * passes no style at all.
+ */
+const DETAIL_CARD_STYLE: React.CSSProperties = {
+  borderColor: 'rgba(232,160,48,0.30)',
+  boxShadow: '0 1px 2px rgba(16,24,40,0.05), 0 2px 6px rgba(16,24,40,0.04)',
+}
+
+/** A very pale cream, so the header is distinguishable from Activity's without
+ *  being a coloured bar. */
+const DETAIL_HEADER_STYLE: React.CSSProperties = {
+  background: 'rgba(232,160,48,0.05)',
+  borderBottom: '1px solid rgba(232,160,48,0.20)',
+}
+
 export function PiCommercialSummary({ rows, title = 'Commercial summary', variant = 'preview' }: {
   rows: readonly PiAmountRow[]
   title?: string
@@ -734,12 +773,20 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
       maxWidth: `${PI_COMMERCIAL_MAX_WIDTH_PX}px`,
       marginLeft: 'auto',
     }}>
-      <PiCard>
-        <PiCardHeader title={title} />
+      <PiCard style={detail ? DETAIL_CARD_STYLE : undefined}>
+        <PiCardHeader title={title} style={detail ? DETAIL_HEADER_STYLE : undefined} />
         <div style={{ padding: '8px 0' }}>
-          {rows.map(row => (
+          {rows.map(row => {
+          // THE STRONGEST POINT ON THE CARD, and the only row that gets a class.
+          // Its ground and its rule live in CSS (see .pi-commercial-grand-total)
+          // rather than inline, so the highlight is one declaration a reviewer
+          // can find, and so this component still renders the preview's Grand
+          // Total exactly as it always has.
+          const detailTotal = detail && row.emphasis === 'total'
+          return (
             <div
               key={row.key}
+              className={detailTotal ? 'pi-commercial-grand-total' : undefined}
               style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px',
                 padding: row.emphasis ? '11px 18px' : '6px 18px',
@@ -748,15 +795,19 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
                 // products came to, what tax does to it, and what is owed.
                 // `groupStart` is set by the row builder, which is the thing
                 // that knows what a row MEANS.
-                borderTop: row.emphasis === 'total' || (detail && row.groupStart)
-                  ? `1px solid ${colors.borderSoft}`
-                  : 'none',
+                borderTop: detailTotal
+                  ? undefined
+                  : row.emphasis === 'total' || (detail && row.groupStart)
+                    ? `1px solid ${colors.borderSoft}`
+                    : 'none',
                 // `undefined`, never 0: a falsy-but-present value would still
                 // be serialised, and the preview's markup must come out exactly
                 // as it did before the detail page needed anything.
                 marginTop: detail && row.groupStart ? '4px' : undefined,
                 paddingTop: detail && row.groupStart ? '10px' : undefined,
-                background: row.emphasis === 'advance' ? colors.amberTint : 'transparent',
+                background: detailTotal
+                  ? undefined
+                  : row.emphasis === 'advance' ? colors.amberTint : 'transparent',
               }}
             >
               <div style={{ minWidth: 0 }}>
@@ -780,7 +831,10 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
                 // the products table's own money columns. The preview keeps the
                 // proportional figures it shipped with.
                 fontVariantNumeric: detail ? 'tabular-nums' : undefined,
-                fontSize: row.emphasis ? '14px' : '13px',
+                // A single step up for the figure the whole card exists to
+                // report. One step, not three: the row's ground and rule are
+                // already doing most of the work.
+                fontSize: detailTotal ? '15px' : row.emphasis ? '14px' : '13px',
                 fontWeight: row.emphasis ? 700 : 500,
                 // The two worded zeroes read as settled facts, like a figure,
                 // so they take the primary colour; italic marks all three
@@ -791,7 +845,8 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', varian
                 {row.value}
               </div>
             </div>
-          ))}
+          )
+          })}
         </div>
       </PiCard>
     </div>

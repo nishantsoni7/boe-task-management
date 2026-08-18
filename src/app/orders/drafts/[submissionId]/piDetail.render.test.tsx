@@ -978,8 +978,9 @@ describe('the import preview keeps the summary it shipped with', () => {
     // The grouping hairline is the detail page's too: preview draws exactly one
     // rule, above the Grand Total, as it always has.
     assert.equal((preview.match(/border-top:1px solid/g) ?? []).length, 1)
-    assert.ok((detail.match(/border-top:1px solid/g) ?? []).length >= 2,
-      'the detail column adds one grouping rule before tax')
+    assert.equal((detail.match(/border-top:1px solid/g) ?? []).length, 1,
+      'the detail column adds one grouping rule before tax; its Grand Total rule '
+      + 'is heavier and comes from CSS, not from an inline hairline')
     // Not even a serialised zero. A falsy-but-PRESENT style value still reaches
     // the markup — `marginTop: 0` emits `margin-top:0` on every row — and the
     // preview's markup must come out exactly as it did before the detail page
@@ -991,6 +992,114 @@ describe('the import preview keeps the summary it shipped with', () => {
 
   test('its heading is untouched', () => {
     assert.ok(text(preview).includes('Commercial summary'))
+  })
+})
+
+// ── The hierarchy between the two lower cards ─────────────────────────────────
+//
+// They sit side by side and were reading at identical strength, so a person
+// scanning for the total had to look twice. The commercial card is the primary
+// financial reference and the trail is secondary audit history; these guard that
+// the difference exists, stays restrained, and costs nobody any contrast.
+
+describe('the commercial breakdown outranks the activity trail', () => {
+  const rows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission())))
+  const commercial = renderToStaticMarkup(
+    <PiCommercialSummary rows={rows} title="Commercial breakdown" variant="detail" />,
+  )
+  const activity = renderToStaticMarkup(
+    <PiActivityTimeline entries={describeActivityEntries(
+      [{ id: '1', action: 'submitted', actor_id: 'u1', note: 'Corrected line 3.', created_at: '2026-08-02T06:00:00Z' }],
+      new Map([['u1', 'Nishant Soni']]), iso => String(iso).slice(0, 10))} />,
+  )
+
+  test('the two cards are visibly different surfaces, not two identical whites', () => {
+    assert.ok(commercial.includes('background:#FFFFFF'), 'the money card keeps the strong white')
+    assert.ok(activity.includes('background:#F8F9FB'), 'the trail takes a light cool grey')
+    assert.ok(!activity.includes('background:#FFFFFF'))
+  })
+
+  test('the money card is warm-bordered and softly raised; the trail is neither', () => {
+    assert.ok(commercial.includes('border-color:rgba(232,160,48,0.30)'), 'a warm hairline')
+    assert.ok(commercial.includes('box-shadow:0 1px 2px rgba(16,24,40,0.05)'), 'shallow and low-opacity')
+    assert.ok(activity.includes('border-color:rgba(0,0,0,0.09)'), 'a neutral grey hairline')
+    assert.ok(activity.includes('box-shadow:none'))
+    // Restraint: no gradient, no filled bar, no decorative icon on the money card.
+    for (const loud of ['gradient', 'svg']) {
+      assert.ok(!commercial.includes(loud), `the money card must carry no ${loud}`)
+    }
+  })
+
+  test('their headers are distinguishable without either shouting', () => {
+    assert.ok(commercial.includes('background:rgba(232,160,48,0.05)'), 'a very pale cream')
+    assert.ok(commercial.includes('border-bottom:1px solid rgba(232,160,48,0.20)'))
+    // The trail's heading is softer by a weight and a shade.
+    assert.ok(activity.includes('font-weight:600;color:#4A5261'))
+    assert.ok(!activity.includes('background:rgba(232,160,48'))
+  })
+
+  test('the Grand Total keeps its own emphasis class, and it is the strongest point', () => {
+    assert.ok(commercial.includes('class="pi-commercial-grand-total"'))
+    assert.equal((commercial.match(/pi-commercial-grand-total/g) ?? []).length, 1,
+      'exactly one row carries it')
+    // Its ground and rule come from that class; its typography stays inline
+    // beside every other row's, one step up and no more.
+    const css = read(GLOBAL_CSS)
+    const rule = css.slice(css.indexOf('.pi-commercial-grand-total {'))
+    assert.ok(/background: rgba\(232, 160, 48, 0\.08\)/.test(rule), 'a pale warm highlight')
+    assert.ok(/border-top: 2px solid rgba\(232, 160, 48, 0\.42\)/.test(rule), 'a stronger top border')
+    const total = commercial.slice(commercial.indexOf('pi-commercial-grand-total'))
+    assert.ok(total.includes('font-weight:700'), 'bold label and bold amount')
+    assert.ok(total.includes('font-size:15px'), 'and the amount a single step larger')
+  })
+
+  test('the money figures keep their right alignment and tabular figures', () => {
+    assert.ok(commercial.includes('text-align:right'))
+    assert.ok(commercial.includes('font-variant-numeric:tabular-nums'))
+  })
+
+  test('the grouping before tax survives, and the advance row stays out', () => {
+    assert.equal(rows.find(r => r.key === 'beforeGst')?.groupStart, true)
+    assert.ok(!text(commercial).includes('Required advance'))
+  })
+
+  test('the trail keeps every event, note, actor, time and amount', () => {
+    const body = text(activity)
+    for (const kept of ['Submitted for approval', 'Nishant Soni', '2026-08-02', 'Corrected line 3.']) {
+      assert.ok(body.includes(kept), `${kept} must survive the restyle`)
+    }
+    assert.ok(activity.includes('class="pi-detail-timeline-dot"'), 'the markers stay')
+  })
+
+  test('the markers are softened, and never the only channel', () => {
+    const softened = ['#A4ABB9', '#7A9DE0', '#D9A552', '#6BB68C', '#CE7272']
+    const sections = read(SECTIONS)
+    for (const tone of softened) {
+      assert.ok(sections.includes(tone), `${tone} must be one of the five markers`)
+    }
+    for (const full of ['neutral: colors.muted', 'blue: colors.blue', 'red: colors.red']) {
+      assert.ok(!sections.includes(full), `${full} was full strength and pulled the eye`)
+    }
+    // Meaning is in the words beside the dot, and the rail is hidden from
+    // assistive technology entirely.
+    assert.ok(activity.includes('aria-hidden="true"'))
+    assert.ok(text(activity).includes('Submitted for approval'))
+  })
+
+  test('the connector is lighter than the card it sits in', () => {
+    const css = read(GLOBAL_CSS)
+    const line = css.slice(css.indexOf('.pi-detail-timeline-line {'))
+    assert.ok(/background: rgba\(0, 0, 0, 0\.07\)/.test(line.slice(0, 400)))
+  })
+
+  test('nobody lost contrast to the restyle', () => {
+    const sections = read(SECTIONS)
+    // The trail's ground moved off pure white, so the timestamp and the actor
+    // line were DARKENED rather than left muted — quieter must not mean harder
+    // to read. colors.muted (#8C94A6) would have fallen to 2.89:1 on #F8F9FB.
+    assert.ok(!/color: colors\.muted, whiteSpace: 'nowrap' \}\}>\s*\{entry\.at\}/.test(sections))
+    assert.ok(sections.includes("color: colors.tertiary, whiteSpace: 'nowrap' }}>"))
+    assert.ok(activity.includes('color:#111318'), 'event titles stay at full strength')
   })
 })
 

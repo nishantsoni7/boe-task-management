@@ -855,7 +855,10 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
     // The width changed; the figures did not. The component renders the rows it
     // is handed and computes nothing — no subtotal, no GST, no grand total, and
     // no advance.
-    assert.ok(source.includes('rows.map(row => ('))
+    // The callback gained a body when the detail page's Grand Total needed a
+    // class; what it still does is render one row per row it was handed.
+    assert.ok(/rows\.map\(row => \{/.test(source))
+    assert.ok(source.includes('key={row.key}'))
     for (const arithmetic of ['* 0.4', 'PI_ADVANCE_PERCENT', 'Math.round', 'reduce(']) {
       assert.ok(!source.includes(arithmetic),
         `${arithmetic} must not appear — this component renders figures, it does not derive them`)

@@ -2601,6 +2601,25 @@ body {
   }
 }
 
+/* ── The commercial breakdown's strongest point ───────────────────────────────
+   The one row on the saved-PI page that answers "what is this order worth".
+
+   Its ground and its rule live here rather than inline because they are the
+   whole of the emphasis and belong in one findable declaration — the row's
+   bold label and its figure size are still computed from the row's own
+   `emphasis`, beside every other row's typography.
+
+   SCOPED TO THE DETAIL PAGE. Only the 'detail' variant of PiCommercialSummary
+   applies this class; /orders/import renders the same component, the same rows
+   and the same Grand Total exactly as it always has. */
+
+.pi-commercial-grand-total {
+  /* The amber token at the alpha the rest of the page uses for a warm ground. */
+  background: rgba(232, 160, 48, 0.08);
+  /* Heavier than the hairline between ordinary rows, so the eye stops here. */
+  border-top: 2px solid rgba(232, 160, 48, 0.42);
+}
+
 /* ── The activity trail ───────────────────────────────────────────────────── */
 
 .pi-detail-timeline {
@@ -2637,7 +2656,9 @@ body {
   flex: 1;
   min-height: 8px;
   margin-top: 3px;
-  background: rgba(0, 0, 0, 0.1);
+  /* Lighter than the card's own border: the connector is there to show that the
+     events are one sequence, not to draw a column down the page. */
+  background: rgba(0, 0, 0, 0.07);
 }
 
 .pi-detail-timeline-body {
