@@ -284,19 +284,45 @@ export type PiAmountRow = PiSummaryRow & {
 }
 
 /**
+ * A percentage of a grand total, in rupees. THE ONE FORMULA.
+ *
+ * Everything that needs an advance figure comes through here — the commercial
+ * summary's standard 40% row, the submission dialog's live preview of a proposed
+ * exception, and the management review card's rendering of a decided one — so
+ * there is no second arithmetic anywhere that could drift away from this by a
+ * rounding rule or a percentage sign.
+ *
+ * Rounded to paise so the result is a real amount rather than a float artefact
+ * (₹1,00,000.00 × 40% must not print as ₹40,000.000000001). Null — never a
+ * guess — whenever either input is missing or not a finite number.
+ *
+ * The database has the same rule in
+ * public.order_submission_advance_amount(numeric, numeric), and a test reads the
+ * standard percentage out of the migration so the two cannot drift.
+ */
+export function computeAdvanceAmount(
+  grandTotal: number | null | undefined,
+  percent: number | null | undefined,
+): number | null {
+  if (grandTotal === null || grandTotal === undefined || !Number.isFinite(grandTotal)) return null
+  if (percent === null || percent === undefined || !Number.isFinite(percent)) return null
+  return Math.round(grandTotal * percent) / 100
+}
+
+/**
  * 40% of the grand total.
  *
  * Computable only when the grand total is a real figure. A workbook whose
  * I122 holds text has no grand total to take a percentage of, and the honest
  * answer there is an em dash — not a number derived from a guess.
  *
- * Rounded to paise so the figure is a payable amount rather than a float
- * artefact (₹1,00,000.00 × 0.4 must not print as ₹40,000.000000001).
+ * The arithmetic itself is computeAdvanceAmount's; this only decides what counts
+ * as a grand total worth taking a percentage of.
  */
 export function computeRequiredAdvance(grandTotal: PiAmountOrText | null | undefined): number | null {
   const total = formatPiValue(grandTotal)
   if (total.kind !== 'amount' || total.amount === null) return null
-  return Math.round(total.amount * PI_ADVANCE_PERCENT) / 100
+  return computeAdvanceAmount(total.amount, PI_ADVANCE_PERCENT)
 }
 
 /**

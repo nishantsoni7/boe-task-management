@@ -69,10 +69,29 @@ const WITH_NOTE = functionBlock('submit_order_submission_with_note')
 // ── The file ──────────────────────────────────────────────────────────────────
 
 describe('the reply migration is additive and correctly sequenced', () => {
-  test('it is the newest migration and sorts after Phase A', () => {
+  test('it sorts after Phase A, and nothing later takes over what it owns', () => {
     const files = readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], REPLY_FILE)
     assert.ok(REPLY_FILE > PHASE_A_FILE)
+    assert.ok(files.includes(REPLY_FILE))
+
+    // Later phases legitimately sort after it — Phase B's advance workflow is
+    // one — but none may redefine the two PUBLIC doors this migration
+    // established. Their names, signatures and behaviour are the contract an
+    // existing client and a cached PostgREST schema depend on.
+    //
+    // submit_order_submission_internal is deliberately NOT on this list: it is
+    // reachable by no role, and Phase B replaces its body with a delegate while
+    // keeping its signature byte-identical, which is what lets the two doors
+    // above stay untouched.
+    for (const file of files.filter(f => f > REPLY_FILE)) {
+      const later = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
+      for (const owned of [
+        'create or replace function public.submit_order_submission(',
+        'create or replace function public.submit_order_submission_with_note(',
+      ]) {
+        assert.ok(!later.includes(owned), `${file} must not redefine: ${owned}`)
+      }
+    }
   })
 
   test('no applied migration is edited', () => {

@@ -31,7 +31,7 @@ import {
 // Real module action sets, mirroring what production registers (verified
 // against permission_modules / module_permission_actions).
 const FINANCE = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']
-const ORDERS = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee', 'approve_order']
+const ORDERS = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee', 'approve_order', 'approve_advance_exception']
 const ASSETS = ['view', 'create', 'edit', 'delete', 'manage', 'assign']
 const SAMPLES = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'dispatch', 'receive', 'mark_lost', 'close']
 const PAYROLL = ['view', 'edit', 'approve', 'export', 'manage', 'admin']
@@ -146,6 +146,18 @@ describe('Manager never receives a protected action', () => {
     assert.equal(presetAllowedActions('manager', ORDERS).can_be_order_assignee, false)
   })
 
+  test('neither PI review nor advance-exception authority is granted by any preset', () => {
+    // The two the business has decided must be handed over one person at a
+    // time. A preset reaching either would be an administrator granting money
+    // authority by picking a word from a dropdown.
+    for (const level of PRESET_LEVELS) {
+      const map = presetAllowedActions(level, ORDERS)
+      assert.equal(map.approve_order, false, `${level} granted approve_order`)
+      assert.equal(map.approve_advance_exception, false,
+        `${level} granted approve_advance_exception`)
+    }
+  })
+
   test('the protected set is exactly what V1 agreed', () => {
     // Grew by three in 20260903000000, on a production finding: `orders.view`
     // was carrying company-wide sight through the blanket SELECT policies in
@@ -163,10 +175,17 @@ describe('Manager never receives a protected action', () => {
     // phase — to turn it into a numbered Order. It is a SEPARATE action from
     // `approve`, which is Order Request conversion, precisely so that neither
     // implies the other.
+    //
+    // And by one more in 20260913000000: `orders.approve_advance_exception`,
+    // the authority to decide whether BOE will start an order on less than its
+    // standard 40% advance — zero included. Separate from `approve_order` for
+    // the same reason and in both directions: reviewing a PI and settling money
+    // at risk are two decisions, assignable to two different people, and
+    // neither may be acquired by picking a preset from a dropdown.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
-      'admin', 'approve_order', 'assign', 'can_be_order_assignee', 'close',
-      'delete', 'dispatch', 'manage', 'manage_quotations', 'mark_lost',
-      'receive', 'view_all', 'view_quotations',
+      'admin', 'approve_advance_exception', 'approve_order', 'assign',
+      'can_be_order_assignee', 'close', 'delete', 'dispatch', 'manage',
+      'manage_quotations', 'mark_lost', 'receive', 'view_all', 'view_quotations',
     ])
   })
 

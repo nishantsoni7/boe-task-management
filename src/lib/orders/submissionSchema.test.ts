@@ -157,22 +157,78 @@ const INTERNAL_FUNCTIONS = [
 // ══ 1. It is exactly one new migration ══════════════════════════════════════
 
 describe('the migration itself', () => {
-  test('is ordered after everything that predates the PI submission work', () => {
-    // It WAS the newest when it was written. Later phases of this same feature
-    // legitimately sort after it — phase 3B adds the normalized image table —
-    // so the durable rule is narrower than "newest": nothing UNRELATED may be
-    // inserted after it, because a migration that lands later cannot depend on
-    // tables this one creates unless it is part of the same work.
+  test('nothing that lands after it touches the submission tables from outside the feature', () => {
+    // It WAS the newest when it was written, and the original rule here demanded
+    // that EVERY later migration mention order_submission. That was the right
+    // instinct expressed too broadly: it made this feature's test fail whenever
+    // the company shipped anything else, which says nothing about safety.
+    //
+    // THE PROPERTY THAT ACTUALLY MATTERS is narrower and stricter: a migration
+    // landing after this one must not read, write or reshape the tables this one
+    // creates unless it is part of the same feature. Unrelated work — a Task
+    // Management label, a Payroll setting — may land whenever it likes, because
+    // it cannot depend on something it never names.
+    //
+    // So a later migration is acceptable if EITHER it is part of the submission
+    // feature, OR it names none of its tables. A file that quietly alters
+    // order_submissions while claiming to be about something else fails here,
+    // which the old spelling would have missed entirely as long as the word
+    // "order_submission" appeared anywhere in it.
     const all = readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort()
     const later = all.slice(all.indexOf(MIGRATION_FILE) + 1)
 
     for (const file of later) {
       const text = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
-      assert.ok(
-        /order_submission/i.test(text),
-        `${file} sorts after the submission migration but is not part of that feature`,
-      )
+      const partOfFeature = /order_submission/i.test(file)
+      if (partOfFeature) continue
+
+      for (const table of ALL_TABLES) {
+        assert.ok(
+          !new RegExp(`\\b${table}\\b`).test(text),
+          `${file} is not part of the submission feature but references ${table}`,
+        )
+      }
     }
+  })
+
+  test('every migration that IS part of the feature sorts after this one', () => {
+    // The dependency direction, asserted rather than assumed: nothing belonging
+    // to the submission feature may be ordered BEFORE the migration that creates
+    // its tables. Phase A, the image table, the employee reply and Phase B all
+    // depend on what this file creates, so a later phase renumbered downward —
+    // exactly the mistake a version collision invites — fails here.
+    // MIGRATION_FILE is named order_PI_submissions, not order_submission, so it
+    // is named explicitly rather than matched — the set is "this file, plus
+    // everything that carries the feature's prefix".
+    const all = readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort()
+    const feature = all.filter(f => f === MIGRATION_FILE || /order_submission/i.test(f))
+
+    assert.ok(feature.length >= 2, 'the feature spans several migrations')
+    assert.equal(feature[0], MIGRATION_FILE,
+      'the migration that CREATES the submission tables must come first')
+    assert.deepEqual(feature, [...feature].sort(),
+      'the feature migrations must be in ascending version order')
+  })
+
+  test('no two migrations share a version prefix, anywhere in the directory', () => {
+    // Supabase keys supabase_migrations.schema_migrations on the numeric prefix,
+    // not the filename. Two files sharing one version means only ONE can ever be
+    // recorded — the second is silently treated as already applied and skipped,
+    // with no error and no warning. That is a whole feature going missing in
+    // production while `migration list` reports it as applied.
+    const all = readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort()
+    const byVersion = new Map<string, string[]>()
+
+    for (const file of all) {
+      const version = /^(\d+)_/.exec(file)?.[1]
+      assert.ok(version, `${file} has no numeric version prefix`)
+      byVersion.set(version, [...(byVersion.get(version) ?? []), file])
+    }
+
+    const collisions = [...byVersion.entries()].filter(([, files]) => files.length > 1)
+    assert.deepEqual(collisions, [],
+      `these versions are claimed by more than one migration: ${
+        collisions.map(([v, f]) => `${v} -> ${f.join(', ')}`).join(' | ')}`)
   })
 
   test('is still the only migration that creates the submission tables', () => {

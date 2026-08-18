@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   PI_ACTIVITY_COLUMNS,
+  PI_ACTIVITY_DETAIL,
   PI_ACTIVITY_LABEL,
   UNKNOWN_ACTOR,
   activityActorIds,
@@ -64,17 +65,40 @@ describe('every action reads as English', () => {
     }
   })
 
+  test('the three advance actions read as English too', () => {
+    for (const action of [
+      'advance_exception_requested', 'advance_exception_approved', 'advance_exception_rejected',
+    ]) {
+      const label = PI_ACTIVITY_LABEL[action]
+      assert.ok(label, `${action} has no label`)
+      assert.ok(!label.includes('_'), `${action} must not be shown as a database value`)
+      assert.ok(PI_ACTIVITY_DETAIL[action], `${action} has no explanatory sentence`)
+    }
+  })
+
   test('the labels match the action set the migrations define', () => {
-    // The constraint is the authority; this keeps the two from drifting apart
-    // silently, which is exactly how a raw enum ends up on screen.
+    // The CONSTRAINT is the authority; this keeps the two from drifting apart
+    // silently, which is exactly how a raw enum ends up on screen. The set is
+    // closed and grows only in a migration, so the newest one that rewrites it
+    // is the one to read.
     const dir = join(process.cwd(), 'supabase', 'migrations')
-    const phaseA = readFileSync(join(dir, '20260910000000_order_submission_phase_a_review.sql'), 'utf8')
-    const constraint = phaseA.slice(phaseA.indexOf('order_submission_activity_action_check'))
+    const phaseB = readFileSync(
+      join(dir, '20260913000000_order_submission_advance_exceptions.sql'), 'utf8')
+    const start = phaseB.indexOf('add constraint order_submission_activity_action_check')
+    assert.ok(start > 0, 'Phase B must restate the action constraint')
+    const constraint = phaseB.slice(start, phaseB.indexOf(';', start))
+
     for (const action of Object.keys(PI_ACTIVITY_LABEL)) {
       assert.ok(constraint.includes(`'${action}'`), `${action} is labelled but not in the constraint`)
     }
-    assert.equal(Object.keys(PI_ACTIVITY_LABEL).length, 5,
-      'five actions exist in this phase; a sixth needs its own migration and its own words')
+    // And the other way round: an action the database admits but the screen
+    // cannot name would be dropped from the history silently.
+    const admitted = [...constraint.matchAll(/'([a-z_]+)'/g)].map(m => m[1])
+    for (const action of admitted) {
+      assert.ok(PI_ACTIVITY_LABEL[action], `${action} is admitted but has no words`)
+    }
+    assert.equal(Object.keys(PI_ACTIVITY_LABEL).length, 8,
+      'eight actions exist after Phase B; a ninth needs its own migration and its own words')
   })
 
   test('an action this build does not know is dropped, not printed raw', () => {
@@ -83,10 +107,21 @@ describe('every action reads as English', () => {
     assert.equal(entries[0].label, 'Submitted for approval')
   })
 
-  test('nothing about approval is claimed by this phase’s vocabulary', () => {
+  test('nothing about PI approval is claimed by this phase’s vocabulary', () => {
     const words = Object.values(PI_ACTIVITY_LABEL).join(' ').toLowerCase()
-    assert.ok(!words.includes('approved'))
-    assert.ok(!words.includes('order number'))
+    // "Advance exception approved" is a real event and says so. What must never
+    // appear is a word claiming the PI itself, or an order, was approved or
+    // numbered — so the check is on the PHRASES that would say that, not on the
+    // word "approved", which now legitimately appears.
+    for (const forbidden of ['pi approved', 'order approved', 'approved for order',
+                             'order number', 'order created', 'payment']) {
+      assert.ok(!words.includes(forbidden), `no label may say "${forbidden}"`)
+    }
+    assert.equal(PI_ACTIVITY_LABEL['advance_exception_approved'], 'Advance exception approved')
+    assert.equal(PI_ACTIVITY_LABEL['rejected'], 'Rejected',
+      'and the PI’s own rejection stays distinct from the advance exception’s')
+    assert.ok(PI_ACTIVITY_DETAIL['advance_exception_approved'].includes('does not approve the PI'),
+      'the approval event says out loud that it is not a PI approval')
   })
 })
 
@@ -162,9 +197,9 @@ describe('actors are named, or honestly not', () => {
 // ── What is not shown ─────────────────────────────────────────────────────────
 
 describe('internal bookkeeping stays internal', () => {
-  test('metadata and the status columns are never even selected', () => {
-    assert.equal(PI_ACTIVITY_COLUMNS, 'id, action, actor_id, note, created_at')
-    for (const column of ['metadata', 'previous_status', 'new_status', 'submission_id']) {
+  test('the status columns are never even selected', () => {
+    assert.equal(PI_ACTIVITY_COLUMNS, 'id, action, actor_id, note, created_at, metadata')
+    for (const column of ['previous_status', 'new_status', 'submission_id']) {
       assert.ok(!PI_ACTIVITY_COLUMNS.includes(column),
         `${column} is not rendered, so it is not read`)
     }
@@ -173,8 +208,74 @@ describe('internal bookkeeping stays internal', () => {
 
   test('an entry carries only what is displayed', () => {
     const [entry] = describe_([row({ note: '  Fabric on line 3 is wrong.  ' })])
-    assert.deepEqual(Object.keys(entry).sort(), ['actor', 'at', 'key', 'label', 'note'])
+    assert.deepEqual(Object.keys(entry).sort(),
+      ['actor', 'at', 'detail', 'figures', 'key', 'label', 'note'])
     assert.equal(entry.note, 'Fabric on line 3 is wrong.', 'the note is trimmed, not reworded')
+  })
+
+  test('metadata is read, and exactly two of its keys ever reach the screen', () => {
+    // The object the server records also holds item_count, resubmitted,
+    // standard_percent, grand_total and exception_status. None of those is a
+    // question anybody is asking on this screen.
+    const [entry] = describe_([row({
+      action: 'advance_exception_requested',
+      metadata: {
+        advance_percent: 12.5,
+        advance_amount: 147500,
+        grand_total: 1180000,
+        standard_percent: 40,
+        exception_status: 'pending',
+        item_count: 9,
+      },
+    })])
+    assert.equal(entry.figures, '12.5% · ₹1,47,500')
+    const rendered = `${entry.label} ${entry.actor} ${entry.figures} ${entry.detail} ${entry.note}`
+    for (const leaked of ['1180000', 'standard_percent', 'exception_status', 'item_count', '9']) {
+      assert.ok(!rendered.includes(leaked), `${leaked} must not reach the screen`)
+    }
+  })
+
+  test('an ordinary event has no figures and no explanatory sentence', () => {
+    for (const action of ['submitted', 'changes_requested', 'rejected',
+                          'submission_created', 'parse_replaced']) {
+      const [entry] = describe_([row({ action, metadata: { advance_percent: 12.5 } })])
+      assert.equal(entry.figures, null, `${action} must not borrow advance figures`)
+      assert.equal(entry.detail, null, `${action} has no fixed sentence`)
+    }
+  })
+
+  test('a missing or malformed metadata object renders a plain event', () => {
+    for (const metadata of [undefined, null, {}, { advance_percent: null },
+                            { advance_percent: 'not a number' }]) {
+      const [entry] = describe_([row({ action: 'advance_exception_approved', metadata })])
+      assert.equal(entry.figures, null)
+      assert.equal(entry.label, 'Advance exception approved', 'the event itself is still shown')
+    }
+  })
+
+  test('a percentage arriving as a string is still a percentage', () => {
+    // PostgREST renders `numeric` as a STRING to keep its precision.
+    const [entry] = describe_([row({
+      action: 'advance_exception_rejected',
+      metadata: { advance_percent: '0', advance_amount: '0' },
+    })])
+    assert.equal(entry.figures, '0% · ₹0')
+  })
+
+  test('a zero-percent proposal shows ₹0 rather than nothing', () => {
+    const [entry] = describe_([row({
+      action: 'advance_exception_requested',
+      metadata: { advance_percent: 0, advance_amount: 0 },
+    })])
+    assert.equal(entry.figures, '0% · ₹0')
+  })
+
+  test('an amount the server did not record leaves the percentage alone on the line', () => {
+    const [entry] = describe_([row({
+      action: 'advance_exception_approved',
+      metadata: { advance_percent: 7.25 },
+    })])
+    assert.equal(entry.figures, '7.25%')
   })
 
   test('a blank note is nothing rather than an empty line', () => {

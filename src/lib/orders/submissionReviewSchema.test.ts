@@ -510,8 +510,16 @@ describe('the closed activity action set grows by exactly one value', () => {
     for (const action of ['submission_created', 'parse_replaced', 'submitted', 'changes_requested', 'rejected']) {
       assert.ok(constraint.includes(`'${action}'`), `${action} must be admitted`)
     }
-    assert.equal(Object.keys(PI_ACTIVITY_LABEL).length, 5,
-      'and the screen has words for each of them')
+    for (const action of ['submission_created', 'parse_replaced', 'submitted',
+                          'changes_requested', 'rejected']) {
+      assert.ok(PI_ACTIVITY_LABEL[action], `${action} must have words on the screen`)
+    }
+    // The TOTAL is not asserted here. This file is about what PHASE A added, and
+    // a later phase extending the closed set in its own migration — which is
+    // exactly the discipline this constraint exists to enforce — is not a
+    // regression in Phase A. submissionActivity.test.ts owns the current total.
+    assert.ok(!constraint.includes('advance_exception'),
+      'and Phase A itself still admits none of Phase B’s events')
   })
 
   test('nothing about approval, numbering, advances or payments is admitted', () => {

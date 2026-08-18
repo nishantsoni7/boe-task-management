@@ -70,6 +70,7 @@ const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'))
 
 const LIST_PAGE = 'src/app/orders/drafts/page.tsx'
 const DETAIL_PAGE = 'src/app/orders/drafts/[submissionId]/page.tsx'
+const REVIEW_MODALS = 'src/components/orders/piReviewModals.tsx'
 const DRAFTS_VIEW = 'src/lib/orders/draftsView.ts'
 const IMPORT_PAGE = 'src/app/orders/import/page.tsx'
 const ORDERS_NAV = 'src/components/layout/OrdersLayout.tsx'
@@ -123,6 +124,17 @@ const submission = (over: Partial<PersistedSubmission> = {}): PersistedSubmissio
   review_note: null,
   created_at: '2026-08-14T06:30:00.000Z',
   updated_at: '2026-08-16T10:42:00.000Z',
+  // No advance requirement was declared. That is the honest state of a record
+  // saved before Phase B, and of every draft until it is submitted.
+  advance_condition: null,
+  advance_exception_percent: null,
+  advance_exception_reason: null,
+  advance_exception_status: null,
+  advance_exception_requested_by: null,
+  advance_exception_requested_at: null,
+  advance_exception_decided_by: null,
+  advance_exception_decided_at: null,
+  advance_exception_rejection_reason: null,
   ...over,
 })
 
@@ -304,17 +316,26 @@ describe('the detail page renders only what it fetched', () => {
     // appearing here that is not on this list would mean the screen had grown a
     // write of its own.
     //
-    // submit_order_submission_with_note is the same submission carrying the
-    // employee's optional reply; both submit doors are one line over one
-    // internal function in the database, so they cannot diverge in what they
-    // check.
+    // submit_order_submission_with_advance is the same submission carrying the
+    // employee's optional reply AND their advance declaration; it is one line
+    // over the same internal function the Phase A doors call, so none of them
+    // can diverge in what they check.
+    //
+    // The two advance decisions are on this list and the PI's own approval is
+    // NOT: settling one commercial term is a real RPC, and approving the PI is
+    // a step that does not exist in this phase.
     const rpcs = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
     assert.deepEqual(rpcs, [
+      'approve_pi_advance_exception',
       'reject_order_submission',
+      'reject_pi_advance_exception',
       'request_order_submission_changes',
-      'submit_order_submission',
-      'submit_order_submission_with_note',
+      'submit_order_submission_with_advance',
     ])
+    for (const forbidden of ['approve_order_submission', 'allocate', 'payment', 'finance']) {
+      assert.ok(!rpcs.some(name => name.includes(forbidden)),
+        `${forbidden} belongs to no phase this page can reach`)
+    }
     assert.ok(!source.includes('replace_order_submission_parse'),
       'the parsed-data writer is service-role only and unreachable from here')
     assert.ok(!/approve_order_submission/.test(source),
@@ -1021,17 +1042,31 @@ describe('the record page draws controls from one rule, and from nothing else', 
     assert.ok(source.includes('const actions = describeSubmissionActions({'))
     for (const gate of [
       '{(actions.canSubmit || actions.canChangePi) && (',
-      '{(actions.canRequestChanges || actions.canReject) && (',
+      '{showReviewCard && (',
     ]) {
       assert.ok(source.includes(gate), `${gate} must gate its card`)
     }
+    assert.ok(source.includes('const showReviewCard = actions.canRequestChanges || actions.canReject'),
+      'and the review card gate is still that helper and nothing else')
     assert.ok(!/status === 'submitted' &&\s*canReview/.test(source),
       'no second, looser copy of the rule in a JSX condition')
+
+    // The advance decision has its OWN rule, from its own helper, because the
+    // two authorities are independent: somebody may hold
+    // orders.approve_advance_exception without orders.approve_order.
+    assert.ok(source.includes('const advanceActions = describeAdvanceActions({'))
+    assert.ok(source.includes('canDecideException: canDecideAdvance'))
+    assert.ok(source.includes('{!showReviewCard && showAdvance && ('),
+      'so an exception approver with no review card still gets the section')
+    assert.ok(!/advance_exception_status === 'pending'/.test(source),
+      'no second, looser copy of the pending rule in a JSX condition')
   })
 
   test('capabilities are resolved for the signed-in account', () => {
     assert.ok(source.includes('getEffectivePermissions(supabase, session.user.id, \'orders\')'))
     assert.ok(source.includes('setCanReview(caps.canApproveOrderSubmission)'))
+    assert.ok(source.includes('setCanDecideAdvance(caps.canApproveAdvanceException)'),
+      'the exception authority is resolved from its own capability, never from canReview')
     assert.ok(source.includes('setViewerId(session.user.id)'),
       'ownership compares the signed-in id, never a View As target')
     assert.ok(source.includes('.catch(() => [])'),
@@ -1040,8 +1075,16 @@ describe('the record page draws controls from one rule, and from nothing else', 
 
   test('approval is present, inert, and explains itself', () => {
     assert.ok(source.includes('{APPROVE_DISABLED_REASON}'))
-    assert.ok(!/onClick=\{[^}]*approve/i.test(source), 'the approve control has no handler at all')
-    assert.ok(!source.includes('<button') || !/APPROVE_BUTTON_LABEL[\s\S]{0,80}onClick/.test(source))
+    // The PI's own Approve is a <span>, not a button, and carries no handler.
+    // "Approve Exception" is a different control on a different fact and DOES
+    // have one — so the check is anchored to APPROVE_BUTTON_LABEL rather than to
+    // the word "approve", which now legitimately appears twice on this page.
+    assert.ok(!/APPROVE_BUTTON_LABEL[\s\S]{0,200}onClick/.test(source),
+      'the PI approve control has no handler at all')
+    assert.ok(!/onClick=\{[^}]*approveSubmission/i.test(source),
+      'and there is no approval RPC behind it')
+    assert.ok(source.includes('APPROVE_EXCEPTION_BUTTON_LABEL'),
+      'while the advance exception, which IS decidable, has its own distinct label')
   })
 
   test('a second click cannot start a second write', () => {
@@ -1083,7 +1126,11 @@ describe('the submitter and the submission time are shown', () => {
   })
 
   test('the name is batch-fetched, not one query per row', () => {
-    assert.ok(source.includes('activityActorIds(history, [row.submitted_by, row.rejected_by])'))
+    assert.ok(source.includes('activityActorIds(history, ['))
+    for (const id of ['row.submitted_by', 'row.rejected_by',
+                      'row.advance_exception_requested_by', 'row.advance_exception_decided_by']) {
+      assert.ok(source.includes(id), `${id} must be resolved in the same users read`)
+    }
     assert.ok(source.includes(".in('id', actorIds)"), 'one read for every name on the page')
     assert.ok(source.includes(".select('id, full_name')"),
       'named safe columns: select(*) on public.users is a permission error')
@@ -1252,16 +1299,24 @@ describe('the resubmission reply reaches the database and the trail', () => {
       'the gate is the shared helper, not an inline status comparison')
   })
 
-  test('a reply picks the note-carrying RPC, and its absence picks the plain one', () => {
-    assert.ok(source.includes('const { error } = note === null'))
-    assert.ok(source.includes("? await supabase.rpc('submit_order_submission', { p_submission_id: submissionId })"))
-    assert.ok(source.includes("submit_order_submission_with_note'"))
+  test('one door carries the reply and the advance declaration together', () => {
+    // Phase B replaced the two-door choice with one: the reply and the advance
+    // condition travel on the same call, so a submission cannot land with one
+    // recorded and the other lost. p_note is still nullable, so an employee with
+    // nothing to add submits exactly as they did before.
+    assert.ok(source.includes("await supabase.rpc('submit_order_submission_with_advance', {"))
     assert.ok(source.includes('p_note: note,'))
+    assert.ok(source.includes('p_advance_condition: advance.condition,'))
+    assert.ok(source.includes("p_advance_percent: advance.condition === 'exception' ? advance.percent : null,"),
+      'the standard requirement sends no percentage, exactly as the RPC demands')
+    assert.ok(source.includes("p_advance_reason: advance.condition === 'exception' ? advance.reason : null,"))
   })
 
-  test('double submission is still prevented on both paths', () => {
-    // Both doors run through the same runAction, which holds the ref.
-    assert.ok(source.includes("const submitForApproval = useCallback((note: string | null) => runAction('submit'"))
+  test('double submission is still prevented on every path', () => {
+    // Every door runs through the same runAction, which holds the ref.
+    assert.ok(source.includes("=> runAction('submit'"))
+    assert.ok(source.includes("runAction('approve_exception'"))
+    assert.ok(source.includes("runAction('reject_exception'"))
     assert.ok(source.includes('if (actingRef.current) return'))
   })
 
@@ -1280,5 +1335,125 @@ describe('the resubmission reply reaches the database and the trail', () => {
       'the same left-rule treatment for every note on the trail')
     const noteBlocks = [...source.matchAll(/\{entry\.note && \(/g)]
     assert.equal(noteBlocks.length, 1, 'one renderer, not one per action')
+  })
+})
+
+// ── Phase B: the advance requirement on screen ────────────────────────────────
+//
+// WHO SEES WHAT. The three audiences share one section and differ in exactly one
+// thing — whether the two decision controls are drawn — because the STATE of a
+// commercial condition is part of the record's story and hiding it from somebody
+// who can read the PI would leave them wondering why it is waiting.
+
+describe('the advance requirement is shown to everybody and decided by few', () => {
+  const source = read(DETAIL_PAGE)
+
+  test('the section is one component, used in exactly two places', () => {
+    assert.equal((source.match(/<AdvanceRequirementSection/g) ?? []).length, 1,
+      'one component, so the employee view and the reviewer view cannot drift')
+    assert.equal((source.match(/\{advanceSection\}/g) ?? []).length, 2,
+      'rendered inside the review card, or as a card of its own — never both')
+  })
+
+  test('the decision controls are gated on the exception capability alone', () => {
+    assert.ok(source.includes('canDecide={advanceActions.canDecide}'))
+    assert.ok(!/canDecide=\{[^}]*canReview/.test(source),
+      'PI review authority must not draw an advance decision control')
+    assert.ok(!/canDecide=\{[^}]*canApproveOrderSubmission/.test(source))
+  })
+
+  test('a draft shows no section, and everything past it does', () => {
+    assert.ok(source.includes("const showAdvance = !advance.undeclared || submission.status !== 'draft'"))
+  })
+
+  test('the rejected-exception instruction appears only while the PI is back', () => {
+    assert.ok(source.includes("advance.status === 'rejected' && submission.status === 'needs_changes'"))
+    assert.ok(source.includes('{ADVANCE_REJECTED_INSTRUCTION}'))
+  })
+
+  test('the payment boundary is restated where the figures are', () => {
+    assert.ok(source.includes('{ADVANCE_NOT_A_PAYMENT}'))
+    for (const claim of ['Add Payment', 'payment received', 'Record Payment', 'finance_payment']) {
+      assert.ok(!source.includes(claim), `the page must not say "${claim}"`)
+    }
+  })
+
+  test('no Finance or payment table is read by this page', () => {
+    const tables = [...source.matchAll(/\.from\('([^']+)'\)/g)].map(m => m[1])
+    for (const table of tables) {
+      assert.ok(!/payment|finance/i.test(table), `${table} is out of scope for this page`)
+    }
+  })
+
+  test('the disabled PI approval explains itself accurately', () => {
+    const workflow = read('src/lib/orders/submissionWorkflow.ts')
+    assert.ok(workflow.includes('APPROVE_DISABLED_REASON'))
+    assert.ok(/order-approval phase/.test(workflow),
+      'it says which phase brings approval, now that advance review exists')
+    assert.ok(!/after advance review is added/.test(workflow),
+      'the old wording stopped being true the moment advance review was added')
+  })
+})
+
+describe('the submit dialog asks one question and stays short', () => {
+  const source = read(REVIEW_MODALS)
+
+  test('the standard requirement is the default, and reveals nothing', () => {
+    assert.ok(source.includes('useState<AdvanceCondition>(initialAdvance.condition)'))
+    assert.ok(source.includes("const isException = condition === 'exception'"))
+    assert.ok(source.includes('{isException && ('),
+      'the percentage and reason fields exist only for an exception')
+  })
+
+  test('both options show their rupee figure immediately', () => {
+    assert.ok(source.includes('previewAdvanceAmount(percentText, grandTotalValue)'))
+    assert.ok(source.includes('{standardAmount}'))
+  })
+
+  test('0% is explained rather than left as a bare ₹0', () => {
+    assert.ok(source.includes('{ADVANCE_ZERO_EXPLANATION}'))
+  })
+
+  test('submit is disabled while the declaration is invalid or in flight', () => {
+    assert.ok(source.includes('const blocked = submitting || tooLong || !advance.ok'))
+    assert.ok(source.includes('disabled={blocked}'))
+    assert.ok(source.includes('if (blocked || !advance.ok) return'),
+      'and the handler refuses too, so a defeated button sends nothing')
+  })
+
+  test('the validation is the shared one, not a second copy in the dialog', () => {
+    assert.ok(source.includes('validateAdvanceSelection({'))
+    assert.ok(!/percent\s*[<>]=?\s*40/.test(source), 'no bare 40 in a JSX condition')
+    assert.ok(!source.includes('parseFloat('), 'no second parser')
+  })
+
+  test('the optional employee reply is preserved on a resubmission', () => {
+    assert.ok(source.includes('{offerReply && ('))
+    assert.ok(source.includes('validateResubmitReply(reply)'))
+    assert.ok(source.includes('RESUBMIT_NOTE_LABEL'))
+  })
+
+  test('Reject Exception is a small mandatory-reason dialog, not a new component', () => {
+    assert.ok(source.includes("export type PiNoteIntent = 'needs_changes' | 'reject' | 'reject_exception'"))
+    assert.ok(source.includes('reject_exception: {'))
+    assert.ok(source.includes('const valid = note.trim().length > 0'),
+      'the same mandatory-reason rule all three decisions share')
+  })
+
+  test('rejecting the advance is visibly NOT rejecting the PI', () => {
+    const start = source.indexOf('reject_exception: {')
+    const copy = source.slice(start, source.indexOf('\n  },', start))
+    assert.ok(copy.includes('The PI is NOT rejected'))
+    assert.ok(copy.includes('Reject Advance Exception'), 'and its confirm says what it acts on')
+    assert.ok(!copy.includes('cannot be undone'),
+      'because it can: the employee resubmits with a new proposal')
+  })
+
+  test('nothing in the dialogs claims a payment', () => {
+    for (const claim of ['payment received', 'Add Payment', 'amount received', 'paid']) {
+      assert.ok(!source.toLowerCase().includes(claim.toLowerCase()),
+        `the dialogs must not say "${claim}"`)
+    }
+    assert.ok(source.includes('{ADVANCE_NOT_A_PAYMENT}'))
   })
 })
