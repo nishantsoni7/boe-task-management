@@ -868,10 +868,32 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
     assert.ok(source.includes('row.emphasis ? 700 : '))
   })
 
-  test('both PI screens render it through the same component', () => {
-    for (const page of [IMPORT_PAGE, DRAFT_DETAIL_PAGE]) {
-      assert.ok(read(page).includes('<PiCommercialSummary rows={buildCommercialRows('),
-        `${page} must render the shared summary from the shared row builder`)
+  test('both PI screens render it through the same component and builder', () => {
+    // The DETAIL page filters ONE row out of what the builder returns — the
+    // required-advance line, which its own top-of-page snapshot now owns and
+    // would contradict on any PI with an approved exception. The filter is the
+    // page's, by key, and the builder is untouched: the preview still gets every
+    // row, including that one, which is the only advance IT ever states.
+    assert.ok(read(IMPORT_PAGE).includes('<PiCommercialSummary rows={buildCommercialRows('),
+      'the preview renders the builder’s rows unchanged')
+    const detail = read(DRAFT_DETAIL_PAGE)
+    assert.ok(detail.includes('<PiCommercialSummary rows={commercialBreakdownRows(buildCommercialRows('),
+      'and the detail page renders the same builder through a named, tested filter')
+  })
+
+  test('the preview keeps the presentation it shipped with', () => {
+    // A previous pass changed this component's typography and grouping for both
+    // screens at once. Everything the detail page wants is now behind a variant,
+    // and 'preview' is the default — so a screen that asks for nothing gets
+    // exactly what it always got.
+    const source = read(PI_PARTS)
+    assert.ok(source.includes("variant = 'preview'"), 'the default is the original')
+    assert.ok(source.includes("const detail = variant === 'detail'"))
+    assert.ok(!read(IMPORT_PAGE).includes('variant='),
+      'and the preview asks for nothing')
+    for (const gated of ["fontVariantNumeric: detail ? 'tabular-nums' : undefined",
+                         'detail && row.groupStart']) {
+      assert.ok(source.includes(gated), `${gated} must be behind the variant`)
     }
   })
 

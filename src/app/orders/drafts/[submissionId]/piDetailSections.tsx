@@ -18,15 +18,13 @@
 
 import {
   AlertTriangle, Ban, CheckCircle2, FileSpreadsheet, History,
-  Info, Lock, Percent, Send, ThumbsUp, Undo2, Upload, Wallet,
+  Info, Percent, Send, ThumbsUp, Undo2, Upload, Wallet,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
 import { draftStatusLabel, type PiDraftStatusTone } from '@/lib/orders/draftsView'
 import {
-  APPROVE_BUTTON_LABEL,
-  APPROVE_DISABLED_REASON,
   CHANGE_PI_BUTTON_LABEL,
   REJECT_BUTTON_LABEL,
   REQUEST_CHANGES_BUTTON_LABEL,
@@ -34,9 +32,6 @@ import {
   type SubmissionActions,
 } from '@/lib/orders/submissionWorkflow'
 import {
-  ADVANCE_NOT_A_PAYMENT,
-  ADVANCE_SECTION_TITLE,
-  ADVANCE_ZERO_EXPLANATION,
   APPROVE_EXCEPTION_BUTTON_LABEL,
   REJECT_EXCEPTION_BUTTON_LABEL,
   type AdvanceView,
@@ -44,9 +39,10 @@ import {
 import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, type PiDiagnosticEntry } from '@/lib/pi/previewView'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
 import {
+  ADVANCE_BAND_TITLE,
   BLOCKING_INSTRUCTION,
-  NOT_PROVIDED,
   STORED_COPY_NOTE,
+  describeRequestedException,
   type CommercialSnapshot,
   type OverviewDate,
   type PiDetailTone,
@@ -130,10 +126,17 @@ export function PiIdentityStrip({ statusLabel, tone, facts, workbookName }: {
 
 // ── 2. Order overview ─────────────────────────────────────────────────────────
 
-/** A label over its value, or a quiet note when the PI did not say. */
+/**
+ * A label over its value.
+ *
+ * THERE IS NO "MISSING" BRANCH ANY MORE. Every caller now omits a fact the PI
+ * did not carry rather than reserving a labelled block for it: three stacked
+ * "Not provided" lines were the single largest piece of dead space on the page,
+ * and none of them asked anybody to do anything.
+ */
 function Field({ label, value, strong = false }: {
   label: string
-  value: string | null
+  value: string
   strong?: boolean
 }) {
   return (
@@ -144,20 +147,14 @@ function Field({ label, value, strong = false }: {
       }}>
         {label}
       </div>
-      {value === null ? (
-        <div style={{ fontSize: '12.5px', color: colors.muted, fontStyle: 'italic' }}>
-          {NOT_PROVIDED}
-        </div>
-      ) : (
-        <MultilineText style={{
-          fontSize: strong ? '13.5px' : '12.5px',
-          fontWeight: strong ? 600 : 400,
-          color: strong ? colors.primary : colors.secondary,
-          margin: 0,
-        }}>
-          {value}
-        </MultilineText>
-      )}
+      <MultilineText style={{
+        fontSize: strong ? '13.5px' : '12.5px',
+        fontWeight: strong ? 600 : 400,
+        color: strong ? colors.primary : colors.secondary,
+        margin: 0,
+      }}>
+        {value}
+      </MultilineText>
     </div>
   )
 }
@@ -175,37 +172,20 @@ function SectionLabel({ icon, children }: { icon: React.ReactNode; children: Rea
   )
 }
 
-/** One label-and-figure line in the snapshot. */
-function SnapshotRow({ label, value, tone = 'plain' }: {
-  label: string
-  value: React.ReactNode
-  tone?: 'plain' | 'strong'
-}) {
-  return (
-    <div style={{
-      display: 'flex', gap: '14px', justifyContent: 'space-between',
-      alignItems: 'baseline', flexWrap: 'wrap',
-    }}>
-      <span style={{ fontSize: '11.5px', color: colors.muted }}>{label}</span>
-      <span style={{
-        fontSize: tone === 'strong' ? '13px' : '12.5px',
-        fontWeight: tone === 'strong' ? 700 : 600,
-        color: colors.primary, textAlign: 'right',
-        fontVariantNumeric: 'tabular-nums',
-      }}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
 /**
  * The one strong card under the page identity: who and where, when, and what it
  * is worth.
  *
  * THE CLIENT IS NOT REPEATED. It is the page title, and Bill to / Ship to carry
- * the destinations a reader actually compares. Printing it a third time inside
- * this card is what made the old overview feel like a field dump.
+ * the destinations a reader actually compares.
+ *
+ * A SECTION WITH NOTHING IN IT IS NOT DRAWN, and the card re-columns around what
+ * is left. Most saved PIs carry no order-confirmation date and no dispatch
+ * commitment, and reserving a third of a wide card for three "Not provided"
+ * lines was the largest piece of dead space on the screen. Three populated
+ * groups get three columns; two get two balanced ones; a record with neither an
+ * address nor a date leaves the commercial snapshot the whole card, which is the
+ * one thing that is always worth showing.
  */
 export function PiOrderOverview({ billTo, shipTo, dates, snapshot }: {
   billTo: string | null
@@ -213,41 +193,44 @@ export function PiOrderOverview({ billTo, shipTo, dates, snapshot }: {
   dates: readonly OverviewDate[]
   snapshot: CommercialSnapshot
 }) {
-  const statusTone = snapshot.statusTone ? TONE_STYLE[snapshot.statusTone] : null
+  const hasDelivery = billTo !== null || shipTo !== null
+  const hasDates = dates.length > 0
+  const groups = 1 + (hasDelivery ? 1 : 0) + (hasDates ? 1 : 0)
 
   return (
     <PiCard>
-      <div className="pi-detail-overview">
+      <div className={`pi-detail-overview pi-detail-overview-${groups}`}>
 
         {/* A — who it is for and where it goes. Given real width, because an
             address is the one field on this card that needs to be read rather
-            than glanced at. */}
-        <section className="pi-detail-overview-section">
-          <SectionLabel icon={<Send size={12} strokeWidth={2} />}>Client &amp; delivery</SectionLabel>
-          <Field label="Bill to" value={billTo} strong />
-          <Field label="Ship to" value={shipTo} strong />
-        </section>
+            than glanced at. Ship to is dropped when the PI did not name one:
+            plenty of orders ship to the billing address and say so by omission. */}
+        {hasDelivery && (
+          <section className="pi-detail-overview-section">
+            <SectionLabel icon={<Send size={12} strokeWidth={2} />}>Client &amp; delivery</SectionLabel>
+            {billTo !== null && <Field label="Bill to" value={billTo} strong />}
+            {shipTo !== null && <Field label="Ship to" value={shipTo} strong />}
+          </section>
+        )}
 
-        {/* B — when. Only the dates that exist, plus the moment the record moved. */}
-        <section className="pi-detail-overview-section pi-detail-overview-divided">
-          <SectionLabel icon={<History size={12} strokeWidth={2} />}>Timeline</SectionLabel>
-          {dates.map(date => (
-            <Field key={date.key} label={date.label} value={date.value} />
-          ))}
-        </section>
+        {/* B — when. Only the dates the document actually gave. */}
+        {hasDates && (
+          <section className="pi-detail-overview-section pi-detail-overview-divided">
+            <SectionLabel icon={<History size={12} strokeWidth={2} />}>Timeline</SectionLabel>
+            {dates.map(date => (
+              <Field key={date.key} label={date.label} value={date.value} />
+            ))}
+          </section>
+        )}
 
-        {/* C — what it is worth, and on what advance condition. The strongest
-            part of the card and the reason it is not a uniform grid. */}
+        {/* C — what it is worth, and on what advance condition. THE SINGLE
+            CURRENT-STATE SOURCE for the advance: percentage, amount, condition
+            and decision, in one block that appears nowhere else on the page. */}
         <section className="pi-detail-overview-section pi-detail-snapshot pi-detail-overview-divided">
           <SectionLabel icon={<Wallet size={12} strokeWidth={2} />}>Commercial snapshot</SectionLabel>
 
           <div>
-            <div style={{
-              fontSize: '10px', fontWeight: 600, color: colors.muted,
-              textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px',
-            }}>
-              Grand Total
-            </div>
+            <div style={SNAPSHOT_LABEL_STYLE}>Grand Total</div>
             <div className="pi-detail-snapshot-total" style={{ color: colors.primary }}>
               {snapshot.grandTotal}
             </div>
@@ -256,26 +239,44 @@ export function PiOrderOverview({ billTo, shipTo, dates, snapshot }: {
             </div>
           </div>
 
-          <div className="pi-detail-snapshot-rows">
-            {/* The standard is always shown, even under an exception: the
-                decision being asked for is a comparison, and half a comparison
-                is not one. */}
-            <SnapshotRow label={snapshot.standardAdvanceLabel} value={snapshot.standardAdvanceAmount} />
-            <SnapshotRow label="Advance condition" value={snapshot.conditionLabel} tone="strong" />
-            {snapshot.exceptionFigures && (
-              <SnapshotRow label="Proposed advance" value={snapshot.exceptionFigures} tone="strong" />
-            )}
-          </div>
-
-          {snapshot.statusLabel && statusTone && (
-            <div>
-              <PiStatusBadge label={`Exception · ${snapshot.statusLabel}`} tone={statusTone} />
-            </div>
-          )}
+          {snapshot.advance && <PiAdvanceRequirement advance={snapshot.advance} />}
         </section>
 
       </div>
     </PiCard>
+  )
+}
+
+const SNAPSHOT_LABEL_STYLE: React.CSSProperties = {
+  fontSize: '10px', fontWeight: 600, color: colors.muted,
+  textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px',
+}
+
+/**
+ * The advance condition, in one block.
+ *
+ * Three lines at most — what this figure is, what it comes to, and whether a
+ * decision is outstanding. It replaced four rows plus a badge, and it is the
+ * only place on the page where the current percentage and amount appear.
+ */
+function PiAdvanceRequirement({ advance }: { advance: NonNullable<CommercialSnapshot['advance']> }) {
+  const tone = advance.statusTone ? TONE_STYLE[advance.statusTone] : null
+
+  return (
+    <div>
+      <div style={SNAPSHOT_LABEL_STYLE}>{advance.label}</div>
+      <div style={{
+        fontSize: '14px', fontWeight: 700, color: colors.primary,
+        fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
+      }}>
+        {advance.figures}
+      </div>
+      {advance.status && tone && (
+        <div style={{ marginTop: '6px' }}>
+          <PiStatusBadge label={advance.status} tone={tone} />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -310,20 +311,31 @@ function QuotedNote({ heading, body, tone }: {
 
 /**
  * One coordinated panel, above the products, carrying everything that is asked
- * of this viewer.
+ * of this viewer — and nothing that is not.
  *
  * WHY IT IS ONE PANEL. The old page had the employee's actions in one card, the
  * reviewer's in a second, the advance condition in a third or fourth depending
  * on who was looking, and all of them BELOW the product table — so a person had
  * to scroll past twelve products to find out that nothing was being asked of
- * them. The state, the instruction, the reply, the PI actions and the advance
- * decision are one question with several parts; they are one panel with several
- * bands.
+ * them.
  *
- * THE TWO DECISIONS STAY SEPARATE INSIDE IT. Sending a PI back and settling one
- * of its commercial terms are different acts by possibly different people, so
- * the advance band has its own rule and its own quieter ground — and the PI's
- * own Approve stays disabled whatever happens to the advance.
+ * WHAT THIS PASS TOOK OUT OF IT. The panel had become congested in its own
+ * right: a standing paragraph under the heading, a muted line explaining why a
+ * control could not be pressed, a disabled Approve, and an advance band
+ * restating figures the top of the page already carried. What is left is a
+ * heading, one metadata line, whatever a person actually wrote, the controls,
+ * and — only while a decision is genuinely outstanding — the advance band.
+ *
+ * NO DISABLED PI APPROVAL. There is no approval RPC in this phase, and a greyed
+ * "Approve" beside two live buttons was being read as the current approval
+ * action rather than as a promise about a later one. Absence is clearer than an
+ * inert control; Phase C introduces a real one.
+ *
+ * THE TWO DECISIONS STAY SEPARATE. Sending a PI back and settling one of its
+ * commercial terms are different acts by possibly different people. Needs
+ * Changes and Reject are therefore drawn from the PI-review authority ALONE and
+ * survive an approved advance exception: accepting a 0% advance says nothing
+ * about whether the products, quantities, rates, dates or addresses are right.
  */
 export function PiWorkflowPanel({
   panel,
@@ -331,6 +343,7 @@ export function PiWorkflowPanel({
   status,
   reviewNote,
   employeeReply,
+  advanceRefusal,
   blockingCount,
   acting,
   onChangePi,
@@ -346,36 +359,37 @@ export function PiWorkflowPanel({
   reviewNote: string | null
   /** The employee's reply on the current submission, off the trail. */
   employeeReply: string | null
+  /**
+   * Why a proposed advance was refused, and what to do about it — for the
+   * employee holding the returned PI, and for nobody else. Everyone else reads
+   * the outcome in the snapshot and the history in Activity.
+   */
+  advanceRefusal: { reason: string | null; instruction: string } | null
   blockingCount: number
   acting: boolean
   onChangePi: () => void
   onSubmit: () => void
   onRequestChanges: () => void
   onReject: () => void
-  /** The advance requirement band, or null when the record has none to show. */
+  /** The pending advance decision, or null. */
   advanceBand: React.ReactNode
 }) {
   const tone = TONE_STYLE[panel.tone]
   const isReviewer = actions.canRequestChanges || actions.canReject
   const ownerActions = actions.canSubmit || actions.canChangePi
   const hasActions = isReviewer || ownerActions
+  const hasBody = Boolean(panel.instruction || reviewNote || employeeReply || advanceRefusal)
 
   return (
     <PiCard style={panel.closed ? undefined : { borderColor: tone.border }}>
       <div className="pi-detail-workflow-head">
-        <div style={{ minWidth: '220px', flex: '1 1 280px' }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            fontSize: '14px', fontWeight: 700, color: colors.primary,
-          }}>
+        <div style={{ minWidth: '200px', flex: '1 1 260px' }}>
+          <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
             {panel.heading}
           </div>
-          {panel.standing && (
-            <div style={{
-              fontSize: '12px', color: colors.secondary, lineHeight: 1.5, marginTop: '3px',
-              maxWidth: '62ch',
-            }}>
-              {panel.standing}
+          {panel.meta && (
+            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '3px' }}>
+              {panel.meta}
             </div>
           )}
         </div>
@@ -400,6 +414,8 @@ export function PiWorkflowPanel({
               </>
             )}
 
+            {/* Drawn from the PI-review authority alone, and therefore still
+                here after an advance exception has been approved. */}
             {isReviewer && (
               <>
                 <button className="boe-btn boe-btn-ghost" onClick={onRequestChanges} disabled={acting}>
@@ -415,38 +431,20 @@ export function PiWorkflowPanel({
                   <Ban size={13} strokeWidth={2} />
                   {REJECT_BUTTON_LABEL}
                 </button>
-                {/* Present, inert, and NARROW. It used to carry its whole
-                    explanation inline, which made the one control nobody can
-                    press the widest thing in the row; the reason now sits under
-                    the row as a muted line. */}
-                <span
-                  title={APPROVE_DISABLED_REASON}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                    padding: '6px 12px', borderRadius: '5px',
-                    fontSize: '12px', fontWeight: 600,
-                    background: colors.raised, color: colors.muted,
-                    border: `1px solid ${colors.border}`,
-                    cursor: 'not-allowed', whiteSpace: 'nowrap',
-                  }}
-                >
-                  <Lock size={12} strokeWidth={2} />
-                  {APPROVE_BUTTON_LABEL}
-                </span>
               </>
             )}
           </div>
         )}
       </div>
 
-      {(isReviewer || reviewNote || employeeReply) && (
+      {hasBody && (
         <div style={{
           padding: '0 20px 15px',
           display: 'flex', flexDirection: 'column', gap: '9px',
         }}>
-          {isReviewer && (
-            <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
-              {APPROVE_BUTTON_LABEL}: {APPROVE_DISABLED_REASON}
+          {panel.instruction && (
+            <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+              {panel.instruction}
             </div>
           )}
           {/* Management's own words, verbatim. The same column carries both
@@ -463,6 +461,23 @@ export function PiWorkflowPanel({
           {employeeReply && (
             <QuotedNote heading="The employee&rsquo;s reply" body={employeeReply} tone="neutral" />
           )}
+          {/* A refused advance, on the desk of the person who must now correct
+              it. Both halves are real content: management's reason, and the
+              choice the employee has. */}
+          {advanceRefusal && (
+            <>
+              {advanceRefusal.reason && (
+                <QuotedNote
+                  heading="Why the advance was refused"
+                  body={advanceRefusal.reason}
+                  tone="red"
+                />
+              )}
+              <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+                {advanceRefusal.instruction}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -471,131 +486,62 @@ export function PiWorkflowPanel({
   )
 }
 
-// ── The advance requirement band ──────────────────────────────────────────────
-//
-// ONE COMPONENT, THREE AUDIENCES: the employee reading their own record, a PI
-// reviewer, and an authorised exception approver. What differs between them is
-// only whether the two decision CONTROLS are drawn — the STATE is shown to
-// everybody who can read the PI, because a record waiting on somebody else's
-// decision must not look inert to the person waiting.
-//
-// NO PAYMENT LANGUAGE. Not "received", not "paid", not "collected". The figures
-// are what would be required, and the footnote says so.
+// ── The advance decision band ─────────────────────────────────────────────────
 
-function AdvanceRow({ label, value, tone = 'plain' }: {
-  label: string
-  value: React.ReactNode
-  tone?: 'plain' | 'strong'
-}) {
-  return <SnapshotRow label={label} value={value} tone={tone} />
-}
-
-const EXCEPTION_STATUS_TONE: Record<string, ToneStyle> = {
-  pending:  { bg: colors.amberTint, color: '#9A6212', border: 'rgba(232,160,48,0.35)' },
-  approved: { bg: colors.greenTint, color: '#2F7A52', border: 'rgba(69,168,112,0.35)' },
-  rejected: { bg: colors.redTint,   color: colors.red, border: 'rgba(217,79,79,0.35)' },
-}
-
+/**
+ * A proposed advance that is still waiting on somebody. DRAWN ONLY WHILE IT IS
+ * PENDING.
+ *
+ * WHY ONLY THEN. A settled exception has an outcome, and the outcome is already
+ * in two places that are better suited to it: the snapshot at the top says what
+ * the requirement now IS, and Activity keeps who decided it and when, forever. A
+ * band restating the request, the reason, the requester, the decider and both
+ * timestamps was the single largest block of repetition on the page.
+ *
+ * WHAT IT SHOWS WHILE IT IS PENDING is what a decision actually needs: the
+ * condition being asked for, in one line, and the employee's reason for asking —
+ * their own words, which exist nowhere else on this screen. The requester and
+ * the timestamp are deliberately absent; they are audit facts and Activity is
+ * the audit trail.
+ *
+ * EVERYBODY WHO CAN READ THE PI SEES IT. Only the two controls are gated, on the
+ * exception authority alone — a record waiting on somebody else's decision must
+ * not look inert to the person waiting.
+ */
 export function PiAdvanceBand({
   advance,
   canDecide,
   acting,
-  rejectedInstruction,
-  requesterName,
-  deciderName,
-  requestedAt,
-  decidedAt,
   onApprove,
   onReject,
 }: {
   advance: AdvanceView
-  /** Whether THIS viewer may settle a pending proposal. */
+  /** Whether THIS viewer may settle the proposal. Never PI-review authority. */
   canDecide: boolean
   acting: boolean
-  /** Shown to the employee whose proposal was refused, and to nobody else. */
-  rejectedInstruction: string | null
-  requesterName: string | null
-  deciderName: string | null
-  requestedAt: string | null
-  decidedAt: string | null
   onApprove: () => void
   onReject: () => void
 }) {
-  const statusTone = advance.status ? EXCEPTION_STATUS_TONE[advance.status] : null
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
         <Percent size={13} strokeWidth={2} color={colors.tertiary} />
         <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>
-          {ADVANCE_SECTION_TITLE}
+          {ADVANCE_BAND_TITLE}
         </span>
-        {advance.statusLabel && statusTone && (
-          <span style={{ marginLeft: 'auto' }}>
-            <PiStatusBadge label={advance.statusLabel} tone={statusTone} />
-          </span>
-        )}
+        <span style={{
+          fontSize: '12.5px', fontWeight: 700, color: colors.primary,
+          marginLeft: 'auto', fontVariantNumeric: 'tabular-nums', textAlign: 'right',
+        }}>
+          {describeRequestedException(advance)}
+        </span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <AdvanceRow
-          label={`Standard requirement (${advance.standardPercentLabel})`}
-          value={advance.standardAmount}
-        />
-        <AdvanceRow
-          label="Selected condition"
-          value={advance.undeclared ? 'Not declared' : advance.conditionLabel}
-        />
-        {advance.exceptionPercentLabel && (
-          <AdvanceRow
-            label="Proposed advance"
-            value={`${advance.exceptionPercentLabel}${advance.exceptionAmount ? ` · ${advance.exceptionAmount}` : ''}`}
-            tone="strong"
-          />
-        )}
-      </div>
-
-      {advance.isZeroPercent && (
-        <div style={{ fontSize: '11.5px', color: '#9A6212', lineHeight: 1.45 }}>
-          {ADVANCE_ZERO_EXPLANATION}
-        </div>
-      )}
-
-      {/* The employee's own words — what the decision is actually about, so not
-          squeezed into a row. */}
+      {/* The employee's own words — what the decision is actually about. */}
       {advance.requestReason && (
         <QuotedNote heading="Employee&rsquo;s reason" body={advance.requestReason} tone="neutral" />
       )}
 
-      {advance.rejectionReason && (
-        <QuotedNote heading="Why it was refused" body={advance.rejectionReason} tone="red" />
-      )}
-
-      {(requestedAt || decidedAt) && (
-        <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
-          {requestedAt && (
-            <div>Requested by {requesterName ?? 'a colleague'} on {requestedAt}</div>
-          )}
-          {decidedAt && (
-            <div>Decided by {deciderName ?? 'a colleague'} on {decidedAt}</div>
-          )}
-        </div>
-      )}
-
-      {rejectedInstruction && (
-        <div style={{
-          fontSize: '11.5px', color: colors.primary, lineHeight: 1.5,
-          background: colors.amberTint, border: '1px solid rgba(232,160,48,0.3)',
-          borderRadius: '7px', padding: '8px 11px',
-        }}>
-          {rejectedInstruction}
-        </div>
-      )}
-
-      {/* The two decision controls, for somebody who holds the authority.
-          Approve is a CONTAINED POSITIVE action and deliberately looks nothing
-          like the disabled "Approve" above it: that one approves the PI and
-          cannot be pressed, this one settles one commercial term. */}
       {canDecide && (
         <div className="pi-detail-workflow-actions" style={{ paddingTop: '2px' }}>
           <button
@@ -613,10 +559,6 @@ export function PiAdvanceBand({
           </button>
         </div>
       )}
-
-      <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
-        {ADVANCE_NOT_A_PAYMENT}
-      </div>
     </div>
   )
 }
@@ -703,6 +645,12 @@ const TIMELINE_MARKER: Record<PiActivityTone, string> = {
  * only what happened, who did it, when, whatever note they left, and (for the
  * three advance events) the percentage and amount that WERE the event.
  *
+ * NOTHING GENERATED IS PRINTED UNDER AN EVENT. Each advance event used to carry
+ * a fixed sentence explaining what it did and did not mean; the same paragraph
+ * appeared under every occurrence and pushed the actor, the time and the words a
+ * person actually typed down the card. User-entered notes and reasons are
+ * untouched — they are the only prose the trail carries now.
+ *
  * NEWEST FIRST, unchanged. describeActivityEntries decides the order and has
  * done since the trail existed; reversing it here would silently change what a
  * reader finds at the top of a record they have read before.
@@ -756,11 +704,6 @@ export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntr
                     <span style={{ fontVariantNumeric: 'tabular-nums' }}> · {entry.figures}</span>
                   )}
                 </div>
-                {entry.detail && (
-                  <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.45, marginTop: '2px' }}>
-                    {entry.detail}
-                  </div>
-                )}
                 {entry.note && (
                   <MultilineText style={{
                     fontSize: '12px', color: colors.secondary, margin: '5px 0 0',
@@ -785,13 +728,24 @@ export function PiActivityTimeline({ entries }: { entries: readonly ActivityEntr
 // ── The lower grid ────────────────────────────────────────────────────────────
 
 /**
- * Commercial breakdown beside the activity trail — how the total was reached,
- * and what has happened to the record — as one band under the products.
+ * The activity trail beside the commercial breakdown, as one band under the
+ * products.
  *
- * They are side by side because neither needs full width and both are reference
- * material: the decisions are all above the table, and these two are what a
- * reader drops to when they want to check one. On a narrow screen they stack in
- * that order, and neither is hidden or collapsed.
+ * ACTIVITY TAKES THE LEFT AND THE WIDTH (~62%). It is prose: notes people typed,
+ * names, timestamps. Squeezed into the narrow column it wrapped every line.
+ *
+ * THE BREAKDOWN TAKES THE RIGHT (~38%). It is compact label-value data that
+ * needs no more, and on the right its figures land under the Cost / piece and
+ * Line total columns of the products table directly above — which is the way a
+ * reader moves anyway, from line totals down to order totals.
+ *
+ * STACKED, THE BREAKDOWN COMES FIRST. A phone reader has just finished the
+ * product values and wants the total next, not a history. The DOM order is
+ * activity-then-breakdown so the desktop layout needs no reordering; the single
+ * column flips it with `order`, which costs nothing and no JavaScript.
+ *
+ * Top-aligned and never stretched: a long trail must not drag the breakdown card
+ * down to its own height.
  */
 export function PiLowerGrid({ commercial, activity }: {
   commercial: React.ReactNode
@@ -799,8 +753,8 @@ export function PiLowerGrid({ commercial, activity }: {
 }) {
   return (
     <div className="pi-detail-lower-grid">
-      <div style={{ minWidth: 0 }}>{commercial}</div>
-      <div style={{ minWidth: 0 }}>{activity}</div>
+      <div className="pi-detail-activity-col">{activity}</div>
+      <div className="pi-detail-commercial-col">{commercial}</div>
     </div>
   )
 }

@@ -119,7 +119,6 @@ import {
   changePiHref,
   submissionOffersReply,
   describeSubmissionActions,
-  describeSubmissionBanner,
   describeSubmissionFailure,
   type SubmissionAction,
 } from '@/lib/orders/submissionWorkflow'
@@ -179,6 +178,7 @@ import {
   buildCommercialSnapshot,
   buildIdentityFacts,
   buildOverviewDates,
+  commercialBreakdownRows,
   describeWorkflowPanel,
   omitDash,
 } from './piDetailView'
@@ -731,31 +731,9 @@ function PiDraftDetailPageInner() {
     canDecideException: canDecideAdvance,
   })
 
-  /**
-   * Whether the band is on screen at all.
-   *
-   * A DRAFT GETS NONE. Nothing has been declared and nothing will be until the
-   * employee submits, so a permanent "Not declared" block on the commonest state
-   * would be a section of screen spent on a question nobody has asked yet.
-   * Everything past draft shows it, including a legacy record that declared
-   * nothing — that absence is exactly what a reviewer needs to see.
-   */
-  const showAdvance = !advance.undeclared || submission.status !== 'draft'
-
   /** True only when the record is back with the employee BECAUSE of the refusal. */
   const advanceRejectedNow =
     advance.status === 'rejected' && submission.status === 'needs_changes'
-
-  // The sentence that used to be a banner card of its own, above an overview
-  // that repeated it. It is now the workflow panel's standing line — same
-  // helper, same words, one place.
-  const banner = describeSubmissionBanner({
-    status: submission.status,
-    submittedAt,
-    submitterName: draft.submitterName,
-    rejectedAt,
-    rejectedByName: draft.rejectedByName,
-  })
 
   const clientLabel = orDash(submission.client_name ?? submission.bill_to_name)
   const grandTotalLabel = formatInr(grandTotalValue)
@@ -769,17 +747,18 @@ function PiDraftDetailPageInner() {
   const workflow = describeWorkflowPanel({
     status: submission.status,
     actions,
-    banner,
     hasBlockingIssues: draft.blocking.length > 0,
-    exceptionPending: advanceActions.isPending,
     submittedAt,
     submitterName: draft.submitterName,
+    rejectedAt,
+    rejectedByName: draft.rejectedByName,
   })
 
   const snapshot = buildCommercialSnapshot({
     grandTotal: grandTotalLabel,
     productCount: products.length,
     advance,
+    status: submission.status,
   })
 
   const identityFacts = buildIdentityFacts({
@@ -809,20 +788,34 @@ function PiDraftDetailPageInner() {
     ? latestSubmissionReply(draft.activity)
     : null
 
-  const advanceBand = showAdvance ? (
+  /**
+   * The advance band, ONLY while a proposal is genuinely outstanding.
+   *
+   * A settled exception is reported by the snapshot at the top (what the
+   * requirement now is) and by Activity (who decided it, when, and why). A band
+   * restating the request, the reason, the requester, the decider and both
+   * timestamps was the same decision told a fourth time.
+   */
+  const advanceBand = advanceActions.isPending ? (
     <PiAdvanceBand
       advance={advance}
       canDecide={advanceActions.canDecide}
       acting={acting}
-      rejectedInstruction={advanceRejectedNow ? ADVANCE_REJECTED_INSTRUCTION : null}
-      requesterName={draft.advanceRequesterName}
-      deciderName={draft.advanceDeciderName}
-      requestedAt={advance.requestedAtIso ? formatSavedAt(advance.requestedAtIso) : null}
-      decidedAt={advance.decidedAtIso ? formatSavedAt(advance.decidedAtIso) : null}
       onApprove={() => { setActionFailure(null); approveException() }}
       onReject={() => { setActionFailure(null); setDialog('reject_exception') }}
     />
   ) : null
+
+  /**
+   * A refused advance, for the employee who now has to do something about it.
+   *
+   * Management's reason and the choice it leaves them are both real content and
+   * both belong beside the correction instruction, not in a band of their own.
+   * Everybody else reads the outcome in the snapshot and the history in Activity.
+   */
+  const advanceRefusal = advanceRejectedNow
+    ? { reason: advance.rejectionReason, instruction: ADVANCE_REJECTED_INSTRUCTION }
+    : null
 
   return (
     <OrdersLayout
@@ -872,6 +865,7 @@ function PiDraftDetailPageInner() {
           status={submission.status}
           reviewNote={submission.review_note}
           employeeReply={employeeReply}
+          advanceRefusal={advanceRefusal}
           blockingCount={draft.blocking.length}
           acting={acting}
           onChangePi={() => router.push(changePiHref(submissionId))}
@@ -1034,7 +1028,7 @@ function PiDraftDetailPageInner() {
                this page recomputes a total, and `fill` only tells the shared
                component to use its column rather than cap and right-align
                itself the way it does under the import preview's table. */
-            <PiCommercialSummary rows={buildCommercialRows(persistedCommercial(submission))} title="Commercial breakdown" fill />
+            <PiCommercialSummary rows={commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission)))} title="Commercial breakdown" variant="detail" />
           }
           activity={<PiActivityTimeline entries={draft.activity} />}
         />

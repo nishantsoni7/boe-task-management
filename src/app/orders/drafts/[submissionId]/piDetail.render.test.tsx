@@ -39,17 +39,18 @@ import {
   buildCommercialSnapshot,
   buildIdentityFacts,
   buildOverviewDates,
+  commercialBreakdownRows,
   describeWorkflowPanel,
   omitDash,
+  ADVANCE_REQUESTED_LABEL,
+  ADVANCE_REQUIREMENT_LABEL,
   STORED_COPY_NOTE,
   WORKFLOW_HEADING,
 } from './piDetailView'
 import { PiCommercialSummary } from '@/components/orders/piPreview'
 import {
   describeSubmissionActions,
-  describeSubmissionBanner,
   APPROVE_BUTTON_LABEL,
-  APPROVE_DISABLED_REASON,
   CHANGE_PI_BUTTON_LABEL,
   REJECT_BUTTON_LABEL,
   REQUEST_CHANGES_BUTTON_LABEL,
@@ -57,16 +58,15 @@ import {
   SUBMIT_BUTTON_LABEL,
 } from '@/lib/orders/submissionWorkflow'
 import {
-  ADVANCE_NONE_LABEL,
-  ADVANCE_REDUCED_LABEL,
-  ADVANCE_STANDARD_LABEL,
+  ADVANCE_NOT_A_PAYMENT,
+  ADVANCE_REJECTED_INSTRUCTION,
   APPROVE_EXCEPTION_BUTTON_LABEL,
   REJECT_EXCEPTION_BUTTON_LABEL,
   describeAdvance,
   describeAdvanceActions,
 } from '@/lib/orders/advanceRequirement'
 import { describeActivityEntries, type PersistedActivity } from '@/lib/orders/submissionActivity'
-import { buildCommercialRows, formatInr } from '@/lib/pi/previewView'
+import { ADVANCE_NOT_A_PAYMENT_NOTE, buildCommercialRows, formatInr } from '@/lib/pi/previewView'
 import {
   draftStatusLabel,
   draftStatusTone,
@@ -153,32 +153,29 @@ function viewerState(row: PersistedSubmission, viewer: {
     advance: row,
     canDecideException: viewer.canDecideAdvance ?? false,
   })
-  const banner = describeSubmissionBanner({
+  const panel = describeWorkflowPanel({
     status: row.status,
+    actions,
+    hasBlockingIssues: false,
     submittedAt: row.submitted_at ? '02 Aug 2026, 11:30 am' : null,
     submitterName: 'Nishant Soni',
     rejectedAt: row.rejected_at ? '05 Aug 2026, 09:10 am' : null,
     rejectedByName: 'Rohit Verma',
   })
-  const panel = describeWorkflowPanel({
-    status: row.status,
-    actions,
-    banner,
-    hasBlockingIssues: false,
-    exceptionPending: advanceActions.isPending,
-    submittedAt: row.submitted_at ? '02 Aug 2026, 11:30 am' : null,
-    submitterName: 'Nishant Soni',
-  })
-  return { actions, advance, advanceActions, banner, panel }
+  return { actions, advance, advanceActions, panel }
 }
 
-/** The workflow panel as the page assembles it, for one viewer. */
+/**
+ * The workflow panel as the page assembles it, for one viewer.
+ *
+ * The band and the refusal block are gated here exactly as page.tsx gates them,
+ * so what these tests render is what the screen renders.
+ */
 function workflowHtml(row: PersistedSubmission, viewer: Parameters<typeof viewerState>[1], opts: {
-  showAdvance?: boolean
   employeeReply?: string | null
 } = {}): string {
   const { actions, advance, advanceActions, panel } = viewerState(row, viewer)
-  const showAdvance = opts.showAdvance ?? (!advance.undeclared || row.status !== 'draft')
+  const refused = advance.status === 'rejected' && row.status === 'needs_changes'
   return renderToStaticMarkup(
     <PiWorkflowPanel
       panel={panel}
@@ -186,22 +183,20 @@ function workflowHtml(row: PersistedSubmission, viewer: Parameters<typeof viewer
       status={row.status}
       reviewNote={row.review_note}
       employeeReply={opts.employeeReply ?? null}
+      advanceRefusal={refused
+        ? { reason: advance.rejectionReason, instruction: ADVANCE_REJECTED_INSTRUCTION }
+        : null}
       blockingCount={0}
       acting={false}
       onChangePi={() => {}}
       onSubmit={() => {}}
       onRequestChanges={() => {}}
       onReject={() => {}}
-      advanceBand={showAdvance ? (
+      advanceBand={advanceActions.isPending ? (
         <PiAdvanceBand
           advance={advance}
           canDecide={advanceActions.canDecide}
           acting={false}
-          rejectedInstruction={null}
-          requesterName="Nishant Soni"
-          deciderName={null}
-          requestedAt="02 Aug 2026, 11:30 am"
-          decidedAt={null}
           onApprove={() => {}}
           onReject={() => {}}
         />
@@ -226,6 +221,7 @@ function overviewHtml(row: PersistedSubmission, productCount = 12): string {
         grandTotal: formatInr(Number(row.grand_total)),
         productCount,
         advance,
+        status: row.status,
       })}
     />,
   )
@@ -242,6 +238,19 @@ function overviewHtml(row: PersistedSubmission, productCount = 12): string {
 function buttonLabels(html: string): string[] {
   return [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)]
     .map(match => text(match[1]).trim())
+}
+
+/**
+ * Whether an inert PI-approval control is anywhere in this markup.
+ *
+ * A plain substring check on "Approve" cannot answer it — "Approve Exception" is
+ * a real, live control on the same panel and contains the word. What is being
+ * looked for is the label standing on its OWN, which is what the disabled span
+ * rendered.
+ */
+function hasInertApprove(html: string): boolean {
+  const labels = [...html.matchAll(/>([^<>]+)</g)].map(m => m[1].trim())
+  return labels.includes(APPROVE_BUTTON_LABEL)
 }
 
 /** Text content, with the tags taken out — for "does it SAY this" checks. */
@@ -335,57 +344,82 @@ describe('the top of the page answers the questions it exists to answer', () => 
 
 // ── 2. The commercial snapshot ────────────────────────────────────────────────
 
-describe('Grand Total and the advance condition are in the top overview', () => {
+describe('the advance condition is stated ONCE, in the top snapshot', () => {
   test('the Grand Total is in the snapshot section, as the largest figure', () => {
     const html = overviewHtml(submission())
     const snapshot = html.slice(html.indexOf('class="pi-detail-overview-section pi-detail-snapshot'))
     assert.ok(snapshot.includes(formatInr(GRAND_TOTAL)), '₹11,80,000 is inside the snapshot')
-    assert.ok(snapshot.includes('pi-detail-snapshot-total'), 'and carries the page’s largest number class')
-    // Nothing else on the card competes with it for size.
+    assert.ok(snapshot.includes('pi-detail-snapshot-total'))
     assert.equal((html.match(/pi-detail-snapshot-total/g) ?? []).length, 1)
   })
 
-  test('the active advance condition sits beside it', () => {
-    const html = text(overviewHtml(submission({
-      status: 'submitted',
-      advance_condition: 'standard',
-    })))
-    assert.ok(html.includes('Advance condition'))
-    assert.ok(html.includes(ADVANCE_STANDARD_LABEL))
-    assert.ok(html.includes('Standard advance (40%)'), 'and the standard requirement in rupees')
+  test('a standard requirement is one label, one figure line, no status', () => {
+    const html = text(overviewHtml(submission({ status: 'submitted', advance_condition: 'standard' })))
+    assert.ok(html.includes(ADVANCE_REQUIREMENT_LABEL))
+    assert.ok(html.includes(`40% · ${formatInr(472000)}`))
+    // The four rows this replaced are gone: no separate condition label, no
+    // "Proposed advance" row, no second amount to compare against.
+    for (const gone of ['Advance condition', 'Proposed advance', 'Standard advance (40%)',
+                        'Selected condition', 'Standard requirement']) {
+      assert.ok(!html.includes(gone), `"${gone}" must not be printed any more`)
+    }
   })
 
-  test('a reduced exception shows its percentage, its amount and its state', () => {
+  test('a pending reduction reads as something ASKED for, with its state', () => {
     const html = text(overviewHtml(submission({
-      status: 'submitted',
-      advance_condition: 'exception',
-      advance_exception_percent: 12.5,
-      advance_exception_status: 'pending',
+      status: 'submitted', advance_condition: 'exception',
+      advance_exception_percent: 12.5, advance_exception_status: 'pending',
     })))
-    assert.ok(html.includes(ADVANCE_REDUCED_LABEL))
-    assert.ok(html.includes('12.5%'))
-    assert.ok(html.includes(formatInr(147500)), 'the amount 12.5% of the CURRENT total comes to')
-    assert.ok(html.includes('Exception · Pending decision'))
+    assert.ok(html.includes(ADVANCE_REQUESTED_LABEL))
+    assert.ok(html.includes(`12.5% · ${formatInr(147500)}`))
+    assert.ok(html.includes('Pending'))
+    assert.ok(!html.includes(formatInr(472000)),
+      'the standard amount is not shown beside it — two figures read as two things owed')
   })
 
-  test('a 0% exception says No advance, 0% and ₹0 — never a bare zero', () => {
+  test('an approved reduction becomes the requirement that stands', () => {
     const html = text(overviewHtml(submission({
-      status: 'submitted',
-      advance_condition: 'exception',
-      advance_exception_percent: 0,
-      advance_exception_status: 'pending',
+      status: 'submitted', advance_condition: 'exception',
+      advance_exception_percent: 12.5, advance_exception_status: 'approved',
     })))
-    assert.ok(html.includes(ADVANCE_NONE_LABEL), 'named for what it is')
-    assert.ok(html.includes('0%'))
-    assert.ok(html.includes('₹0'))
+    assert.ok(html.includes(ADVANCE_REQUIREMENT_LABEL))
+    assert.ok(!html.includes(ADVANCE_REQUESTED_LABEL))
+    assert.ok(html.includes('Exception approved'))
   })
 
-  test('a record that declared nothing says so, rather than showing an empty row', () => {
+  test('0% is named before it is numbered, in every decision state', () => {
+    const zero = (status: string) => text(overviewHtml(submission({
+      status: 'submitted', advance_condition: 'exception',
+      advance_exception_percent: 0, advance_exception_status: status,
+    })))
+    for (const [status, label, state] of [
+      ['pending', ADVANCE_REQUESTED_LABEL, 'Pending'],
+      ['approved', ADVANCE_REQUIREMENT_LABEL, 'Exception approved'],
+      ['rejected', ADVANCE_REQUESTED_LABEL, 'Rejected'],
+    ] as const) {
+      const html = zero(status)
+      assert.ok(html.includes(label), `${status} uses "${label}"`)
+      assert.ok(html.includes('No advance · 0% · ₹0'),
+        '"0% · ₹0" alone is a figure somebody has to interpret')
+      assert.ok(html.includes(state))
+    }
+  })
+
+  test('a record that declared nothing says so, once', () => {
     const html = text(overviewHtml(submission({ status: 'submitted' })))
+    assert.ok(html.includes(ADVANCE_REQUIREMENT_LABEL))
     assert.ok(html.includes('Not declared'))
   })
 
-  test('no figure on the snapshot claims a payment', () => {
+  test('a draft that has declared nothing gets no advance block at all', () => {
+    const html = text(overviewHtml(submission({ status: 'draft' })))
+    assert.ok(!html.includes(ADVANCE_REQUIREMENT_LABEL))
+    assert.ok(!html.includes('Not declared'),
+      'nothing IS declared until submission; a permanent block would answer nobody')
+    assert.ok(html.includes(formatInr(GRAND_TOTAL)), 'the total is still there')
+  })
+
+  test('no figure on the snapshot claims a payment, and none explains itself', () => {
     const html = text(overviewHtml(submission({
       status: 'submitted', advance_condition: 'exception',
       advance_exception_percent: 10, advance_exception_status: 'approved',
@@ -393,23 +427,71 @@ describe('Grand Total and the advance condition are in the top overview', () => 
     for (const claim of ['received', 'paid', 'collected', 'Payment']) {
       assert.ok(!html.includes(claim), `the snapshot must not say "${claim}"`)
     }
+    assert.ok(!html.includes(ADVANCE_NOT_A_PAYMENT),
+      'the disclaimer belongs to the dialog where the declaration is made')
   })
+})
 
-  test('the client is not repeated inside the card that sits under its own title', () => {
-    const html = text(overviewHtml(submission()))
-    assert.ok(html.includes('Bill to') && html.includes('Ship to'))
-    assert.ok(!html.includes('Client:'), 'Bill to and Ship to carry the destinations instead')
-  })
-
-  test('a date the PI never gave says so, and an absent submission is simply absent', () => {
+describe('the overview spends no space on what the PI did not say', () => {
+  test('a date the PI never gave is not a row', () => {
     const dates = buildOverviewDates({
       created: '01 Aug 2026', confirmed: '—', dispatch: '', submittedAt: null,
     })
-    assert.deepEqual(dates.map(d => d.key), ['created', 'confirmed', 'dispatch'])
-    assert.equal(dates[1].value, null, 'an em dash from the shared builder becomes an honest null')
-    assert.equal(dates[2].value, null)
-    assert.ok(text(overviewHtml(submission())).includes('Not provided') === false,
-      'and a complete PI shows no "Not provided" at all')
+    assert.deepEqual(dates.map(d => d.key), ['created'])
+  })
+
+  test('a PI with no dates at all leaves no timeline section behind', () => {
+    const html = renderToStaticMarkup(
+      <PiOrderOverview
+        billTo="Kalyan Interiors, Bengaluru"
+        shipTo={null}
+        dates={buildOverviewDates({ created: '—', confirmed: '—', dispatch: '—', submittedAt: null })}
+        snapshot={buildCommercialSnapshot({
+          grandTotal: formatInr(GRAND_TOTAL), productCount: 4,
+          advance: describeAdvance(submission(), GRAND_TOTAL), status: 'draft',
+        })}
+      />,
+    )
+    assert.ok(!text(html).includes('Timeline'))
+    assert.ok(!text(html).includes('Not provided'),
+      'three stacked placeholders was the largest dead space on the page')
+    assert.ok(!text(html).includes('Ship to'), 'and an absent destination is simply absent')
+    assert.ok(text(html).includes('Bill to'), 'while the one it DID give is kept')
+    // Two populated groups, so the card lays out as two — never three with a
+    // column-shaped hole in it.
+    assert.ok(html.includes('pi-detail-overview-2'))
+  })
+
+  test('the column count follows the groups that survived', () => {
+    const overview = (billTo: string | null, dateCount: 0 | 1) => renderToStaticMarkup(
+      <PiOrderOverview
+        billTo={billTo}
+        shipTo={null}
+        dates={dateCount === 0 ? [] : [{ key: 'created', label: 'PI created', value: '01 Aug 2026' }]}
+        snapshot={buildCommercialSnapshot({
+          grandTotal: formatInr(GRAND_TOTAL), productCount: 4,
+          advance: describeAdvance(submission(), GRAND_TOTAL), status: 'draft',
+        })}
+      />,
+    )
+    assert.ok(overview('Kalyan', 1).includes('pi-detail-overview-3'))
+    assert.ok(overview('Kalyan', 0).includes('pi-detail-overview-2'))
+    assert.ok(overview(null, 1).includes('pi-detail-overview-2'))
+    assert.ok(overview(null, 0).includes('pi-detail-overview-1'),
+      'a record with neither leaves the snapshot the whole card')
+  })
+
+  test('a submission stamp is never dropped, because it is a fact about progress', () => {
+    const dates = buildOverviewDates({
+      created: '—', confirmed: '—', dispatch: '—', submittedAt: '02 Aug 2026, 11:30 am',
+    })
+    assert.deepEqual(dates.map(d => d.key), ['submitted'])
+  })
+
+  test('the client is not repeated inside the card under its own title', () => {
+    const html = text(overviewHtml(submission()))
+    assert.ok(html.includes('Bill to') && html.includes('Ship to'))
+    assert.ok(!html.includes('Client:'))
   })
 })
 
@@ -430,12 +512,20 @@ describe('the owner of a draft', () => {
   test('is offered no review control whatsoever', () => {
     assert.ok(!text(html).includes(REQUEST_CHANGES_BUTTON_LABEL))
     assert.ok(!text(html).includes(APPROVE_EXCEPTION_BUTTON_LABEL))
-    assert.ok(!text(html).includes(APPROVE_DISABLED_REASON))
+    assert.ok(!hasInertApprove(html))
   })
 
-  test('sees no advance band, because nothing has been declared yet', () => {
+  test('sees no advance band, because nothing is waiting on anybody', () => {
+    assert.ok(!text(html).includes('Advance exception'))
     assert.ok(!text(html).includes('Advance requirement'),
-      'a permanent "Not declared" block on the commonest state says nothing')
+      'the requirement is stated in the snapshot at the top, and only there')
+  })
+
+  test('is not told at length what submitting will do', () => {
+    // The heading asks the question and the button answers it. The paragraph
+    // that used to sit between them said neither.
+    assert.ok(!text(html).includes('nothing is numbered'))
+    assert.ok(!text(html).includes('starts the review'))
   })
 })
 
@@ -462,8 +552,29 @@ describe('the owner of a returned PI', () => {
       'a returned PI is resubmitted, and the button says so')
   })
 
-  test('still sees the advance condition the PI carries', () => {
-    assert.ok(text(html).includes('Advance requirement'))
+  test('is not shown an advance band for a condition nobody is deciding', () => {
+    assert.ok(!text(html).includes('Advance exception'),
+      'the standard requirement is in the snapshot; there is nothing to settle here')
+  })
+
+  test('a refused advance reaches them with the reason and the choice it leaves', () => {
+    const refused = submission({
+      status: 'needs_changes',
+      submitted_by: OWNER,
+      submitted_at: '2026-08-03T04:00:00Z',
+      advance_condition: 'exception',
+      advance_exception_percent: 0,
+      advance_exception_status: 'rejected',
+      advance_exception_reason: 'Client pays on delivery.',
+      advance_exception_rejection_reason: 'Too large an order to start unfunded.',
+    })
+    const body = text(workflowHtml(refused, { id: OWNER, canCreate: true }))
+    assert.ok(body.includes('Why the advance was refused'))
+    assert.ok(body.includes('Too large an order to start unfunded.'))
+    assert.ok(body.includes(ADVANCE_REJECTED_INSTRUCTION))
+    // Their own original reason is NOT replayed at them: they wrote it, it was
+    // answered, and Activity keeps it.
+    assert.ok(!body.includes('Client pays on delivery.'))
   })
 })
 
@@ -482,13 +593,19 @@ describe('the owner of a submitted PI', () => {
 
   test('is told it is with management, and offered nothing to press', () => {
     assert.ok(text(html).includes(WORKFLOW_HEADING.submitted))
-    assert.equal(WORKFLOW_HEADING.submitted, 'Submitted for Review')
+    assert.equal(WORKFLOW_HEADING.submitted, 'Submitted for review')
     assert.ok(!html.includes('<button'), 'nothing is editable while it is under review')
   })
 
   test('can still see that an advance exception is waiting', () => {
-    assert.ok(text(html).includes('Pending decision'))
-    assert.ok(text(html).includes('Proposed advance'))
+    assert.ok(text(html).includes('Advance exception'))
+    assert.ok(text(html).includes('Reduced advance · 10% · '),
+      'the condition being decided, in one line')
+  })
+
+  test('is told who sent it and when, as metadata rather than as a sentence', () => {
+    assert.ok(text(html).includes('Submitted by Nishant Soni · 02 Aug 2026, 11:30 am'))
+    assert.ok(!text(html).includes('Nothing on this PI can be changed'))
   })
 })
 
@@ -510,6 +627,10 @@ describe('the owner of a rejected PI', () => {
     assert.ok(!html.includes('<button'), 'the page must not look actionable')
   })
 
+  test('is told who closed it and when', () => {
+    assert.ok(text(html).includes('Rejected by Rohit Verma · 05 Aug 2026, 09:10 am'))
+  })
+
   test('is offered no deletion here — that stays on the PI Drafts list', () => {
     assert.ok(!text(html).includes('Delete'))
     assert.ok(!read(PAGE).includes('PiDeleteConfirmModal'))
@@ -529,11 +650,9 @@ describe('the management reviewer', () => {
 
   test('is told the decision is theirs, and who is waiting on it', () => {
     assert.ok(text(html).includes(WORKFLOW_HEADING.reviewer))
-    assert.equal(WORKFLOW_HEADING.reviewer, 'Management Review')
-    assert.ok(text(html).includes('Waiting for your decision.'))
-    assert.ok(text(html).includes('Submitted by Nishant Soni on 02 Aug 2026, 11:30 am.'))
-    assert.ok(!text(html).includes('Nothing on this PI can be changed'),
-      'that sentence is written for the employee who is waiting, not for them')
+    assert.equal(WORKFLOW_HEADING.reviewer, 'Management review')
+    assert.ok(text(html).includes('Submitted by Nishant Soni · 02 Aug 2026, 11:30 am'),
+      'one quiet metadata line, in place of three sentences')
   })
 
   test('is offered Needs Changes and Reject, and no employee control', () => {
@@ -544,15 +663,21 @@ describe('the management reviewer', () => {
     assert.ok(text(html).includes('Corrected the fabric on line 3.'))
   })
 
-  test('sees Approve present, inert, and NOT the widest thing in the row', () => {
-    assert.ok(text(html).includes(APPROVE_BUTTON_LABEL))
-    // It is a <span>, so it cannot be pressed and cannot be tabbed to.
-    const approve = html.slice(html.lastIndexOf('<span', html.indexOf(APPROVE_BUTTON_LABEL)))
-    assert.ok(!approve.startsWith('<button'))
-    assert.ok(text(html).includes(APPROVE_DISABLED_REASON),
-      'the reason is still stated, as a muted line under the row rather than inside the control')
-    assert.ok(!html.includes(`${APPROVE_BUTTON_LABEL}</span><span`),
-      'the explanation no longer rides inside the control, which is what made it wide')
+  test('is shown NO final approval control at all, disabled or otherwise', () => {
+    // A greyed "Approve" beside two live buttons was read as the current
+    // approval action rather than as a promise about a later one. There is no
+    // approval RPC in this phase; absence is the honest answer, and Phase C
+    // introduces a real, unambiguous control.
+    assert.ok(!hasInertApprove(html))
+    assert.ok(!html.includes('cursor:not-allowed'))
+    assert.ok(!text(html).includes('order-approval phase'))
+    assert.ok(!read(SECTIONS).includes('APPROVE_DISABLED_REASON'),
+      'the explanation has nothing left to explain')
+  })
+
+  test('is given a metadata line, not a standing paragraph', () => {
+    assert.ok(!text(html).includes('Waiting for your decision'))
+    assert.ok(!text(html).includes('Settling it does not approve the PI'))
   })
 
   test('cannot decide an advance exception with review authority alone', () => {
@@ -565,7 +690,7 @@ describe('the management reviewer', () => {
       advance_exception_status: 'pending',
     })
     const reviewerOnly = workflowHtml(exceptional, { id: REVIEWER, canReview: true })
-    assert.ok(text(reviewerOnly).includes('Pending decision'), 'the STATE is visible to them')
+    assert.ok(text(reviewerOnly).includes('Advance exception'), 'the STATE is visible to them')
     assert.deepEqual(buttonLabels(reviewerOnly),
       [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL],
       'orders.approve_order does not settle a commercial term')
@@ -580,6 +705,7 @@ describe('the advance-exception approver, who holds nothing else', () => {
     advance_condition: 'exception',
     advance_exception_percent: 12.5,
     advance_exception_status: 'pending',
+    advance_exception_reason: 'Long-standing client, settles on delivery.',
     advance_exception_requested_by: OWNER,
     advance_exception_requested_at: '2026-08-03T04:00:00Z',
   })
@@ -595,10 +721,21 @@ describe('the advance-exception approver, who holds nothing else', () => {
       [APPROVE_EXCEPTION_BUTTON_LABEL, REJECT_EXCEPTION_BUTTON_LABEL],
       'exactly the two controls their permission carries, and nothing else')
     assert.ok(!text(html).includes(REQUEST_CHANGES_BUTTON_LABEL))
-    assert.ok(!text(html).includes(APPROVE_DISABLED_REASON),
-      'not even the inert PI approval: they are not reviewing the PI')
     assert.ok(!text(html).includes(SUBMIT_BUTTON_LABEL))
     assert.ok(!text(html).includes(CHANGE_PI_BUTTON_LABEL))
+    assert.ok(!hasInertApprove(html), 'and no inert PI approval either')
+  })
+
+  test('the band states the condition and the reason, and no audit facts', () => {
+    const body = text(html)
+    assert.ok(body.includes('Reduced advance · 12.5% · '), 'what is being asked for')
+    assert.ok(body.includes('Long-standing client, settles on delivery.'),
+      'and the employee’s own words, which exist nowhere else on this screen')
+    for (const audit of ['Requested by', 'Decided by', 'Standard requirement',
+                         'Selected condition', 'Proposed advance']) {
+      assert.ok(!body.includes(audit), `"${audit}" belongs in Activity, not here`)
+    }
+    assert.ok(!body.includes(ADVANCE_NOT_A_PAYMENT))
   })
 
   test('reaches the decision without a review card to reach it through', () => {
@@ -631,15 +768,37 @@ describe('an admin holding both authorities', () => {
       'and the advance decision is its own band, not a fourth button on the same row')
   })
 
-  test('and the PI’s own approval stays disabled either way', () => {
-    assert.ok(html.includes(APPROVE_DISABLED_REASON))
+  test('and no final PI approval is offered to either authority', () => {
+    assert.ok(!hasInertApprove(raw))
   })
 
   test('a 0% proposal is spelled out where it is being decided', () => {
-    assert.ok(html.includes(ADVANCE_NONE_LABEL))
-    assert.ok(html.includes('0%'))
-    assert.ok(html.includes('₹0'))
-    assert.ok(html.includes('No advance requested'))
+    assert.ok(html.includes('No advance · 0% · ₹0'))
+    assert.ok(!html.includes('No advance requested — the order would start'),
+      'the label says it; the sentence under it said it again')
+  })
+
+  test('an APPROVED exception leaves the two PI decisions untouched', () => {
+    // THE BUSINESS DISTINCTION. Accepting a 0% advance settles one commercial
+    // term. It says nothing about whether the products, quantities, rates,
+    // customization, dates or addresses on the PI are right — so the reviewer
+    // must still be able to send it back or end it.
+    const approved = submission({
+      status: 'submitted',
+      submitted_by: OWNER,
+      submitted_at: '2026-08-03T04:00:00Z',
+      advance_condition: 'exception',
+      advance_exception_percent: 0,
+      advance_exception_status: 'approved',
+      advance_exception_reason: 'Client pays on delivery.',
+    })
+    const after = workflowHtml(approved, { id: REVIEWER, canReview: true, canDecideAdvance: true })
+    assert.deepEqual(buttonLabels(after), [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL],
+      'the PI review decisions survive the advance decision')
+    // And the settled exception does not redraw its own band.
+    assert.ok(!text(after).includes('Advance exception'))
+    assert.ok(!text(after).includes('Client pays on delivery.'),
+      'the reason it was granted for lives in Activity now')
   })
 })
 
@@ -656,13 +815,13 @@ describe('a read-only viewer', () => {
 
   test('is given no control of any kind', () => {
     assert.deepEqual(buttonLabels(html), [])
-    assert.ok(!text(html).includes(APPROVE_DISABLED_REASON),
-      'and no inert reviewer control either')
+    assert.ok(!hasInertApprove(html))
   })
 
   test('is still told where the record stands, and what it is waiting on', () => {
     assert.ok(text(html).includes(WORKFLOW_HEADING.submitted))
-    assert.ok(text(html).includes('Pending decision'),
+    assert.equal(WORKFLOW_HEADING.submitted, 'Submitted for review')
+    assert.ok(text(html).includes('Advance exception'),
       'a record waiting on somebody else must not look inert to the person waiting')
   })
 })
@@ -734,9 +893,10 @@ describe('non-blocking warnings stay quieter', () => {
 // ── 6. The lower grid ─────────────────────────────────────────────────────────
 
 describe('the commercial breakdown', () => {
-  const rows = buildCommercialRows(persistedCommercial(submission()))
+  const stored = buildCommercialRows(persistedCommercial(submission()))
+  const rows = commercialBreakdownRows(stored)
   const html = renderToStaticMarkup(
-    <PiCommercialSummary rows={rows} title="Commercial breakdown" fill />,
+    <PiCommercialSummary rows={rows} title="Commercial breakdown" variant="detail" />,
   )
 
   test('is the stored rows, from the shared builder, and nothing recomputed', () => {
@@ -744,12 +904,30 @@ describe('the commercial breakdown', () => {
     for (const label of [
       'Gross product amount', 'Discount', 'Subtotal after discount',
       'Fabric cost', 'Packing cost', 'Transportation',
-      'Total before GST', 'GST', 'Grand Total', 'Required advance (40%)',
+      'Total before GST', 'GST', 'Grand Total',
     ]) {
-      assert.ok(body.includes(label), `${label} must survive the redesign`)
+      assert.ok(body.includes(label), `${label} must survive the refinement`)
     }
     assert.ok(body.includes(formatInr(GRAND_TOTAL)))
-    assert.ok(body.includes(formatInr(472000)), 'the 40% requirement, through the one formula')
+  })
+
+  test('drops the required-advance row, which the snapshot now owns', () => {
+    // Keeping it would CONTRADICT the top of the page on any PI with an
+    // approved exception: the snapshot would say 12.5% and this would say 40%.
+    assert.deepEqual(rows.map(r => r.key), [
+      'gross', 'discount', 'subtotal', 'fabric',
+      'packing', 'transportation', 'beforeGst', 'gst', 'grandTotal',
+    ])
+    assert.ok(!text(html).includes('Required advance'))
+    assert.ok(!text(html).includes(ADVANCE_NOT_A_PAYMENT_NOTE),
+      'and the disclaimer that rode with it')
+  })
+
+  test('the shared builder itself is untouched — the row is dropped by the page', () => {
+    const advance = stored.find(r => r.key === 'advance')
+    assert.ok(advance, 'buildCommercialRows still produces it, for the import preview')
+    assert.equal(advance?.label, 'Required advance (40%)')
+    assert.equal(advance?.note, ADVANCE_NOT_A_PAYMENT_NOTE)
   })
 
   test('keeps the worded zeroes the workbook meant', () => {
@@ -757,26 +935,62 @@ describe('the commercial breakdown', () => {
     assert.ok(text(html).includes('as applicable'))
   })
 
-  test('fills its grid column instead of capping and right-aligning itself', () => {
-    assert.ok(!html.includes('margin-left:auto'))
-    // …while the import preview, which passes no `fill`, still does.
-    const capped = renderToStaticMarkup(<PiCommercialSummary rows={rows} />)
-    assert.ok(capped.includes('margin-left:auto'))
-    assert.ok(capped.includes('max-width:780px'))
-  })
-
   test('does not print a second promotional Grand Total tile', () => {
     assert.equal(text(html).split('Grand Total').length - 1, 1)
   })
 
   test('groups the column so it reads as a calculation, not a list', () => {
-    const beforeGst = rows.find(r => r.key === 'beforeGst')
-    assert.equal(beforeGst?.groupStart, true, 'tax opens the last group before the total')
-    assert.equal(rows.find(r => r.key === 'grandTotal')?.emphasis, 'total')
+    assert.equal(stored.find(r => r.key === 'beforeGst')?.groupStart, true)
+    assert.equal(stored.find(r => r.key === 'grandTotal')?.emphasis, 'total')
+  })
+})
+
+// ── The import preview must not have moved ────────────────────────────────────
+
+describe('the import preview keeps the summary it shipped with', () => {
+  const rows = buildCommercialRows(persistedCommercial(submission()))
+  const preview = renderToStaticMarkup(<PiCommercialSummary rows={rows} />)
+  const detail = renderToStaticMarkup(
+    <PiCommercialSummary rows={commercialBreakdownRows(rows)} title="Commercial breakdown" variant="detail" />,
+  )
+
+  test('the default variant is the preview one', () => {
+    assert.equal(preview, renderToStaticMarkup(<PiCommercialSummary rows={rows} variant="preview" />),
+      'a screen that passes no variant gets exactly what it always got')
   })
 
-  test('aligns its figures on the digit', () => {
-    assert.ok(html.includes('font-variant-numeric:tabular-nums'))
+  test('it still caps and right-aligns itself under the product table', () => {
+    assert.ok(preview.includes('max-width:780px'))
+    assert.ok(preview.includes('margin-left:auto'))
+    assert.ok(!detail.includes('margin-left:auto'), 'while the detail column fills instead')
+  })
+
+  test('it keeps the required advance, which is the only place it states one', () => {
+    assert.ok(text(preview).includes('Required advance (40%)'))
+    assert.ok(text(preview).includes(ADVANCE_NOT_A_PAYMENT_NOTE))
+  })
+
+  test('none of the detail page’s typography leaked into it', () => {
+    assert.ok(!preview.includes('tabular-nums'),
+      'the preview keeps its proportional figures')
+    assert.ok(detail.includes('font-variant-numeric:tabular-nums'),
+      'and the detail column lines its digits up under the products table')
+    // The grouping hairline is the detail page's too: preview draws exactly one
+    // rule, above the Grand Total, as it always has.
+    assert.equal((preview.match(/border-top:1px solid/g) ?? []).length, 1)
+    assert.ok((detail.match(/border-top:1px solid/g) ?? []).length >= 2,
+      'the detail column adds one grouping rule before tax')
+    // Not even a serialised zero. A falsy-but-PRESENT style value still reaches
+    // the markup — `marginTop: 0` emits `margin-top:0` on every row — and the
+    // preview's markup must come out exactly as it did before the detail page
+    // needed anything of this component. (The one legitimate `margin-top` in
+    // here is the advance note's own 2px, which predates all of this.)
+    assert.ok(!preview.includes('margin-top:0'))
+    assert.ok(!preview.includes('padding-top'))
+  })
+
+  test('its heading is untouched', () => {
+    assert.ok(text(preview).includes('Commercial summary'))
   })
 })
 
@@ -859,19 +1073,31 @@ describe('the lower grid pairs the two reference cards', () => {
     <PiLowerGrid commercial={<div>BREAKDOWN</div>} activity={<div>TRAIL</div>} />,
   )
 
-  test('renders both, breakdown first', () => {
+  test('renders the trail on the left and the breakdown on the right', () => {
     assert.ok(html.includes('class="pi-detail-lower-grid"'))
-    assert.ok(html.indexOf('BREAKDOWN') < html.indexOf('TRAIL'))
+    assert.ok(html.indexOf('TRAIL') < html.indexOf('BREAKDOWN'),
+      'DOM order is the desktop order, so the desktop needs no reordering at all')
+    assert.ok(html.includes('class="pi-detail-activity-col"'))
+    assert.ok(html.includes('class="pi-detail-commercial-col"'))
   })
 
-  test('is one column by default and two on a desktop, at roughly 60/40', () => {
+  test('is one column by default and roughly 62/38 on a desktop', () => {
     const css = pageCss()
     const grid = css.slice(css.indexOf('.pi-detail-lower-grid {'))
     assert.ok(/\.pi-detail-lower-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(grid),
       'a phone stacks them, and hides neither')
-    assert.ok(/@media \(min-width: 1024px\) \{\s*\.pi-detail-lower-grid \{\s*grid-template-columns: minmax\(0, 60fr\) minmax\(0, 40fr\)/.test(css))
+    assert.ok(/@media \(min-width: 1024px\)[\s\S]*?\.pi-detail-lower-grid \{\s*grid-template-columns: minmax\(0, 62fr\) minmax\(0, 38fr\)/.test(css),
+      'activity takes the width; the breakdown needs only a column')
     assert.ok(grid.includes('align-items: start'),
       'aligned at the top, never stretched to a common height')
+  })
+
+  test('the breakdown is read FIRST when the two are stacked', () => {
+    const css = pageCss()
+    // A phone reader has just finished the product values and wants the total
+    // next, not a history. One `order` declaration, no JavaScript.
+    assert.ok(/\.pi-detail-commercial-col \{\s*order: -1;/.test(css))
+    assert.ok(/@media \(min-width: 1024px\)[\s\S]*?\.pi-detail-commercial-col \{\s*order: 0;/.test(css))
   })
 })
 
@@ -880,15 +1106,21 @@ describe('the lower grid pairs the two reference cards', () => {
 describe('the layout is CSS, at three real breakpoints', () => {
   const css = pageCss()
 
-  test('the overview goes one, two, then three sections', () => {
-    assert.ok(/\.pi-detail-overview \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css))
-    assert.ok(/@media \(min-width: 768px\)[\s\S]*?\.pi-detail-overview \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css))
-    assert.ok(/@media \(min-width: 1180px\)[\s\S]*?\.pi-detail-overview \{\s*grid-template-columns: minmax\(0, 1\.05fr\) minmax\(0, 0\.8fr\) minmax\(0, 1fr\)/.test(css))
+  test('the overview columns follow the groups the record actually filled', () => {
+    assert.ok(/\.pi-detail-overview \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css),
+      'one column is the floor, for every case')
+    // Two populated groups stay two columns at every width above the phone.
+    assert.ok(/@media \(min-width: 768px\)[\s\S]*?\.pi-detail-overview-2 \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css))
+    // Three become two on a tablet (snapshot spanning) and three on a desktop.
+    assert.ok(/@media \(min-width: 768px\)[\s\S]*?\.pi-detail-overview-3 \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css))
+    assert.ok(/@media \(min-width: 1180px\)[\s\S]*?\.pi-detail-overview-3 \{\s*grid-template-columns: minmax\(0, 1\.05fr\) minmax\(0, 0\.8fr\) minmax\(0, 1fr\)/.test(css))
+    // And a lone snapshot is allowed to be bigger rather than leaving a gap.
+    assert.ok(/\.pi-detail-overview-1 \.pi-detail-snapshot-total/.test(css))
   })
 
   test('the commercial snapshot is read first on a phone and spans the tablet row', () => {
     assert.ok(/\.pi-detail-snapshot \{\s*order: -1;/.test(css))
-    assert.ok(/@media \(min-width: 768px\)[\s\S]*?\.pi-detail-snapshot \{[\s\S]*?grid-column: 1 \/ -1/.test(css))
+    assert.ok(/@media \(min-width: 768px\)[\s\S]*?\.pi-detail-overview-3 \.pi-detail-snapshot \{[\s\S]*?grid-column: 1 \/ -1/.test(css))
   })
 
   test('actions take a readable full width on a narrow phone', () => {
@@ -1011,12 +1243,15 @@ describe('the page is assembled in the redesigned scan order', () => {
       'and it never decides for itself who may settle an exception')
   })
 
-  test('no status banner card survives to repeat what the panel says', () => {
-    // describeSubmissionBanner is still the source of the standing sentence; it
-    // is simply no longer a card of its own above a card that restated it.
-    assert.ok(page.includes('const banner = describeSubmissionBanner({'))
-    assert.ok(page.includes('banner,'), 'it feeds the workflow panel')
-    assert.ok(!page.includes('bannerTone'), 'and is not drawn twice')
+  test('no status banner survives anywhere, in any form', () => {
+    // The banner card went in the redesign; its SENTENCE went in this pass. The
+    // heading names the state, the identity badge repeats it once, and a quiet
+    // metadata line says who moved the record and when. Nothing paraphrases it.
+    assert.ok(!page.includes('describeSubmissionBanner'))
+    assert.ok(!page.includes('bannerTone'))
+    assert.ok(!/panel\.standing/.test(read(SECTIONS)))
+    assert.ok(read(PAGE).includes('rejectedByName: draft.rejectedByName'),
+      'the actor names still reach the panel, as metadata')
   })
 })
 

@@ -26,13 +26,14 @@
 // Every one of those is re-derived by the database for every write. This file
 // reads their answers and picks a heading.
 
+import type { SubmissionActions } from '@/lib/orders/submissionWorkflow'
 import {
-  REVIEW_QUEUE_TITLE,
-  type SubmissionActions,
-  type SubmissionBanner,
-} from '@/lib/orders/submissionWorkflow'
-import { ADVANCE_STANDARD_PERCENT, type AdvanceView } from '@/lib/orders/advanceRequirement'
+  ADVANCE_NONE_LABEL,
+  ADVANCE_STANDARD_PERCENT,
+  type AdvanceView,
+} from '@/lib/orders/advanceRequirement'
 import { draftStatusLabel } from '@/lib/orders/draftsView'
+import type { PiAmountRow } from '@/lib/pi/previewView'
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
 
@@ -88,8 +89,8 @@ export function buildIdentityFacts(input: {
 export type OverviewDate = {
   key: string
   label: string
-  /** Formatted, or null when the PI did not say. */
-  value: string | null
+  /** Formatted. A date the PI did not give is not returned at all. */
+  value: string
 }
 
 /**
@@ -97,13 +98,15 @@ export type OverviewDate = {
  * record itself moved.
  *
  * "Last saved" is NOT here. It is a fact about the file rather than about the
- * commitment, and it is already on the identity line above — printing it twice
- * on one screen is exactly the kind of repetition this redesign removes.
+ * commitment, and it is already on the identity line above.
  *
- * The three document dates keep their labels even when empty, because "Dispatch
- * commitment: not provided" is itself a thing a reviewer needs to know. The
- * submission stamp is dropped entirely when there is none: an unsubmitted PI has
- * no submission, and a row saying so would be reporting a non-event.
+ * A DATE THE PI NEVER GAVE IS NOT A ROW. These three are optional on a real
+ * workbook and most drafts carry none of them, which produced a whole column of
+ * "Not provided · Not provided · Not provided" — a block of screen reporting
+ * three non-events, in a card whose job is to be scanned. Nothing here needs
+ * action, so nothing here needs a placeholder; the column simply shortens, and
+ * when every date is absent the section disappears and its width goes to the
+ * two sections that have something to say.
  */
 export function buildOverviewDates(input: {
   created: string
@@ -115,7 +118,11 @@ export function buildOverviewDates(input: {
     { key: 'created', label: 'PI created', value: omitDash(input.created) },
     { key: 'confirmed', label: 'Order confirmed', value: omitDash(input.confirmed) },
     { key: 'dispatch', label: 'Dispatch commitment', value: omitDash(input.dispatch) },
-  ]
+  ].filter((date): date is OverviewDate & { value: string } => date.value !== null)
+
+  // The submission stamp is never dropped when it exists: it is the one date on
+  // this card that is a fact about the RECORD's progress rather than about the
+  // document, and it is what a reviewer asks for first.
   if (input.submittedAt) {
     dates.push({ key: 'submitted', label: 'Submitted for review', value: input.submittedAt })
   }
@@ -134,28 +141,66 @@ export function omitDash(value: string): string | null {
   return trimmed === '' || trimmed === '—' ? null : trimmed
 }
 
-/** Shown where the LABEL is still useful but the PI said nothing. */
-export const NOT_PROVIDED = 'Not provided'
-
 // ── The commercial snapshot ───────────────────────────────────────────────────
+
+/**
+ * The advance condition, as ONE block.
+ *
+ * WHY IT COLLAPSED. The snapshot used to print four things about the advance:
+ * the standard 40% amount, the selected-condition label, the proposed
+ * percentage-and-amount, and a decision badge — and the workflow panel printed
+ * most of them a second time, and the commercial breakdown printed the standard
+ * amount a third. On a PI with a 0% exception that is four renderings of "no
+ * advance", which is how a page ends up feeling like it is arguing with itself.
+ *
+ * There is now ONE current-state answer, here, and it says three things at most:
+ *
+ *   label     what this figure IS — a requirement that stands, or one that has
+ *             been asked for and not yet granted
+ *   figures   the percentage and the rupees, together, on one line
+ *   status    only when a decision exists to report
+ *
+ * THE STANDARD AMOUNT IS NOT SHOWN BESIDE AN EXCEPTION. Two figures side by side
+ * read as two things that are owed. The comparison belongs where the decision is
+ * being taken — the pending-exception band — and nowhere else.
+ */
+export type AdvanceRequirement = {
+  /** `Advance requirement` for a condition that stands, `Requested advance`
+   *  for one still waiting on, or refused by, management. */
+  label: string
+  /** `40% · ₹10,14,800`, `No advance · 0% · ₹0`, or `Not declared`. */
+  figures: string
+  /** `Pending`, `Exception approved`, `Rejected` — or null when no exception
+   *  decision exists to report. */
+  status: string | null
+  statusTone: PiDetailTone | null
+}
 
 export type CommercialSnapshot = {
   /** The largest number in the page content. */
   grandTotal: string
   productLines: string
-  standardAdvanceLabel: string
-  standardAdvanceAmount: string
-  /** "Standard advance (40%)", "Reduced advance", "No advance (0%)", or the
-   *  honest "Not declared" for a record submitted before Phase B. */
-  conditionLabel: string
-  /** "12.5% · ₹1,47,500" under an exception, and null otherwise. */
-  exceptionFigures: string | null
-  /** "Pending decision" / "Approved" / "Rejected", or null. */
-  statusLabel: string | null
-  statusTone: PiDetailTone | null
+  /**
+   * Null on a draft that has declared nothing.
+   *
+   * Nothing IS declared until the employee submits, so "Advance requirement /
+   * Not declared" on the commonest state of the commonest record would be a
+   * permanent block answering a question nobody has asked yet. Every other
+   * state shows it — including a legacy record that declared nothing, where the
+   * absence is exactly what a reviewer needs to see.
+   */
+  advance: AdvanceRequirement | null
 }
 
+export const ADVANCE_REQUIREMENT_LABEL = 'Advance requirement'
+export const ADVANCE_REQUESTED_LABEL = 'Requested advance'
 export const ADVANCE_UNDECLARED_LABEL = 'Not declared'
+
+export const EXCEPTION_STATUS_TEXT: Record<string, string> = {
+  pending: 'Pending',
+  approved: 'Exception approved',
+  rejected: 'Rejected',
+}
 
 const EXCEPTION_TONE: Record<string, PiDetailTone> = {
   pending: 'amber',
@@ -164,40 +209,90 @@ const EXCEPTION_TONE: Record<string, PiDetailTone> = {
 }
 
 /**
+ * The percentage and the rupees on one line.
+ *
+ * A 0% proposal is NAMED before it is numbered — "No advance · 0% · ₹0" — because
+ * "0% · ₹0" on its own is a figure somebody has to interpret, and the thing being
+ * interpreted is the most consequential term on the document.
+ */
+function advanceFigureLine(advance: AdvanceView): string {
+  if (advance.undeclared) return ADVANCE_UNDECLARED_LABEL
+
+  if (advance.condition === 'exception') {
+    // A stored exception whose percentage is unreadable — only reachable on a
+    // record written before this screen existed. Named, never guessed at.
+    if (advance.exceptionPercentLabel === null) return advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
+    const figures = advance.exceptionAmount === null
+      ? advance.exceptionPercentLabel
+      : `${advance.exceptionPercentLabel} · ${advance.exceptionAmount}`
+    return advance.isZeroPercent ? `${ADVANCE_NONE_LABEL_SHORT} · ${figures}` : figures
+  }
+
+  return `${ADVANCE_STANDARD_PERCENT}% · ${advance.standardAmount}`
+}
+
+/** "No advance", without the "(0%)" the choice label carries — the percentage
+ *  is on the same line already, and saying it twice is what this pass removes. */
+const ADVANCE_NONE_LABEL_SHORT = ADVANCE_NONE_LABEL.replace(/\s*\(0%\)\s*$/, '')
+
+/**
  * Everything the top-of-page snapshot prints.
  *
  * NOT ONE FIGURE IS COMPUTED HERE. The grand total is the formatted persisted
  * one, and every advance figure comes from describeAdvance, which derives them
  * through the single shared formula. This function chooses which of those to put
- * where.
- *
- * NO PAYMENT LANGUAGE, anywhere in what it returns: an advance is a condition
- * BOE will require, not a record that anything was received.
+ * where, and — now — which of them not to print at all.
  */
 export function buildCommercialSnapshot(input: {
   /** The formatted persisted grand total. */
   grandTotal: string
   productCount: number
   advance: AdvanceView
+  /** order_submissions.status — see the note on CommercialSnapshot.advance. */
+  status: string
 }): CommercialSnapshot {
   const { advance } = input
+  const status = advance.status
+  const show = !advance.undeclared || input.status !== 'draft'
 
   return {
     grandTotal: input.grandTotal,
     productLines: `${input.productCount} product line${input.productCount === 1 ? '' : 's'}`,
-    standardAdvanceLabel: `Standard advance (${ADVANCE_STANDARD_PERCENT}%)`,
-    standardAdvanceAmount: advance.standardAmount,
-    conditionLabel: advance.undeclared
-      ? ADVANCE_UNDECLARED_LABEL
-      : advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL,
-    exceptionFigures: advance.exceptionPercentLabel === null
-      ? null
-      : advance.exceptionAmount === null
-        ? advance.exceptionPercentLabel
-        : `${advance.exceptionPercentLabel} · ${advance.exceptionAmount}`,
-    statusLabel: advance.statusLabel,
-    statusTone: advance.status === null ? null : EXCEPTION_TONE[advance.status] ?? null,
+    advance: !show ? null : {
+      // A pending or refused proposal is what somebody ASKED for. Anything else
+      // — the standard, an approved exception, an undeclared record — is the
+      // requirement that currently stands.
+      label: status === 'pending' || status === 'rejected'
+        ? ADVANCE_REQUESTED_LABEL
+        : ADVANCE_REQUIREMENT_LABEL,
+      figures: advanceFigureLine(advance),
+      status: status === null ? null : EXCEPTION_STATUS_TEXT[status] ?? null,
+      statusTone: status === null ? null : EXCEPTION_TONE[status] ?? null,
+    },
   }
+}
+
+// ── The commercial breakdown, at the foot of the page ─────────────────────────
+
+/**
+ * The stored commercial rows, minus the advance.
+ *
+ * THE ADVANCE IS NOT A CALCULATION LINE HERE. buildCommercialRows ends with
+ * "Required advance (40%)" and its payment disclaimer, which is right on the
+ * IMPORT PREVIEW — that screen has no other advance information anywhere, and a
+ * person looking at a freshly parsed workbook needs to be told what will be
+ * required of the client.
+ *
+ * This page does have somewhere else: the snapshot at the top states the CURRENT
+ * condition, including an approved exception that makes the standard 40% simply
+ * wrong. Printing the standard row down here as well would contradict it. So the
+ * row is dropped from this screen and from this screen only, by the page, and
+ * the shared builder is untouched.
+ */
+export const ADVANCE_ROW_KEY = 'advance'
+
+export function commercialBreakdownRows(rows: readonly PiAmountRow[]): PiAmountRow[] {
+  return rows.filter(row => row.key !== ADVANCE_ROW_KEY)
 }
 
 // ── 3. Workflow and actions ───────────────────────────────────────────────────
@@ -205,8 +300,22 @@ export function buildCommercialSnapshot(input: {
 export type WorkflowPanel = {
   /** What this viewer is being asked, in their own terms. */
   heading: string
-  /** One line: where the record stands and who it is waiting on. */
-  standing: string
+  /**
+   * One quiet metadata line — who moved this record last, and when.
+   *
+   * NOT A SENTENCE. It replaced three of them: "Waiting for your decision.",
+   * "Nothing on this PI can be changed while it is under review.", and a
+   * paragraph explaining what each button did. A reviewer opening a submitted PI
+   * needs the actor and the timestamp; the two buttons beside the heading say
+   * the rest without help.
+   */
+  meta: string | null
+  /**
+   * A short instruction, and ONLY where action is genuinely required and not
+   * already obvious from the controls. In practice: a draft that cannot be
+   * submitted until the workbook is corrected.
+   */
+  instruction: string | null
   tone: PiDetailTone
   /** The heading over submission.review_note. The one column carries two
    *  different decisions, so it says which one wrote it. */
@@ -219,11 +328,18 @@ export type WorkflowPanel = {
 }
 
 export const WORKFLOW_HEADING = {
-  reviewer: 'Management Review',
+  reviewer: 'Management review',
   draftOwner: 'Ready for management?',
   needsChangesOwner: 'Changes requested',
-  /** The same words the drafts queue uses for the same state. */
-  submitted: REVIEW_QUEUE_TITLE,
+  /**
+   * Sentence case, and deliberately NOT REVIEW_QUEUE_TITLE.
+   *
+   * That constant is the drafts LIST's section heading and is title case there;
+   * borrowing it dragged "Submitted for Review" onto a page whose every other
+   * heading is sentence case. Two screens, two headings, and the list keeps the
+   * words it already had.
+   */
+  submitted: 'Submitted for review',
   rejected: 'Rejected',
   approved: 'Approved',
 } as const
@@ -231,61 +347,52 @@ export const WORKFLOW_HEADING = {
 export const REJECTED_NOTE_HEADING = 'Why this was rejected'
 export const CHANGES_NOTE_HEADING = 'What management asked for'
 
-export const DRAFT_OWNER_STANDING =
-  'This PI has not been handed to management yet. Submitting it starts the review; nothing is numbered and no order is created.'
+/** The one instruction that survives: a draft nobody can submit yet. */
 export const DRAFT_OWNER_BLOCKED_STANDING =
-  'This PI cannot be submitted until the issues below are corrected in the Excel PI and the file is uploaded again.'
-export const DRAFT_READONLY_STANDING =
-  'This PI is still with the person who filed it. It has not been submitted for approval.'
-export const REVIEWER_STANDING = 'Waiting for your decision.'
-export const REVIEWER_EXCEPTION_PENDING =
-  'A proposed advance is waiting too. Settling it does not approve the PI.'
+  'Correct the issues below in the Excel PI and upload it again before submitting.'
+
+/** Who moved the record last, and when. Used for the panel's metadata line. */
+function actorLine(verb: string, name: string | null, at: string | null): string | null {
+  if (!at) return null
+  return `${verb} by ${name ?? 'a colleague'} · ${at}`
+}
 
 /**
  * The workflow panel, for THIS viewer and THIS record.
  *
  * THE ROLE DECIDES THE HEADING, not the status alone. A submitted PI says
- * "Submitted for Review" to the employee who is waiting and "Management Review"
+ * "Submitted for review" to the employee who is waiting and "Management review"
  * to the person who is being waited on, because the same fact is a different
  * instruction to each of them.
  *
- * The STANDING line reuses describeSubmissionBanner wherever that helper already
- * says it. That banner used to be a card of its own above an overview that
- * repeated it; it is the same sentence, in the one place that needs it.
+ * WHAT THIS FUNCTION NO LONGER RETURNS is as much the point as what it does.
+ * There is no standing paragraph, no restatement of the status the identity
+ * badge already carries, and no description of what pressing a button will do.
+ * The page trusts its labels.
  */
 export function describeWorkflowPanel(input: {
   status: string
   actions: SubmissionActions
-  /** describeSubmissionBanner's answer for this record, or null for a draft. */
-  banner: SubmissionBanner | null
   /** True when the stored diagnostics still block submission. */
   hasBlockingIssues: boolean
-  /** True when an exception is waiting for somebody's decision. */
-  exceptionPending: boolean
   /** Already formatted, or null. This module does no date work. */
   submittedAt: string | null
   submitterName: string | null
+  rejectedAt: string | null
+  rejectedByName: string | null
 }): WorkflowPanel {
-  const { actions, banner, status } = input
+  const { actions, status } = input
   const isReviewer = actions.canRequestChanges || actions.canReject
 
   const noteHeading = status === 'rejected' ? REJECTED_NOTE_HEADING : CHANGES_NOTE_HEADING
+  const submittedLine = actorLine('Submitted', input.submitterName, input.submittedAt)
+  const rejectedLine = actorLine('Rejected', input.rejectedByName, input.rejectedAt)
 
   if (isReviewer) {
-    // NOT the banner's sentence. That one ends "nothing on this PI can be
-    // changed while it is under review", which is written for the employee who
-    // is waiting — to the person being waited on it is a line about somebody
-    // else's restriction. A reviewer needs who sent it, when, and whether there
-    // is a second decision on the same record.
     return {
       heading: WORKFLOW_HEADING.reviewer,
-      standing: [
-        REVIEWER_STANDING,
-        input.submittedAt
-          ? `Submitted by ${input.submitterName ?? 'a colleague'} on ${input.submittedAt}.`
-          : '',
-        input.exceptionPending ? REVIEWER_EXCEPTION_PENDING : '',
-      ].filter(Boolean).join(' '),
+      meta: submittedLine,
+      instruction: null,
       tone: 'blue',
       noteHeading,
       closed: false,
@@ -296,9 +403,8 @@ export function describeWorkflowPanel(input: {
     const owns = actions.canSubmit || actions.canChangePi
     return {
       heading: owns ? WORKFLOW_HEADING.draftOwner : draftStatusLabel(status),
-      standing: owns
-        ? (input.hasBlockingIssues ? DRAFT_OWNER_BLOCKED_STANDING : DRAFT_OWNER_STANDING)
-        : DRAFT_READONLY_STANDING,
+      meta: null,
+      instruction: owns && input.hasBlockingIssues ? DRAFT_OWNER_BLOCKED_STANDING : null,
       tone: 'neutral',
       noteHeading,
       closed: false,
@@ -308,7 +414,11 @@ export function describeWorkflowPanel(input: {
   if (status === 'needs_changes') {
     return {
       heading: WORKFLOW_HEADING.needsChangesOwner,
-      standing: banner?.body ?? '',
+      // Management's own note is rendered verbatim below the heading and says
+      // what to change; a procedural sentence repeating the two buttons beside
+      // it would be the third telling of one instruction.
+      meta: submittedLine,
+      instruction: null,
       tone: 'amber',
       noteHeading,
       closed: false,
@@ -318,7 +428,8 @@ export function describeWorkflowPanel(input: {
   if (status === 'submitted') {
     return {
       heading: WORKFLOW_HEADING.submitted,
-      standing: banner?.body ?? '',
+      meta: submittedLine,
+      instruction: null,
       tone: 'blue',
       noteHeading,
       closed: false,
@@ -328,7 +439,8 @@ export function describeWorkflowPanel(input: {
   if (status === 'rejected') {
     return {
       heading: WORKFLOW_HEADING.rejected,
-      standing: banner?.body ?? '',
+      meta: rejectedLine,
+      instruction: null,
       tone: 'red',
       noteHeading,
       closed: true,
@@ -338,7 +450,8 @@ export function describeWorkflowPanel(input: {
   if (status === 'approved') {
     return {
       heading: WORKFLOW_HEADING.approved,
-      standing: banner?.body ?? '',
+      meta: submittedLine,
+      instruction: null,
       tone: 'green',
       noteHeading,
       closed: true,
@@ -349,12 +462,43 @@ export function describeWorkflowPanel(input: {
   // as the drafts list does.
   return {
     heading: draftStatusLabel(status),
-    standing: banner?.body ?? '',
+    meta: submittedLine,
+    instruction: null,
     tone: 'neutral',
     noteHeading,
     closed: true,
   }
 }
+
+// ── The advance decision band ─────────────────────────────────────────────────
+
+/**
+ * The band's heading. "Advance exception" and not "Advance requirement": the
+ * band exists only while there is an EXCEPTION to settle, and the requirement
+ * itself is stated once, in the snapshot at the top.
+ */
+export const ADVANCE_BAND_TITLE = 'Advance exception'
+
+/**
+ * The one line describing what was asked for, for the band.
+ *
+ * `Reduced advance · 12.5% · ₹3,17,125` or `No advance · 0% · ₹0`. It names the
+ * KIND of exception as well as the figures, because the person reading it is
+ * being asked to grant exactly that and the two zero cases are not the same
+ * decision as a reduction.
+ */
+export function describeRequestedException(advance: AdvanceView): string {
+  if (advance.exceptionPercentLabel === null) {
+    return advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
+  }
+  const figures = advance.exceptionAmount === null
+    ? advance.exceptionPercentLabel
+    : `${advance.exceptionPercentLabel} · ${advance.exceptionAmount}`
+  const kind = advance.isZeroPercent ? ADVANCE_NONE_LABEL_SHORT : ADVANCE_REDUCED_KIND
+  return `${kind} · ${figures}`
+}
+
+const ADVANCE_REDUCED_KIND = 'Reduced advance'
 
 // ── 4. Blocking issues ────────────────────────────────────────────────────────
 
