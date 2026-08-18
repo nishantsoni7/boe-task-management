@@ -701,12 +701,26 @@ export const PI_COMMERCIAL_MAX_WIDTH_PX = 780
  * component and both must show the same numbers as the document the client was
  * sent.
  */
-export function PiCommercialSummary({ rows, title = 'Commercial summary' }: {
+export function PiCommercialSummary({ rows, title = 'Commercial summary', fill = false }: {
   rows: readonly PiAmountRow[]
   title?: string
+  /**
+   * Fill the space it is given instead of capping and right-aligning itself.
+   *
+   * THE CAP IS STILL THE DEFAULT, and the import preview still takes it: there
+   * the summary sits directly under a full-width product table, where a row
+   * spread across a 1920px monitor costs an eye movement per line, so it is
+   * capped and pushed right under the money column.
+   *
+   * The saved-PI screen puts it in a column of a two-column grid that is already
+   * narrower than the cap. There, capping again and pushing right would leave a
+   * ragged gutter inside its own column. One prop, so there is still ONE
+   * component and the figures cannot differ between the two screens.
+   */
+  fill?: boolean
 }) {
   return (
-    <div style={{
+    <div style={fill ? { width: '100%' } : {
       width: '100%',
       maxWidth: `${PI_COMMERCIAL_MAX_WIDTH_PX}px`,
       marginLeft: 'auto',
@@ -720,7 +734,15 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary' }: {
               style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px',
                 padding: row.emphasis ? '11px 18px' : '6px 18px',
-                borderTop: row.emphasis === 'total' ? `1px solid ${colors.borderSoft}` : 'none',
+                // Two hairlines, so the column reads as three groups rather than
+                // ten equal lines: what the products came to, what tax does to
+                // it, and what is owed. `groupStart` is set by the row builder,
+                // which is the thing that knows what a row MEANS.
+                borderTop: row.emphasis === 'total' || row.groupStart
+                  ? `1px solid ${colors.borderSoft}`
+                  : 'none',
+                marginTop: row.groupStart ? '4px' : 0,
+                paddingTop: row.groupStart ? '10px' : undefined,
                 background: row.emphasis === 'advance' ? colors.amberTint : 'transparent',
               }}
             >
@@ -741,6 +763,9 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary' }: {
               <div style={{
                 whiteSpace: row.kind === 'text' ? 'normal' : 'nowrap',
                 textAlign: 'right',
+                // Figures line up digit under digit down the column. A worded
+                // cell ("Included") is unaffected by it.
+                fontVariantNumeric: 'tabular-nums',
                 fontSize: row.emphasis ? '14px' : '13px',
                 fontWeight: row.emphasis ? 700 : 500,
                 // The two worded zeroes read as settled facts, like a figure,

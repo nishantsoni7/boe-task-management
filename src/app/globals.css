@@ -2341,3 +2341,261 @@ body {
   }
   .payroll-guide-table { min-width: 560px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PI DETAIL — /orders/drafts/[submissionId]
+
+   Scoped by the `pi-detail-` prefix and used by exactly one screen. Nothing
+   above this block is modified, and no other Orders page can be moved by
+   editing it.
+
+   WHY A STYLESHEET AND NOT INLINE STYLES. This page has three real breakpoints —
+   wide desktop, laptop/tablet, phone — and an inline style cannot express one.
+   The alternative was another width probe in JavaScript, and the page already
+   carries exactly one (for the product table's desktop/card switch, which is
+   untouched). Every arrangement below is CSS, so nothing here re-renders on a
+   resize and nothing here can disagree with what the browser is doing.
+
+   This follows the same convention as the payroll guide's block further up: a
+   named, page-scoped section rather than a second design system. The visual
+   language is still the established BOE one — white cards on the grey page,
+   hairline borders, 16–20px card padding. This arranges those cards.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── The page stack ───────────────────────────────────────────────────────── */
+
+.pi-detail-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+
+/* ── Page identity ────────────────────────────────────────────────────────────
+   The layout header already carries the client name. This strip carries the
+   status and the short line of facts about the record, so neither is a card of
+   its own and neither repeats the title above it. */
+
+.pi-detail-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.pi-detail-identity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+/* The original workbook, in a quiet file treatment: a fact about the document,
+   not a control and not a heading. */
+.pi-detail-identity-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.035);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.pi-detail-identity-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Order overview ───────────────────────────────────────────────────────────
+   Three meaningful sections rather than a uniform grid of unrelated facts:
+   who and where, when, and what it is worth. */
+
+.pi-detail-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding: 16px 20px 18px;
+}
+
+.pi-detail-overview-section {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+/* THE COMMERCIAL SNAPSHOT IS READ FIRST ON A PHONE. The total and the advance
+   condition are the two facts the page exists to answer quickly, and on one
+   column they must not sit below two blocks of postal addresses. */
+.pi-detail-snapshot {
+  order: -1;
+}
+
+@media (min-width: 768px) {
+  .pi-detail-overview {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 26px;
+  }
+  /* Tablet: the addresses and the dates share a row, and the snapshot takes a
+     full-width row of its own rather than being squeezed into a third of it. */
+  .pi-detail-snapshot {
+    order: 0;
+    grid-column: 1 / -1;
+    padding-top: 16px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  }
+}
+
+@media (min-width: 1180px) {
+  .pi-detail-overview {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.8fr) minmax(0, 1fr);
+    column-gap: 0;
+  }
+  .pi-detail-snapshot {
+    grid-column: auto;
+    padding-top: 0;
+    border-top: none;
+  }
+  /* Hairlines only where there is genuinely a column edge to mark. */
+  .pi-detail-overview-divided {
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+    padding-left: 24px;
+    margin-left: 24px;
+  }
+}
+
+/* The strongest number on the page. Larger than the page title, and tabular so
+   it lines up with the advance figure under it. */
+.pi-detail-snapshot-total {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 1180px) {
+  .pi-detail-snapshot-total {
+    font-size: 28px;
+  }
+}
+
+.pi-detail-snapshot-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* ── Workflow and actions ─────────────────────────────────────────────────── */
+
+.pi-detail-workflow-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 18px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 15px 20px;
+}
+
+.pi-detail-workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* On a narrow phone the actions stop competing for one line and take a readable
+   full width each, rather than shrinking until the labels wrap mid-word. */
+@media (max-width: 480px) {
+  .pi-detail-workflow-actions {
+    width: 100%;
+  }
+  .pi-detail-workflow-actions > * {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}
+
+/* The one nested band this page allows: the advance exception is a decision on
+   ONE COMMERCIAL TERM of the PI, not a decision on the PI, and a rule plus a
+   quieter ground is what keeps the two from reading as the same control. */
+.pi-detail-workflow-band {
+  padding: 14px 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background: #F8F9FB;
+}
+
+/* ── The lower information grid ───────────────────────────────────────────────
+   Commercial breakdown ~60%, activity ~40%. Aligned at the top and never forced
+   to a common height: the two cards genuinely carry different amounts of
+   content, and stretching the shorter one just prints white space. */
+
+.pi-detail-lower-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .pi-detail-lower-grid {
+    grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+  }
+}
+
+/* ── The activity trail ───────────────────────────────────────────────────── */
+
+.pi-detail-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 14px 18px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pi-detail-timeline-item {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pi-detail-timeline-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.pi-detail-timeline-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.pi-detail-timeline-line {
+  width: 1px;
+  flex: 1;
+  min-height: 8px;
+  margin-top: 3px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.pi-detail-timeline-body {
+  min-width: 0;
+  flex: 1;
+  padding-bottom: 16px;
+}
+
+.pi-detail-timeline-item:last-child .pi-detail-timeline-body {
+  padding-bottom: 0;
+}

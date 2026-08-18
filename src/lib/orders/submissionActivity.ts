@@ -92,6 +92,30 @@ export const PI_ACTIVITY_DETAIL: Record<string, string> = {
   advance_exception_rejected: 'The PI was returned to the employee for correction.',
 }
 
+/**
+ * The restrained colour each event is marked with in the audit trail.
+ *
+ * INFORMATIVE, NEVER DECORATIVE. Colour only means "this is a different kind of
+ * thing" while it is scarce, so a trail of eight events is mostly neutral: the
+ * two that merely record a document (created, replaced) take no colour at all.
+ *
+ * It lives HERE, beside the labels, because it is a statement about what an
+ * event MEANS, and meaning is this module's job. A page that picked its own
+ * colours would be free to decide that a rejection is amber.
+ */
+export type PiActivityTone = 'neutral' | 'blue' | 'amber' | 'green' | 'red'
+
+export const PI_ACTIVITY_TONE: Record<string, PiActivityTone> = {
+  submission_created: 'neutral',
+  parse_replaced: 'neutral',
+  submitted: 'blue',
+  changes_requested: 'amber',
+  rejected: 'red',
+  advance_exception_requested: 'amber',
+  advance_exception_approved: 'green',
+  advance_exception_rejected: 'red',
+}
+
 export type ActivityEntry = {
   key: string
   label: string
@@ -110,6 +134,8 @@ export type ActivityEntry = {
   figures: string | null
   /** The fixed explanatory sentence, or null. See PI_ACTIVITY_DETAIL. */
   detail: string | null
+  /** The marker colour for this event in the trail. See PI_ACTIVITY_TONE. */
+  tone: PiActivityTone
 }
 
 /**
@@ -182,6 +208,9 @@ export function describeActivityEntries(
         note,
         figures: advanceFigures(row),
         detail: PI_ACTIVITY_DETAIL[row.action] ?? null,
+        // The RAW ACTION STILL NEVER LEAVES THIS MODULE. What the trail is
+        // handed is a colour name, so no build of the screen can print an enum.
+        tone: PI_ACTIVITY_TONE[row.action] ?? 'neutral',
       }
     })
 }
@@ -200,4 +229,22 @@ export function activityActorIds(
   for (const row of rows) if (row.actor_id) ids.add(row.actor_id)
   for (const id of extra) if (id) ids.add(id)
   return [...ids]
+}
+
+/**
+ * The employee's own reply on the most recent submission, or null.
+ *
+ * WHY IT IS READ OUT OF THE TRAIL AND NOT OFF THE RECORD. A resubmission's reply
+ * is written onto the 'submitted' EVENT and nowhere else — there is no column on
+ * order_submissions holding it, deliberately, so that a later resubmission
+ * cannot overwrite what was said about an earlier one. The reviewer's panel
+ * needs the current one, which is the newest submission event's note.
+ *
+ * Entries arrive newest-first from describeActivityEntries, so the first match
+ * is the current reply. Matching on the LABEL keeps the raw action name inside
+ * this module, which is the same reason `action` is not a field on ActivityEntry.
+ */
+export function latestSubmissionReply(entries: readonly ActivityEntry[]): string | null {
+  const submitted = entries.find(entry => entry.label === PI_ACTIVITY_LABEL.submitted)
+  return submitted?.note ?? null
 }

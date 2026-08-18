@@ -70,6 +70,19 @@ const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'))
 
 const LIST_PAGE = 'src/app/orders/drafts/page.tsx'
 const DETAIL_PAGE = 'src/app/orders/drafts/[submissionId]/page.tsx'
+/**
+ * The rest of the detail SCREEN.
+ *
+ * The page kept everything with authority behind it — the reads, the capability
+ * derivation, the RPCs, the image signing — and handed the drawing to two
+ * page-owned modules beside it. A guard about what the screen RENDERS therefore
+ * reads `detailScreen()`; a guard about what it FETCHES, WRITES or DECIDES still
+ * reads DETAIL_PAGE alone, which is the stronger statement of the two.
+ */
+const DETAIL_SECTIONS = 'src/app/orders/drafts/[submissionId]/piDetailSections.tsx'
+const DETAIL_VIEW = 'src/app/orders/drafts/[submissionId]/piDetailView.ts'
+const detailScreen = (): string =>
+  [DETAIL_PAGE, DETAIL_SECTIONS, DETAIL_VIEW].map(read).join('\n')
 const REVIEW_MODALS = 'src/components/orders/piReviewModals.tsx'
 const DRAFTS_VIEW = 'src/lib/orders/draftsView.ts'
 const IMPORT_PAGE = 'src/app/orders/import/page.tsx'
@@ -254,7 +267,8 @@ describe('the detail page renders only what it fetched', () => {
     const reads = [...source.matchAll(/searchParams\.get\('([^']+)'\)/g)].map(m => m[1])
     assert.deepEqual(reads, ['saved'], 'the only query parameter read is the success flag')
     assert.ok(source.includes("const justSaved = searchParams.get('saved') === '1'"))
-    assert.ok(source.includes('{justSaved && ('), 'and it gates a banner, not any data')
+    assert.ok(source.includes('{justSaved && <PiSavedStrip />}'),
+      'and it gates one confirmation strip, not any data')
   })
 
   test('no preview or workbook state can reach this screen', () => {
@@ -460,7 +474,7 @@ describe('the drafts list', () => {
     }
     // The only mention of an order number on these screens is the standing
     // statement that this record does not have one.
-    assert.ok(read(DETAIL_PAGE).replace(/\s+/g, ' ').includes('no official order number'),
+    assert.ok(/numbering begins after management approval/.test(read(DETAIL_VIEW)),
       'the draft states plainly that numbering happens only after approval')
   })
 
@@ -766,109 +780,145 @@ describe('what the server thought of the document is kept', () => {
     const source = read(DETAIL_PAGE)
     assert.ok(source.includes('{draft.blocking.length > 0 && ('))
     assert.ok(source.includes('{draft.warnings.length > 0 && ('))
-    assert.ok(source.includes('tone="red"') && source.includes('tone="amber"'))
+    const sections = read(DETAIL_SECTIONS)
+    assert.ok(sections.includes('tone="red"') && sections.includes('tone="amber"'))
     assert.ok(source.indexOf('draft.blocking.length > 0') < source.indexOf('draft.warnings.length > 0'),
       'blocking issues stay above the warnings')
+    // And both are now above and below the products respectively: what blocks a
+    // submission is beside the control it blocks, and what is merely worth
+    // checking is out of the way of it.
+    // `read` strips comments, so the products section is located by the shared
+    // table head it renders rather than by the comment above it.
+    assert.ok(source.indexOf('<PiBlockingPanel') < source.indexOf('<PiProductTableHead'))
+    assert.ok(source.indexOf('<PiWarningPanel') > source.indexOf('<PiProductTableHead'))
   })
 
   test('a returned draft shows what the reviewer asked for', () => {
-    assert.ok(read(DETAIL_PAGE).includes('{submission.review_note && ('))
+    assert.ok(read(DETAIL_PAGE).includes('reviewNote={submission.review_note}'),
+      'the stored note reaches the workflow panel')
+    assert.ok(read(DETAIL_SECTIONS).includes('{reviewNote && ('),
+      'and is rendered only when there is one')
   })
 })
 
-// ── The draft overview section ────────────────────────────────────────────────
+// ── The page identity and the order overview ──────────────────────────────────
+//
+// WHAT REPLACED WHAT. The card this section used to describe was headed "Draft
+// overview" and carried three bands: a status badge, a strip of facts about the
+// FILE, and the order's own fields. It was an improvement on the field dump
+// before it and it was still the wrong shape for this page: the top of a wide
+// monitor was mostly empty, and the two facts a person actually opens a PI for —
+// what it is worth, and on what advance condition — were nowhere near it.
+//
+// The identity is now a STRIP on the page ground (state, size, when, which
+// file), and the card beneath it has three meaningful SECTIONS rather than
+// bands: who and where, when, and the commercial snapshot. Everything the old
+// card showed is still shown; what changed is where, and how much weight each
+// fact carries.
 
-describe('the draft overview reads as three bands, not a field dump', () => {
-  const source = read(DETAIL_PAGE)
+describe('the page identity is a strip, not a card that repeats the title', () => {
+  const screen = detailScreen()
+  const page = read(DETAIL_PAGE)
 
-  test('one card, headed "Draft overview", with the status on its header line', () => {
-    assert.ok(source.includes('Draft overview'))
-    // The layout's own page title in the error state is still "PI Draft" — that
-    // one IS the page. What is gone is the card repeating it a second time.
-    assert.ok(!/<PiCardHeader\s+title="PI Draft"/.test(source),
-      'the page title, its subtitle and the badge already say what this is')
-    assert.ok(/<PiCardHeader[\s\S]{0,900}?draftStatusLabel\(submission\.status\)/.test(source),
-      'the badge belongs to the card header')
-    assert.ok(!source.includes('<PiCardHeader title="Order information" />'),
-      'order information is a band inside this card, not a second card')
+  test('the layout header carries the client, and stops there', () => {
+    assert.ok(page.includes('title={clientLabel}'))
+    assert.ok(!page.includes('subtitle='),
+      '"Saved PI submission · Draft" restated the badge one line below it')
+    assert.ok(!/<PiCardHeader\s+title="PI Draft"/.test(page))
+    assert.ok(!screen.includes('Draft overview'),
+      'a fourth restatement of what this record is')
   })
 
-  test('the metadata strip carries the four facts about the FILE', () => {
-    for (const label of ['Last saved', 'Products', 'Created by', 'Original PI file']) {
-      assert.ok(source.includes(`label="${label}"`), `${label} must be in the strip`)
+  test('the status badge sits with the identity, above the overview', () => {
+    assert.ok(page.includes('<PiIdentityStrip'))
+    assert.ok(page.includes('statusLabel={draftStatusLabel(submission.status)}'))
+    assert.ok(page.includes('const tone = statusTone(draftStatusTone(submission.status))'),
+      'the badge takes the drafts list’s own status vocabulary')
+    assert.ok(page.includes('tone={tone}'))
+    assert.ok(page.indexOf('<PiIdentityStrip') < page.indexOf('<PiOrderOverview'))
+  })
+
+  test('the strip carries the facts the old metadata band carried', () => {
+    const view = read(DETAIL_VIEW)
+    for (const fact of ['product line', 'Saved ', 'Submitted ', 'PI by ']) {
+      assert.ok(view.includes(fact), `${fact} must survive the redesign`)
     }
-    assert.ok(source.includes('<MetaItem'), 'rendered as icon-and-label blocks')
+    assert.ok(page.includes('documentAuthor,'),
+      'including whoever the PI document itself named')
   })
 
   test('an absent filename shows no block at all', () => {
     // A labelled hole is worse than the absence it reports. The Rivoli draft has
     // no stored filename, which is exactly the case this covers.
-    assert.ok(source.includes("const workbookName = submission.source_workbook_name?.trim() || null"))
-    assert.ok(source.includes('{workbookName && ('),
+    assert.ok(page.includes("const workbookName = submission.source_workbook_name?.trim() || null"))
+    assert.ok(read(DETAIL_SECTIONS).includes('{workbookName && ('),
       'the block is conditional on there being a name')
-    assert.ok(source.includes('${Math.min(3 + (workbookName ? 1 : 0) + (submittedAt ? 1 : 0), 4)}'),
-      'and the strip closes up rather than leaving a gap where a fact is absent')
   })
 
-  test('order information is three columns, not six', () => {
-    assert.ok(source.includes("gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(0, 1fr))'"),
-      'six auto-filled columns is what scattered the fields in the first place')
+  test('the file is a quiet treatment, never a heading or a control', () => {
+    const sections = read(DETAIL_SECTIONS)
+    const file = sections.slice(sections.indexOf('pi-detail-identity-file'))
+    assert.ok(!file.slice(0, 400).includes('<button'))
   })
+})
 
-  test('the two rows group the fields that belong together', () => {
-    const order = ['client', 'billTo', 'shipTo', 'created', 'confirmed', 'dispatch']
-        .map(key => source.indexOf(`headerValue('${key}')`))
-    assert.ok(order.every(i => i > -1), 'all six fields are rendered')
-    assert.deepEqual([...order].sort((a, b) => a - b), order,
-      'who it is for first, then when it happens')
-  })
+describe('the order overview is three sections, not a grid of unrelated facts', () => {
+  const page = read(DETAIL_PAGE)
+  const sections = read(DETAIL_SECTIONS)
+  const view = read(DETAIL_VIEW)
 
-  test('client and destination read heavier than the dates', () => {
-    for (const key of ['client', 'billTo', 'shipTo']) {
-      assert.ok(new RegExp(`headerValue\\('${key}'\\)} strong`).test(source),
-        `${key} is part of the primary row`)
+  test('the three sections are client-and-delivery, timeline, commercial snapshot', () => {
+    for (const label of ['Client &amp; delivery', 'Timeline', 'Commercial snapshot']) {
+      assert.ok(sections.includes(label), `${label} must be one of the three`)
     }
+    assert.equal((sections.match(/<section className="pi-detail-overview-section/g) ?? []).length, 3)
+  })
+
+  test('the client is not repeated inside the card that sits under its own title', () => {
+    assert.ok(page.includes("omitDash(headerValue('billTo'))"))
+    assert.ok(page.includes("omitDash(headerValue('shipTo'))"))
+    assert.ok(!page.includes("headerValue('client')"),
+      'Bill to and Ship to carry the destinations the reader actually compares')
+    assert.ok(!page.includes("headerValue('createdBy')"),
+      'and the document author is a fact about the file, stated once on the strip')
+  })
+
+  test('the order dates are still the shared builder’s, in the same words', () => {
     for (const key of ['created', 'confirmed', 'dispatch']) {
-      assert.ok(!new RegExp(`headerValue\\('${key}'\\)} strong`).test(source),
-        `${key} stays in the quieter secondary row`)
+      assert.ok(page.includes(`headerValue('${key}')`), `${key} must survive the redesign`)
     }
+    assert.ok(page.includes('const headerRows = buildHeaderRows(persistedHeader(submission))'))
+    assert.ok(page.includes("headerRows.find(row => row.key === key)?.value ?? '—'"))
   })
 
   test('a missing value says so instead of showing a bare dash', () => {
-    assert.ok(source.includes("value.trim() === '—'"))
-    assert.ok(source.includes('Not provided'))
-    assert.ok(source.includes('fontStyle: \'italic\''), 'in subtle muted text')
+    assert.ok(view.includes("trimmed === '—'"))
+    assert.ok(view.includes("NOT_PROVIDED = 'Not provided'"))
+    assert.ok(sections.includes("fontStyle: 'italic'"), 'in subtle muted text')
   })
 
-  test('every value still comes from the shared header builder', () => {
-    // The arrangement is this page's; the wording, the date formatting and the
-    // rule that the workbook's own order number never appears are still the
-    // shared helper's, so the two PI screens cannot disagree.
-    assert.ok(source.includes('const headerRows = buildHeaderRows(persistedHeader(submission))'))
-    assert.ok(source.includes("headerRows.find(row => row.key === key)?.value ?? '—'"))
+  test('the last-saved time is stated once, on the strip and not again', () => {
+    assert.ok(/Last saved/.test(view) === false && /Last saved/.test(sections) === false,
+      'the timeline band carries the ORDER’s dates, not the file’s')
+    assert.ok(view.includes('`Saved ${input.savedAt}`'))
   })
 
-  test('nothing that the old card showed has been lost', () => {
-    for (const fact of [
-      'label="Last saved"', 'label="Products"', 'label="Created by"',
-      "headerValue('client')", "headerValue('billTo')", "headerValue('shipTo')",
-      "headerValue('created')", "headerValue('confirmed')", "headerValue('dispatch')",
-      '{submission.review_note && (',
-    ]) {
-      assert.ok(source.includes(fact), `${fact} must survive the redesign`)
+  test('the commercial snapshot is built from the shared advance helper', () => {
+    assert.ok(page.includes('const snapshot = buildCommercialSnapshot({'))
+    assert.ok(page.includes('grandTotal: grandTotalLabel'))
+    assert.ok(page.includes('advance,'))
+    // Not one figure is derived here: the standard requirement and the proposed
+    // amount both come out of describeAdvance, which uses the one formula.
+    for (const arithmetic of ['* 0.4', 'Math.round', '/ 100']) {
+      assert.ok(!view.includes(arithmetic),
+        `${arithmetic} must not appear — this module chooses words, not amounts`)
     }
   })
 
-  test('"Created by" is stated once, in the strip', () => {
-    assert.equal(source.split('Created by').length - 1, 1,
-      'it is a fact about the document, so it does not also sit among the order fields')
-    assert.ok(!source.includes("headerValue('createdBy')"))
-  })
-
-  test('the section uses red as an accent only', () => {
-    // One 15px icon. No coloured panel, no tinted band behind the fields.
-    assert.ok(source.includes('<FileText size={15} strokeWidth={1.9} color={colors.red} />'))
-    assert.ok(!/background: colors\.redTint[\s\S]{0,200}Draft overview/.test(source))
+  test('the section spends red as an accent, never as a panel', () => {
+    assert.ok(!/background: colors\.redTint/.test(
+      sections.slice(sections.indexOf('PiOrderOverview'), sections.indexOf('PiWorkflowPanel'))),
+      'no tinted band behind the overview fields')
   })
 })
 
@@ -1040,24 +1090,28 @@ describe('the record page draws controls from one rule, and from nothing else', 
 
   test('every control branches on the shared helper', () => {
     assert.ok(source.includes('const actions = describeSubmissionActions({'))
-    for (const gate of [
-      '{(actions.canSubmit || actions.canChangePi) && (',
-      '{showReviewCard && (',
-    ]) {
-      assert.ok(source.includes(gate), `${gate} must gate its card`)
-    }
-    assert.ok(source.includes('const showReviewCard = actions.canRequestChanges || actions.canReject'),
-      'and the review card gate is still that helper and nothing else')
+    // ONE PANEL NOW, not an employee card and a reviewer card and an advance
+    // card. The helper's answer is handed to it whole, and the panel draws the
+    // employee's controls from actions.canSubmit / canChangePi and the
+    // reviewer's from actions.canRequestChanges / canReject. There is no third
+    // rule anywhere.
+    assert.equal((source.match(/<PiWorkflowPanel/g) ?? []).length, 1)
+    assert.ok(source.includes('actions={actions}'))
+    const sections = read(DETAIL_SECTIONS)
+    assert.ok(sections.includes('const isReviewer = actions.canRequestChanges || actions.canReject'))
+    assert.ok(sections.includes('const ownerActions = actions.canSubmit || actions.canChangePi'))
     assert.ok(!/status === 'submitted' &&\s*canReview/.test(source),
       'no second, looser copy of the rule in a JSX condition')
+    assert.ok(!sections.includes('canReview'),
+      'a presentational section is never handed a raw capability')
 
     // The advance decision has its OWN rule, from its own helper, because the
     // two authorities are independent: somebody may hold
     // orders.approve_advance_exception without orders.approve_order.
     assert.ok(source.includes('const advanceActions = describeAdvanceActions({'))
     assert.ok(source.includes('canDecideException: canDecideAdvance'))
-    assert.ok(source.includes('{!showReviewCard && showAdvance && ('),
-      'so an exception approver with no review card still gets the section')
+    assert.ok(source.includes('canDecide={advanceActions.canDecide}'),
+      'and the two exception controls are gated on it alone')
     assert.ok(!/advance_exception_status === 'pending'/.test(source),
       'no second, looser copy of the pending rule in a JSX condition')
   })
@@ -1074,6 +1128,7 @@ describe('the record page draws controls from one rule, and from nothing else', 
   })
 
   test('approval is present, inert, and explains itself', () => {
+    const source = detailScreen()
     assert.ok(source.includes('{APPROVE_DISABLED_REASON}'))
     // The PI's own Approve is a <span>, not a button, and carries no handler.
     // "Approve Exception" is a different control on a different fact and DOES
@@ -1092,7 +1147,9 @@ describe('the record page draws controls from one rule, and from nothing else', 
       'a ref, because state updates are async and two clicks share a tick')
     assert.ok(source.includes('actingRef.current = true'))
     assert.ok(source.includes('actingRef.current = false'))
-    assert.ok(source.includes('disabled={acting'), 'and the controls show it')
+    assert.ok(source.includes('acting={acting}'), 'and the panel is told')
+    assert.ok(read(DETAIL_SECTIONS).includes('disabled={acting'),
+      'so every control shows it')
   })
 
   test('a success re-reads the record quietly', () => {
@@ -1136,16 +1193,25 @@ describe('the submitter and the submission time are shown', () => {
       'named safe columns: select(*) on public.users is a permission error')
   })
 
-  test('a banner states where the record stands', () => {
+  test('a sentence states where the record stands, and who it waits on', () => {
     assert.ok(source.includes('const banner = describeSubmissionBanner({'))
-    assert.ok(source.includes('{banner && ('), 'and a draft gets none')
+    // It used to be a card of its own above an overview that repeated it. It is
+    // now the workflow panel's standing line — same helper, same words, drawn
+    // once. A draft still gets none, because describeSubmissionBanner returns
+    // null for one and describeWorkflowPanel supplies the owner's question.
+    assert.ok(source.includes('banner,'))
+    assert.ok(read(DETAIL_VIEW).includes('banner?.body ?? ') )
+    assert.ok(read(DETAIL_SECTIONS).includes('{panel.standing}'))
   })
 
   test('the management note keeps its own place, rendered verbatim', () => {
-    assert.ok(source.includes('{submission.review_note && ('))
-    assert.ok(source.includes('{reviewNoteHeading}'),
+    assert.ok(source.includes('reviewNote={submission.review_note}'))
+    const sections = read(DETAIL_SECTIONS)
+    assert.ok(sections.includes('{reviewNote && ('))
+    assert.ok(sections.includes('heading={panel.noteHeading}'),
       'the same column carries both decisions, so the heading says which wrote it')
-    assert.ok(source.includes('<MultilineText'), 'somebody’s own words, not collapsed')
+    assert.ok(read(DETAIL_VIEW).includes("REJECTED_NOTE_HEADING = 'Why this was rejected'"))
+    assert.ok(sections.includes('<MultilineText'), 'somebody’s own words, not collapsed')
   })
 })
 
@@ -1161,15 +1227,21 @@ describe('the activity history', () => {
   })
 
   test('shows the action, the actor, the time and any note', () => {
+    const sections = read(DETAIL_SECTIONS)
     for (const field of ['{entry.label}', '{entry.actor}', '{entry.at}', '{entry.note}']) {
-      assert.ok(source.includes(field), `${field} belongs on an activity row`)
+      assert.ok(sections.includes(field), `${field} belongs on an activity row`)
     }
   })
 
   test('shows no id and no raw metadata', () => {
-    assert.ok(!source.includes('entry.metadata'))
-    assert.ok(!/\{entry\.(id|submissionId|actorId)\}/.test(source))
-    assert.ok(!source.includes('previous_status'))
+    const screen = detailScreen()
+    assert.ok(!screen.includes('entry.metadata'))
+    assert.ok(!/\{entry\.(id|submissionId|actorId|action)\}/.test(screen))
+    assert.ok(!screen.includes('previous_status'))
+    // The trail's marker colour is a NAME the activity module chose, so no
+    // build of this screen can print an enum by looking one up itself.
+    assert.ok(read(DETAIL_SECTIONS).includes('TIMELINE_MARKER[entry.tone]'))
+    assert.ok(!read(DETAIL_SECTIONS).includes("'submitted'"))
   })
 })
 
@@ -1330,11 +1402,16 @@ describe('the resubmission reply reaches the database and the trail', () => {
     // The trail's note is rendered once, for every action that carries one —
     // a reviewer's request, a rejection reason, and now an employee's reply.
     // No new UI was needed, which is why there is no second styling to drift.
-    assert.ok(source.includes('{entry.note}'))
-    assert.ok(source.includes("borderLeft: `2px solid ${colors.border}`"),
+    const sections = read(DETAIL_SECTIONS)
+    assert.ok(sections.includes('{entry.note}'))
+    assert.ok(sections.includes("borderLeft: `2px solid ${colors.border}`"),
       'the same left-rule treatment for every note on the trail')
-    const noteBlocks = [...source.matchAll(/\{entry\.note && \(/g)]
+    const noteBlocks = [...sections.matchAll(/\{entry\.note && \(/g)]
     assert.equal(noteBlocks.length, 1, 'one renderer, not one per action')
+    // The reviewer ALSO sees the current reply in the workflow panel, because
+    // that is where they are being asked to decide. It is read off the same
+    // trail entry rather than off the record, which still has no column for it.
+    assert.ok(read(DETAIL_PAGE).includes('latestSubmissionReply(draft.activity)'))
   })
 })
 
@@ -1348,11 +1425,17 @@ describe('the resubmission reply reaches the database and the trail', () => {
 describe('the advance requirement is shown to everybody and decided by few', () => {
   const source = read(DETAIL_PAGE)
 
-  test('the section is one component, used in exactly two places', () => {
-    assert.equal((source.match(/<AdvanceRequirementSection/g) ?? []).length, 1,
+  test('the band is one component, drawn once, inside the one workflow panel', () => {
+    assert.equal((source.match(/<PiAdvanceBand/g) ?? []).length, 1,
       'one component, so the employee view and the reviewer view cannot drift')
-    assert.equal((source.match(/\{advanceSection\}/g) ?? []).length, 2,
-      'rendered inside the review card, or as a card of its own — never both')
+    assert.equal((source.match(/advanceBand=\{/g) ?? []).length, 1,
+      'and one placement: the old page drew it inside the review card OR as a '
+      + 'card of its own, which is two arrangements to keep in step')
+    // Which is also how an exception approver who holds no review authority
+    // reaches their decision: the panel is drawn for everybody who can read the
+    // PI, so there is no second copy for the case that used to need one.
+    assert.ok(read(DETAIL_SECTIONS).includes('{advanceBand && <div className="pi-detail-workflow-band">'),
+      'separated by a rule and a quieter ground: the two decisions are different')
   })
 
   test('the decision controls are gated on the exception capability alone', () => {
@@ -1368,14 +1451,20 @@ describe('the advance requirement is shown to everybody and decided by few', () 
 
   test('the rejected-exception instruction appears only while the PI is back', () => {
     assert.ok(source.includes("advance.status === 'rejected' && submission.status === 'needs_changes'"))
-    assert.ok(source.includes('{ADVANCE_REJECTED_INSTRUCTION}'))
+    assert.ok(source.includes('advanceRejectedNow ? ADVANCE_REJECTED_INSTRUCTION : null'))
+    assert.ok(read(DETAIL_SECTIONS).includes('{rejectedInstruction}'))
   })
 
   test('the payment boundary is restated where the figures are', () => {
-    assert.ok(source.includes('{ADVANCE_NOT_A_PAYMENT}'))
+    const screen = detailScreen()
+    assert.ok(screen.includes('{ADVANCE_NOT_A_PAYMENT}'))
     for (const claim of ['Add Payment', 'payment received', 'Record Payment', 'finance_payment']) {
-      assert.ok(!source.includes(claim), `the page must not say "${claim}"`)
+      assert.ok(!screen.includes(claim), `the screen must not say "${claim}"`)
     }
+    // The new top-of-page snapshot prints the same figures a second time, so
+    // the same boundary has to hold there.
+    assert.ok(!/received|collected/i.test(read(DETAIL_VIEW)),
+      'the snapshot states a requirement, never a receipt')
   })
 
   test('no Finance or payment table is read by this page', () => {

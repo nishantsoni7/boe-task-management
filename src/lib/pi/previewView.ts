@@ -280,6 +280,15 @@ export type PiAmountRow = PiSummaryRow & {
   kind: PiValueKind
   /** Rendered heavier: the grand total and the advance. */
   emphasis?: 'total' | 'advance'
+  /**
+   * This row opens a new group, so a hairline is drawn above it.
+   *
+   * The column is ten lines of near-identical label-and-figure, and ten equal
+   * lines is a list rather than a calculation. One break before tax turns it
+   * into three readable groups: what the products came to, what tax does to it,
+   * and what is finally owed (which already has its own rule, from `emphasis`).
+   */
+  groupStart?: true
   note?: string
 }
 
@@ -367,7 +376,16 @@ export function buildCommercialRows(commercial: PiCommercialSummary): PiAmountRo
   ]
   for (const cell of cells) {
     const shown = formatPiValue(cell.value)
-    rows.push({ key: cell.key, label: cell.label, value: shown.display, kind: shown.kind })
+    rows.push({
+      key: cell.key,
+      label: cell.label,
+      value: shown.display,
+      kind: shown.kind,
+      // Tax opens the last group before the total. Marked here rather than in a
+      // component, because which row starts a group is a fact about what the
+      // rows MEAN.
+      ...(cell.key === 'beforeGst' ? { groupStart: true as const } : {}),
+    })
   }
 
   const grand = formatPiValue(commercial.grandTotal)
