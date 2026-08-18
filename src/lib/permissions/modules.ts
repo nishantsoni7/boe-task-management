@@ -29,7 +29,7 @@ registerModule({
     // access must not reach them, so both are PROTECTED (see levels.ts) and
     // Custom-only. Registered by 20260903000000.
     { actionKey: 'view_quotations',   displayName: 'View Quotations & Prices' },
-    { actionKey: 'manage_quotations', displayName: 'Manage Quotations' },
+    { actionKey: 'manage_quotations', displayName: 'Submit Quotation Requests' },
   ],
 })
 

@@ -39,6 +39,14 @@ function sourceLabel(source: string): string {
   return SOURCE_LABELS[source] ?? source
 }
 
+const ACTION_DISPLAY_LABELS: Record<string, string> = {
+  manage_quotations: 'Submit Quotation Requests',
+}
+
+function actionDisplayLabel(action: PermissionActionRef): string {
+  return ACTION_DISPLAY_LABELS[action.action_key] ?? action.display_name
+}
+
 // GET — UI-ready permission tree for one employee: identity + every active
 // module's actions, each carrying its effective (allowed, source). One
 // resolver round trip via getEffectivePermissionsForUser, merged here with
@@ -107,7 +115,7 @@ export async function GET(
           const source = resolved?.source ?? 'system_default'
           return {
             actionKey: action.action_key,
-            displayName: action.display_name,
+            displayName: actionDisplayLabel(action),
             allowed: resolved?.allowed ?? defaultAllowed,
             source,
             sourceLabel: sourceLabel(source),
