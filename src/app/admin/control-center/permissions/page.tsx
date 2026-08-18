@@ -649,6 +649,14 @@ function ChangeAccessModal({
   )
 }
 
+/**
+ * How many employees' access counters are prefetched on load.
+ *
+ * A bound on REQUESTS, never on what the directory shows. See the note on
+ * countPrefetchTargets.
+ */
+const COUNT_PREFETCH_LIMIT = 20
+
 // ── Employee panel (left column) ────────────────────────────────────────────
 
 function EmployeePanel({
@@ -679,6 +687,15 @@ function EmployeePanel({
           onChange={e => onSearchChange(e.target.value)}
         />
       </div>
+
+      {/* A plain count, so an administrator can see the list is the whole
+          directory rather than a window onto it. This panel used to show the
+          first twenty people and say nothing about the rest. */}
+      {results.length > 0 && (
+        <div style={{ padding: '6px 4px 2px', fontSize: 11.5, color: '#8C94A6' }}>
+          {results.length} {results.length === 1 ? 'employee' : 'employees'}
+        </div>
+      )}
 
       <div className={styles.employeeList}>
         {results.length === 0 && (
@@ -985,18 +1002,54 @@ export default function PermissionsPage() {
     return depts.find(d => d.department_key === key)?.department_name ?? key
   }
 
+  /**
+   * Every employee an administrator may assign access to.
+   *
+   * THE DEFECT THIS FIXES. Both branches used to end in `.slice(0, 20)`, so the
+   * panel showed the first twenty people by name and silently dropped the rest.
+   * There was no counter, no "showing 20 of 60", nothing — an administrator
+   * scanning the list for somebody late in the alphabet concluded, reasonably,
+   * that the account did not exist, and could not grant them anything. A real
+   * Sales account that could sign in was invisible here for exactly that reason.
+   *
+   * A directory that hides people is worse than a long one. The panel scrolls,
+   * the search box narrows it, and neither needs the list to be secretly
+   * truncated — so nothing is truncated now.
+   *
+   * WHAT IS STILL EXCLUDED, and deliberately: soft-deleted accounts. Nothing
+   * else. Inactive accounts remain listed because an administrator has to be
+   * able to see and adjust what a deactivated person would regain, and because
+   * hiding them here is how somebody becomes unassignable. Names are never
+   * filtered on content — "test", "dummy" or anything else — since an account
+   * that can authenticate is an account that can hold permissions.
+   */
   const searchResults = useMemo(() => {
     const q = search.trim().toLowerCase()
     const pool = members.filter(m => !m.is_deleted)
-    if (!q) return pool.slice(0, 20)
+    if (!q) return pool
     return pool.filter(m =>
       m.full_name?.toLowerCase().includes(q) ||
       m.email?.toLowerCase().includes(q) ||
       deptLabel(m.team).toLowerCase().includes(q) ||
       m.role?.toLowerCase().includes(q)
-    ).slice(0, 20)
+    )
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, members, depts])
+
+  /**
+   * The rows whose "x of y modules" counter is prefetched.
+   *
+   * The counter costs one request per employee, so it stays bounded exactly as
+   * it was before the cap was lifted — the visible list is now complete, while
+   * the request volume on load is unchanged. Rows past this window keep the
+   * "···" placeholder they already show until a search brings them into it, and
+   * the row is fully usable either way: the counter is decoration, not
+   * information anybody acts on.
+   */
+  const countPrefetchTargets = useMemo(
+    () => searchResults.slice(0, COUNT_PREFETCH_LIMIT),
+    [searchResults],
+  )
 
   // ── Load an employee's permission tree ──────────────────────────────────
   const UNSAVED_PROMPT = 'You have unsaved access changes. Leave without saving?'
@@ -1051,14 +1104,15 @@ export default function PermissionsPage() {
   }
 
   // ── Employee-list access counters ───────────────────────────────────────
-  // Fetches counts only for employees currently visible in the (already
-  // 20-capped) search results. requestedCountIds gates this to at most one
-  // request per employee per page session — search/clear-search only ever
-  // re-derives the same searchResults membership, never re-requests an id
-  // already marked (whether it succeeded or failed), so there's no loop.
+  // Fetches counts only for the bounded prefetch window above — the employee
+  // list itself is complete, but asking the server for one tree per person in a
+  // company-wide directory would be a burst of requests for a decorative
+  // number. requestedCountIds gates this to at most one request per employee per
+  // page session — searching only ever re-derives membership, never re-requests
+  // an id already marked (whether it succeeded or failed), so there's no loop.
   useEffect(() => {
     if (!token) return
-    const toFetch = searchResults.filter(m => !requestedCountIds.current.has(m.id))
+    const toFetch = countPrefetchTargets.filter(m => !requestedCountIds.current.has(m.id))
     if (toFetch.length === 0) return
 
     // No mount-cancellation guard here: requestedCountIds already makes
@@ -1089,7 +1143,7 @@ export default function PermissionsPage() {
         // won't be retried this session, and the row stays fully usable.
       }
     })
-  }, [searchResults, token])
+  }, [countPrefetchTargets, token])
 
   function changeOverride(moduleKey: string, actionKey: string, choice: OverrideChoice) {
     setOverrides(prev => {

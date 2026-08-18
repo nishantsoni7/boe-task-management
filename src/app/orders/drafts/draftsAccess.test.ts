@@ -29,6 +29,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
+import { UPLOAD_PI_BUTTON_LABEL } from '@/lib/orders/submissionWorkflow'
 import type { EffectivePermission } from '@/lib/permissions/types'
 import { buildCommercialRows, buildHeaderRows, buildImageViewerItems, formatInr } from '@/lib/pi/previewView'
 import {
@@ -295,17 +296,24 @@ describe('the detail page renders only what it fetched', () => {
       'a list is a list; every decision is taken on the record itself')
   })
 
-  test('the only writes on the record page are the three status RPCs', () => {
-    // THE POINT OF THIS ASSERTION. Each of these three moves a submission
-    // between states and writes nothing else — no price, no product line, no
-    // image mapping. Those come only from the server's own re-parse through
-    // replace_order_submission_parse, which no browser can execute. A fourth
-    // name appearing here would mean this screen had grown a write of its own.
-    const rpcs = [...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]).sort()
+  test('the only writes on the record page are the status RPCs', () => {
+    // THE POINT OF THIS ASSERTION. Each of these moves a submission between
+    // states and writes nothing else — no price, no product line, no image
+    // mapping. Those come only from the server's own re-parse through
+    // replace_order_submission_parse, which no browser can execute. A name
+    // appearing here that is not on this list would mean the screen had grown a
+    // write of its own.
+    //
+    // submit_order_submission_with_note is the same submission carrying the
+    // employee's optional reply; both submit doors are one line over one
+    // internal function in the database, so they cannot diverge in what they
+    // check.
+    const rpcs = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
     assert.deepEqual(rpcs, [
       'reject_order_submission',
       'request_order_submission_changes',
       'submit_order_submission',
+      'submit_order_submission_with_note',
     ])
     assert.ok(!source.includes('replace_order_submission_parse'),
       'the parsed-data writer is service-role only and unreachable from here')
@@ -1180,5 +1188,97 @@ describe('the draft route', () => {
   test('the detail page reads its id from the route, not from a query string', () => {
     const source = read(DETAIL_PAGE)
     assert.ok(source.includes('const submissionId = params.submissionId as string'))
+  })
+})
+
+// ── The way in to the importer ────────────────────────────────────────────────
+
+describe('PI Drafts offers Upload PI', () => {
+  const source = read(LIST_PAGE)
+
+  test('the header carries it for a holder of orders.create', () => {
+    assert.ok(source.includes('actions={canCreate ? ('), 'gated on the create capability')
+    assert.ok(source.includes('{UPLOAD_PI_BUTTON_LABEL}'))
+    assert.ok(source.includes('className="boe-btn boe-btn-primary"'), 'the existing primary style')
+  })
+
+  test('the empty state carries it too, because that is where a person starts', () => {
+    const emptyBlock = source.slice(source.indexOf('const emptyState = ('))
+      .slice(0, source.slice(source.indexOf('const emptyState = (')).indexOf('const failureState'))
+    assert.ok(emptyBlock.includes('canCreate && ('), 'and it is gated there as well')
+    assert.ok(emptyBlock.includes('{UPLOAD_PI_BUTTON_LABEL}'))
+  })
+
+  test('a view-only user is offered no upload action anywhere', () => {
+    // Both call sites are inside a canCreate gate; neither renders a disabled
+    // control, which would only invite a click that the database refuses.
+    const uses = [...source.matchAll(/\{UPLOAD_PI_BUTTON_LABEL\}/g)]
+    assert.equal(uses.length, 2, 'exactly two: the header and the empty state')
+    const gates = [...source.matchAll(/canCreate(\s*\?\s*\(|\s*&&\s*\()/g)]
+    assert.equal(gates.length, 2, 'each one behind its own gate')
+    assert.ok(!source.includes('disabled={!canCreate}'), 'hidden, not disabled')
+  })
+
+  test('the two never stack on a phone', () => {
+    // The empty state exists only when there are no rows, and the header button
+    // is the one a person with records uses. They are never on screen together,
+    // so a narrow viewport cannot show two identical primary buttons.
+    assert.ok(source.includes('entries && entries.length === 0 ? ('),
+      'the empty state is rendered only for an empty list')
+  })
+
+  test('both go to the importer through one named helper', () => {
+    assert.ok(source.includes("const goToImport = () => router.push('/orders/import')"))
+    const pushes = [...source.matchAll(/router\.push\('\/orders\/import'\)/g)]
+    assert.equal(pushes.length, 1, 'the destination is written once')
+    assert.equal([...source.matchAll(/onClick=\{goToImport\}/g)].length, 2)
+  })
+
+  test('the label says what the control does', () => {
+    // "Upload PI", not "New Order": an order comes into existence at approval,
+    // with a number, and this button cannot reach that.
+    assert.equal(UPLOAD_PI_BUTTON_LABEL, 'Upload PI')
+    assert.ok(!source.includes('New Order'), 'the old promise is gone')
+  })
+})
+
+// ── The employee's reply on a resubmission ────────────────────────────────────
+
+describe('the resubmission reply reaches the database and the trail', () => {
+  const source = read(DETAIL_PAGE)
+
+  test('the field is offered only when management asked for changes', () => {
+    assert.ok(source.includes('offerReply={submissionOffersReply(submission.status)}'),
+      'the gate is the shared helper, not an inline status comparison')
+  })
+
+  test('a reply picks the note-carrying RPC, and its absence picks the plain one', () => {
+    assert.ok(source.includes('const { error } = note === null'))
+    assert.ok(source.includes("? await supabase.rpc('submit_order_submission', { p_submission_id: submissionId })"))
+    assert.ok(source.includes("submit_order_submission_with_note'"))
+    assert.ok(source.includes('p_note: note,'))
+  })
+
+  test('double submission is still prevented on both paths', () => {
+    // Both doors run through the same runAction, which holds the ref.
+    assert.ok(source.includes("const submitForApproval = useCallback((note: string | null) => runAction('submit'"))
+    assert.ok(source.includes('if (actingRef.current) return'))
+  })
+
+  test('the reply is never rendered from the record — it lives on the event', () => {
+    assert.ok(!source.includes('submission.employee_note'))
+    assert.ok(!source.includes('employee_reply'),
+      'there is no new column and no second note field on the record')
+  })
+
+  test('Activity already renders it, with the note styling management notes use', () => {
+    // The trail's note is rendered once, for every action that carries one —
+    // a reviewer's request, a rejection reason, and now an employee's reply.
+    // No new UI was needed, which is why there is no second styling to drift.
+    assert.ok(source.includes('{entry.note}'))
+    assert.ok(source.includes("borderLeft: `2px solid ${colors.border}`"),
+      'the same left-rule treatment for every note on the trail')
+    const noteBlocks = [...source.matchAll(/\{entry\.note && \(/g)]
+    assert.equal(noteBlocks.length, 1, 'one renderer, not one per action')
   })
 })

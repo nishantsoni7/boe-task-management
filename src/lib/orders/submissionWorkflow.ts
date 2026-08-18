@@ -42,6 +42,15 @@ export const REVIEW_ACTION_LABEL = 'Review PI'
 export const REVIEW_QUEUE_TITLE = 'Submitted for Review'
 
 /**
+ * The entry point to the importer, from PI Drafts.
+ *
+ * "Upload PI" and not "New Order": what the control does is upload one document.
+ * An order comes into existence at approval, with a number, and a button
+ * promising one here would be describing a step this phase cannot reach.
+ */
+export const UPLOAD_PI_BUTTON_LABEL = 'Upload PI'
+
+/**
  * Why Approve is present but inert.
  *
  * It is shown rather than hidden because a reviewer needs to know that approval
@@ -55,6 +64,65 @@ export const APPROVE_DISABLED_REASON = 'Available after advance review is added'
 /** What the employee is warned of before they submit. */
 export const SUBMIT_CONFIRM_NOTE =
   'Once submitted, this PI becomes read-only while management reviews it.'
+
+// ── The employee's reply, when they resubmit ──────────────────────────────────
+//
+// A PI returned with "the fabric on line 3 is wrong" comes back corrected, and
+// until now the reviewer had to diff two spreadsheets to find out what changed.
+// So a resubmission may carry one optional line, which lands on the 'submitted'
+// event in the append-only trail the reviewer already reads.
+//
+// OPTIONAL MEANS OPTIONAL. An employee who has nothing to add submits exactly as
+// before; whitespace is trimmed to nothing and no empty entry is recorded. It is
+// offered only on a RESUBMISSION — a first submission from draft has no reviewer
+// question to answer, and a field asking for one would be clutter on the
+// commonest path through the screen.
+//
+// It is NOT a message thread, and it never touches management's own review note:
+// that is their field, on their event, and the trail keeps the request and the
+// answer as two separate entries.
+
+export const RESUBMIT_NOTE_LABEL = 'Reply to management (optional)'
+export const RESUBMIT_NOTE_PLACEHOLDER =
+  'Mention what you changed or answer the reviewer\u2019s question.'
+
+/**
+ * The cap, in characters, after trimming.
+ *
+ * MUST MATCH THE DATABASE. submit_order_submission_with_note refuses a longer
+ * reply with ORDER_SUBMISSION_NOTE_TOO_LONG, and a test reads the number out of
+ * the migration so the two cannot drift. The browser limit exists so somebody is
+ * told while they type rather than after a round trip; the database limit is the
+ * one that decides.
+ */
+export const RESUBMIT_NOTE_MAX_LENGTH = 1000
+
+/** Whether the submit dialog offers the reply field for this status. */
+export function submissionOffersReply(status: string): boolean {
+  return status === 'needs_changes'
+}
+
+export type ReplyValidation =
+  | { ok: true; note: string | null }
+  | { ok: false; message: string }
+
+export const RESUBMIT_NOTE_TOO_LONG =
+  `Please shorten your reply to ${RESUBMIT_NOTE_MAX_LENGTH} characters or fewer.`
+
+/**
+ * The optional reply, as it will be sent — or the reason it cannot be.
+ *
+ * Trimmed, and whitespace-only becomes NULL rather than an empty string, so a
+ * field somebody tabbed through leaves no trace. Length is measured AFTER
+ * trimming, exactly as the database measures it, so a reply padded with spaces
+ * is never rejected for a length it does not really have.
+ */
+export function validateResubmitReply(value: string | null | undefined): ReplyValidation {
+  const note = (value ?? '').trim()
+  if (note === '') return { ok: true, note: null }
+  if (note.length > RESUBMIT_NOTE_MAX_LENGTH) return { ok: false, message: RESUBMIT_NOTE_TOO_LONG }
+  return { ok: true, note }
+}
 
 // ── Who may do what ───────────────────────────────────────────────────────────
 

@@ -30,6 +30,10 @@ import {
   SUBMIT_CONFIRM_NOTE,
   REJECT_BUTTON_LABEL,
   REQUEST_CHANGES_BUTTON_LABEL,
+  RESUBMIT_NOTE_LABEL,
+  RESUBMIT_NOTE_PLACEHOLDER,
+  RESUBMIT_NOTE_MAX_LENGTH,
+  validateResubmitReply,
 } from '@/lib/orders/submissionWorkflow'
 
 // ── Shared furniture ──────────────────────────────────────────────────────────
@@ -152,6 +156,7 @@ export function PiSubmitConfirmModal({
   grandTotal,
   submitting,
   failure,
+  offerReply,
   onCancel,
   onConfirm,
 }: {
@@ -159,9 +164,30 @@ export function PiSubmitConfirmModal({
   grandTotal: string
   submitting: boolean
   failure: string | null
+  /**
+   * Whether to offer the optional reply — true only on a RESUBMISSION.
+   *
+   * A first submission from draft has no reviewer question to answer, so the
+   * field would be clutter on the commonest path through this screen.
+   */
+  offerReply: boolean
   onCancel: () => void
-  onConfirm: () => void
+  /** The trimmed reply, or null. Null on every first submission. */
+  onConfirm: (note: string | null) => void
 }) {
+  /**
+   * THE TYPED REPLY SURVIVES A FAILED SUBMISSION.
+   *
+   * It lives here, in the dialog, and the dialog stays mounted when a submission
+   * fails — so somebody who wrote three sentences and hit a network error still
+   * has their three sentences. It is cleared only by the dialog closing, which
+   * happens on success, Cancel, Escape or the × control.
+   */
+  const [reply, setReply] = useState('')
+  const validation = validateResubmitReply(reply)
+  const tooLong = !validation.ok
+  const remaining = RESUBMIT_NOTE_MAX_LENGTH - reply.trim().length
+
   useScrollLock(true)
 
   const dismiss = (reason: ModalDismissReason) => {
@@ -169,6 +195,14 @@ export function PiSubmitConfirmModal({
     if (shouldCloseFormModal(reason)) onCancel()
   }
   useEscapeDismiss(dismiss, !submitting)
+
+  const confirm = () => {
+    if (submitting || tooLong) return
+    // The dialog hands up the TRIMMED value, so what the employee sees on the
+    // trail is what the database stored — no leading spaces, and nothing at all
+    // when the field was only whitespace.
+    onConfirm(offerReply && validation.ok ? validation.note : null)
+  }
 
   return (
     // No onClick on the overlay: a click outside is inert, by rule.
@@ -203,6 +237,47 @@ export function PiSubmitConfirmModal({
             {SUBMIT_CONFIRM_NOTE}
           </div>
 
+          {/* The optional reply, on a resubmission only.
+
+              It is not a required field and does not gate the button: somebody
+              with nothing to add submits exactly as they did before. The counter
+              appears only as the cap approaches, so the ordinary case is a plain
+              box rather than a form with a meter on it. */}
+          {offerReply && (
+            <label style={{
+              display: 'flex', flexDirection: 'column', gap: '4px',
+              fontSize: '11px', fontWeight: 600, color: colors.muted,
+              textTransform: 'uppercase', letterSpacing: '0.05em',
+            }}>
+              {RESUBMIT_NOTE_LABEL}
+              <textarea
+                value={reply}
+                onChange={e => setReply(e.target.value)}
+                placeholder={RESUBMIT_NOTE_PLACEHOLDER}
+                disabled={submitting}
+                rows={3}
+                style={{
+                  padding: '7px 10px', borderRadius: '6px',
+                  border: `1px solid ${tooLong ? 'rgba(217,79,79,0.5)' : colors.border}`,
+                  background: colors.raised, color: colors.primary,
+                  fontSize: '13px', width: '100%', boxSizing: 'border-box',
+                  outline: 'none', minHeight: '70px', resize: 'vertical',
+                  fontFamily: 'inherit',
+                }}
+              />
+              {(tooLong || remaining <= 100) && (
+                <span style={{
+                  fontSize: '11px', fontWeight: 500, textTransform: 'none', letterSpacing: 0,
+                  color: tooLong ? colors.red : colors.muted,
+                }}>
+                  {tooLong
+                    ? (validation.ok ? '' : validation.message)
+                    : `${remaining} character${remaining === 1 ? '' : 's'} left`}
+                </span>
+              )}
+            </label>
+          )}
+
           {failure && <FailureNote message={failure} />}
 
           <Footer>
@@ -211,9 +286,9 @@ export function PiSubmitConfirmModal({
             </button>
             <button
               type="button"
-              onClick={onConfirm}
-              disabled={submitting}
-              style={{ ...confirmStyle('#DC1F2E', submitting), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+              onClick={confirm}
+              disabled={submitting || tooLong}
+              style={{ ...confirmStyle('#DC1F2E', submitting || tooLong), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
             >
               <Send size={13} strokeWidth={2} />
               {submitting ? 'Submitting…' : SUBMIT_BUTTON_LABEL}

@@ -34,6 +34,8 @@
 // WHAT THE PAGE NOW WRITES, AND ONLY THROUGH THE DATABASE'S OWN DOORS:
 //
 //   submit_order_submission           the owner hands it to management
+//   submit_order_submission_with_note the same, carrying their optional reply
+//                                     when they are answering a returned record
 //   request_order_submission_changes  a reviewer sends it back, with a note
 //   reject_order_submission           a reviewer ends it, with a reason
 //
@@ -82,6 +84,7 @@ import {
   REQUEST_CHANGES_BUTTON_LABEL,
   SUBMIT_BUTTON_LABEL,
   changePiHref,
+  submissionOffersReply,
   describeSubmissionActions,
   describeSubmissionBanner,
   describeSubmissionFailure,
@@ -531,8 +534,24 @@ function PiDraftDetailPageInner() {
     }
   }, [loadDraft])
 
-  const submitForApproval = useCallback(() => runAction('submit', async () => {
-    const { error } = await supabase.rpc('submit_order_submission', { p_submission_id: submissionId })
+  /**
+   * Submit, with the employee's optional reply on a resubmission.
+   *
+   * TWO RPCs, ONE IMPLEMENTATION. The database keeps the original
+   * submit_order_submission(uuid) for a plain submission and adds
+   * submit_order_submission_with_note(uuid, text) for one carrying a reply; both
+   * are one line over the same internal function, so the actor, ownership,
+   * state, permission and completeness checks are identical either way. The
+   * screen picks the door by whether there is anything to say — never by
+   * authority, which is the database's to decide.
+   */
+  const submitForApproval = useCallback((note: string | null) => runAction('submit', async () => {
+    const { error } = note === null
+      ? await supabase.rpc('submit_order_submission', { p_submission_id: submissionId })
+      : await supabase.rpc('submit_order_submission_with_note', {
+          p_submission_id: submissionId,
+          p_note: note,
+        })
     return { error }
   }), [runAction, supabase, submissionId])
 
@@ -1280,6 +1299,7 @@ function PiDraftDetailPageInner() {
           grandTotal={grandTotalLabel}
           submitting={acting}
           failure={actionFailure}
+          offerReply={submissionOffersReply(submission.status)}
           onCancel={closeDialog}
           onConfirm={submitForApproval}
         />

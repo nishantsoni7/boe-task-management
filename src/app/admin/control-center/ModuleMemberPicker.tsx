@@ -43,15 +43,26 @@ export function ModuleMemberPicker({
 
   // Selected first, so the chips above and the ticks below agree at a glance;
   // then the rest, capped, because this is a picker and not a directory.
-  const matches = useMemo(() => {
+  const matched = useMemo(() => {
     const q = query.trim().toLowerCase()
     const hit = (m: PickableMember) =>
       !q ||
       (m.full_name ?? '').toLowerCase().includes(q) ||
       (m.email ?? '').toLowerCase().includes(q) ||
       (m.team ?? '').toLowerCase().includes(q)
-    return members.filter(hit).slice(0, MAX_VISIBLE)
+    return members.filter(hit)
   }, [members, query])
+
+  const matches = useMemo(() => matched.slice(0, MAX_VISIBLE), [matched])
+  /**
+   * How many eligible people the cap is holding back.
+   *
+   * The cap itself is right — this is a picker, not a directory — but a SILENT
+   * cap is not: somebody who cannot see a colleague in the list has no way to
+   * tell whether the account is missing or merely further down, and concludes
+   * the former. Saying so turns a dead end into a search.
+   */
+  const hidden = matched.length - matches.length
 
   const selected = selectedIds.map(id => byId.get(id)).filter((m): m is PickableMember => !!m)
 
@@ -140,6 +151,14 @@ export function ModuleMemberPicker({
               </label>
             )
           })
+        )}
+
+        {/* The cap, stated. Without this line a member beyond the eighth is
+            indistinguishable from a member who does not exist. */}
+        {hidden > 0 && (
+          <div style={{ fontSize: 11.5, color: '#8C94A6', padding: '6px 4px 2px' }}>
+            {hidden} more {hidden === 1 ? 'member' : 'members'} — type to narrow the list.
+          </div>
         )}
       </div>
 

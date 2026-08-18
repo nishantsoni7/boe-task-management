@@ -331,3 +331,95 @@ describe('the finished workflow holds its boundaries', () => {
     }
   })
 })
+
+// ── PART 6: the employee directory shows everybody ──────────────────────────
+//
+// THE DEFECT THIS PART EXISTS TO PIN. A real, active Sales account that could
+// sign in was absent from Access Control, so nobody could grant it anything.
+// The account was fine; the panel was showing the first twenty people by name
+// and silently dropping the rest — no counter, no "and 40 more", nothing. An
+// administrator scanning for a name late in the alphabet concluded the account
+// did not exist.
+//
+// A directory that hides people is worse than a long one. These assertions are
+// about ABSENCE of a cap, which is exactly the kind of thing that gets quietly
+// reintroduced by somebody optimising a list render.
+
+describe('the Access Control employee directory', () => {
+  const picker = read('src/app/admin/control-center/ModuleMemberPicker.tsx')
+
+  test('the search results are never silently truncated', () => {
+    const block = page.slice(page.indexOf('const searchResults = useMemo'))
+      .slice(0, page.slice(page.indexOf('const searchResults = useMemo')).indexOf('}, [search, members, depts])'))
+    assert.ok(!/\.slice\(0,\s*\d+\)/.test(block),
+      'the employee list must not cap itself; the panel scrolls and the search box narrows')
+    assert.ok(block.includes('if (!q) return pool'),
+      'with no search term the whole directory is returned')
+  })
+
+  test('only soft-deleted accounts are excluded', () => {
+    const block = page.slice(page.indexOf('const searchResults = useMemo'))
+      .slice(0, page.slice(page.indexOf('const searchResults = useMemo')).indexOf('}, [search, members, depts])'))
+    assert.ok(block.includes('members.filter(m => !m.is_deleted)'))
+    assert.ok(!/is_active/.test(block),
+      'an inactive account must stay assignable — hiding it here is how somebody becomes unreachable')
+  })
+
+  test('no account is excluded for what its name or email contains', () => {
+    // Comments are stripped first — block AND line — because the code
+    // legitimately DOCUMENTS that it does not filter on these words, and a
+    // search over raw text would fail on the sentence promising the very thing
+    // it verifies.
+    const codeOnly = (source: string) =>
+      source.replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
+
+    for (const source of [page, picker, read('src/app/api/admin-members/route.ts')]) {
+      assert.ok(!/['"`]%?(test|dummy|sample)%?['"`]/i.test(codeOnly(source)),
+        'an account that can authenticate can hold permissions, whatever it is called')
+      assert.ok(!/not\.ilike|notIlike/.test(codeOnly(source)))
+    }
+  })
+
+  test('the directory read itself is admin-gated and unfiltered', () => {
+    const route = read('src/app/api/admin-members/route.ts')
+    assert.ok(route.includes("callerProfile?.role !== 'admin'"), 'admin only')
+    assert.ok(route.includes("'Forbidden'"))
+    assert.ok(route.includes(".or('is_deleted.eq.false,is_deleted.is.null')"),
+      'soft-deleted accounts are excluded at the source, and nothing else is')
+    assert.ok(route.includes('SUPABASE_SERVICE_ROLE_KEY'),
+      'the service role is used behind the admin check, so RLS on public.users cannot hide a colleague')
+  })
+
+  test('the counter prefetch is bounded, but the LIST is not', () => {
+    // One request per employee for a decorative "x of y" would be a burst on a
+    // company-wide directory. Bounding the requests is right; bounding what an
+    // administrator can see is what caused the defect.
+    assert.ok(page.includes('const COUNT_PREFETCH_LIMIT = 20'))
+    assert.ok(page.includes('searchResults.slice(0, COUNT_PREFETCH_LIMIT)'))
+    assert.ok(page.includes('countPrefetchTargets.filter(m => !requestedCountIds.current.has(m.id))'),
+      'the effect drives off the bounded window, not the full list')
+    assert.ok(page.includes('}, [countPrefetchTargets, token])'))
+  })
+
+  test('the panel says how many people it is showing', () => {
+    assert.ok(/results\.length === 1 \? 'employee' : 'employees'/.test(page),
+      'so a complete list is visibly complete')
+  })
+
+  test('the module member picker states what its cap is holding back', () => {
+    // The cap is right there — it is a picker, not a directory — but a silent
+    // one leaves a missing colleague indistinguishable from a missing account.
+    assert.ok(picker.includes('const hidden = matched.length - matches.length'))
+    assert.ok(picker.includes('type to narrow the list'))
+    assert.ok(picker.includes('matched.slice(0, MAX_VISIBLE)'),
+      'the cap applies to what is drawn, after the full match set is known')
+  })
+
+  test('the picker still admits only active, non-deleted people', () => {
+    // Custom visibility grants module access, so a deactivated account must not
+    // be handed one. This is an eligibility rule, not a display cap.
+    const cc = read('src/app/admin/control-center/page.tsx')
+    assert.ok(cc.includes('.filter(m => !m.is_deleted && m.is_active)'))
+  })
+})
