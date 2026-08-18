@@ -1398,16 +1398,35 @@ describe('the advance requirement is shown to everybody and decided by few', () 
 describe('the submit dialog asks one question and stays short', () => {
   const source = read(REVIEW_MODALS)
 
-  test('the standard requirement is the default, and reveals nothing', () => {
-    assert.ok(source.includes('useState<AdvanceCondition>(initialAdvance.condition)'))
-    assert.ok(source.includes("const isException = condition === 'exception'"))
-    assert.ok(source.includes('{isException && ('),
-      'the percentage and reason fields exist only for an exception')
+  test('the dialog opens on the record’s own declaration', () => {
+    assert.ok(source.includes('useState<AdvanceDeclaration>(initialAdvance)'))
+    assert.ok(source.includes('initialAdvance: AdvanceDeclaration'))
   })
 
-  test('both options show their rupee figure immediately', () => {
+  test('all THREE choices are drawn, and none is hidden behind another', () => {
+    // The defect this replaced: two radio cards, with "no advance" reachable
+    // only by knowing 0 was an accepted percentage inside the second one.
+    assert.ok(source.includes('{ADVANCE_CHOICES.map(card)}'),
+      'the choices come from the shared list, so none can be forgotten here')
+    assert.ok(source.includes('{ADVANCE_CHOICE_LABEL[value]}'))
+    assert.ok(source.includes('{ADVANCE_CHOICE_HINT[value]}'))
+    assert.ok(!source.includes('ADVANCE_EXCEPTION_LABEL'),
+      'the old catch-all "Request advance exception" option is gone')
+  })
+
+  test('each choice reveals exactly what it needs, and nothing more', () => {
+    assert.ok(source.includes("{choice === 'reduced' && ("),
+      'the typed percentage exists only for a reduced advance')
+    assert.ok(source.includes("{choice === 'none' && ("),
+      'No advance states its figures instead of offering a box')
+    assert.ok(source.includes('{ADVANCE_NONE_PERCENT_LABEL}'))
+    assert.ok(source.includes('{ADVANCE_NONE_AMOUNT_LABEL}'))
+  })
+
+  test('every choice shows its rupee figure immediately', () => {
     assert.ok(source.includes('previewAdvanceAmount(percentText, grandTotalValue)'))
-    assert.ok(source.includes('{standardAmount}'))
+    assert.ok(source.includes('{amount}'))
+    assert.ok(source.includes('return standardAmount'))
   })
 
   test('0% is explained rather than left as a bare ₹0', () => {
@@ -1422,9 +1441,10 @@ describe('the submit dialog asks one question and stays short', () => {
   })
 
   test('the validation is the shared one, not a second copy in the dialog', () => {
-    assert.ok(source.includes('validateAdvanceSelection({'))
+    assert.ok(source.includes('validateAdvanceDeclaration({'))
     assert.ok(!/percent\s*[<>]=?\s*40/.test(source), 'no bare 40 in a JSX condition')
     assert.ok(!source.includes('parseFloat('), 'no second parser')
+    assert.ok(!source.includes('Number(percentText'), 'the dialog never parses the box itself')
   })
 
   test('the optional employee reply is preserved on a resubmission', () => {

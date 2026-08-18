@@ -6,6 +6,8 @@
 //                          declared advance requirement
 //   PiNoteModal            management sends it back, ends it, or refuses a
 //                          proposed advance
+//   PiDeleteConfirmModal   the owner or an administrator erases a PI that should
+//                          not exist, permanently
 //
 // ONE SHELL, TWO DIALOGS. Needs Changes and Reject differ in exactly three
 // things — the heading, the tone of the warning, and which RPC the caller runs —
@@ -23,7 +25,7 @@
 // re-derive the actor, the permission and the record's state in the database.
 
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Send, X } from 'lucide-react'
+import { AlertTriangle, Send, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { shouldCloseFormModal, type ModalDismissReason } from '@/lib/ui/modalDismissal'
@@ -38,23 +40,35 @@ import {
   validateResubmitReply,
 } from '@/lib/orders/submissionWorkflow'
 import {
-  ADVANCE_EXCEPTION_HINT,
-  ADVANCE_EXCEPTION_LABEL,
+  DELETE_PI_BUSY_LABEL,
+  DELETE_PI_CANCEL_LABEL,
+  DELETE_PI_CONFIRM_LABEL,
+  DELETE_PI_DIALOG_TITLE,
+  DELETE_PI_WARNING,
+  deletionStatusLabel,
+} from '@/lib/orders/submissionDeletion'
+import {
+  ADVANCE_AMOUNT_LABEL,
+  ADVANCE_CHOICES,
+  ADVANCE_CHOICE_HINT,
+  ADVANCE_CHOICE_LABEL,
+  ADVANCE_NONE_AMOUNT_LABEL,
+  ADVANCE_NONE_PERCENT_LABEL,
   ADVANCE_NOT_A_PAYMENT,
   ADVANCE_PERCENT_LABEL,
   ADVANCE_REASON_LABEL,
   ADVANCE_REASON_MAX_LENGTH,
   ADVANCE_REASON_PLACEHOLDER,
   ADVANCE_SECTION_TITLE,
-  ADVANCE_STANDARD_HINT,
-  ADVANCE_STANDARD_LABEL,
   ADVANCE_STANDARD_PERCENT,
   ADVANCE_ZERO_EXPLANATION,
   REJECT_EXCEPTION_BUTTON_LABEL,
   REJECT_EXCEPTION_REASON_LABEL,
+  advanceDeclarationUntouched,
   previewAdvanceAmount,
-  validateAdvanceSelection,
-  type AdvanceCondition,
+  validateAdvanceDeclaration,
+  type AdvanceChoice,
+  type AdvanceDeclaration,
   type AdvanceSelection,
 } from '@/lib/orders/advanceRequirement'
 
@@ -163,57 +177,72 @@ const confirmStyle = (background: string, disabled: boolean): React.CSSPropertie
 // ── The advance selector ──────────────────────────────────────────────────────
 
 /**
- * The two-option choice, and the two fields the second one reveals.
+ * The THREE choices, and the fields each one reveals.
  *
- * A SELECTOR, NOT A FORM. Standard is the default and the obvious path: choosing
- * it is one click and reveals nothing, so the commonest submission is exactly as
- * short as it was before this existed. The percentage and reason appear only
- * when somebody actually asks for an exception, which is the rare case and the
- * one worth spending screen on.
+ * WHY THIS WAS REBUILT. It offered two radio cards — "Standard advance (40%)"
+ * and "Request advance exception" — and proceeding with NO advance was reachable
+ * only by choosing the second and knowing that 0 was an accepted percentage.
+ * Nothing on screen said so. A choice that has to be guessed at is not a choice,
+ * and "we need to start this order without an advance" is exactly the case
+ * management most needs asked explicitly.
  *
- * THE RUPEE FIGURE IS SHOWN IMMEDIATELY, for both options, because "12%" means
+ * So the three business decisions are three controls:
+ *
+ *   Standard advance (40%)  one click, nothing revealed, and the default for a
+ *                           PI that has never declared anything
+ *   Reduced advance         a percentage above 0 and below 40, its rupee value
+ *                           live beside it, and a mandatory reason
+ *   No advance (0%)         a FIXED 0% and ₹0 — no box to type a figure into,
+ *                           because the figure is the choice — and the same
+ *                           mandatory reason
+ *
+ * ALL THREE ARE ALWAYS VISIBLE. The two exceptions are not hidden behind an
+ * "exception" disclosure, because somebody who does not know the disclosure
+ * exists cannot find what is inside it. That is the whole defect.
+ *
+ * THE RUPEE FIGURE IS SHOWN IMMEDIATELY, for every choice, because "12%" means
  * nothing to somebody deciding whether the business can live with it and
- * "₹1,47,500" means everything. Both come from computeAdvanceAmount, which is
- * also what the commercial summary on the page behind this uses — one formula,
- * so the two cannot disagree.
+ * "₹1,47,500" means everything. Every figure comes from computeAdvanceAmount,
+ * which is also what the commercial summary on the page behind this dialog
+ * uses — one formula, so the two cannot disagree.
  *
- * IT SAYS NOTHING ABOUT PAYMENT, and says so out loud.
+ * IT SAYS NOTHING ABOUT PAYMENT, and says so out loud. "No advance" is a request
+ * to start work on nothing received. It is not a payment, not a waiver and not a
+ * receipt, and this phase records none of those.
  */
 function AdvanceSelector({
-  condition,
-  percentText,
-  reason,
+  declaration,
   grandTotalValue,
   standardAmount,
   disabled,
   invalid,
-  onCondition,
+  onChoice,
   onPercent,
   onReason,
 }: {
-  condition: AdvanceCondition
-  percentText: string
-  reason: string
+  declaration: AdvanceDeclaration
   grandTotalValue: number | null
   standardAmount: string
   disabled: boolean
   /** The validation message, or null while the choice is usable. */
   invalid: string | null
-  onCondition: (next: AdvanceCondition) => void
+  onChoice: (next: AdvanceChoice) => void
   onPercent: (next: string) => void
   onReason: (next: string) => void
 }) {
-  const isException = condition === 'exception'
+  const { choice, percentText, reason } = declaration
   const proposed = previewAdvanceAmount(percentText, grandTotalValue)
-  const zero = percentText.trim() !== '' && Number(percentText.trim()) === 0
 
-  const option = (
-    value: AdvanceCondition,
-    label: string,
-    hint: string,
-    trailing: React.ReactNode,
-  ) => {
-    const selected = condition === value
+  /** The figure printed on the right of each card. */
+  const trailing = (value: AdvanceChoice): string | null => {
+    if (value === 'standard') return standardAmount
+    if (value === 'none') return ADVANCE_NONE_AMOUNT_LABEL
+    return choice === 'reduced' ? proposed : null
+  }
+
+  const card = (value: AdvanceChoice) => {
+    const selected = choice === value
+    const amount = trailing(value)
     return (
       <label
         key={value}
@@ -227,10 +256,11 @@ function AdvanceSelector({
       >
         <input
           type="radio"
-          name="advance-condition"
+          name="advance-choice"
+          value={value}
           checked={selected}
           disabled={disabled}
-          onChange={() => onCondition(value)}
+          onChange={() => onChoice(value)}
           style={{ marginTop: '2px', accentColor: '#2F5BB7', cursor: disabled ? 'not-allowed' : 'pointer' }}
         />
         <span style={{ minWidth: 0, flex: 1 }}>
@@ -238,65 +268,83 @@ function AdvanceSelector({
             display: 'flex', gap: '10px', justifyContent: 'space-between',
             alignItems: 'baseline', flexWrap: 'wrap',
           }}>
-            <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>{label}</span>
-            {trailing}
+            <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
+              {ADVANCE_CHOICE_LABEL[value]}
+            </span>
+            {amount !== null && (
+              <span style={{
+                fontSize: '12.5px', fontWeight: 700, color: colors.primary,
+                fontVariantNumeric: 'tabular-nums',
+              }}>
+                {amount}
+              </span>
+            )}
           </span>
           <span style={{ display: 'block', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.45, marginTop: '2px' }}>
-            {hint}
+            {ADVANCE_CHOICE_HINT[value]}
           </span>
         </span>
       </label>
     )
   }
 
+  /** The mandatory reason, identical under both exception choices. */
+  const reasonField = (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...KEY_STYLE }}>
+      {ADVANCE_REASON_LABEL}
+      <textarea
+        value={reason}
+        onChange={e => onReason(e.target.value)}
+        placeholder={ADVANCE_REASON_PLACEHOLDER}
+        disabled={disabled}
+        rows={3}
+        maxLength={ADVANCE_REASON_MAX_LENGTH}
+        aria-label={ADVANCE_REASON_LABEL}
+        style={{
+          padding: '7px 10px', borderRadius: '6px',
+          border: `1px solid ${colors.border}`,
+          background: colors.base, color: colors.primary,
+          fontSize: '13px', width: '100%', boxSizing: 'border-box',
+          outline: 'none', minHeight: '68px', resize: 'vertical',
+          fontFamily: 'inherit', textTransform: 'none', letterSpacing: 0,
+          fontWeight: 400,
+        }}
+      />
+    </label>
+  )
+
+  const revealed: React.CSSProperties = {
+    display: 'flex', flexDirection: 'column', gap: '9px',
+    padding: '10px 11px', borderRadius: '7px',
+    border: `1px solid ${colors.border}`, background: colors.raised,
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
       <div style={KEY_STYLE}>{ADVANCE_SECTION_TITLE}</div>
 
-      {option(
-        'standard',
-        ADVANCE_STANDARD_LABEL,
-        ADVANCE_STANDARD_HINT,
-        <span style={{ fontSize: '12.5px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-          {standardAmount}
-        </span>,
-      )}
+      {ADVANCE_CHOICES.map(card)}
 
-      {option(
-        'exception',
-        ADVANCE_EXCEPTION_LABEL,
-        ADVANCE_EXCEPTION_HINT,
-        isException ? (
-          <span style={{ fontSize: '12.5px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-            {proposed}
-          </span>
-        ) : null,
-      )}
-
-      {/* Revealed only for an exception. Two fields, both required, and both
-          re-validated by the database on arrival. */}
-      {isException && (
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: '9px',
-          padding: '10px 11px', borderRadius: '7px',
-          border: `1px solid ${colors.border}`, background: colors.raised,
-        }}>
+      {/* Reduced advance: a typed percentage, its rupee value, and the reason.
+          Every field is re-validated by the database on arrival. */}
+      {choice === 'reduced' && (
+        <div style={revealed}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...KEY_STYLE }}>
             {ADVANCE_PERCENT_LABEL}
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <input
                 type="text"
                 inputMode="decimal"
                 value={percentText}
                 onChange={e => onPercent(e.target.value)}
-                placeholder={`0 – ${ADVANCE_STANDARD_PERCENT - 1}`}
+                placeholder={`above 0 – below ${ADVANCE_STANDARD_PERCENT}`}
                 disabled={disabled}
                 aria-label={ADVANCE_PERCENT_LABEL}
                 style={{
                   padding: '7px 10px', borderRadius: '6px',
                   border: `1px solid ${colors.border}`,
                   background: colors.base, color: colors.primary,
-                  fontSize: '13px', width: '110px', boxSizing: 'border-box',
+                  fontSize: '13px', width: '130px', boxSizing: 'border-box',
                   outline: 'none', fontVariantNumeric: 'tabular-nums',
                 }}
               />
@@ -304,45 +352,55 @@ function AdvanceSelector({
                 fontSize: '12.5px', fontWeight: 600, color: colors.secondary,
                 textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
               }}>
-                = {proposed}
+                {ADVANCE_AMOUNT_LABEL}: {proposed}
               </span>
             </span>
           </label>
 
+          {reasonField}
+        </div>
+      )}
+
+      {/* No advance: the figures are FIXED and stated rather than typed, so
+          there is nothing here to get wrong and nothing to reinterpret. */}
+      {choice === 'none' && (
+        <div style={revealed}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <span style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+              {ADVANCE_PERCENT_LABEL}
+              <span style={{
+                color: colors.primary, fontWeight: 700, fontSize: '12.5px',
+                textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
+              }}>
+                {ADVANCE_NONE_PERCENT_LABEL}
+              </span>
+            </span>
+            <span style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+              {ADVANCE_AMOUNT_LABEL}
+              <span style={{
+                color: colors.primary, fontWeight: 700, fontSize: '12.5px',
+                textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
+              }}>
+                {ADVANCE_NONE_AMOUNT_LABEL}
+              </span>
+            </span>
+          </div>
+
           {/* 0% is legitimate and is the one value whose meaning is not obvious
               from the figure beside it, so it is spelled out rather than left
               as a ₹0 the reader has to interpret. */}
-          {zero && (
-            <div style={{ fontSize: '11.5px', color: '#9A6212', lineHeight: 1.45 }}>
-              {ADVANCE_ZERO_EXPLANATION}
-            </div>
-          )}
+          <div style={{ fontSize: '11.5px', color: '#9A6212', lineHeight: 1.45 }}>
+            {ADVANCE_ZERO_EXPLANATION}
+          </div>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...KEY_STYLE }}>
-            {ADVANCE_REASON_LABEL}
-            <textarea
-              value={reason}
-              onChange={e => onReason(e.target.value)}
-              placeholder={ADVANCE_REASON_PLACEHOLDER}
-              disabled={disabled}
-              rows={3}
-              maxLength={ADVANCE_REASON_MAX_LENGTH}
-              style={{
-                padding: '7px 10px', borderRadius: '6px',
-                border: `1px solid ${colors.border}`,
-                background: colors.base, color: colors.primary,
-                fontSize: '13px', width: '100%', boxSizing: 'border-box',
-                outline: 'none', minHeight: '68px', resize: 'vertical',
-                fontFamily: 'inherit', textTransform: 'none', letterSpacing: 0,
-                fontWeight: 400,
-              }}
-            />
-          </label>
+          {reasonField}
         </div>
       )}
 
       {invalid && (
-        <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45 }}>{invalid}</div>
+        <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45 }} role="alert">
+          {invalid}
+        </div>
       )}
 
       <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
@@ -395,14 +453,17 @@ export function PiSubmitConfirmModal({
   /** The standard requirement in rupees, already formatted. */
   standardAdvance: string
   /**
-   * The choice this dialog opens on.
+   * The choice this dialog opens on, as initialAdvanceSelection derived it from
+   * the record.
    *
-   * Standard for a new submission. On a RESUBMISSION it is whatever the record
-   * already carries, so a PI returned for an unrelated correction does not
-   * silently switch the employee's advance condition while they fix a fabric
-   * name — and an approved exception resubmitted unchanged stays approved.
+   * Standard for a new submission — and ONLY for one that has never declared
+   * anything. On a RESUBMISSION it is whatever the record already carries, so a
+   * PI returned for an unrelated correction does not silently switch the
+   * employee's advance condition while they fix a fabric name, an approved
+   * exception resubmitted unchanged stays approved, and a stored 0% opens on
+   * "No advance" rather than on a Reduced advance with a zero in the box.
    */
-  initialAdvance: { condition: AdvanceCondition; percentText: string; reason: string }
+  initialAdvance: AdvanceDeclaration
   submitting: boolean
   failure: string | null
   /**
@@ -425,27 +486,29 @@ export function PiSubmitConfirmModal({
    * closing, which happens on success, Cancel, Escape or the × control.
    */
   const [reply, setReply] = useState('')
-  const [condition, setCondition] = useState<AdvanceCondition>(initialAdvance.condition)
-  const [percentText, setPercentText] = useState(initialAdvance.percentText)
-  const [reason, setReason] = useState(initialAdvance.reason)
+  const [declaration, setDeclaration] = useState<AdvanceDeclaration>(initialAdvance)
 
   const validation = validateResubmitReply(reply)
   const tooLong = !validation.ok
   const remaining = RESUBMIT_NOTE_MAX_LENGTH - reply.trim().length
 
-  const advance = validateAdvanceSelection({ condition, percentText, reason, grandTotal: grandTotalValue })
+  const advance = validateAdvanceDeclaration({ ...declaration, grandTotal: grandTotalValue })
   /**
-   * The message is withheld while the exception fields are still untouched.
+   * The message is withheld while the revealed fields are still untouched.
    *
-   * Somebody who has just chosen "Request advance exception" has not made a
-   * mistake yet — they have not typed anything — and greeting them with a red
-   * sentence about a percentage they were about to enter is scolding, not help.
-   * Submit is still disabled throughout, so nothing invalid can be sent.
+   * Somebody who has just pressed "Reduced advance" has not made a mistake yet —
+   * they have not typed anything — and greeting them with a red sentence about a
+   * percentage they were about to enter is scolding, not help. Submit is still
+   * disabled throughout, so nothing invalid can be sent.
+   *
+   * A MISSING GRAND TOTAL IS SAID IMMEDIATELY, untouched or not: that one is
+   * about the record rather than about anything the employee has yet to do, and
+   * no amount of typing will fix it here.
    */
-  const untouched = condition === 'exception' && percentText.trim() === '' && reason.trim() === ''
-  const advanceMessage = advance.ok || (untouched && grandTotalValue !== null)
-    ? null
-    : (advance as { ok: false; message: string }).message
+  const advanceMessage =
+    advance.ok || (advanceDeclarationUntouched(declaration) && grandTotalValue !== null)
+      ? null
+      : (advance as { ok: false; message: string }).message
 
   const blocked = submitting || tooLong || !advance.ok
 
@@ -491,16 +554,19 @@ export function PiSubmitConfirmModal({
           </div>
 
           <AdvanceSelector
-            condition={condition}
-            percentText={percentText}
-            reason={reason}
+            declaration={declaration}
             grandTotalValue={grandTotalValue}
             standardAmount={standardAdvance}
             disabled={submitting}
             invalid={advanceMessage}
-            onCondition={setCondition}
-            onPercent={setPercentText}
-            onReason={setReason}
+            // The typed percentage and reason SURVIVE a change of choice, so
+            // somebody comparing "reduced" against "no advance" does not lose
+            // the sentence they wrote. What is SENT is decided by the choice
+            // alone: validateAdvanceDeclaration never reads the percentage box
+            // under "No advance", so nothing left behind can contradict it.
+            onChoice={next => setDeclaration(current => ({ ...current, choice: next }))}
+            onPercent={next => setDeclaration(current => ({ ...current, percentText: next }))}
+            onReason={next => setDeclaration(current => ({ ...current, reason: next }))}
           />
 
           <div style={{
@@ -728,6 +794,118 @@ export function PiNoteModal({
             </button>
           </Footer>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Delete PI ─────────────────────────────────────────────────────────────────
+
+/**
+ * The confirmation before a PI is erased.
+ *
+ * IT SHOWS WHAT IS BEING DESTROYED AND WHAT STATE IT IS IN: the client the order
+ * was for, and the status — because "Draft" and "Rejected" are very different
+ * things to be deleting, and an employee who opened this on the wrong row should
+ * be able to see that from the dialog rather than from the row behind it.
+ *
+ * NO TYPED CONFIRMATION. The warning names the workbook, the pictures and the
+ * history explicitly, and the destructive button is the only red thing on
+ * screen. Making somebody retype a client name to delete their own draft trains
+ * people to type without reading, which makes the next dialog less safe rather
+ * than this one more so.
+ *
+ * IT CANNOT BE SUBMITTED TWICE. `deleting` disables both buttons, the × control
+ * and Escape, and the handler refuses re-entry — so a double click, an impatient
+ * second press and a keyboard repeat all send exactly one request.
+ *
+ * THE BOE FORM-MODAL DISMISSAL RULE APPLIES, as it does to the other two: a
+ * backdrop click is inert, and shouldCloseFormModal owns the decision.
+ *
+ * NOTHING HERE DECIDES AUTHORITY. delete_order_submission() re-derives the
+ * actor, the ownership, the administrator check and the status under a row lock.
+ */
+export function PiDeleteConfirmModal({
+  client,
+  status,
+  deleting,
+  failure,
+  onCancel,
+  onConfirm,
+}: {
+  client: string
+  /** The record's raw status; rendered through the shared label map. */
+  status: string
+  deleting: boolean
+  failure: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  useScrollLock(true)
+
+  const dismiss = (reason: ModalDismissReason) => {
+    if (deleting) return
+    if (shouldCloseFormModal(reason)) onCancel()
+  }
+  useEscapeDismiss(dismiss, !deleting)
+
+  const confirm = () => {
+    if (deleting) return
+    onConfirm()
+  }
+
+  return (
+    // No onClick on the overlay: a click outside is inert, by rule.
+    <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={DELETE_PI_DIALOG_TITLE}>
+      <div style={PANEL}>
+        <ModalHeader
+          title={DELETE_PI_DIALOG_TITLE}
+          subtitle="This cannot be undone"
+          onClose={() => dismiss('close-icon')}
+          disabled={deleting}
+        />
+
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}>
+              <span style={KEY_STYLE}>Client</span>
+              <span style={{ color: colors.primary, fontWeight: 600, textAlign: 'right' }}>{client}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}>
+              <span style={KEY_STYLE}>Current status</span>
+              <span style={{ color: colors.primary, fontWeight: 600, textAlign: 'right' }}>
+                {deletionStatusLabel(status)}
+              </span>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex', gap: '9px', alignItems: 'flex-start',
+            fontSize: '12px', color: colors.primary, lineHeight: 1.5,
+            background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+            borderRadius: '6px', padding: '9px 12px',
+          }}>
+            <AlertTriangle size={14} strokeWidth={2} color={colors.red} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <span>{DELETE_PI_WARNING}</span>
+          </div>
+
+          {failure && <FailureNote message={failure} />}
+
+          <Footer>
+            <button type="button" onClick={() => dismiss('cancel')} disabled={deleting} style={cancelStyle(deleting)}>
+              {DELETE_PI_CANCEL_LABEL}
+            </button>
+            <button
+              type="button"
+              onClick={confirm}
+              disabled={deleting}
+              style={{ ...confirmStyle('#DC1F2E', deleting), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+            >
+              <Trash2 size={13} strokeWidth={2} />
+              {deleting ? DELETE_PI_BUSY_LABEL : DELETE_PI_CONFIRM_LABEL}
+            </button>
+          </Footer>
+        </div>
       </div>
     </div>
   )

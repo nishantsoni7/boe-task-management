@@ -58,7 +58,19 @@ import {
   formatPercent,
   initialAdvanceSelection,
   previewAdvanceAmount,
-  validateAdvanceSelection,
+  validateAdvanceDeclaration,
+  advanceChoiceCondition,
+  advanceChoiceNeedsReason,
+  advanceDeclarationUntouched,
+  ADVANCE_CHOICES,
+  ADVANCE_CHOICE_HINT,
+  ADVANCE_CHOICE_LABEL,
+  ADVANCE_NONE_AMOUNT_LABEL,
+  ADVANCE_NONE_LABEL,
+  ADVANCE_NONE_PERCENT_LABEL,
+  ADVANCE_PERCENT_NOT_A_NUMBER,
+  ADVANCE_PERCENT_ZERO_USE_NONE,
+  type AdvanceChoice,
   type PersistedAdvance,
 } from './advanceRequirement'
 import { PI_ADVANCE_PERCENT, computeAdvanceAmount, computeRequiredAdvance } from '@/lib/pi/previewView'
@@ -101,9 +113,16 @@ const exception = (
   ...over,
 })
 
-const validate = (condition: 'standard' | 'exception', percentText: string, reason: string,
+/**
+ * The dialog's validation, driven by the CHOICE the employee pressed.
+ *
+ * `reduced` is what the old two-option `exception` became for every percentage
+ * above zero; zero itself now has its own choice, and its own refusal when it is
+ * typed into the wrong one.
+ */
+const validate = (choice: AdvanceChoice, percentText: string, reason: string,
                   grandTotal: number | null = 100000) =>
-  validateAdvanceSelection({ condition, percentText, reason, grandTotal })
+  validateAdvanceDeclaration({ choice, percentText, reason, grandTotal })
 
 // ── The standard rule ─────────────────────────────────────────────────────────
 
@@ -168,56 +187,137 @@ describe('the standard requirement is the simple choice', () => {
   })
 })
 
-describe('an exception percentage, at every boundary', () => {
-  test('0% is legitimate and means no advance at all', () => {
-    const result = validate('exception', '0', 'long-standing account')
-    assert.ok(result.ok)
-    assert.equal(result.value.condition === 'exception' && result.value.percent, 0)
-    assert.ok(/no advance/i.test(ADVANCE_ZERO_EXPLANATION),
-      'and the screen says what 0% means rather than showing a bare ₹0')
+describe('the three choices are three choices, not two with a trick', () => {
+  test('every choice is offered, and each one is named for what it does', () => {
+    assert.deepEqual([...ADVANCE_CHOICES], ['standard', 'reduced', 'none'],
+      'the order they are drawn in is the order of increasing exception')
+    assert.equal(ADVANCE_CHOICE_LABEL.standard, 'Standard advance (40%)')
+    assert.equal(ADVANCE_CHOICE_LABEL.reduced, 'Reduced advance')
+    assert.equal(ADVANCE_CHOICE_LABEL.none, 'No advance (0%)')
   })
 
-  test('every value strictly below the standard is accepted', () => {
-    for (const raw of ['0', '0.01', '1', '12.5', '20', '39', '39.9', '39.99']) {
-      const result = validate('exception', raw, 'agreed with the client')
+  test('the standard helper says the standard applies, and nothing more', () => {
+    assert.equal(ADVANCE_CHOICE_HINT.standard, 'The standard advance requirement will apply.')
+  })
+
+  test('No advance says that management must approve it', () => {
+    assert.equal(ADVANCE_CHOICE_HINT.none,
+      'Management approval is required to proceed without advance.')
+    assert.equal(ADVANCE_NONE_PERCENT_LABEL, '0%')
+    assert.equal(ADVANCE_NONE_AMOUNT_LABEL, '₹0')
+  })
+
+  test('two of the three become the SAME database condition, and there is no third', () => {
+    // 0% is the exception the applied migration already models. Inventing a
+    // third advance_condition for it would need a migration, would need the
+    // decision RPCs taught about it, and would split one workflow into two.
+    assert.equal(advanceChoiceCondition('standard'), 'standard')
+    assert.equal(advanceChoiceCondition('reduced'), 'exception')
+    assert.equal(advanceChoiceCondition('none'), 'exception')
+  })
+
+  test('both exceptions need a reason; the standard needs none', () => {
+    assert.equal(advanceChoiceNeedsReason('standard'), false)
+    assert.equal(advanceChoiceNeedsReason('reduced'), true)
+    assert.equal(advanceChoiceNeedsReason('none'), true)
+  })
+})
+
+describe('No advance is a first-class choice worth 0% of anything', () => {
+  test('it sends a 0% exception with the employee’s reason', () => {
+    const result = validate('none', '', 'long-standing account, pays on delivery')
+    assert.ok(result.ok)
+    assert.deepEqual(result.value, {
+      condition: 'exception',
+      percent: 0,
+      reason: 'long-standing account, pays on delivery',
+    })
+  })
+
+  test('it ignores whatever is sitting in the percentage box', () => {
+    // Somebody who tried 12% and then decided on none must send 0%, not 12%.
+    // The choice is the declaration; the abandoned box cannot contradict it.
+    for (const leftover of ['12.5', '39', 'nonsense', '   ']) {
+      const result = validate('none', leftover, 'agreed with the client')
+      assert.ok(result.ok, `"${leftover}" must not affect a No advance declaration`)
+      assert.equal(result.value.condition === 'exception' && result.value.percent, 0)
+    }
+  })
+
+  test('the reason is still mandatory — it is the whole case being made', () => {
+    for (const reason of ['', '   ', '\n', '\t\t']) {
+      const result = validate('none', '', reason)
+      assert.ok(!result.ok, 'proceeding on nothing received cannot be asked for silently')
+      assert.equal(result.message, ADVANCE_REASON_REQUIRED)
+    }
+  })
+
+  test('and the screen says what 0% means rather than showing a bare ₹0', () => {
+    assert.ok(/no advance/i.test(ADVANCE_ZERO_EXPLANATION))
+    assert.ok(/no advance/i.test(ADVANCE_NONE_LABEL))
+  })
+})
+
+describe('a reduced advance, at every boundary', () => {
+  test('every value strictly between zero and the standard is accepted', () => {
+    for (const raw of ['0.01', '1', '12.5', '20', '39', '39.9', '39.99']) {
+      const result = validate('reduced', raw, 'agreed with the client')
       assert.ok(result.ok, `${raw}% must be accepted`)
       assert.equal(result.value.condition === 'exception' && result.value.percent, Number(raw))
     }
   })
 
+  test('ZERO IS REFUSED HERE, and points at the choice that means it', () => {
+    // The database would take it — 0% is a valid exception — but a screen that
+    // silently turned "reduced advance of 0%" into "no advance" would be
+    // deciding on somebody's behalf. Nothing is rounded or reinterpreted.
+    for (const raw of ['0', '0.0', '0.00', '.0', '00']) {
+      const result = validate('reduced', raw, 'agreed')
+      assert.ok(!result.ok, `"${raw}" must be refused under Reduced advance`)
+      assert.equal(result.message, ADVANCE_PERCENT_ZERO_USE_NONE)
+      assert.ok(result.message.includes(ADVANCE_NONE_LABEL),
+        'the refusal must name the choice to press instead')
+    }
+  })
+
   test('the standard itself is NOT an exception', () => {
-    const result = validate('exception', '40', 'agreed')
+    const result = validate('reduced', '40', 'agreed')
     assert.ok(!result.ok)
     assert.equal(result.message, ADVANCE_PERCENT_OUT_OF_RANGE)
   })
 
   test('anything above the standard is refused', () => {
     for (const raw of ['40.01', '41', '50', '100', '1000']) {
-      const result = validate('exception', raw, 'agreed')
+      const result = validate('reduced', raw, 'agreed')
       assert.ok(!result.ok, `${raw}% must be refused`)
       assert.equal(result.message, ADVANCE_PERCENT_OUT_OF_RANGE)
     }
   })
 
-  test('a negative percentage is refused', () => {
+  test('a negative percentage is refused as out of range, not as gibberish', () => {
     for (const raw of ['-0.01', '-1', '-100']) {
-      const result = validate('exception', raw, 'agreed')
+      const result = validate('reduced', raw, 'agreed')
       assert.ok(!result.ok, `${raw}% must be refused`)
+      assert.equal(result.message, ADVANCE_PERCENT_OUT_OF_RANGE,
+        '"-5" is a number; it is simply not a percentage anybody may request')
     }
   })
 
   test('a malformed figure is refused rather than coerced', () => {
     // Number('') is 0 and Number('1e1') is 10. Both would be a figure nobody
     // typed, so the shape is checked before the value.
-    for (const raw of ['abc', 'NaN', 'Infinity', '1e1', '1,5', '12%', '--3', '1.2.3', '+5', ' 1 2 ']) {
-      const result = validate('exception', raw, 'agreed')
+    for (const raw of ['abc', 'NaN', 'Infinity', '-Infinity', '1e1', '1E1', '2e-3',
+                       '1,5', '1,50', '12%', '₹12', '--3', '1.2.3', '+5', ' 1 2 ', '0x10']) {
+      const result = validate('reduced', raw, 'agreed')
       assert.ok(!result.ok, `"${raw}" must be refused`)
+      assert.equal(result.message, ADVANCE_PERCENT_NOT_A_NUMBER,
+        `"${raw}" is not a figure at all, and is not answered as one out of range`)
     }
   })
 
   test('an empty percentage asks for one rather than assuming zero', () => {
     for (const raw of ['', '   ', '.']) {
-      const result = validate('exception', raw, 'agreed')
+      const result = validate('reduced', raw, 'agreed')
       assert.ok(!result.ok)
       assert.equal(result.message, ADVANCE_PERCENT_REQUIRED)
     }
@@ -228,7 +328,7 @@ describe('an exception percentage, at every boundary', () => {
     // stored 12.35 for a typed 12.345 — a figure management would then decide on
     // that nobody proposed. The column is plain numeric and the CHECK refuses.
     for (const raw of ['12.345', '0.001', '1.2345', '39.999']) {
-      const result = validate('exception', raw, 'agreed')
+      const result = validate('reduced', raw, 'agreed')
       assert.ok(!result.ok, `${raw} must be refused`)
       assert.equal(result.message, ADVANCE_PERCENT_TOO_PRECISE)
     }
@@ -236,29 +336,29 @@ describe('an exception percentage, at every boundary', () => {
   })
 
   test('two decimal places, including trailing zeroes, are fine', () => {
-    for (const raw of ['12.50', '0.00', '39.00', '1.10']) {
-      assert.ok(validate('exception', raw, 'agreed').ok, `${raw} must be accepted`)
+    for (const raw of ['12.50', '39.00', '1.10']) {
+      assert.ok(validate('reduced', raw, 'agreed').ok, `${raw} must be accepted`)
     }
   })
 })
 
 describe('the reason is mandatory, and whitespace is not a reason', () => {
   test('an exception with no reason is refused', () => {
-    const result = validate('exception', '10', '')
+    const result = validate('reduced', '10', '')
     assert.ok(!result.ok)
     assert.equal(result.message, ADVANCE_REASON_REQUIRED)
   })
 
   test('whitespace alone is refused', () => {
     for (const reason of ['   ', '\n', '\t\t', ' \n ']) {
-      const result = validate('exception', '10', reason)
+      const result = validate('reduced', '10', reason)
       assert.ok(!result.ok, `"${JSON.stringify(reason)}" is not a reason`)
       assert.equal(result.message, ADVANCE_REASON_REQUIRED)
     }
   })
 
   test('the reason that is sent is TRIMMED, so the trail shows what was meant', () => {
-    const result = validate('exception', '10', '   client pays on delivery   ')
+    const result = validate('reduced', '10', '   client pays on delivery   ')
     assert.ok(result.ok)
     assert.equal(result.value.condition === 'exception' && result.value.reason,
       'client pays on delivery')
@@ -266,11 +366,11 @@ describe('the reason is mandatory, and whitespace is not a reason', () => {
 
   test('length is measured after trimming, exactly as the database measures it', () => {
     const padded = `  ${'x'.repeat(ADVANCE_REASON_MAX_LENGTH)}  `
-    assert.ok(validate('exception', '10', padded).ok,
+    assert.ok(validate('reduced', '10', padded).ok,
       'a reason padded with spaces is not rejected for a length it does not have')
 
     const tooLong = 'x'.repeat(ADVANCE_REASON_MAX_LENGTH + 1)
-    const result = validate('exception', '10', tooLong)
+    const result = validate('reduced', '10', tooLong)
     assert.ok(!result.ok)
     assert.equal(result.message, ADVANCE_REASON_TOO_LONG)
   })
@@ -291,9 +391,15 @@ describe('a missing grand total fails closed', () => {
       assert.ok(!std.ok, 'not even the standard requirement')
       assert.equal(std.message, ADVANCE_TOTAL_MISSING)
 
-      const exc = validate('exception', '10', 'agreed', total)
-      assert.ok(!exc.ok, 'and certainly not an exception')
+      const exc = validate('reduced', '10', 'agreed', total)
+      assert.ok(!exc.ok, 'and certainly not a reduced advance')
       assert.equal(exc.message, ADVANCE_TOTAL_MISSING)
+
+      // 0% of an unknown amount is not ₹0 — it is a declaration against a
+      // record nobody can price, and the RPC refuses it for the same reason.
+      const none = validate('none', '', 'agreed', total)
+      assert.ok(!none.ok, 'and not No advance either')
+      assert.equal(none.message, ADVANCE_TOTAL_MISSING)
     }
   })
 
@@ -301,7 +407,7 @@ describe('a missing grand total fails closed', () => {
     // Somebody with no grand total and an empty form must be told the real
     // problem — the record — rather than sent to fix a percentage that could
     // never have been valid.
-    const result = validate('exception', '', '', null)
+    const result = validate('reduced', '', '', null)
     assert.ok(!result.ok)
     assert.equal(result.message, ADVANCE_TOTAL_MISSING)
   })
@@ -572,37 +678,72 @@ describe('the four kinds of viewer, by capability', () => {
 describe('the submit dialog opens on what the record already says', () => {
   test('a record that declared nothing opens on the standard requirement', () => {
     assert.deepEqual(initialAdvanceSelection(undeclared()),
-      { condition: 'standard', percentText: '', reason: '' })
+      { choice: 'standard', percentText: '', reason: '' })
   })
 
   test('a standard record opens on the standard requirement', () => {
     assert.deepEqual(initialAdvanceSelection(standard()),
-      { condition: 'standard', percentText: '', reason: '' })
+      { choice: 'standard', percentText: '', reason: '' })
   })
 
-  test('an existing exception is shown rather than silently switched away', () => {
+  test('an existing reduced advance is shown rather than silently switched away', () => {
     // A PI returned for an UNRELATED correction must not quietly change the
     // employee's advance condition while they fix a fabric name.
     for (const status of ['pending', 'approved', 'rejected'] as const) {
       assert.deepEqual(initialAdvanceSelection(exception(12.5, status)), {
-        condition: 'exception',
+        choice: 'reduced',
         percentText: '12.5',
         reason: 'client is a repeat buyer',
       })
     }
   })
 
-  test('an APPROVED exception reopens identically, so it survives resubmission', () => {
+  test('a stored 0% opens on No advance, NOT on a reduced advance of zero', () => {
+    // Opening it as a Reduced advance with "0" in the box would hand the
+    // employee a declaration their own screen refuses, so resubmitting an
+    // approved 0% exception unchanged would be impossible.
+    for (const status of ['pending', 'approved', 'rejected'] as const) {
+      assert.deepEqual(initialAdvanceSelection(exception(0, status)), {
+        choice: 'none',
+        percentText: '',
+        reason: 'client is a repeat buyer',
+      })
+    }
+  })
+
+  test('an APPROVED reduced exception reopens identically, so it survives resubmission', () => {
     // The database keeps an approved exception approved only when the
     // percentage AND the reason come back unchanged. Pre-filling both is what
     // makes that the default outcome rather than an accident.
     const advance = exception('15.00', 'approved')
     const initial = initialAdvanceSelection(advance)
-    const result = validate('exception', initial.percentText, initial.reason)
+    const result = validate(initial.choice, initial.percentText, initial.reason)
     assert.ok(result.ok)
     assert.equal(result.value.condition === 'exception' && result.value.percent, 15)
     assert.equal(result.value.condition === 'exception' && result.value.reason,
       'client is a repeat buyer')
+  })
+
+  test('an APPROVED 0% exception reopens identically too', () => {
+    const advance = exception('0.00', 'approved')
+    const initial = initialAdvanceSelection(advance)
+    assert.equal(initial.choice, 'none')
+    const result = validate(initial.choice, initial.percentText, initial.reason)
+    assert.ok(result.ok, 'reopening an approved 0% must produce a sendable declaration')
+    assert.deepEqual(result.value,
+      { condition: 'exception', percent: 0, reason: 'client is a repeat buyer' })
+  })
+
+  test('the red sentence is withheld until something has been typed', () => {
+    // Pressing a choice is not a mistake. Submit stays disabled either way.
+    assert.equal(advanceDeclarationUntouched({ choice: 'standard', percentText: '', reason: '' }), false)
+    assert.equal(advanceDeclarationUntouched({ choice: 'reduced', percentText: '', reason: '' }), true)
+    assert.equal(advanceDeclarationUntouched({ choice: 'reduced', percentText: '5', reason: '' }), false)
+    assert.equal(advanceDeclarationUntouched({ choice: 'reduced', percentText: '', reason: 'x' }), false)
+    assert.equal(advanceDeclarationUntouched({ choice: 'none', percentText: '', reason: '' }), true)
+    assert.equal(advanceDeclarationUntouched({ choice: 'none', percentText: '', reason: 'x' }), false)
+    assert.equal(advanceDeclarationUntouched({ choice: 'none', percentText: '12', reason: '' }), true,
+      'an abandoned percentage is not something typed under No advance')
   })
 })
 

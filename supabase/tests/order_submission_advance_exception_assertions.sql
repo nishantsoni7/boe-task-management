@@ -115,8 +115,14 @@ returns void
 language plpgsql
 as $$
 begin
-  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed)
-  select current_setting('test.' || p_user)::uuid, m.id, a.id, true
+  -- granted_by is NOT NULL (20260660000000 §6) and has no default, so the grant
+  -- has to name a granter. The configured admin is the only account in this
+  -- script entitled to hand out a permission, which is also what a real grant
+  -- would record.
+  insert into public.employee_permission_overrides
+    (user_id, module_id, action_id, allowed, granted_by)
+  select current_setting('test.' || p_user)::uuid, m.id, a.id, true,
+         current_setting('test.admin')::uuid
   from public.permission_modules m, public.permission_actions a
   where m.module_key = 'orders' and a.action_key = p_action
   on conflict (user_id, module_id, action_id) do update set allowed = true;
