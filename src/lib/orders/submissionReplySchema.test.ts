@@ -176,10 +176,71 @@ describe('the existing one-argument RPC remains compatible', () => {
   test('same name, same argument name, same return shape', () => {
     assert.ok(PLAIN.includes('create or replace function public.submit_order_submission(p_submission_id uuid)'))
     assert.ok(PLAIN.includes('returns jsonb'))
-    assert.ok(sql.includes("pg_get_function_identity_arguments(p.oid) = 'uuid'"),
-      'and the migration asserts the signature did not drift')
-    assert.ok(sql.includes("pg_get_function_arguments(p.oid) like 'p_submission_id%'"),
-      'PostgREST calls by argument NAME, so the name is part of the contract')
+  })
+
+  test('the signature assertion reads catalog COLUMNS, never rendered text', () => {
+    // THE DEFECT THIS PINS. The first version of this assertion compared
+    // pg_get_function_identity_arguments(p.oid) to 'uuid', and the migration
+    // failed on a real database because that function returns the NAMED form:
+    //
+    //   pg_get_function_identity_arguments  →  p_submission_id uuid
+    //   pg_get_function_arguments           →  p_submission_id uuid
+    //
+    // Verified against PostgreSQL 16. Those are display helpers, and what they
+    // render is a presentation decision that can differ between server
+    // versions; an assertion built on it asserts the formatting, not the
+    // signature. Nothing in this migration may depend on either again.
+    // `code` is the migration with its `--` comments stripped. Essential here:
+    // the assertion block DOCUMENTS the two rendering helpers in order to
+    // explain why it does not use them, and a search over raw text would fail
+    // on the sentence promising the very thing it verifies.
+    for (const rendered of ['pg_get_function_identity_arguments', 'pg_get_function_arguments']) {
+      assert.ok(!code.includes(rendered),
+        `${rendered} renders text and must not decide whether a signature is correct`)
+    }
+
+    // pronargs / proargtypes / proargnames ARE the signature.
+    for (const stable of [
+      'p.pronargs = 1',
+      "p.proargtypes[0] = 'uuid'::regtype",
+      'array_length(p.proargnames, 1) = 1',
+      "p.proargnames[1] = 'p_submission_id'",
+      "p.prokind  = 'f'",
+    ]) {
+      assert.ok(code.includes(stable), `the assertion must check: ${stable}`)
+    }
+  })
+
+  test('the two array bases are used correctly, and they differ', () => {
+    // proargtypes is an oidvector and is indexed FROM 0; proargnames is a
+    // text[] and is indexed FROM 1. Getting either the wrong way round yields a
+    // silent null and an assertion that can never fail. Both bases verified
+    // against PostgreSQL 16: proargnames[0] is null.
+    assert.ok(code.includes("p.proargtypes[0] = 'uuid'::regtype"), 'first TYPE at index 0')
+    assert.ok(code.includes("p.proargnames[1] = 'p_submission_id'"), 'first NAME at index 1')
+    assert.ok(!code.includes("p.proargtypes[1] = 'uuid'::regtype"),
+      'uuid is the FIRST argument of every one of these functions')
+    assert.ok(!/proargnames\[0\]/.test(code), 'a text[] has no index 0')
+  })
+
+  test('the note RPC and the internal function are checked the same way', () => {
+    // Types AND names, for both, because PostgREST calls by argument name: a
+    // renamed argument is a broken RPC even though the types still match.
+    assert.ok(code.includes('p.pronargs = 2'))
+    assert.ok(code.includes("p.proargtypes[1] = 'text'::regtype"))
+    assert.ok(code.includes("p.proargnames[2] = 'p_note'"))
+    assert.ok(code.includes('array_length(p.proargnames, 1) = 2'))
+    for (const name of ['submit_order_submission_with_note', 'submit_order_submission_internal']) {
+      assert.ok(code.includes(`p.proname  = '${name}'`), `${name} must have its own signature check`)
+    }
+  })
+
+  test('an added OUT parameter cannot slip through', () => {
+    // pronargs counts input arguments only, so an OUT parameter changes
+    // proargnames without changing pronargs. Asserting array_length as well is
+    // what closes that gap.
+    const checks = [...code.matchAll(/array_length\(p\.proargnames, 1\) = \d/g)]
+    assert.equal(checks.length, 3, 'one for each of the three functions')
   })
 
   test('its privileges are restated rather than assumed', () => {
@@ -192,8 +253,12 @@ describe('the existing one-argument RPC remains compatible', () => {
     // Two functions sharing a name would be told apart only by which keys a
     // caller happened to send — so a client omitting the note key would
     // silently select a different function.
-    assert.ok(sql.includes('submit_order_submission is overloaded'),
-      'the migration fails if a second variant of the name ever appears')
+    assert.ok(sql.includes('is overloaded (% variants); PostgREST would resolve it by argument names'),
+      'the migration fails if a second variant of any of the three names appears')
+    // Counted per name, over all three, rather than for one of them.
+    assert.ok(sql.includes("select unnest(array['submit_order_submission',"))
+    assert.ok(sql.includes("'submit_order_submission_with_note',"))
+    assert.ok(sql.includes("'submit_order_submission_internal'])"))
     const defined = [...declarations.matchAll(/create or replace function public\.(\w+)\(/g)].map(m => m[1])
     assert.equal(new Set(defined).size, defined.length, 'each name is defined once')
   })
