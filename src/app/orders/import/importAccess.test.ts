@@ -127,12 +127,55 @@ describe('the route gate, not just the button', () => {
       'the route must gate on create, not on module entry')
   })
 
-  test('a denied caller is redirected and the screen never renders', () => {
+  test('a denied caller stays in Orders and never reaches another module', () => {
+    // THE DEFECT THIS PINS. Denial used to `router.replace('/coming-soon')`,
+    // which is a hard-coded ATTENDANCE placeholder ("Attendance Module — Coming
+    // Soon"). Someone opening a PI upload link without orders.create was told
+    // that a module they had not asked about is under development, lost the
+    // Orders context, and got no way back to the records they can work with.
     const source = read(IMPORT_PAGE)
-    assert.ok(source.includes("router.replace('/coming-soon')"),
-      'denial must land on the shared not-available page, as every other module route does')
-    assert.ok(source.includes("if (access !== 'allowed') return <LoadingScreen />"),
-      'children must not render in the checking or denied state')
+    assert.ok(!source.includes("router.replace('/coming-soon')"),
+      'denial must not send an Orders user to another module’s placeholder')
+    assert.ok(!source.includes('/coming-soon'), 'not by any route')
+    assert.ok(source.includes("setAccess('denied')"), 'the state is resolved, not navigated')
+  })
+
+  test('the denial is the Orders access-denied screen', () => {
+    const source = read(IMPORT_PAGE)
+    assert.ok(source.includes("if (access === 'denied') {"), 'it renders rather than redirects')
+    assert.ok(source.includes('PI upload is not enabled for your account'))
+    assert.ok(source.includes('<OrdersLayout'), 'inside the Orders shell, with its sidebar')
+    // A way onward that every Orders user can actually open: reading drafts
+    // needs module entry, not create.
+    assert.ok(source.includes("router.push('/orders/drafts')"))
+    assert.ok(source.includes('Go to PI Drafts'))
+  })
+
+  test('the denial names no permission internals', () => {
+    const source = read(IMPORT_PAGE)
+    const denied = source.slice(source.indexOf("if (access === 'denied') {"))
+      .slice(0, source.slice(source.indexOf("if (access === 'denied') {")).indexOf('\n  }\n'))
+    assert.ok(!/orders\.create|resolve_permission|RLS|policy/i.test(denied),
+      'an employee cannot act on a permission key and it is not theirs to grant')
+  })
+
+  test('checking still renders nothing, so no frame of the importer leaks', () => {
+    const source = read(IMPORT_PAGE)
+    assert.ok(source.includes("if (access === 'checking') return <LoadingScreen />"),
+      'children must not render while the permission is still being resolved')
+  })
+
+  test('an authorized creator still reaches the importer, and a reload works', () => {
+    const source = read(IMPORT_PAGE)
+    // The gate is the resolved permission, not a navigation, so a direct reload
+    // lands in exactly the same state rather than bouncing.
+    assert.ok(source.includes("setAccess('allowed')"))
+    // The only navigation left on this screen is the sign-in redirect for a
+    // caller with no session at all. Nothing about a PERMISSION navigates, so
+    // there is no loop to enter and a direct reload lands in the same state.
+    // Two call sites, one destination: the no-session guard and sign-out.
+    const redirects = [...new Set([...source.matchAll(/router\.replace\('([^']+)'\)/g)].map(m => m[1]))]
+    assert.deepEqual(redirects, ['/login'])
   })
 
   test('a failed profile read denies rather than admits', () => {
@@ -370,7 +413,13 @@ describe('the Save Draft action', () => {
       'the save must navigate to the saved draft')
     assert.ok(source.includes('const success = summariseSaveResult(body, draft.submissionId)'),
       'and the id it navigates to is the SERVER’S, read off the response')
-    assert.ok(!source.includes("router.push('/orders')"),
+    // Scoped to the save flow. The denied screen legitimately offers the Orders
+    // dashboard as a way onward; what must never happen is a SUCCESSFUL SAVE
+    // ending there, which is how a real draft became unreachable.
+    const saveStart = source.indexOf('const saveDraft = useCallback')
+    const saveFlow = source.slice(saveStart, source.indexOf('const acceptFile = useCallback', saveStart))
+    assert.ok(saveFlow.length > 0 && saveFlow.includes('setSaveStage'), 'the slice is the save flow')
+    assert.ok(!saveFlow.includes("router.push('/orders')"),
       'a dead end back to the dashboard is what left the draft unreachable')
   })
 

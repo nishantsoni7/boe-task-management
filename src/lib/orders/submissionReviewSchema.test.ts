@@ -113,9 +113,25 @@ const GUARD = functionBlock('order_submissions_guard_frozen_columns')
 // ── The file itself ───────────────────────────────────────────────────────────
 
 describe('Phase A is one additive migration', () => {
-  test('it is the newest migration, and its name says what it is', () => {
+  test('it sequences after the applied migrations, and nothing later takes it over', () => {
     const files = readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], PHASE_A_FILE, 'it must sequence after every applied migration')
+    assert.ok(PHASE_A_FILE > IMAGES_FILE && PHASE_A_FILE > SUBMISSIONS_FILE,
+      'it must sequence after every migration it builds on')
+
+    // Later migrations are allowed — the employee-reply follow-up is one — but
+    // none may redefine what Phase A owns: the rejection RPC, the transition
+    // trigger, the frozen-column guard or the submitted_at column.
+    for (const file of files.filter(f => f > PHASE_A_FILE)) {
+      const later = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
+      for (const owned of [
+        'create or replace function public.reject_order_submission',
+        'create or replace function public.order_submissions_enforce_status_transition',
+        'create or replace function public.order_submissions_guard_frozen_columns',
+        'add column submitted_at',
+      ]) {
+        assert.ok(!later.includes(owned), `${file} must not redefine: ${owned}`)
+      }
+    }
   })
 
   test('the two applied migrations are untouched', () => {

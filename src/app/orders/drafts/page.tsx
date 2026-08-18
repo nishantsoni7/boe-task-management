@@ -34,7 +34,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, Inbox, Plus } from 'lucide-react'
+import { FileText, Inbox, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
@@ -61,6 +61,7 @@ import {
 import {
   REVIEW_ACTION_LABEL,
   REVIEW_QUEUE_TITLE,
+  UPLOAD_PI_BUTTON_LABEL,
   splitDraftsForReview,
 } from '@/lib/orders/submissionWorkflow'
 
@@ -235,6 +236,9 @@ export default function PiDraftsPage() {
   }
 
   const openDraft = (entry: PiDraftListEntry) => router.push(entry.href)
+  /** One destination, named once, so the header and the empty state cannot
+   *  drift apart or grow a second hand-built path. */
+  const goToImport = () => router.push('/orders/import')
 
   if (entries === null && !failed) return <LoadingScreen />
 
@@ -254,6 +258,21 @@ export default function PiDraftsPage() {
               which stopped being true the day submission shipped. */}
           {PI_DRAFTS_EMPTY_NOTE}
         </div>
+        {/* The action belongs HERE, in the empty state, because this is the one
+            moment the page has nothing else to offer — a person arriving with no
+            records should not have to find the header button to begin.
+
+            It is deliberately NOT rendered when the list has rows: the header
+            already carries it, and two identical primary buttons stacked on a
+            phone is the repetition this avoids. */}
+        {canCreate && (
+          <div style={{ marginTop: '4px' }}>
+            <button className="boe-btn boe-btn-primary" onClick={goToImport}>
+              <Upload size={13} strokeWidth={2} />
+              {UPLOAD_PI_BUTTON_LABEL}
+            </button>
+          </div>
+        )}
       </div>
     </PiCard>
   )
@@ -457,10 +476,14 @@ export default function PiDraftsPage() {
       subtitle={PI_DRAFTS_SUBTITLE}
       onSignOut={handleSignOut}
       onRefresh={load}
+      // THE ENTRY POINT TO THE IMPORTER, and the only one on this page for a
+      // person who already has records. Shown only to a holder of orders.create
+      // — a courtesy, not the control: /orders/import re-resolves the permission
+      // for itself, and the storage policies and the server route decide again.
       actions={canCreate ? (
-        <button className="boe-btn boe-btn-primary" onClick={() => router.push('/orders/import')}>
-          <Plus size={13} strokeWidth={2} />
-          New Order
+        <button className="boe-btn boe-btn-primary" onClick={goToImport}>
+          <Upload size={13} strokeWidth={2} />
+          {UPLOAD_PI_BUTTON_LABEL}
         </button>
       ) : undefined}
     >

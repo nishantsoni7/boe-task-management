@@ -22,9 +22,16 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   APPROVE_DISABLED_REASON,
   CHANGE_PI_PARAM,
+  RESUBMIT_NOTE_LABEL,
+  RESUBMIT_NOTE_MAX_LENGTH,
+  RESUBMIT_NOTE_PLACEHOLDER,
+  submissionOffersReply,
+  validateResubmitReply,
   NEEDS_CHANGES_NOTE_REQUIRED,
   REJECT_REASON_REQUIRED,
   SUBMIT_CONFIRM_NOTE,
@@ -447,5 +454,63 @@ describe('the Change PI route', () => {
     // again. A stranger holding this link gets "not available".
     assert.equal(canReplaceSubmissionPi('submitted'), false)
     assert.equal(canReplaceSubmissionPi('rejected'), false)
+  })
+})
+
+// ── The employee's reply on a resubmission ────────────────────────────────────
+
+describe('the optional reply an employee sends with a resubmission', () => {
+  test('is offered only when management has asked for changes', () => {
+    assert.equal(submissionOffersReply('needs_changes'), true)
+    for (const status of ['draft', 'submitted', 'rejected', 'approved', 'something_else']) {
+      assert.equal(submissionOffersReply(status), false,
+        `${status} has no reviewer question to answer`)
+    }
+  })
+
+  test('an empty or whitespace reply is nothing at all, not an empty string', () => {
+    for (const value of ['', '   ', '\n\t ', null, undefined]) {
+      const result = validateResubmitReply(value)
+      assert.equal(result.ok, true, 'the field is optional')
+      assert.equal(result.ok && result.note, null,
+        'so a field somebody tabbed through leaves no entry on the trail')
+    }
+  })
+
+  test('a real reply is trimmed and kept verbatim otherwise', () => {
+    const result = validateResubmitReply('  Fixed the fabric on line 3.\nGST corrected too.  ')
+    assert.equal(result.ok, true)
+    assert.equal(result.ok && result.note, 'Fixed the fabric on line 3.\nGST corrected too.')
+  })
+
+  test('the cap is measured after trimming, exactly as the database measures it', () => {
+    const atLimit = 'x'.repeat(RESUBMIT_NOTE_MAX_LENGTH)
+    assert.equal(validateResubmitReply(atLimit).ok, true, 'the limit itself is allowed')
+    assert.equal(validateResubmitReply(`   ${atLimit}   `).ok, true,
+      'padding must not push a legitimate reply over the line')
+    const overLimit = 'x'.repeat(RESUBMIT_NOTE_MAX_LENGTH + 1)
+    const refused = validateResubmitReply(overLimit)
+    assert.equal(refused.ok, false)
+    assert.ok(refused.ok === false && refused.message.includes(String(RESUBMIT_NOTE_MAX_LENGTH)),
+      'and the message says what the limit is')
+  })
+
+  test('the browser limit is the same number the database enforces', () => {
+    // The database is the control: submit_order_submission_with_note refuses a
+    // longer reply on its own. This assertion exists so the two cannot drift and
+    // leave somebody typing happily into a field the server will reject.
+    const sql = readFileSync(
+      join(process.cwd(), 'supabase', 'migrations',
+        '20260911000000_order_submission_employee_reply.sql'), 'utf8')
+    assert.ok(sql.includes(`char_length(v_note) > ${RESUBMIT_NOTE_MAX_LENGTH}`),
+      'the migration must cap the reply at the same length the screen does')
+  })
+
+  test('the label and placeholder are the agreed wording', () => {
+    assert.equal(RESUBMIT_NOTE_LABEL, 'Reply to management (optional)')
+    assert.equal(RESUBMIT_NOTE_PLACEHOLDER,
+      'Mention what you changed or answer the reviewer’s question.')
+    assert.ok(RESUBMIT_NOTE_LABEL.toLowerCase().includes('optional'),
+      'the label itself says the field may be left alone')
   })
 })

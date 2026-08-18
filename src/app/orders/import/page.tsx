@@ -39,7 +39,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   FileSpreadsheet, Upload, AlertTriangle, CheckCircle2, Info, Loader2,
-  ImageOff, Images,
+  ImageOff, Images, Lock, ArrowLeft,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -328,9 +328,24 @@ function NewOrderPiImportPageInner() {
       if (!active) return
 
       if (!me || !caps.canCreateOrder) {
+        // ── DENIED, AND THE PERSON STAYS IN ORDERS ──
+        //
+        // This used to redirect to /coming-soon, which is a hard-coded
+        // ATTENDANCE placeholder ("Attendance Module — Coming Soon"). Somebody
+        // who opened a PI upload link without orders.create was told, in effect,
+        // that a module they were not asking about is under development. It
+        // answered a question nobody had, lost the Orders context, and gave no
+        // way back to the records they can actually work with.
+        //
+        // So nothing is redirected now. The screen renders its own denial inside
+        // the Orders layout, saying what is not enabled and offering PI Drafts —
+        // which every Orders user can open, since reading drafts needs module
+        // entry rather than create. A reload lands in the same state, because
+        // the state is the resolved permission and not a navigation.
+        // The profile is still set, so the denied screen keeps the sidebar,
+        // the person's own name and the way out that every Orders page has.
+        if (me) setProfile(me as UserProfile)
         setAccess('denied')
-        // The same destination every other denied module route uses.
-        router.replace('/coming-soon')
         return
       }
 
@@ -618,7 +633,54 @@ function NewOrderPiImportPageInner() {
     acceptFile(e.dataTransfer.files?.[0])
   }
 
-  if (access !== 'allowed') return <LoadingScreen />
+  if (access === 'checking') return <LoadingScreen />
+
+  // ── The Orders access-denied screen ──
+  //
+  // The same card the saved-draft page shows for a record somebody may not
+  // open: inside the Orders layout, one sentence about what is not enabled, and
+  // a way onward. It names no permission key and no internal rule — an employee
+  // cannot act on "orders.create" and it is not theirs to grant.
+  if (access === 'denied') {
+    return (
+      <OrdersLayout
+        profile={profile}
+        title="Upload PI"
+        onSignOut={handleSignOut}
+        showRefresh={false}
+        actions={
+          <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
+            <ArrowLeft size={13} strokeWidth={2} />
+            PI Drafts
+          </button>
+        }
+      >
+        <Card style={{ borderColor: 'rgba(232,160,48,0.35)' }}>
+          <div style={{ padding: '24px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <Lock size={18} strokeWidth={1.8} color="#9A6212" style={{ flexShrink: 0, marginTop: '1px' }} />
+            <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
+                PI upload is not enabled for your account
+              </div>
+              <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, maxWidth: '520px' }}>
+                You can still open PI Drafts and read the records you have access to. If you need to
+                upload a PI, ask an administrator to enable it for you.
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                <button className="boe-btn boe-btn-primary" onClick={() => router.push('/orders/drafts')}>
+                  Go to PI Drafts
+                </button>
+                <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders')}>
+                  Orders Dashboard
+                </button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </OrdersLayout>
+    )
+  }
+
 
   const limitText = formatByteLimit(PI_MAX_WORKBOOK_BYTES)
 
