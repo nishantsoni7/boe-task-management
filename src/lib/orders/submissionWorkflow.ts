@@ -19,6 +19,8 @@
 //                                     exist in storage
 //   request_order_submission_changes  orders.approve_order, submitted only
 //   reject_order_submission           orders.approve_order, submitted only
+//   approve_pi_advance_exception      orders.approve_advance_exception, a
+//   reject_pi_advance_exception       PENDING exception on a submitted PI only
 //   the Change PI flow                the order-files write policy and
 //                                     assert_order_submission_editor, neither of
 //                                     which this file can influence
@@ -30,6 +32,13 @@
 // is no approval RPC to call.
 
 import type { PiDraftListEntry } from './draftsView'
+import {
+  ADVANCE_PERCENT_OUT_OF_RANGE,
+  ADVANCE_REASON_REQUIRED,
+  ADVANCE_REASON_TOO_LONG,
+  ADVANCE_TOTAL_MISSING,
+  REJECT_EXCEPTION_REASON_REQUIRED,
+} from './advanceRequirement'
 
 // ── Labels ────────────────────────────────────────────────────────────────────
 
@@ -58,8 +67,14 @@ export const UPLOAD_PI_BUTTON_LABEL = 'Upload PI'
  * control. It is disabled rather than clickable because there is no approval RPC
  * to call — the transition to 'approved' is refused by the database for every
  * caller — and a button that fails is worse than one that explains itself.
+ *
+ * THE WORDING IS NOW ACCURATE. It used to say "after advance review is added",
+ * which stopped being true the moment advance review WAS added: an advance
+ * exception can be approved today and the PI still cannot be. What is missing is
+ * the order-approval phase itself.
  */
-export const APPROVE_DISABLED_REASON = 'Available after advance review is added'
+export const APPROVE_DISABLED_REASON =
+  'Available in the order-approval phase, once every requirement is satisfied'
 
 /** What the employee is warned of before they submit. */
 export const SUBMIT_CONFIRM_NOTE =
@@ -270,7 +285,12 @@ export function validateReviewNote(
 
 // ── Failures ──────────────────────────────────────────────────────────────────
 
-export type SubmissionAction = 'submit' | 'request_changes' | 'reject'
+export type SubmissionAction =
+  | 'submit'
+  | 'request_changes'
+  | 'reject'
+  | 'approve_exception'
+  | 'reject_exception'
 
 export type SubmissionFailure = {
   /** Stable, non-sensitive, safe to show and to log. */
@@ -310,6 +330,29 @@ const FAILURE_MESSAGES: readonly { marker: string; code: string; message: string
     message: REJECT_REASON_REQUIRED },
   { marker: 'ORDER_SUBMISSION_TRANSITION_INVALID', code: 'STATE_CHANGED',
     message: 'This PI has already moved on. Refresh to see its current state.' },
+  // ── The advance requirement ──
+  //
+  // Ordered BEFORE the generic markers below for the same reason the rest of
+  // this table is ordered: the first match wins, and 'ADVANCE_REASON_TOO_LONG'
+  // must not be answered by a sentence about a reply.
+  { marker: 'ORDER_SUBMISSION_ADVANCE_TOTAL_MISSING', code: 'ADVANCE_TOTAL_MISSING',
+    message: ADVANCE_TOTAL_MISSING },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_NOT_OWNER', code: 'ADVANCE_NOT_OWNER',
+    message: 'Only the person who owns this PI can request an advance exception.' },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_CONDITION_INVALID', code: 'ADVANCE_CONDITION_INVALID',
+    message: 'Choose the standard advance requirement or request an exception, and nothing in between.' },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_PERCENT_INVALID', code: 'ADVANCE_PERCENT_INVALID',
+    message: ADVANCE_PERCENT_OUT_OF_RANGE },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_DECISION_REASON_REQUIRED', code: 'ADVANCE_DECISION_REASON_REQUIRED',
+    message: REJECT_EXCEPTION_REASON_REQUIRED },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_REASON_REQUIRED', code: 'ADVANCE_REASON_REQUIRED',
+    message: ADVANCE_REASON_REQUIRED },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_REASON_TOO_LONG', code: 'ADVANCE_REASON_TOO_LONG',
+    message: ADVANCE_REASON_TOO_LONG },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_NOT_PENDING', code: 'ADVANCE_NOT_PENDING',
+    message: 'This advance exception is no longer waiting for a decision. Refresh to see its current state.' },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_INVALID', code: 'ADVANCE_INVALID',
+    message: 'This advance requirement could not be recorded in its current state. Refresh and try again.' },
   { marker: 'Authentication required', code: 'UNAUTHORIZED',
     message: 'Your session has expired. Sign in again and try once more.' },
   { marker: 'This account is not active', code: 'ACCOUNT_INACTIVE',
@@ -326,6 +369,8 @@ const FALLBACK: Record<SubmissionAction, string> = {
   submit: 'This PI could not be submitted just now. Try again in a moment.',
   request_changes: 'This PI could not be sent back just now. Try again in a moment.',
   reject: 'This PI could not be rejected just now. Try again in a moment.',
+  approve_exception: 'The advance exception could not be approved just now. Try again in a moment.',
+  reject_exception: 'The advance exception could not be rejected just now. Try again in a moment.',
 }
 
 /**

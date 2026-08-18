@@ -33,24 +33,35 @@
 //
 // WHAT THE PAGE NOW WRITES, AND ONLY THROUGH THE DATABASE'S OWN DOORS:
 //
-//   submit_order_submission           the owner hands it to management
-//   submit_order_submission_with_note the same, carrying their optional reply
-//                                     when they are answering a returned record
+//   submit_order_submission_with_advance  the owner hands it to management under
+//                                     a declared advance requirement, carrying
+//                                     their optional reply when they are
+//                                     answering a returned record
 //   request_order_submission_changes  a reviewer sends it back, with a note
 //   reject_order_submission           a reviewer ends it, with a reason
+//   approve_pi_advance_exception      an authorised approver accepts a proposed
+//                                     advance below the standard 40%
+//   reject_pi_advance_exception       …or refuses it, with a mandatory reason,
+//                                     which returns the PI for correction
 //
-// Each of those is a status move and nothing else. None of them writes a figure,
-// a line or an image mapping — those come only from the server's own re-parse —
-// and each re-derives the actor, the permission and the record's state inside
-// the database before it writes. What this file decides is which controls to
-// draw, which is a question about screens and never about authority.
+// Each of those is a status move and a declaration, and nothing else. None of
+// them writes a figure, a line or an image mapping — those come only from the
+// server's own re-parse — and each re-derives the actor, the permission and the
+// record's state inside the database before it writes. What this file decides is
+// which controls to draw, which is a question about screens and never about
+// authority.
+//
+// AND NOTHING HERE IS A PAYMENT. The advance requirement is a commercial
+// condition: what BOE will ask for before the order is worked. No payment is
+// created, requested, recorded, confirmed or reconciled by any of it, and the
+// screen says so wherever a rupee figure appears beside the word "advance".
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertTriangle, CheckCircle2, Info, ArrowLeft,
   FileText, FileSpreadsheet, Clock, Package, User,
-  History, Send, Upload, Undo2, Ban, Lock,
+  History, Send, Upload, Undo2, Ban, Lock, Percent, ThumbsUp,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -98,6 +109,18 @@ import {
   type ActivityEntry,
   type PersistedActivity,
 } from '@/lib/orders/submissionActivity'
+import {
+  ADVANCE_NOT_A_PAYMENT,
+  ADVANCE_REJECTED_INSTRUCTION,
+  ADVANCE_SECTION_TITLE,
+  ADVANCE_ZERO_EXPLANATION,
+  APPROVE_EXCEPTION_BUTTON_LABEL,
+  REJECT_EXCEPTION_BUTTON_LABEL,
+  describeAdvance,
+  describeAdvanceActions,
+  initialAdvanceSelection,
+  type AdvanceSelection,
+} from '@/lib/orders/advanceRequirement'
 import {
   buildCommercialRows,
   buildHeaderRows,
@@ -198,6 +221,214 @@ function InfoField({ label, value, strong = false }: {
 }
 
 /** One fact in the metadata strip: an icon, a label, and a short value. */
+// ── The advance requirement section ───────────────────────────────────────────
+//
+// ONE COMPONENT, THREE AUDIENCES: the employee reading their own record, a PI
+// reviewer, and an authorised exception approver. What differs between them is
+// only whether the two decision CONTROLS are drawn — the STATE is shown to
+// everybody who can read the PI, because a record waiting on somebody else's
+// decision must not look inert to the person waiting.
+//
+// IT IS COMPACT ON PURPOSE: six short rows at most, and the exception rows are
+// present only when there is an exception. The commercial summary further down
+// still carries its own "Required advance (40%)" line; this section is about the
+// CONDITION and the DECISION, not about restating the arithmetic.
+//
+// NO PAYMENT LANGUAGE. Not "received", not "paid", not "collected". The figures
+// are what would be required, and the footnote says so.
+
+function AdvanceRow({ label, value, tone = 'plain' }: {
+  label: string
+  value: React.ReactNode
+  tone?: 'plain' | 'strong'
+}) {
+  return (
+    <div style={{
+      display: 'flex', gap: '14px', justifyContent: 'space-between',
+      alignItems: 'baseline', flexWrap: 'wrap',
+    }}>
+      <span style={{ fontSize: '11.5px', color: colors.muted }}>{label}</span>
+      <span style={{
+        fontSize: tone === 'strong' ? '13px' : '12.5px',
+        fontWeight: tone === 'strong' ? 700 : 600,
+        color: colors.primary, textAlign: 'right',
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+const EXCEPTION_STATUS_TONE: Record<string, { bg: string; color: string; border: string }> = {
+  pending:  { bg: colors.amberTint, color: '#9A6212', border: 'rgba(232,160,48,0.35)' },
+  approved: { bg: colors.greenTint, color: '#2F7A52', border: 'rgba(69,168,112,0.35)' },
+  rejected: { bg: colors.redTint,   color: colors.red, border: 'rgba(217,79,79,0.35)' },
+}
+
+function AdvanceRequirementSection({
+  advance,
+  canDecide,
+  acting,
+  showRejectedInstruction,
+  requesterName,
+  deciderName,
+  requestedAt,
+  decidedAt,
+  onApprove,
+  onReject,
+}: {
+  advance: ReturnType<typeof describeAdvance>
+  /** Whether THIS viewer may settle a pending proposal. */
+  canDecide: boolean
+  acting: boolean
+  /** True for the employee looking at a PI returned because of the refusal. */
+  showRejectedInstruction: boolean
+  requesterName: string | null
+  deciderName: string | null
+  requestedAt: string | null
+  decidedAt: string | null
+  onApprove: () => void
+  onReject: () => void
+}) {
+  const statusTone = advance.status ? EXCEPTION_STATUS_TONE[advance.status] : null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+        <Percent size={13} strokeWidth={2} color={colors.tertiary} />
+        <span style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>
+          {ADVANCE_SECTION_TITLE}
+        </span>
+        {advance.statusLabel && statusTone && (
+          <span style={{
+            marginLeft: 'auto',
+            display: 'inline-flex', alignItems: 'center',
+            padding: '2px 8px', borderRadius: '5px',
+            fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
+            background: statusTone.bg, color: statusTone.color,
+            border: `1px solid ${statusTone.border}`,
+          }}>
+            {advance.statusLabel}
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+        {/* The standard is ALWAYS shown, even under an exception, because the
+            decision being asked for is a comparison and half a comparison is
+            not one. */}
+        <AdvanceRow
+          label={`Standard requirement (${advance.standardPercentLabel})`}
+          value={advance.standardAmount}
+        />
+
+        <AdvanceRow
+          label="Selected condition"
+          value={advance.undeclared ? 'Not declared' : advance.conditionLabel}
+        />
+
+        {advance.exceptionPercentLabel && (
+          <AdvanceRow
+            label="Proposed advance"
+            value={`${advance.exceptionPercentLabel}${advance.exceptionAmount ? ` · ${advance.exceptionAmount}` : ''}`}
+            tone="strong"
+          />
+        )}
+      </div>
+
+      {advance.isZeroPercent && (
+        <div style={{ fontSize: '11.5px', color: '#9A6212', lineHeight: 1.45 }}>
+          {ADVANCE_ZERO_EXPLANATION}
+        </div>
+      )}
+
+      {/* The employee's own words, verbatim. This is what the decision is
+          actually about, so it is not squeezed into a row. */}
+      {advance.requestReason && (
+        <div style={{
+          padding: '8px 11px', borderRadius: '6px',
+          background: colors.raised, border: `1px solid ${colors.border}`,
+        }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, marginBottom: '2px' }}>
+            Employee&rsquo;s reason
+          </div>
+          <MultilineText style={{ fontSize: '12px', color: colors.primary, margin: 0 }}>
+            {advance.requestReason}
+          </MultilineText>
+        </div>
+      )}
+
+      {advance.rejectionReason && (
+        <div style={{
+          padding: '8px 11px', borderRadius: '6px',
+          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+        }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#991B1B', marginBottom: '2px' }}>
+            Why it was refused
+          </div>
+          <MultilineText style={{ fontSize: '12px', color: colors.primary, margin: 0 }}>
+            {advance.rejectionReason}
+          </MultilineText>
+        </div>
+      )}
+
+      {/* Who asked and who decided, when either is known. Small, muted, and
+          absent rather than dashed when a name cannot be resolved. */}
+      {(requestedAt || decidedAt) && (
+        <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+          {requestedAt && (
+            <div>Requested by {requesterName ?? 'a colleague'} on {requestedAt}</div>
+          )}
+          {decidedAt && (
+            <div>Decided by {deciderName ?? 'a colleague'} on {decidedAt}</div>
+          )}
+        </div>
+      )}
+
+      {showRejectedInstruction && (
+        <div style={{
+          fontSize: '11.5px', color: colors.primary, lineHeight: 1.5,
+          background: colors.amberTint, border: '1px solid rgba(232,160,48,0.3)',
+          borderRadius: '6px', padding: '8px 11px',
+        }}>
+          {ADVANCE_REJECTED_INSTRUCTION}
+        </div>
+      )}
+
+      {/* The two decision controls, for somebody who holds the authority.
+          Approve is a CONTAINED POSITIVE action and deliberately looks nothing
+          like the disabled "Approve" beside it: that one approves the PI and
+          cannot be pressed, this one settles one commercial term. */}
+      {canDecide && (
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingTop: '2px' }}>
+          <button
+            className="boe-btn boe-btn-primary"
+            onClick={onApprove}
+            disabled={acting}
+            style={{ background: '#2F7A52', borderColor: '#2F7A52' }}
+          >
+            <ThumbsUp size={13} strokeWidth={2} />
+            {APPROVE_EXCEPTION_BUTTON_LABEL}
+          </button>
+          <button
+            className="boe-btn boe-btn-ghost"
+            onClick={onReject}
+            disabled={acting}
+          >
+            <Ban size={13} strokeWidth={2} />
+            {REJECT_EXCEPTION_BUTTON_LABEL}
+          </button>
+        </div>
+      )}
+
+      <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
+        {ADVANCE_NOT_A_PAYMENT}
+      </div>
+    </div>
+  )
+}
+
 function MetaItem({ icon, label, value }: {
   icon: React.ReactNode
   label: string
@@ -248,6 +479,10 @@ type Draft = {
    *  reached that state, or when the name could not be resolved. */
   submitterName: string | null
   rejectedByName: string | null
+  /** Who proposed the advance exception, and who settled it. Resolved in the
+   *  SAME users read as every other name on this page. */
+  advanceRequesterName: string | null
+  advanceDeciderName: string | null
 }
 
 type Load =
@@ -318,6 +553,12 @@ function PiDraftDetailPageInner() {
   const [viewerId, setViewerId] = useState<string | null>(null)
   const [canCreate, setCanCreate] = useState(false)
   const [canReview, setCanReview] = useState(false)
+  /**
+   * orders.approve_advance_exception — the SEPARATE authority to settle a
+   * proposed advance. Independent of canReview in both directions, exactly as
+   * the database has it.
+   */
+  const [canDecideAdvance, setCanDecideAdvance] = useState(false)
 
   /** Which decision dialog is open, if any. */
   const [dialog, setDialog] = useState<'submit' | PiNoteIntent | null>(null)
@@ -424,7 +665,12 @@ function PiDraftDetailPageInner() {
     // submitter and the reviewer who rejected it. A query per row would be a
     // dozen round trips to print four names.
     const namesById = new Map<string, string>()
-    const actorIds = activityActorIds(history, [row.submitted_by, row.rejected_by])
+    const actorIds = activityActorIds(history, [
+      row.submitted_by,
+      row.rejected_by,
+      row.advance_exception_requested_by,
+      row.advance_exception_decided_by,
+    ])
     if (actorIds.length > 0) {
       // Two safe columns, named explicitly: `select('*')` on public.users is a
       // permission error, and a display name is all this page needs.
@@ -444,6 +690,10 @@ function PiDraftDetailPageInner() {
         activity: describeActivityEntries(history, namesById, formatSavedAt),
         submitterName: row.submitted_by ? namesById.get(row.submitted_by) ?? null : null,
         rejectedByName: row.rejected_by ? namesById.get(row.rejected_by) ?? null : null,
+        advanceRequesterName: row.advance_exception_requested_by
+          ? namesById.get(row.advance_exception_requested_by) ?? null : null,
+        advanceDeciderName: row.advance_exception_decided_by
+          ? namesById.get(row.advance_exception_decided_by) ?? null : null,
         products,
         representativeByRow: urls.representativeByRow,
         customizationByRow: urls.customizationByRow,
@@ -481,6 +731,7 @@ function PiDraftDetailPageInner() {
       setViewerId(session.user.id)
       setCanCreate(caps.canCreateOrder)
       setCanReview(caps.canApproveOrderSubmission)
+      setCanDecideAdvance(caps.canApproveAdvanceException)
       await loadDraft()
     }
 
@@ -545,13 +796,40 @@ function PiDraftDetailPageInner() {
    * screen picks the door by whether there is anything to say — never by
    * authority, which is the database's to decide.
    */
-  const submitForApproval = useCallback((note: string | null) => runAction('submit', async () => {
-    const { error } = note === null
-      ? await supabase.rpc('submit_order_submission', { p_submission_id: submissionId })
-      : await supabase.rpc('submit_order_submission_with_note', {
-          p_submission_id: submissionId,
-          p_note: note,
-        })
+  const submitForApproval = useCallback((
+    note: string | null,
+    advance: AdvanceSelection,
+  ) => runAction('submit', async () => {
+    const { error } = await supabase.rpc('submit_order_submission_with_advance', {
+      p_submission_id: submissionId,
+      p_note: note,
+      p_advance_condition: advance.condition,
+      p_advance_percent: advance.condition === 'exception' ? advance.percent : null,
+      p_advance_reason: advance.condition === 'exception' ? advance.reason : null,
+    })
+    return { error }
+  }), [runAction, supabase, submissionId])
+
+  /**
+   * Accept the proposed advance. THE PI STAYS UNDER REVIEW.
+   *
+   * No note, by design: approving the condition the employee asked for adds
+   * nothing that the decision itself does not already say, and a mandatory field
+   * on the positive path is friction for its own sake. The refusal is the one
+   * that needs words.
+   */
+  const approveException = useCallback(() => runAction('approve_exception', async () => {
+    const { error } = await supabase.rpc('approve_pi_advance_exception', {
+      p_submission_id: submissionId,
+    })
+    return { error }
+  }), [runAction, supabase, submissionId])
+
+  const rejectException = useCallback((reason: string) => runAction('reject_exception', async () => {
+    const { error } = await supabase.rpc('reject_pi_advance_exception', {
+      p_submission_id: submissionId,
+      p_reason: reason,
+    })
     return { error }
   }), [runAction, supabase, submissionId])
 
@@ -703,6 +981,54 @@ function PiDraftDetailPageInner() {
   const submittedAt = submission.submitted_at ? formatSavedAt(submission.submitted_at) : null
   const rejectedAt = submission.rejected_at ? formatSavedAt(submission.rejected_at) : null
 
+  // ── The advance requirement, and who may settle it ──
+  //
+  // ONE ANSWER, FROM ONE HELPER, shared with its tests, exactly as the action
+  // rules above are. The rupee figures are derived from the CURRENT persisted
+  // grand total, so a corrected PI moves them rather than reporting an amount
+  // that was true of an older document.
+  const grandTotalValue = toNumber(submission.grand_total)
+  const advance = describeAdvance(submission, grandTotalValue)
+  const advanceActions = describeAdvanceActions({
+    status: submission.status,
+    advance: submission,
+    canDecideException: canDecideAdvance,
+  })
+
+  /**
+   * Whether the section is on screen at all.
+   *
+   * A DRAFT GETS NONE. Nothing has been declared and nothing will be until the
+   * employee submits, so a permanent "Not declared" block on the commonest state
+   * would be a section of screen spent on a question nobody has asked yet.
+   * Everything past draft shows it, including a legacy record that declared
+   * nothing — that absence is exactly what a reviewer needs to see.
+   */
+  const showAdvance = !advance.undeclared || submission.status !== 'draft'
+
+  /** True only when the record is back with the employee BECAUSE of the refusal. */
+  const advanceRejectedNow =
+    advance.status === 'rejected' && submission.status === 'needs_changes'
+
+  const advanceSection = (
+    <AdvanceRequirementSection
+      advance={advance}
+      canDecide={advanceActions.canDecide}
+      acting={acting}
+      showRejectedInstruction={advanceRejectedNow}
+      requesterName={draft.advanceRequesterName}
+      deciderName={draft.advanceDeciderName}
+      requestedAt={advance.requestedAtIso ? formatSavedAt(advance.requestedAtIso) : null}
+      decidedAt={advance.decidedAtIso ? formatSavedAt(advance.decidedAtIso) : null}
+      onApprove={() => { setActionFailure(null); approveException() }}
+      onReject={() => { setActionFailure(null); setDialog('reject_exception') }}
+    />
+  )
+
+  /** The Management Review card, which the advance section lives INSIDE when it
+   *  is drawn. See the placement note at the card itself. */
+  const showReviewCard = actions.canRequestChanges || actions.canReject
+
   const banner = describeSubmissionBanner({
     status: submission.status,
     submittedAt,
@@ -726,6 +1052,8 @@ function PiDraftDetailPageInner() {
 
   const clientLabel = orDash(submission.client_name ?? submission.bill_to_name)
   const grandTotalLabel = formatInr(toNumber(submission.grand_total))
+  /** The standard requirement in rupees, through the ONE shared formula. */
+  const standardAdvanceLabel = advance.standardAmount
 
   return (
     <OrdersLayout
@@ -1169,7 +1497,7 @@ function PiDraftDetailPageInner() {
             number and settles the advance rule, and none of that exists. A
             control that looked live and then failed would be worse than one that
             explains why it is waiting. */}
-        {(actions.canRequestChanges || actions.canReject) && (
+        {showReviewCard && (
           <PiCard style={{ borderColor: 'rgba(85,133,232,0.35)' }}>
             <div style={{
               padding: '14px 20px',
@@ -1220,6 +1548,44 @@ function PiDraftDetailPageInner() {
                   {REJECT_BUTTON_LABEL}
                 </button>
               </div>
+            </div>
+
+            {/* ── The advance requirement, in the SAME card and visually its
+                own band ──
+
+                Same card, because it is part of one review and a reviewer
+                should not have to look elsewhere for the commercial condition
+                they are being asked about. Separated by a rule and a quieter
+                ground, because the two decisions are genuinely different: the
+                controls above act on the PI, and the controls below act on one
+                term of it. Deciding an advance exception is NOT approving the
+                PI, and the disabled "Approve" above says so by staying
+                disabled either way. */}
+            {showAdvance && (
+              <div style={{
+                padding: '13px 20px',
+                borderTop: `1px solid ${colors.border}`,
+                background: colors.raised,
+              }}>
+                {advanceSection}
+              </div>
+            )}
+          </PiCard>
+        )}
+
+        {/* ── The advance requirement, for everybody else ──
+
+            The same section as a card of its own, for a viewer who does not get
+            the review bar above: the employee reading their own record, a
+            read-only viewer, and — importantly — somebody who holds
+            orders.approve_advance_exception WITHOUT orders.approve_order. That
+            last person has a decision to take and no review card to take it in,
+            which is exactly why the two authorities being independent has to be
+            reflected here rather than assumed away. */}
+        {!showReviewCard && showAdvance && (
+          <PiCard style={advanceActions.canDecide ? { borderColor: 'rgba(232,160,48,0.4)' } : undefined}>
+            <div style={{ padding: '13px 20px' }}>
+              {advanceSection}
             </div>
           </PiCard>
         )}
@@ -1272,7 +1638,18 @@ function PiDraftDetailPageInner() {
                   </div>
                   <div style={{ fontSize: '11.5px', color: colors.secondary }}>
                     {entry.actor}
+                    {/* The percentage and the amount it came to — the business
+                        fact of an advance event, and the only two metadata keys
+                        this screen ever reads. */}
+                    {entry.figures && (
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}> · {entry.figures}</span>
+                    )}
                   </div>
+                  {entry.detail && (
+                    <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.45 }}>
+                      {entry.detail}
+                    </div>
+                  )}
                   {entry.note && (
                     <MultilineText style={{
                       fontSize: '12px', color: colors.secondary, margin: '2px 0 0',
@@ -1297,6 +1674,12 @@ function PiDraftDetailPageInner() {
         <PiSubmitConfirmModal
           client={clientLabel}
           grandTotal={grandTotalLabel}
+          grandTotalValue={grandTotalValue}
+          standardAdvance={standardAdvanceLabel}
+          // The dialog opens on whatever the record already says, so a PI
+          // returned for an unrelated correction does not silently switch the
+          // employee's advance condition while they fix something else.
+          initialAdvance={initialAdvanceSelection(submission)}
           submitting={acting}
           failure={actionFailure}
           offerReply={submissionOffersReply(submission.status)}
@@ -1305,14 +1688,18 @@ function PiDraftDetailPageInner() {
         />
       )}
 
-      {(dialog === 'needs_changes' || dialog === 'reject') && (
+      {(dialog === 'needs_changes' || dialog === 'reject' || dialog === 'reject_exception') && (
         <PiNoteModal
           intent={dialog}
           client={clientLabel}
           saving={acting}
           failure={actionFailure}
           onCancel={closeDialog}
-          onConfirm={note => { if (dialog === 'reject') rejectSubmission(note); else requestChanges(note) }}
+          onConfirm={note => {
+            if (dialog === 'reject') rejectSubmission(note)
+            else if (dialog === 'reject_exception') rejectException(note)
+            else requestChanges(note)
+          }}
         />
       )}
 

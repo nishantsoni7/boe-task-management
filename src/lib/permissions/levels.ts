@@ -104,6 +104,13 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // order number; nobody should acquire it by picking "Manager" from a
   // dropdown. Registered by 20260908000000.
   'approve_order',
+  // Deciding whether BOE will start an order on LESS than its standard 40%
+  // advance — zero included. Protected, and deliberately separate from
+  // approve_order: reviewing a PI and settling its commercial terms are two
+  // decisions, and the business has chosen to keep them assignable to different
+  // people. A preset that handed this out would be handing out money at risk.
+  // Registered by 20260913000000.
+  'approve_advance_exception',
 ])
 
 export function isProtectedAction(actionKey: string): boolean {
@@ -131,6 +138,9 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   // the RLS on order_submissions is gated on module entry as well — so the
   // grant would be one that could never land.
   approve_order:     'view',
+  // Same reason, and NOT a dependency on approve_order: the two authorities are
+  // independent in both directions by design.
+  approve_advance_exception: 'view',
 }
 
 /** Every action `actionKey` depends on, nearest first. Cycle-safe. */

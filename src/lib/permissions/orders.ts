@@ -67,6 +67,27 @@ export type OrdersCapabilities = {
    * imply the other.
    */
   canApproveOrderSubmission: boolean
+  /**
+   * Decide an ADVANCE EXCEPTION on a submitted PI — accept or refuse a proposed
+   * advance below the standard 40%, zero included. Backed by the protected
+   * `approve_advance_exception` action, which 20260913000000 registers.
+   *
+   * INDEPENDENT OF canApproveOrderSubmission IN BOTH DIRECTIONS. Reviewing a PI
+   * and settling its commercial terms are two decisions on the same record, and
+   * the business has chosen to keep them assignable to different people:
+   *
+   *   approve_order only              may send back and reject, may NOT decide
+   *                                   an advance exception
+   *   approve_advance_exception only  may decide the exception, may NOT approve,
+   *                                   reject or return the PI, gains no order
+   *                                   visibility, no Finance sight and no
+   *                                   payment access
+   *
+   * approve_pi_advance_exception() and reject_pi_advance_exception() require
+   * exactly this action in the database, so a control drawn from it matches what
+   * the RPC will allow.
+   */
+  canApproveAdvanceException: boolean
   canExportOrders: boolean
   canDeleteOrder: boolean
   /** Administrative control of the module. */
@@ -85,6 +106,7 @@ export const NO_ORDERS_CAPABILITIES: OrdersCapabilities = {
   canEditOrder: false,
   canApproveOrder: false,
   canApproveOrderSubmission: false,
+  canApproveAdvanceException: false,
   canExportOrders: false,
   canDeleteOrder: false,
   canManageOrders: false,
@@ -109,6 +131,10 @@ export function deriveOrdersCapabilities(
       canEditOrder: true,
       canApproveOrder: true,
       canApproveOrderSubmission: true,
+      // An active admin decides advance exceptions without an explicit grant,
+      // exactly as actor_has_module_permission's admin branch does in the
+      // database. Reported true so the screen matches the RPC.
+      canApproveAdvanceException: true,
       canExportOrders: true,
       canDeleteOrder: true,
       canManageOrders: true,
@@ -131,6 +157,9 @@ export function deriveOrdersCapabilities(
     canEditOrder: withEntry('edit'),
     canApproveOrder: withEntry('approve'),
     canApproveOrderSubmission: withEntry('approve_order'),
+    // Resolved from its OWN action. approve_order does not imply it, and it
+    // does not imply approve_order.
+    canApproveAdvanceException: withEntry('approve_advance_exception'),
     canExportOrders: withEntry('export'),
     canDeleteOrder: withEntry('delete'),
     canManageOrders: withEntry('manage'),

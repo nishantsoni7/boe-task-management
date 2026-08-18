@@ -351,6 +351,17 @@ describe('the review queue is a section of the drafts list', () => {
     total_before_gst: null, gst_amount: null, grand_total: 1000,
     parse_warnings: [], parse_blocking_issues: [], review_note: null,
     created_at: '2026-08-01T00:00:00.000Z', updated_at: '2026-08-01T00:00:00.000Z',
+    // No advance requirement was declared. That is the honest state of a record
+    // saved before Phase B, and of every draft until it is submitted.
+    advance_condition: null,
+    advance_exception_percent: null,
+    advance_exception_reason: null,
+    advance_exception_status: null,
+    advance_exception_requested_by: null,
+    advance_exception_requested_at: null,
+    advance_exception_decided_by: null,
+    advance_exception_decided_at: null,
+    advance_exception_rejection_reason: null,
     ...over,
   })
 

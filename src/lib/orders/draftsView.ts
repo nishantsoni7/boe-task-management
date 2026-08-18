@@ -36,6 +36,7 @@ import type {
   PiHeader,
   PiImageRole,
 } from '@/lib/pi/types'
+import { PI_ADVANCE_COLUMNS, type PersistedAdvance } from './advanceRequirement'
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
@@ -156,7 +157,7 @@ const text = (value: unknown): string | null => {
 export type PersistedCostMeaning = 'numeric' | 'not_applicable' | 'included' | 'text'
 
 /** One row of public.order_submissions, as the drafts pages read it. */
-export type PersistedSubmission = {
+export type PersistedSubmission = PersistedAdvance & {
   id: string
   status: string
   client_name: string | null
@@ -204,6 +205,11 @@ export type PersistedSubmission = {
 
   created_at: string
   updated_at: string
+
+  // The advance requirement this PI was submitted under, and the exception
+  // decision if it carries one, come from PersistedAdvance above. A COMMERCIAL
+  // CONDITION, never a payment: a record submitted before 20260913000000
+  // declared nothing and every one of those columns is null.
 }
 
 /** One row of public.order_submission_items. */
@@ -263,6 +269,10 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   'total_before_gst', 'gst_amount', 'grand_total',
   'parse_warnings', 'parse_blocking_issues', 'review_note',
   'created_at', 'updated_at',
+  // The advance requirement this PI was submitted under, and the exception
+  // decision if it carries one. Named in advanceRequirement.ts so the columns
+  // and the module that reads them cannot drift apart.
+  ...PI_ADVANCE_COLUMNS,
 ].join(', ')
 
 export const PI_DRAFT_ITEM_COLUMNS = [

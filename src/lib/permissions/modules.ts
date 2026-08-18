@@ -221,6 +221,18 @@ registerModule({
     // (20260901000000). Reusing it would hand PI approval to everyone who can
     // convert an Order Request today, silently and without anyone choosing it.
     { actionKey: 'approve_order', displayName: 'Approve Order Submissions' },
+    // Authority to decide an ADVANCE EXCEPTION on a submitted PI — whether BOE
+    // will start the order on less than its standard 40% advance, zero
+    // included. Registered by 20260913000000.
+    //
+    // DELIBERATELY NOT approve_order. That one means "review this PI": send it
+    // back, reject it, and eventually approve it. Whether to accept a lower
+    // advance is a commercial decision about money at risk, and reusing
+    // approve_order would have handed it, silently and retroactively, to
+    // everybody who can already send a PI back. The two are independent in both
+    // directions: holding this grants no PI review, no order visibility, no
+    // Finance sight and no payment access.
+    { actionKey: 'approve_advance_exception', displayName: 'Approve Advance Exceptions' },
     // Company-wide sight of every order. Until 20260903000000, plain 'view'
     // carried this through the blanket SELECT policies added by 20260685000000
     // and 20260686000000 — module entry and seeing the whole company were the
