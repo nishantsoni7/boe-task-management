@@ -21,6 +21,11 @@
 //   reject_order_submission           orders.approve_order, submitted only
 //   approve_pi_advance_exception      orders.approve_advance_exception, a
 //   reject_pi_advance_exception       PENDING exception on a submitted PI only
+//   verify_pi_finance_check           finance.approve with Finance module entry
+//                                     (or an active admin), submitted only
+//   approve_order_submission          orders.approve_order, submitted only, and
+//                                     every eligibility rule re-derived under a
+//                                     row lock
 //   the Change PI flow                the order-files write policy and
 //                                     assert_order_submission_editor, neither of
 //                                     which this file can influence
@@ -28,8 +33,7 @@
 // So a hidden button is a courtesy, and a button somebody defeats gets them a
 // refusal from Postgres rather than an unauthorized write. What this file must
 // never do is the reverse — show a control the database would allow but the
-// product does not, which is why `canApprove` is a constant false here and there
-// is no approval RPC to call.
+// product does not.
 
 import type { PiDraftListEntry } from './draftsView'
 import {
@@ -62,7 +66,13 @@ export function submitButtonLabel(status: string): string {
 export const CHANGE_PI_BUTTON_LABEL = 'Change PI'
 export const REQUEST_CHANGES_BUTTON_LABEL = 'Needs Changes'
 export const REJECT_BUTTON_LABEL = 'Reject'
-export const APPROVE_BUTTON_LABEL = 'Approve'
+/**
+ * The final approval control, named for BOTH halves of what it does.
+ *
+ * Re-exported from finalApproval.ts rather than restated, so the label the panel
+ * draws and the label the dialog is titled with cannot drift apart.
+ */
+export { APPROVE_ORDER_BUTTON_LABEL as APPROVE_BUTTON_LABEL } from './finalApproval'
 export const REVIEW_ACTION_LABEL = 'Review PI'
 export const REVIEW_QUEUE_TITLE = 'Submitted for Review'
 
@@ -76,21 +86,16 @@ export const REVIEW_QUEUE_TITLE = 'Submitted for Review'
 export const UPLOAD_PI_BUTTON_LABEL = 'Upload PI'
 
 /**
- * Why Approve is present but inert.
+ * Why there is no longer a reason to explain a disabled Approve.
  *
- * It is shown rather than hidden because a reviewer needs to know that approval
- * is a step that exists and is coming, not wonder whether they have missed a
- * control. It is disabled rather than clickable because there is no approval RPC
- * to call — the transition to 'approved' is refused by the database for every
- * caller — and a button that fails is worse than one that explains itself.
- *
- * THE WORDING IS NOW ACCURATE. It used to say "after advance review is added",
- * which stopped being true the moment advance review WAS added: an advance
- * exception can be approved today and the PI still cannot be. What is missing is
- * the order-approval phase itself.
+ * APPROVE_DISABLED_REASON used to live here and read "Available in the
+ * order-approval phase, once every requirement is satisfied". It was a promise
+ * about a later phase, and this IS that phase — the control is real, it is
+ * reachable, and when it is disabled the reason is an actionable one from
+ * describeApprovalReadiness() ("Finance must verify this PI…") rather than a
+ * note about the roadmap. Nothing renders the old constant, so it is gone rather
+ * than left behind to be printed by mistake.
  */
-export const APPROVE_DISABLED_REASON =
-  'Available in the order-approval phase, once every requirement is satisfied'
 
 /** What the employee is warned of before they submit. */
 export const SUBMIT_CONFIRM_NOTE =
@@ -179,9 +184,22 @@ export type SubmissionActions = {
   canChangePi: boolean
   canRequestChanges: boolean
   canReject: boolean
-  /** Always false in this phase. Approval belongs to the phase that creates
-   *  Orders, and there is no RPC behind it. */
-  canApprove: false
+  /**
+   * Approve PI & Create Order belongs on screen for this viewer.
+   *
+   * SAME AUTHORITY AND SAME WINDOW as Needs Changes and Reject —
+   * orders.approve_order, on a submitted record — because it is the same
+   * decision seen from the other side, and a reviewer offered two of the three
+   * outcomes would reasonably conclude the third is somebody else's.
+   *
+   * WHETHER IT MAY BE PRESSED is a different question, answered by
+   * describeApprovalReadiness() in finalApproval.ts from the record's finance,
+   * advance and diagnostic state. Kept apart deliberately: this says whose
+   * decision it is, that says whether the decision can be taken yet, and folding
+   * them together would hide the control from the very person who needs to see
+   * what is holding it up.
+   */
+  canApprove: boolean
   /** True when this viewer has no action available on this record at all. */
   isReadOnly: boolean
 }
@@ -207,7 +225,7 @@ export function describeSubmissionActions(input: SubmissionActionInput): Submiss
     canChangePi: editable,
     canRequestChanges: underReview,
     canReject: underReview,
-    canApprove: false,
+    canApprove: underReview,
     isReadOnly: !editable && !underReview,
   }
 }
@@ -307,6 +325,8 @@ export type SubmissionAction =
   | 'reject'
   | 'approve_exception'
   | 'reject_exception'
+  | 'verify_finance'
+  | 'approve'
 
 export type SubmissionFailure = {
   /** Stable, non-sensitive, safe to show and to log. */
@@ -369,6 +389,36 @@ const FAILURE_MESSAGES: readonly { marker: string; code: string; message: string
     message: 'This advance exception is no longer waiting for a decision. Refresh to see its current state.' },
   { marker: 'ORDER_SUBMISSION_ADVANCE_INVALID', code: 'ADVANCE_INVALID',
     message: 'This advance requirement could not be recorded in its current state. Refresh and try again.' },
+  // ── Finance verification and final approval ──
+  //
+  // Ordered BEFORE the generic markers below, for the reason the whole table is
+  // ordered: the first match wins, and a refusal naming finance must not be
+  // answered by the sentence for "do not have permission".
+  { marker: 'ORDER_SUBMISSION_FINANCE_FORBIDDEN', code: 'FINANCE_FORBIDDEN',
+    message: 'You do not have permission to verify this PI for finance.' },
+  { marker: 'ORDER_SUBMISSION_FINANCE_NOT_UNDER_REVIEW', code: 'FINANCE_NOT_UNDER_REVIEW',
+    message: 'This PI is no longer waiting for review, so it cannot be verified. Refresh to see its current state.' },
+  { marker: 'ORDER_SUBMISSION_FINANCE_NOT_VERIFIED', code: 'FINANCE_NOT_VERIFIED',
+    message: 'Finance has not verified this PI for the submission under review. Refresh to see its current state.' },
+  { marker: 'ORDER_SUBMISSION_FINANCE_INVALID', code: 'FINANCE_INVALID',
+    message: 'This PI could not be verified in its current state. Refresh and try again.' },
+  { marker: 'ORDER_SUBMISSION_APPROVAL_PATH_REQUIRED', code: 'APPROVAL_PATH',
+    message: 'This PI could not be approved just now. Refresh and try once more.' },
+  { marker: 'ORDER_SUBMISSION_APPROVAL_INVALID', code: 'APPROVAL_INVALID',
+    message: 'This PI could not be approved in its current state. Refresh and try again.' },
+  { marker: 'ORDER_SUBMISSION_ALREADY_LINKED', code: 'ALREADY_LINKED',
+    message: 'An Order already exists for this PI. Refresh to see it.' },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_NOT_READY', code: 'ADVANCE_NOT_READY',
+    message: 'The advance requirement on this PI is not settled, so it cannot be approved yet.' },
+  { marker: 'ORDER_SUBMISSION_DELETION_CLAIMED', code: 'DELETION_CLAIMED',
+    message: 'This PI is being deleted and cannot be acted on. Refresh to see its current state.' },
+  // The Order-number failures. None of them is anything an employee can act on,
+  // and all of them need an administrator, so they say so rather than leaking
+  // the cycle's internal state.
+  { marker: 'ORDER_NUMBER_CYCLE', code: 'ORDER_NUMBERING',
+    message: 'Order numbering is not configured correctly, so no Order could be created. An administrator needs to set the next Order number.' },
+  { marker: 'ORDER_NUMBER_IN_USE', code: 'ORDER_NUMBERING',
+    message: 'Order numbering is not configured correctly, so no Order could be created. An administrator needs to set the next Order number.' },
   { marker: 'Authentication required', code: 'UNAUTHORIZED',
     message: 'Your session has expired. Sign in again and try once more.' },
   { marker: 'This account is not active', code: 'ACCOUNT_INACTIVE',
@@ -387,6 +437,8 @@ const FALLBACK: Record<SubmissionAction, string> = {
   reject: 'This PI could not be rejected just now. Try again in a moment.',
   approve_exception: 'The advance exception could not be approved just now. Try again in a moment.',
   reject_exception: 'The advance exception could not be rejected just now. Try again in a moment.',
+  verify_finance: 'This PI could not be verified just now. Try again in a moment.',
+  approve: 'This PI could not be approved just now. Try again in a moment. No Order has been created.',
 }
 
 /**

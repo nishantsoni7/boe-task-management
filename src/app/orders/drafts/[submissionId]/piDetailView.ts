@@ -32,6 +32,12 @@ import {
   ADVANCE_STANDARD_PERCENT,
   type AdvanceView,
 } from '@/lib/orders/advanceRequirement'
+import {
+  APPROVE_SUMMARY_LABEL,
+  FINANCE_SUMMARY_PENDING,
+  FINANCE_SUMMARY_VERIFIED,
+  orderHref,
+} from '@/lib/orders/finalApproval'
 import { draftStatusLabel } from '@/lib/orders/draftsView'
 import type { PiAmountRow } from '@/lib/pi/previewView'
 
@@ -520,3 +526,86 @@ export const BLOCKING_INSTRUCTION =
  */
 export const STORED_COPY_NOTE =
   'Stored PI copy. Official order numbering begins after management approval.'
+
+// ── 9. Final approval ─────────────────────────────────────────────────────────
+//
+// What the approval dialog SHOWS, and what the workflow panel says once an Order
+// exists. The RULES live in finalApproval.ts; this is the arrangement.
+
+/** One line of the approval dialog's summary. */
+export type ApprovalSummaryRow = {
+  key: string
+  label: string
+  value: string
+  /** True for the figure the eye should land on first. */
+  strong?: boolean
+}
+
+/**
+ * The compact final summary a reviewer confirms against.
+ *
+ * FIVE FACTS, AND NOT ONE MORE. Client, grand total, the advance condition, the
+ * finance state and how many product lines are being committed to. Between them
+ * they answer "am I approving the thing I think I am approving", which is the
+ * only question a confirmation dialog is for.
+ *
+ * WHAT IS DELIBERATELY ABSENT: the commercial breakdown, the addresses, the
+ * dispatch commitment and the product table. All of them are on the page behind
+ * this dialog, in full, and a reviewer who has not read them is not helped by a
+ * truncated copy in a modal.
+ *
+ * THE ADVANCE FIGURES ARE NOT RESTATED HERE EITHER — the condition is named
+ * ("Standard advance (40%)", "No advance (0%)") and the rupee value stays on the
+ * page, where it is derived once from the current grand total.
+ */
+export function buildApprovalSummary(input: {
+  client: string
+  grandTotal: string
+  /** advance.conditionLabel, or the undeclared label. One source, one wording. */
+  advanceLabel: string
+  financeVerified: boolean
+  productCount: number
+}): ApprovalSummaryRow[] {
+  return [
+    { key: 'client', label: APPROVE_SUMMARY_LABEL.client, value: input.client },
+    { key: 'total', label: APPROVE_SUMMARY_LABEL.grandTotal, value: input.grandTotal, strong: true },
+    { key: 'advance', label: APPROVE_SUMMARY_LABEL.advance, value: input.advanceLabel },
+    {
+      key: 'finance',
+      label: APPROVE_SUMMARY_LABEL.finance,
+      value: input.financeVerified ? FINANCE_SUMMARY_VERIFIED : FINANCE_SUMMARY_PENDING,
+    },
+    {
+      key: 'lines',
+      label: APPROVE_SUMMARY_LABEL.lines,
+      value: `${input.productCount} line${input.productCount === 1 ? '' : 's'}`,
+    },
+  ]
+}
+
+/**
+ * The created Order, as the approved record reports it — or null.
+ *
+ * NULL WHEN THE NUMBER COULD NOT BE READ, and that is a real case rather than a
+ * defect: an Order is visible to its requester, to operations, to an admin and
+ * to a holder of orders.view_all, and a finance verifier is none of those. They
+ * still see that the PI was approved — the status badge, the banner and the
+ * Activity entry all say so — and they are simply not shown a number and a link
+ * into a record they cannot open. Inventing a number here, or showing a link
+ * that leads to "not available", would be worse than saying less.
+ */
+export type ApprovedOrderView = {
+  orderId: string
+  displayNumber: string
+  href: string
+}
+
+export function describeApprovedOrder(input: {
+  orderId: string | null
+  displayNumber: string | null
+}): ApprovedOrderView | null {
+  const orderId = (input.orderId ?? '').trim()
+  const displayNumber = (input.displayNumber ?? '').trim()
+  if (orderId === '' || displayNumber === '') return null
+  return { orderId, displayNumber, href: orderHref(orderId) }
+}

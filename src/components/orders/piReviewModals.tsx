@@ -6,6 +6,11 @@
 //                          declared advance requirement
 //   PiNoteModal            management sends it back, ends it, or refuses a
 //                          proposed advance
+//   PiFinanceVerifyModal   a finance authority signs off the commercial figures
+//                          and the advance terms — and confirms, in as many
+//                          words, that no payment is being recorded
+//   PiApproveOrderModal    management approves the PI and the Order is created,
+//                          with an official number, finally
 //   PiDeleteConfirmModal   the owner or an administrator erases a PI that should
 //                          not exist, permanently
 //
@@ -25,7 +30,7 @@
 // re-derive the actor, the permission and the record's state in the database.
 
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Send, Trash2, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { shouldCloseFormModal, type ModalDismissReason } from '@/lib/ui/modalDismissal'
@@ -39,6 +44,19 @@ import {
   RESUBMIT_NOTE_MAX_LENGTH,
   validateResubmitReply,
 } from '@/lib/orders/submissionWorkflow'
+import {
+  APPROVE_ORDER_BUSY_LABEL,
+  APPROVE_ORDER_CONFIRM_LABEL,
+  APPROVE_ORDER_DIALOG_TITLE,
+  APPROVE_ORDER_FINAL_NOTE,
+  APPROVE_ORDER_NOT_A_PAYMENT,
+  VERIFY_FINANCE_BUSY_LABEL,
+  VERIFY_FINANCE_BUTTON_LABEL,
+  VERIFY_FINANCE_CONFIRM,
+  VERIFY_FINANCE_DIALOG_TITLE,
+  VERIFY_FINANCE_NOT_A_PAYMENT,
+} from '@/lib/orders/finalApproval'
+import type { ApprovalSummaryRow } from '@/app/orders/drafts/[submissionId]/piDetailView'
 import {
   DELETE_PI_BUSY_LABEL,
   DELETE_PI_CANCEL_LABEL,
@@ -794,6 +812,238 @@ export function PiNoteModal({
             </button>
           </Footer>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Verify finance ────────────────────────────────────────────────────────────
+
+/**
+ * The finance sign-off, and the sentence that keeps it honest.
+ *
+ * WHY THIS IS A DIALOG AND NOT A BARE BUTTON. "Verify" sitting beside a grand
+ * total is read as "the money is in" — and it is not, because no payment record
+ * exists anywhere in this phase to make it so. The dialog states what is being
+ * confirmed (the commercial figures and the advance terms) and then states, in
+ * its own emphasised line, that no receipt of payment is being recorded. One
+ * click with no confirmation would leave that distinction to be inferred.
+ *
+ * NO NOTE FIELD. Verification is a yes; there is nothing to explain, and a
+ * mandatory box on the only positive path is friction for its own sake. If
+ * something is wrong with the figures, the PI goes back through Needs Changes,
+ * which already asks for words.
+ *
+ * IT CANNOT BE SUBMITTED TWICE. `saving` disables both buttons, the × control
+ * and Escape — and verify_pi_finance_check() is idempotent regardless, so a
+ * request that escapes anyway records no second verification and no second
+ * activity entry.
+ *
+ * THE BOE FORM-MODAL DISMISSAL RULE APPLIES: a backdrop click is inert.
+ */
+export function PiFinanceVerifyModal({
+  client,
+  grandTotal,
+  advanceLabel,
+  saving,
+  failure,
+  onCancel,
+  onConfirm,
+}: {
+  client: string
+  grandTotal: string
+  /** The advance condition this PI was submitted under, already worded. */
+  advanceLabel: string
+  saving: boolean
+  failure: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  useScrollLock(true)
+
+  const dismiss = (reason: ModalDismissReason) => {
+    if (saving) return
+    if (shouldCloseFormModal(reason)) onCancel()
+  }
+  useEscapeDismiss(dismiss, !saving)
+
+  return (
+    <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={VERIFY_FINANCE_DIALOG_TITLE}>
+      <div style={PANEL}>
+        <ModalHeader
+          title={VERIFY_FINANCE_DIALOG_TITLE}
+          subtitle={client}
+          onClose={() => dismiss('close-icon')}
+          disabled={saving}
+        />
+
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* The two figures being signed off, and nothing else. The full
+              breakdown is on the page behind this dialog. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}>
+              <span style={KEY_STYLE}>Grand total</span>
+              <span style={{ color: colors.primary, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                {grandTotal}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}>
+              <span style={KEY_STYLE}>Advance</span>
+              <span style={{ color: colors.primary, fontWeight: 600, textAlign: 'right' }}>{advanceLabel}</span>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex', gap: '9px', alignItems: 'flex-start',
+            fontSize: '12px', lineHeight: 1.5, color: colors.primary,
+            background: colors.blueTint, border: '1px solid rgba(85,133,232,0.25)',
+            borderRadius: '6px', padding: '9px 12px',
+          }}>
+            <ShieldCheck size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <span>
+              {VERIFY_FINANCE_CONFIRM}
+              {' '}
+              <strong>{VERIFY_FINANCE_NOT_A_PAYMENT}</strong>
+            </span>
+          </div>
+
+          {failure && <FailureNote message={failure} />}
+
+          <Footer>
+            <button type="button" onClick={() => dismiss('cancel')} disabled={saving} style={cancelStyle(saving)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => { if (!saving) onConfirm() }}
+              disabled={saving}
+              style={{ ...confirmStyle('#2F5BB7', saving), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+            >
+              <ShieldCheck size={13} strokeWidth={2} />
+              {saving ? VERIFY_FINANCE_BUSY_LABEL : VERIFY_FINANCE_BUTTON_LABEL}
+            </button>
+          </Footer>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Approve PI & Create Order ─────────────────────────────────────────────────
+
+/**
+ * The last decision, and the only one on this screen that cannot be undone.
+ *
+ * WHAT IT SHOWS: five facts, from buildApprovalSummary — the client, the grand
+ * total, the advance condition, the finance state and the number of product
+ * lines. Between them they answer "am I approving the thing I think I am
+ * approving", which is what a confirmation dialog is for. It does NOT restate
+ * the commercial breakdown, the addresses or the products; those are on the page
+ * behind it in full, and a truncated copy here helps nobody.
+ *
+ * WHAT IT SAYS, in three plain clauses: approval is final, an official Order
+ * number will be assigned and the confirmed Order created, and NO PAYMENT IS
+ * BEING RECORDED. The last is stated for the same reason it is stated on the
+ * verification dialog — an approval beside a grand total invites the assumption.
+ *
+ * IT CANNOT BE SUBMITTED TWICE, in three independent ways: `saving` disables
+ * both buttons, the × control and Escape; the page holds a ref that refuses a
+ * second call in the same tick; and approve_order_submission() takes a row lock
+ * and returns the EXISTING Order if one is already linked, so a request that
+ * escapes both allocates no second number.
+ *
+ * THE BOE FORM-MODAL DISMISSAL RULE APPLIES: a backdrop click is inert, so a
+ * misplaced click cannot dismiss a decision somebody is in the middle of taking.
+ *
+ * NOTHING HERE DECIDES AUTHORITY. The RPC re-derives the actor, the permission,
+ * the status, the finance verification, the advance requirement, the diagnostics
+ * and the stored files, under a row lock, before it creates anything.
+ */
+export function PiApproveOrderModal({
+  client,
+  rows,
+  saving,
+  failure,
+  onCancel,
+  onConfirm,
+}: {
+  client: string
+  /** buildApprovalSummary's rows. This component chooses no wording of its own. */
+  rows: readonly ApprovalSummaryRow[]
+  saving: boolean
+  failure: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  useScrollLock(true)
+
+  const dismiss = (reason: ModalDismissReason) => {
+    if (saving) return
+    if (shouldCloseFormModal(reason)) onCancel()
+  }
+  useEscapeDismiss(dismiss, !saving)
+
+  return (
+    <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={APPROVE_ORDER_DIALOG_TITLE}>
+      <div style={PANEL}>
+        <ModalHeader
+          title={APPROVE_ORDER_DIALOG_TITLE}
+          subtitle={client}
+          onClose={() => dismiss('close-icon')}
+          disabled={saving}
+        />
+
+        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {rows.map(row => (
+              <div
+                key={row.key}
+                style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}
+              >
+                <span style={KEY_STYLE}>{row.label}</span>
+                <span style={{
+                  color: colors.primary,
+                  fontWeight: row.strong ? 700 : 600,
+                  textAlign: 'right',
+                  fontVariantNumeric: row.strong ? 'tabular-nums' : undefined,
+                }}>
+                  {row.value}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{
+            display: 'flex', gap: '9px', alignItems: 'flex-start',
+            fontSize: '12px', lineHeight: 1.5, color: colors.primary,
+            background: colors.amberTint, border: '1px solid rgba(232,160,48,0.3)',
+            borderRadius: '6px', padding: '9px 12px',
+          }}>
+            <AlertTriangle size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <span>
+              {APPROVE_ORDER_FINAL_NOTE}
+              {' '}
+              <strong>{APPROVE_ORDER_NOT_A_PAYMENT}</strong>
+            </span>
+          </div>
+
+          {failure && <FailureNote message={failure} />}
+
+          <Footer>
+            <button type="button" onClick={() => dismiss('cancel')} disabled={saving} style={cancelStyle(saving)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => { if (!saving) onConfirm() }}
+              disabled={saving}
+              style={{ ...confirmStyle('#2F7A52', saving), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+            >
+              <CheckCircle2 size={13} strokeWidth={2} />
+              {saving ? APPROVE_ORDER_BUSY_LABEL : APPROVE_ORDER_CONFIRM_LABEL}
+            </button>
+          </Footer>
+        </div>
       </div>
     </div>
   )

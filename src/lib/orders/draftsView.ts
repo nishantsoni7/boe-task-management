@@ -37,6 +37,11 @@ import type {
   PiImageRole,
 } from '@/lib/pi/types'
 import { PI_ADVANCE_COLUMNS, type PersistedAdvance } from './advanceRequirement'
+import {
+  PI_APPROVAL_COLUMNS,
+  PI_FINANCE_COLUMNS,
+  type PersistedFinanceVerification,
+} from './finalApproval'
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
@@ -157,7 +162,7 @@ const text = (value: unknown): string | null => {
 export type PersistedCostMeaning = 'numeric' | 'not_applicable' | 'included' | 'text'
 
 /** One row of public.order_submissions, as the drafts pages read it. */
-export type PersistedSubmission = PersistedAdvance & {
+export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerification & {
   id: string
   status: string
   client_name: string | null
@@ -206,10 +211,29 @@ export type PersistedSubmission = PersistedAdvance & {
   created_at: string
   updated_at: string
 
+  // ── Final approval, and the Order it produced ──
+  //
+  // approved_by and approved_at existed from 20260908000000 and were unreachable
+  // until Phase C. order_id was reserved by the same migration and is written by
+  // approve_order_submission() alone. All three are null on every record that has
+  // not been approved.
+  approved_by: string | null
+  approved_at: string | null
+  order_id: string | null
+
+  // ── The deletion reservation ──
+  //
+  // Read so the screen can refuse to offer a decision on a record that is being
+  // erased. The token itself is never rendered; only its presence is consulted.
+  deletion_claim_token: string | null
+
   // The advance requirement this PI was submitted under, and the exception
   // decision if it carries one, come from PersistedAdvance above. A COMMERCIAL
   // CONDITION, never a payment: a record submitted before 20260913000000
   // declared nothing and every one of those columns is null.
+  //
+  // The finance verification, if one is current, comes from
+  // PersistedFinanceVerification. Also never a payment — see finalApproval.ts.
 }
 
 /** One row of public.order_submission_items. */
@@ -274,6 +298,12 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   'total_before_gst', 'gst_amount', 'grand_total',
   'parse_warnings', 'parse_blocking_issues', 'review_note',
   'created_at', 'updated_at',
+  // Approval, the Order link and the deletion reservation. Named in
+  // finalApproval.ts and submissionDeletion.ts respectively, so the columns and
+  // the modules that read them cannot drift apart.
+  ...PI_APPROVAL_COLUMNS,
+  ...PI_FINANCE_COLUMNS,
+  'deletion_claim_token',
   // The advance requirement this PI was submitted under, and the exception
   // decision if it carries one. Named in advanceRequirement.ts so the columns
   // and the module that reads them cannot drift apart.

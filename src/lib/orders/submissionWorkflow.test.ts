@@ -25,7 +25,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  APPROVE_DISABLED_REASON,
+  APPROVE_BUTTON_LABEL,
   CHANGE_PI_PARAM,
   RESUBMIT_NOTE_LABEL,
   RESUBMIT_NOTE_MAX_LENGTH,
@@ -141,10 +141,37 @@ describe('what a holder of orders.approve_order may do', () => {
     assert.equal(actions.isReadOnly, false)
   })
 
-  test('nothing can be approved in this phase', () => {
+  test('a submitted record can be approved — the same authority, the same window', () => {
+    // Phase C. The control is real and it is drawn from orders.approve_order
+    // alone, exactly as Needs Changes and Reject are: they are three outcomes of
+    // one decision, and a reviewer offered two of them would reasonably conclude
+    // the third belongs to somebody else.
     const actions = reviewer({ status: 'submitted' })
-    assert.equal(actions.canApprove, false, 'there is no approval RPC to call')
-    assert.ok(APPROVE_DISABLED_REASON.length > 0, 'and the control says why it is waiting')
+    assert.equal(actions.canApprove, true)
+    assert.equal(actions.canApprove, actions.canReject,
+      'approving and rejecting are the same authority on the same record')
+    assert.equal(APPROVE_BUTTON_LABEL, 'Approve PI & Create Order',
+      'and the label names both halves of what it does')
+  })
+
+  test('whether it may be PRESSED is a separate question', () => {
+    // describeSubmissionActions answers whose decision it is. Whether the
+    // preconditions are met is describeApprovalReadiness's job, in
+    // finalApproval.ts, and this module deliberately knows nothing about
+    // finance, the advance requirement or the diagnostics.
+    const source = readFileSync('src/lib/orders/submissionWorkflow.ts', 'utf8')
+    for (const concern of ['finance_verified', 'advanceIsReady', 'blocking']) {
+      assert.ok(!source.includes(concern),
+        `${concern} is an eligibility question, not an authority question`)
+    }
+  })
+
+  test('the retired disabled-approval copy is gone, not merely unrendered', () => {
+    const source = readFileSync('src/lib/orders/submissionWorkflow.ts', 'utf8')
+    assert.ok(!/export const APPROVE_DISABLED_REASON/.test(source),
+      'a constant nothing renders is a constant somebody renders by mistake later')
+    assert.ok(!/Available in the order-approval phase/.test(source),
+      'this IS the order-approval phase')
   })
 
   test('a draft belonging to somebody else offers no review action', () => {
@@ -342,6 +369,9 @@ describe('the review queue is a section of the drafts list', () => {
     id: over.id ?? 'x', status: 'draft', client_name: 'Client',
     created_by: OWNER, submitted_by: OWNER, submitted_at: null,
     rejected_by: null, rejected_at: null,
+    approved_by: null, approved_at: null, order_id: null,
+    finance_verified_by: null, finance_verified_at: null,
+    finance_verified_submission_at: null, deletion_claim_token: null,
     creation_date: null, source_created_by: null, bill_to_name: null, ship_to_name: null,
     order_confirmation_date: null, dispatch_commitment: null, source_workbook_name: null,
     gross_product_amount: 0, discount_amount: 0, subtotal_after_discount: null,

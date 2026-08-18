@@ -419,9 +419,13 @@ describe('this is the dialog the PI detail page opens, and the RPC it sends to',
     join(process.cwd(), 'src', 'app', 'orders', 'drafts', '[submissionId]', 'page.tsx'), 'utf8')
 
   test('the page imports THIS component, and there is no second submit modal', () => {
-    assert.ok(page.includes("import { PiSubmitConfirmModal, PiNoteModal"))
-    assert.ok(page.includes("from '@/components/orders/piReviewModals'"))
+    // The import list grew when Phase C added its two dialogs, so the name is
+    // matched rather than the whole line — what matters is that this component
+    // is the one the page opens, and that it comes from the single modals file.
+    assert.ok(/import \{[\s\S]*?\bPiSubmitConfirmModal\b[\s\S]*?\} from '@\/components\/orders\/piReviewModals'/
+      .test(page))
     assert.ok(page.includes('<PiSubmitConfirmModal'))
+    assert.equal((page.match(/<PiSubmitConfirmModal/g) ?? []).length, 1)
   })
 
   test('it hands the dialog the record’s own declaration', () => {

@@ -17,20 +17,29 @@
 // These draw the answers.
 
 import {
-  AlertTriangle, Ban, CheckCircle2, FileSpreadsheet, History,
-  Info, Percent, Send, ThumbsUp, Undo2, Upload, Wallet,
+  AlertTriangle, Ban, CheckCircle2, ExternalLink, FileSpreadsheet, History,
+  Info, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload, Wallet,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
 import { draftStatusLabel, type PiDraftStatusTone } from '@/lib/orders/draftsView'
 import {
+  APPROVE_BUTTON_LABEL,
   CHANGE_PI_BUTTON_LABEL,
   REJECT_BUTTON_LABEL,
   REQUEST_CHANGES_BUTTON_LABEL,
   submitButtonLabel,
   type SubmissionActions,
 } from '@/lib/orders/submissionWorkflow'
+import {
+  APPROVED_ORDER_HEADING,
+  APPROVED_ORDER_NUMBER_LABEL,
+  FINANCE_SECTION_LABEL,
+  OPEN_ORDER_BUTTON_LABEL,
+  VERIFY_FINANCE_BUTTON_LABEL,
+  type FinanceStatusView,
+} from '@/lib/orders/finalApproval'
 import {
   APPROVE_EXCEPTION_BUTTON_LABEL,
   REJECT_EXCEPTION_BUTTON_LABEL,
@@ -43,6 +52,7 @@ import {
   BLOCKING_INSTRUCTION,
   STORED_COPY_NOTE,
   describeRequestedException,
+  type ApprovedOrderView,
   type CommercialSnapshot,
   type OverviewDate,
   type PiDetailTone,
@@ -346,10 +356,17 @@ export function PiWorkflowPanel({
   advanceRefusal,
   blockingCount,
   acting,
+  finance,
+  approvalBlocker,
+  approvalReady,
+  approvedOrder,
   onChangePi,
   onSubmit,
   onRequestChanges,
   onReject,
+  onVerifyFinance,
+  onApprove,
+  onOpenOrder,
   advanceBand,
 }: {
   panel: WorkflowPanel
@@ -367,10 +384,28 @@ export function PiWorkflowPanel({
   advanceRefusal: { reason: string | null; instruction: string } | null
   blockingCount: number
   acting: boolean
+  /**
+   * Where finance verification stands — for EVERY viewer who can read the PI,
+   * not only the person who can act on it. Null on a record where the question
+   * does not arise (a draft, a returned PI, a rejected one).
+   */
+  finance: FinanceStatusView | null
+  /**
+   * The one sentence explaining why Approve cannot be pressed yet, or null.
+   * Rendered beside the control rather than as a banner: it is a note about one
+   * button, and a strip across the panel would read as a note about the record.
+   */
+  approvalBlocker: string | null
+  approvalReady: boolean
+  /** The Order this PI became, once it exists and this viewer can see it. */
+  approvedOrder: ApprovedOrderView | null
   onChangePi: () => void
   onSubmit: () => void
   onRequestChanges: () => void
   onReject: () => void
+  onVerifyFinance: () => void
+  onApprove: () => void
+  onOpenOrder: () => void
   /** The pending advance decision, or null. */
   advanceBand: React.ReactNode
 }) {
@@ -378,7 +413,10 @@ export function PiWorkflowPanel({
   const isReviewer = actions.canRequestChanges || actions.canReject
   const ownerActions = actions.canSubmit || actions.canChangePi
   const hasActions = isReviewer || ownerActions
-  const hasBody = Boolean(panel.instruction || reviewNote || employeeReply || advanceRefusal)
+  const hasBody = Boolean(
+    panel.instruction || reviewNote || employeeReply || advanceRefusal
+    || finance || approvedOrder || (isReviewer && approvalBlocker),
+  )
 
   return (
     <PiCard style={panel.closed ? undefined : { borderColor: tone.border }}>
@@ -415,7 +453,12 @@ export function PiWorkflowPanel({
             )}
 
             {/* Drawn from the PI-review authority alone, and therefore still
-                here after an advance exception has been approved. */}
+                here after an advance exception has been approved.
+
+                NEEDS CHANGES AND REJECT KEEP THEIR PLACE AFTER FINANCE HAS
+                VERIFIED. A verified PI is not an approved one, and a reviewer
+                who can no longer send back a document finance happened to sign
+                off has lost the decision, not gained one. */}
             {isReviewer && (
               <>
                 <button className="boe-btn boe-btn-ghost" onClick={onRequestChanges} disabled={acting}>
@@ -431,6 +474,24 @@ export function PiWorkflowPanel({
                   <Ban size={13} strokeWidth={2} />
                   {REJECT_BUTTON_LABEL}
                 </button>
+                {/* THE PRIMARY ACTION, and the last one, so the destructive
+                    choices are never the ones nearest the thumb.
+
+                    SHOWN AND DISABLED rather than hidden when a precondition is
+                    unmet: every blocker is somebody's outstanding task, and a
+                    reviewer who cannot see the control cannot see what is
+                    holding it up. `title` carries the same sentence the panel
+                    prints, so a pointer user gets it too. */}
+                <button
+                  className="boe-btn boe-btn-primary"
+                  onClick={onApprove}
+                  disabled={acting || !approvalReady}
+                  title={approvalBlocker ?? undefined}
+                  style={{ background: '#2F7A52', borderColor: '#2F7A52' }}
+                >
+                  <CheckCircle2 size={13} strokeWidth={2} />
+                  {APPROVE_BUTTON_LABEL}
+                </button>
               </>
             )}
           </div>
@@ -442,6 +503,24 @@ export function PiWorkflowPanel({
           padding: '0 20px 15px',
           display: 'flex', flexDirection: 'column', gap: '9px',
         }}>
+          {/* The created Order, first, because on an approved record it is the
+              answer to the only question anybody opens the page with. */}
+          {approvedOrder && (
+            <PiApprovedOrderStrip order={approvedOrder} onOpen={onOpenOrder} acting={acting} />
+          )}
+          {/* Where finance stands: one compact line, never a card of its own.
+              A second full-size panel for a single boolean would outweigh the
+              decision it reports. */}
+          {finance && (
+            <PiFinanceLine finance={finance} acting={acting} onVerify={onVerifyFinance} />
+          )}
+          {/* Why the primary action cannot be pressed yet — for the reviewer it
+              is addressed to, and nobody else. */}
+          {isReviewer && approvalBlocker && (
+            <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+              {approvalBlocker}
+            </div>
+          )}
           {panel.instruction && (
             <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
               {panel.instruction}
@@ -483,6 +562,121 @@ export function PiWorkflowPanel({
 
       {advanceBand && <div className="pi-detail-workflow-band">{advanceBand}</div>}
     </PiCard>
+  )
+}
+
+// ── Finance verification, as one line ─────────────────────────────────────────
+
+/**
+ * Where finance stands on this PI: a state, and — for somebody who holds the
+ * authority — one restrained control.
+ *
+ * A LINE, NOT A PANEL. The whole content is a boolean and, once it is true, a
+ * name and a time. A card with a heading, a border and its own padding would
+ * give a single fact the same weight the page gives the product table, and this
+ * screen has already spent its structure on the decisions that need it.
+ *
+ * EVERYBODY WHO CAN READ THE PI SEES THE STATE. Only the button is gated, on the
+ * finance authority alone — a PI waiting on somebody else's sign-off must not
+ * look inert to the reviewer who is waiting on it.
+ *
+ * IT NEVER MENTIONS A PAYMENT, because none exists. The dialog behind the button
+ * says so explicitly; the line itself simply does not raise the subject.
+ */
+export function PiFinanceLine({ finance, acting, onVerify }: {
+  finance: FinanceStatusView
+  acting: boolean
+  onVerify: () => void
+}) {
+  const tone = finance.verified ? TONE_STYLE.green : TONE_STYLE.amber
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap',
+      padding: '8px 11px', borderRadius: '7px',
+      background: tone.bg, border: `1px solid ${tone.border}`,
+    }}>
+      <ShieldCheck size={13} strokeWidth={2} color={tone.color} />
+      <span style={{
+        fontSize: '11px', fontWeight: 700, color: colors.muted,
+        textTransform: 'uppercase', letterSpacing: '0.05em',
+      }}>
+        {FINANCE_SECTION_LABEL}
+      </span>
+      <span style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5, minWidth: 0 }}>
+        {finance.text}
+      </span>
+      {finance.canVerify && (
+        <button
+          className="boe-btn boe-btn-ghost"
+          onClick={onVerify}
+          disabled={acting}
+          style={{ marginLeft: 'auto' }}
+        >
+          <ShieldCheck size={13} strokeWidth={2} />
+          {VERIFY_FINANCE_BUTTON_LABEL}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── The Order this PI became ──────────────────────────────────────────────────
+
+/**
+ * The official number, prominently, and the way into the Order.
+ *
+ * THE NUMBER IS THE POINT. It is the thing the business now refers to this work
+ * by, it did not exist five seconds before approval, and it is rendered in the
+ * page's largest state type with tabular figures so "0413" and "0431" cannot be
+ * misread at a glance.
+ *
+ * Drawn only when the number is actually known — see describeApprovedOrder. A
+ * viewer who cannot read the Order gets no number and no link rather than a
+ * placeholder and a dead end.
+ */
+export function PiApprovedOrderStrip({ order, onOpen, acting }: {
+  order: ApprovedOrderView
+  onOpen: () => void
+  acting: boolean
+}) {
+  const tone = TONE_STYLE.green
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+      padding: '11px 14px', borderRadius: '8px',
+      background: tone.bg, border: `1px solid ${tone.border}`,
+    }}>
+      <CheckCircle2 size={16} strokeWidth={2} color={tone.color} />
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1px' }}>
+        <span style={{
+          fontSize: '11px', fontWeight: 700, color: colors.muted,
+          textTransform: 'uppercase', letterSpacing: '0.05em',
+        }}>
+          {APPROVED_ORDER_HEADING}
+        </span>
+        <span style={{ fontSize: '12px', color: colors.secondary }}>
+          {APPROVED_ORDER_NUMBER_LABEL}
+          {' '}
+          <span style={{
+            fontSize: '17px', fontWeight: 700, color: colors.primary,
+            fontVariantNumeric: 'tabular-nums', letterSpacing: '0.02em',
+          }}>
+            {order.displayNumber}
+          </span>
+        </span>
+      </div>
+      <button
+        className="boe-btn boe-btn-ghost"
+        onClick={onOpen}
+        disabled={acting}
+        style={{ marginLeft: 'auto' }}
+      >
+        <ExternalLink size={13} strokeWidth={2} />
+        {OPEN_ORDER_BUTTON_LABEL}
+      </button>
+    </div>
   )
 }
 

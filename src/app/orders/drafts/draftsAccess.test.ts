@@ -111,6 +111,15 @@ const submission = (over: Partial<PersistedSubmission> = {}): PersistedSubmissio
   submitted_at: null,
   rejected_by: null,
   rejected_at: null,
+  // Phase C: unapproved, unverified, unreserved — the state every record is in
+  // until somebody with the right authority changes it.
+  approved_by: null,
+  approved_at: null,
+  order_id: null,
+  finance_verified_by: null,
+  finance_verified_at: null,
+  finance_verified_submission_at: null,
+  deletion_claim_token: null,
   creation_date: '2026-08-10',
   source_created_by: 'Ravi',
   bill_to_name: 'Meridian Hotels',
@@ -296,11 +305,19 @@ describe('the detail page renders only what it fetched', () => {
       for (const m of read(page).matchAll(/\.from\('([^']+)'\)/g)) targets.add(m[1])
     }
     // order_submission_activity joined the list when the history section did,
-    // and `users` is read to turn actor ids into names. Nothing else.
+    // and `users` is read to turn actor ids into names. `orders` joined it in
+    // Phase C, read ONCE and only when the record actually names an Order, so
+    // the approved PI can show the official number and link to it — under the
+    // caller's own RLS, so a viewer who may not see the Order gets no row rather
+    // than a number they were not entitled to. Nothing else.
     assert.deepEqual([...targets].sort(), [
       'order_submission_activity',
-      'order_submission_item_images', 'order_submission_items', 'order_submissions', 'users',
+      'order_submission_item_images', 'order_submission_items', 'order_submissions',
+      'orders', 'users',
     ])
+    // And it is a read of ONE named column, never a select('*') or a write.
+    assert.ok(read(DETAIL_PAGE).includes(".from('orders')\n        .select('display_number')"),
+      'the Order read takes the number and nothing else')
     // The one storage bucket, named through the shared constant so a second
     // bucket cannot be reached by a typo.
     assert.ok(source.includes('.from(ORDER_FILES_BUCKET)'))
@@ -335,25 +352,42 @@ describe('the detail page renders only what it fetched', () => {
     // over the same internal function the Phase A doors call, so none of them
     // can diverge in what they check.
     //
-    // The two advance decisions are on this list and the PI's own approval is
-    // NOT: settling one commercial term is a real RPC, and approving the PI is
-    // a step that does not exist in this phase.
+    // Phase C adds the last two: verify_pi_finance_check records the finance
+    // sign-off and nothing else, and approve_order_submission is the ONE
+    // authoritative approval door — it is the only thing on this screen that
+    // creates an Order, and the browser reaches it by id alone.
     const rpcs = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
     assert.deepEqual(rpcs, [
+      'approve_order_submission',
       'approve_pi_advance_exception',
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
       'submit_order_submission_with_advance',
+      'verify_pi_finance_check',
     ])
-    for (const forbidden of ['approve_order_submission', 'allocate', 'payment', 'finance']) {
+    // Still unreachable from a browser, in any phase: the number allocator, and
+    // anything that would move money. Finance VERIFICATION is on the list above
+    // and is deliberately not caught here — it records a sign-off, not a payment
+    // — so the payment vocabulary is named precisely rather than by the word
+    // "finance", which the verification door legitimately carries.
+    for (const forbidden of [
+      'allocate', 'payment', 'set_next_confirmed_order_number', 'convert_order_request',
+    ]) {
       assert.ok(!rpcs.some(name => name.includes(forbidden)),
         `${forbidden} belongs to no phase this page can reach`)
     }
     assert.ok(!source.includes('replace_order_submission_parse'),
       'the parsed-data writer is service-role only and unreachable from here')
-    assert.ok(!/approve_order_submission/.test(source),
-      'there is no approval RPC in this phase, so nothing may call one')
+    // The approval door takes an ID AND NOTHING ELSE. Every value it decides on
+    // is re-derived from the locked row, so there is no payload for a browser to
+    // shape — no total, no client name, no status, and above all no number.
+    const approvalCall = source.slice(
+      source.indexOf("supabase.rpc('approve_order_submission'"),
+      source.indexOf("supabase.rpc('approve_order_submission'") + 220,
+    )
+    assert.ok(/p_submission_id: submissionId,\s*\}\)/.test(approvalCall),
+      'approve_order_submission is called with the submission id alone')
   })
 
   test('the PI itself is still never edited on this screen', () => {
@@ -470,10 +504,23 @@ describe('the drafts list', () => {
     for (const page of [LIST_PAGE, DETAIL_PAGE]) {
       const s = read(page)
       assert.ok(!s.includes('source_order_number'), `${page} must not render the workbook’s own number`)
-      assert.ok(!/display_number/.test(s), `${page} must not show an Order’s number either`)
     }
-    // The only mention of an order number on these screens is the standing
-    // statement that this record does not have one.
+    // THE LIST NEVER SHOWS AN ORDER NUMBER, in any phase. Every row on it is a
+    // PI, and a number beside one would be read as that PI's own.
+    assert.ok(!/display_number/.test(read(LIST_PAGE)),
+      'the drafts list must not show an Order’s number')
+    // THE DETAIL PAGE SHOWS ONE ONLY AFTER APPROVAL, and only by READING it back
+    // from the Order that was created — never by composing, padding or
+    // incrementing anything. The one occurrence is that read.
+    const detail = read(DETAIL_PAGE)
+    assert.equal((detail.match(/\.select\('display_number'\)/g) ?? []).length, 1,
+      'exactly one place reads the number, and it is a read')
+    // Every other mention is that same statement naming the field it read.
+    assert.equal((detail.match(/display_number/g) ?? []).length, 3)
+    for (const forbidden of ['max(display_number', 'display_number +', 'padStart', 'lpad']) {
+      assert.ok(!detail.includes(forbidden), `${forbidden} would be the browser inventing a number`)
+    }
+    // The standing statement stays: until approval, this record has no number.
     assert.ok(/numbering begins after management approval/.test(read(DETAIL_VIEW)),
       'the draft states plainly that numbering happens only after approval')
   })
@@ -1140,21 +1187,35 @@ describe('the record page draws controls from one rule, and from nothing else', 
       'a failed permission read must deny rather than admit')
   })
 
-  test('final PI approval is ABSENT, not disabled', () => {
+  test('final PI approval is a REAL control, reached through the one RPC', () => {
+    // It used to be a <span> with a lock and an explanation, then nothing at
+    // all. Phase C makes it real: a live control, drawn from orders.approve_order
+    // in the panel, and behind it exactly one call — the SECURITY DEFINER RPC
+    // that allocates the number and creates the Order in one transaction.
     const source = detailScreen()
-    // It used to be a <span> with a lock and an explanation. Manual review found
-    // people reading it as the current approval action rather than as a promise
-    // about a later phase, which is the one thing a disabled control must not
-    // do. There is no approval RPC to reach in this phase, so the honest answer
-    // is nothing at all; Phase C introduces a real, unambiguous control.
-    assert.ok(!source.includes('APPROVE_BUTTON_LABEL'))
-    assert.ok(!source.includes('APPROVE_DISABLED_REASON'))
-    assert.ok(!/onClick=\{[^}]*approveSubmission/i.test(source),
-      'and there is still no approval RPC behind anything')
+    assert.ok(source.includes("supabase.rpc('approve_order_submission'"),
+      'one RPC, and it is the authoritative one')
+    assert.ok(source.includes('const approveSubmission'))
     assert.ok(source.includes('APPROVE_EXCEPTION_BUTTON_LABEL'),
-      'while the advance exception, which IS decidable, keeps its distinct label')
-    // The constant itself stays accurate for whoever renders it next.
-    assert.ok(read('src/lib/orders/submissionWorkflow.ts').includes('APPROVE_DISABLED_REASON'))
+      'while the advance exception, which is a different decision, keeps its distinct label')
+    // The page never reaches for a number, a cycle or an allocator of its own.
+    for (const forbidden of [
+      'allocate_confirmed_order_number', 'order_number_cycle', 'display_number:',
+      'next_order_display_number', 'max(display_number',
+    ]) {
+      assert.ok(!source.includes(forbidden), `${forbidden} must never appear in a browser`)
+    }
+  })
+
+  test('finance verification is a second, separate authority on this screen', () => {
+    const source = detailScreen()
+    assert.ok(source.includes("supabase.rpc('verify_pi_finance_check'"))
+    // Resolved from the FINANCE module, never from the Orders capability the
+    // review controls come from.
+    assert.ok(source.includes('deriveFinanceCapabilities'))
+    assert.ok(source.includes('setCanVerifyFinance(financeCaps.canApprovePayment)'))
+    assert.ok(!/setCanVerifyFinance\(caps\./.test(source),
+      'orders.approve_order must never resolve the finance authority')
   })
 
   test('a second click cannot start a second write', () => {
@@ -1511,13 +1572,15 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     }
   })
 
-  test('the disabled PI approval explains itself accurately', () => {
-    const workflow = read('src/lib/orders/submissionWorkflow.ts')
-    assert.ok(workflow.includes('APPROVE_DISABLED_REASON'))
-    assert.ok(/order-approval phase/.test(workflow),
-      'it says which phase brings approval, now that advance review exists')
-    assert.ok(!/after advance review is added/.test(workflow),
-      'the old wording stopped being true the moment advance review was added')
+  test('a blocked approval explains itself with something actionable', () => {
+    const approval = read('src/lib/orders/finalApproval.ts')
+    // Every blocker names an outstanding task belonging to somebody, and not a
+    // phase of the roadmap. That is the difference between a disabled control
+    // worth showing and the inert one this screen used to carry.
+    assert.ok(/Finance must verify this PI/.test(approval))
+    assert.ok(/waiting for a decision/.test(approval))
+    assert.ok(!/order-approval phase|later phase|Available in/.test(approval),
+      'this IS the phase; a blocker must never point at the roadmap')
   })
 })
 
