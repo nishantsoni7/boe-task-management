@@ -468,21 +468,209 @@ describe('the route reserves the record before it removes a single file', () => 
   })
 })
 
+describe('the route survives a slow or failed sweep without losing the record', () => {
+  const route = read('src/app/api/orders/submissions/delete/route.ts')
+
+  test('THERE IS NO TIMEOUT, because a promise race is not cancellation', () => {
+    // The removed version raced a 20s timer and released the reservation on
+    // losing — while `.remove()` calls were still in flight against a record
+    // about to be unfrozen. storage-js's public remove() accepts no
+    // AbortSignal, so those requests could not have been stopped.
+    const code = route.split('\n')
+      .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//'))
+      .join('\n')
+    assert.ok(!code.includes('withTimeout'))
+    assert.ok(!code.includes('Promise.race'))
+    assert.ok(!code.includes('setTimeout'))
+    assert.ok(!code.includes('STORAGE_CLEANUP_TIMEOUT_MS'))
+  })
+
+  test('the reservation is released only from a SETTLED outcome', () => {
+    const code = route.split('\n')
+      .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//'))
+      .join('\n')
+    const sweep = code.indexOf('await removeAllObjectsForSubmission(')
+    assert.ok(sweep > 0)
+    for (const match of [...code.matchAll(/await release\(\)/g)]) {
+      assert.ok((match.index ?? -1) > sweep,
+        'no release may run before the sweep has finished settling')
+    }
+    assert.ok(!code.includes('finally'),
+      'a finally-block release would fire on paths where storage never settled')
+  })
+
+  test('a settled sweep failure still releases, which is safe', () => {
+    const branch = route.slice(
+      route.indexOf('} catch {', route.indexOf('await removeAllObjectsForSubmission(')),
+      route.indexOf('timing.sweep = Date.now() - sweepStarted\n  stats'))
+    assert.ok(branch.includes('await release()'))
+    assert.ok(branch.includes("code: 'STORAGE_CLEANUP_FAILED'"))
+  })
+
+  test('an abandoned request leaves the claim frozen for the stale takeover', () => {
+    // Nothing releases without first awaiting the sweep, so a killed process
+    // never releases at all — which is the safe outcome, not a leak.
+    const helper = read('src/lib/orders/submissionFilesServer.ts')
+    assert.ok(/stale-claim takeover|stale claim/i.test(helper),
+      'and the recovery route is written down beside the decision')
+  })
+
+  test('FINALIZATION IS NEVER REACHED after a list or remove failure', () => {
+    const finalize = route.indexOf("'finalize_order_submission_deletion'")
+    // Every failure path between the claim and finalize returns before it.
+    for (const marker of ["code: 'STORAGE_CLEANUP_FAILED', status: 500",
+                          "code: 'STORAGE_CLEANUP_FAILED',\n      status: 502"]) {
+      const at = route.indexOf(marker)
+      assert.ok(at > 0 && at < finalize, `${marker} must return before finalization`)
+    }
+    assert.ok(route.includes('if (removal.failed.length > 0)'))
+  })
+
+  test('a surviving object is never finalized over', () => {
+    const guard = route.indexOf('if (removal.failed.length > 0)')
+    const finalize = route.indexOf("'finalize_order_submission_deletion'")
+    assert.ok(guard > 0 && guard < finalize)
+    const branch = route.slice(guard, finalize)
+    assert.ok(branch.includes('await release()'))
+  })
+
+  test('a successful cleanup finalizes exactly once', () => {
+    assert.equal((route.match(/'finalize_order_submission_deletion'/g) ?? []).length, 1,
+      'one call site, so there is no path that runs it twice')
+  })
+
+  test('release is available on every failure after the claim', () => {
+    const claim = route.indexOf('const release = async ()')
+    const finalizeFail = route.lastIndexOf('await release()')
+    assert.ok(claim > 0 && finalizeFail > claim)
+    assert.ok((route.match(/await release\(\)/g) ?? []).length >= 3,
+      'timeout, surviving objects, and a refused finalization')
+  })
+
+  test('double-click protection is unchanged: the claim is what serializes it', () => {
+    // The second request is refused by begin_order_submission_deletion with
+    // ORDER_SUBMISSION_DELETION_IN_PROGRESS; the page also guards with a ref.
+    assert.ok(route.includes("'begin_order_submission_deletion'"))
+    const page = read('src/app/orders/drafts/page.tsx')
+    assert.ok(page.includes('if (!entry || deletingRef.current) return'))
+    assert.ok(page.includes('deletingRef.current = true'))
+  })
+})
+
+describe('the deletion reports its timing without reporting anything sensitive', () => {
+  const route = read('src/app/api/orders/submissions/delete/route.ts')
+
+  test('every step is measured', () => {
+    for (const step of ['timing.claim', 'timing.sweep', 'timing.finalize']) {
+      assert.ok(route.includes(step), `${step} must be measured`)
+    }
+    assert.ok(route.includes('stats.listMs'))
+    assert.ok(route.includes('stats.removeMs'))
+    assert.ok(route.includes('stats.directories'))
+    assert.ok(route.includes('stats.batches'))
+    assert.ok(route.includes('objects'))
+  })
+
+  test('it goes out as a Server-Timing header', () => {
+    assert.ok(route.includes("'Server-Timing': serverTiming()"))
+  })
+
+  test('and as ONE structured line, not several noisy ones', () => {
+    const logs = route.match(/console\.(log|info|warn|error)\(/g) ?? []
+    assert.equal(logs.length, 1, 'one call site, guarded by the report() helper')
+    assert.ok(route.includes("console.info('[orders:submission-delete]'"),
+      'the repo’s [module:action] convention')
+  })
+
+  test('a quiet, ordinary deletion logs nothing at all', () => {
+    assert.ok(route.includes("if (note === '' && total < SLOW_DELETION_MS) return"))
+  })
+
+  test('NO SECRET, TOKEN OR KEY IS EVER LOGGED', () => {
+    const report = route.slice(route.indexOf('const report ='), route.indexOf('const serverTiming ='))
+    for (const forbidden of ['claimToken', 'claim_token', 'serviceKey', 'SERVICE_ROLE',
+                             'storage_paths', 'removal.found', 'reservation']) {
+      assert.ok(!report.includes(forbidden), `${forbidden} must never be logged`)
+    }
+    const timing = route.slice(route.indexOf('const serverTiming ='), route.indexOf('// Step 4'))
+    for (const forbidden of ['claimToken', 'submissionId', 'client_name']) {
+      assert.ok(!timing.includes(forbidden), `${forbidden} must not be in the header`)
+    }
+  })
+
+  test('the header carries counts and durations only', () => {
+    const timing = route.slice(route.indexOf('const serverTiming ='), route.indexOf('// Step 4'))
+    assert.ok(timing.includes('dirs;desc="directories listed"'))
+    assert.ok(timing.includes('objects;desc="objects found"'))
+    assert.ok(timing.includes('batches;desc="remove batches"'))
+    assert.ok(!/name|path|key/i.test(timing.replace(/desc="[^"]*"/g, '')))
+  })
+})
+
 describe('the storage sweep takes this submission’s files and nothing else', () => {
   const helper = read('src/lib/orders/submissionFilesServer.ts')
 
   test('it sweeps the submission’s own prefix, recursively', () => {
     assert.ok(helper.includes('const prefix = `submissions/${submissionId}`'))
-    assert.ok(helper.includes('walk(service, prefix, 0)'))
+    assert.ok(helper.includes('sweepPrefix(service, prefix, LIST_CONCURRENCY)'))
   })
 
   test('it also takes the paths the record names, so nothing recorded is missed', () => {
-    assert.ok(helper.includes('[...new Set([...recordedPaths, ...swept])]'))
+    assert.ok(helper.includes('[...new Set([...recorded, ...present])]'))
+  })
+
+  test('THE SWEEP IS NO LONGER SERIAL — that was the whole defect', () => {
+    // Comments are stripped: the file deliberately QUOTES the old serial line in
+    // its own history note, and that quotation is documentation, not code.
+    const code = helper.split('\n')
+      .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//'))
+      .join('\n')
+
+    assert.ok(!code.includes('await walk('),
+      'the depth-first inline await turned a shallow tree into a long chain')
+    assert.ok(code.includes('mapWithLimit('), 'siblings are listed together')
+    assert.ok(code.includes('LIST_CONCURRENCY'))
+    // The one Promise.all is over a FIXED-LENGTH worker array, never over the
+    // discovered items — which is exactly how an unbounded fan-out gets written.
+    assert.equal((code.match(/Promise\.all\(/g) ?? []).length, 1)
+    assert.ok(code.includes('await Promise.all(\n    Array.from({ length:'))
+  })
+
+  test('but the sweep itself is KEPT — it is what finds abandoned objects', () => {
+    assert.ok(helper.includes('sweepPrefix'))
+    assert.ok(/Change PI/.test(helper),
+      'the reason it exists is written down beside it')
+  })
+
+  test('it is breadth-first, so no worker can exit while folders remain', () => {
+    assert.ok(helper.includes('let level: string[] = [prefix]'))
+    assert.ok(helper.includes('const nextLevel: string[] = []'))
   })
 
   test('every key it removes is confined to that prefix', () => {
     assert.ok(helper.includes('path.startsWith(`${prefix}/`)'),
       'a key outside this submission is left alone even if the record named it')
+  })
+
+  test('NOTHING IT STARTED IS RUNNING WHEN IT RETURNS OR THROWS', () => {
+    // The guarantee the reservation depends on: the caller releases the freeze
+    // on failure, and a `.remove()` landing after that release would delete the
+    // files of a PI that is live again.
+    assert.ok(helper.includes('if (failed) return'),
+      'a failure stops new work being started')
+    assert.ok(helper.includes('await Promise.all('),
+      'but every worker is still awaited')
+    assert.ok(helper.includes('if (failed) throw firstError'),
+      'and the error is rethrown only once they have all stopped')
+    assert.ok(!/Promise\.all\(\s*items\.map/.test(helper),
+      'never a fail-fast map that abandons its siblings')
+  })
+
+  test('a remove batch never rejects, so the map cannot short-circuit it', () => {
+    assert.ok(helper.includes('return { removed: [] as string[], errored: batch }'))
+    const batch = helper.slice(helper.indexOf('mapWithLimit(batches'))
+    assert.ok(batch.includes('try {') && batch.includes('} catch {'),
+      'a thrown network error becomes a reported failure, not an abandoned request')
   })
 
   test('a listing it cannot read is a total failure, not a short list', () => {
@@ -492,7 +680,22 @@ describe('the storage sweep takes this submission’s files and nothing else', (
   })
 
   test('a partial removal is reported as a failure, not as success', () => {
-    assert.ok(helper.includes('failed: found.filter(path => !removedNames.has(path))'))
+    assert.ok(helper.includes('const failed = found.filter(path =>'))
+    assert.ok(helper.includes('!removed.has(path) && (errored.has(path) || present.has(path))'))
+  })
+
+  test('but a key that was ALREADY gone is not a failure, so a retry converges', () => {
+    // The record always names its workbook, so that key is always submitted. On
+    // a second attempt it is already deleted and the API does not report it —
+    // counting that as a failure made the retry impossible.
+    assert.ok(helper.includes('present.has(path)'),
+      'a failure means the sweep just saw it in the bucket')
+  })
+
+  test('removal is batched, and the batches are bounded too', () => {
+    assert.ok(helper.includes('REMOVE_BATCH'))
+    assert.ok(helper.includes('mapWithLimit(batches, REMOVE_CONCURRENCY'))
+    assert.ok(helper.includes('found.slice(i, i + REMOVE_BATCH)'))
   })
 
   test('it is paged, so a large PI is not silently truncated', () => {
