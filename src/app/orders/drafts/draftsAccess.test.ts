@@ -891,10 +891,23 @@ describe('the order overview is three sections, not a grid of unrelated facts', 
     assert.ok(page.includes("headerRows.find(row => row.key === key)?.value ?? '—'"))
   })
 
-  test('a missing value says so instead of showing a bare dash', () => {
+  test('a value the PI never gave costs no space at all', () => {
+    // It used to render a muted italic "Not provided" under its label, which was
+    // right while the labels were fixed — and wrong once three of them were
+    // optional and usually absent together. The em dash the shared builder
+    // returns still becomes an honest null; the null is now simply not drawn.
     assert.ok(view.includes("trimmed === '—'"))
-    assert.ok(view.includes("NOT_PROVIDED = 'Not provided'"))
-    assert.ok(sections.includes("fontStyle: 'italic'"), 'in subtle muted text')
+    assert.ok(!view.includes('Not provided'))
+    assert.ok(!sections.includes('Not provided'))
+    assert.ok(sections.includes('{hasDates && ('), 'an empty section is not rendered')
+    assert.ok(sections.includes('{billTo !== null &&'))
+    assert.ok(sections.includes('{shipTo !== null &&'))
+  })
+
+  test('and the card re-columns around what is left', () => {
+    assert.ok(sections.includes('const groups = 1 + (hasDelivery ? 1 : 0) + (hasDates ? 1 : 0)'))
+    assert.ok(sections.includes('`pi-detail-overview pi-detail-overview-${groups}`'),
+      'so a wide monitor never reserves a column-shaped hole')
   })
 
   test('the last-saved time is stated once, on the strip and not again', () => {
@@ -1127,19 +1140,21 @@ describe('the record page draws controls from one rule, and from nothing else', 
       'a failed permission read must deny rather than admit')
   })
 
-  test('approval is present, inert, and explains itself', () => {
+  test('final PI approval is ABSENT, not disabled', () => {
     const source = detailScreen()
-    assert.ok(source.includes('{APPROVE_DISABLED_REASON}'))
-    // The PI's own Approve is a <span>, not a button, and carries no handler.
-    // "Approve Exception" is a different control on a different fact and DOES
-    // have one — so the check is anchored to APPROVE_BUTTON_LABEL rather than to
-    // the word "approve", which now legitimately appears twice on this page.
-    assert.ok(!/APPROVE_BUTTON_LABEL[\s\S]{0,200}onClick/.test(source),
-      'the PI approve control has no handler at all')
+    // It used to be a <span> with a lock and an explanation. Manual review found
+    // people reading it as the current approval action rather than as a promise
+    // about a later phase, which is the one thing a disabled control must not
+    // do. There is no approval RPC to reach in this phase, so the honest answer
+    // is nothing at all; Phase C introduces a real, unambiguous control.
+    assert.ok(!source.includes('APPROVE_BUTTON_LABEL'))
+    assert.ok(!source.includes('APPROVE_DISABLED_REASON'))
     assert.ok(!/onClick=\{[^}]*approveSubmission/i.test(source),
-      'and there is no approval RPC behind it')
+      'and there is still no approval RPC behind anything')
     assert.ok(source.includes('APPROVE_EXCEPTION_BUTTON_LABEL'),
-      'while the advance exception, which IS decidable, has its own distinct label')
+      'while the advance exception, which IS decidable, keeps its distinct label')
+    // The constant itself stays accurate for whoever renders it next.
+    assert.ok(read('src/lib/orders/submissionWorkflow.ts').includes('APPROVE_DISABLED_REASON'))
   })
 
   test('a second click cannot start a second write', () => {
@@ -1193,15 +1208,17 @@ describe('the submitter and the submission time are shown', () => {
       'named safe columns: select(*) on public.users is a permission error')
   })
 
-  test('a sentence states where the record stands, and who it waits on', () => {
-    assert.ok(source.includes('const banner = describeSubmissionBanner({'))
-    // It used to be a card of its own above an overview that repeated it. It is
-    // now the workflow panel's standing line — same helper, same words, drawn
-    // once. A draft still gets none, because describeSubmissionBanner returns
-    // null for one and describeWorkflowPanel supplies the owner's question.
-    assert.ok(source.includes('banner,'))
-    assert.ok(read(DETAIL_VIEW).includes('banner?.body ?? ') )
-    assert.ok(read(DETAIL_SECTIONS).includes('{panel.standing}'))
+  test('who moved the record last is metadata, not a paragraph', () => {
+    // The banner card went in the redesign and its SENTENCE went in the
+    // refinement: "Waiting for your decision", "Nothing on this PI can be
+    // changed while it is under review" and the rest were generic prose beside
+    // controls that already said it. What is left is one quiet line.
+    assert.ok(!source.includes('describeSubmissionBanner'))
+    assert.ok(read(DETAIL_VIEW).includes("function actorLine("))
+    assert.ok(read(DETAIL_SECTIONS).includes('{panel.meta}'))
+    for (const id of ['submitterName: draft.submitterName', 'rejectedByName: draft.rejectedByName']) {
+      assert.ok(source.includes(id), `${id} still reaches the panel`)
+    }
   })
 
   test('the management note keeps its own place, rendered verbatim', () => {
@@ -1445,26 +1462,46 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     assert.ok(!/canDecide=\{[^}]*canApproveOrderSubmission/.test(source))
   })
 
-  test('a draft shows no section, and everything past it does', () => {
-    assert.ok(source.includes("const showAdvance = !advance.undeclared || submission.status !== 'draft'"))
+  test('a draft shows no advance block, and everything past it does', () => {
+    assert.ok(read(DETAIL_VIEW).includes("const show = !advance.undeclared || input.status !== 'draft'"))
+  })
+
+  test('the current advance state is stated exactly once on the page', () => {
+    // Manual review found it in four places at once: the snapshot, the workflow
+    // band, the commercial breakdown's required-advance row, and Activity. The
+    // snapshot is now the single current-state source; the band appears only
+    // while a decision is outstanding; the breakdown's row is dropped; Activity
+    // keeps history, which is a different question.
+    assert.ok(source.includes('const advanceBand = advanceActions.isPending ? ('),
+      'the band is gated on a pending decision and nothing else')
+    assert.ok(source.includes('commercialBreakdownRows(buildCommercialRows('),
+      'and the required-advance row is filtered out of the breakdown')
   })
 
   test('the rejected-exception instruction appears only while the PI is back', () => {
     assert.ok(source.includes("advance.status === 'rejected' && submission.status === 'needs_changes'"))
-    assert.ok(source.includes('advanceRejectedNow ? ADVANCE_REJECTED_INSTRUCTION : null'))
-    assert.ok(read(DETAIL_SECTIONS).includes('{rejectedInstruction}'))
+    assert.ok(source.includes('instruction: ADVANCE_REJECTED_INSTRUCTION'))
+    assert.ok(read(DETAIL_SECTIONS).includes('{advanceRefusal.instruction}'))
+    assert.ok(source.includes('advanceRefusal = advanceRejectedNow'),
+      'and it reaches nobody else: everyone else reads the outcome in the snapshot')
   })
 
-  test('the payment boundary is restated where the figures are', () => {
+  test('the page claims no payment, and no longer says so at length', () => {
     const screen = detailScreen()
-    assert.ok(screen.includes('{ADVANCE_NOT_A_PAYMENT}'))
     for (const claim of ['Add Payment', 'payment received', 'Record Payment', 'finance_payment']) {
       assert.ok(!screen.includes(claim), `the screen must not say "${claim}"`)
     }
-    // The new top-of-page snapshot prints the same figures a second time, so
-    // the same boundary has to hold there.
-    assert.ok(!/received|collected/i.test(read(DETAIL_VIEW)),
+    assert.ok(!/received|collected|\bpaid\b/i.test(read(DETAIL_VIEW)),
       'the snapshot states a requirement, never a receipt')
+    // The disclaimer itself is gone from the record page: it appeared under
+    // every advance figure on a screen that never claimed one. It still stands
+    // in the submit dialog, which is where the declaration is actually made,
+    // and on the import preview's own commercial summary.
+    assert.ok(!screen.includes('ADVANCE_NOT_A_PAYMENT'))
+    assert.ok(read(REVIEW_MODALS).includes('{ADVANCE_NOT_A_PAYMENT}'),
+      'the boundary is stated at the point of declaration')
+    assert.ok(read('src/lib/pi/previewView.ts').includes('note: ADVANCE_NOT_A_PAYMENT_NOTE'),
+      'and on the preview, whose summary is the only advance it states')
   })
 
   test('no Finance or payment table is read by this page', () => {

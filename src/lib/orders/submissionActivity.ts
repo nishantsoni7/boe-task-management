@@ -79,18 +79,26 @@ export const PI_ACTIVITY_LABEL: Record<string, string> = {
 }
 
 /**
- * The fixed sentence under an advance event, explaining what it MEANT.
+ * The three events that carry advance figures.
  *
- * The rejection's is the one that earns its place: refusing a proposed advance
- * also returns the PI, and one event says both — so the sentence states the
- * outcome rather than leaving a reader to wonder why the record moved. It is why
- * no second 'changes_requested' entry is written beside it.
+ * A NAMED SET, because two named metadata keys are read for these actions and
+ * for nothing else. It used to be inferred from the presence of an explanatory
+ * sentence, which coupled "does this event have figures" to a piece of display
+ * copy — and the copy has since been removed.
+ *
+ * WHY THE COPY WENT. Each advance event used to render a fixed sentence beneath
+ * it: "Sent to management with the PI. No payment was recorded or requested.",
+ * "The PI stays under review. Approving the advance condition does not approve
+ * the PI." They were true, and on an audit trail they were noise — the same
+ * paragraph under every occurrence of the same event, crowding out the actor,
+ * the time and the words a person actually typed. The trail states facts; the
+ * screen's labels and controls carry the meaning.
  */
-export const PI_ACTIVITY_DETAIL: Record<string, string> = {
-  advance_exception_requested: 'Sent to management with the PI. No payment was recorded or requested.',
-  advance_exception_approved: 'The PI stays under review. Approving the advance condition does not approve the PI.',
-  advance_exception_rejected: 'The PI was returned to the employee for correction.',
-}
+export const PI_ADVANCE_ACTIONS: ReadonlySet<string> = new Set([
+  'advance_exception_requested',
+  'advance_exception_approved',
+  'advance_exception_rejected',
+])
 
 /**
  * The restrained colour each event is marked with in the audit trail.
@@ -132,8 +140,6 @@ export type ActivityEntry = {
    * named metadata keys and never from the object at large.
    */
   figures: string | null
-  /** The fixed explanatory sentence, or null. See PI_ACTIVITY_DETAIL. */
-  detail: string | null
   /** The marker colour for this event in the trail. See PI_ACTIVITY_TONE. */
   tone: PiActivityTone
 }
@@ -147,7 +153,7 @@ export type ActivityEntry = {
  * as a plain event rather than as a broken one.
  */
 function advanceFigures(row: PersistedActivity): string | null {
-  if (PI_ACTIVITY_DETAIL[row.action] === undefined) return null
+  if (!PI_ADVANCE_ACTIONS.has(row.action)) return null
   const metadata = row.metadata
   if (!metadata || typeof metadata !== 'object') return null
 
@@ -207,7 +213,6 @@ export function describeActivityEntries(
         at: formatWhen(row.created_at),
         note,
         figures: advanceFigures(row),
-        detail: PI_ACTIVITY_DETAIL[row.action] ?? null,
         // The RAW ACTION STILL NEVER LEAVES THIS MODULE. What the trail is
         // handed is a colour name, so no build of the screen can print an enum.
         tone: PI_ACTIVITY_TONE[row.action] ?? 'neutral',

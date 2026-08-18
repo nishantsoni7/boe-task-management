@@ -701,26 +701,35 @@ export const PI_COMMERCIAL_MAX_WIDTH_PX = 780
  * component and both must show the same numbers as the document the client was
  * sent.
  */
-export function PiCommercialSummary({ rows, title = 'Commercial summary', fill = false }: {
+/**
+ * Which screen is rendering this summary.
+ *
+ * ONE COMPONENT, TWO PRESENTATIONS, AND 'preview' IS THE ORIGINAL ONE — down to
+ * the last declaration. /orders/import shows a workbook the moment it is parsed;
+ * its summary sits directly under a full-width product table, is the ONLY place
+ * that screen states the advance requirement, and was signed off as it stands.
+ * Nothing the saved-PI screen wants may reach it, so every difference below is
+ * behind this flag rather than applied to both and hoped over.
+ *
+ * 'detail' is the saved-PI page: the summary lives in a column of a two-column
+ * grid that is already narrower than the cap, so capping and right-aligning
+ * again would leave a ragged gutter inside its own column; and it sits under a
+ * page that states the advance condition at the top, so the figures below are a
+ * calculation to be read down rather than a poster.
+ *
+ * WHAT NEVER VARIES is the content: both render exactly the rows they are
+ * handed, and neither computes, rounds or reconciles a figure.
+ */
+export type PiCommercialVariant = 'preview' | 'detail'
+
+export function PiCommercialSummary({ rows, title = 'Commercial summary', variant = 'preview' }: {
   rows: readonly PiAmountRow[]
   title?: string
-  /**
-   * Fill the space it is given instead of capping and right-aligning itself.
-   *
-   * THE CAP IS STILL THE DEFAULT, and the import preview still takes it: there
-   * the summary sits directly under a full-width product table, where a row
-   * spread across a 1920px monitor costs an eye movement per line, so it is
-   * capped and pushed right under the money column.
-   *
-   * The saved-PI screen puts it in a column of a two-column grid that is already
-   * narrower than the cap. There, capping again and pushing right would leave a
-   * ragged gutter inside its own column. One prop, so there is still ONE
-   * component and the figures cannot differ between the two screens.
-   */
-  fill?: boolean
+  variant?: PiCommercialVariant
 }) {
+  const detail = variant === 'detail'
   return (
-    <div style={fill ? { width: '100%' } : {
+    <div style={detail ? { width: '100%' } : {
       width: '100%',
       maxWidth: `${PI_COMMERCIAL_MAX_WIDTH_PX}px`,
       marginLeft: 'auto',
@@ -734,15 +743,19 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', fill =
               style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px',
                 padding: row.emphasis ? '11px 18px' : '6px 18px',
-                // Two hairlines, so the column reads as three groups rather than
-                // ten equal lines: what the products came to, what tax does to
-                // it, and what is owed. `groupStart` is set by the row builder,
-                // which is the thing that knows what a row MEANS.
-                borderTop: row.emphasis === 'total' || row.groupStart
+                // A second hairline, on the DETAIL page only, so its column
+                // reads as three groups rather than ten equal lines: what the
+                // products came to, what tax does to it, and what is owed.
+                // `groupStart` is set by the row builder, which is the thing
+                // that knows what a row MEANS.
+                borderTop: row.emphasis === 'total' || (detail && row.groupStart)
                   ? `1px solid ${colors.borderSoft}`
                   : 'none',
-                marginTop: row.groupStart ? '4px' : 0,
-                paddingTop: row.groupStart ? '10px' : undefined,
+                // `undefined`, never 0: a falsy-but-present value would still
+                // be serialised, and the preview's markup must come out exactly
+                // as it did before the detail page needed anything.
+                marginTop: detail && row.groupStart ? '4px' : undefined,
+                paddingTop: detail && row.groupStart ? '10px' : undefined,
                 background: row.emphasis === 'advance' ? colors.amberTint : 'transparent',
               }}
             >
@@ -763,9 +776,10 @@ export function PiCommercialSummary({ rows, title = 'Commercial summary', fill =
               <div style={{
                 whiteSpace: row.kind === 'text' ? 'normal' : 'nowrap',
                 textAlign: 'right',
-                // Figures line up digit under digit down the column. A worded
-                // cell ("Included") is unaffected by it.
-                fontVariantNumeric: 'tabular-nums',
+                // Detail page only: its figures line up digit under digit under
+                // the products table's own money columns. The preview keeps the
+                // proportional figures it shipped with.
+                fontVariantNumeric: detail ? 'tabular-nums' : undefined,
                 fontSize: row.emphasis ? '14px' : '13px',
                 fontWeight: row.emphasis ? 700 : 500,
                 // The two worded zeroes read as settled facts, like a figure,

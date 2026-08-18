@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   PI_ACTIVITY_COLUMNS,
-  PI_ACTIVITY_DETAIL,
+  PI_ADVANCE_ACTIONS,
   PI_ACTIVITY_LABEL,
   PI_ACTIVITY_TONE,
   UNKNOWN_ACTOR,
@@ -73,7 +73,18 @@ describe('every action reads as English', () => {
       const label = PI_ACTIVITY_LABEL[action]
       assert.ok(label, `${action} has no label`)
       assert.ok(!label.includes('_'), `${action} must not be shown as a database value`)
-      assert.ok(PI_ACTIVITY_DETAIL[action], `${action} has no explanatory sentence`)
+      assert.ok(PI_ADVANCE_ACTIONS.has(action), `${action} must carry its figures`)
+    }
+  })
+
+  test('the advance set is exactly the three events that carry figures', () => {
+    assert.deepEqual([...PI_ADVANCE_ACTIONS].sort(), [
+      'advance_exception_approved',
+      'advance_exception_rejected',
+      'advance_exception_requested',
+    ])
+    for (const action of PI_ADVANCE_ACTIONS) {
+      assert.ok(PI_ACTIVITY_LABEL[action], `${action} must also be nameable`)
     }
   })
 
@@ -121,8 +132,11 @@ describe('every action reads as English', () => {
     assert.equal(PI_ACTIVITY_LABEL['advance_exception_approved'], 'Advance exception approved')
     assert.equal(PI_ACTIVITY_LABEL['rejected'], 'Rejected',
       'and the PI’s own rejection stays distinct from the advance exception’s')
-    assert.ok(PI_ACTIVITY_DETAIL['advance_exception_approved'].includes('does not approve the PI'),
-      'the approval event says out loud that it is not a PI approval')
+    // The two rejections are told apart by their LABELS and by nothing else.
+    // There used to be a fixed sentence under each advance event saying what it
+    // did and did not mean; it repeated under every occurrence and has been
+    // dropped, so the words above have to carry the distinction on their own.
+    assert.equal(PI_ACTIVITY_LABEL['advance_exception_rejected'], 'Advance exception rejected')
   })
 })
 
@@ -215,7 +229,7 @@ describe('internal bookkeeping stays internal', () => {
     // pick its own would be free to decide that a rejection is amber. The raw
     // action still never leaves this module.
     assert.deepEqual(Object.keys(entry).sort(),
-      ['actor', 'at', 'detail', 'figures', 'key', 'label', 'note', 'tone'])
+      ['actor', 'at', 'figures', 'key', 'label', 'note', 'tone'])
     assert.equal(entry.note, 'Fabric on line 3 is wrong.', 'the note is trimmed, not reworded')
     assert.equal(entry.tone, 'blue', 'a submission is marked with the state it moved to')
   })
@@ -259,18 +273,25 @@ describe('internal bookkeeping stays internal', () => {
       },
     })])
     assert.equal(entry.figures, '12.5% · ₹1,47,500')
-    const rendered = `${entry.label} ${entry.actor} ${entry.figures} ${entry.detail} ${entry.note}`
+    const rendered = `${entry.label} ${entry.actor} ${entry.figures} ${entry.note}`
     for (const leaked of ['1180000', 'standard_percent', 'exception_status', 'item_count', '9']) {
       assert.ok(!rendered.includes(leaked), `${leaked} must not reach the screen`)
     }
   })
 
-  test('an ordinary event has no figures and no explanatory sentence', () => {
+  test('an ordinary event has no figures of its own to borrow', () => {
     for (const action of ['submitted', 'changes_requested', 'rejected',
                           'submission_created', 'parse_replaced']) {
       const [entry] = describe_([row({ action, metadata: { advance_percent: 12.5 } })])
       assert.equal(entry.figures, null, `${action} must not borrow advance figures`)
-      assert.equal(entry.detail, null, `${action} has no fixed sentence`)
+      assert.ok(!PI_ADVANCE_ACTIONS.has(action))
+    }
+  })
+
+  test('no entry carries a generated explanatory sentence any more', () => {
+    for (const action of Object.keys(PI_ACTIVITY_LABEL)) {
+      const [entry] = describe_([row({ action })])
+      assert.ok(!('detail' in entry), `${action} must not carry generated prose`)
     }
   })
 

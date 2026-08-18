@@ -2415,7 +2415,13 @@ body {
 
 /* ── Order overview ───────────────────────────────────────────────────────────
    Three meaningful sections rather than a uniform grid of unrelated facts:
-   who and where, when, and what it is worth. */
+   who and where, when, and what it is worth.
+
+   THE COLUMN COUNT FOLLOWS WHAT THE RECORD ACTUALLY CARRIES. A section with
+   nothing in it is not rendered at all, and the modifier class says how many
+   survived, so the card never reserves a third of a wide monitor for a column
+   of "Not provided". Most saved PIs give no order-confirmation date and no
+   dispatch commitment, which is the common case this exists for. */
 
 .pi-detail-overview {
   display: grid;
@@ -2433,20 +2439,31 @@ body {
 
 /* THE COMMERCIAL SNAPSHOT IS READ FIRST ON A PHONE. The total and the advance
    condition are the two facts the page exists to answer quickly, and on one
-   column they must not sit below two blocks of postal addresses. */
+   column they must not sit below a block of postal addresses. */
 .pi-detail-snapshot {
   order: -1;
 }
 
 @media (min-width: 768px) {
   .pi-detail-overview {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 26px;
   }
-  /* Tablet: the addresses and the dates share a row, and the snapshot takes a
-     full-width row of its own rather than being squeezed into a third of it. */
   .pi-detail-snapshot {
     order: 0;
+  }
+
+  /* Two populated groups: two balanced columns, and they stay that way at every
+     width above this — two facts do not become three by widening the window. */
+  .pi-detail-overview-2 {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  /* Three populated groups, tablet: the addresses and the dates share a row and
+     the snapshot takes a full-width row of its own rather than a third of one. */
+  .pi-detail-overview-3 {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .pi-detail-overview-3 .pi-detail-snapshot {
     grid-column: 1 / -1;
     padding-top: 16px;
     border-top: 1px solid rgba(0, 0, 0, 0.08);
@@ -2454,17 +2471,18 @@ body {
 }
 
 @media (min-width: 1180px) {
-  .pi-detail-overview {
+  .pi-detail-overview-3 {
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.8fr) minmax(0, 1fr);
     column-gap: 0;
   }
-  .pi-detail-snapshot {
+  .pi-detail-overview-3 .pi-detail-snapshot {
     grid-column: auto;
     padding-top: 0;
     border-top: none;
   }
-  /* Hairlines only where there is genuinely a column edge to mark. */
-  .pi-detail-overview-divided {
+  /* Hairlines only where there is genuinely a column edge to mark. A section
+     that is alone on its row, or first in it, gets none. */
+  .pi-detail-overview-3 .pi-detail-overview-divided {
     border-left: 1px solid rgba(0, 0, 0, 0.08);
     padding-left: 24px;
     margin-left: 24px;
@@ -2485,6 +2503,14 @@ body {
 @media (min-width: 1180px) {
   .pi-detail-snapshot-total {
     font-size: 28px;
+  }
+}
+
+/* A record with neither an address nor a date leaves the snapshot the whole
+   card. Nothing is competing with it, so it is allowed to be bigger. */
+@media (min-width: 768px) {
+  .pi-detail-overview-1 .pi-detail-snapshot-total {
+    font-size: 32px;
   }
 }
 
@@ -2534,9 +2560,21 @@ body {
 }
 
 /* ── The lower information grid ───────────────────────────────────────────────
-   Commercial breakdown ~60%, activity ~40%. Aligned at the top and never forced
-   to a common height: the two cards genuinely carry different amounts of
-   content, and stretching the shorter one just prints white space. */
+   Activity ~62% on the left, commercial breakdown ~38% on the right.
+
+   ACTIVITY TAKES THE WIDTH because it is prose — notes people typed, names,
+   timestamps — and in the narrow column every line wrapped. THE BREAKDOWN TAKES
+   THE RIGHT because it is compact label-value data that needs no more, and
+   because its figures then land under the Cost / piece and Line total columns of
+   the products table directly above, which is the way a reader moves anyway.
+
+   Aligned at the top and never stretched: a long trail must not drag the
+   breakdown card down to its own height.
+
+   STACKED, THE BREAKDOWN COMES FIRST — a phone reader has just finished the
+   product values and wants the total next, not a history. The DOM order is
+   activity-then-breakdown so the desktop needs no reordering; one `order`
+   declaration flips the single column, at no cost and with no JavaScript. */
 
 .pi-detail-lower-grid {
   display: grid;
@@ -2545,9 +2583,21 @@ body {
   align-items: start;
 }
 
+.pi-detail-activity-col,
+.pi-detail-commercial-col {
+  min-width: 0;
+}
+
+.pi-detail-commercial-col {
+  order: -1;
+}
+
 @media (min-width: 1024px) {
   .pi-detail-lower-grid {
-    grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+    grid-template-columns: minmax(0, 62fr) minmax(0, 38fr);
+  }
+  .pi-detail-commercial-col {
+    order: 0;
   }
 }
 
