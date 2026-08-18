@@ -43,6 +43,22 @@ import {
 // ── Labels ────────────────────────────────────────────────────────────────────
 
 export const SUBMIT_BUTTON_LABEL = 'Submit for Approval'
+/**
+ * The same action, on a PI management has already sent back.
+ *
+ * ONE RPC, TWO LABELS. submit_order_submission_with_advance is what both press,
+ * and the door does not change — what changes is what the employee is doing:
+ * "Submit" is a first offer, and "Resubmit" is an answer to a correction that
+ * was asked for. A button that reads identically in both states leaves somebody
+ * looking for the control that sends their fix back.
+ */
+export const RESUBMIT_BUTTON_LABEL = 'Resubmit for Approval'
+
+/** Which of the two the record's state calls for. */
+export function submitButtonLabel(status: string): string {
+  return status === 'needs_changes' ? RESUBMIT_BUTTON_LABEL : SUBMIT_BUTTON_LABEL
+}
+
 export const CHANGE_PI_BUTTON_LABEL = 'Change PI'
 export const REQUEST_CHANGES_BUTTON_LABEL = 'Needs Changes'
 export const REJECT_BUTTON_LABEL = 'Reject'

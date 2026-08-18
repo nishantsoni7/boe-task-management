@@ -29,6 +29,7 @@ import {
   PI_ACTIVITY_COLUMNS,
   PI_ACTIVITY_DETAIL,
   PI_ACTIVITY_LABEL,
+  PI_ACTIVITY_TONE,
   UNKNOWN_ACTOR,
   activityActorIds,
   describeActivityEntries,
@@ -208,9 +209,38 @@ describe('internal bookkeeping stays internal', () => {
 
   test('an entry carries only what is displayed', () => {
     const [entry] = describe_([row({ note: '  Fabric on line 3 is wrong.  ' })])
+    // `tone` IS displayed: it is the colour of the marker beside the event in
+    // the audit trail, and it is decided HERE — beside the labels — because a
+    // marker colour is a statement about what an event means. A screen free to
+    // pick its own would be free to decide that a rejection is amber. The raw
+    // action still never leaves this module.
     assert.deepEqual(Object.keys(entry).sort(),
-      ['actor', 'at', 'detail', 'figures', 'key', 'label', 'note'])
+      ['actor', 'at', 'detail', 'figures', 'key', 'label', 'note', 'tone'])
     assert.equal(entry.note, 'Fabric on line 3 is wrong.', 'the note is trimmed, not reworded')
+    assert.equal(entry.tone, 'blue', 'a submission is marked with the state it moved to')
+  })
+
+  test('colour is spent only where an event carries state', () => {
+    const tone = (action: string) => describe_([row({ action })])[0].tone
+    // Two neutral, so the trail is not a rainbow: creating and replacing a
+    // document are bookkeeping, not decisions.
+    assert.equal(tone('submission_created'), 'neutral')
+    assert.equal(tone('parse_replaced'), 'neutral')
+    assert.equal(tone('submitted'), 'blue')
+    assert.equal(tone('changes_requested'), 'amber')
+    assert.equal(tone('advance_exception_requested'), 'amber')
+    assert.equal(tone('advance_exception_approved'), 'green')
+    // The PI's rejection and the refusal of one of its terms are both red, and
+    // their LABELS are what keep them apart — as they always have.
+    assert.equal(tone('rejected'), 'red')
+    assert.equal(tone('advance_exception_rejected'), 'red')
+  })
+
+  test('every action the trail admits has a colour, and no other does', () => {
+    assert.deepEqual(
+      Object.keys(PI_ACTIVITY_TONE).sort(),
+      Object.keys(PI_ACTIVITY_LABEL).sort(),
+      'an action that can be named must be markable, and nothing else is')
   })
 
   test('metadata is read, and exactly two of its keys ever reach the screen', () => {
