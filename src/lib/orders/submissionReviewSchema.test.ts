@@ -118,19 +118,41 @@ describe('Phase A is one additive migration', () => {
     assert.ok(PHASE_A_FILE > IMAGES_FILE && PHASE_A_FILE > SUBMISSIONS_FILE,
       'it must sequence after every migration it builds on')
 
-    // Later migrations are allowed — the employee-reply follow-up is one — but
-    // none may redefine what Phase A owns: the rejection RPC, the transition
-    // trigger, the frozen-column guard or the submitted_at column.
+    // Later migrations are allowed — the employee-reply follow-up is one, and
+    // Phase C is another — but none may redefine what Phase A owns.
+    //
+    // THE TRANSITION TRIGGER IS THE ONE EXCEPTION, and it is a deliberate one:
+    // the whole design of this feature is that a phase which adds a status move
+    // adds it THERE, visibly, rather than reaching around it. So a later file
+    // may restate it, and what is asserted instead is that Phase A's own graph
+    // survives the restatement intact — every transition, and the submitted_at
+    // rules — which is the property this test was really defending.
     for (const file of files.filter(f => f > PHASE_A_FILE)) {
       const later = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
       for (const owned of [
         'create or replace function public.reject_order_submission',
-        'create or replace function public.order_submissions_enforce_status_transition',
         'create or replace function public.order_submissions_guard_frozen_columns',
         'add column submitted_at',
       ]) {
         assert.ok(!later.includes(owned), `${file} must not redefine: ${owned}`)
       }
+
+      if (!later.includes('create or replace function public.order_submissions_enforce_status_transition')) continue
+
+      for (const preserved of [
+        "(old.status = 'draft'            and new.status = 'submitted')",
+        "(old.status = 'needs_changes' and new.status = 'submitted')",
+        "(old.status = 'submitted'     and new.status = 'needs_changes')",
+        "(old.status = 'submitted'     and new.status = 'rejected')",
+        "if new.status = 'submitted' then\n    new.submitted_at := now();",
+        'new.submitted_at := old.submitted_at;',
+        "if new.status <> 'draft' then",
+      ]) {
+        assert.ok(later.includes(preserved),
+          `${file} restates the transition trigger but drops Phase A's rule: ${preserved}`)
+      }
+      assert.ok(later.includes('revoke execute on function public.order_submissions_enforce_status_transition()'),
+        `${file} restates the transition trigger without re-asserting its revokes`)
     }
   })
 

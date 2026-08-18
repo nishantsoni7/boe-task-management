@@ -108,12 +108,19 @@ import {
   PI_THUMBNAIL_SIZE,
   type PiThumbnailProps,
 } from '@/components/orders/piPreview'
-import { PiSubmitConfirmModal, PiNoteModal, type PiNoteIntent } from '@/components/orders/piReviewModals'
+import {
+  PiSubmitConfirmModal,
+  PiNoteModal,
+  PiFinanceVerifyModal,
+  PiApproveOrderModal,
+  type PiNoteIntent,
+} from '@/components/orders/piReviewModals'
 import { colors } from '@/lib/tokens'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
+import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import {
   changePiHref,
@@ -137,6 +144,13 @@ import {
   initialAdvanceSelection,
   type AdvanceSelection,
 } from '@/lib/orders/advanceRequirement'
+import {
+  describeApprovalReadiness,
+  describeFinanceStatus,
+  financeVerificationIsCurrent,
+  orderHref,
+  readApprovalOutcome,
+} from '@/lib/orders/finalApproval'
 import {
   buildCommercialRows,
   buildHeaderRows,
@@ -175,10 +189,13 @@ import {
 // at three breakpoints lives in the CSS module. This file keeps the reads, the
 // permissions and the RPCs, which is the part that has authority behind it.
 import {
+  ADVANCE_UNDECLARED_LABEL,
+  buildApprovalSummary,
   buildCommercialSnapshot,
   buildIdentityFacts,
   buildOverviewDates,
   commercialBreakdownRows,
+  describeApprovedOrder,
   describeWorkflowPanel,
   omitDash,
 } from './piDetailView'
@@ -219,6 +236,18 @@ type Draft = {
    *  SAME users read as every other name on this page. */
   advanceRequesterName: string | null
   advanceDeciderName: string | null
+  /** Who verified the figures for finance, when there is a verification. */
+  financeVerifierName: string | null
+  /**
+   * The official number of the Order this PI became, or null.
+   *
+   * NULL IS A REAL ANSWER, not a failure: an Order is visible to its requester,
+   * to operations, to an admin and to a holder of orders.view_all, and a finance
+   * verifier is none of those. Read from public.orders under the caller's own
+   * RLS, never reconstructed here — the browser has no opinion about an Order
+   * number and must not acquire one.
+   */
+  orderDisplayNumber: string | null
 }
 
 type Load =
@@ -295,11 +324,33 @@ function PiDraftDetailPageInner() {
    * the database has it.
    */
   const [canDecideAdvance, setCanDecideAdvance] = useState(false)
+  /**
+   * can_verify_pi_finance() — the SEPARATE finance authority.
+   *
+   * Resolved from the FINANCE module, not from Orders: finance.approve with
+   * Finance module entry, exactly as deriveFinanceCapabilities has it and
+   * exactly as the database's own can_verify_pi_finance() has it. An active
+   * admin holds it either way. orders.approve_order confers nothing here, which
+   * is the whole point of the two-authority rule.
+   */
+  const [canVerifyFinance, setCanVerifyFinance] = useState(false)
 
   /** Which decision dialog is open, if any. */
-  const [dialog, setDialog] = useState<'submit' | PiNoteIntent | null>(null)
+  const [dialog, setDialog] = useState<'submit' | 'verify_finance' | 'approve' | PiNoteIntent | null>(null)
   const [acting, setActing] = useState(false)
   const [actionFailure, setActionFailure] = useState<string | null>(null)
+  /**
+   * What the approval RPC returned, kept ONLY so the number is on screen the
+   * instant the call commits.
+   *
+   * It is not the source of truth and never outranks the record: loadDraft
+   * re-reads public.orders under the caller's own RLS immediately afterwards,
+   * and the strip prefers that value. This exists for the one case the re-read
+   * cannot cover — an approver who created the Order but cannot select it — so
+   * the person who just pressed the button is still told the number they
+   * allocated.
+   */
+  const [approval, setApproval] = useState<ReturnType<typeof readApprovalOutcome>>(null)
 
   const thumbnailRefs = useRef(new Map<string, HTMLButtonElement | null>())
   const viewerOpenedFrom = useRef<string | null>(null)
@@ -406,6 +457,8 @@ function PiDraftDetailPageInner() {
       row.rejected_by,
       row.advance_exception_requested_by,
       row.advance_exception_decided_by,
+      row.finance_verified_by,
+      row.approved_by,
     ])
     if (actorIds.length > 0) {
       // Two safe columns, named explicitly: `select('*')` on public.users is a
@@ -419,10 +472,31 @@ function PiDraftDetailPageInner() {
       }
     }
 
+    // ── The Order this PI became ──
+    //
+    // One read, only when the record actually names an Order, and under the
+    // CALLER'S OWN RLS: a viewer who may not see the Order gets no row, no
+    // number and no link, rather than a number they were not entitled to. A
+    // failure here is not a page failure — the PI is still readable and still
+    // says it was approved.
+    let orderDisplayNumber: string | null = null
+    if (row.order_id) {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('display_number')
+        .eq('id', row.order_id)
+        .maybeSingle()
+      const number = (order as { display_number?: string | null } | null)?.display_number
+      orderDisplayNumber = typeof number === 'string' && number.trim() !== '' ? number.trim() : null
+    }
+
     setLoad({
       kind: 'ready',
       draft: {
         submission: row,
+        financeVerifierName: row.finance_verified_by
+          ? namesById.get(row.finance_verified_by) ?? null : null,
+        orderDisplayNumber,
         activity: describeActivityEntries(history, namesById, formatSavedAt),
         submitterName: row.submitted_by ? namesById.get(row.submitted_by) ?? null : null,
         rejectedByName: row.rejected_by ? namesById.get(row.rejected_by) ?? null : null,
@@ -459,8 +533,17 @@ function PiDraftDetailPageInner() {
       // A failed permission read resolves to no capabilities, so the page falls
       // back to what it has always been — a read-only record — rather than
       // offering a control the caller may not have.
-      const permissions = await getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => [])
-      const caps = deriveOrdersCapabilities((me as UserProfile | null)?.role, permissions)
+      const role = (me as UserProfile | null)?.role
+      // TWO MODULES, TWO READS, because this screen now carries two authorities
+      // that must not imply one another. A failure on either resolves to no
+      // capabilities for that module alone, so a Finance outage cannot cost
+      // somebody their PI review controls and vice versa.
+      const [ordersPermissions, financePermissions] = await Promise.all([
+        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+        getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
+      ])
+      const caps = deriveOrdersCapabilities(role, ordersPermissions)
+      const financeCaps = deriveFinanceCapabilities(role, financePermissions)
 
       if (!active) return
       setProfile((me as UserProfile) ?? null)
@@ -468,6 +551,10 @@ function PiDraftDetailPageInner() {
       setCanCreate(caps.canCreateOrder)
       setCanReview(caps.canApproveOrderSubmission)
       setCanDecideAdvance(caps.canApproveAdvanceException)
+      // canApprovePayment IS finance.approve gated on Finance module entry —
+      // deriveFinanceCapabilities' withEntry('approve'). The same expression
+      // can_verify_pi_finance() evaluates in the database.
+      setCanVerifyFinance(financeCaps.canApprovePayment)
       await loadDraft()
     }
 
@@ -582,6 +669,53 @@ function PiDraftDetailPageInner() {
       p_submission_id: submissionId,
       p_reason: reason,
     })
+    return { error }
+  }), [runAction, supabase, submissionId])
+
+  /**
+   * Finance signs off the commercial figures. NOTHING ELSE HAPPENS.
+   *
+   * No note, because verification is a yes and there is nothing to explain — if
+   * something is wrong with the figures the PI goes back through Needs Changes,
+   * which already asks for words. No payment, request or receipt is created
+   * anywhere in this flow, and the dialog behind the button says so.
+   *
+   * The RPC is idempotent, so a request that survives both the ref guard and the
+   * disabled button records no second verification and writes no second event.
+   */
+  const verifyFinance = useCallback(() => runAction('verify_finance', async () => {
+    const { error } = await supabase.rpc('verify_pi_finance_check', {
+      p_submission_id: submissionId,
+    })
+    return { error }
+  }), [runAction, supabase, submissionId])
+
+  /**
+   * The last decision, and the one that creates the Order.
+   *
+   * ONE RPC CALL, AND IT IS THE AUTHORITY. Every eligibility rule the screen has
+   * just drawn a control from — the status, the permission, the finance
+   * verification, the advance requirement, the diagnostics, the stored workbook
+   * and images, the absence of a deletion reservation and of an existing Order —
+   * is re-derived inside approve_order_submission() under a row lock, on the
+   * values the database holds. A stale screen, a second tab, a replayed request
+   * and a hand-crafted call all end at the same lock and the same answer.
+   *
+   * THE NUMBER IS READ BACK, NEVER COMPUTED. What the RPC returns is what the
+   * allocator assigned; readApprovalOutcome refuses a response missing it rather
+   * than filling in a plausible one, and the page then falls back to re-reading
+   * the record.
+   *
+   * NO SUCCESS IS SHOWN BEFORE THE COMMIT. The outcome is only recorded after
+   * the call resolves without an error, and the record is re-read from the
+   * database immediately afterwards, so what the screen ends up showing is the
+   * persisted state rather than an optimistic guess.
+   */
+  const approveSubmission = useCallback(() => runAction('approve', async () => {
+    const { data, error } = await supabase.rpc('approve_order_submission', {
+      p_submission_id: submissionId,
+    })
+    if (!error) setApproval(readApprovalOutcome(data))
     return { error }
   }), [runAction, supabase, submissionId])
 
@@ -735,6 +869,49 @@ function PiDraftDetailPageInner() {
   const advanceRejectedNow =
     advance.status === 'rejected' && submission.status === 'needs_changes'
 
+  // ── Finance verification, and whether approval may be pressed ──
+  //
+  // ONE ANSWER FROM ONE HELPER for each, shared with their tests, exactly as the
+  // action and advance rules above are. Both mirror a database rule that will be
+  // re-derived under a row lock when the button is actually pressed:
+  // order_submission_finance_verified() and approve_order_submission()'s own
+  // ordered eligibility checks.
+  const financeVerified = financeVerificationIsCurrent(submission, submission.submitted_at)
+  const finance = describeFinanceStatus({
+    status: submission.status,
+    submittedAtIso: submission.submitted_at,
+    verification: submission,
+    canVerifyFinance,
+    verifiedAt: submission.finance_verified_at
+      ? formatSavedAt(submission.finance_verified_at) : null,
+    verifierName: draft.financeVerifierName,
+  })
+
+  const readiness = describeApprovalReadiness({
+    status: submission.status,
+    financeVerified,
+    advance: submission,
+    hasBlockingIssues: draft.blocking.length > 0,
+    productCount: products.length,
+    deletionClaimed: submission.deletion_claim_token !== null,
+  })
+
+  /**
+   * The Order, preferring the value read back from the database.
+   *
+   * The RPC's own answer is the fallback and not the other way round: the record
+   * is authoritative, and the in-memory result exists only so an approver who
+   * cannot SELECT the Order they just created is still shown its number.
+   */
+  const approvedOrder = describeApprovedOrder({
+    orderId: submission.order_id ?? approval?.orderId ?? null,
+    displayNumber: draft.orderDisplayNumber ?? approval?.displayNumber ?? null,
+  })
+
+  /** The advance condition in one phrase, for the two dialogs. One source, so
+   *  the dialog and the page cannot word the same condition differently. */
+  const advanceLabel = advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
+
   const clientLabel = orDash(submission.client_name ?? submission.bill_to_name)
   const grandTotalLabel = formatInr(grandTotalValue)
   /** The standard requirement in rupees, through the ONE shared formula. */
@@ -872,6 +1049,13 @@ function PiDraftDetailPageInner() {
           onSubmit={() => { setActionFailure(null); setDialog('submit') }}
           onRequestChanges={() => { setActionFailure(null); setDialog('needs_changes') }}
           onReject={() => { setActionFailure(null); setDialog('reject') }}
+          finance={finance}
+          approvalBlocker={readiness.blocker}
+          approvalReady={readiness.ready}
+          approvedOrder={approvedOrder}
+          onVerifyFinance={() => { setActionFailure(null); setDialog('verify_finance') }}
+          onApprove={() => { setActionFailure(null); setDialog('approve') }}
+          onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
           advanceBand={advanceBand}
         />
 
@@ -1060,6 +1244,35 @@ function PiDraftDetailPageInner() {
           offerReply={submissionOffersReply(submission.status)}
           onCancel={closeDialog}
           onConfirm={submitForApproval}
+        />
+      )}
+
+      {dialog === 'verify_finance' && (
+        <PiFinanceVerifyModal
+          client={clientLabel}
+          grandTotal={grandTotalLabel}
+          advanceLabel={advanceLabel}
+          saving={acting}
+          failure={actionFailure}
+          onCancel={closeDialog}
+          onConfirm={verifyFinance}
+        />
+      )}
+
+      {dialog === 'approve' && (
+        <PiApproveOrderModal
+          client={clientLabel}
+          rows={buildApprovalSummary({
+            client: clientLabel,
+            grandTotal: grandTotalLabel,
+            advanceLabel,
+            financeVerified,
+            productCount: products.length,
+          })}
+          saving={acting}
+          failure={actionFailure}
+          onCancel={closeDialog}
+          onConfirm={approveSubmission}
         />
       )}
 

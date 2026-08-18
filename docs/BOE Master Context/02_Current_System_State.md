@@ -571,3 +571,172 @@ keep their existing ownership rules. Attendance and Payroll management remain
 admin-only and are shown as a single non-editable self-service row.
 
 Full detail: `docs/Module Docs/ACCESS_CONTROL_V1.md`.
+
+---
+
+## Order Management — PI submission to Confirmed Order
+
+Status: **Phase C written, migration UNAPPLIED and awaiting Nishant's approval.**
+Everything before Phase C is applied to production.
+
+An imported BOE PI workbook (`.xlsx`) becomes a Confirmed Order through one
+reviewed workflow. The record is `public.order_submissions`; the Order it
+eventually becomes is `public.orders`.
+
+### The workflow
+
+```
+draft ──► submitted ──► needs_changes ──► submitted ──► approved
+              │                                            │
+              ├──► rejected  (final)                        └──► one Confirmed Order,
+              │                                                  with an official number
+              └──► finance verification, then final approval
+```
+
+1. **Upload and parse.** The employee uploads the workbook. Every commercial
+   figure and product line comes from a server-side parse
+   (`replace_order_submission_parse`, service role only). A browser cannot
+   manufacture a price, a quantity or a total.
+2. **Submit**, declaring the advance requirement: the standard 40%, a reduced
+   percentage, or none. The last two are *exception requests* and need a
+   decision from a holder of `orders.approve_advance_exception`.
+3. **Finance verification** (Phase C). A finance authority signs off that the
+   commercial figures and advance terms are correct.
+4. **Final approval** (Phase C). A PI reviewer approves, and exactly one
+   Confirmed Order is created with an official four-digit number.
+
+Management can send the PI back (`Needs Changes`) or end it (`Reject`) at any
+point while it is submitted — **including after finance has verified it**. A
+verified PI is not an approved one.
+
+### Finance verification — the rule
+
+Two authorities, and **neither implies the other**:
+
+| Decision | Requires |
+| --- | --- |
+| Verify finance | active admin, **or** effective `finance.approve` **with** Finance module entry |
+| Approve the PI | active admin, **or** effective `orders.approve_order` |
+| Decide an advance exception | active admin, **or** effective `orders.approve_advance_exception` |
+
+`orders.approve_order` grants **no** finance authority, and `finance.approve`
+grants **no** PI-approval authority. Both are re-derived inside the RPCs.
+
+**Verification records no payment.** It creates no payment, payment request,
+receipt or reconciliation entry, and both dialogs say so in as many words. No
+Finance table is read or written anywhere in this workflow.
+
+**A verification goes stale the moment the record moves.** It is bound to the
+`submitted_at` it was made against, and a trigger clears it outright on any
+status change away from `submitted`. A PI returned and resubmitted must be
+verified again. Approval is the one status change that keeps it, because who
+signed the figures off is part of the approved record's history.
+
+### Final approval — eligibility
+
+`approve_order_submission(uuid)` re-derives **all** of the following from the
+locked row, and refuses on any one of them:
+
+- status is exactly `submitted`, and no Order is already linked;
+- the caller is authenticated, active, and holds `orders.approve_order`;
+- finance verification is **current** for this submission;
+- the advance requirement is settled — standard, or an **approved** exception
+  (pending and rejected both refuse, and so does an undeclared record);
+- no blocking parse diagnostics;
+- the workbook still exists in storage at the exact validated path, as an
+  `.xlsx`;
+- at least one product line, each with a sequence, a name and exactly one
+  representative image, every image key naming its own submission, item, role
+  and slot, and every image present in storage;
+- no deletion reservation is in flight.
+
+The RPC takes an **id and nothing else**. No total, client name, status or
+number is accepted from the caller.
+
+### Atomic Order creation
+
+One transaction does all of it, or none of it:
+
+lock the submission → re-validate → open the approval context → `INSERT` one
+`public.orders` row → the existing trigger stamps the number → set the
+submission to `approved` with `approved_by`, `approved_at` and `order_id` →
+append one activity entry carrying the Order id and its display number.
+
+- **Concurrency.** Two simultaneous approvals produce **one** Order: the second
+  waits on the row lock, then returns the existing result with
+  `already_approved: true`. A retry after commit does the same. Two partial
+  unique indexes — `order_submissions_order_id_key` and
+  `orders_source_order_submission_id_uidx` — make one-PI-one-Order a database
+  guarantee rather than a property of the RPC.
+- **Storage is not in the transaction.** Nothing here uploads or generates a
+  file, so no PI can be left half-approved by a storage failure.
+
+### Official numbering — timing
+
+Numbering is unchanged and is **reused, never reimplemented**. The number comes
+from `allocate_confirmed_order_number()` via the `orders_assign_display_number`
+BEFORE INSERT trigger, which overwrites whatever a caller supplies. There is no
+second allocator, no sequence, and no `MAX(display_number)+1` anywhere — in SQL
+or in the browser.
+
+**A number is allocated only at final approval.** Draft, submitted,
+needs-changes and rejected PIs never receive one. Because the cycle is an
+ordinary table row advanced under `FOR UPDATE` inside the caller's transaction,
+a failed approval rolls the advancement back and **consumes no number**.
+
+### Order field mapping
+
+| Order column | Source |
+| --- | --- |
+| `display_number` | the allocator, via the trigger — never supplied |
+| `client_name` | submission `client_name` |
+| `requested_by` | submission `submitted_by` |
+| `created_by` | the approving actor |
+| `confirm_date` | `order_confirmation_date`, else the approval date |
+| `total_value` | `grand_total` |
+| `total_product_value` | `gross_product_amount` |
+| `status` | `'running'` |
+| `source_order_submission_id` | the submission (unique, immutable, NO ACTION FK) |
+| `due_date`, `lead_source`, `notes`, `assigned_to` | left null — see below |
+
+`due_date` is deliberately null: `dispatch_commitment` is free text ("45 days")
+and there is no safe conversion to a date. `notes` is deliberately empty:
+addresses, the commercial breakdown and the advance terms all live on the
+submission, which the Order names.
+
+### Still excluded
+
+- **No numbered `.xlsx` and no PDF.** The repository has no facility that can
+  edit the uploaded workbook without destroying its images, merged cells and
+  print settings, and no faithful Excel-to-PDF converter. The reserved path
+  `orders/{order_id}/versions/{n}/approved.xlsx` stays unwritten. **This is the
+  next bounded phase.** Nothing in the employee UI mentions a pending document.
+- **No Order product lines.** Orders have never had product-line storage. The
+  approved submission and its items remain the authoritative PI snapshot,
+  reached through `order_submissions.order_id`.
+- No payment linking, split-payment allocation, payment recording or
+  reconciliation.
+- No post-approval commercial amendment (an approved PI is terminal; changing an
+  Order's terms is `amend_order()`'s job).
+- No production tracking, dispatch gate or notification.
+
+### Migration
+
+`supabase/migrations/20260915000000_order_submission_final_approval.sql` — one
+additive migration, **not yet applied**. Nothing before it is edited.
+
+### Test status
+
+All Phase C suites pass, plus every pre-existing PI, permission, deletion and
+advance suite. The full repository suite shows **9 failures, identical to the
+starting commit** — all of them live-database tests requiring `.env.local`
+Supabase credentials. TypeScript and the production build are clean; ESLint is
+unchanged from baseline (5 pre-existing problems, none in Phase C files).
+
+The database guarantees were additionally proven by applying the real migration
+history to a **throwaway local PostgreSQL 16** and exercising the workflow
+end to end: the two-authority split, blocking before verification, pending and
+rejected exceptions, missing workbook and images, deletion reservation,
+staleness across a resubmission, two concurrent approvals producing exactly one
+Order, a retry allocating no second number, and a failed approval leaving the
+cycle untouched.

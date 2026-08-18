@@ -902,8 +902,18 @@ describe('the migration is one new forward file, in the right place', () => {
       'and nothing was slipped in between')
   })
 
-  test('it is the LAST migration in the repository', () => {
-    assert.equal(files[files.length - 1], MIGRATION)
+  test('anything that lands after it belongs to this same feature', () => {
+    // IT WAS the last migration when it was written, and demanding it stay so
+    // would make this suite fail every time the company shipped anything else —
+    // which says nothing about whether deletion is still safe. THE PROPERTY THAT
+    // ACTUALLY MATTERS is narrower: a later file may exist, and Phase C is one,
+    // but it must be part of the PI submission feature rather than unrelated
+    // work reaching into these tables. The same rule submissionSchema.test.ts
+    // already applies to the migration that created them.
+    for (const file of files.filter(f => f > MIGRATION)) {
+      assert.ok(/order_submission/i.test(file),
+        `${file} lands after the deletion migration but is not part of this feature`)
+    }
   })
 
   test('no two migrations share a version prefix', () => {
@@ -915,8 +925,10 @@ describe('the migration is one new forward file, in the right place', () => {
     }
   })
 
-  test('Item B added exactly ONE migration', () => {
-    const added = files.filter(f => f > APPLIED_PHASE_B)
+  test('Item B itself added exactly ONE migration', () => {
+    // Between the applied Phase B migration and this one, inclusive, there is
+    // exactly one new file. Later phases add their own and are not counted here.
+    const added = files.filter(f => f > APPLIED_PHASE_B && f <= MIGRATION)
     assert.deepEqual(added, [MIGRATION])
   })
 })

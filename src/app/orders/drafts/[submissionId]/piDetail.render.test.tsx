@@ -40,6 +40,7 @@ import {
   buildIdentityFacts,
   buildOverviewDates,
   commercialBreakdownRows,
+  describeApprovedOrder,
   describeWorkflowPanel,
   omitDash,
   ADVANCE_REQUESTED_LABEL,
@@ -47,6 +48,17 @@ import {
   STORED_COPY_NOTE,
   WORKFLOW_HEADING,
 } from './piDetailView'
+import {
+  APPROVAL_BLOCKED_ADVANCE_PENDING,
+  APPROVAL_BLOCKED_FINANCE,
+  APPROVED_ORDER_HEADING,
+  FINANCE_PENDING_TEXT,
+  VERIFY_FINANCE_BUTTON_LABEL,
+  describeApprovalReadiness,
+  describeFinanceStatus,
+  financeVerificationIsCurrent,
+  financeVerifiedLine,
+} from '@/lib/orders/finalApproval'
 import { PiCommercialSummary } from '@/components/orders/piPreview'
 import {
   describeSubmissionActions,
@@ -80,6 +92,9 @@ const OWNER = '11111111-1111-4111-8111-111111111111'
 const REVIEWER = '22222222-2222-4222-8222-222222222222'
 const APPROVER = '33333333-3333-4333-8333-333333333333'
 const STRANGER = '44444444-4444-4444-8444-444444444444'
+/** The finance authority: finance.approve with Finance module entry, and
+ *  nothing from Orders beyond the module gate. */
+const FINANCE = '55555555-5555-4555-8555-555555555555'
 
 const GRAND_TOTAL = 1180000
 
@@ -128,6 +143,13 @@ function submission(over: Partial<PersistedSubmission> = {}): PersistedSubmissio
     advance_exception_decided_by: null,
     advance_exception_decided_at: null,
     advance_exception_rejection_reason: null,
+    approved_by: null,
+    approved_at: null,
+    order_id: null,
+    finance_verified_by: null,
+    finance_verified_at: null,
+    finance_verified_submission_at: null,
+    deletion_claim_token: null,
     ...over,
   } as PersistedSubmission
 }
@@ -138,6 +160,8 @@ function viewerState(row: PersistedSubmission, viewer: {
   canCreate?: boolean
   canReview?: boolean
   canDecideAdvance?: boolean
+  /** can_verify_pi_finance() — the SEPARATE finance authority. */
+  canVerifyFinance?: boolean
 }) {
   const actions = describeSubmissionActions({
     status: row.status,
@@ -162,7 +186,29 @@ function viewerState(row: PersistedSubmission, viewer: {
     rejectedAt: row.rejected_at ? '05 Aug 2026, 09:10 am' : null,
     rejectedByName: 'Rohit Verma',
   })
-  return { actions, advance, advanceActions, panel }
+  // The two Phase C answers, derived exactly as page.tsx derives them.
+  const financeVerified = financeVerificationIsCurrent(row, row.submitted_at)
+  const finance = describeFinanceStatus({
+    status: row.status,
+    submittedAtIso: row.submitted_at,
+    verification: row,
+    canVerifyFinance: viewer.canVerifyFinance ?? false,
+    verifiedAt: row.finance_verified_at ? '02 Aug 2026, 02:15 pm' : null,
+    verifierName: 'Asha Menon',
+  })
+  const readiness = describeApprovalReadiness({
+    status: row.status,
+    financeVerified,
+    advance: row,
+    hasBlockingIssues: false,
+    productCount: 3,
+    deletionClaimed: row.deletion_claim_token !== null,
+  })
+  const approvedOrder = describeApprovedOrder({
+    orderId: row.order_id,
+    displayNumber: row.order_id ? ORDER_NUMBER : null,
+  })
+  return { actions, advance, advanceActions, panel, finance, readiness, approvedOrder }
 }
 
 /**
@@ -174,7 +220,8 @@ function viewerState(row: PersistedSubmission, viewer: {
 function workflowHtml(row: PersistedSubmission, viewer: Parameters<typeof viewerState>[1], opts: {
   employeeReply?: string | null
 } = {}): string {
-  const { actions, advance, advanceActions, panel } = viewerState(row, viewer)
+  const { actions, advance, advanceActions, panel, finance, readiness, approvedOrder } =
+    viewerState(row, viewer)
   const refused = advance.status === 'rejected' && row.status === 'needs_changes'
   return renderToStaticMarkup(
     <PiWorkflowPanel
@@ -188,10 +235,17 @@ function workflowHtml(row: PersistedSubmission, viewer: Parameters<typeof viewer
         : null}
       blockingCount={0}
       acting={false}
+      finance={finance}
+      approvalBlocker={readiness.blocker}
+      approvalReady={readiness.ready}
+      approvedOrder={approvedOrder}
       onChangePi={() => {}}
       onSubmit={() => {}}
       onRequestChanges={() => {}}
       onReject={() => {}}
+      onVerifyFinance={() => {}}
+      onApprove={() => {}}
+      onOpenOrder={() => {}}
       advanceBand={advanceActions.isPending ? (
         <PiAdvanceBand
           advance={advance}
@@ -241,16 +295,16 @@ function buttonLabels(html: string): string[] {
 }
 
 /**
- * Whether an inert PI-approval control is anywhere in this markup.
+ * Whether the final PI-approval control is anywhere in this markup.
  *
  * A plain substring check on "Approve" cannot answer it — "Approve Exception" is
  * a real, live control on the same panel and contains the word. What is being
- * looked for is the label standing on its OWN, which is what the disabled span
- * rendered.
+ * looked for is the WHOLE label standing on its own, as a button, which is why
+ * this reads buttonLabels rather than raw text nodes: the label sits beside an
+ * icon inside the button, and React writes its ampersand as an entity.
  */
-function hasInertApprove(html: string): boolean {
-  const labels = [...html.matchAll(/>([^<>]+)</g)].map(m => m[1].trim())
-  return labels.includes(APPROVE_BUTTON_LABEL)
+function hasApproveControl(html: string): boolean {
+  return buttonLabels(html).includes(APPROVE_BUTTON_LABEL)
 }
 
 /** Text content, with the tags taken out — for "does it SAY this" checks. */
@@ -258,6 +312,15 @@ const text = (html: string): string =>
   html.replace(/<[^>]*>/g, ' ').replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ')
 
 const read = (path: string): string => readFileSync(path, 'utf8')
+
+/**
+ * The number the allocator would have produced for the approved fixture.
+ *
+ * A FIXTURE, NOT A RULE. Nothing in the browser composes an Order number, and
+ * these tests do not either — this stands in for the value the RPC read back out
+ * of public.orders, exactly as page.tsx would have.
+ */
+const ORDER_NUMBER = '0413'
 
 const PAGE = 'src/app/orders/drafts/[submissionId]/page.tsx'
 const SECTIONS = 'src/app/orders/drafts/[submissionId]/piDetailSections.tsx'
@@ -512,7 +575,7 @@ describe('the owner of a draft', () => {
   test('is offered no review control whatsoever', () => {
     assert.ok(!text(html).includes(REQUEST_CHANGES_BUTTON_LABEL))
     assert.ok(!text(html).includes(APPROVE_EXCEPTION_BUTTON_LABEL))
-    assert.ok(!hasInertApprove(html))
+    assert.ok(!hasApproveControl(html), 'and no PI approval — that is a reviewer’s decision')
   })
 
   test('sees no advance band, because nothing is waiting on anybody', () => {
@@ -655,24 +718,31 @@ describe('the management reviewer', () => {
       'one quiet metadata line, in place of three sentences')
   })
 
-  test('is offered Needs Changes and Reject, and no employee control', () => {
-    assert.deepEqual(buttonLabels(html), [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL])
+  test('is offered all three decisions, and no employee control', () => {
+    // THE PRIMARY ACTION COMES LAST, so the two that end or return the PI are
+    // never the ones nearest the thumb on a phone, where the group stacks.
+    assert.deepEqual(buttonLabels(html), [
+      REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL, APPROVE_BUTTON_LABEL,
+    ])
   })
 
   test('sees the employee’s reply that came with the submission', () => {
     assert.ok(text(html).includes('Corrected the fabric on line 3.'))
   })
 
-  test('is shown NO final approval control at all, disabled or otherwise', () => {
-    // A greyed "Approve" beside two live buttons was read as the current
-    // approval action rather than as a promise about a later one. There is no
-    // approval RPC in this phase; absence is the honest answer, and Phase C
-    // introduces a real, unambiguous control.
-    assert.ok(!hasInertApprove(html))
-    assert.ok(!html.includes('cursor:not-allowed'))
+  test('is shown a real approval control, blocked for an actionable reason', () => {
+    // A greyed "Approve" that explained only that a later phase would bring
+    // approval was read as the current action. Phase C's control is real: it is
+    // present, it is named for what it does, and when it is disabled the reason
+    // is somebody's outstanding task rather than a note about the roadmap.
+    assert.ok(hasApproveControl(html))
     assert.ok(!text(html).includes('order-approval phase'))
     assert.ok(!read(SECTIONS).includes('APPROVE_DISABLED_REASON'),
-      'the explanation has nothing left to explain')
+      'the retired explanation has nothing left to explain')
+    // This fixture has no finance verification, so that is the blocker named.
+    assert.ok(text(html).includes(APPROVAL_BLOCKED_FINANCE))
+    assert.ok(text(html).includes(FINANCE_PENDING_TEXT),
+      'and the finance line says the same thing in its own words')
   })
 
   test('is given a metadata line, not a standing paragraph', () => {
@@ -692,8 +762,8 @@ describe('the management reviewer', () => {
     const reviewerOnly = workflowHtml(exceptional, { id: REVIEWER, canReview: true })
     assert.ok(text(reviewerOnly).includes('Advance exception'), 'the STATE is visible to them')
     assert.deepEqual(buttonLabels(reviewerOnly),
-      [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL],
-      'orders.approve_order does not settle a commercial term')
+      [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL, APPROVE_BUTTON_LABEL],
+      'orders.approve_order carries the three PI decisions and does not settle a commercial term')
   })
 })
 
@@ -723,7 +793,8 @@ describe('the advance-exception approver, who holds nothing else', () => {
     assert.ok(!text(html).includes(REQUEST_CHANGES_BUTTON_LABEL))
     assert.ok(!text(html).includes(SUBMIT_BUTTON_LABEL))
     assert.ok(!text(html).includes(CHANGE_PI_BUTTON_LABEL))
-    assert.ok(!hasInertApprove(html), 'and no inert PI approval either')
+    assert.ok(!hasApproveControl(html),
+      'and no PI approval: approve_advance_exception settles one commercial term, never the PI')
   })
 
   test('the band states the condition and the reason, and no audit facts', () => {
@@ -761,15 +832,20 @@ describe('an admin holding both authorities', () => {
 
   test('gets both sets of controls, in one panel, kept apart', () => {
     assert.deepEqual(buttonLabels(raw), [
-      REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL,
+      REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL, APPROVE_BUTTON_LABEL,
       APPROVE_EXCEPTION_BUTTON_LABEL, REJECT_EXCEPTION_BUTTON_LABEL,
-    ], 'the PI decisions first, then the one commercial term')
+    ], 'the three PI decisions first, then the one commercial term')
     assert.ok(raw.includes('pi-detail-workflow-band'),
-      'and the advance decision is its own band, not a fourth button on the same row')
+      'and the advance decision is its own band, not a fifth button on the same row')
   })
 
-  test('and no final PI approval is offered to either authority', () => {
-    assert.ok(!hasInertApprove(raw))
+  test('the PI approval is present but blocked while the exception is pending', () => {
+    // BOTH authorities and it still cannot be approved. Approving the advance
+    // exception is not approving the PI, and the blocker says which of the two
+    // is outstanding rather than leaving the reviewer to guess.
+    assert.ok(hasApproveControl(raw))
+    assert.ok(html.includes(APPROVAL_BLOCKED_FINANCE),
+      'finance comes first in the order the RPC itself checks')
   })
 
   test('a 0% proposal is spelled out where it is being decided', () => {
@@ -793,12 +869,195 @@ describe('an admin holding both authorities', () => {
       advance_exception_reason: 'Client pays on delivery.',
     })
     const after = workflowHtml(approved, { id: REVIEWER, canReview: true, canDecideAdvance: true })
-    assert.deepEqual(buttonLabels(after), [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL],
+    assert.deepEqual(buttonLabels(after),
+      [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL, APPROVE_BUTTON_LABEL],
       'the PI review decisions survive the advance decision')
     // And the settled exception does not redraw its own band.
     assert.ok(!text(after).includes('Advance exception'))
     assert.ok(!text(after).includes('Client pays on delivery.'),
       'the reason it was granted for lives in Activity now')
+  })
+})
+
+// ── Phase C: finance verification and the final approval ──────────────────────
+
+describe('the finance line, in the workflow area', () => {
+  const submitted = (over: Partial<PersistedSubmission> = {}) => submission({
+    status: 'submitted',
+    submitted_by: OWNER,
+    submitted_at: '2026-08-03T04:00:00Z',
+    advance_condition: 'standard',
+    ...over,
+  })
+
+  test('a submitted PI says verification is pending, to everybody who can read it', () => {
+    for (const viewer of [
+      { id: REVIEWER, canReview: true },
+      { id: OWNER },
+      { id: STRANGER },
+    ]) {
+      assert.ok(text(workflowHtml(submitted(), viewer)).includes(FINANCE_PENDING_TEXT),
+        'a record waiting on somebody else must not look inert to the person waiting')
+    }
+  })
+
+  test('only the finance authority is offered the control', () => {
+    const withoutIt = workflowHtml(submitted(), { id: REVIEWER, canReview: true })
+    const withIt = workflowHtml(submitted(), { id: FINANCE, canVerifyFinance: true })
+    assert.ok(!buttonLabels(withoutIt).includes(VERIFY_FINANCE_BUTTON_LABEL),
+      'orders.approve_order does not carry the finance sign-off')
+    assert.ok(buttonLabels(withIt).includes(VERIFY_FINANCE_BUTTON_LABEL))
+  })
+
+  test('a finance verifier gets that control and NO PI decision', () => {
+    assert.deepEqual(
+      buttonLabels(workflowHtml(submitted(), { id: FINANCE, canVerifyFinance: true })),
+      [VERIFY_FINANCE_BUTTON_LABEL],
+      'exactly the one control their permission carries, and nothing else')
+  })
+
+  test('once verified it names the verifier and the time, and offers nothing more', () => {
+    const verified = submitted({
+      finance_verified_by: FINANCE,
+      finance_verified_at: '2026-08-03T09:30:00Z',
+      finance_verified_submission_at: '2026-08-03T04:00:00Z',
+    })
+    const html = workflowHtml(verified, { id: FINANCE, canVerifyFinance: true })
+    assert.ok(text(html).includes(financeVerifiedLine('Asha Menon', '02 Aug 2026, 02:15 pm')))
+    assert.deepEqual(buttonLabels(html), [], 'there is nothing left to verify')
+  })
+
+  test('a verification carried over from an earlier submission reads as pending', () => {
+    const stale = submitted({
+      finance_verified_by: FINANCE,
+      finance_verified_at: '2026-07-20T09:30:00Z',
+      finance_verified_submission_at: '2026-07-20T04:00:00Z',
+    })
+    const html = workflowHtml(stale, { id: FINANCE, canVerifyFinance: true })
+    assert.ok(text(html).includes(FINANCE_PENDING_TEXT))
+    assert.ok(buttonLabels(html).includes(VERIFY_FINANCE_BUTTON_LABEL),
+      'and it can be verified again, against the submission actually under review')
+  })
+
+  test('a draft raises the question at all', () => {
+    const html = workflowHtml(submission({ status: 'draft' }), { id: OWNER, canCreate: true })
+    assert.ok(!text(html).includes(FINANCE_PENDING_TEXT),
+      'there is nothing to verify until it has been submitted')
+  })
+
+  test('it is a line, not a card', () => {
+    const html = workflowHtml(submitted(), { id: REVIEWER, canReview: true })
+    // The panel keeps ONE heading. A finance card would be a second one.
+    assert.equal((html.match(/pi-detail-workflow-head/g) ?? []).length, 1)
+  })
+})
+
+describe('the final approval control, for a reviewer', () => {
+  const ready = (over: Partial<PersistedSubmission> = {}) => submission({
+    status: 'submitted',
+    submitted_by: OWNER,
+    submitted_at: '2026-08-03T04:00:00Z',
+    advance_condition: 'standard',
+    finance_verified_by: FINANCE,
+    finance_verified_at: '2026-08-03T09:30:00Z',
+    finance_verified_submission_at: '2026-08-03T04:00:00Z',
+    ...over,
+  })
+
+  test('a verified, standard-advance PI offers a live approval', () => {
+    const html = workflowHtml(ready(), { id: REVIEWER, canReview: true })
+    assert.ok(hasApproveControl(html))
+    assert.ok(!text(html).includes(APPROVAL_BLOCKED_FINANCE), 'and nothing left to explain')
+  })
+
+  test('Needs Changes and Reject SURVIVE the finance verification', () => {
+    // A verified PI is not an approved one. A reviewer who can no longer send
+    // back a document finance happened to sign off has lost a decision.
+    assert.deepEqual(buttonLabels(workflowHtml(ready(), { id: REVIEWER, canReview: true })), [
+      REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL, APPROVE_BUTTON_LABEL,
+    ])
+  })
+
+  test('an approved advance exception is approvable; a pending one is not', () => {
+    const approved = ready({
+      advance_condition: 'exception',
+      advance_exception_percent: 0,
+      advance_exception_status: 'approved',
+      advance_exception_reason: 'Client pays on delivery.',
+    })
+    assert.ok(!text(workflowHtml(approved, { id: REVIEWER, canReview: true }))
+      .includes(APPROVAL_BLOCKED_ADVANCE_PENDING))
+
+    const pending = ready({
+      advance_condition: 'exception',
+      advance_exception_percent: 12.5,
+      advance_exception_status: 'pending',
+      advance_exception_reason: 'Long-standing client.',
+    })
+    const html = text(workflowHtml(pending, { id: REVIEWER, canReview: true }))
+    assert.ok(html.includes(APPROVAL_BLOCKED_ADVANCE_PENDING))
+  })
+
+  test('the employee is never offered it, whatever the record says', () => {
+    assert.ok(!hasApproveControl(workflowHtml(ready(), { id: OWNER })))
+    assert.ok(!hasApproveControl(workflowHtml(ready(), { id: STRANGER })))
+    assert.ok(!hasApproveControl(workflowHtml(ready(), { id: FINANCE, canVerifyFinance: true })),
+      'verifying the figures is not approving the PI')
+  })
+
+  test('the blocker is addressed to the reviewer, and to nobody else', () => {
+    const unverified = ready({
+      finance_verified_by: null, finance_verified_at: null, finance_verified_submission_at: null,
+    })
+    assert.ok(text(workflowHtml(unverified, { id: REVIEWER, canReview: true }))
+      .includes(APPROVAL_BLOCKED_FINANCE))
+    assert.ok(!text(workflowHtml(unverified, { id: OWNER })).includes(APPROVAL_BLOCKED_FINANCE),
+      'the employee has no control for it to be about')
+  })
+})
+
+describe('an approved PI', () => {
+  const approvedRow = submission({
+    status: 'approved',
+    submitted_by: OWNER,
+    submitted_at: '2026-08-03T04:00:00Z',
+    approved_by: REVIEWER,
+    approved_at: '2026-08-04T05:00:00Z',
+    order_id: '77777777-7777-4777-8777-777777777777',
+    advance_condition: 'standard',
+    finance_verified_by: FINANCE,
+    finance_verified_at: '2026-08-03T09:30:00Z',
+    finance_verified_submission_at: '2026-08-03T04:00:00Z',
+  })
+  const html = workflowHtml(approvedRow, { id: REVIEWER, canReview: true })
+
+  test('shows the official number prominently, and a way into the Order', () => {
+    assert.ok(text(html).includes(APPROVED_ORDER_HEADING))
+    assert.ok(text(html).includes(ORDER_NUMBER))
+    assert.ok(buttonLabels(html).includes('Open Order'))
+  })
+
+  test('is read-only: no approval, no rejection, no return', () => {
+    assert.deepEqual(buttonLabels(html), ['Open Order'],
+      'the only control left leads somewhere; nothing on this record can be decided again')
+  })
+
+  test('keeps the finance verification on the record, forever', () => {
+    assert.ok(text(html).includes('Verified by Asha Menon'))
+  })
+
+  test('says Approved, and says it once', () => {
+    assert.ok(text(html).includes(WORKFLOW_HEADING.approved))
+    assert.equal(WORKFLOW_HEADING.approved, 'Approved')
+  })
+
+  test('shows no number to somebody who cannot read the Order', () => {
+    // A finance verifier is not the requester, not operations, not an admin and
+    // holds no view_all: public.orders returns them no row. They still see that
+    // the PI was approved; they are simply not shown a link into a record they
+    // cannot open.
+    const hidden = describeApprovedOrder({ orderId: approvedRow.order_id, displayNumber: null })
+    assert.equal(hidden, null)
   })
 })
 
@@ -815,7 +1074,7 @@ describe('a read-only viewer', () => {
 
   test('is given no control of any kind', () => {
     assert.deepEqual(buttonLabels(html), [])
-    assert.ok(!hasInertApprove(html))
+    assert.ok(!hasApproveControl(html))
   })
 
   test('is still told where the record stands, and what it is waiting on', () => {
@@ -1454,30 +1713,169 @@ describe('the products section is exactly what it was', () => {
   })
 })
 
+// ── Phase C: responsiveness and accessibility ─────────────────────────────────
+
+describe('the Phase C additions introduce no page-level overflow', () => {
+  const verified = submission({
+    status: 'submitted',
+    submitted_by: OWNER,
+    submitted_at: '2026-08-03T04:00:00Z',
+    advance_condition: 'standard',
+    finance_verified_by: FINANCE,
+    finance_verified_at: '2026-08-03T09:30:00Z',
+    finance_verified_submission_at: '2026-08-03T04:00:00Z',
+  })
+  const approved = submission({
+    status: 'approved',
+    submitted_by: OWNER,
+    submitted_at: '2026-08-03T04:00:00Z',
+    approved_by: REVIEWER,
+    approved_at: '2026-08-04T05:00:00Z',
+    order_id: '77777777-7777-4777-8777-777777777777',
+    advance_condition: 'standard',
+    finance_verified_by: FINANCE,
+    finance_verified_at: '2026-08-03T09:30:00Z',
+    finance_verified_submission_at: '2026-08-03T04:00:00Z',
+  })
+
+  const panels = [
+    workflowHtml(verified, { id: REVIEWER, canReview: true }),
+    workflowHtml(verified, { id: FINANCE, canVerifyFinance: true }),
+    workflowHtml(approved, { id: REVIEWER, canReview: true }),
+  ]
+
+  test('nothing new scrolls sideways — the product table is still the only one', () => {
+    for (const html of panels) {
+      assert.ok(!/overflow-x\s*:\s*(auto|scroll)/.test(html))
+      assert.ok(!/white-space\s*:\s*nowrap[^;]*;[^"]*width\s*:\s*\d{3,}px/.test(html))
+    }
+  })
+
+  test('nothing new is given a fixed width that cannot shrink', () => {
+    for (const html of panels) {
+      const widths = [...html.matchAll(/(?<!max-|min-)width\s*:\s*(\d+)px/g)].map(m => Number(m[1]))
+      for (const width of widths) {
+        assert.ok(width <= 320, `a ${width}px fixed width would overflow a 360px phone`)
+      }
+    }
+  })
+
+  test('the new rows wrap rather than push the panel wider', () => {
+    for (const html of panels) {
+      assert.ok(html.includes('flex-wrap:wrap'))
+    }
+  })
+
+  test('the action group still carries the class that stacks it on a phone', () => {
+    // The 480px rule in globals.css gives each control a readable full width
+    // rather than shrinking labels until they wrap mid-word. Phase C added a
+    // button to that group and must not have opened a second one.
+    const html = panels[0]
+    assert.ok(html.includes('pi-detail-workflow-actions'))
+    assert.equal((html.match(/pi-detail-workflow-actions/g) ?? []).length, 1)
+  })
+
+  test('long text in the new rows is allowed to wrap', () => {
+    // A verifier name and a blocker sentence are both arbitrary length, and
+    // neither is nowrap.
+    const html = panels[0]
+    const financeLine = html.slice(html.indexOf('Finance'), html.indexOf('Finance') + 600)
+    assert.ok(!financeLine.includes('white-space:nowrap') || financeLine.includes('min-width:0'))
+  })
+
+  test('the Order number is legible rather than merely large', () => {
+    const html = panels[2]
+    assert.ok(html.includes('font-variant-numeric:tabular-nums'),
+      '0413 and 0431 must not be confusable at a glance')
+  })
+
+  test('every new control is a real button, reachable by keyboard', () => {
+    for (const html of panels) {
+      const controls = [...html.matchAll(/<(button|a|div)\b[^>]*onclick/gi)]
+      assert.equal(controls.length, 0, 'no handler is attached to a non-interactive element')
+    }
+    assert.ok(buttonLabels(panels[0]).length > 0)
+    for (const label of buttonLabels(panels[0])) {
+      assert.ok(label.trim().length > 0, 'no icon-only control without an accessible name')
+    }
+  })
+
+  test('a busy panel disables its controls rather than removing them', () => {
+    // Removing a control mid-flight moves everything beside it under the
+    // pointer, which is how a second, unintended click happens.
+    const busy = renderToStaticMarkup(
+      <PiWorkflowPanel
+        {...(() => {
+          const state = viewerState(verified, { id: REVIEWER, canReview: true })
+          return {
+            panel: state.panel,
+            actions: state.actions,
+            status: verified.status,
+            reviewNote: null,
+            employeeReply: null,
+            advanceRefusal: null,
+            blockingCount: 0,
+            finance: state.finance,
+            approvalBlocker: state.readiness.blocker,
+            approvalReady: state.readiness.ready,
+            approvedOrder: state.approvedOrder,
+          }
+        })()}
+        acting
+        onChangePi={() => {}}
+        onSubmit={() => {}}
+        onRequestChanges={() => {}}
+        onReject={() => {}}
+        onVerifyFinance={() => {}}
+        onApprove={() => {}}
+        onOpenOrder={() => {}}
+        advanceBand={null}
+      />,
+    )
+    const opens = [...busy.matchAll(/<button\b([^>]*)>/g)].map(m => m[1])
+    assert.ok(opens.length > 0)
+    for (const attrs of opens) {
+      assert.ok(attrs.includes('disabled=""'), 'every control goes dead together')
+    }
+  })
+})
+
 // ── Nothing new was introduced ────────────────────────────────────────────────
 
 describe('the redesign added no route, no query, no RPC and no permission', () => {
   const page = read(PAGE)
 
-  test('the same five tables are read, and no others', () => {
+  test('the same tables are read, plus the one Phase C needs, and no others', () => {
+    // `orders` is the addition, read ONCE and only when the record actually
+    // names an Order — so an approved PI can show the official number and link
+    // to it. Under the caller's own RLS: a viewer who may not see the Order
+    // gets no row rather than a number they were not entitled to.
     const tables = [...page.matchAll(/\.from\('([^']+)'\)/g)].map(m => m[1])
     assert.deepEqual([...new Set(tables)].sort(), [
       'order_submission_activity',
       'order_submission_item_images',
       'order_submission_items',
       'order_submissions',
+      'orders',
       'users',
     ])
+    // Still no Finance or payment table, in any phase. Finance VERIFICATION is
+    // a sign-off on this record, not a look at a payment ledger.
+    for (const table of new Set(tables)) {
+      assert.ok(!/payment|finance/i.test(table), `${table} is out of scope for this page`)
+    }
   })
 
-  test('the same five RPCs are called, and no others', () => {
+  test('the same RPCs are called, plus the two Phase C adds, and no others', () => {
     const rpcs = [...page.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1])
     assert.deepEqual([...new Set(rpcs)].sort(), [
+      'approve_order_submission',
       'approve_pi_advance_exception',
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
       'submit_order_submission_with_advance',
+      'verify_pi_finance_check',
     ])
   })
 
