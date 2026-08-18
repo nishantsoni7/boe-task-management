@@ -34,16 +34,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, Inbox, Upload } from 'lucide-react'
+import { FileText, Inbox, Trash2, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { PiCard } from '@/components/orders/piPreview'
+import { PiDeleteConfirmModal } from '@/components/orders/piReviewModals'
 import { colors } from '@/lib/tokens'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
+import { isAdminRole } from '@/lib/permissions/moduleVisibility'
 import { formatInr } from '@/lib/pi/previewView'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import {
@@ -64,6 +66,13 @@ import {
   UPLOAD_PI_BUTTON_LABEL,
   splitDraftsForReview,
 } from '@/lib/orders/submissionWorkflow'
+import {
+  DELETE_PI_ARIA_LABEL,
+  DELETE_PI_SUCCESS,
+  canDeleteSubmission,
+  describeDeletionFailure,
+  type DeletionActor,
+} from '@/lib/orders/submissionDeletion'
 
 const MOBILE_BREAKPOINT = 768
 
@@ -99,6 +108,31 @@ export default function PiDraftsPage() {
   const [entries, setEntries] = useState<PiDraftListEntry[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+
+  /**
+   * Who is looking, for the Delete rule.
+   *
+   * Both facts come from the profile read below — the signed-in id and the
+   * project's established administrator check — and canDeleteSubmission is the
+   * only place they are combined with a row's status and owner. The control this
+   * draws is a courtesy: delete_order_submission() decides again, under a lock.
+   */
+  const [actor, setActor] = useState<DeletionActor>({ userId: null, isAdmin: false })
+
+  /** The row whose confirmation dialog is open, or null. */
+  const [pendingDelete, setPendingDelete] = useState<PiDraftListEntry | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteFailure, setDeleteFailure] = useState<string | null>(null)
+  const [deleted, setDeleted] = useState<string | null>(null)
+
+  /**
+   * The in-flight guard, in a ref as well as in state.
+   *
+   * State is what disables the button; the ref is what stops a second call that
+   * was already on its way when the first one started. A double click on a
+   * destructive action must send exactly one request.
+   */
+  const deletingRef = useRef(false)
 
   /**
    * The same answer as `canReview`, in a ref.
@@ -217,6 +251,13 @@ export default function PiDraftsPage() {
 
       if (!active) return
       setProfile((me as UserProfile) ?? null)
+      setActor({
+        userId: session.user.id,
+        // The project's established Admin check, read through the module that
+        // owns it rather than compared to a literal here — and deliberately not
+        // a permission: see submissionDeletion.ts and the migration header.
+        isAdmin: isAdminRole((me as UserProfile | null)?.role),
+      })
       setCanCreate(caps.canCreateOrder)
       // Written before the first load, so that load — which is a stable
       // callback — sees the answer rather than the initial false.
@@ -236,6 +277,91 @@ export default function PiDraftsPage() {
   }
 
   const openDraft = (entry: PiDraftListEntry) => router.push(entry.href)
+
+  /**
+   * Erase one PI, files and all.
+   *
+   * ONE ROUND TRIP TO ONE ROUTE, which removes the storage objects with the
+   * service role and only then runs delete_order_submission(). The browser never
+   * touches the bucket: two of the three deletable cases — an administrator
+   * deleting somebody else's PI, and anybody deleting a rejected one — fall
+   * outside the order-files DELETE policy, so a client-side removal would fail
+   * for exactly the cases this exists to serve.
+   *
+   * NO FULL PAGE RELOAD. On success the row is dropped from the list in place;
+   * on a failure that means the screen is stale, the list is re-read so the row
+   * shows the status the database actually has.
+   */
+  const confirmDelete = useCallback(async () => {
+    const entry = pendingDelete
+    if (!entry || deletingRef.current) return
+    deletingRef.current = true
+    setDeleting(true)
+    setDeleteFailure(null)
+
+    try {
+      const response = await fetch('/api/orders/submissions/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: entry.id }),
+      })
+      const body = await response.json().catch(() => null) as { ok?: boolean; code?: unknown } | null
+
+      if (!response.ok || body?.ok !== true) {
+        const failure = describeDeletionFailure(body?.code)
+        setDeleteFailure(failure.message)
+        // The row stays visible either way. When the failure means the screen is
+        // out of date — the PI entered review, or somebody else already deleted
+        // it — the list is re-read so what is on screen is what is true.
+        if (failure.refresh) await load()
+        return
+      }
+
+      // Removed in place. Re-querying would be a second round trip to learn
+      // something this call already knows.
+      setEntries(current => (current ?? []).filter(row => row.id !== entry.id))
+      setPendingDelete(null)
+      setDeleted(DELETE_PI_SUCCESS)
+    } catch {
+      setDeleteFailure(describeDeletionFailure('DELETE_FAILED').message)
+    } finally {
+      deletingRef.current = false
+      setDeleting(false)
+    }
+  }, [pendingDelete, load])
+
+  const closeDeleteDialog = useCallback(() => {
+    if (deletingRef.current) return
+    setPendingDelete(null)
+    setDeleteFailure(null)
+  }, [])
+
+  /**
+   * The compact destructive action, or nothing at all.
+   *
+   * Hidden for an ineligible status and for an unauthorized viewer, so the list
+   * offers no control the database would refuse. Icon-only to keep a working
+   * list readable, with a real accessible name rather than a title attribute.
+   */
+  const deleteAction = (entry: PiDraftListEntry) => {
+    if (!canDeleteSubmission(
+      { status: entry.status, created_by: entry.createdBy, submitted_by: entry.submittedBy },
+      actor,
+    )) return null
+
+    return (
+      <button
+        className="boe-btn boe-btn-ghost"
+        onClick={() => { setDeleteFailure(null); setPendingDelete(entry) }}
+        disabled={deleting}
+        aria-label={`${DELETE_PI_ARIA_LABEL} — ${entry.client}`}
+        title={DELETE_PI_ARIA_LABEL}
+        style={{ color: colors.red, padding: '6px 9px' }}
+      >
+        <Trash2 size={13} strokeWidth={2} />
+      </button>
+    )
+  }
   /** One destination, named once, so the header and the empty state cannot
    *  drift apart or grow a second hand-built path. */
   const goToImport = () => router.push('/orders/import')
@@ -360,9 +486,15 @@ export default function PiDraftsPage() {
                   </td>
                 )}
                 <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                  <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)}>
-                    {actionLabel}
-                  </button>
+                  {/* Open Draft stays the ordinary action and keeps its place.
+                      Delete sits beside it, compact and last, so the destructive
+                      control is never the one a hurried click lands on. */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)}>
+                      {actionLabel}
+                    </button>
+                    {deleteAction(entry)}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -410,9 +542,12 @@ export default function PiDraftsPage() {
                   ? `${entry.submittedAt}${entry.submitter !== '—' ? ` · ${entry.submitter}` : ''}`
                   : entry.savedAt}
               </span>
-              <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)}>
-                {actionLabel}
-              </button>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)}>
+                  {actionLabel}
+                </button>
+                {deleteAction(entry)}
+              </div>
             </div>
           </div>
         ))}
@@ -488,6 +623,27 @@ export default function PiDraftsPage() {
       ) : undefined}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '24px' }}>
+        {/* Concise, dismissible, and gone the moment anything else happens. A
+            deletion that worked needs one line, not a panel. */}
+        {deleted && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+            fontSize: '12px', color: colors.primary, lineHeight: 1.5,
+            background: colors.greenTint, border: '1px solid rgba(69,168,112,0.25)',
+            borderRadius: '6px', padding: '9px 12px',
+          }} role="status">
+            <span>{deleted}</span>
+            <button
+              className="boe-btn boe-btn-ghost"
+              onClick={() => setDeleted(null)}
+              aria-label="Dismiss"
+              style={{ padding: '2px 8px' }}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {failed ? failureState : (entries && entries.length === 0 ? (
           // A reviewer with an empty queue and no records of their own gets the
           // ordinary empty state, not two empty boxes.
@@ -499,6 +655,17 @@ export default function PiDraftsPage() {
           </>
         ))}
       </div>
+
+      {pendingDelete && (
+        <PiDeleteConfirmModal
+          client={pendingDelete.client}
+          status={pendingDelete.status}
+          deleting={deleting}
+          failure={deleteFailure}
+          onCancel={closeDeleteDialog}
+          onConfirm={confirmDelete}
+        />
+      )}
     </OrdersLayout>
   )
 }

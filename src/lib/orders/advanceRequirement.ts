@@ -41,8 +41,52 @@ import { PI_ADVANCE_PERCENT, computeAdvanceAmount, formatInr } from '@/lib/pi/pr
 
 // ── The vocabulary ────────────────────────────────────────────────────────────
 
-/** Which advance condition a PI was submitted under. */
+/** Which advance condition a PI was submitted under. THE DATABASE'S WORD. */
 export type AdvanceCondition = 'standard' | 'exception'
+
+/**
+ * The three choices an employee is actually offered. THE SCREEN'S WORD.
+ *
+ * WHY THREE WHEN THE DATABASE HAS TWO. "Exception" is one column value covering
+ * two different business decisions — start on less, and start on nothing — and
+ * an employee who needs the second one should not have to discover that it is
+ * the first one with a zero typed into it. A choice nobody can find is a choice
+ * that does not exist, which is exactly what happened: proceeding without an
+ * advance was reachable only by knowing that 0 was an accepted percentage.
+ *
+ * So the SCREEN offers three and the DATABASE still stores two:
+ *
+ *   standard  →  advance_condition = 'standard'
+ *   reduced   →  advance_condition = 'exception', 0 < percent < 40
+ *   none      →  advance_condition = 'exception', percent = 0
+ *
+ * There is NO third database condition, and there must not be one: 0% is the
+ * exception the applied migration already models, already validates and already
+ * routes through the same pending/approved/rejected decision.
+ */
+export type AdvanceChoice = 'standard' | 'reduced' | 'none'
+
+/** Every choice, in the order they are drawn. */
+export const ADVANCE_CHOICES: readonly AdvanceChoice[] = ['standard', 'reduced', 'none']
+
+/**
+ * The declaration as the dialog holds it WHILE IT IS BEING MADE.
+ *
+ * Text, not numbers, because "12.345" and "12.35" are different things to say
+ * and the difference is only visible before parsing. See decimalPlaces().
+ */
+export type AdvanceDeclaration = {
+  choice: AdvanceChoice
+  percentText: string
+  reason: string
+}
+
+/** The database condition a choice becomes. */
+export const advanceChoiceCondition = (choice: AdvanceChoice): AdvanceCondition =>
+  choice === 'standard' ? 'standard' : 'exception'
+
+/** Whether a choice must carry a reason. Both exceptions do; the standard does not. */
+export const advanceChoiceNeedsReason = (choice: AdvanceChoice): boolean => choice !== 'standard'
 
 /** Where an exception request stands. */
 export type AdvanceExceptionStatus = 'pending' | 'approved' | 'rejected'
@@ -74,18 +118,54 @@ export const ADVANCE_REASON_MAX_LENGTH = 1000
 
 export const ADVANCE_SECTION_TITLE = 'Advance requirement'
 
+// ── The three choices, as they are drawn ──
+
 export const ADVANCE_STANDARD_LABEL = `Standard advance (${ADVANCE_STANDARD_PERCENT}%)`
-export const ADVANCE_EXCEPTION_LABEL = 'Request advance exception'
+export const ADVANCE_REDUCED_LABEL = 'Reduced advance'
+export const ADVANCE_NONE_LABEL = 'No advance (0%)'
 
-export const ADVANCE_STANDARD_HINT =
-  `The usual condition: ${ADVANCE_STANDARD_PERCENT}% of the grand total is required before the order is worked.`
-export const ADVANCE_EXCEPTION_HINT =
-  `Propose less than ${ADVANCE_STANDARD_PERCENT}%. Management decides before this PI can go further.`
+export const ADVANCE_CHOICE_LABEL: Record<AdvanceChoice, string> = {
+  standard: ADVANCE_STANDARD_LABEL,
+  reduced:  ADVANCE_REDUCED_LABEL,
+  none:     ADVANCE_NONE_LABEL,
+}
 
-export const ADVANCE_PERCENT_LABEL = 'Proposed advance %'
-export const ADVANCE_REASON_LABEL = 'Why a lower advance is needed *'
+export const ADVANCE_STANDARD_HINT = 'The standard advance requirement will apply.'
+export const ADVANCE_REDUCED_HINT =
+  `Propose more than 0% and below the standard ${ADVANCE_STANDARD_PERCENT}%. Management decides before this PI can go further.`
+/**
+ * What choosing "No advance" actually commits somebody to.
+ *
+ * It says APPROVAL IS REQUIRED, and deliberately says nothing about payment:
+ * this is a request to start work on nothing received, not a record that
+ * anything was received, waived or written off.
+ */
+export const ADVANCE_NONE_HINT = 'Management approval is required to proceed without advance.'
+
+export const ADVANCE_CHOICE_HINT: Record<AdvanceChoice, string> = {
+  standard: ADVANCE_STANDARD_HINT,
+  reduced:  ADVANCE_REDUCED_HINT,
+  none:     ADVANCE_NONE_HINT,
+}
+
+export const ADVANCE_PERCENT_LABEL = 'Requested advance percentage'
+export const ADVANCE_AMOUNT_LABEL = 'Calculated advance amount'
+export const ADVANCE_REASON_LABEL = 'Reason for exception *'
 export const ADVANCE_REASON_PLACEHOLDER =
   'Say what the client has agreed and why the business should accept it…'
+
+/** The fixed figures of the No advance choice. Never computed, never a guess. */
+export const ADVANCE_NONE_PERCENT_LABEL = '0%'
+export const ADVANCE_NONE_AMOUNT_LABEL = formatInr(0)
+
+/**
+ * How an exception whose percentage is unreadable is described.
+ *
+ * Only reachable for a record written before this screen existed, or one whose
+ * percentage column is somehow null. Named rather than inlined so the two
+ * screens that can print it cannot word it differently.
+ */
+export const ADVANCE_EXCEPTION_GENERIC_LABEL = 'Advance exception'
 
 /** What 0% means, stated so nobody has to infer it from an empty figure. */
 export const ADVANCE_ZERO_EXPLANATION = 'No advance requested — the order would start with nothing received.'
@@ -254,10 +334,15 @@ export function describeAdvance(
   return {
     undeclared: condition === null,
     condition,
+    // A 0% exception is named for what it IS. "Request advance exception"
+    // beside a ₹0 left a reviewer to work out that the two meant "start with
+    // nothing", which is the single most consequential thing on the card.
     conditionLabel: condition === 'standard'
       ? ADVANCE_STANDARD_LABEL
       : condition === 'exception'
-        ? ADVANCE_EXCEPTION_LABEL
+        ? (percent === null
+            ? ADVANCE_EXCEPTION_GENERIC_LABEL
+            : percent === 0 ? ADVANCE_NONE_LABEL : ADVANCE_REDUCED_LABEL)
         : null,
     standardPercentLabel: `${ADVANCE_STANDARD_PERCENT}%`,
     standardAmount: standard === null ? '—' : formatInr(standard),
@@ -334,9 +419,29 @@ export type AdvanceValidation =
   | { ok: true; value: AdvanceSelection }
   | { ok: false; message: string }
 
-export const ADVANCE_PERCENT_REQUIRED = 'Enter the advance percentage being proposed.'
+export const ADVANCE_PERCENT_REQUIRED = 'Enter the advance percentage being requested.'
+/**
+ * A figure that is not a plain decimal.
+ *
+ * SEPARATE FROM "out of range", because they are different mistakes and the
+ * corrections are different. "1,50" and "12%" and "1e1" are not too big or too
+ * small — they are not numbers this field accepts at all, and telling somebody
+ * their comma is out of range would send them to change the wrong thing.
+ */
+export const ADVANCE_PERCENT_NOT_A_NUMBER =
+  'Enter the percentage as plain digits, for example 12.5 — no commas, percent signs, spaces or exponents.'
 export const ADVANCE_PERCENT_OUT_OF_RANGE =
-  `An exception must be at least 0% and below the standard ${ADVANCE_STANDARD_PERCENT}%.`
+  `A reduced advance must be above 0% and below the standard ${ADVANCE_STANDARD_PERCENT}%.`
+/**
+ * Zero typed into Reduced advance.
+ *
+ * NOT SILENTLY ACCEPTED AS THE SAME THING. It IS the same declaration in the
+ * database, but the two are different decisions to a person and to management,
+ * and a screen that quietly turns one into the other is deciding on somebody's
+ * behalf. So it points at the choice that says what they mean, by its name.
+ */
+export const ADVANCE_PERCENT_ZERO_USE_NONE =
+  `Zero is not a reduced advance. Select “${ADVANCE_NONE_LABEL}” to ask to proceed without an advance.`
 export const ADVANCE_PERCENT_TOO_PRECISE =
   `Use at most ${ADVANCE_PERCENT_MAX_DECIMALS} decimal places.`
 export const ADVANCE_REASON_REQUIRED = 'Say why a lower advance is being proposed.'
@@ -363,6 +468,49 @@ function decimalPlaces(raw: string): number {
 const PLAIN_DECIMAL = /^\d*\.?\d*$/
 
 /**
+ * A typed percentage, parsed the way the database parses it — or the refusal.
+ *
+ * ORDERED, and the order is the message somebody gets: shape before value,
+ * value before precision. A "1,5" is answered as a malformed figure rather than
+ * as 1 being below the minimum, because the second sentence would send them to
+ * fix something that is not wrong.
+ */
+type PercentParse = { ok: true; percent: number } | { ok: false; message: string }
+
+function parseRequestedPercent(percentText: string): PercentParse {
+  const raw = percentText.trim()
+  if (raw === '' || raw === '.') return { ok: false, message: ADVANCE_PERCENT_REQUIRED }
+
+  // A leading minus never reaches PLAIN_DECIMAL, so a genuine negative FIGURE is
+  // named here rather than being answered as "malformed": "-5" is a number, it
+  // is simply not a percentage anybody may request. "-Infinity" and "-abc" are
+  // not figures at all and fall through to the shape test below.
+  if (raw.startsWith('-') && PLAIN_DECIMAL.test(raw.slice(1)) && raw.slice(1) !== '') {
+    return { ok: false, message: ADVANCE_PERCENT_OUT_OF_RANGE }
+  }
+  if (!PLAIN_DECIMAL.test(raw)) return { ok: false, message: ADVANCE_PERCENT_NOT_A_NUMBER }
+
+  const percent = Number(raw)
+  // Unreachable through PLAIN_DECIMAL — "NaN", "Infinity" and "1e1" are all
+  // refused by the shape test above — and kept anyway, because a value that is
+  // not a finite number must never leave this function as one.
+  if (!Number.isFinite(percent)) return { ok: false, message: ADVANCE_PERCENT_NOT_A_NUMBER }
+
+  if (decimalPlaces(raw) > ADVANCE_PERCENT_MAX_DECIMALS) {
+    return { ok: false, message: ADVANCE_PERCENT_TOO_PRECISE }
+  }
+  return { ok: true, percent }
+}
+
+/** The reason, trimmed, or the refusal. Shared by both exception choices. */
+function parseExceptionReason(reason: string): { ok: true; reason: string } | { ok: false; message: string } {
+  const trimmed = reason.trim()
+  if (trimmed === '') return { ok: false, message: ADVANCE_REASON_REQUIRED }
+  if (trimmed.length > ADVANCE_REASON_MAX_LENGTH) return { ok: false, message: ADVANCE_REASON_TOO_LONG }
+  return { ok: true, reason: trimmed }
+}
+
+/**
  * The employee's declaration, as it will be sent — or the reason it cannot be.
  *
  * VALIDATED THE WAY THE DATABASE VALIDATES IT, and in the same order, so what
@@ -371,12 +519,20 @@ const PLAIN_DECIMAL = /^\d*\.?\d*$/
  * decides; this exists so somebody is told while they type rather than after a
  * round trip.
  *
- * A MISSING GRAND TOTAL FAILS CLOSED, for both conditions. The employee must not
- * be allowed to declare an advance against an amount nobody knows — 40% of an
- * unknown is not a figure, and neither is 12% of one.
+ * THE ONE RULE THAT IS STRICTER HERE THAN IN THE DATABASE is zero under Reduced
+ * advance. The RPC accepts a 0% exception from either choice because it cannot
+ * see which radio was pressed — and it should not, since 0% is a legitimate
+ * declaration. What the SCREEN refuses is the ambiguity: somebody who typed 0
+ * into "Reduced advance" is told to press the choice that says what they mean,
+ * so the record and the person agree about what was asked for. Nothing is
+ * rounded, coerced or silently reinterpreted.
+ *
+ * A MISSING GRAND TOTAL FAILS CLOSED, for every choice. The employee must not be
+ * allowed to declare an advance against an amount nobody knows — 40% of an
+ * unknown is not a figure, and neither is 0% of one.
  */
-export function validateAdvanceSelection(input: {
-  condition: AdvanceCondition
+export function validateAdvanceDeclaration(input: {
+  choice: AdvanceChoice
   /** Exactly what is in the percentage box. Never a pre-parsed number. */
   percentText: string
   reason: string
@@ -387,54 +543,74 @@ export function validateAdvanceSelection(input: {
     return { ok: false, message: ADVANCE_TOTAL_MISSING }
   }
 
-  if (input.condition === 'standard') return { ok: true, value: { condition: 'standard' } }
+  if (input.choice === 'standard') return { ok: true, value: { condition: 'standard' } }
 
-  const raw = input.percentText.trim()
-  if (raw === '' || raw === '.') return { ok: false, message: ADVANCE_PERCENT_REQUIRED }
-  if (!PLAIN_DECIMAL.test(raw)) return { ok: false, message: ADVANCE_PERCENT_OUT_OF_RANGE }
+  // No advance carries no typed percentage at all: the figure is the choice.
+  // Whatever is sitting in the box from a moment spent on Reduced advance is
+  // not read, so it cannot contradict the declaration being made.
+  if (input.choice === 'none') {
+    const reason = parseExceptionReason(input.reason)
+    if (!reason.ok) return { ok: false, message: reason.message }
+    return { ok: true, value: { condition: 'exception', percent: 0, reason: reason.reason } }
+  }
 
-  const percent = Number(raw)
-  if (!Number.isFinite(percent)) return { ok: false, message: ADVANCE_PERCENT_OUT_OF_RANGE }
-  if (percent < 0 || percent >= ADVANCE_STANDARD_PERCENT) {
+  const parsed = parseRequestedPercent(input.percentText)
+  if (!parsed.ok) return { ok: false, message: parsed.message }
+  if (parsed.percent === 0) return { ok: false, message: ADVANCE_PERCENT_ZERO_USE_NONE }
+  if (parsed.percent >= ADVANCE_STANDARD_PERCENT) {
     return { ok: false, message: ADVANCE_PERCENT_OUT_OF_RANGE }
   }
-  if (decimalPlaces(raw) > ADVANCE_PERCENT_MAX_DECIMALS) {
-    return { ok: false, message: ADVANCE_PERCENT_TOO_PRECISE }
-  }
 
-  const reason = input.reason.trim()
-  if (reason === '') return { ok: false, message: ADVANCE_REASON_REQUIRED }
-  if (reason.length > ADVANCE_REASON_MAX_LENGTH) {
-    return { ok: false, message: ADVANCE_REASON_TOO_LONG }
-  }
+  const reason = parseExceptionReason(input.reason)
+  if (!reason.ok) return { ok: false, message: reason.message }
 
-  return { ok: true, value: { condition: 'exception', percent, reason } }
+  return { ok: true, value: { condition: 'exception', percent: parsed.percent, reason: reason.reason } }
 }
 
 /**
  * The choice the dialog opens on, for this record.
  *
  * A NEW SUBMISSION DEFAULTS TO STANDARD, which is the ordinary path and the one
- * the business prefers. A RESUBMISSION OPENS ON WHATEVER THE RECORD ALREADY
- * SAYS, so a PI returned for an unrelated correction does not silently switch
- * the employee's advance condition out from under them while they fix a fabric
+ * the business prefers — and it is the default ONLY for a PI that has never
+ * declared anything. A RESUBMISSION OPENS ON WHATEVER THE RECORD ALREADY SAYS,
+ * so a PI returned for an unrelated correction does not silently switch the
+ * employee's advance condition out from under them while they fix a fabric
  * name — and an approved exception resubmitted unchanged stays approved rather
  * than going back for a second decision.
+ *
+ * A STORED 0% OPENS ON "No advance", not on "Reduced advance" with a 0 in the
+ * box. The record says the order would start with nothing received; the dialog
+ * must say the same thing back, or resubmitting an approved 0% exception would
+ * fail the screen's own zero rule.
  */
-export function initialAdvanceSelection(advance: PersistedAdvance): {
-  condition: AdvanceCondition
-  percentText: string
-  reason: string
-} {
+export function initialAdvanceSelection(advance: PersistedAdvance): AdvanceDeclaration {
   if (asCondition(advance.advance_condition) === 'exception') {
     const percent = advanceNumber(advance.advance_exception_percent)
+    const reason = (advance.advance_exception_reason ?? '').trim()
+    if (percent === 0) return { choice: 'none', percentText: '', reason }
     return {
-      condition: 'exception',
+      choice: 'reduced',
       percentText: percent === null ? '' : formatPercent(percent),
-      reason: (advance.advance_exception_reason ?? '').trim(),
+      reason,
     }
   }
-  return { condition: 'standard', percentText: '', reason: '' }
+  return { choice: 'standard', percentText: '', reason: '' }
+}
+
+/**
+ * Whether the employee has typed nothing yet under a choice that needs input.
+ *
+ * Somebody who has just pressed "Reduced advance" has not made a mistake — they
+ * have not typed anything — and greeting them with a red sentence about a
+ * percentage they were about to enter is scolding, not help. Submit stays
+ * disabled throughout, so nothing invalid can be sent while this is true.
+ *
+ * "No advance" needs only a reason, so an untouched one is a blank reason.
+ */
+export function advanceDeclarationUntouched(declaration: AdvanceDeclaration): boolean {
+  if (declaration.choice === 'standard') return false
+  if (declaration.choice === 'none') return declaration.reason.trim() === ''
+  return declaration.percentText.trim() === '' && declaration.reason.trim() === ''
 }
 
 /**
@@ -448,10 +624,9 @@ export function previewAdvanceAmount(
   percentText: string,
   grandTotal: number | null,
 ): string {
-  const raw = percentText.trim()
-  if (raw === '' || !PLAIN_DECIMAL.test(raw)) return '—'
-  const percent = Number(raw)
-  if (!Number.isFinite(percent) || percent < 0 || percent >= ADVANCE_STANDARD_PERCENT) return '—'
-  const amount = computeAdvanceAmount(grandTotal, percent)
+  const parsed = parseRequestedPercent(percentText)
+  if (!parsed.ok) return '—'
+  if (parsed.percent >= ADVANCE_STANDARD_PERCENT) return '—'
+  const amount = computeAdvanceAmount(grandTotal, parsed.percent)
   return amount === null ? '—' : formatInr(amount)
 }

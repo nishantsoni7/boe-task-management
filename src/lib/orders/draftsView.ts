@@ -254,6 +254,11 @@ export const PI_DRAFT_LIST_COLUMNS = [
   // review section states them on every row, and because the queue is ordered
   // by the submission time rather than by when the row was last written.
   'submitted_by', 'submitted_at',
+  // WHO OWNS IT. Read so the list can decide whether to draw a Delete control:
+  // created_by and submitted_by are the pair can_edit_order_submission and
+  // order_submission_deletable_by() both read, so the screen asks the same
+  // question the database answers. A courtesy, never the authority.
+  'created_by',
 ].join(', ')
 
 export const PI_DRAFT_DETAIL_COLUMNS = [
@@ -298,6 +303,15 @@ export const PI_DRAFT_IMAGE_URL_TTL_SECONDS = 3600
 
 export type PiDraftListEntry = {
   id: string
+  /**
+   * The pair that decides ownership, carried through untouched.
+   *
+   * Not folded into a boolean here, because this module does not know who is
+   * looking — the page does, and canDeleteSubmission answers it in one place for
+   * the list, the dialog and the route alike.
+   */
+  createdBy: string | null
+  submittedBy: string | null
   /** Where "Open Draft" goes. Built here so the route shape has one source. */
   href: string
   client: string
@@ -402,6 +416,8 @@ export function describeDraftListEntry(
   const submittedIso = text(row.submitted_at)
   return {
     id: row.id,
+    createdBy: row.created_by,
+    submittedBy: row.submitted_by,
     href: draftDetailHref(row.id),
     client: text(row.client_name) ?? text(row.bill_to_name) ?? 'Unnamed client',
     reference: text(row.source_workbook_name) ?? '—',
