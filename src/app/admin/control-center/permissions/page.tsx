@@ -22,6 +22,8 @@ import {
   enableModuleEntry,
   detectAccessLevel as detectLevelForActions,
   protectedActionsClearedByPreset,
+  actionDependencyChain,
+  dependentActionsToRemove,
   type AccessLevel,
   type PresetLevel,
 } from '@/lib/permissions/levels'
@@ -1148,7 +1150,25 @@ export default function PermissionsPage() {
   function changeOverride(moduleKey: string, actionKey: string, choice: OverrideChoice) {
     setOverrides(prev => {
       const next = new Map(prev)
+      const mod = tree?.modules.find(item => item.moduleKey === moduleKey)
       next.set(overrideKey(moduleKey, actionKey), choice)
+      if (!mod || choice === 'inherit') return next
+
+      const actionKeys = mod.actions.map(action => action.actionKey)
+      const effective = effectiveMapForModule(mod, prev)
+
+      if (choice === 'allow') {
+        for (const dependency of actionDependencyChain(actionKey)) {
+          if (actionKeys.includes(dependency) && effective[dependency] !== true) {
+            next.set(overrideKey(moduleKey, dependency), 'allow')
+          }
+        }
+      } else {
+        for (const dependent of dependentActionsToRemove(actionKey, actionKeys)) {
+          next.set(overrideKey(moduleKey, dependent), 'deny')
+        }
+      }
+
       return next
     })
   }

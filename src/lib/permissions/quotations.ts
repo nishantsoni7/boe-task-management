@@ -80,15 +80,15 @@ export function deriveQuotationCapabilities(
   // Module entry first, matching orders.ts and finance.ts: a quotation grant
   // left behind on a module the person cannot open must not produce a screen.
   const canOpenModule = allowed('view')
-  const canViewQuotations = canOpenModule && allowed('view_quotations')
+  const canManageQuotations = canOpenModule && allowed('manage_quotations')
+  const canViewQuotations =
+    canOpenModule && (allowed('view_quotations') || canManageQuotations)
 
   return {
+    // A stronger grant always includes the weaker one. This also repairs
+    // previously saved manage-only overrides that could not surface any UI.
     canViewQuotations,
-    // The dependency is enforced here as well as in the Access Control save
-    // path. Two independent gates, because a stored row that violates the
-    // dependency — written before this rule existed, or by a direct database
-    // edit — must not produce management controls.
-    canManageQuotations: canViewQuotations && allowed('manage_quotations'),
+    canManageQuotations,
   }
 }
 
