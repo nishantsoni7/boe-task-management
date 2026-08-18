@@ -376,32 +376,126 @@ begin
     raise exception 'both submission RPCs must be executable by authenticated (found %)', v_n;
   end if;
 
-  -- ── The old one-argument RPC still exists, with its argument name ──
+  -- ── Every door has EXACTLY the signature the application calls ──
+  --
+  -- READ FROM STABLE CATALOG COLUMNS, NEVER FROM RENDERED TEXT.
+  --
+  -- An earlier version of this block compared
+  -- pg_get_function_identity_arguments(p.oid) to 'uuid' and it failed on a real
+  -- database, because that function returns the NAMED form:
+  --
+  --   pg_get_function_identity_arguments  →  p_submission_id uuid
+  --   pg_get_function_arguments           →  p_submission_id uuid
+  --
+  -- Those are display helpers. What they render is a presentation decision that
+  -- may differ between server versions, and an assertion that depends on it is
+  -- asserting the formatting rather than the signature. The columns below are
+  -- the signature itself:
+  --
+  --   pronargs      the number of INPUT arguments
+  --   proargtypes   an oidvector of their types — INDEXED FROM 0
+  --   proargnames   a text[] of their names    — INDEXED FROM 1
+  --
+  -- The two index bases genuinely differ, which is exactly the sort of thing a
+  -- rushed correction gets wrong in the other direction. Verified against
+  -- PostgreSQL 16: proargtypes[0] is the first type, proargnames[1] is the first
+  -- name, and proargnames[0] is null.
+  --
+  -- array_length is asserted as well as pronargs, so an added OUT parameter —
+  -- which lands in proargnames without changing pronargs — is caught rather than
+  -- silently accepted. proargnames is NULL for a function whose arguments are
+  -- unnamed, and NULL fails every comparison here, so that case fails closed too.
+  --
+  -- WHY THE ARGUMENT NAMES MATTER AT ALL: PostgREST calls a function by the
+  -- argument names in the request body. A renamed argument is a broken RPC even
+  -- though the types still match, so the names are part of the contract and are
+  -- checked as strictly as the types.
+
   if not exists (
-    select 1 from pg_proc p
+    select 1
+    from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
-      and p.proname = 'submit_order_submission'
-      and pg_get_function_identity_arguments(p.oid) = 'uuid'
-      and pg_get_function_arguments(p.oid) like 'p_submission_id%'
+      and p.proname  = 'submit_order_submission'
+      and p.prokind  = 'f'
+      and p.pronargs = 1
+      and p.proargtypes[0] = 'uuid'::regtype
+      and array_length(p.proargnames, 1) = 1
+      and p.proargnames[1] = 'p_submission_id'
   ) then
     raise exception 'submit_order_submission(p_submission_id uuid) is missing or its signature changed';
   end if;
 
-  -- ── No accidental overload: one function per name ──
-  select count(*) into v_n
-  from pg_proc p
-  join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public' and p.proname = 'submit_order_submission';
-  if v_n <> 1 then
-    raise exception 'submit_order_submission is overloaded (% variants); PostgREST would resolve it by argument names', v_n;
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname  = 'submit_order_submission_with_note'
+      and p.prokind  = 'f'
+      and p.pronargs = 2
+      and p.proargtypes[0] = 'uuid'::regtype
+      and p.proargtypes[1] = 'text'::regtype
+      and array_length(p.proargnames, 1) = 2
+      and p.proargnames[1] = 'p_submission_id'
+      and p.proargnames[2] = 'p_note'
+  ) then
+    raise exception 'submit_order_submission_with_note(p_submission_id uuid, p_note text) is missing or its signature changed';
   end if;
 
+  -- The implementation both doors delegate to, checked the same way: a wrapper
+  -- calling a differently-shaped internal function would fail at runtime rather
+  -- than here.
+  if not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname  = 'submit_order_submission_internal'
+      and p.prokind  = 'f'
+      and p.pronargs = 2
+      and p.proargtypes[0] = 'uuid'::regtype
+      and p.proargtypes[1] = 'text'::regtype
+      and array_length(p.proargnames, 1) = 2
+      and p.proargnames[1] = 'p_submission_id'
+      and p.proargnames[2] = 'p_note'
+  ) then
+    raise exception 'submit_order_submission_internal(uuid, text) is missing or its signature changed';
+  end if;
+
+  -- ── No accidental overload: one function per name ──
+  --
+  -- Counted per name, because PostgREST resolves an overloaded name by which
+  -- argument keys a caller happened to send — so a second variant of either
+  -- name would silently change which function a client reaches.
+  for v_bad in
+    select unnest(array['submit_order_submission',
+                        'submit_order_submission_with_note',
+                        'submit_order_submission_internal'])
+  loop
+    select count(*) into v_n
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = v_bad;
+    if v_n <> 1 then
+      raise exception '% is overloaded (% variants); PostgREST would resolve it by argument names', v_bad, v_n;
+    end if;
+  end loop;
+
   -- ── The implementation keeps the rules it inherited ──
-  select pg_get_functiondef(p.oid) into v_def
+  --
+  -- prosrc, not pg_get_functiondef: the body is STORED verbatim, while
+  -- pg_get_functiondef re-renders a CREATE statement around it. Every check
+  -- below is about what the body DOES, so reading the stored body asks the
+  -- question directly and depends on no rendering at all.
+  select p.prosrc into v_def
   from pg_proc p
   join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.proname = 'submit_order_submission_internal';
+
+  if v_def is null then
+    raise exception 'submit_order_submission_internal has no stored body to check';
+  end if;
 
   for v_bad in select unnest(array[
     'assert_order_submission_actor',
