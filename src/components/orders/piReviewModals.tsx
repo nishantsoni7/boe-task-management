@@ -75,15 +75,18 @@ import {
   ADVANCE_NOT_A_PAYMENT,
   ADVANCE_PERCENT_LABEL,
   ADVANCE_REASON_LABEL,
+  ADVANCE_AMOUNT_PLACEHOLDER,
+  ADVANCE_AMOUNT_READONLY_LABEL,
   ADVANCE_REASON_MAX_LENGTH,
   ADVANCE_REASON_PLACEHOLDER,
   ADVANCE_SECTION_TITLE,
-  ADVANCE_STANDARD_PERCENT,
+  ADVANCE_STANDARD_REFERENCE_LABEL,
   ADVANCE_ZERO_EXPLANATION,
   REJECT_EXCEPTION_BUTTON_LABEL,
   REJECT_EXCEPTION_REASON_LABEL,
+  advanceChoiceChange,
   advanceDeclarationUntouched,
-  previewAdvanceAmount,
+  previewAdvancePercent,
   validateAdvanceDeclaration,
   type AdvanceChoice,
   type AdvanceDeclaration,
@@ -206,11 +209,12 @@ const confirmStyle = (background: string, disabled: boolean): React.CSSPropertie
  *
  * So the three business decisions are three controls:
  *
- *   Standard advance (40%)  one click, nothing revealed, and the default for a
- *                           PI that has never declared anything
- *   Reduced advance         a percentage above 0 and below 40, its rupee value
- *                           live beside it, and a mandatory reason
- *   No advance (0%)         a FIXED 0% and ₹0 — no box to type a figure into,
+ *   Advance: 40% or above   an AMOUNT, pre-filled with the exact 40% figure and
+ *                           editable upwards, its percentage live beside it, and
+ *                           the default for a PI that has never declared anything
+ *   Reduced advance:        an AMOUNT above ₹0 and below 40% of the grand total,
+ *   below 40%               its percentage live beside it, and a mandatory reason
+ *   No advance: 0%          a FIXED ₹0 and 0% — no box to type a figure into,
  *                           because the figure is the choice — and the same
  *                           mandatory reason
  *
@@ -218,11 +222,16 @@ const confirmStyle = (background: string, disabled: boolean): React.CSSPropertie
  * "exception" disclosure, because somebody who does not know the disclosure
  * exists cannot find what is inside it. That is the whole defect.
  *
- * THE RUPEE FIGURE IS SHOWN IMMEDIATELY, for every choice, because "12%" means
- * nothing to somebody deciding whether the business can live with it and
- * "₹1,47,500" means everything. Every figure comes from computeAdvanceAmount,
- * which is also what the commercial summary on the page behind this dialog
- * uses — one formula, so the two cannot disagree.
+ * THE AMOUNT IS WHAT IS TYPED AND THE PERCENTAGE IS SHOWN BESIDE IT, live, for
+ * both figures matter to different readers: the employee knows what the client
+ * agreed in rupees, and management judges it against the 40% rule. Both come
+ * from one place — standardAdvanceAmount and derivedAdvancePercent — which the
+ * database mirrors function for function, so the two cannot disagree.
+ *
+ * SWITCHING A CHOICE CLEARS WHAT DOES NOT BELONG TO IT. An amount typed as a
+ * reduced advance is not the same statement once "40% or above" is selected, and
+ * a reason written for an exception means nothing under the standard route. See
+ * advanceChoiceChange.
  *
  * IT SAYS NOTHING ABOUT PAYMENT, and says so out loud. "No advance" is a request
  * to start work on nothing received. It is not a payment, not a waiver and not a
@@ -235,7 +244,7 @@ function AdvanceSelector({
   disabled,
   invalid,
   onChoice,
-  onPercent,
+  onAmount,
   onReason,
 }: {
   declaration: AdvanceDeclaration
@@ -245,18 +254,77 @@ function AdvanceSelector({
   /** The validation message, or null while the choice is usable. */
   invalid: string | null
   onChoice: (next: AdvanceChoice) => void
-  onPercent: (next: string) => void
+  onAmount: (next: string) => void
   onReason: (next: string) => void
 }) {
-  const { choice, percentText, reason } = declaration
-  const proposed = previewAdvanceAmount(percentText, grandTotalValue)
+  const { choice, amountText, reason } = declaration
+  const derived = previewAdvancePercent(amountText, grandTotalValue)
 
-  /** The figure printed on the right of each card. */
+  /**
+   * The figure printed on the right of each card.
+   *
+   * FIXED FIGURES ONLY. The standard card shows the calculated 40%, which is the
+   * REFERENCE the choice is measured against and never changes while somebody
+   * types; the No advance card shows ₹0, which is the choice itself. The reduced
+   * card shows nothing, because what it would show is whatever is in the box —
+   * and the box is directly beneath it.
+   */
   const trailing = (value: AdvanceChoice): string | null => {
     if (value === 'standard') return standardAmount
     if (value === 'none') return ADVANCE_NONE_AMOUNT_LABEL
-    return choice === 'reduced' ? proposed : null
+    return null
   }
+
+  /**
+   * The amount box and the percentage it works out to.
+   *
+   * ONE FIELD FOR BOTH TYPED CHOICES, so the standard route and the reduced one
+   * cannot drift into two different controls that behave differently. What
+   * changes between them is the placeholder guidance and the reference line
+   * above, not the mechanics.
+   */
+  const amountField = (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...KEY_STYLE }}>
+      {ADVANCE_AMOUNT_LABEL}
+      <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={amountText}
+          onChange={e => onAmount(e.target.value)}
+          placeholder={ADVANCE_AMOUNT_PLACEHOLDER}
+          disabled={disabled}
+          aria-label={ADVANCE_AMOUNT_LABEL}
+          style={{
+            padding: '7px 10px', borderRadius: '6px',
+            border: `1px solid ${colors.border}`,
+            background: colors.base, color: colors.primary,
+            fontSize: '13px', width: '170px', boxSizing: 'border-box',
+            outline: 'none', fontVariantNumeric: 'tabular-nums',
+          }}
+        />
+        <span style={{
+          fontSize: '12.5px', fontWeight: 600, color: colors.secondary,
+          textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
+        }}>
+          {ADVANCE_PERCENT_LABEL}: {derived}
+        </span>
+      </span>
+    </label>
+  )
+
+  /** The calculated 40%, stated as the figure the declaration is measured against. */
+  const referenceLine = (
+    <span style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+      {ADVANCE_STANDARD_REFERENCE_LABEL}
+      <span style={{
+        color: colors.primary, fontWeight: 700, fontSize: '12.5px',
+        textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
+      }}>
+        {standardAmount}
+      </span>
+    </span>
+  )
 
   const card = (value: AdvanceChoice) => {
     const selected = choice === value
@@ -343,38 +411,22 @@ function AdvanceSelector({
 
       {ADVANCE_CHOICES.map(card)}
 
-      {/* Reduced advance: a typed percentage, its rupee value, and the reason.
-          Every field is re-validated by the database on arrival. */}
+      {/* The standard route: the calculated 40% as the reference, and the amount
+          being declared against it — pre-filled with that exact figure and
+          editable upwards. Re-validated by the database on arrival. */}
+      {choice === 'standard' && (
+        <div style={revealed}>
+          {referenceLine}
+          {amountField}
+        </div>
+      )}
+
+      {/* Reduced advance: the same reference and the same box, below the 40%
+          rather than at or above it, plus the mandatory reason. */}
       {choice === 'reduced' && (
         <div style={revealed}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...KEY_STYLE }}>
-            {ADVANCE_PERCENT_LABEL}
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={percentText}
-                onChange={e => onPercent(e.target.value)}
-                placeholder={`above 0 – below ${ADVANCE_STANDARD_PERCENT}`}
-                disabled={disabled}
-                aria-label={ADVANCE_PERCENT_LABEL}
-                style={{
-                  padding: '7px 10px', borderRadius: '6px',
-                  border: `1px solid ${colors.border}`,
-                  background: colors.base, color: colors.primary,
-                  fontSize: '13px', width: '130px', boxSizing: 'border-box',
-                  outline: 'none', fontVariantNumeric: 'tabular-nums',
-                }}
-              />
-              <span style={{
-                fontSize: '12.5px', fontWeight: 600, color: colors.secondary,
-                textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
-              }}>
-                {ADVANCE_AMOUNT_LABEL}: {proposed}
-              </span>
-            </span>
-          </label>
-
+          {referenceLine}
+          {amountField}
           {reasonField}
         </div>
       )}
@@ -385,21 +437,21 @@ function AdvanceSelector({
         <div style={revealed}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
             <span style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+              {ADVANCE_AMOUNT_READONLY_LABEL}
+              <span style={{
+                color: colors.primary, fontWeight: 700, fontSize: '12.5px',
+                textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
+              }}>
+                {ADVANCE_NONE_AMOUNT_LABEL}
+              </span>
+            </span>
+            <span style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
               {ADVANCE_PERCENT_LABEL}
               <span style={{
                 color: colors.primary, fontWeight: 700, fontSize: '12.5px',
                 textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
               }}>
                 {ADVANCE_NONE_PERCENT_LABEL}
-              </span>
-            </span>
-            <span style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-              {ADVANCE_AMOUNT_LABEL}
-              <span style={{
-                color: colors.primary, fontWeight: 700, fontSize: '12.5px',
-                textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
-              }}>
-                {ADVANCE_NONE_AMOUNT_LABEL}
               </span>
             </span>
           </div>
@@ -577,13 +629,16 @@ export function PiSubmitConfirmModal({
             standardAmount={standardAdvance}
             disabled={submitting}
             invalid={advanceMessage}
-            // The typed percentage and reason SURVIVE a change of choice, so
-            // somebody comparing "reduced" against "no advance" does not lose
-            // the sentence they wrote. What is SENT is decided by the choice
-            // alone: validateAdvanceDeclaration never reads the percentage box
-            // under "No advance", so nothing left behind can contradict it.
-            onChoice={next => setDeclaration(current => ({ ...current, choice: next }))}
-            onPercent={next => setDeclaration(current => ({ ...current, percentText: next }))}
+            // A CHANGE OF CHOICE CLEARS WHAT DOES NOT BELONG TO THE NEW ONE.
+            // advanceChoiceChange owns that rule: the amount box resets, because
+            // a figure typed as one kind of declaration is not the same
+            // statement as another, and the reason survives only between the two
+            // exception choices, which are the same request being reshaped. The
+            // validation message follows automatically — it is recomputed from
+            // the declaration, so an error about the previous choice cannot
+            // outlive it.
+            onChoice={next => setDeclaration(current => advanceChoiceChange(current, next, grandTotalValue))}
+            onAmount={next => setDeclaration(current => ({ ...current, amountText: next }))}
             onReason={next => setDeclaration(current => ({ ...current, reason: next }))}
           />
 

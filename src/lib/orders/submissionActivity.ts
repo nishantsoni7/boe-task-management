@@ -145,7 +145,13 @@ export type ActivityEntry = {
 }
 
 /**
- * The percentage and amount an advance event carried, as one short line.
+ * The amount and percentage an advance event carried, as one short line.
+ *
+ * THE AMOUNT LEADS, because the amount is what the employee declared and the
+ * percentage is what it came to. Events written before amounts were declared
+ * carry the same two keys — the migration that introduced them derived the
+ * amount from the percentage — so every entry ever logged still renders, and
+ * renders the same way round.
  *
  * READS EXACTLY TWO KEYS, and only for an action that is one of the three. A
  * missing, non-numeric or malformed value yields null rather than a partial
@@ -158,11 +164,13 @@ function advanceFigures(row: PersistedActivity): string | null {
   if (!metadata || typeof metadata !== 'object') return null
 
   const percent = toFiniteNumber(metadata['advance_percent'])
-  if (percent === null) return null
-
   const amount = toFiniteNumber(metadata['advance_amount'])
-  const percentLabel = `${String(Number(percent.toFixed(2)))}%`
-  return amount === null ? percentLabel : `${percentLabel} · ${formatInr(amount)}`
+  if (percent === null && amount === null) return null
+
+  const percentLabel = percent === null ? null : `${String(Number(percent.toFixed(2)))}%`
+  if (amount === null) return percentLabel
+  if (percentLabel === null) return formatInr(amount)
+  return `${formatInr(amount)} · ${percentLabel}`
 }
 
 /** A JSON value as a finite number. PostgREST renders `numeric` as a string. */

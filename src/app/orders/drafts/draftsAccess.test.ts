@@ -149,6 +149,7 @@ const submission = (over: Partial<PersistedSubmission> = {}): PersistedSubmissio
   // No advance requirement was declared. That is the honest state of a record
   // saved before Phase B, and of every draft until it is submitted.
   advance_condition: null,
+  advance_declared_amount: null,
   advance_exception_percent: null,
   advance_exception_reason: null,
   advance_exception_status: null,
@@ -347,10 +348,12 @@ describe('the detail page renders only what it fetched', () => {
     // appearing here that is not on this list would mean the screen had grown a
     // write of its own.
     //
-    // submit_order_submission_with_advance is the same submission carrying the
-    // employee's optional reply AND their advance declaration; it is one line
-    // over the same internal function the Phase A doors call, so none of them
-    // can diverge in what they check.
+    // submit_order_submission_with_advance_amount is the same submission carrying
+    // the employee's optional reply AND their declared advance AMOUNT; it is one
+    // line over the same internal function the Phase A doors call, so none of
+    // them can diverge in what they check. The percentage is not sent at all —
+    // the database derives it from the amount and the persisted grand total, so
+    // a browser cannot supply two figures that disagree.
     //
     // Phase C adds the last two: verify_pi_finance_check records the finance
     // sign-off and nothing else, and approve_order_submission is the ONE
@@ -363,7 +366,7 @@ describe('the detail page renders only what it fetched', () => {
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
-      'submit_order_submission_with_advance',
+      'submit_order_submission_with_advance_amount',
       'verify_pi_finance_check',
     ])
     // Still unreachable from a browser, in any phase: the number allocator, and
@@ -1449,16 +1452,18 @@ describe('the resubmission reply reaches the database and the trail', () => {
       'the gate is the shared helper, not an inline status comparison')
   })
 
-  test('one door carries the reply and the advance declaration together', () => {
+  test('one door carries the reply and the declared amount together', () => {
     // Phase B replaced the two-door choice with one: the reply and the advance
-    // condition travel on the same call, so a submission cannot land with one
+    // declaration travel on the same call, so a submission cannot land with one
     // recorded and the other lost. p_note is still nullable, so an employee with
     // nothing to add submits exactly as they did before.
-    assert.ok(source.includes("await supabase.rpc('submit_order_submission_with_advance', {"))
+    assert.ok(source.includes("await supabase.rpc('submit_order_submission_with_advance_amount', {"))
     assert.ok(source.includes('p_note: note,'))
     assert.ok(source.includes('p_advance_condition: advance.condition,'))
-    assert.ok(source.includes("p_advance_percent: advance.condition === 'exception' ? advance.percent : null,"),
-      'the standard requirement sends no percentage, exactly as the RPC demands')
+    assert.ok(source.includes('p_advance_amount: advance.amount,'),
+      'the AMOUNT is what is declared, on every route including the standard one')
+    assert.ok(!/p_advance_percent/.test(source),
+      'no percentage is sent: the database derives it from the amount it was given')
     assert.ok(source.includes("p_advance_reason: advance.condition === 'exception' ? advance.reason : null,"))
   })
 
@@ -1604,18 +1609,30 @@ describe('the submit dialog asks one question and stays short', () => {
   })
 
   test('each choice reveals exactly what it needs, and nothing more', () => {
+    assert.ok(source.includes("{choice === 'standard' && ("),
+      'the standard route offers the amount box too — it is a figure, not a click')
     assert.ok(source.includes("{choice === 'reduced' && ("),
-      'the typed percentage exists only for a reduced advance')
+      'the same box, below the requirement rather than at or above it')
     assert.ok(source.includes("{choice === 'none' && ("),
       'No advance states its figures instead of offering a box')
     assert.ok(source.includes('{ADVANCE_NONE_PERCENT_LABEL}'))
     assert.ok(source.includes('{ADVANCE_NONE_AMOUNT_LABEL}'))
   })
 
-  test('every choice shows its rupee figure immediately', () => {
-    assert.ok(source.includes('previewAdvanceAmount(percentText, grandTotalValue)'))
+  test('the typed amount shows the percentage it comes to, immediately', () => {
+    assert.ok(source.includes('previewAdvancePercent(amountText, grandTotalValue)'))
+    assert.ok(source.includes('{ADVANCE_PERCENT_LABEL}: {derived}'))
+    assert.ok(source.includes('{ADVANCE_STANDARD_REFERENCE_LABEL}'),
+      'and the calculated 40% is stated as the figure it is measured against')
     assert.ok(source.includes('{amount}'))
-    assert.ok(source.includes('return standardAmount'))
+    assert.ok(source.includes("if (value === 'standard') return standardAmount"))
+  })
+
+  test('changing choice clears what does not belong to the new one', () => {
+    assert.ok(source.includes('advanceChoiceChange(current, next, grandTotalValue)'),
+      'the clearing rule is the shared one, not an inline object spread')
+    assert.ok(!source.includes('({ ...current, choice: next })'),
+      'a bare choice swap would carry a stale amount and a stale reason with it')
   })
 
   test('0% is explained rather than left as a bare ₹0', () => {
@@ -1633,7 +1650,7 @@ describe('the submit dialog asks one question and stays short', () => {
     assert.ok(source.includes('validateAdvanceDeclaration({'))
     assert.ok(!/percent\s*[<>]=?\s*40/.test(source), 'no bare 40 in a JSX condition')
     assert.ok(!source.includes('parseFloat('), 'no second parser')
-    assert.ok(!source.includes('Number(percentText'), 'the dialog never parses the box itself')
+    assert.ok(!source.includes('Number(amountText'), 'the dialog never parses the box itself')
   })
 
   test('the optional employee reply is preserved on a resubmission', () => {

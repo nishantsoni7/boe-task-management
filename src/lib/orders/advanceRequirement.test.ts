@@ -37,10 +37,13 @@ import { join } from 'node:path'
 
 import {
   ADVANCE_NOT_A_PAYMENT,
-  ADVANCE_PERCENT_MAX_DECIMALS,
-  ADVANCE_PERCENT_OUT_OF_RANGE,
-  ADVANCE_PERCENT_REQUIRED,
-  ADVANCE_PERCENT_TOO_PRECISE,
+  ADVANCE_AMOUNT_MAX_DECIMALS,
+  ADVANCE_AMOUNT_NEGATIVE,
+  ADVANCE_AMOUNT_REQUIRED,
+  ADVANCE_AMOUNT_TOO_PRECISE,
+  advanceAboveTotalMessage,
+  advanceBelowStandardMessage,
+  advanceNotReducedMessage,
   ADVANCE_REASON_MAX_LENGTH,
   ADVANCE_REASON_REQUIRED,
   ADVANCE_REASON_TOO_LONG,
@@ -57,7 +60,11 @@ import {
   describeAdvanceActions,
   formatPercent,
   initialAdvanceSelection,
-  previewAdvanceAmount,
+  previewAdvancePercent,
+  standardAdvanceAmount,
+  derivedAdvancePercent,
+  advanceAmountText,
+  advanceChoiceChange,
   validateAdvanceDeclaration,
   advanceChoiceCondition,
   advanceChoiceNeedsReason,
@@ -68,8 +75,11 @@ import {
   ADVANCE_NONE_AMOUNT_LABEL,
   ADVANCE_NONE_LABEL,
   ADVANCE_NONE_PERCENT_LABEL,
-  ADVANCE_PERCENT_NOT_A_NUMBER,
-  ADVANCE_PERCENT_ZERO_USE_NONE,
+  ADVANCE_REDUCED_LABEL,
+  ADVANCE_STANDARD_LABEL,
+  ADVANCE_TOTAL_NOT_POSITIVE,
+  ADVANCE_AMOUNT_NOT_A_NUMBER,
+  ADVANCE_AMOUNT_ZERO_USE_NONE,
   type AdvanceChoice,
   type PersistedAdvance,
 } from './advanceRequirement'
@@ -83,6 +93,7 @@ const APPROVER = '22222222-2222-4222-8222-222222222222'
 /** A record that has declared nothing — every PI submitted before Phase B. */
 const undeclared = (over: Partial<PersistedAdvance> = {}): PersistedAdvance => ({
   advance_condition: null,
+  advance_declared_amount: null,
   advance_exception_percent: null,
   advance_exception_reason: null,
   advance_exception_status: null,
@@ -94,7 +105,15 @@ const undeclared = (over: Partial<PersistedAdvance> = {}): PersistedAdvance => (
   ...over,
 })
 
-const standard = (): PersistedAdvance => undeclared({ advance_condition: 'standard' })
+/**
+ * A standard declaration.
+ *
+ * WITH NO AMOUNT BY DEFAULT, which is what every record written before this
+ * column existed looks like — and the compatibility case that has to keep
+ * working. Pass one to describe a record declared the new way.
+ */
+const standard = (amount: number | string | null = null): PersistedAdvance =>
+  undeclared({ advance_condition: 'standard', advance_declared_amount: amount })
 
 const exception = (
   percent: number | string,
@@ -102,6 +121,8 @@ const exception = (
   over: Partial<PersistedAdvance> = {},
 ): PersistedAdvance => undeclared({
   advance_condition: 'exception',
+  // NO STORED AMOUNT unless a test asks for one: the legacy shape, read through
+  // the percentage exactly as it always was.
   advance_exception_percent: percent,
   advance_exception_reason: 'client is a repeat buyer',
   advance_exception_status: status,
@@ -120,9 +141,9 @@ const exception = (
  * above zero; zero itself now has its own choice, and its own refusal when it is
  * typed into the wrong one.
  */
-const validate = (choice: AdvanceChoice, percentText: string, reason: string,
+const validate = (choice: AdvanceChoice, amountText: string, reason: string,
                   grandTotal: number | null = 100000) =>
-  validateAdvanceDeclaration({ choice, percentText, reason, grandTotal })
+  validateAdvanceDeclaration({ choice, amountText, reason, grandTotal })
 
 // ── The standard rule ─────────────────────────────────────────────────────────
 
@@ -169,21 +190,107 @@ describe('there is one advance percentage and one formula', () => {
 
 // ── The declaration ───────────────────────────────────────────────────────────
 
-describe('the standard requirement is the simple choice', () => {
-  test('it needs no percentage and no reason', () => {
-    const result = validate('standard', '', '')
+describe('the standard choice declares an amount of at least 40%', () => {
+  test('the exact 40% figure is accepted, and carries no reason', () => {
+    const result = validate('standard', '40000', '')
     assert.ok(result.ok)
-    assert.deepEqual(result.value, { condition: 'standard' })
+    assert.deepEqual(result.value, { condition: 'standard', amount: 40000 })
   })
 
-  test('and it is unaffected by whatever was typed in the exception fields', () => {
-    // Somebody who typed a proposal and then changed their mind back to
-    // Standard sends a standard declaration, not a contradictory pair. The RPC
-    // refuses a standard carrying a percentage, so this is what keeps the two
-    // from disagreeing.
-    const result = validate('standard', '12.5', 'left over from a moment ago')
+  test('more than 40% is the same route — it is not an exception', () => {
+    for (const raw of ['40000.01', '50000', '99999.99', '100000']) {
+      const result = validate('standard', raw, '')
+      assert.ok(result.ok, `${raw} must be accepted`)
+      assert.deepEqual(result.value, { condition: 'standard', amount: Number(raw) })
+    }
+  })
+
+  test('a paisa below 40% is refused, and points at the reduced choice', () => {
+    // THE CLASSIFICATION IS THE AMOUNT, never a percentage rounded for display.
+    // ₹39,999.99 of ₹1,00,000 displays as 39.99% and would display as 40% if it
+    // were rounded — it is short of the requirement either way.
+    const result = validate('standard', '39999.99', '')
+    assert.ok(!result.ok)
+    assert.equal(result.message, advanceBelowStandardMessage('₹40,000'))
+    assert.ok(result.message.includes(ADVANCE_REDUCED_LABEL),
+      'the refusal names the choice to press instead')
+  })
+
+  test('more than the grand total is refused', () => {
+    const result = validate('standard', '100000.01', '')
+    assert.ok(!result.ok)
+    assert.equal(result.message, advanceAboveTotalMessage('₹1,00,000'))
+  })
+
+  test('the reason is ignored, so a leftover sentence cannot ride along', () => {
+    // Somebody who wrote a case for an exception and then changed their mind
+    // back sends a standard declaration and nothing else. The RPC refuses a
+    // standard carrying a reason, so this is what keeps the two from disagreeing.
+    const result = validate('standard', '40000', 'left over from a moment ago')
     assert.ok(result.ok)
-    assert.deepEqual(result.value, { condition: 'standard' })
+    assert.deepEqual(result.value, { condition: 'standard', amount: 40000 })
+  })
+})
+
+describe('the 40% threshold is a real payable figure, never a fraction of a paisa', () => {
+  test('it is taken as the CEILING, so the default always satisfies the rule', () => {
+    // 40% of ₹100.01 is ₹40.004. Rounding gives ₹40.00, which is BELOW the
+    // requirement — the database would refuse the very figure this screen
+    // pre-filled. The ceiling gives ₹40.01.
+    assert.equal(standardAdvanceAmount(100.01), 40.01)
+    assert.equal(standardAdvanceAmount(100), 40)
+    assert.equal(standardAdvanceAmount(2537000), 1014800)
+    assert.equal(standardAdvanceAmount(0), 0)
+  })
+
+  test('and it never overshoots by a whole paisa', () => {
+    for (const total of [0, 1, 100.01, 100.02, 100.03, 100.04, 100.05, 253700, 999999.99]) {
+      const minimum = standardAdvanceAmount(total)!
+      assert.ok(minimum >= total * 0.4 - 1e-9, `${total} → ${minimum} is below 40%`)
+      assert.ok(minimum - total * 0.4 < 0.01, `${total} → ${minimum} overshoots 40%`)
+    }
+  })
+
+  test('an unknown total has no threshold rather than a guessed one', () => {
+    assert.equal(standardAdvanceAmount(null), null)
+    assert.equal(standardAdvanceAmount(Number.NaN), null)
+    assert.equal(standardAdvanceAmount(-1), null)
+  })
+
+  test('the accepted amount and the threshold agree exactly at the boundary', () => {
+    for (const total of [100, 100.01, 100.02, 100.03, 100.04, 100.05, 118000, 253700.07]) {
+      const minimum = standardAdvanceAmount(total)!
+      assert.ok(validate('standard', advanceAmountText(minimum), '', total).ok,
+        `the threshold itself must be a valid standard advance for ${total}`)
+      const below = Math.round((minimum - 0.01) * 100) / 100
+      assert.ok(!validate('standard', advanceAmountText(below), '', total).ok,
+        `a paisa below the threshold must not be standard for ${total}`)
+      assert.ok(validate('reduced', advanceAmountText(below), 'agreed', total).ok,
+        `and must be a REDUCED advance for ${total}`)
+    }
+  })
+})
+
+describe('the percentage is derived from the amount, and truncated', () => {
+  test('an exact figure derives its exact percentage', () => {
+    assert.equal(derivedAdvancePercent(100000, 40000), 40)
+    assert.equal(derivedAdvancePercent(118000, 14750), 12.5)
+    assert.equal(derivedAdvancePercent(100000, 0), 0)
+  })
+
+  test('TRUNCATED, never rounded, so 39.99999% never prints as 40%', () => {
+    // THE CASE THIS RULE EXISTS FOR. Rounding would show a figure claiming the
+    // standard requirement is met by an amount that is a paisa short of it.
+    assert.equal(derivedAdvancePercent(100000, 39999.99), 39.99)
+    assert.ok(derivedAdvancePercent(100000, 39999.99)! < ADVANCE_STANDARD_PERCENT)
+    assert.equal(derivedAdvancePercent(100000, 12345.678), 12.34)
+  })
+
+  test('a percentage of nothing is not a number', () => {
+    assert.equal(derivedAdvancePercent(0, 0), null)
+    assert.equal(derivedAdvancePercent(null, 100), null)
+    assert.equal(derivedAdvancePercent(100000, null), null)
+    assert.equal(derivedAdvancePercent(Number.NaN, 100), null)
   })
 })
 
@@ -191,13 +298,14 @@ describe('the three choices are three choices, not two with a trick', () => {
   test('every choice is offered, and each one is named for what it does', () => {
     assert.deepEqual([...ADVANCE_CHOICES], ['standard', 'reduced', 'none'],
       'the order they are drawn in is the order of increasing exception')
-    assert.equal(ADVANCE_CHOICE_LABEL.standard, 'Standard advance (40%)')
-    assert.equal(ADVANCE_CHOICE_LABEL.reduced, 'Reduced advance')
-    assert.equal(ADVANCE_CHOICE_LABEL.none, 'No advance (0%)')
+    assert.equal(ADVANCE_CHOICE_LABEL.standard, 'Advance: 40% or above')
+    assert.equal(ADVANCE_CHOICE_LABEL.reduced, 'Reduced advance: below 40%')
+    assert.equal(ADVANCE_CHOICE_LABEL.none, 'No advance: 0%')
   })
 
-  test('the standard helper says the standard applies, and nothing more', () => {
-    assert.equal(ADVANCE_CHOICE_HINT.standard, 'The standard advance requirement will apply.')
+  test('the standard helper says the amount is declared, and what bounds it', () => {
+    assert.equal(ADVANCE_CHOICE_HINT.standard,
+      'Declare the amount agreed. It must be at least 40% of the grand total, and may be more.')
   })
 
   test('No advance says that management must approve it', () => {
@@ -223,24 +331,24 @@ describe('the three choices are three choices, not two with a trick', () => {
   })
 })
 
-describe('No advance is a first-class choice worth 0% of anything', () => {
-  test('it sends a 0% exception with the employee’s reason', () => {
+describe('No advance is a first-class choice worth ₹0', () => {
+  test('it sends a ₹0 exception with the employee’s reason', () => {
     const result = validate('none', '', 'long-standing account, pays on delivery')
     assert.ok(result.ok)
     assert.deepEqual(result.value, {
       condition: 'exception',
-      percent: 0,
+      amount: 0,
       reason: 'long-standing account, pays on delivery',
     })
   })
 
-  test('it ignores whatever is sitting in the percentage box', () => {
-    // Somebody who tried 12% and then decided on none must send 0%, not 12%.
-    // The choice is the declaration; the abandoned box cannot contradict it.
-    for (const leftover of ['12.5', '39', 'nonsense', '   ']) {
+  test('it ignores whatever is sitting in the amount box', () => {
+    // Somebody who tried ₹12,000 and then decided on none must send ₹0. The
+    // choice is the declaration; the abandoned box cannot contradict it.
+    for (const leftover of ['12500', '39000', 'nonsense', '   ']) {
       const result = validate('none', leftover, 'agreed with the client')
       assert.ok(result.ok, `"${leftover}" must not affect a No advance declaration`)
-      assert.equal(result.value.condition === 'exception' && result.value.percent, 0)
+      assert.equal(result.value.condition === 'exception' && result.value.amount, 0)
     }
   })
 
@@ -259,86 +367,105 @@ describe('No advance is a first-class choice worth 0% of anything', () => {
 })
 
 describe('a reduced advance, at every boundary', () => {
-  test('every value strictly between zero and the standard is accepted', () => {
-    for (const raw of ['0.01', '1', '12.5', '20', '39', '39.9', '39.99']) {
+  test('every amount strictly between ₹0 and the threshold is accepted', () => {
+    for (const raw of ['0.01', '1', '12500', '20000', '39000', '39990', '39999.99']) {
       const result = validate('reduced', raw, 'agreed with the client')
-      assert.ok(result.ok, `${raw}% must be accepted`)
-      assert.equal(result.value.condition === 'exception' && result.value.percent, Number(raw))
+      assert.ok(result.ok, `${raw} must be accepted`)
+      assert.equal(result.value.condition === 'exception' && result.value.amount, Number(raw))
     }
   })
 
   test('ZERO IS REFUSED HERE, and points at the choice that means it', () => {
-    // The database would take it — 0% is a valid exception — but a screen that
-    // silently turned "reduced advance of 0%" into "no advance" would be
+    // The database would take it — ₹0 is a valid exception — but a screen that
+    // silently turned "reduced advance of ₹0" into "no advance" would be
     // deciding on somebody's behalf. Nothing is rounded or reinterpreted.
     for (const raw of ['0', '0.0', '0.00', '.0', '00']) {
       const result = validate('reduced', raw, 'agreed')
       assert.ok(!result.ok, `"${raw}" must be refused under Reduced advance`)
-      assert.equal(result.message, ADVANCE_PERCENT_ZERO_USE_NONE)
+      assert.equal(result.message, ADVANCE_AMOUNT_ZERO_USE_NONE)
       assert.ok(result.message.includes(ADVANCE_NONE_LABEL),
         'the refusal must name the choice to press instead')
     }
   })
 
-  test('the standard itself is NOT an exception', () => {
-    const result = validate('reduced', '40', 'agreed')
+  test('the threshold itself is NOT an exception', () => {
+    const result = validate('reduced', '40000', 'agreed')
     assert.ok(!result.ok)
-    assert.equal(result.message, ADVANCE_PERCENT_OUT_OF_RANGE)
+    assert.equal(result.message, advanceNotReducedMessage('₹40,000'))
+    assert.ok(result.message.includes(ADVANCE_STANDARD_LABEL),
+      'and the refusal names the choice that fits')
   })
 
-  test('anything above the standard is refused', () => {
-    for (const raw of ['40.01', '41', '50', '100', '1000']) {
+  test('anything above the threshold is refused', () => {
+    for (const raw of ['40000.01', '41000', '50000', '100000']) {
       const result = validate('reduced', raw, 'agreed')
-      assert.ok(!result.ok, `${raw}% must be refused`)
-      assert.equal(result.message, ADVANCE_PERCENT_OUT_OF_RANGE)
+      assert.ok(!result.ok, `${raw} must be refused`)
+      assert.equal(result.message, advanceNotReducedMessage('₹40,000'))
     }
   })
 
-  test('a negative percentage is refused as out of range, not as gibberish', () => {
+  test('more than the grand total is answered as that, not as "not reduced"', () => {
+    // Two different mistakes, two different corrections. Somebody who typed one
+    // digit too many is not being told to press a different radio.
+    const result = validate('reduced', '100000.01', 'agreed')
+    assert.ok(!result.ok)
+    assert.equal(result.message, advanceAboveTotalMessage('₹1,00,000'))
+  })
+
+  test('a negative amount is refused as negative, not as gibberish', () => {
     for (const raw of ['-0.01', '-1', '-100']) {
       const result = validate('reduced', raw, 'agreed')
-      assert.ok(!result.ok, `${raw}% must be refused`)
-      assert.equal(result.message, ADVANCE_PERCENT_OUT_OF_RANGE,
-        '"-5" is a number; it is simply not a percentage anybody may request')
+      assert.ok(!result.ok, `${raw} must be refused`)
+      assert.equal(result.message, ADVANCE_AMOUNT_NEGATIVE,
+        '"-5000" is a number; it is simply not an advance anybody may declare')
     }
   })
 
   test('a malformed figure is refused rather than coerced', () => {
-    // Number('') is 0 and Number('1e1') is 10. Both would be a figure nobody
+    // Number('') is 0 and Number('1e5') is 100000. Both would be a figure nobody
     // typed, so the shape is checked before the value.
-    for (const raw of ['abc', 'NaN', 'Infinity', '-Infinity', '1e1', '1E1', '2e-3',
-                       '1,5', '1,50', '12%', '₹12', '--3', '1.2.3', '+5', ' 1 2 ', '0x10']) {
+    for (const raw of ['abc', 'NaN', 'Infinity', '-Infinity', '1e5', '1E5', '2e-3',
+                       '1,5', '1,50,000', '12%', '₹12', '--3', '1.2.3', '+5', ' 1 2 ', '0x10']) {
       const result = validate('reduced', raw, 'agreed')
       assert.ok(!result.ok, `"${raw}" must be refused`)
-      assert.equal(result.message, ADVANCE_PERCENT_NOT_A_NUMBER,
+      assert.equal(result.message, ADVANCE_AMOUNT_NOT_A_NUMBER,
         `"${raw}" is not a figure at all, and is not answered as one out of range`)
     }
   })
 
-  test('an empty percentage asks for one rather than assuming zero', () => {
+  test('an empty amount asks for one rather than assuming zero', () => {
     for (const raw of ['', '   ', '.']) {
       const result = validate('reduced', raw, 'agreed')
       assert.ok(!result.ok)
-      assert.equal(result.message, ADVANCE_PERCENT_REQUIRED)
+      assert.equal(result.message, ADVANCE_AMOUNT_REQUIRED)
     }
   })
 
   test('excessive precision is REFUSED, never rounded', () => {
-    // This is the one that matters most. numeric(4,2) in the database would have
-    // stored 12.35 for a typed 12.345 — a figure management would then decide on
-    // that nobody proposed. The column is plain numeric and the CHECK refuses.
-    for (const raw of ['12.345', '0.001', '1.2345', '39.999']) {
+    // This is the one that matters most. Rounding would store ₹12,345.68 for a
+    // typed ₹12,345.675 — a figure management would then decide on that nobody
+    // declared. The column is plain numeric and the CHECK refuses.
+    for (const raw of ['12345.675', '0.001', '1.2345', '39999.999']) {
       const result = validate('reduced', raw, 'agreed')
       assert.ok(!result.ok, `${raw} must be refused`)
-      assert.equal(result.message, ADVANCE_PERCENT_TOO_PRECISE)
+      assert.equal(result.message, ADVANCE_AMOUNT_TOO_PRECISE)
     }
-    assert.equal(ADVANCE_PERCENT_MAX_DECIMALS, 2)
+    assert.equal(ADVANCE_AMOUNT_MAX_DECIMALS, 2)
   })
 
   test('two decimal places, including trailing zeroes, are fine', () => {
-    for (const raw of ['12.50', '39.00', '1.10']) {
+    for (const raw of ['12500.50', '39000.00', '1.10']) {
       assert.ok(validate('reduced', raw, 'agreed').ok, `${raw} must be accepted`)
     }
+  })
+
+  test('a real advance that rounds to 0% is still a real advance', () => {
+    // ₹5 of ₹10,00,000 is 0.0005%, which truncates to 0.00 — and is a positive
+    // declared amount all the same. It is a REDUCED advance, not "No advance".
+    const result = validate('reduced', '5', 'agreed', 1000000)
+    assert.ok(result.ok)
+    assert.equal(result.value.condition === 'exception' && result.value.amount, 5)
+    assert.equal(derivedAdvancePercent(1000000, 5), 0)
   })
 })
 
@@ -415,8 +542,21 @@ describe('a missing grand total fails closed', () => {
   test('a real total of zero is a known amount, not a missing one', () => {
     // A ₹0 grand total is a strange PI, but it is a PI whose total is KNOWN.
     // Treating it as missing would be inventing a second meaning for zero, which
-    // is the mistake the commercial summary already refuses to make.
-    assert.ok(validate('standard', '', '', 0).ok)
+    // is the mistake the commercial summary already refuses to make. The whole
+    // of ₹0 is ₹0, and that is a standard declaration.
+    const result = validate('standard', '0', '', 0)
+    assert.ok(result.ok)
+    assert.deepEqual(result.value, { condition: 'standard', amount: 0 })
+  })
+
+  test('but no exception can be carved out of a total of zero', () => {
+    // An exception is a figure BELOW a threshold that is itself ₹0, and there is
+    // no such figure. The database refuses the same case by name.
+    for (const choice of ['reduced', 'none'] as const) {
+      const result = validate(choice, '0', 'agreed', 0)
+      assert.ok(!result.ok, `${choice} must be refused against a zero total`)
+      assert.equal(result.message, ADVANCE_TOTAL_NOT_POSITIVE)
+    }
   })
 })
 
@@ -559,20 +699,26 @@ describe('the section describes the condition without inventing a figure', () =>
   })
 })
 
-describe('the live preview beside the percentage box', () => {
-  test('a usable figure is shown in rupees', () => {
-    assert.equal(previewAdvanceAmount('12.5', 118000), '₹14,750')
-    assert.equal(previewAdvanceAmount('0', 118000), '₹0', 'a genuine zero is ₹0 and says so')
+describe('the live percentage beside the amount box', () => {
+  test('a usable figure shows the percentage it comes to', () => {
+    assert.equal(previewAdvancePercent('14750', 118000), '12.5%')
+    assert.equal(previewAdvancePercent('47200', 118000), '40%')
+    assert.equal(previewAdvancePercent('0', 118000), '0%', 'a genuine zero is 0% and says so')
+  })
+
+  test('and it truncates, so a figure short of 40% never previews as 40%', () => {
+    assert.equal(previewAdvancePercent('39999.99', 100000), '39.99%')
   })
 
   test('a half-typed or unusable figure shows nothing rather than flashing one', () => {
-    for (const raw of ['', '.', 'abc', '40', '41', '-1', '1e1']) {
-      assert.equal(previewAdvanceAmount(raw, 118000), '—', `"${raw}" must preview nothing`)
+    for (const raw of ['', '.', 'abc', '-1', '1e5']) {
+      assert.equal(previewAdvancePercent(raw, 118000), '—', `"${raw}" must preview nothing`)
     }
   })
 
-  test('an unknown total previews nothing', () => {
-    assert.equal(previewAdvanceAmount('12.5', null), '—')
+  test('an unknown or zero total previews nothing', () => {
+    assert.equal(previewAdvancePercent('14750', null), '—')
+    assert.equal(previewAdvancePercent('0', 0), '—')
   })
 })
 
@@ -676,74 +822,136 @@ describe('the four kinds of viewer, by capability', () => {
 // ── The dialog's starting state ───────────────────────────────────────────────
 
 describe('the submit dialog opens on what the record already says', () => {
-  test('a record that declared nothing opens on the standard requirement', () => {
-    assert.deepEqual(initialAdvanceSelection(undeclared()),
-      { choice: 'standard', percentText: '', reason: '' })
+  test('a record that declared nothing opens on the exact 40% amount', () => {
+    assert.deepEqual(initialAdvanceSelection(undeclared(), 100000),
+      { choice: 'standard', amountText: '40000', reason: '' })
   })
 
-  test('a standard record opens on the standard requirement', () => {
-    assert.deepEqual(initialAdvanceSelection(standard()),
-      { choice: 'standard', percentText: '', reason: '' })
+  test('a standard record with no stored amount opens on what it always meant', () => {
+    // THE COMPATIBILITY CASE. Every PI declared before amounts existed carries a
+    // condition and no figure, and what it has always meant is the standard 40%
+    // of its grand total. Resubmitting it untouched declares exactly that.
+    assert.deepEqual(initialAdvanceSelection(standard(), 100000),
+      { choice: 'standard', amountText: '40000', reason: '' })
+    assert.ok(validate('standard', '40000', '', 100000).ok)
+  })
+
+  test('a standard record WITH an amount opens on the amount it declared', () => {
+    assert.deepEqual(initialAdvanceSelection(standard(55000), 100000),
+      { choice: 'standard', amountText: '55000', reason: '' })
   })
 
   test('an existing reduced advance is shown rather than silently switched away', () => {
     // A PI returned for an UNRELATED correction must not quietly change the
-    // employee's advance condition while they fix a fabric name.
+    // employee's advance while they fix a fabric name. A legacy record's amount
+    // is read from its stored percentage — the figure it has always meant.
     for (const status of ['pending', 'approved', 'rejected'] as const) {
-      assert.deepEqual(initialAdvanceSelection(exception(12.5, status)), {
+      assert.deepEqual(initialAdvanceSelection(exception(12.5, status), 100000), {
         choice: 'reduced',
-        percentText: '12.5',
+        amountText: '12500',
         reason: 'client is a repeat buyer',
       })
     }
   })
 
-  test('a stored 0% opens on No advance, NOT on a reduced advance of zero', () => {
+  test('a stored ₹0 opens on No advance, NOT on a reduced advance of zero', () => {
     // Opening it as a Reduced advance with "0" in the box would hand the
     // employee a declaration their own screen refuses, so resubmitting an
-    // approved 0% exception unchanged would be impossible.
+    // approved ₹0 exception unchanged would be impossible.
     for (const status of ['pending', 'approved', 'rejected'] as const) {
-      assert.deepEqual(initialAdvanceSelection(exception(0, status)), {
+      assert.deepEqual(initialAdvanceSelection(exception(0, status), 100000), {
         choice: 'none',
-        percentText: '',
+        amountText: '',
         reason: 'client is a repeat buyer',
       })
     }
   })
 
   test('an APPROVED reduced exception reopens identically, so it survives resubmission', () => {
-    // The database keeps an approved exception approved only when the
-    // percentage AND the reason come back unchanged. Pre-filling both is what
-    // makes that the default outcome rather than an accident.
+    // The database keeps an approved exception approved only when the figure AND
+    // the reason come back unchanged. Pre-filling both is what makes that the
+    // default outcome rather than an accident.
     const advance = exception('15.00', 'approved')
-    const initial = initialAdvanceSelection(advance)
-    const result = validate(initial.choice, initial.percentText, initial.reason)
+    const initial = initialAdvanceSelection(advance, 100000)
+    const result = validate(initial.choice, initial.amountText, initial.reason)
     assert.ok(result.ok)
-    assert.equal(result.value.condition === 'exception' && result.value.percent, 15)
+    assert.equal(result.value.condition === 'exception' && result.value.amount, 15000)
     assert.equal(result.value.condition === 'exception' && result.value.reason,
       'client is a repeat buyer')
   })
 
-  test('an APPROVED 0% exception reopens identically too', () => {
+  test('an APPROVED ₹0 exception reopens identically too', () => {
     const advance = exception('0.00', 'approved')
-    const initial = initialAdvanceSelection(advance)
+    const initial = initialAdvanceSelection(advance, 100000)
     assert.equal(initial.choice, 'none')
-    const result = validate(initial.choice, initial.percentText, initial.reason)
-    assert.ok(result.ok, 'reopening an approved 0% must produce a sendable declaration')
+    const result = validate(initial.choice, initial.amountText, initial.reason)
+    assert.ok(result.ok, 'reopening an approved ₹0 must produce a sendable declaration')
     assert.deepEqual(result.value,
-      { condition: 'exception', percent: 0, reason: 'client is a repeat buyer' })
+      { condition: 'exception', amount: 0, reason: 'client is a repeat buyer' })
+  })
+
+  test('an unusable grand total leaves the box empty rather than guessing', () => {
+    assert.deepEqual(initialAdvanceSelection(undeclared(), null),
+      { choice: 'standard', amountText: '', reason: '' })
   })
 
   test('the red sentence is withheld until something has been typed', () => {
-    // Pressing a choice is not a mistake. Submit stays disabled either way.
-    assert.equal(advanceDeclarationUntouched({ choice: 'standard', percentText: '', reason: '' }), false)
-    assert.equal(advanceDeclarationUntouched({ choice: 'reduced', percentText: '', reason: '' }), true)
-    assert.equal(advanceDeclarationUntouched({ choice: 'reduced', percentText: '5', reason: '' }), false)
-    assert.equal(advanceDeclarationUntouched({ choice: 'reduced', percentText: '', reason: 'x' }), false)
-    assert.equal(advanceDeclarationUntouched({ choice: 'none', percentText: '', reason: '' }), true)
-    assert.equal(advanceDeclarationUntouched({ choice: 'none', percentText: '', reason: 'x' }), false)
-    assert.equal(advanceDeclarationUntouched({ choice: 'none', percentText: '12', reason: '' }), true,
-      'an abandoned percentage is not something typed under No advance')
+    // Pressing a choice is not a mistake. Submit stays disabled either way. The
+    // standard choice is never "untouched": it opens pre-filled with a valid
+    // figure, so an empty box there is somebody having deleted one.
+    assert.equal(advanceDeclarationUntouched({ choice: 'standard', amountText: '', reason: '' }), false)
+    assert.equal(advanceDeclarationUntouched({ choice: 'reduced', amountText: '', reason: '' }), true)
+    assert.equal(advanceDeclarationUntouched({ choice: 'reduced', amountText: '5000', reason: '' }), false)
+    assert.equal(advanceDeclarationUntouched({ choice: 'reduced', amountText: '', reason: 'x' }), false)
+    assert.equal(advanceDeclarationUntouched({ choice: 'none', amountText: '', reason: '' }), true)
+    assert.equal(advanceDeclarationUntouched({ choice: 'none', amountText: '', reason: 'x' }), false)
+    assert.equal(advanceDeclarationUntouched({ choice: 'none', amountText: '12000', reason: '' }), true,
+      'an abandoned amount is not something typed under No advance')
+  })
+})
+
+describe('changing choice clears what does not belong to the new one', () => {
+  const reduced = { choice: 'reduced' as const, amountText: '12500', reason: 'a case for less' }
+
+  test('moving to the standard route resets the box and drops the reason', () => {
+    assert.deepEqual(advanceChoiceChange(reduced, 'standard', 100000),
+      { choice: 'standard', amountText: '40000', reason: '' },
+      'no stale reduced-advance reason may survive into a standard declaration')
+  })
+
+  test('moving off the standard route empties the box', () => {
+    // The standard figure is by definition NOT a reduced one, so carrying it
+    // across would pre-fill a value the new choice immediately refuses.
+    const std = { choice: 'standard' as const, amountText: '40000', reason: '' }
+    assert.deepEqual(advanceChoiceChange(std, 'reduced', 100000),
+      { choice: 'reduced', amountText: '', reason: '' })
+    assert.deepEqual(advanceChoiceChange(std, 'none', 100000),
+      { choice: 'none', amountText: '', reason: '' })
+  })
+
+  test('the reason survives between the two exception choices', () => {
+    // They are the same request being reshaped, and losing three sentences of
+    // typing to a radio button is the kind of thing nobody forgives twice.
+    assert.deepEqual(advanceChoiceChange(reduced, 'none', 100000),
+      { choice: 'none', amountText: '', reason: 'a case for less' })
+    const none = { choice: 'none' as const, amountText: '', reason: 'a case for none' }
+    assert.deepEqual(advanceChoiceChange(none, 'reduced', 100000),
+      { choice: 'reduced', amountText: '', reason: 'a case for none' })
+  })
+
+  test('pressing the choice already selected changes nothing at all', () => {
+    assert.equal(advanceChoiceChange(reduced, 'reduced', 100000), reduced)
+  })
+
+  test('and every result is one the validator can judge without a stale error', () => {
+    for (const next of ['standard', 'reduced', 'none'] as const) {
+      const moved = advanceChoiceChange(reduced, next, 100000)
+      const result = validateAdvanceDeclaration({ ...moved, grandTotal: 100000 })
+      // Either it is sendable, or it is waiting on input that belongs to the new
+      // choice — never refused for something the previous choice carried.
+      assert.ok(result.ok || advanceDeclarationUntouched(moved) || next === 'none',
+        `${next} must not open on an error inherited from the previous choice`)
+    }
   })
 })
 
@@ -757,14 +965,25 @@ describe('the columns are named, and are the ones the migration adds', () => {
       'a second column meaning the same thing is a second source of truth')
   })
 
-  test('every column the module reads is one the migration creates', () => {
-    const sql = readFileSync(
-      join(process.cwd(), 'supabase', 'migrations',
-           '20260913000000_order_submission_advance_exceptions.sql'), 'utf8')
+  test('every column the module reads is one a migration creates', () => {
+    // TWO FILES, because the declared amount arrived after the exception
+    // columns did. Both are read here so a column cannot be added to the module
+    // without a migration that actually creates it.
+    const sql = [
+      '20260913000000_order_submission_advance_exceptions.sql',
+      '20260917000000_order_submission_advance_amount.sql',
+    ].map(file => readFileSync(
+      join(process.cwd(), 'supabase', 'migrations', file), 'utf8')).join('\n')
+
     for (const column of PI_ADVANCE_COLUMNS) {
       if (column === 'advance_exception_reason') continue  // already applied
-      assert.ok(sql.includes(`add column ${column}`), `${column} must be added by Phase B`)
+      assert.ok(sql.includes(`add column ${column}`), `${column} must be added by a migration`)
     }
+  })
+
+  test('the declared amount is one of them', () => {
+    assert.ok(PI_ADVANCE_COLUMNS.includes('advance_declared_amount'),
+      'the amount is what is declared; a screen that did not select it could not show it')
   })
 
   test('no payment column is read', () => {
@@ -780,8 +999,12 @@ describe('the columns are named, and are the ones the migration adds', () => {
 
 describe('nothing on these screens claims a payment', () => {
   test('the boundary is stated where the figures are', () => {
-    assert.ok(/no payment has been recorded/i.test(ADVANCE_NOT_A_PAYMENT))
-    assert.ok(/requirement/i.test(ADVANCE_NOT_A_PAYMENT))
+    assert.equal(ADVANCE_NOT_A_PAYMENT,
+      'This records the advance amount declared for this PI. Payment verification and linking will be added separately.')
+    assert.ok(/declared/i.test(ADVANCE_NOT_A_PAYMENT),
+      'what is recorded is what was SAID, and the sentence says so')
+    assert.ok(!/verified through finance|has been verified|confirmed by finance/i.test(ADVANCE_NOT_A_PAYMENT),
+      'nothing here reaches Finance, so nothing here may claim it did')
   })
 
   test('no exported string says money was received', () => {
@@ -789,7 +1012,13 @@ describe('nothing on these screens claims a payment', () => {
     // sentence added later is covered without anybody remembering to add it.
     const source = readFileSync(
       join(process.cwd(), 'src', 'lib', 'orders', 'advanceRequirement.ts'), 'utf8')
-    const strings = [...source.matchAll(/'([^'\\]{12,})'|`([^`\\$]{12,})`/g)]
+    // `$` IS ALLOWED INSIDE A TEMPLATE, deliberately. Excluding it made the
+    // scanner stop at the first interpolation and then pair the CLOSING backtick
+    // with the next opening one, so whole runs of the file — comments included —
+    // were read as one "string" and the check reported on text that is not a
+    // string at all. Interpolated identifiers appearing in the matched text are
+    // harmless: none of the forbidden phrases is an identifier.
+    const strings = [...source.matchAll(/'([^'\\\n]{12,})'|`([^`\\]{12,})`/g)]
       .map(m => (m[1] ?? m[2]).toLowerCase())
 
     for (const text of strings) {
@@ -803,6 +1032,19 @@ describe('nothing on these screens claims a payment', () => {
     for (const text of strings) {
       if (text.includes('received')) {
         assert.ok(/no |never |nothing /.test(text), `"received" must be a denial: ${text}`)
+      }
+    }
+  })
+
+  test('no exported string claims the amount was verified', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src', 'lib', 'orders', 'advanceRequirement.ts'), 'utf8')
+    const strings = [...source.matchAll(/'([^'\\\n]{12,})'|`([^`\\]{12,})`/g)]
+      .map(m => (m[1] ?? m[2]).toLowerCase())
+    for (const text of strings) {
+      for (const claim of ['verified through finance', 'finance has verified',
+                           'payment verified', 'advance verified', 'payment linked']) {
+        assert.ok(!text.includes(claim), `a string claims "${claim}": ${text}`)
       }
     }
   })

@@ -95,8 +95,13 @@ describe('the fix is one new forward migration', () => {
     }
   })
 
-  test('it is the only migration added after Phase C', () => {
-    assert.deepEqual(files.filter(f => f > PHASE_C), [FILE])
+  // THE FIX ITSELF IS ONE FILE, and it is the first thing to land after Phase C.
+  // Later migrations belong to later work — this asserts that none of them is a
+  // second attempt at THIS fix, not that the repository stopped moving.
+  test('the fix is one file, and the first one after Phase C', () => {
+    const afterPhaseC = files.filter(f => f > PHASE_C)
+    assert.equal(afterPhaseC[0], FILE)
+    assert.deepEqual(afterPhaseC.filter(f => f.includes('test_cleanup')), [FILE])
   })
 
   test('no two migrations share a version prefix', () => {
