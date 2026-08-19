@@ -153,6 +153,11 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
   // 20260681000000 but never labelled here, so it rendered as its raw
   // event_type; it is the Order-side record of where this Order came from.
   order_created_from_request: 'Order created from request',
+  // Written by approve_order_submission() (20260915000000). Same reason as the
+  // line above: present in the log but never labelled here, so it rendered as
+  // its raw event_type — `order_created_from_pi_submission` — on the Activity
+  // trail of every Order created by approving a PI.
+  order_created_from_pi_submission: 'Order created from PI submission',
   // Written by apply_order_amendment() (20260816000000).
   order_amended:    'Order amended',
 }
@@ -232,6 +237,9 @@ function ActivityDot({ event_type }: { event_type: string }) {
     payment_unlinked: colors.amber,
     note_added:       colors.muted,
     order_created_from_request: colors.green,
+    // The same green: both are the Order-side record of an Order coming into
+    // existence, and the provenance it came from is not a difference in kind.
+    order_created_from_pi_submission: colors.green,
     order_amended:    colors.amber,
   }
   const c = colorMap[event_type] ?? colors.muted

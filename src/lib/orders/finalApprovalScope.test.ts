@@ -169,10 +169,16 @@ describe('no applied migration was edited, renamed or reapplied', () => {
     }
   })
 
-  test('Phase C added exactly one migration, after the cutoff', () => {
+  test('Phase C itself added exactly one migration, after the cutoff', () => {
     const files = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
-    assert.deepEqual(files.filter(f => f > CUTOFF),
-      ['20260915000000_order_submission_final_approval.sql'])
+    const PHASE_C = '20260915000000_order_submission_final_approval.sql'
+    assert.deepEqual(files.filter(f => f > CUTOFF && f <= PHASE_C), [PHASE_C])
+    // Later files are allowed and must belong to this feature. 20260916000000 is
+    // the Test Data Cleanup fix for the mutual foreign key Phase C introduced.
+    for (const file of files.filter(f => f > PHASE_C)) {
+      assert.ok(/order_submission/i.test(file),
+        `${file} lands after Phase C but is not part of this feature`)
+    }
   })
 })
 

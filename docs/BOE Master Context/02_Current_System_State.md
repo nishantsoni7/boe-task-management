@@ -576,8 +576,9 @@ Full detail: `docs/Module Docs/ACCESS_CONTROL_V1.md`.
 
 ## Order Management — PI submission to Confirmed Order
 
-Status: **Phase C written, migration UNAPPLIED and awaiting Nishant's approval.**
-Everything before Phase C is applied to production.
+Status: **Phase C applied to production.** One follow-up fix,
+`20260916000000_order_submission_test_cleanup.sql`, is **written and unapplied** —
+see *Test Data Cleanup* at the foot of this section.
 
 An imported BOE PI workbook (`.xlsx`) becomes a Confirmed Order through one
 reviewed workflow. The record is `public.order_submissions`; the Order it
@@ -722,8 +723,8 @@ submission, which the Order names.
 
 ### Migration
 
-`supabase/migrations/20260915000000_order_submission_final_approval.sql` — one
-additive migration, **not yet applied**. Nothing before it is edited.
+`supabase/migrations/20260915000000_order_submission_final_approval.sql` —
+**applied to production** (merged as `91748e9`).
 
 ### Test status
 
@@ -740,3 +741,83 @@ rejected exceptions, missing workbook and images, deletion reservation,
 staleness across a resubmission, two concurrent approvals producing exactly one
 Order, a retry allocating no second number, and a failed approval leaving the
 cycle untouched.
+
+
+### Test Data Cleanup and the PI provenance pair
+
+Status: **`20260916000000_order_submission_test_cleanup.sql` written, UNAPPLIED,
+awaiting Nishant's approval.**
+
+**The defect.** Phase C's provenance link points both ways, and both sides are
+`NO ACTION`:
+
+```
+order_submissions.order_id           ->  orders(id)
+orders.source_order_submission_id    ->  order_submissions(id)
+```
+
+Neither row can be deleted while the other exists. `execute_test_data_cleanup()`
+knew only how to release the older Order Request pair, so removing a test Order
+created from an approved PI failed in production on Order 0001 with a raw
+foreign-key violation.
+
+**The fix.** The same remedy 20260706000000 already documents for the older pair,
+applied to this one. Inside the authorized cleanup transaction only:
+
+1. clear `orders.source_order_submission_id` — the loop opens;
+2. delete the `order_submissions` row — items, images and activity cascade;
+3. delete the Order — its activity cascades.
+
+Three guards gain the **existing** `boe.cleanup_context` exemption that the
+Order, Order Request and payment guards have carried since 20260705000000:
+`prevent_order_source_submission_change`, `order_submissions_guard_delete` and
+`order_submission_activity_guard_delete`. Neither foreign key is dropped,
+altered or made deferrable, and both uniqueness indexes are asserted present.
+
+**How a PI is judged to be test data.** `order_submissions` has no
+`is_test_data` column and does not gain one. An approved PI's only reason to
+exist is the Order it produced, the link is one-to-one in both directions and
+immutable, so the PI **inherits the Order's classification** — and the whole
+operation is refused if the two rows do not name each other.
+
+**Eligibility.** Unchanged gates (admin, enabled setting, reason, exact typed
+confirmation, per-record test data), plus the PI in the chain and an explicit
+provenance assertion under the locks. The cleanup context is still set only
+after every gate.
+
+**Storage.** PI files are removed **before** the database rows, by a new
+admin-only route `/api/orders/submissions/test-cleanup`, which takes an **order
+id** and derives the submission and its keys from the database — never a
+submission id and never a path from the browser. It reuses the established
+bounded-concurrency, settled, no-timeout sweep. A storage failure aborts the
+operation and deletes nothing, so the record survives with its keys still
+discoverable.
+
+**Numbering.** Untouched. The cleanup does not reset or reduce
+`order_number_cycle`. A freed number becomes reusable only in the sense it
+always has: with no Order holding it, `set_next_confirmed_order_number()` accepts
+it, because its rule is "> the highest existing Order number". The admin still
+decides.
+
+**Also fixed.** The Order detail Activity trail rendered the raw event key
+`order_created_from_pi_submission`; it now reads **"Order created from PI
+submission"**, in the same green as the other Order-created event.
+
+**Still excluded.** Normal PI deletion rules, real Order and real approved PI
+protection, final approval, numbering, payments and unrelated UI are all
+unchanged.
+
+**Test status.** A new suite, `testDataCleanupPiSchema.test.ts`, covers the
+deletion order, the three exemptions, the provenance refusals, the server-side
+key derivation, the storage-before-rows sequencing and the Activity label. The
+full suite shows **9 failures, identical to production main** — all live-database
+tests requiring `.env.local`. TypeScript and the production build are clean;
+ESLint is unchanged from baseline.
+
+The database behaviour was proven by applying the real migration history to a
+throwaway local PostgreSQL 16, **reproducing the production error verbatim**, and
+then confirming the fix: the complete transaction is removed, no orphan survives
+in either direction, a real Order and a real approved PI stay undeletable, a
+disagreeing provenance pair is refused with a reason, every bypass attempt fails,
+the existing Order Request and payment cleanups still work, and `0001` becomes
+accepted by the admin number setter afterwards.

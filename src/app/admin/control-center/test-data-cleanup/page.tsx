@@ -31,6 +31,15 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 type RootType = 'order' | 'order_request' | 'payment'
 
+/**
+ * What a chain row can be.
+ *
+ * 'order_submission' joined in 20260916000000: an Order created by approving a
+ * PI carries that PI as part of the same indivisible transaction, and deleting
+ * one without the other is what the mutual foreign key refuses.
+ */
+type ChainType = RootType | 'order_submission'
+
 type Settings = {
   enabled: boolean
   permanently_disabled: boolean
@@ -40,14 +49,28 @@ type Settings = {
 }
 
 type ChainRecord = {
-  type: RootType
+  type: ChainType
   id: string
   number: string | null
   status: string
   label?: string
   amount?: number
   is_test_data: boolean
+  /** PI rows only: submissions/{id}/, resolved server-side. Never built here. */
+  storage_prefix?: string
+  /** Blocking rows only: why this one stops the operation. */
+  reason?: string
 }
+
+/**
+ * A row the SEARCH returns, which is always one of the three ROOT types.
+ *
+ * A PI submission is never a search root: it is never the thing an admin names,
+ * only something the chain pulls in behind the Order it produced. Keeping the
+ * two types apart is what stops the search list being handed an id
+ * preview_test_data_cleanup() would refuse.
+ */
+type RootRecord = ChainRecord & { type: RootType }
 
 type Preview = {
   root_type: RootType
@@ -59,6 +82,10 @@ type Preview = {
   storage_paths: string[]
   counts: Record<string, number>
   eligible: boolean
+  /** The approved PI this Order came from, or null. */
+  order_submission_id: string | null
+  /** submissions/{id}/ — shown so the admin can see the files are in scope. */
+  submission_storage_prefix: string | null
 }
 
 type CleanupResult = {
@@ -69,10 +96,11 @@ type CleanupResult = {
   storage_paths: string[]
 }
 
-const TYPE_LABEL: Record<RootType, string> = {
-  order:         'Confirmed Order',
-  order_request: 'Order Request',
-  payment:       'Payment',
+const TYPE_LABEL: Record<ChainType, string> = {
+  order:            'Confirmed Order',
+  order_request:    'Order Request',
+  payment:          'Payment',
+  order_submission: 'PI submission',
 }
 
 const COUNT_LABEL: Record<string, string> = {
@@ -84,6 +112,13 @@ const COUNT_LABEL: Record<string, string> = {
   payment_activity:       'Payment activity rows',
   proof_attachments:      'Proof attachments',
   notifications:          'Notifications',
+  // The PI and everything that belongs solely to it. Three of the four go by
+  // CASCADE, and all four are shown: an admin deciding whether to press the
+  // button should see the size of what goes, not only the row they named.
+  order_submissions:            'PI submissions',
+  order_submission_items:       'PI product lines',
+  order_submission_item_images: 'PI images',
+  order_submission_activity:    'PI activity rows',
 }
 
 // ── Styles (Control Center conventions) ──────────────────────────────────────
@@ -135,7 +170,7 @@ function TestDataCleanupInner() {
   const [loadErr,  setLoadErr]  = useState('')
 
   const [query,    setQuery]    = useState('')
-  const [results,  setResults]  = useState<ChainRecord[] | null>(null)
+  const [results,  setResults]  = useState<RootRecord[] | null>(null)
   const [searching,setSearching]= useState(false)
 
   const [preview,  setPreview]  = useState<Preview | null>(null)
@@ -207,7 +242,7 @@ function TestDataCleanupInner() {
     const { data, error } = await supabase.rpc('search_test_data_cleanup_roots', { p_query: query })
     setSearching(false)
     if (error) { setPreviewErr(error.message); return }
-    setResults(data as ChainRecord[])
+    setResults(data as RootRecord[])
   }
 
   const execute = async () => {
@@ -241,6 +276,41 @@ function TestDataCleanupInner() {
         // Row + metadata left intact and discoverable. Nothing was DB-deleted.
         setRunning(false)
         setRunErr('One or more Order Request attachment files could not be removed from storage. Nothing was deleted — please retry.')
+        return
+      }
+    }
+
+    // The PI submission an Order was created from lives in the private
+    // order-files bucket, whose DELETE policy admits the OWNER of a DRAFT only —
+    // never an administrator, and never for an APPROVED PI. So its objects are
+    // removed by the admin-only, DB-authoritative route, which derives the
+    // submission FROM THE ORDER ITSELF: the browser sends one order id and never
+    // a submission id, never a prefix and never a path.
+    //
+    // BEFORE the bulk DB delete, and for the same reason the Order Request purge
+    // above is: if it fails we ABORT and delete nothing, so the PI row survives
+    // and its file keys stay discoverable from it for a retry. Losing the row
+    // first would strand objects nothing can name any more.
+    //
+    // An Order converted from an Order Request carries no PI at all; the route
+    // answers `skipped` for that and the cleanup proceeds untouched.
+    const orderIds = preview.to_delete.filter(r => r.type === 'order').map(r => r.id)
+    for (const orderId of orderIds) {
+      let piPurgeFailed = true
+      try {
+        const piRes = await fetch('/api/orders/submissions/test-cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId }),
+        })
+        const piBody = await piRes.json().catch(() => null)
+        piPurgeFailed = !piRes.ok || (piBody?.failed?.length ?? 0) > 0
+      } catch {
+        piPurgeFailed = true
+      }
+      if (piPurgeFailed) {
+        setRunning(false)
+        setRunErr('The PI files for this Order could not be removed from storage. Nothing was deleted — please retry.')
         return
       }
     }
@@ -452,12 +522,29 @@ function TestDataCleanupInner() {
                       <label style={LABEL}>Also removed</label>
                       <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.7 }}>
                         {Object.entries(preview.counts)
-                          .filter(([k, n]) => n > 0 && !['orders', 'order_requests', 'payment_requests'].includes(k))
+                          // The four ROW types already listed above by name are
+                          // excluded here; what is left is the dependent rows
+                          // that go with them.
+                          .filter(([k, n]) => n > 0 && ![
+                            'orders', 'order_requests', 'payment_requests', 'order_submissions',
+                          ].includes(k))
                           .map(([k, n]) => `${n} ${COUNT_LABEL[k] ?? k}`)
                           .join(' · ') || 'No dependent rows.'}
                         {preview.storage_paths.length > 0 &&
                           ` · ${preview.storage_paths.length} proof file(s) in storage`}
                       </div>
+                      {/* The PI's own files. Named by their PREFIX rather than
+                          listed: the count is what matters here, the keys are
+                          resolved server-side, and a wall of storage paths is
+                          not what an admin is deciding on. */}
+                      {preview.submission_storage_prefix && (
+                        <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.7, marginTop: 4 }}>
+                          Every PI file under{' '}
+                          <code style={{ fontSize: 11.5, color: '#111318' }}>
+                            {preview.submission_storage_prefix}
+                          </code>
+                        </div>
+                      )}
                     </div>
 
                     {!preview.eligible ? (
@@ -467,7 +554,11 @@ function TestDataCleanupInner() {
                       }}>
                         <strong>This chain cannot be cleaned up.</strong> It contains records that are
                         not test data, so removing it would destroy real business history:{' '}
-                        {preview.blocking.map(b => `${TYPE_LABEL[b.type]} ${b.number}`).join(', ')}.
+                        {preview.blocking
+                          .map(b => b.reason
+                            ? `${TYPE_LABEL[b.type]} — ${b.reason}`
+                            : `${TYPE_LABEL[b.type]} ${b.number ?? b.id}`)
+                          .join(', ')}.
                       </div>
                     ) : (
                       <>
@@ -604,8 +695,11 @@ function RecordList({
               borderRadius: 8, padding: '9px 12px',
             }}
           >
+            {/* A PI submission has no business number — numbering happens at
+                approval and belongs to the Order. An empty identifier column
+                would read as a missing value, so it says what the row IS. */}
             <span style={{ fontSize: 13, fontWeight: 700, color: '#111318', minWidth: 150 }}>
-              {r.number}
+              {r.number ?? TYPE_LABEL[r.type]}
             </span>
             <span style={{ fontSize: 12, color: '#6B7384', flex: 1 }}>
               {TYPE_LABEL[r.type]} · {r.status}{r.label ? ` · ${r.label}` : ''}
