@@ -15,7 +15,11 @@ import { deriveFinanceCapabilities, NO_FINANCE_CAPABILITIES } from './finance'
 import { presetAllowedActions } from './levels'
 import type { EffectivePermission } from './types'
 
-const FINANCE_ACTIONS = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']
+const FINANCE_ACTIONS = [
+  'view', 'create', 'edit', 'delete', 'approve', 'export', 'manage',
+  // Registered by 20260918000000. Both protected: no preset reaches either.
+  'allocate', 'allocate_correct',
+]
 
 const perms = (allowedActions: string[]): EffectivePermission[] =>
   FINANCE_ACTIONS.map(actionKey => ({
@@ -148,5 +152,82 @@ describe("Dhruv's real production grant", () => {
     assert.equal(caps.canApprovePayment, false)
     assert.equal(caps.canCorrectOrReversePayment, false)
     assert.equal(caps.canDeletePaymentRecord, false)
+  })
+})
+
+describe('payment allocation (20260918000000)', () => {
+  test('no preset level reaches either allocation action', () => {
+    // The database says the same thing twice — default_allowed = false on both
+    // module_permission_actions rows, and no role_permissions row at all — and
+    // the migration asserts it at apply time. This is the UI half of it.
+    for (const level of ['no_access', 'viewer', 'contributor', 'manager'] as const) {
+      const caps = deriveFinanceCapabilities('member', fromPreset(level))
+      assert.equal(caps.canAllocatePayment, false, `${level} reached allocate`)
+      assert.equal(caps.canCorrectPaymentAllocation, false, `${level} reached allocate_correct`)
+    }
+  })
+
+  test('an explicit allocate grant gives allocation and nothing else', () => {
+    const caps = deriveFinanceCapabilities('member', perms(['view', 'allocate']))
+    assert.equal(caps.canAllocatePayment, true)
+    // The whole point of a separate action: it confers no verification, no
+    // correction, no company-wide sight and no delete.
+    assert.equal(caps.canCorrectPaymentAllocation, false)
+    assert.equal(caps.canApprovePayment, false)
+    assert.equal(caps.canCorrectOrReversePayment, false)
+    assert.equal(caps.canViewAllFinance, false)
+    assert.equal(caps.canDeletePaymentRecord, false)
+  })
+
+  test('an explicit allocate_correct grant does not confer allocate', () => {
+    const caps = deriveFinanceCapabilities('member', perms(['view', 'allocate_correct']))
+    assert.equal(caps.canCorrectPaymentAllocation, true)
+    assert.equal(caps.canAllocatePayment, false)
+    assert.equal(caps.canApprovePayment, false)
+  })
+
+  test('the two are independent of approve in both directions', () => {
+    // Verifying that money arrived, deciding which business it belongs to, and
+    // undoing that decision are three separable jobs. approve must not drag the
+    // other two along, and neither of them may confer approve.
+    const approver = deriveFinanceCapabilities('member', perms(['view', 'approve']))
+    assert.equal(approver.canApprovePayment, true)
+    assert.equal(approver.canAllocatePayment, false)
+    assert.equal(approver.canCorrectPaymentAllocation, false)
+
+    const both = deriveFinanceCapabilities('member', perms(['view', 'allocate', 'allocate_correct']))
+    assert.equal(both.canApprovePayment, false)
+  })
+
+  test('manage does not imply either allocation action', () => {
+    // finance.manage is the post-approval correction authority and is already
+    // wide. It must not silently pick up allocation as well, or splitting the
+    // actions would have bought nothing.
+    const caps = deriveFinanceCapabilities('member', perms(['view', 'manage']))
+    assert.equal(caps.canCorrectOrReversePayment, true)
+    assert.equal(caps.canAllocatePayment, false)
+    assert.equal(caps.canCorrectPaymentAllocation, false)
+  })
+
+  test('an allocation grant without module entry produces nothing', () => {
+    // Every capability is gated on entry as well as on its own action, so a row
+    // left behind by a half-finished grant cannot produce a control on a module
+    // the person cannot open.
+    const caps = deriveFinanceCapabilities('member', perms(['allocate', 'allocate_correct']))
+    assert.equal(caps.canAccessFinanceModule, false)
+    assert.equal(caps.canAllocatePayment, false)
+    assert.equal(caps.canCorrectPaymentAllocation, false)
+  })
+
+  test('an admin holds both, matching actor_has_module_permission', () => {
+    const caps = deriveFinanceCapabilities('admin', [])
+    assert.equal(caps.canAllocatePayment, true)
+    assert.equal(caps.canCorrectPaymentAllocation, true)
+  })
+
+  test('No Access is still exactly nothing, with the two new fields included', () => {
+    assert.deepEqual(deriveFinanceCapabilities('member', fromPreset('no_access')), NO_FINANCE_CAPABILITIES)
+    assert.equal(NO_FINANCE_CAPABILITIES.canAllocatePayment, false)
+    assert.equal(NO_FINANCE_CAPABILITIES.canCorrectPaymentAllocation, false)
   })
 })

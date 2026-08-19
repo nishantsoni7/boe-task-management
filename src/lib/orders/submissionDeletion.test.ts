@@ -920,6 +920,26 @@ describe('the migration is one new forward file, in the right place', () => {
       'and nothing was slipped in between')
   })
 
+// A later migration is allowed to exist — the company ships other things. What
+// this guard is really protecting is that it does not REACH INTO the PI
+// submission tables. Until 20260918000000 the filename was a good enough proxy
+// for that, because every later file so far belonged to this feature; the first
+// unrelated phase to land made the proxy wrong rather than the property wrong.
+//
+// So the property is now tested directly: a later file passes if it belongs to
+// this feature by name, OR if it does not restructure order_submissions or its
+// children. Naming one of those tables as a FOREIGN KEY TARGET or reading it is
+// explicitly fine — that is what a neighbouring module is supposed to do, and it
+// changes nothing about approval, deletion or the schema this suite guards.
+const PI_STRUCTURAL_CHANGE =
+  /(alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?order_submission\w*|drop\s+table\s+(?:if\s+exists\s+)?(?:public\.)?order_submission\w*|(?:alter|drop|create)\s+policy\s+[^;]*\bon\s+(?:public\.)?order_submission\w*)/i
+
+function reachesIntoPiSubmissions(file: string): boolean {
+  if (/order_submission/i.test(file)) return false          // this feature's own work
+  return PI_STRUCTURAL_CHANGE.test(
+    readFileSync(join(process.cwd(), 'supabase', 'migrations', file), 'utf8'))
+}
+
   test('anything that lands after it belongs to this same feature', () => {
     // IT WAS the last migration when it was written, and demanding it stay so
     // would make this suite fail every time the company shipped anything else —
@@ -929,8 +949,8 @@ describe('the migration is one new forward file, in the right place', () => {
     // work reaching into these tables. The same rule submissionSchema.test.ts
     // already applies to the migration that created them.
     for (const file of files.filter(f => f > MIGRATION)) {
-      assert.ok(/order_submission/i.test(file),
-        `${file} lands after the deletion migration but is not part of this feature`)
+      assert.equal(reachesIntoPiSubmissions(file), false,
+        `${file} lands after the deletion migration and restructures the PI submission tables`)
     }
   })
 

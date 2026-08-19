@@ -174,18 +174,47 @@ describe('the migration itself', () => {
     // order_submissions while claiming to be about something else fails here,
     // which the old spelling would have missed entirely as long as the word
     // "order_submission" appeared anywhere in it.
+    // NARROWED ONCE MORE, in 20260918000000. "Names none of its tables" was the
+    // right property while every neighbour was independent of the PI. The first
+    // module that genuinely DEPENDS on a PI — payment allocation, which cannot
+    // say which PI a payment belongs to without naming order_submissions in a
+    // FOREIGN KEY — made a bare mention the wrong thing to forbid.
+    //
+    // What still must not happen is unchanged, and is what this now tests: an
+    // outside migration may not RESHAPE these tables (alter, drop, or re-policy
+    // them) and may not WRITE to them. Pointing a foreign key at one, reading one
+    // to validate a target, or declaring a %rowtype of one are all safe — they
+    // depend on the feature without changing it, which is what a neighbouring
+    // module is supposed to do.
+    //
+    // Line comments are stripped first: this file's own name appears in the
+    // prose of later migrations, and prose is not a statement.
+    const STRUCTURAL_OR_WRITE = (table: string) => new RegExp(
+      '(?:' +
+        `alter\\s+table\\s+(?:if\\s+exists\\s+)?(?:public\\.)?${table}\\b` + '|' +
+        `drop\\s+table\\s+(?:if\\s+exists\\s+)?(?:public\\.)?${table}\\b` + '|' +
+        `insert\\s+into\\s+(?:public\\.)?${table}\\b` + '|' +
+        `update\\s+(?:only\\s+)?(?:public\\.)?${table}\\s+set\\b` + '|' +
+        `delete\\s+from\\s+(?:public\\.)?${table}\\b` + '|' +
+        `truncate\\s+(?:table\\s+)?(?:public\\.)?${table}\\b` + '|' +
+        `(?:create|alter|drop)\\s+policy\\s+[^;]*?\\bon\\s+(?:public\\.)?${table}\\b` + '|' +
+        `(?:create|alter|drop)\\s+trigger\\s+[^;]*?\\bon\\s+(?:public\\.)?${table}\\b` +
+      ')', 'is')
+
     const all = readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort()
     const later = all.slice(all.indexOf(MIGRATION_FILE) + 1)
 
     for (const file of later) {
-      const text = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
       const partOfFeature = /order_submission/i.test(file)
       if (partOfFeature) continue
 
+      const text = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
+        .split('\n').map(line => line.replace(/--.*$/, '')).join('\n')
+
       for (const table of ALL_TABLES) {
         assert.ok(
-          !new RegExp(`\\b${table}\\b`).test(text),
-          `${file} is not part of the submission feature but references ${table}`,
+          !STRUCTURAL_OR_WRITE(table).test(text),
+          `${file} is not part of the submission feature but reshapes or writes ${table}`,
         )
       }
     }

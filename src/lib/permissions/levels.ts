@@ -111,6 +111,15 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // people. A preset that handed this out would be handing out money at risk.
   // Registered by 20260913000000.
   'approve_advance_exception',
+  // Deciding which PI or Order a verified payment belongs to, and reversing an
+  // allocation that has already been recorded. Protected for the reason every
+  // financial authority here is: allocation is what makes money count toward a
+  // piece of business, and reversal rewrites a fact that has already been
+  // reported. Neither is something an administrator should acquire by picking
+  // "Manager" from a dropdown, and they are deliberately separate from each
+  // other and from finance.approve. Registered by 20260918000000.
+  'allocate',
+  'allocate_correct',
 ])
 
 export function isProtectedAction(actionKey: string): boolean {
