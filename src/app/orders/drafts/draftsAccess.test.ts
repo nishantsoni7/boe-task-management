@@ -108,6 +108,7 @@ const submission = (over: Partial<PersistedSubmission> = {}): PersistedSubmissio
   client_name: 'Meridian Hotels',
   created_by: OWNER,
   submitted_by: OWNER,
+  assigned_to: null,
   submitted_at: null,
   rejected_by: null,
   rejected_at: null,

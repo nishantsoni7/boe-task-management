@@ -367,7 +367,7 @@ describe('the submit confirmation says what changes', () => {
 describe('the review queue is a section of the drafts list', () => {
   const row = (over: Partial<PersistedSubmission>): PersistedSubmission => ({
     id: over.id ?? 'x', status: 'draft', client_name: 'Client',
-    created_by: OWNER, submitted_by: OWNER, submitted_at: null,
+    created_by: OWNER, submitted_by: OWNER, assigned_to: null, submitted_at: null,
     rejected_by: null, rejected_at: null,
     approved_by: null, approved_at: null, order_id: null,
     finance_verified_by: null, finance_verified_at: null,

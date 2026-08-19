@@ -1054,20 +1054,45 @@ begin
   -- The three target states the RPC refuses outright are asserted from the
   -- DEPLOYED body: reaching them live would need a full approval or rejection
   -- run, which belongs to those phases' own assertion files, not this one.
-  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target')
+  --
+  -- READ FROM THE IMPLEMENTATION, NOT THE DOOR. 20260919000000 split this into
+  -- allocate_payment_to_target_internal (the rules) and
+  -- allocate_payment_to_target (the finance.allocate door), so the PI payment
+  -- entry path can reuse the rules without duplicating them. The properties
+  -- asserted are unchanged; only where they live has moved, and the delegation
+  -- is asserted immediately below so the door cannot drift away from them.
+  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target_internal')
          like '%ALLOCATION_TARGET_CONVERTED%',
     'an approved PI must be refused — allocate to its Order instead';
-  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target')
+  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target_internal')
          like '%ALLOCATION_TARGET_NOT_ACTIVE%',
     'a rejected PI and a cancelled Order must be refused';
-  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target')
+  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target_internal')
          like '%ALLOCATION_TARGET_CLAIMED%',
     'a PI reserved for deletion must be refused';
 
   -- And the verification gate is GONE, not merely bypassed.
-  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target')
+  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target_internal')
          not like '%PAYMENT_NOT_VERIFIED%',
     'the RPC must no longer require the payment to be verified';
+
+  -- THE DOOR STILL GUARDS AND STILL DELEGATES. Without both halves the split
+  -- could silently become a bypass: rules with no door, or a door with no rules.
+  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target')
+         like '%actor_has_module_permission(''finance'', ''allocate'')%',
+    'the public door must still require finance.allocate';
+  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'allocate_payment_to_target')
+         like '%allocate_payment_to_target_internal%',
+    'the public door must delegate to the shared implementation';
+  -- The implementation is reachable by no client role, so the door is the only
+  -- way in from a browser.
+  assert not exists (
+    select 1
+    from pg_proc pr, aclexplode(coalesce(pr.proacl, acldefault('f', pr.proowner))) a
+    join pg_roles r on r.oid = a.grantee
+    where pr.proname = 'allocate_payment_to_target_internal'
+      and r.rolname in ('anon', 'authenticated', 'public')
+  ), 'the shared implementation must not be executable by any client role';
 end $$;
 
 -- ═══ 6. Audit: the existing Finance trail carries both events ═══════════════
@@ -1244,15 +1269,22 @@ begin
   end;
   perform set_config('role', 'postgres', true);
 
-  -- And they still cannot read the PARENT payment: finance_payment_requests is
-  -- deliberately NOT widened by this phase. THIS IS THE REQUIRED PHASE 2
-  -- DEPENDENCY — the payment card needs amount, mode, date, the Finance remark
-  -- and the rejection reason, and all of those live on the parent row.
+  -- THE PARENT PAYMENT. Phase 1 deliberately left finance_payment_requests
+  -- unwidened and recorded it as a required Phase 2 dependency: the payment card
+  -- needs the amount, the mode, the date, the Finance remark and the rejection
+  -- reason, and all of those live on the parent row.
+  --
+  -- 20260919000000 PAID that dependency, so the participant can now read the
+  -- payment behind their own allocation. The assertion is inverted rather than
+  -- deleted, because the property still matters — what changed is which way it
+  -- points, and a silent removal would leave nobody checking either direction.
+  -- The full participant scoping (only their own records, and no mutation) is
+  -- asserted in pi_submission_payment_assertions.sql.
   perform set_config('role', 'authenticated', true);
-  assert not exists (
+  assert exists (
     select 1 from public.finance_payment_requests
     where id = current_setting('test.pay_sales')::uuid
-  ), 'Phase 1 must NOT widen finance_payment_requests — Phase 2 owns that change';
+  ), 'a participant must be able to read the payment behind their own allocation';
   perform set_config('role', 'postgres', true);
 end $$;
 

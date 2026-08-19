@@ -351,10 +351,28 @@ branches still require Order Management entry and still resolve to a record the
 caller can already open. Reading an allocation grants no `allocate`, no
 `allocate_correct`, no verification authority and no Finance page.
 
-**Required Phase 2 dependency.** `finance_payment_requests` is not widened, so a
-PI owner without Finance access can read the allocation but not the payment row
-behind it. The payment-card phase must add the matching participant SELECT policy
-to the parent table.
+**Paid by Phase 2 (`20260919000000`).** `finance_payment_requests` now carries a
+permissive participant SELECT policy, and its RESTRICTIVE Finance module gate is
+**restated** rather than dropped so it keeps gating the Finance pages:
+
+```
+USING       module_entry_open('finance') OR can_read_payment_as_participant(id)
+WITH CHECK  module_entry_open('finance')
+```
+
+`WITH CHECK` stays Finance-entry only, so participant sight can never authorize a
+write — asserted on its own. The same pair is applied to
+`payment_proof_attachments` for its metadata; the proof **object** in
+`storage.objects` is not widened, and the payment card asks the server whether the
+viewer may open it rather than offering an action that would fail.
+
+**No permission action is added or granted by Phase 2.** `finance.allocate` and
+`finance.allocate_correct` remain the only allocation actions, still protected,
+still `default_allowed = false`, still carried by no role. Recording a payment
+against a PI is permitted to an active admin, the PI's own uploader / creator /
+named reviewer, or an explicit `finance.allocate` holder — and to nobody else.
+Wider Finance access (`view`, `view_all`, `approve`, `manage`) is deliberately not
+a route.
 
 ---
 

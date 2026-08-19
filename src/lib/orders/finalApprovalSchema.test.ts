@@ -124,13 +124,31 @@ describe('the migration is one new forward file, in the right place', () => {
 // children. Naming one of those tables as a FOREIGN KEY TARGET or reading it is
 // explicitly fine — that is what a neighbouring module is supposed to do, and it
 // changes nothing about approval, deletion or the schema this suite guards.
+// The ONE structural change an outside phase is allowed to make to these tables,
+// and the reason it is allowed: order_submission_activity.action is a CLOSED set,
+// and 20260915000000 §10 states that a phase producing a new kind of event
+// extends it "in its own migration — a visible change rather than a silent new
+// event type". That IS the sanctioned extension point, so a migration that only
+// drops and re-adds the action CHECK is doing what the design asks of it.
+//
+// Nothing else is forgiven: the statements below are removed before the
+// structural test runs, so a file that also alters a column, adds a policy, or
+// writes a row still fails on that.
+const PI_ACTIVITY_ACTION_CHECK_EXTENSION =
+  /(?:execute\s+format\(\s*'alter\s+table\s+(?:public\.)?order_submission_activity\s+drop\s+constraint[^;]*;|alter\s+table\s+(?:public\.)?order_submission_activity\s+(?:drop|add)\s+constraint\s+[^;]*order_submission_activity_action_check[^;]*;|alter\s+table\s+(?:public\.)?order_submission_activity\s+add\s+constraint\s+order_submission_activity_action_check[^;]*;)/gi
+
+function withoutSanctionedActivityExtension(sql: string): string {
+  return sql.replace(PI_ACTIVITY_ACTION_CHECK_EXTENSION, '')
+}
+
 const PI_STRUCTURAL_CHANGE =
   /(alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?order_submission\w*|drop\s+table\s+(?:if\s+exists\s+)?(?:public\.)?order_submission\w*|(?:alter|drop|create)\s+policy\s+[^;]*\bon\s+(?:public\.)?order_submission\w*)/i
 
 function reachesIntoPiSubmissions(file: string): boolean {
   if (/order_submission/i.test(file)) return false          // this feature's own work
-  return PI_STRUCTURAL_CHANGE.test(
+  const sql = withoutSanctionedActivityExtension(
     readFileSync(join(process.cwd(), 'supabase', 'migrations', file), 'utf8'))
+  return PI_STRUCTURAL_CHANGE.test(sql)
 }
 
   test('anything that lands after it belongs to this same feature', () => {

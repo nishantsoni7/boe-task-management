@@ -176,6 +176,11 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   // about the record rather than a claim the browser was handed.
   created_by: string | null
   submitted_by: string | null
+  // The reviewer this PI is routed to. Read on the detail page for one reason:
+  // the PI's named reviewer is one of the three people record_pi_submission_payment()
+  // permits to record a payment against it, so the screen can offer the control
+  // to exactly whom the database would allow. A courtesy, never the authority.
+  assigned_to: string | null
   submitted_at: string | null
   rejected_by: string | null
   rejected_at: string | null
@@ -301,7 +306,7 @@ export const PI_DRAFT_LIST_COLUMNS = [
 
 export const PI_DRAFT_DETAIL_COLUMNS = [
   'id', 'status', 'client_name',
-  'created_by', 'submitted_by', 'submitted_at', 'rejected_by', 'rejected_at',
+  'created_by', 'submitted_by', 'assigned_to', 'submitted_at', 'rejected_by', 'rejected_at',
   'creation_date', 'source_created_by', 'bill_to_name', 'ship_to_name',
   'order_confirmation_date', 'dispatch_commitment',
   'source_workbook_name',

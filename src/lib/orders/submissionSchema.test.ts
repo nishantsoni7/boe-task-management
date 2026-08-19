@@ -189,6 +189,23 @@ describe('the migration itself', () => {
     //
     // Line comments are stripped first: this file's own name appears in the
     // prose of later migrations, and prose is not a statement.
+// The ONE structural change an outside phase is allowed to make to these tables,
+    // and the reason it is allowed: order_submission_activity.action is a CLOSED set,
+    // and 20260915000000 §10 states that a phase producing a new kind of event
+    // extends it "in its own migration — a visible change rather than a silent new
+    // event type". That IS the sanctioned extension point, so a migration that only
+    // drops and re-adds the action CHECK is doing what the design asks of it.
+    //
+    // Nothing else is forgiven: the statements below are removed before the
+    // structural test runs, so a file that also alters a column, adds a policy, or
+    // writes a row still fails on that.
+    const PI_ACTIVITY_ACTION_CHECK_EXTENSION =
+      /(?:execute\s+format\(\s*'alter\s+table\s+(?:public\.)?order_submission_activity\s+drop\s+constraint[^;]*;|alter\s+table\s+(?:public\.)?order_submission_activity\s+(?:drop|add)\s+constraint\s+[^;]*order_submission_activity_action_check[^;]*;|alter\s+table\s+(?:public\.)?order_submission_activity\s+add\s+constraint\s+order_submission_activity_action_check[^;]*;)/gi
+    
+    function withoutSanctionedActivityExtension(sql: string): string {
+      return sql.replace(PI_ACTIVITY_ACTION_CHECK_EXTENSION, '')
+    }
+
     const STRUCTURAL_OR_WRITE = (table: string) => new RegExp(
       '(?:' +
         `alter\\s+table\\s+(?:if\\s+exists\\s+)?(?:public\\.)?${table}\\b` + '|' +
@@ -208,8 +225,9 @@ describe('the migration itself', () => {
       const partOfFeature = /order_submission/i.test(file)
       if (partOfFeature) continue
 
-      const text = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
-        .split('\n').map(line => line.replace(/--.*$/, '')).join('\n')
+      const text = withoutSanctionedActivityExtension(
+        lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
+          .split('\n').map(line => line.replace(/--.*$/, '')).join('\n'))
 
       for (const table of ALL_TABLES) {
         assert.ok(
