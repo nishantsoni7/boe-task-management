@@ -188,15 +188,37 @@ export async function POST(req: NextRequest) {
   // Step 5. Remove the objects. The record is frozen, so nothing can be done to
   // it while this runs and nothing can contradict it afterwards.
   const sweepStarted = Date.now()
+
+  /**
+   * Whether a DESTRUCTIVE request was issued — not whether one succeeded.
+   *
+   * THE RESERVATION IS GIVEN BACK ONLY WHEN NOTHING COULD HAVE GONE. A
+   * `.remove()` can delete objects on the server and then lose its response to a
+   * network or gateway failure: the client sees a throw, or a reply naming
+   * nothing, and the confirmed count is zero while the files are already gone.
+   * Releasing there would unfreeze a PI with a missing workbook — the exact
+   * outcome the reservation exists to prevent — so "nothing was CONFIRMED
+   * removed" must never be read as "nothing was removed".
+   *
+   * The flag is set by a callback that fires immediately BEFORE each remove
+   * request, so it is true even if the helper throws and returns nothing. A
+   * listing failure before any remove leaves it false, and that is the one path
+   * on which the record can safely be handed back.
+   */
+  let removalAttempted = false
+
   let removal
   try {
     removal = await removeAllObjectsForSubmission(
-      service, submissionId, reservation?.storage_paths ?? [])
+      service, submissionId, reservation?.storage_paths ?? [],
+      { onRemoveAttempt: () => { removalAttempted = true } })
+    if (removal.removalAttempted) removalAttempted = true
   } catch {
-    // A SETTLED failure: a directory that could not be listed, and every other
-    // request this sweep started has already finished. Nothing is in flight, so
-    // giving the record back cannot be overtaken by a late deletion.
-    await release()
+    // A SETTLED failure: every request this sweep started has finished, so
+    // nothing is in flight and a release cannot be overtaken by a late deletion.
+    // It is released only if no remove request ever went out — a listing that
+    // failed first. Otherwise the reservation stands and the caller retries.
+    if (!removalAttempted) await release()
     timing.sweep = Date.now() - sweepStarted
     report('storage cleanup failed')
     return fail({ code: 'STORAGE_CLEANUP_FAILED', status: 500 })
@@ -206,7 +228,10 @@ export async function POST(req: NextRequest) {
   objects = removal.found.length
 
   if (removal.failed.length > 0) {
-    await release()
+    // Some keys are still in the bucket, and others may already be gone. The
+    // reservation is kept unless nothing was ever attempted, so the record stays
+    // frozen and one more attempt finishes the job.
+    if (!removalAttempted) await release()
     report('storage objects survived cleanup')
     return fail({
       code: 'STORAGE_CLEANUP_FAILED',
@@ -223,11 +248,11 @@ export async function POST(req: NextRequest) {
   )
   timing.finalize = Date.now() - finalizeStarted
   if (delErr) {
-    // Near-unreachable: the reservation ruled out every ordinary race. If it
-    // happens the claim is released so the record is usable again — its files
-    // are gone, which the owner resolves with Change PI, and which
-    // submit_order_submission_* refuses to let past review in the meantime.
-    await release()
+    // Near-unreachable: the reservation ruled out every ordinary race. THE
+    // RESERVATION IS NOT RELEASED. By this point the sweep reported success, so
+    // the files ARE gone; handing the record back would produce a PI that looks
+    // healthy and has no workbook. It stays frozen, which is visible and
+    // recoverable, until another attempt finalizes it.
     report('finalization refused after storage cleanup')
     const code = classifyDeletionError(delErr)
     return fail({ code, status: HTTP_FOR[code] ?? 500 })

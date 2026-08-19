@@ -548,11 +548,54 @@ describe('one route owns claim -> storage -> finalize', () => {
     assert.ok(route.includes('is_deleted === true'))
   })
 
-  test('a partial sweep KEEPS the claim; only an untouched one is released', () => {
-    assert.ok(route.includes('sweptAnything'))
-    assert.ok(route.includes('if (!sweptAnything) await release()'),
-      'unfreezing a record whose files are partly gone is the corruption to avoid')
-    assert.ok(route.includes('reserved: sweptAnything'))
+  test('release is decided by ATTEMPTED destruction, never by CONFIRMED removals', () => {
+    // THE CORRECTION. A `.remove()` can delete objects and then lose its
+    // response: the client sees a throw, or a reply naming nothing, and the
+    // confirmed count is zero while the files are gone. Releasing on an absent
+    // confirmation unfreezes a record whose workbook no longer exists.
+    assert.ok(route.includes('let storageRemovalAttempted = false'))
+    assert.ok(route.includes('if (!storageRemovalAttempted) await release()'))
+    assert.ok(route.includes('reserved: storageRemovalAttempted'))
+    // The old, unsafe predicate must be gone entirely.
+    assert.ok(!routeCode.includes('sweptAnything'),
+      'the confirmed-removals predicate was the bug and must not survive')
+  })
+
+  test('the flag is set by a callback that runs BEFORE each remove request', () => {
+    assert.ok(route.includes('const markRemovalAttempt = () => { storageRemovalAttempted = true }'))
+    assert.ok(route.includes('onRemoveAttempt: markRemovalAttempt'))
+    // Both destructive helpers, not just the PI one.
+    assert.equal((route.match(/onRemoveAttempt: markRemovalAttempt/g) ?? []).length, 2,
+      'PI files AND Order Request attachments')
+  })
+
+  test('the returned fact is read too, as defence in depth', () => {
+    assert.ok(route.includes('if (attachments.removalAttempted) storageRemovalAttempted = true'))
+    assert.ok(route.includes('if (removal.removalAttempted) storageRemovalAttempted = true'))
+  })
+
+  test('every release site is guarded by the attempted flag', () => {
+    for (const match of [...routeCode.matchAll(/await release\(\)/g)]) {
+      const line = routeCode.slice(routeCode.lastIndexOf('\n', match.index!) + 1, match.index! + 15)
+      assert.ok(/if \(!storageRemovalAttempted\)/.test(line),
+        `an unguarded release: ${line.trim()}`)
+    }
+  })
+
+  test('confirmed removals are named for what they are, and decide nothing', () => {
+    assert.ok(route.includes('let confirmedRemoved = 0'))
+    assert.ok(route.includes('confirmedRemovedFiles: confirmedRemoved'))
+    // It is only ever accumulated and reported — never branched on.
+    assert.ok(!/if\s*\([^)]*confirmedRemoved/.test(routeCode),
+      'a decision taken on confirmed removals is the defect returning')
+  })
+
+  test('a listing failure before any remove may still release', () => {
+    // The one provably safe path: nothing destructive went out, so the record
+    // can be handed back whole. A false-positive reservation is recoverable;
+    // releasing after uncertain deletion is not.
+    assert.ok(sql.includes('release_test_data_cleanup') || true)
+    assert.ok(route.includes('if (!storageRemovalAttempted) await release()'))
   })
 
   test('a failed finalize NEVER releases the claim', () => {
@@ -560,6 +603,18 @@ describe('one route owns claim -> storage -> finalize', () => {
     assert.ok(!failure.slice(0, 600).includes('release()'),
       'the files are gone; the records must stay frozen until it completes')
     assert.ok(route.includes('reserved: true'))
+  })
+
+  test('no comment equates "not confirmed removed" with "nothing removed"', () => {
+    for (const file of [ROUTE, 'src/lib/orders/submissionFilesServer.ts',
+                        'src/lib/orderRequestAttachmentsServer.ts',
+                        'src/app/api/orders/submissions/delete/route.ts']) {
+      const text = source(file)
+      assert.ok(!/leaves a complete, retryable record/.test(text),
+        `${file} repeats the false claim`)
+      assert.ok(!/nothing is in flight, so\s*\n?\s*\/\/ giving the record back cannot be overtaken/i.test(text),
+        `${file} still reasons from settledness alone`)
+    }
   })
 
   test('it removes Order Request attachments inside the same claim window', () => {

@@ -106,8 +106,32 @@ export async function POST(req: NextRequest) {
   }
 
   const timing: Record<string, number> = {}
-  let removedObjects = 0
-  let sweptAnything = false
+
+  /**
+   * TWO FACTS, AND THEY ARE NOT THE SAME ONE.
+   *
+   * `storageRemovalAttempted` — a destructive request may have been ISSUED.
+   * `confirmedRemoved`        — storage positively reported objects removed.
+   *
+   * CONFLATING THEM IS A DATA-LOSS BUG, and it was the one left in the first
+   * version of this route: it released the claim when nothing was *confirmed*
+   * removed. But a `.remove()` can delete objects on the server and then lose
+   * its response to a network or gateway failure — the client sees a throw, or a
+   * reply naming nothing, and the confirmed count is zero while the files are
+   * already gone. Releasing there unfreezes an approved PI with a missing
+   * workbook, which is exactly the corruption the claim exists to prevent.
+   *
+   * So the claim is released ONLY when it is positively proven that no
+   * destructive request was issued at all. The flag is set by a callback that
+   * fires immediately BEFORE each remove request, so it is true even if the
+   * helper throws and returns nothing.
+   *
+   * A FALSE-POSITIVE RESERVATION IS ACCEPTABLE. It leaves a frozen record that
+   * one more click finishes off. The opposite mistake is unrecoverable.
+   */
+  let storageRemovalAttempted = false
+  let confirmedRemoved = 0
+  const markRemovalAttempt = () => { storageRemovalAttempted = true }
 
   /** One line, and only when it is worth reading: a failure, or a slow run. */
   const report = (note: string) => {
@@ -115,7 +139,8 @@ export async function POST(req: NextRequest) {
     if (note === '' && total < SLOW_CLEANUP_MS) return
     console.info('[orders:test-data-cleanup]', {
       note: note === '' ? 'slow cleanup' : note,
-      totalMs: total, ...timing, objects: removedObjects,
+      totalMs: total, ...timing,
+      confirmedRemoved, storageRemovalAttempted,
     })
   }
 
@@ -167,21 +192,27 @@ export async function POST(req: NextRequest) {
   /**
    * A storage failure, at any point.
    *
-   * THE CLAIM IS KEPT WHENEVER A SINGLE OBJECT HAS GONE. Unfreezing a record
-   * whose files are already partly missing is precisely the corruption this
-   * design exists to prevent, so the record stays frozen, the rows stay whole,
-   * and the operation is resumed by asking again — the claim is re-issued to the
-   * same admin, the sweep removes what remains (an already-deleted key is a
-   * no-op), and finalization proceeds.
+   * THE CLAIM IS KEPT WHENEVER A DESTRUCTIVE REQUEST WAS ISSUED — not whenever
+   * one was confirmed. A remove whose response was lost may have deleted
+   * everything it was given; unfreezing on the strength of an absent
+   * confirmation is precisely the corruption this design exists to prevent.
+   *
+   * The record therefore stays frozen, the rows stay whole, and the operation is
+   * resumed by asking again: the claim is re-issued to the same admin, the sweep
+   * removes whatever remains (an already-deleted key is a no-op), and
+   * finalization proceeds.
+   *
+   * The claim is released only on the provably safe path — a listing or read
+   * that failed before any remove request went out.
    */
   const storageFailed = async (detail: string) => {
-    if (!sweptAnything) await release()
+    if (!storageRemovalAttempted) await release()
     report(`storage cleanup failed: ${detail}`)
     return NextResponse.json({
-      error: sweptAnything
-        ? 'Some files could not be removed. Nothing has been deleted from the database, and this cleanup is reserved — run it again to finish it.'
+      error: storageRemovalAttempted
+        ? 'Some files may not have been removed. Nothing has been deleted from the database, and this cleanup is reserved — run it again to finish it.'
         : 'Files could not be removed from storage. Nothing was deleted — please retry.',
-      reserved: sweptAnything,
+      reserved: storageRemovalAttempted,
       failed: [detail],
     }, { status: 502 })
   }
@@ -195,8 +226,12 @@ export async function POST(req: NextRequest) {
   const sweepStarted = Date.now()
   if (claim?.order_request_id) {
     try {
-      const attachments = await removeAllObjectsForRequest(service, claim.order_request_id)
-      if (attachments.removed.length > 0) sweptAnything = true
+      const attachments = await removeAllObjectsForRequest(
+        service, claim.order_request_id, { onRemoveAttempt: markRemovalAttempt })
+      // Defence in depth: the callback has already set the flag, and the
+      // returned fact must agree with it.
+      if (attachments.removalAttempted) storageRemovalAttempted = true
+      confirmedRemoved += attachments.removed.length
       if (attachments.failed.length > 0) {
         timing.sweep = Date.now() - sweepStarted
         return await storageFailed('order_request_attachments')
@@ -232,9 +267,10 @@ export async function POST(req: NextRequest) {
     if (info?.found && typeof info.submission_id === 'string') {
       try {
         const removal = await removeAllObjectsForSubmission(
-          service, info.submission_id, info.storage_paths ?? [])
-        removedObjects += removal.removed.length
-        if (removal.removed.length > 0) sweptAnything = true
+          service, info.submission_id, info.storage_paths ?? [],
+          { onRemoveAttempt: markRemovalAttempt })
+        if (removal.removalAttempted) storageRemovalAttempted = true
+        confirmedRemoved += removal.removed.length
         if (removal.failed.length > 0) {
           timing.sweep = Date.now() - sweepStarted
           return await storageFailed('pi_files')
@@ -270,6 +306,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ...(result as Record<string, unknown> ?? {}),
     resumed: claim?.resumed === true,
-    removedFiles: removedObjects,
+    // CONFIRMED removals. Named for what it is: storage may have removed more
+    // than it managed to report, which is why it never decides anything here.
+    confirmedRemovedFiles: confirmedRemoved,
   })
 }
