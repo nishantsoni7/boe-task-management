@@ -689,7 +689,11 @@ how much of one payment is claimed by one PI or one Order — plus
 `allocate_payment_to_target()`, `reverse_payment_allocation()` and the two
 protected actions `finance.allocate` / `finance.allocate_correct`. A payment's
 unallocated balance is DERIVED (amount minus the sum of active allocations) and
-never stored; allocations are reversed, never deleted. `approve_order_submission()`
+never stored; allocations are reversed, never deleted. An UNVERIFIED payment may
+be allocated — verification is the parent payment's status, read through
+`finance_payment_status_is_verified()`, and is never copied onto the allocation.
+All three foreign keys are NO ACTION, so no deletion path reaches an allocation
+implicitly; only deleting an unverified payment releases its own. `approve_order_submission()`
 still gates on the **declared** advance and reads no allocation, so Order approval
 eligibility is exactly what it was. See
 `docs/Module Docs/FINANCE_ORDER_WORKFLOW.md` §9a.

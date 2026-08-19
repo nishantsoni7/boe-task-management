@@ -341,11 +341,20 @@ server-side, accepting the target's own participant rule **or**
 `finance.view_all`, so a Finance allocator does not need Order Management access
 to do their job.
 
-**Note for the UI phase.** `finance_payment_allocations` carries the standard
-RESTRICTIVE Finance module entry gate, like the other three Finance tables. A PI
-or Order participant with no Finance access therefore reaches no allocation, even
-on their own record. That is deliberate for a database-only phase — it widens
-nothing — and is the decision the payment-card phase has to revisit.
+**`finance_payment_allocations` carries NO Finance module entry gate**, unlike the
+other three Finance tables. The confirmed rule is that a salesperson sees the
+money attached to a PI or Order they uploaded or own *without* holding Finance
+access, and a RESTRICTIVE gate ANDs onto every permissive policy — it would have
+hidden a person's own record's payment from them. Nothing is widened: each
+permissive SELECT policy carries its own complete authority, and both participant
+branches still require Order Management entry and still resolve to a record the
+caller can already open. Reading an allocation grants no `allocate`, no
+`allocate_correct`, no verification authority and no Finance page.
+
+**Required Phase 2 dependency.** `finance_payment_requests` is not widened, so a
+PI owner without Finance access can read the allocation but not the payment row
+behind it. The payment-card phase must add the matching participant SELECT policy
+to the parent table.
 
 ---
 

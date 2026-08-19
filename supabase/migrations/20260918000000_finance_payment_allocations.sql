@@ -36,8 +36,13 @@
 -- ── WHAT THIS DELIBERATELY DOES NOT DO ────────────────────────────────────────
 --
 --   * No second payment ledger. See above.
---   * No new payment status. `pending_approval` remains the internal status for
---     a payment awaiting verification. Adding a sixth value would break the
+--   * No new payment status, and no allocation status pair either.
+--     `pending_approval` remains the internal status for a payment awaiting
+--     verification, and an ALLOCATION never records verification at all — that
+--     is the parent payment's status, read through
+--     finance_payment_status_is_verified() (section 5b). An unverified payment
+--     may be allocated: Sales records the money, the payment and its allocation
+--     read as Awaiting Verification, and Finance decides afterwards. Adding a sixth value would break the
 --     exhaustiveness the two Finance pages rely on (REQUEST_STAGE_STATUSES and
 --     CONFIRMED_PAYMENT_STATUSES in src/app/finance/paymentRouting.ts partition
 --     the domain, and their tests assert it) and five deployed CHECK
@@ -85,15 +90,19 @@
 -- plus the scale CHECK below REFUSES it instead, for every caller including
 -- direct SQL and the service role.
 --
--- FK deletion behaviour is ON DELETE CASCADE on all three parents, and that is
--- NOT a weakening: finance_payment_allocations_guard_delete (section 8) is a
--- BEFORE DELETE trigger, and a BEFORE DELETE trigger fires for cascade deletes
--- too. So the cascade is unreachable outside the Test Data Cleanup context —
--- deleting a payment, a PI or an Order while an allocation names it is REFUSED
--- for every role, service role included. What the cascade buys is that the
--- claim-based cleanup protocol needs no change at all: once
--- finalize_test_data_cleanup() has set boe.cleanup_context, its existing
--- `delete from public.finance_payment_requests` carries the allocations with it.
+-- FK DELETION BEHAVIOUR IS `NO ACTION` ON ALL THREE PARENTS — the default, and
+-- deliberately not CASCADE. The same choice, for the same reason, that
+-- 20260915000000 §2 made for orders.source_order_submission_id: financial history
+-- must not disappear as a side effect of somebody calling a deletion path.
+--
+--   * an active or reversed allocation REFUSES deletion of its PI or its Order,
+--     for every role including the service role, because PostgreSQL will not let
+--     a referenced row go while a referencing row names it;
+--   * the parent PAYMENT is different, and section 8a is why: an UNVERIFIED
+--     payment is a mistake rather than an event and has always been deletable
+--     (20260700000000 / 20260705000000), so its allocations are released with it
+--     by an explicit BEFORE DELETE trigger rather than by a blind cascade. A
+--     VERIFIED payment is still undeletable, so its allocations can never go.
 
 create table public.finance_payment_allocations (
   id uuid primary key default gen_random_uuid(),
@@ -101,14 +110,17 @@ create table public.finance_payment_allocations (
   -- The payment this allocation spends part of. The ledger row is the money;
   -- this is a claim against it.
   payment_request_id uuid not null
-    references public.finance_payment_requests(id) on delete cascade,
+    constraint finance_payment_allocations_payment_fk
+    references public.finance_payment_requests(id),
 
   -- Exactly one of the two is set — see finance_payment_allocations_one_target.
   -- A PI submission before its Order exists, or the Confirmed Order itself.
   order_submission_id uuid
-    references public.order_submissions(id) on delete cascade,
+    constraint finance_payment_allocations_order_submission_fk
+    references public.order_submissions(id),
   order_id uuid
-    references public.orders(id) on delete cascade,
+    constraint finance_payment_allocations_order_fk
+    references public.orders(id),
 
   allocated_amount numeric not null,
 
@@ -202,11 +214,11 @@ comment on table public.finance_payment_allocations is
   'How much of one payment is claimed by one PI submission or one Confirmed Order. A CHILD of finance_payment_requests, which remains the only payment ledger — this table holds no money of its own, no client, no mode, no proof and no destination. The unallocated balance of a payment is DERIVED as amount minus the sum of its active allocations and is never stored. Rows are reversed, never deleted.';
 
 comment on column public.finance_payment_allocations.payment_request_id is
-  'The payment this allocation spends part of. ON DELETE CASCADE, but unreachable outside Test Data Cleanup: finance_payment_allocations_guard_delete refuses the cascade for every other caller.';
+  'The payment this allocation spends part of. NO ACTION FK: nothing deletes an allocation implicitly. Deleting an UNVERIFIED payment releases its allocations explicitly (finance_payment_requests_release_allocations); a verified payment cannot be deleted at all, so its allocations are permanent.';
 comment on column public.finance_payment_allocations.order_submission_id is
-  'The PI submission this money is allocated to, before any Order exists. Exactly one of this and order_id is set.';
+  'The PI submission this money is allocated to, before any Order exists. Exactly one of this and order_id is set. NO ACTION FK: a PI naming an allocation cannot be deleted, and no deletion path silently discards the allocation.';
 comment on column public.finance_payment_allocations.order_id is
-  'The Confirmed Order this money is allocated to. Exactly one of this and order_submission_id is set.';
+  'The Confirmed Order this money is allocated to. Exactly one of this and order_submission_id is set. NO ACTION FK: an Order naming an allocation cannot be deleted, and no deletion path silently discards the allocation.';
 comment on column public.finance_payment_allocations.allocated_amount is
   'Rupees of the parent payment claimed by this target, to two decimal places. Positive; excess precision is refused rather than rounded. The active total across a payment can never exceed the payment amount.';
 comment on column public.finance_payment_allocations.status is
@@ -433,15 +445,33 @@ create trigger finance_payment_allocations_enforce_capacity
 -- from the payment's side, and without it a correction could break it without
 -- touching an allocation at all.
 --
--- Not a theoretical hole: finance_payment_requests_guard_approved (20260901000000)
--- exempts admins and finance.manage holders from the post-approval edit lock
--- precisely so a recorded payment can be corrected, and the finance_payment_requests_manager_correct
--- policy lets them PATCH an approved row. Reducing amount is exactly the
--- correction they would make.
+-- THIS IS THE LOAD-BEARING HALF, because an unverified payment may now be
+-- allocated and an unverified payment's amount is still editable. Every route
+-- that can change `amount` has to be covered, and a BEFORE ROW trigger is the
+-- only construct that covers all of them at once:
+--
+--   * the SUBMITTER correcting their own pending or needs_clarification request
+--     through finance_payment_requests_own_update (20260653/20260695000000) —
+--     the common case, and the one a check inside an RPC would miss entirely,
+--     because this path is a direct PostgREST PATCH with no RPC at all;
+--   * an ADMIN, through finance_payment_requests_admin_update;
+--   * a finance.manage holder, through finance_payment_requests_manager_correct
+--     — the post-approval correction 20260901000000 deliberately allows;
+--   * an approver deciding a pending request (finance_payment_requests_approver_decide);
+--   * every SECURITY DEFINER RPC — approve_finance_payment_request, the four
+--     link/unlink functions, convert_order_request_to_order — none of which
+--     changes `amount` today, but none of which is exempt either;
+--   * the SERVICE ROLE and direct SQL, which bypass RLS entirely and which no
+--     policy can constrain.
+--
+-- A CHECK constraint could not express this (it is a statement about a set), and
+-- an RLS WITH CHECK could not either (it sees one row and cannot sum a child
+-- table). The trigger is the narrowest construct that is also complete.
 --
 -- Scoped to an actual amount CHANGE, so every other update on the table — status
--- transitions, linkage, handover details, notes — passes straight through and no
--- existing write path pays for this.
+-- transitions, verification, linkage, handover details, notes — passes straight
+-- through and no existing write path pays for this. In particular a payment
+-- moving pending -> approved -> rejected never touches its allocations.
 
 create or replace function public.finance_payment_requests_guard_allocated_amount()
 returns trigger
@@ -484,6 +514,48 @@ drop trigger if exists finance_payment_requests_guard_allocated_amount
 create trigger finance_payment_requests_guard_allocated_amount
   before update on public.finance_payment_requests
   for each row execute function public.finance_payment_requests_guard_allocated_amount();
+
+-- ── 5b. "Verified", stated once ──────────────────────────────────────────────
+--
+-- An allocation carries no verification state, so every future reader that needs
+-- "how much VERIFIED money is allocated to this PI or Order" has to reach the
+-- parent payment's status. This is that rule, written down once, so the later
+-- phase that gates Order approval on received payment does not re-invent it —
+-- the same service order_submission_advance_ready() performs for the advance
+-- rule (20260913000000), and named here for the same reason.
+--
+-- The two approved statuses, and only those. `pending_approval` and
+-- `needs_clarification` are money somebody has CLAIMED arrived and nobody has
+-- confirmed; `rejected` is money that was refused. None of the three may ever be
+-- counted, and a rejected payment that still carries allocations — which Phase 1
+-- deliberately retains — is exactly the case this exists to exclude.
+--
+-- IMMUTABLE and taking the status as an ARGUMENT rather than an id: a caller
+-- that already holds the locked payment row must be able to ask about the row it
+-- is holding, not re-read it on behalf of whoever happens to be signed in. The
+-- same distinction, for the same reason, 20260913000000 draws between
+-- order_submission_advance_ready(text, numeric, text) and
+-- order_submission_is_advance_ready(uuid).
+--
+-- IT AUTHORISES NOTHING and gates nothing today. Phase 1 changes no approval
+-- rule; approve_order_submission() still reads the DECLARED advance and does not
+-- call this.
+
+create or replace function public.finance_payment_status_is_verified(p_status text)
+returns boolean
+language sql
+immutable
+parallel safe
+set search_path = public, pg_temp
+as $$
+  select coalesce(p_status in ('approved_unlinked', 'approved_linked'), false)
+$$;
+
+comment on function public.finance_payment_status_is_verified(text) is
+  'Whether a payment status means the money has been CONFIRMED RECEIVED: approved_unlinked or approved_linked, and nothing else. The single definition of "verified" for any future total over finance_payment_allocations, which deliberately carries no verification state of its own. Decides nothing and authorises nothing.';
+
+revoke execute on function public.finance_payment_status_is_verified(text) from public, anon;
+grant  execute on function public.finance_payment_status_is_verified(text) to authenticated;
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- §6. What may change about an allocation, and what may not
@@ -639,7 +711,7 @@ create trigger finance_payment_allocations_derive_reversal
   for each row execute function public.finance_payment_allocations_derive_reversal();
 
 -- ═════════════════════════════════════════════════════════════════════════════
--- §8. An allocation is never deleted
+-- §8. An allocation is never deleted by accident
 -- ═════════════════════════════════════════════════════════════════════════════
 --
 -- The same three-layer stance 20260705000000 took for approved payments and
@@ -649,19 +721,40 @@ create trigger finance_payment_allocations_derive_reversal
 --   layer 1  no DELETE policy exists (section 10), so PostgREST refuses it
 --   layer 2  DELETE is REVOKED from anon and authenticated (section 10), so the
 --            privilege check refuses it before any policy is consulted
---   layer 3  THIS TRIGGER, which fires for every path including the service role,
---            direct SQL, and — critically — a CASCADE from the parent payment,
---            PI or Order. That is what makes the three ON DELETE CASCADE clauses
---            in section 1 safe: they are unreachable outside cleanup.
+--   layer 3  THIS TRIGGER, which fires for every path including the service role
+--            and direct SQL.
 --
--- The one exemption is the transaction-local cleanup context, which is not an
--- identity and cannot be set by any client — see in_test_data_cleanup()
--- (20260705000000 §1). This is what lets the deployed
--- finalize_test_data_cleanup() protocol work UNCHANGED: its existing
--- `delete from public.finance_payment_requests` runs with the context set, the
--- cascade reaches the allocations, and this trigger stands aside for exactly
--- that transaction. No claim, no freeze and no finalize safeguard is weakened,
--- and no cleanup function is restated.
+-- And a fourth, upstream of all of them: the three foreign keys are NO ACTION,
+-- so a PI or an Order that an allocation names cannot be deleted at all. There
+-- is no deletion path that can reach an allocation by side effect.
+--
+-- TWO EXEMPTIONS, both transaction-local markers rather than identities, neither
+-- settable by any client:
+--
+--   in_test_data_cleanup()          the authorized cleanup transaction
+--                                   (20260705000000 §1), unchanged
+--   in_payment_allocation_release() the parent payment is being deleted, and is
+--                                   eligible to be — see 8a
+--
+-- The second is PINNED TO ONE PAYMENT ID rather than being a boolean, so even
+-- inside a release the guard will only let go of the allocations belonging to
+-- the payment actually being deleted.
+
+create or replace function public.in_payment_allocation_release(p_payment_id uuid)
+returns boolean
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  select coalesce(nullif(current_setting('boe.payment_allocation_release', true), ''), '')
+         = p_payment_id::text
+$$;
+
+comment on function public.in_payment_allocation_release(uuid) is
+  'True only inside a transaction where finance_payment_requests_release_allocations() is deleting THIS payment''s allocations. Transaction-local, pinned to one payment id, and not settable by any client.';
+
+revoke execute on function public.in_payment_allocation_release(uuid)
+  from public, anon, authenticated;
 
 create or replace function public.finance_payment_allocations_guard_delete()
 returns trigger
@@ -674,6 +767,10 @@ begin
     return old;
   end if;
 
+  if public.in_payment_allocation_release(old.payment_request_id) then
+    return old;
+  end if;
+
   raise exception
     'ALLOCATION_PERMANENT: allocation % is a financial record and cannot be deleted. Reverse it instead.',
     old.id
@@ -682,7 +779,7 @@ end;
 $$;
 
 comment on function public.finance_payment_allocations_guard_delete() is
-  'Refuses every deletion of an allocation, including a CASCADE from its payment, PI or Order, for every role including the service role. Exempt only inside an authorized Test Data Cleanup transaction.';
+  'Refuses every deletion of an allocation, for every role including the service role. Exempt only inside an authorized Test Data Cleanup transaction, or while its own eligible parent payment is being deleted.';
 
 revoke execute on function public.finance_payment_allocations_guard_delete()
   from public, anon, authenticated;
@@ -690,6 +787,68 @@ revoke execute on function public.finance_payment_allocations_guard_delete()
 create trigger finance_payment_allocations_guard_delete
   before delete on public.finance_payment_allocations
   for each row execute function public.finance_payment_allocations_guard_delete();
+
+-- ── 8a. Deleting an UNVERIFIED payment releases its allocations ──────────────
+--
+-- THE RULE THIS PRESERVES IS NOT NEW. 20260705000000 states it plainly: an
+-- unfinished record — an unapproved Payment Request — "represents a mistake
+-- rather than an event" and stays deletable, while an approved payment is
+-- permanent bank history. Phase 1 makes a pending payment allocatable, so that
+-- rule now has to say something about its children, and the honest answer is
+-- that they go with it: an allocation of money that was never confirmed
+-- describes nothing that happened. Leaving it behind would be FALSE financial
+-- history pointing at a payment that no longer exists.
+--
+-- WHY A TRIGGER AND NOT `ON DELETE CASCADE`. A cascade would fire for ANY
+-- deletion of the parent row, including one this schema has not thought of yet.
+-- An explicit BEFORE DELETE trigger runs only after
+-- finance_payment_requests_guard_approved_delete has already refused every
+-- verified payment, so the release is reachable exactly when the deletion itself
+-- is legitimate — and it is stated in one readable place rather than implied by
+-- a constraint clause.
+--
+-- TRIGGER NAME ORDER IS LOAD-BEARING, and is checked by the assertions in §13:
+-- `finance_payment_requests_guard_approved_delete` sorts before
+-- `finance_payment_requests_release_allocations` (g < r), so a verified payment
+-- is refused BEFORE anything is released. If the two were ever reordered, this
+-- would start releasing allocations for a delete that is then refused — harmless
+-- because the whole transaction rolls back, but the ordering is asserted anyway
+-- so nobody has to reason about it twice.
+
+create or replace function public.finance_payment_requests_release_allocations()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  -- Transaction-local either way, so a failure between here and COMMIT cannot
+  -- leak it. Cleared explicitly so nothing later in the SAME transaction — a
+  -- multi-row delete, the cleanup executor — inherits an open door for a payment
+  -- it is not currently deleting.
+  perform set_config('boe.payment_allocation_release', old.id::text, true);
+
+  delete from public.finance_payment_allocations
+   where payment_request_id = old.id;
+
+  perform set_config('boe.payment_allocation_release', '', true);
+
+  return old;
+end;
+$$;
+
+comment on function public.finance_payment_requests_release_allocations() is
+  'Releases a payment''s allocations as part of deleting the payment itself. Reachable only after finance_payment_requests_guard_approved_delete has allowed the deletion, so a verified payment — and therefore its allocations — can never be removed this way.';
+
+revoke execute on function public.finance_payment_requests_release_allocations()
+  from public, anon, authenticated;
+
+drop trigger if exists finance_payment_requests_release_allocations
+  on public.finance_payment_requests;
+
+create trigger finance_payment_requests_release_allocations
+  before delete on public.finance_payment_requests
+  for each row execute function public.finance_payment_requests_release_allocations();
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- §9. Audit — the existing Finance trail, two new events
@@ -815,20 +974,64 @@ create trigger finance_payment_allocations_log_activity
 revoke insert, update, delete, truncate, references, trigger
   on public.finance_payment_allocations from anon, authenticated;
 
+-- ANON IS CLOSED OUTRIGHT, including SELECT. Supabase's project-level
+-- `alter default privileges ... grant all on tables to anon, authenticated`
+-- means a new table arrives with anon already holding SELECT; RLS plus policies
+-- declared `to authenticated` make that inert, which is why the existing Finance
+-- tables leave it. It is revoked here anyway: nothing reads an allocation
+-- unauthenticated, so the privilege has no purpose, and a privilege with no
+-- purpose is one fewer thing a future policy edit can accidentally open.
+revoke select on public.finance_payment_allocations from anon;
+
 grant select on public.finance_payment_allocations to authenticated;
 
 alter table public.finance_payment_allocations enable row level security;
 
--- The Finance module parent gate, matching 20260905000000 §2, which applies the
--- identical RESTRICTIVE policy to finance_payment_requests,
--- finance_payment_request_activity_log and payment_proof_attachments. RESTRICTIVE,
--- so it ANDs with every permissive policy below: somebody whose Finance access is
--- switched off reaches no allocation at all, whatever else they own.
-create policy "finance_payment_allocations_module_entry_gate"
-  on public.finance_payment_allocations
-  as restrictive for all to authenticated
-  using (public.module_entry_open('finance'))
-  with check (public.module_entry_open('finance'));
+-- ── NO RESTRICTIVE FINANCE MODULE GATE ON THIS TABLE, DELIBERATELY ───────────
+--
+-- The other three Finance tables carry one (20260905000000 §2), and the obvious
+-- move was to copy it. It is the wrong shape HERE, and this is the one place in
+-- the schema where that is true.
+--
+-- THE CONFIRMED BUSINESS RULE: a salesperson may see the money attached to a PI
+-- or an Order THEY UPLOADED OR OWN — how much, and whether Finance has confirmed
+-- it — WITHOUT holding Finance-module access. A RESTRICTIVE finance gate ANDs
+-- itself onto every permissive policy below, so it would have hidden a person's
+-- own record's payment from them unless somebody also granted them Finance,
+-- which grants far more than the narrow sight the rule describes.
+--
+-- WHAT REPLACES IT: every permissive policy below carries its OWN complete
+-- authority, so removing the blanket gate widens nothing. Read them as a set:
+--
+--   admin                 unchanged, matches finance_payment_requests_admin_select
+--   finance.view_all      the existing protected company-wide Finance sight
+--   payment submitter     you raised this payment
+--   PI participant        gated on module_entry_open('orders') AND the PI
+--                         module's own single visibility rule
+--   Order participant     gated by public.orders' own RLS, which itself carries
+--                         the RESTRICTIVE Orders module gate
+--
+-- The two participant branches therefore still require Order Management entry
+-- and still resolve to "a record this person can already open". Somebody with
+-- neither Finance nor Orders access reaches nothing at all.
+--
+-- WHAT THIS DOES NOT GRANT. Reading an allocation on your own PI or Order is
+-- SELECT on one child row and nothing else. It confers no finance.allocate, no
+-- finance.allocate_correct, no verification authority, no Finance page, and no
+-- sight of any other customer's payment: the write privileges are revoked
+-- outright below and both RPCs re-derive their own permission server-side.
+--
+-- REQUIRED PHASE 2 DEPENDENCY, STATED HERE SO IT IS NOT MISSED. The parent
+-- table, public.finance_payment_requests, is NOT widened by this migration and
+-- keeps its existing policies and its Finance module gate. So a PI owner without
+-- Finance access can currently read the ALLOCATION (how much of a payment is
+-- assigned to their record) but NOT the payment row behind it — which is where
+-- payment_date, payment_mode, admin_note and the rejection reason live. Phase 2,
+-- which builds the PI/Order payment card, MUST add the matching participant
+-- SELECT policy to finance_payment_requests. It is deliberately not done here:
+-- widening the payment ledger is a decision that belongs with the screen that
+-- needs it, and doing it blind a phase early would expose payment rows that
+-- nothing yet reads.
 
 -- Admin, matching finance_payment_requests_admin_select.
 create policy "finance_payment_allocations_admin_select"
@@ -865,12 +1068,20 @@ create policy "finance_payment_allocations_payment_owner_select"
     )
   );
 
--- PI participants, through the module's OWN single visibility rule
+-- PI PARTICIPANTS — the confirmed rule, and the reason this table has no blanket
+-- Finance gate. Expressed through the PI module's OWN single visibility rule
 -- (can_view_order_submission, 20260908000000/20260915000000) rather than a
--- restatement of it, so the two can never drift. It is SECURITY DEFINER, so this
--- is ANDed with module_entry_open('orders') here for the same reason the
--- order_submissions table carries a RESTRICTIVE gate: the helper alone does not
--- include the parent module check.
+-- restatement of it, so the two can never drift.
+--
+-- ANDed with module_entry_open('orders') because that helper is SECURITY DEFINER
+-- and therefore does not itself include the RESTRICTIVE parent gate the
+-- order_submissions table carries. Without this the policy would show an
+-- allocation for a PI whose own row the caller cannot read, which would be a
+-- widening rather than the narrow sight the rule describes.
+--
+-- FINANCE ACCESS IS NOT REQUIRED, and that is the whole point: a salesperson
+-- sees the money on the PI they uploaded without being handed the Finance
+-- module.
 create policy "finance_payment_allocations_submission_participant_select"
   on public.finance_payment_allocations
   for select to authenticated
@@ -880,11 +1091,13 @@ create policy "finance_payment_allocations_submission_participant_select"
     and public.can_view_order_submission(finance_payment_allocations.order_submission_id)
   );
 
--- Order participants. Deliberately expressed as a plain EXISTS against
--- public.orders and NOT as a restatement of its four SELECT policies: RLS applies
--- to a table referenced inside a policy expression, so this resolves to exactly
--- "an Order this caller can already see" — admin, operations, requester,
--- assignee or orders.view_all — and it cannot widen when those policies change.
+-- ORDER PARTICIPANTS — the same rule for a Confirmed Order. Deliberately a plain
+-- EXISTS against public.orders and NOT a restatement of its four SELECT
+-- policies: RLS applies to a table referenced inside a policy expression, so this
+-- resolves to exactly "an Order this caller can already see" — admin,
+-- operations, requester, assignee or orders.view_all — and it picks up the
+-- RESTRICTIVE Orders module gate for free. It cannot widen when those policies
+-- change, and it cannot be more permissive than public.orders itself.
 create policy "finance_payment_allocations_order_participant_select"
   on public.finance_payment_allocations
   for select to authenticated
@@ -898,7 +1111,10 @@ create policy "finance_payment_allocations_order_participant_select"
 
 -- NO INSERT, UPDATE OR DELETE POLICY, for any role. With RLS enabled and no
 -- policy for a command, PostgREST refuses it outright — and the revokes above
--- refuse it one layer earlier. Every mutation goes through section 12.
+-- refuse it one layer earlier. Every mutation goes through section 12, which
+-- re-derives finance.allocate / finance.allocate_correct server-side. Being able
+-- to SEE an allocation therefore grants no authority to create, reverse, verify
+-- or correct one.
 --
 -- NO EXISTING POLICY ON ANY OTHER TABLE IS CREATED, DROPPED, ALTERED OR WIDENED
 -- by this migration. Finance, Orders and PI visibility are exactly what they
@@ -960,14 +1176,31 @@ on conflict (module_id, action_id) do nothing;
 
 -- ── 12A. Create an allocation ────────────────────────────────────────────────
 --
--- WHY THE PAYMENT MUST ALREADY BE VERIFIED. Allocation is only permitted against
--- a payment in 'approved_unlinked' or 'approved_linked' — the two statuses in
--- which finance_payment_requests_guard_approved (20260901000000) freezes `amount`
--- against everyone except an admin or a finance.manage holder. Allocating against
--- a pending payment would mean allocating a figure its own submitter can still
--- edit, and the capacity invariant would be measured against a moving number.
--- (The one remaining way to move it — an admin correction — is refused by
--- section 5a when it would fall below the allocated total.)
+-- AN UNVERIFIED PAYMENT MAY BE ALLOCATED. That is the confirmed workflow: Sales
+-- records money against a PI or an Order, the payment and its allocation read as
+-- Awaiting Verification, and Finance then verifies, corrects-and-verifies, or
+-- rejects it. Requiring verification first would invert the sequence and leave
+-- the salesperson nowhere to say what the money was for.
+--
+-- VERIFICATION IS A PROPERTY OF THE PAYMENT, NEVER OF THE ALLOCATION. The
+-- allocation says how much of a payment belongs to a piece of business; whether
+-- that money has been confirmed is the parent's `status`, and it is read through
+-- finance_payment_status_is_verified() (section 5b). There is deliberately no
+-- pending/verified pair of allocation statuses: two places recording one fact is
+-- how they come to disagree, and 'active'/'reversed' already means something
+-- else entirely — whether the allocation still applies at all.
+--
+-- ONLY 'rejected' IS REFUSED, and only for a NEW allocation. Rejected money was
+-- refused, so nothing further should be attached to it. Allocations already on a
+-- rejected payment are RETAINED — untouched, still readable, and simply not
+-- verified — because a rejection is frequently corrected and reapplied
+-- (20260695000000 returns the payment to pending_approval), and destroying the
+-- allocation would make the salesperson re-state what the money was for.
+--
+-- THE MOVING-AMOUNT PROBLEM THIS RAISES IS CLOSED IN SECTION 5a. A pending
+-- payment's amount can still be edited by its submitter, so the capacity
+-- invariant is enforced from the payment's side as well — every path that
+-- lowers an amount below what is already allocated is refused.
 --
 -- VISIBILITY IS CHECKED ON THE TARGET. finance.allocate is a protected action
 -- whose entire purpose is attaching money to business records, so it is the
@@ -1039,10 +1272,11 @@ begin
       using errcode = 'P0002';
   end if;
 
-  if v_pay.status not in ('approved_unlinked', 'approved_linked') then
+  -- Rejected money is refused, and only for NEW allocations. Existing ones stay.
+  if v_pay.status = 'rejected' then
     raise exception
-      'PAYMENT_NOT_VERIFIED: payment % is % and cannot be allocated until it has been verified.',
-      v_pay.request_number, v_pay.status
+      'PAYMENT_REJECTED: payment % was rejected and cannot receive a new allocation. Reapply it first.',
+      v_pay.request_number
       using errcode = 'P0001';
   end if;
 
@@ -1184,7 +1418,7 @@ end;
 $$;
 
 comment on function public.allocate_payment_to_target(uuid, uuid, uuid, numeric) is
-  'Allocates part of a verified payment to exactly one PI submission or Confirmed Order, for a caller holding finance.allocate. Locks the payment, re-derives the unallocated balance under that lock, validates the target exists, is eligible and is visible to the caller, and refuses a duplicate active claim. The actor and the provenance are server-derived; no client value reaches either. Creates no payment and changes no payment column.';
+  'Allocates part of a payment — verified or still awaiting verification — to exactly one PI submission or Confirmed Order, for a caller holding finance.allocate. Verification is the parent payment''s status and is never copied onto the allocation; only a rejected payment refuses a new allocation. Locks the payment, re-derives the unallocated balance under that lock, validates the target exists, is eligible and is visible to the caller, and refuses a duplicate active claim. The actor and the provenance are server-derived; no client value reaches either. Creates no payment and changes no payment column.';
 
 revoke execute on function public.allocate_payment_to_target(uuid, uuid, uuid, numeric) from public, anon;
 grant  execute on function public.allocate_payment_to_target(uuid, uuid, uuid, numeric) to authenticated;
@@ -1461,15 +1695,89 @@ begin
     raise exception 'anon/authenticated still hold % write privilege(s) on finance_payment_allocations', v_n;
   end if;
 
-  -- The RESTRICTIVE Finance module gate, matching the other three Finance tables.
-  if not exists (
-    select 1 from pg_policy p
-    join pg_class t on t.oid = p.polrelid
-    where t.relname = 'finance_payment_allocations'
-      and p.polname = 'finance_payment_allocations_module_entry_gate'
-      and p.polpermissive = false
+  -- anon holds nothing at all, SELECT included.
+  select count(*) into v_n
+  from information_schema.role_table_grants
+  where table_schema = 'public'
+    and table_name   = 'finance_payment_allocations'
+    and grantee      = 'anon';
+
+  if v_n <> 0 then
+    raise exception 'anon must hold no privilege on finance_payment_allocations, found %', v_n;
+  end if;
+
+  -- NO restrictive policy of any kind. A RESTRICTIVE policy ANDs onto every
+  -- permissive one, which is exactly what would defeat the two participant
+  -- branches for somebody without Finance access.
+  select count(*) into v_n
+  from pg_policy p join pg_class t on t.oid = p.polrelid
+  where t.relname = 'finance_payment_allocations' and p.polpermissive = false;
+
+  if v_n <> 0 then
+    raise exception
+      'finance_payment_allocations must carry no RESTRICTIVE policy — it would defeat participant visibility (found %)', v_n;
+  end if;
+
+  -- All five permissive SELECT policies are present. Named individually, because
+  -- a count would pass while the participant branches were missing.
+  foreach v_ev in array array[
+    'finance_payment_allocations_admin_select',
+    'finance_payment_allocations_view_all_select',
+    'finance_payment_allocations_payment_owner_select',
+    'finance_payment_allocations_submission_participant_select',
+    'finance_payment_allocations_order_participant_select'
+  ] loop
+    if not exists (
+      select 1 from pg_policy p join pg_class t on t.oid = p.polrelid
+      where t.relname = 'finance_payment_allocations'
+        and p.polname = v_ev and p.polcmd = 'r' and p.polpermissive
+    ) then
+      raise exception 'the permissive SELECT policy % is missing', v_ev;
+    end if;
+  end loop;
+
+  -- ── Financial history never disappears by cascade ────────────────────────
+  -- All three parents are NO ACTION ('a'), so no deletion path can reach an
+  -- allocation implicitly.
+  -- Named individually: created_by and reversed_by are also foreign keys, and a
+  -- bare count over the table would pass while a target FK cascaded.
+  select count(*) into v_n
+  from pg_constraint
+  where conrelid = 'public.finance_payment_allocations'::regclass
+    and contype = 'f'
+    and conname in ('finance_payment_allocations_payment_fk',
+                    'finance_payment_allocations_order_submission_fk',
+                    'finance_payment_allocations_order_fk')
+    and confdeltype = 'a';
+
+  if v_n <> 3 then
+    raise exception
+      'the payment, PI and Order foreign keys must all be NO ACTION so nothing cascades into financial history (found %)', v_n;
+  end if;
+
+  -- And nothing on this table cascades or nulls on delete, at all.
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.finance_payment_allocations'::regclass
+      and contype = 'f' and confdeltype <> 'a'
   ) then
-    raise exception 'the Finance module entry gate is missing or is not RESTRICTIVE';
+    raise exception 'no foreign key on finance_payment_allocations may cascade or set null on delete';
+  end if;
+
+  -- The one explicit release path, and its ordering relative to the guard that
+  -- refuses a verified payment. Name order decides which runs first.
+  if not exists (
+    select 1 from pg_trigger g join pg_class t on t.oid = g.tgrelid
+    where t.relname = 'finance_payment_requests'
+      and g.tgname  = 'finance_payment_requests_release_allocations'
+  ) then
+    raise exception 'the payment-side allocation release trigger is not attached';
+  end if;
+
+  if 'finance_payment_requests_guard_approved_delete'
+     >= 'finance_payment_requests_release_allocations' then
+    raise exception
+      'the approved-delete guard must sort BEFORE the release trigger, or a verified payment would release before being refused';
   end if;
 
   -- ── Both actions are registered against Finance, and granted to nobody ────
@@ -1515,7 +1823,9 @@ end $$;
 -- the whole of Phase 1. In order:
 --
 --   drop trigger finance_payment_requests_guard_allocated_amount on public.finance_payment_requests;
+--   drop trigger finance_payment_requests_release_allocations       on public.finance_payment_requests;
 --   drop function public.finance_payment_requests_guard_allocated_amount();
+--   drop function public.finance_payment_requests_release_allocations();
 --   -- the delete guard refuses its own table's removal path, so stand it down first
 --   drop trigger finance_payment_allocations_guard_delete on public.finance_payment_allocations;
 --   drop table public.finance_payment_allocations;   -- takes its 6 other triggers with it
@@ -1526,6 +1836,8 @@ end $$;
 --   drop function public.finance_payment_allocations_derive_reversal();
 --   drop function public.finance_payment_allocations_guard_delete();
 --   drop function public.log_finance_payment_allocation_activity();
+--   drop function public.in_payment_allocation_release(uuid);
+--   drop function public.finance_payment_status_is_verified(text);
 --   -- restore the deployed 20260716000000 event set (drop the two new values)
 --   -- delete the two module_permission_actions rows, and the two
 --   --   permission_actions rows if nothing else references them

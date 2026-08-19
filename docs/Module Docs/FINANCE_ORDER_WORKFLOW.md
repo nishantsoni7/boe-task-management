@@ -675,17 +675,78 @@ concurrent allocations against one payment serialize instead of both passing on 
 stale read. Its mirror, `finance_payment_requests_guard_allocated_amount`, refuses
 an amount correction that would drop a payment *below* what is already allocated.
 
+### Verification belongs to the payment, never to the allocation
+
+An **unverified payment may be allocated**, because that is the confirmed
+sequence: Sales records money against a PI or an Order, the payment and its
+allocation read as *Awaiting Verification*, and Finance then verifies,
+corrects-and-verifies, or rejects. Requiring verification first would invert the
+workflow and leave the salesperson nowhere to say what the money was for.
+
+There is deliberately **no pending/verified pair of allocation statuses**.
+`active`/`reversed` answers a different question — whether the allocation still
+applies at all. Whether the money is confirmed is the parent's `status`, read
+through one definition:
+
+```sql
+public.finance_payment_status_is_verified(text)
+  -- true only for approved_unlinked and approved_linked
+```
+
+That function is the single rule any future verified total must consult, in the
+same way `order_submission_advance_ready()` serves the advance rule. It is
+written now so Phase 3 does not re-invent it, and it gates nothing today.
+
+A **rejected payment retains its allocations** — a rejection is frequently
+corrected and reapplied (`20260695000000`), and destroying the allocation would
+make the salesperson restate what the money was for. It simply never counts as
+verified. Only a *new* allocation on a rejected payment is refused.
+
+Because a pending payment's amount is still editable by its submitter, the
+payment-side half of the capacity invariant is what makes this safe, and it is a
+`BEFORE UPDATE` **trigger** rather than a check inside an RPC — the commonest
+edit in the module (the submitter's own PATCH through
+`finance_payment_requests_own_update`) touches no RPC at all.
+
 ### What an allocation may ever do
 
 Created `active`, then reversed. Nothing else. Payment, target, amount, provenance
 and creation record are immutable; reversal is terminal and requires an actor, a
-time and a non-blank reason, all server-derived; and an allocation is never
-deleted — `finance_payment_allocations_guard_delete` refuses every path including
-a CASCADE from its payment, PI or Order, for every role including the service
-role. The single exemption is the transaction-local Test Data Cleanup context,
-which is what lets the existing claim → storage → finalize protocol keep working
-**unchanged**: `finalize_test_data_cleanup()` is not restated, and no claim or
-finalize safeguard is weakened.
+time and a non-blank reason, all server-derived.
+
+### Nothing deletes financial history by side effect
+
+All three foreign keys are **`NO ACTION`**, not `CASCADE` — the same choice
+`20260915000000` §2 made for `orders.source_order_submission_id`, for the same
+reason:
+
+* an allocation **refuses deletion of its PI or its Order**, for every role
+  including the service role;
+* `finance_payment_allocations_guard_delete` refuses direct deletion on every
+  path;
+* the one deliberate release is the **parent payment's own deletion**. An
+  unverified payment has always been deletable — `20260705000000` calls it "a
+  mistake rather than an event" — and its allocations describe money that was
+  never confirmed, so leaving them behind would be false history pointing at a
+  payment that no longer exists. `finance_payment_requests_release_allocations`
+  removes them explicitly, and only ever runs *after*
+  `finance_payment_requests_guard_approved_delete` has already refused every
+  verified payment. The exemption it sets is transaction-local **and pinned to
+  one payment id**.
+
+Test Data Cleanup keeps working **unchanged** through that same release:
+`finalize_test_data_cleanup()`'s existing `delete from
+public.finance_payment_requests` fires it. No cleanup function is restated, and
+no claim or finalize safeguard is weakened.
+
+**Known cleanup limitation, for Phase 2.** `resolve_test_data_cleanup_chain()`
+finds a chain's payments through `order_id` / `order_request_id`, not through
+allocations. Today that is complete — Phase 1 only creates allocations for
+payments already linked by `order_id` — but once Phase 2 lets a payment be
+allocated to a PI *without* being linked, such a payment would not be claimed,
+and its allocation would then block the Order or PI delete with a raw foreign-key
+error rather than a readable "not eligible". Extending the chain resolver belongs
+with the phase that creates those rows.
 
 ### Backfill
 
@@ -715,14 +776,49 @@ be restated then, on purpose, as a visible reviewed change. And
 `approve_order_submission()` still gates on the **declared** advance
 (`order_submission_advance_ready`); payment does not gate Order approval yet.
 
-### Known gap to settle before Phase 2
+### Participant visibility — and why this table has no Finance module gate
 
-The allocation table carries the standard RESTRICTIVE Finance module entry gate,
-matching the other three Finance tables. So a PI or Order participant who holds
-**no** Finance module access reaches no allocation, even on their own record. That
-is the conservative choice for a database-only phase — it widens nothing — but
-Phase 2 must decide deliberately whether an Order/PI payment card is Finance-gated
-or whether participants get a narrower read.
+The other three Finance tables carry a RESTRICTIVE `module_entry_open('finance')`
+gate (`20260905000000` §2). **This one deliberately does not**, and it is the one
+place in the schema where that is right.
+
+The confirmed rule is that a salesperson may see the money attached to a PI or
+Order **they uploaded or own** without holding Finance-module access. A
+restrictive gate ANDs itself onto every permissive policy, so it would have
+hidden a person's own record's payment from them unless somebody also granted
+Finance — which grants far more than that narrow sight.
+
+Nothing is widened by removing it, because each permissive policy carries its own
+complete authority:
+
+| Policy | Authority |
+|---|---|
+| admin | matches `finance_payment_requests_admin_select` |
+| `finance.view_all` | the existing protected company-wide Finance sight |
+| payment submitter | you raised this payment |
+| PI participant | `module_entry_open('orders')` **and** `can_view_order_submission()` |
+| Order participant | a plain `EXISTS` on `public.orders`, which inherits that table's own RLS *and* its RESTRICTIVE Orders gate |
+
+Both participant branches still resolve to "a record this person can already
+open". Someone with neither Finance nor Orders access reaches nothing.
+
+**Seeing is not doing.** Write privileges are revoked outright and there is no
+INSERT/UPDATE/DELETE policy for any role, so reading an allocation on your own PI
+confers no `finance.allocate`, no `finance.allocate_correct`, no verification
+authority and no Finance page.
+
+### Required Phase 2 dependency
+
+`finance_payment_requests` is **not** widened here and keeps its existing policies
+and its Finance module gate. So a PI owner without Finance access can currently
+read the *allocation* but not the payment row behind it — which is where
+`payment_date`, `payment_mode`, `admin_note` and the rejection reason live.
+
+**Phase 2 must add the matching participant SELECT policy to
+`finance_payment_requests`** when it builds the PI/Order payment card. It is
+deliberately not done here: widening the payment ledger belongs with the screen
+that needs it, and doing it a phase early would expose payment rows nothing yet
+reads.
 
 ---
 
