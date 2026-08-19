@@ -33,7 +33,7 @@ import {
   type TabAccent,
 } from '@/components/ui/StatusTabs'
 import { Archive, CircleCheck, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
-import { REQUEST_STAGE_STATUSES, isRequestStageStatus } from './paymentRouting'
+import { REQUEST_STAGE_STATUSES, canVerifyPayment, isRequestStageStatus } from './paymentRouting'
 import {
   EMPTY_TARGET_STATE,
   PAYMENT_TARGET_LABEL,
@@ -475,6 +475,7 @@ function DetailsModal({
   onClose,
   isAdmin,
   mayCorrectPayments,
+  mayApprovePayments,
   userId,
   supabase,
   onCorrected,
@@ -495,6 +496,18 @@ function DetailsModal({
    * admin, and an admin holds it through the capability helper's short-circuit.
    */
   mayCorrectPayments?: boolean
+  /**
+   * May VERIFY a pending payment — the finance.approve authority, and a
+   * different one from mayCorrectPayments. Correcting rewrites a record that has
+   * already been decided; verifying is the decision.
+   *
+   * This modal previously had no verification control at all, which meant an
+   * admin who opened a pending payment through the row's View button — the
+   * obvious action in the row — could send it back or reject it but could not
+   * confirm it. The only route to verification was clicking the row itself, and
+   * its only affordance was a small "Review" chip. See the panel below.
+   */
+  mayApprovePayments?: boolean
   userId?: string
   supabase?: ReturnType<typeof createClient>
   onCorrected?: () => void
@@ -515,6 +528,60 @@ function DetailsModal({
   const [correctionNote,  setCorrectionNote]  = useState('')
   const [correcting,      setCorrecting]      = useState(false)
   const [correctionError, setCorrectionError] = useState<string | null>(null)
+
+  // ── Verification ──
+  // Only a PENDING payment can be verified, and only by somebody holding the
+  // approval authority. Both are re-derived inside
+  // approve_finance_payment_request under a row lock on every call, so this
+  // decides whether a control is DRAWN and never whether it is allowed.
+  const canVerify = canVerifyPayment(r.status, mayApprovePayments)
+  const [verifyArmed, setVerifyArmed] = useState(false)
+  const [verifyNote,  setVerifyNote]  = useState('')
+  const [verifying,   setVerifying]   = useState(false)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
+  // Verification is not idempotent from the caller's side — a second click
+  // would race the first — so the guard is a ref set BEFORE the await, not a
+  // state update that only lands on the next render.
+  const verifyingRef = useRef(false)
+
+  const handleVerify = async () => {
+    if (!canVerify || !supabase || !onCorrected) return
+    if (verifyingRef.current) return
+    verifyingRef.current = true
+    setVerifying(true)
+    setVerifyError(null)
+
+    // THE EXISTING BACKEND, UNCHANGED. approve_finance_payment_request
+    // (20260690000000, re-gated onto finance.approve by 20260901000000) already
+    // handles every route: a new_order payment — which is what a PI-recorded
+    // payment is — lands in approved_unlinked with order_id left null, and an
+    // existing_order payment links straight to the order it already carries.
+    // Its PI allocation is not touched by any of that: the allocation names the
+    // payment, and the payment's id does not change.
+    const { error: rpcError } = await supabase.rpc('approve_finance_payment_request', {
+      p_request_id: r.id,
+      p_admin_note: verifyNote.trim() || null,
+    })
+
+    if (rpcError) {
+      verifyingRef.current = false
+      setVerifying(false)
+      setVerifyError(friendlyDbErrorMessage(rpcError))
+      return
+    }
+
+    void notifyFinance(
+      r.payment_against === 'new_order'
+        ? { event: 'finance_approved_suspense', requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name }
+        : { event: 'finance_approved_linked',   requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name, orderNumber: r.order_number },
+    )
+
+    // Closes this modal and reloads the list, so the row, the tab counts and the
+    // status chip all reflect the new state. The ref is deliberately NOT reset:
+    // the modal is going away, and leaving it armed makes a late second click
+    // a no-op rather than a second call.
+    onCorrected()
+  }
 
   const noteRequiredForCorrection = newStatus === 'needs_clarification' || newStatus === 'rejected'
   const statusChanged = newStatus !== r.status
@@ -705,6 +772,87 @@ function DetailsModal({
       {supabase && (
         <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
           <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
+        </div>
+      )}
+
+      {/* E2. Verify Payment — the decision, and the one this modal was missing.
+          
+          WHY IT IS HERE AND NOT IN THE CORRECTION DROPDOWN BELOW: moving a row
+          into approved_unlinked/approved_linked requires the RPC's row locking,
+          eligibility checks and order_id/order_number bookkeeping, which is
+          exactly why 20260692000000 removed both approved statuses from
+          STATUS_CORRECTION_OPTIONS. A protected server action gets its own
+          primary button; it never becomes an option in a status <select>.
+          
+          Needs Clarification and Rejected stay where they are, as separate
+          decisions in the correction panel below. */}
+      {canVerify && supabase && onCorrected && (
+        <div style={{
+          border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
+          display: 'flex', flexDirection: 'column', gap: '12px',
+        }}>
+          <div>
+            <SectionHeader>Verification</SectionHeader>
+            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
+              Confirm that Finance has checked this payment. It will be recorded
+              as received{r.payment_against === 'new_order'
+                ? ' and held until an order is linked.'
+                : ` against ${r.order_number ?? 'the linked order'}.`}
+            </div>
+          </div>
+
+          {!verifyArmed ? (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { setVerifyArmed(true); setVerifyError(null) }}
+                className="boe-btn boe-btn-primary"
+                style={{ padding: '7px 16px', fontSize: '13px' }}
+              >
+                Verify Payment
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* The concise confirmation step the review flow already uses, so
+                  a single stray click cannot record money as received. */}
+              <div style={{
+                fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
+                background: colors.greenTint, border: '1px solid rgba(69,168,112,0.2)',
+                borderRadius: '8px', padding: '10px 12px',
+              }}>
+                Verify {fmtAmount(r.amount)} from {r.client_name}? This confirms the
+                money was checked and cannot be undone from this page.
+              </div>
+              <textarea
+                className="boe-input"
+                aria-label="Verification note"
+                value={verifyNote}
+                onChange={e => setVerifyNote(e.target.value)}
+                placeholder="Note for the salesperson (optional)"
+                rows={2}
+                style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
+              />
+              {verifyError && <ErrorBanner message={verifyError} />}
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => { setVerifyArmed(false); setVerifyNote(''); setVerifyError(null) }}
+                  disabled={verifying}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ padding: '7px 16px', fontSize: '13px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleVerify}
+                  disabled={verifying}
+                  className="boe-btn boe-btn-primary"
+                  style={{ padding: '7px 16px', fontSize: '13px' }}
+                >
+                  {verifying ? 'Verifying…' : 'Confirm Verification'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2694,6 +2842,7 @@ function FinancePageInner() {
           onClose={() => setDetailRequest(null)}
           isAdmin={isAdmin}
           mayCorrectPayments={caps.canCorrectOrReversePayment}
+          mayApprovePayments={caps.canApprovePayment}
           userId={userId}
           supabase={supabase}
           onCorrected={() => { setDetailRequest(null); loadRequests() }}
