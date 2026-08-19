@@ -37,7 +37,7 @@ type PaymentRequest = {
   amount: number
   payment_date: string
   payment_mode: string
-  received_in: string
+  received_in: string | null
   proof_note: string | null
   order_number: string | null
   order_id: string | null
@@ -94,6 +94,19 @@ const RECEIVED_IN_LABEL: Record<string, string> = {
   cash_in_hand:    'Paytm',
   savings_account: 'Canara',
   other:           'PNB',
+}
+
+/**
+ * The account a payment landed in, for display.
+ *
+ * NULL is a real, expected value since 20260919000000: a payment recorded
+ * against a PI requires only amount, date and mode, so the account is genuinely
+ * not stated. It reads as "Not stated" rather than rendering blank — a blank
+ * cell looks like a bug, and naming an account would be worse.
+ */
+function receivedInLabel(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return 'Not stated'
+  return RECEIVED_IN_LABEL[value] ?? value
 }
 
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
@@ -181,6 +194,10 @@ const PAYMENT_MODE_OPTIONS = [
 ]
 
 const RECEIVED_IN_OPTIONS = [
+  // First, and empty-valued: a payment recorded against a PI states no account,
+  // and the form must show that truthfully instead of defaulting to the first
+  // real one. Choosing a real option is how Finance supplies it later.
+  { label: 'Not stated', value: '' },
   { label: 'HDFC',   value: 'company_account' },
   { label: 'PNB',    value: 'other' },
   { label: 'Paytm',  value: 'cash_in_hand' },
@@ -409,7 +426,7 @@ function DetailsModal({
         }}>
           <MetaItem label="Payment Date" value={fmtDate(r.payment_date)} />
           <MetaItem label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
-          <MetaItem label="Received In"  value={RECEIVED_IN_LABEL[r.received_in]  ?? r.received_in} />
+          <MetaItem label="Received In"  value={receivedInLabel(r.received_in)} />
           {r.order_request_number && !r.order_number ? (
             <MetaItem label="Linked Order Request" value={r.order_request_number} />
           ) : (
@@ -569,7 +586,7 @@ function EditPaymentModal({
     amount:      String(r.amount),
     paymentDate: r.payment_date,
     paymentMode: r.payment_mode,
-    receivedIn:  r.received_in,
+    receivedIn:  r.received_in ?? '',
     proofNote:   r.proof_note ?? '',
     orderNumber: r.order_number ?? '',
     salesNote:   r.sales_note  ?? '',
@@ -601,7 +618,10 @@ function EditPaymentModal({
         amount:       Number(form.amount),
         payment_date: form.paymentDate,
         payment_mode: form.paymentMode,
-        received_in:  form.receivedIn,
+        // '' is the not-stated sentinel and is stored as NULL. A payment
+        // recorded against a PI arrives with no account, and correcting some
+        // other field here must not invent one.
+        received_in:  form.receivedIn === '' ? null : form.receivedIn,
         proof_note:   form.proofNote.trim() || null,
         ...(isLinkageStatus ? {} : { order_number: form.orderNumber.trim() || null }),
         sales_note:   form.salesNote.trim()   || null,

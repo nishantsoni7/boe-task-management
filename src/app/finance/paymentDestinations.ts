@@ -116,8 +116,12 @@ export function destinationDbPair(key: PaymentDestinationKey): { payment_mode: s
   return { payment_mode: d.payment_mode, received_in: d.received_in }
 }
 
-export function captureFor(key: string): CollectionCapture {
-  return byKey(key)?.capture ?? 'none'
+/**
+ * `key` accepts null — an unstated destination — and resolves to 'none', which
+ * is correct: there is no account for a cash trail to belong to.
+ */
+export function captureFor(key: string | null): CollectionCapture {
+  return key === null ? 'none' : (byKey(key)?.capture ?? 'none')
 }
 
 // ── Reading a stored row back ─────────────────────────────────────────────────
@@ -160,6 +164,40 @@ export function paymentDestinationLabel(payment_mode: string, received_in: strin
  */
 export function readDestinationKey(row: { payment_mode: string; received_in: string }): PaymentDestinationKey {
   return destinationFromDb(row.payment_mode, row.received_in)?.key ?? DEFAULT_DESTINATION_KEY
+}
+
+/**
+ * The same read, but HONEST ABOUT NOT KNOWING: null when the stored pair matches
+ * no account.
+ *
+ * WHY BOTH EXIST. readDestinationKey falls back to the default so a legacy row
+ * lands on something a user can see and correct. That was safe while every row
+ * carried a received_in; since 20260919000000 a payment recorded against a PI
+ * carries NONE — the account was genuinely not stated — and defaulting it would
+ * make an edit form display an account the money never went to, and write it
+ * back on save along with a payment_mode the customer never used.
+ *
+ * An edit form must therefore use THIS one and leave the pair alone until
+ * somebody chooses a real destination.
+ */
+export function readDestinationKeyOrNull(
+  row: { payment_mode: string; received_in: string | null },
+): PaymentDestinationKey | null {
+  if (row.received_in === null) return null
+  return destinationFromDb(row.payment_mode, row.received_in)?.key ?? null
+}
+
+/**
+ * The (payment_mode, received_in) pair to WRITE for a chosen destination, or
+ * null when there is no chosen destination.
+ *
+ * Null means "do not touch either column" — spread as `...(pair ?? {})` — so a
+ * correction to some other field cannot silently restate where the money went.
+ */
+export function destinationWritePair(
+  key: PaymentDestinationKey | null,
+): { payment_mode: string; received_in: string } | null {
+  return key === null ? null : destinationDbPair(key)
 }
 
 // ── The cash trail ────────────────────────────────────────────────────────────
@@ -267,7 +305,7 @@ export function readCollectionState(row: {
 // Returns null when the section is valid, or ONE sentence naming what is wrong.
 
 export function collectionErrorFor(
-  key: string,
+  key: string | null,
   state: CollectionState,
   paymentDate: string,
 ): string | null {

@@ -55,7 +55,8 @@ import {
   EMPTY_COLLECTION_STATE,
   paymentDestinationLabel,
   readCollectionState,
-  readDestinationKey,
+  readDestinationKeyOrNull,
+  destinationWritePair,
   type CollectionState,
   type PaymentDestinationKey,
 } from './paymentDestinations'
@@ -1282,7 +1283,13 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   // finance_payment_requests_guard_approved enforces independently. This is what
   // makes "collect today, hand over tomorrow, record it then" work — the
   // handover is filled in on a later visit to this same form.
-  const [destination, setDestination] = useState<PaymentDestinationKey>(() => readDestinationKey(r))
+  // NULL when the stored pair names no account — which is what a payment
+  // recorded against a PI carries, because only amount, date and mode are
+  // mandatory there (20260919000000 §1). Defaulting it here would show an
+  // account the money never went to and write it back on save, together with a
+  // payment_mode the customer never used. The pair is left alone until somebody
+  // picks a real destination.
+  const [destination, setDestination] = useState<PaymentDestinationKey | null>(() => readDestinationKeyOrNull(r))
   const [collection,  setCollection]  = useState<CollectionState>(() => readCollectionState(r))
 
   const [saving, setSaving] = useState(false)
@@ -1308,7 +1315,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
 
   const handleSave = async () => {
     if (!canSubmit) return
-    const editDbMode = destinationDbPair(destination)
+    const editDbMode = destinationWritePair(destination)
     setSaving(true)
     setError(null)
     const isCreatorReapply = !isAdmin && (r.status === 'needs_clarification' || r.status === 'rejected')
@@ -1336,12 +1343,15 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         ...linkage,
         amount:       Number(form.amount),
         payment_date: form.paymentDate,
-        payment_mode: editDbMode.payment_mode,
-        received_in:  editDbMode.received_in,
+        // BOTH KEYS OR NEITHER. With no destination chosen the stored pair is
+        // left exactly as it is, so correcting an amount on a PI-recorded
+        // payment cannot restate where the money went.
+        ...(editDbMode ?? {}),
         // All five keys, always — switching a payment off a cash destination has
         // to CLEAR the trail it recorded, and an omitted key would leave a
-        // handover attached to a bank transfer.
-        ...buildCollectionPayload(destination, collection),
+        // handover attached to a bank transfer. Skipped entirely when no
+        // destination is chosen, for the same reason as the pair above.
+        ...(destination ? buildCollectionPayload(destination, collection) : {}),
         proof_note:   form.proofNote.trim() || null,
         sales_note:   form.salesNote.trim() || null,
         ...(isCreatorReapply ? { status: 'pending_approval' } : {}),

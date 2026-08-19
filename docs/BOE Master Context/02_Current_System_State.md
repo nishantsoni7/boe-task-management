@@ -693,7 +693,18 @@ never stored; allocations are reversed, never deleted. An UNVERIFIED payment may
 be allocated — verification is the parent payment's status, read through
 `finance_payment_status_is_verified()`, and is never copied onto the allocation.
 All three foreign keys are NO ACTION, so no deletion path reaches an allocation
-implicitly; only deleting an unverified payment releases its own. `approve_order_submission()`
+implicitly; only deleting an unverified payment releases its own.
+
+**Payment Phase 2 (`20260919000000`, not applied)** adds the entry point: one
+atomic RPC `record_pi_submission_payment()` that records a payment and allocates
+it in full to a PI in a single transaction, a `pi_submission_payment_summary()`
+read that computes the card's five figures in `numeric` in the database, the
+participant SELECT visibility Phase 1 deferred, and one Payments card on the PI
+detail page. `received_in` becomes optional so only amount, date and mode block
+entry. A PI payment is `pending_approval` — shown as *Awaiting Verification* —
+and the existing Finance verify / correct-and-verify / reject authority is the
+only thing that changes that. **Order approval eligibility is still the declared
+advance**; no payment figure gates it. `approve_order_submission()`
 still gates on the **declared** advance and reads no allocation, so Order approval
 eligibility is exactly what it was. See
 `docs/Module Docs/FINANCE_ORDER_WORKFLOW.md` §9a.

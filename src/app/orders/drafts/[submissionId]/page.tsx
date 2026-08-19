@@ -121,6 +121,17 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
+import { PiPaymentCard } from '@/components/orders/PiPaymentCard'
+import {
+  PI_PAYMENT_PROOF_FAILED,
+  PI_PAYMENT_RECORDED_BODY,
+  canAddPiPayment,
+  loadPiPaymentSummary,
+  recordPiPayment,
+  type PiPaymentFormState,
+  type PiPaymentSummary,
+} from '@/lib/finance/piPaymentView'
+import { attachPaymentProof, paymentProofSignedUrl } from '@/lib/finance/paymentProof'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import {
   changePiHref,
@@ -305,6 +316,15 @@ function PiDraftDetailPageInner() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [load, setLoad] = useState<Load>({ kind: 'loading' })
   const [isMobile, setIsMobile] = useState(false)
+
+  // ── Payments against this PI ──
+  // Loaded and refreshed on its OWN, so recording a payment never re-reads the
+  // whole submission, its items, its images and its signed workbook URL.
+  const [payments, setPayments]           = useState<PiPaymentSummary | null>(null)
+  const [paymentsLoading, setPaymentsLoading] = useState(true)
+  const [paymentSaving, setPaymentSaving] = useState(false)
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(null)
+  const [canAllocatePayment, setCanAllocatePayment] = useState(false)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
 
   /**
@@ -555,6 +575,11 @@ function PiDraftDetailPageInner() {
       // deriveFinanceCapabilities' withEntry('approve'). The same expression
       // can_verify_pi_finance() evaluates in the database.
       setCanVerifyFinance(financeCaps.canApprovePayment)
+      // finance.allocate — the PROTECTED action, never a preset, and the only
+      // Finance capability that opens payment entry. Wider Finance access
+      // (view, view_all, approve, manage) deliberately does not, which is the
+      // same rule record_pi_submission_payment() enforces server-side.
+      setCanAllocatePayment(financeCaps.canAllocatePayment)
       await loadDraft()
     }
 
@@ -607,6 +632,85 @@ function PiDraftDetailPageInner() {
       setActing(false)
     }
   }, [loadDraft])
+
+  // ── Payments: load, record, open a proof ─────────────────────────────────
+  //
+  // ONE round trip, and it is the DATABASE that computes every total: the RPC
+  // returns the rows and the five figures already summed in numeric. Nothing
+  // here re-derives money, and no unbounded Finance query is ever issued.
+  const loadPayments = useCallback(async () => {
+    // A caller who may not read payments simply gets no card content. This is
+    // never fatal to the page: the PI itself is a separate read.
+    setPayments(await loadPiPaymentSummary(supabase, submissionId))
+    setPaymentsLoading(false)
+  }, [supabase, submissionId])
+
+  // The same shape every other load on this page uses: an inner async runner and
+  // an `active` guard, so a navigation away mid-flight cannot set state on an
+  // unmounted screen — and so no setState happens synchronously in the effect
+  // body.
+  useEffect(() => {
+    let active = true
+    const run = async () => {
+      const next = await loadPiPaymentSummary(supabase, submissionId)
+      if (!active) return
+      setPayments(next)
+      setPaymentsLoading(false)
+    }
+    void run()
+    return () => { active = false }
+  }, [supabase, submissionId])
+
+  /**
+   * Records one payment, then uploads its optional proof.
+   *
+   * THE ORDER MATTERS AND IS DELIBERATE. The payment and its allocation are
+   * written atomically by the RPC; the proof needs the payment id that only
+   * exists afterwards, and the storage policy authorizes the upload precisely
+   * because the row is now there with this caller as its submitter. So a proof
+   * failure is reported and the PAYMENT IS KEPT — rolling back a recorded
+   * payment because a file did not upload would lose the fact that matters.
+   */
+  const recordPayment = useCallback(async (
+    form: PiPaymentFormState,
+    proof: File | null,
+  ): Promise<string | null> => {
+    setPaymentSaving(true)
+    try {
+      // The raw database error is consumed inside recordPiPayment and never
+      // reaches this file — the PI screens show a fixed sentence, never the
+      // database's own words.
+      const result = await recordPiPayment(supabase, submissionId, form)
+      if (!result.ok) return result.message
+
+      const paymentId = result.paymentRequestId
+      let notice = PI_PAYMENT_RECORDED_BODY
+
+      if (proof && paymentId) {
+        // The payment is already recorded and committed. A proof failure is
+        // REPORTED, never compensated by undoing the payment — see the helper.
+        const proofError = await attachPaymentProof(supabase, {
+          paymentRequestId: paymentId,
+          file: proof,
+          userId: viewerId,
+        })
+        if (proofError) notice = PI_PAYMENT_PROOF_FAILED
+      }
+
+      setPaymentNotice(notice)
+      // ONLY the payment section is refreshed. The submission, its items, its
+      // images and its signed workbook URL are untouched.
+      await loadPayments()
+      return null
+    } finally {
+      setPaymentSaving(false)
+    }
+  }, [supabase, submissionId, viewerId, loadPayments])
+
+  const openPaymentProof = useCallback(async (paymentId: string) => {
+    const url = await paymentProofSignedUrl(supabase, paymentId)
+    if (url) window.open(url, '_blank', 'noopener,noreferrer')
+  }, [supabase])
 
   /**
    * Submit, with the employee's optional reply on a resubmission.
@@ -1212,6 +1316,40 @@ function PiDraftDetailPageInner() {
             which is why they are here and not above the table. Roughly 60/40 on
             a desktop, aligned at the top and never stretched to a common height;
             stacked in this order on anything narrower. */}
+        {/* ── Payments ──
+            One card, in the same quiet register as the Commercial breakdown and
+            Activity cards below it. Every figure it prints was summed in the
+            database in numeric; this page formats and never calculates. */}
+        <PiPaymentCard
+          summary={payments}
+          loading={paymentsLoading}
+          canAdd={canAddPiPayment(
+            {
+              userId: viewerId,
+              // NOT a role literal. deriveFinanceCapabilities short-circuits an
+              // active admin, so canAllocatePayment is already true for one —
+              // this page never reads users.role to decide an authority.
+              isAdmin: false,
+              canAllocatePayment,
+            },
+            {
+              status:          submission.status,
+              submittedBy:     submission.submitted_by ?? null,
+              createdBy:       submission.created_by ?? null,
+              assignedTo:      submission.assigned_to ?? null,
+              orderId:         submission.order_id ?? null,
+              deletionClaimed: Boolean(submission.deletion_claim_token),
+            },
+          )}
+          isMobile={isMobile}
+          todayIso={new Date().toISOString().slice(0, 10)}
+          saving={paymentSaving}
+          notice={paymentNotice}
+          onAdd={recordPayment}
+          onOpenProof={openPaymentProof}
+          onDismissNotice={() => setPaymentNotice(null)}
+        />
+
         <PiLowerGrid
           commercial={
             /* The stored figures, through the shared rows builder. Nothing on

@@ -52,7 +52,7 @@ This document is two things:
 | `finance_payment_request_activity_log` | `20260674` | Append-only. |
 | `payment_proof_attachments` | `20260672` | |
 | `order_change_requests` | `20260816000000` | Proposed amendments and cancellations. |
-| `finance_payment_allocations` | **`20260918000000` (new)** | **How much of one payment is claimed by one PI submission or one Order.** A CHILD of `finance_payment_requests`, not a second ledger. Reversed, never deleted. |
+| `finance_payment_allocations` | `20260918000000` | **How much of one payment is claimed by one PI submission or one Order.** A CHILD of `finance_payment_requests`, not a second ledger. Reversed, never deleted. |
 | `tasks` (`task_type='quotation_request'`) | `20260652` | **Quotation Requests are a task type, not a module.** |
 
 ### 1.3 Key RPCs
@@ -72,6 +72,12 @@ This document is two things:
 
 **Added by Payment Phase 1 (`20260918000000`):** `allocate_payment_to_target`,
 `reverse_payment_allocation`. No existing RPC signature changed.
+
+**Added by Payment Phase 2 (`20260919000000`):** `record_pi_submission_payment`,
+`pi_submission_payment_summary`, `can_read_payment_as_participant`, and
+`allocate_payment_to_target_internal` — the shared implementation behind
+`allocate_payment_to_target`, whose signature, argument names, return shape and
+ACL are unchanged.
 
 ### 1.4 Statuses
 
@@ -819,6 +825,177 @@ read the *allocation* but not the payment row behind it — which is where
 deliberately not done here: widening the payment ledger belongs with the screen
 that needs it, and doing it a phase early would expose payment rows nothing yet
 reads.
+
+---
+
+## 9b. Payment Phase 2 — recording a payment against a PI (`20260919000000`)
+
+**Not applied.** One new forward migration, one new card on the existing PI detail
+page. Phase 1 could hold a PI payment; nothing could create one.
+
+### What lands
+
+| | |
+|---|---|
+| `record_pi_submission_payment(...)` | Records ONE payment and allocates it in full to the PI, **in one transaction** |
+| `pi_submission_payment_summary(uuid)` | The card's rows and its five totals, computed in `numeric` in the database |
+| `can_read_payment_as_participant(uuid)` | The single participant-visibility rule |
+| `allocate_payment_to_target_internal(...)` | Phase 1's rules, now shared by two doors |
+
+### Atomicity is structural, not compensating
+
+The RPC has **no exception handler**. The payment insert and the allocation
+happen in one transaction, so a failure in either leaves neither — there is no
+window in which money exists unallocated, and none in which an allocation names a
+payment that was never written. Asserted directly: the test reads the deployed
+body and fails if an `exception when` block ever appears.
+
+### One implementation, two doors
+
+Phase 1's `allocate_payment_to_target` requires `finance.allocate` — correct for a
+Finance user attaching money to somebody else's business, but wrong for a PI's own
+uploader, who holds no Finance action at all. Rather than duplicate the capacity
+lock, the target rules and the audit, the implementation moved to
+`allocate_payment_to_target_internal` (executable by **no** client role) and each
+door decides its own authorization. `allocate_payment_to_target` keeps its exact
+signature and still requires `finance.allocate`; a door can widen *who* may
+allocate, never *what* may be allocated.
+
+### Who may record a payment
+
+An **active admin**, the **PI's own uploader / creator / named reviewer**, or an
+explicit **`finance.allocate`** holder. Wider Finance access — `view`, `view_all`,
+`approve`, `manage` — is deliberately **not** a route, and the assertion suite
+proves it with an account holding all four.
+
+> The authorization check is wrapped in `coalesce(..., false)`. `assigned_to` is
+> nullable, so `false or false or false or NULL` is `NULL`, and `if not NULL` does
+> not fire — without the coalesce the check would have failed **open** for every
+> unrelated caller on any PI with no named reviewer. Caught by test 4.
+
+### `received_in` is now optional — and no screen may re-invent it
+
+**The audit of PR #43 found a real defect here.** Making the column nullable was
+only half the job: two Finance screens still assumed every payment carries a
+destination pair.
+
+* **Payment Requests → Edit** seeded its destination selector through
+  `readDestinationKey()`, whose *documented* fallback is the DEFAULT account, and
+  its save wrote **both** halves of the pair unconditionally. So a payment
+  recorded against a PI as **UPI, account not stated** became **Bank Transfer /
+  HDFC** the moment anyone opened that modal and saved *any* field — two recorded
+  financial facts silently rewritten by a form opened to fix a typo. A PI payment
+  is `pending_approval`, which is exactly what that page lists, so it was fully
+  reachable.
+* **Received Payments → Edit** bound a controlled `<select>` to a null value,
+  which React renders as the first option — showing an account the money never
+  went to.
+
+The fix, at its narrowest:
+
+| | |
+|---|---|
+| `readDestinationKeyOrNull()` | new; returns **null** when the stored pair names no account. `readDestinationKey()` keeps its own contract for callers that must land on a selectable choice |
+| `destinationWritePair(null)` | returns null, spread as `...(pair ?? {})`, so **both columns are left alone** |
+| destination selector | accepts null, shows no card active, and says the account was not stated |
+| Received Payments | an explicit **Not stated** option whose `''` maps back to `NULL`, and a `receivedInLabel()` that reads *Not stated* instead of rendering blank |
+
+Regression tests cover all of it, including a source-level assertion that the
+edit modal never writes the pair unconditionally again.
+
+### `received_in` is now optional
+
+The confirmed rule is that only amount, date and mode may block entry.
+`received_in` has been NOT NULL since `20260628000200`; it is now nullable, and
+NULL means **not stated** rather than `'other'`. The domain CHECK is untouched
+(`x in (…)` passes for NULL), every existing writer still supplies a value, and
+every existing reader already falls back to the payment-mode label for a pair it
+does not recognise. Finance can supply it later through the existing correction
+path.
+
+### Participant visibility — the Phase 1 dependency, paid
+
+`finance_payment_requests` now carries a permissive participant SELECT policy, and
+its RESTRICTIVE Finance module gate is **restated** rather than dropped:
+
+```
+USING       module_entry_open('finance') OR can_read_payment_as_participant(id)
+WITH CHECK  module_entry_open('finance')
+```
+
+The Finance pages are unaffected — they select without an allocation predicate, so
+a caller with no Finance entry still matches no permissive policy there. `WITH
+CHECK` stays Finance-entry only, so **participant sight can never authorize a
+write**; that line is asserted on its own. The proof *object* is not widened: only
+its metadata row is, and the summary reports `can_view_proof` honestly so the card
+offers the action only when the object would actually open.
+
+### The five figures
+
+All computed in the database in `numeric`, never in the browser:
+
+| Figure | Rule |
+|---|---|
+| Verified payment | active allocations whose parent is verified (`finance_payment_status_is_verified`) |
+| Awaiting verification | active allocations whose parent is `pending_approval` or `needs_clarification` |
+| Payment received % | verified ÷ grand total |
+| Needed for approval | `max(40% of grand total − verified, 0)` — **reporting only** |
+| Pending balance | `max(grand total − verified, 0)` |
+
+Rejected payments count in **neither** total but stay in the history. Reversed
+allocations count in neither, by both definitions. **Declared advance is never
+shown as payment** — the summary has no field for it and the RPC does not read it.
+
+#### The paise-rounding rule
+
+Every figure is PostgreSQL `numeric` end to end. `grand_total` is
+`numeric(12,2)` and `allocated_amount` carries a CHECK that it equals
+`round(x, 2)`, so **every input is already exact to the paisa**. Therefore:
+
+* **Subtraction is never rounded.** `pending_balance` is
+  `max(grand_total − verified, 0)` on two 2-decimal values — exact, with nothing
+  to round.
+* **Division is rounded, half away from zero.** The only operations that can
+  produce sub-paise are the 40% share (`grand_total × 40 / 100`) and the
+  percentages. Those are `round(…, 2)`, and PostgreSQL's `numeric` round is half
+  **away from zero**: `0.125 → 0.13`, `2.675 → 2.68`. A binary double gives
+  `2.67` for that second one, which is why no approval figure is allowed near a
+  float.
+* **Order of operations matters.** `needed_for_standard` is
+  `round(max(requirement − verified, 0), 2)` — the *result* is rounded, not the
+  requirement first. On a ₹33,333.33 PI the 40% requirement is ₹13,333.332: with
+  nothing verified the figure shown is **₹13,333.33**; with ₹0.30 already
+  verified it is **₹13,333.03**.
+* Money crosses the wire as a **string**, so no JSON double touches it before the
+  browser formats it. The browser recomputes nothing — asserted by feeding the
+  card deliberately inconsistent figures and requiring them to survive.
+
+Five exact cases are driven end to end through the RPC in
+`supabase/tests/pi_submission_payment_assertions.sql`, and the same five are
+asserted at the formatting boundary in `src/lib/finance/piPaymentView.test.ts`.
+
+**Order approval eligibility is unchanged.** `approve_order_submission()` still
+reads the declared advance and consults no allocation.
+
+### Cleanup-chain dependency, closed
+
+`resolve_test_data_cleanup_chain()` now also sweeps payments reachable **only**
+through an allocation to the chain's PI. Every downstream consumer — the delete
+list, the eligibility test, the counts and the **proof storage paths** — reads the
+same array, so all of them pick it up. `begin_`/`finalize_test_data_cleanup()` are
+**not restated** and no claim, expiry, freeze or storage-removal rule is weakened.
+
+### The UI
+
+One `Payments` card on the PI detail page, in the same quiet register as the
+Commercial breakdown and Activity cards: five compact tiles, a payment list, and
+an `Add Payment` control shown only to permitted users. `pending_approval` reads
+as **Awaiting Verification** — a label, not a sixth database status.
+
+The PI screen writes nothing itself: the payment goes through the RPC, and the
+optional proof through a shared `src/lib/finance/paymentProof.ts` helper, so the
+existing rule that PI screens hand-roll no persistence still holds. A proof
+failure **keeps the payment** and says so.
 
 ---
 
