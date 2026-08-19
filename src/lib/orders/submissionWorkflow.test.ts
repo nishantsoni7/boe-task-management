@@ -397,7 +397,7 @@ describe('the review queue is a section of the drafts list', () => {
   })
 
   const entry = (over: Partial<PersistedSubmission>, name?: string) =>
-    describeDraftListEntry(row(over), 1, formatInr, name)
+    describeDraftListEntry(row(over), formatInr, { submitter: name })
 
   const entries = [
     entry({ id: 'draft-1', status: 'draft' }),

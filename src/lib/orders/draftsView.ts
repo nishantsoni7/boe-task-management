@@ -273,7 +273,21 @@ export type PersistedItemImage = {
 
 export const PI_DRAFT_LIST_COLUMNS = [
   'id', 'status', 'client_name', 'bill_to_name',
-  'source_workbook_name', 'grand_total', 'created_at', 'updated_at',
+  // WHAT THE ORDER IS WORTH, BOTH WAYS, because they answer different questions
+  // and the gap between them is itself information. gross_product_amount is the
+  // goods; grand_total is what the client is billed once discount, fabric,
+  // packing, transport and GST are applied. A row showing only one of them
+  // leaves a reader to guess which.
+  'gross_product_amount', 'grand_total',
+  // WHO AUTHORED THE PI, AND WHEN — read out of the workbook itself, not from
+  // any app user. A PI is usually written by one person and uploaded by another,
+  // and a list that names only the uploader cannot answer "whose order is this?"
+  'source_created_by', 'creation_date',
+  // WHEN IT WAS UPLOADED. created_at is what the list SHOWS — the record's own
+  // beginning. updated_at is read only because the query is ordered by it, so a
+  // draft corrected five minutes ago still surfaces above one untouched since
+  // Monday; it is no longer a column anybody reads off the screen.
+  'created_at', 'updated_at',
   // Who filed it and when it reached review. The list needs both because the
   // review section states them on every row, and because the queue is ordered
   // by the submission time rather than by when the row was last written.
@@ -355,17 +369,34 @@ export type PiDraftListEntry = {
    * one — so the reference shown is the file the employee actually uploaded,
    * which identifies the record without inventing a number for it.
    */
-  reference: string
-  itemCount: number
-  /** "12 products" */
-  itemCountLabel: string
-  /** Formatted rupees, or "—" when the workbook had no grand total figure. */
+  /**
+   * Who AUTHORED the PI, as the workbook itself names them.
+   *
+   * NOT AN APP USER, and deliberately not resolved against `users`: this is the
+   * name typed into the document, which is frequently somebody who has no login
+   * at all. It answers a different question from `uploader` below, and the two
+   * are shown side by side precisely because they are so often different people.
+   */
+  authoredBy: string
+  /** The date the PI document itself carries, or "—". */
+  authoredOn: string
+  /**
+   * The app user who uploaded it, resolved from `users`, or "—".
+   *
+   * An honest dash when the name could not be resolved. A row without a name is
+   * still a row, and printing a uuid would be worse than printing nothing.
+   */
+  uploader: string
+  /** When it was uploaded, in Indian business time. */
+  uploadedAt: string
+  /** The goods, before discount, other costs and GST. "—" when the workbook
+   *  printed no product figure. */
+  productValue: string
+  /** What the client is billed. "—" when the workbook printed no total. */
   grandTotal: string
   status: string
   statusLabel: string
   statusTone: PiDraftStatusTone
-  /** "16 Aug 2026, 04:12 PM" in IST, or "—". */
-  savedAt: string
   /**
    * When this record last reached a reviewer, formatted, or "—".
    *
@@ -389,6 +420,16 @@ export type PiDraftListEntry = {
  * own stamp: every "when" in this application is an Indian business time, and an
  * unpinned string would read as two different times on two desks.
  */
+export function formatDateOnly(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return '—'
+  return at.toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    timeZone: 'Asia/Kolkata',
+  })
+}
+
 export function formatSavedAt(iso: string | null | undefined): string {
   if (!iso) return '—'
   const at = new Date(iso)
@@ -432,17 +473,19 @@ export function draftSavedHref(submissionId: string): string {
  */
 export function describeDraftListEntry(
   row: PersistedSubmission,
-  itemCount: number,
   formatMoney: (amount: number | null) => string,
   /**
-   * The submitter's display name, already batch-fetched by the caller. Optional
-   * because the employee's own list has no use for it — it is their own record —
-   * and because a name the caller could not resolve must render as an honest
-   * dash rather than as an id.
+   * The display names the caller has already batch-fetched, by role on the
+   * record. Both optional, and both render as an honest dash when absent: a name
+   * the caller could not resolve must never be replaced by an id.
    */
-  submitterName?: string | null,
+  names?: {
+    /** Who uploaded it — the app user behind created_by. */
+    uploader?: string | null
+    /** Who last sent it for review — the app user behind submitted_by. */
+    submitter?: string | null
+  },
 ): PiDraftListEntry {
-  const count = Number.isFinite(itemCount) && itemCount > 0 ? Math.trunc(itemCount) : 0
   const submittedIso = text(row.submitted_at)
   return {
     id: row.id,
@@ -450,17 +493,20 @@ export function describeDraftListEntry(
     submittedBy: row.submitted_by,
     href: draftDetailHref(row.id),
     client: text(row.client_name) ?? text(row.bill_to_name) ?? 'Unnamed client',
-    reference: text(row.source_workbook_name) ?? '—',
-    itemCount: count,
-    itemCountLabel: `${count} product${count === 1 ? '' : 's'}`,
+    // The workbook's own author, verbatim. Never resolved against `users`, and
+    // never substituted with the uploader when the document left it blank.
+    authoredBy: text(row.source_created_by) ?? '—',
+    authoredOn: formatDateOnly(row.creation_date),
+    uploader: text(names?.uploader ?? null) ?? '—',
+    uploadedAt: formatSavedAt(row.created_at),
+    productValue: formatMoney(toNumber(row.gross_product_amount)),
     grandTotal: formatMoney(toNumber(row.grand_total)),
     status: row.status,
     statusLabel: draftStatusLabel(row.status),
     statusTone: draftStatusTone(row.status),
-    savedAt: formatSavedAt(row.updated_at ?? row.created_at),
     submittedAt: submittedIso ? formatSavedAt(submittedIso) : '—',
     submittedAtIso: submittedIso,
-    submitter: text(submitterName ?? null) ?? '—',
+    submitter: text(names?.submitter ?? null) ?? '—',
   }
 }
 

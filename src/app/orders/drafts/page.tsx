@@ -47,7 +47,6 @@ import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { isAdminRole } from '@/lib/permissions/moduleVisibility'
 import { formatInr } from '@/lib/pi/previewView'
-import { fetchAllRows } from '@/lib/supabasePaging'
 import {
   PI_DRAFTS_EMPTY_NOTE,
   PI_DRAFTS_EMPTY_TEXT,
@@ -159,12 +158,12 @@ export default function PiDraftsPage() {
    * Load the list.
    *
    * TWO READS, BOTH UNDER THE CALLER'S OWN POLICIES. The submissions, then the
-   * product lines belonging to those submissions so each row can say how many
-   * products it holds. The second read is paged through fetchAllRows because
-   * PostgREST silently caps a response at 1000 rows: two hundred drafts of a
-   * dozen lines each is past that, and a silent truncation would print "3
-   * products" beside a twelve-product PI — a wrong number, delivered
-   * confidently, which is worse than no number at all.
+   * display names of the people named on them.
+   *
+   * THE PRODUCT-LINE COUNT IS NO LONGER READ. The list used to page every item
+   * row of every draft through a paged read purely to print "9" in a column —
+   * a second, unbounded read on every page load for a number nobody makes a
+   * decision on. The column went; the query went with it.
    */
   const load = useCallback(async () => {
     setFailed(false)
@@ -179,55 +178,41 @@ export default function PiDraftsPage() {
     if (error || !data) { setEntries(null); setFailed(true); return }
 
     const rows = data as unknown as PersistedSubmission[]
-    const ids = rows.map(r => r.id)
 
-    const counts = new Map<string, number>()
-    if (ids.length > 0) {
-      const items = await fetchAllRows<{ submission_id: string }>((from, to) =>
-        supabase
-          .from('order_submission_items')
-          .select('id, submission_id')
-          .in('submission_id', ids)
-          // A deterministic order on a unique column, which is what makes
-          // range-based paging return each row exactly once.
-          .order('id', { ascending: true })
-          .range(from, to))
-
-      if (!items.ok || items.truncated) { setEntries(null); setFailed(true); return }
-      for (const item of items.rows) {
-        counts.set(item.submission_id, (counts.get(item.submission_id) ?? 0) + 1)
-      }
-    }
-
-    // ── Who submitted the ones waiting for review ──
+    // ── The people named on these records ──
     //
-    // Read ONLY for somebody who has a queue to read. An employee's own list
-    // names nobody — every record in it is theirs — so the query is skipped
-    // rather than made and discarded.
+    // TWO ROLES, ONE READ. Every row states who UPLOADED it, and a reviewer's
+    // queue also states who last sent it for review — usually the same person,
+    // and pointedly not always, because an admin may correct somebody else's
+    // draft. Both ids go into one `in` filter rather than one query per role.
     //
-    // One read for every name, not one per row. A failed or partial read leaves
-    // the name unresolved and the row renders an honest dash: a queue entry
-    // without a name is still a queue entry, and hiding it would be worse.
+    // An employee's own list resolves exactly one id: their own. That is not a
+    // wasted query — the column names them, and asking is how it gets a name.
+    //
+    // A failed or partial read leaves the name unresolved and the row renders an
+    // honest dash. A row without a name is still a row, and printing a uuid
+    // instead would be worse than printing nothing.
     const names = new Map<string, string>()
-    const submitterIds = reviewerRef.current
-      ? [...new Set(rows.filter(r => r.status === 'submitted' && r.submitted_by).map(r => r.submitted_by as string))]
-      : []
-    if (submitterIds.length > 0) {
+    const personIds = [...new Set([
+      ...rows.map(r => r.created_by).filter((id): id is string => Boolean(id)),
+      ...(reviewerRef.current
+        ? rows.filter(r => r.status === 'submitted' && r.submitted_by).map(r => r.submitted_by as string)
+        : []),
+    ])]
+    if (personIds.length > 0) {
       const { data: people } = await supabase
         .from('users')
         .select('id, full_name')
-        .in('id', submitterIds)
+        .in('id', personIds)
       for (const person of (people ?? []) as { id: string; full_name: string | null }[]) {
         if (person?.id && person.full_name) names.set(person.id, person.full_name)
       }
     }
 
-    setEntries(rows.map(row => describeDraftListEntry(
-      row,
-      counts.get(row.id) ?? 0,
-      formatInr,
-      row.submitted_by ? names.get(row.submitted_by) ?? null : null,
-    )))
+    setEntries(rows.map(row => describeDraftListEntry(row, formatInr, {
+      uploader: row.created_by ? names.get(row.created_by) ?? null : null,
+      submitter: row.submitted_by ? names.get(row.submitted_by) ?? null : null,
+    })))
   }, [supabase])
 
   useEffect(() => {
@@ -426,11 +411,20 @@ export default function PiDraftsPage() {
   /**
    * One table of PI records.
    *
-   * The review queue and the working list are the SAME rows in the same shape —
-   * a client, a file, a count, a total, a state and a way in — so they are one
-   * table rendered twice rather than two tables to keep in step. What differs is
-   * the third-from-last column (when it was submitted, which only matters to a
-   * reviewer) and the wording on the button.
+   * WHAT A ROW ANSWERS, in the order somebody asks it: whose order is this,
+   * who wrote the PI, who put it into the system, what is it worth, and where
+   * has it got to. The file name and the product-line count are gone — neither
+   * decided anything, and both crowded out the questions that do.
+   *
+   * CREATED BY AND UPLOADED BY ARE TWO DIFFERENT PEOPLE, often. The first is
+   * read out of the workbook and may be somebody with no login at all; the
+   * second is the app user who uploaded it. Collapsing them into one "owner"
+   * column would answer neither question reliably.
+   *
+   * The review queue and the working list are the SAME rows in the same shape,
+   * so they are one table rendered twice rather than two tables to keep in step.
+   * What differs is the submission columns, which only matter to a reviewer, and
+   * the wording on the button.
    */
   const listTable = (rows: PiDraftListEntry[], actionLabel: string, showSubmission: boolean) => (
     <PiCard>
@@ -438,11 +432,13 @@ export default function PiDraftsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-              {['Client', 'PI file', 'Products', 'Grand total', 'Status',
-                ...(showSubmission ? ['Submitted', 'Submitted by'] : ['Saved']), ''].map((h, i) => (
+              {['Client', 'Created by', 'Uploaded by', 'Product value', 'Grand total', 'Status',
+                ...(showSubmission ? ['Submitted', 'Submitted by'] : []), ''].map((h, i) => (
                 <th key={h || 'action'} style={{
                   padding: '8px 14px',
-                  textAlign: i === 2 || i === 3 ? 'right' : 'left',
+                  // The two money columns, and only those, are right-aligned so
+                  // the figures line up digit for digit against each other.
+                  textAlign: i === 3 || i === 4 ? 'right' : 'left',
                   fontSize: '10px', fontWeight: 600, color: colors.muted,
                   textTransform: 'uppercase', letterSpacing: '0.05em',
                   whiteSpace: 'nowrap',
@@ -456,14 +452,27 @@ export default function PiDraftsPage() {
                 <td style={{ padding: '10px 14px', fontWeight: 600, color: colors.primary, minWidth: '160px' }}>
                   {entry.client}
                 </td>
-                <td style={{
-                  padding: '10px 14px', color: colors.secondary,
-                  maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }} title={entry.reference}>
-                  {entry.reference}
+                {/* The workbook's own author, with the date the document
+                    carries. Two facts about the PI, not about this system. */}
+                <td style={{ padding: '10px 14px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                  <div>{entry.authoredBy}</div>
+                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>
+                    {entry.authoredOn}
+                  </div>
                 </td>
+                {/* The app user who put it here, and when. */}
+                <td style={{ padding: '10px 14px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                  <div>{entry.uploader}</div>
+                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>
+                    {entry.uploadedAt}
+                  </div>
+                </td>
+                {/* THE GOODS, THEN THE BILL. Two figures rather than one,
+                    because the gap between them — discount, fabric, packing,
+                    transport, GST — is itself something a reader judges, and a
+                    row showing only one leaves them guessing which it is. */}
                 <td style={{ padding: '10px 14px', textAlign: 'right', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                  {entry.itemCount}
+                  {entry.productValue}
                 </td>
                 <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
                   {entry.grandTotal}
@@ -471,7 +480,7 @@ export default function PiDraftsPage() {
                 <td style={{ padding: '10px 14px' }}>
                   <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
                 </td>
-                {showSubmission ? (
+                {showSubmission && (
                   <>
                     <td style={{ padding: '10px 14px', color: colors.muted, whiteSpace: 'nowrap', fontSize: '12px' }}>
                       {entry.submittedAt}
@@ -480,10 +489,6 @@ export default function PiDraftsPage() {
                       {entry.submitter}
                     </td>
                   </>
-                ) : (
-                  <td style={{ padding: '10px 14px', color: colors.muted, whiteSpace: 'nowrap', fontSize: '12px' }}>
-                    {entry.savedAt}
-                  </td>
                 )}
                 <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                   {/* Open Draft stays the ordinary action and keeps its place.
@@ -521,26 +526,47 @@ export default function PiDraftsPage() {
                 <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
                   {entry.client}
                 </div>
+                {/* The workbook's own author, under the client. The narrow
+                    layout has no room for a column each, so the two people
+                    become two labelled lines below rather than a guessing game
+                    between two bare names. */}
                 <div style={{
                   fontSize: '11px', color: colors.muted, marginTop: '2px',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  {entry.reference}
+                  {entry.authoredOn}
                 </div>
               </div>
               <StatusPill label={entry.statusLabel} tone={entry.statusTone} />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-              <span style={{ fontSize: '12px', color: colors.secondary }}>{entry.itemCountLabel}</span>
-              <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>{entry.grandTotal}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
+              <span style={{ color: colors.secondary }}>
+                <span style={{ color: colors.muted }}>Created by </span>{entry.authoredBy}
+              </span>
+              <span style={{ color: colors.secondary }}>
+                <span style={{ color: colors.muted }}>Uploaded by </span>{entry.uploader}
+              </span>
+            </div>
+
+            {/* Both figures stacked, the bill emphasised beneath the goods —
+                the narrow layout has no columns to align them in. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
+                <span style={{ fontSize: '11px', color: colors.muted }}>Product value</span>
+                <span style={{ fontSize: '12px', color: colors.secondary }}>{entry.productValue}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
+                <span style={{ fontSize: '11px', color: colors.muted }}>Grand total</span>
+                <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>{entry.grandTotal}</span>
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
               <span style={{ fontSize: '11px', color: colors.muted }}>
                 {showSubmission
                   ? `${entry.submittedAt}${entry.submitter !== '—' ? ` · ${entry.submitter}` : ''}`
-                  : entry.savedAt}
+                  : entry.uploadedAt}
               </span>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)}>
