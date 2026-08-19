@@ -105,8 +105,24 @@ describe('the migration is one new forward file, in the right place', () => {
       'and nothing was slipped in between')
   })
 
-  test('Phase C added exactly ONE migration', () => {
-    assert.deepEqual(files.filter(f => f > APPLIED_PHASE_B), [FILE])
+  test('Phase C ITSELF added exactly ONE migration', () => {
+    // Between the applied Phase B migration and this one, inclusive, there is
+    // exactly one new file. Later work adds its own — 20260916000000 fixes the
+    // Test Data Cleanup defect this phase's mutual foreign key exposed — and is
+    // not counted here.
+    assert.deepEqual(files.filter(f => f > APPLIED_PHASE_B && f <= FILE), [FILE])
+  })
+
+  test('anything that lands after it belongs to this same feature', () => {
+    // It WAS the newest when it was written, and demanding it stay so would make
+    // this suite fail every time the company ships anything else — which says
+    // nothing about whether approval is still safe. THE PROPERTY THAT MATTERS is
+    // narrower: a later file may exist, but it must be part of the PI submission
+    // feature rather than unrelated work reaching into these tables.
+    for (const file of files.filter(f => f > FILE)) {
+      assert.ok(/order_submission/i.test(file),
+        `${file} lands after Phase C but is not part of this feature`)
+    }
   })
 
   test('no two migrations share a version prefix', () => {
