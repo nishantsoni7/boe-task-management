@@ -630,24 +630,123 @@ begin
   ), 'the payment row must carry needs_clarification so the card can label it';
 end $$;
 
--- ═══ E. The figures are decimal-safe, not floating point ═══════════════════
+-- ═══ E. The money rules, at exact values ═══════════════════════════════════
 --
--- Chosen so a float implementation would visibly disagree: 40% of 33,333.33 is
--- 13,333.332, and 33,333.33 itself is not representable in binary. Every figure
--- below is computed in `numeric` in the database and crosses the wire as a
--- STRING, so nothing rounds on the way out.
+-- THE ROUNDING RULE, STATED ONCE SO THE CASES BELOW ARE READABLE:
+--
+--   * every figure is PostgreSQL `numeric` from end to end. grand_total is
+--     numeric(12,2) and allocated_amount carries a CHECK that it equals
+--     round(x, 2), so every INPUT is already exact to the paisa;
+--   * subtracting two 2-decimal values is therefore exact, and
+--     pending_balance is deliberately NOT rounded — there is nothing to round;
+--   * the ONLY operation that can produce sub-paise is the 40% share, because
+--     `grand_total * 40 / 100` divides. That result is rounded to 2 decimals,
+--     and PostgreSQL's numeric round() is HALF AWAY FROM ZERO (0.125 -> 0.13,
+--     2.675 -> 2.68). A binary double would give 2.67 for that second one,
+--     which is exactly why no approval figure is allowed near a float;
+--   * percentages are likewise a division, and are rounded the same way.
+--
+-- The invariant the cases assert, in the RPC's own returned fields:
+--
+--   requirement = round(grand_total * standard_percent / 100, 2)
+--   needed      = max(requirement - verified, 0)
+--   pending     = max(grand_total - verified, 0)
+--
+-- Driven end to end through record_pi_submission_payment() and
+-- pi_submission_payment_summary() — never through a formula restated in the
+-- test, which would only prove the test agrees with itself.
 do $$
-declare v_pi uuid := gen_random_uuid(); v_r jsonb; v_sum jsonb;
+declare
+  v_case      record;
+  v_pi        uuid;
+  v_sum       jsonb;
+  v_requirement numeric;
+begin
+  perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
+
+  for v_case in
+    select * from (values
+      -- grand_total, verified, requirement, needed,    pending,  percent
+      (33333.33::numeric,     0.00::numeric, 13333.33::numeric, 13333.33::numeric, 33333.33::numeric,  0.00::numeric),
+      (33333.33::numeric, 10000.00::numeric, 13333.33::numeric,  3333.33::numeric, 23333.33::numeric, 30.00::numeric),
+      (10000.00::numeric,  4000.00::numeric,  4000.00::numeric,     0.00::numeric,  6000.00::numeric, 40.00::numeric),
+      (    0.30::numeric,     0.10::numeric,     0.12::numeric,     0.02::numeric,     0.20::numeric, 33.33::numeric),
+      -- The sub-paise case: 40% of 33,333.33 is 13,333.332, and 0.30 has already
+      -- been verified, so 13,333.032 rounds to 13,333.03. Kept because it is the
+      -- one value in this table where the third decimal actually decides.
+      (33333.33::numeric,     0.30::numeric, 13333.33::numeric, 13333.03::numeric, 33333.03::numeric,  0.00::numeric)
+    ) as t(grand_total, verified, requirement, needed, pending, percent)
+  loop
+    v_pi := gen_random_uuid();
+    insert into public.order_submissions
+      (id, status, submitted_by, created_by, client_name,
+       gross_product_amount, discount_amount, grand_total)
+    values (v_pi, 'draft', current_setting('test.sales_id')::uuid,
+            current_setting('test.sales_id')::uuid, 'ASSERT money rules',
+            v_case.grand_total, 0, v_case.grand_total);
+
+    -- Verified money arrives as a real payment, verified the real way. Zero
+    -- verified means no payment at all, which is the honest starting state.
+    if v_case.verified > 0 then
+      perform public.record_pi_submission_payment(v_pi, v_case.verified, current_date, 'upi');
+      update public.finance_payment_requests
+         set status = 'approved_unlinked',
+             approved_by = current_setting('test.admin_id')::uuid, approved_at = now()
+       where id in (select a.payment_request_id
+                    from public.finance_payment_allocations a
+                    where a.order_submission_id = v_pi);
+    end if;
+
+    v_sum := public.pi_submission_payment_summary(v_pi);
+
+    assert (v_sum->>'verified_amount')::numeric = v_case.verified,
+      format('GT %s: verified must be %s, got %s',
+             v_case.grand_total, v_case.verified, v_sum->>'verified_amount');
+
+    -- THE 40% REQUIREMENT, derived from the RPC's own returned percentage
+    -- rather than from a literal, so a change to the standard rate cannot make
+    -- this pass while the card shows something else.
+    v_requirement := round(
+      (v_sum->>'grand_total')::numeric * (v_sum->>'standard_percent')::numeric / 100, 2);
+    assert v_requirement = v_case.requirement,
+      format('GT %s: the %s%% requirement must be %s, got %s',
+             v_case.grand_total, v_sum->>'standard_percent', v_case.requirement, v_requirement);
+
+    assert (v_sum->>'needed_for_standard')::numeric = v_case.needed,
+      format('GT %s verified %s: needed must be %s, got %s',
+             v_case.grand_total, v_case.verified, v_case.needed, v_sum->>'needed_for_standard');
+
+    assert (v_sum->>'pending_balance')::numeric = v_case.pending,
+      format('GT %s verified %s: pending must be %s, got %s',
+             v_case.grand_total, v_case.verified, v_case.pending, v_sum->>'pending_balance');
+
+    assert (v_sum->>'verified_percent')::numeric = v_case.percent,
+      format('GT %s verified %s: percent must be %s, got %s',
+             v_case.grand_total, v_case.verified, v_case.percent, v_sum->>'verified_percent');
+
+    -- The three returned figures agree with each other, not merely with the
+    -- table above.
+    assert (v_sum->>'needed_for_standard')::numeric
+           = greatest(v_requirement - (v_sum->>'verified_amount')::numeric, 0),
+      format('GT %s: needed must equal max(requirement - verified, 0)', v_case.grand_total);
+    assert (v_sum->>'pending_balance')::numeric
+           = greatest((v_sum->>'grand_total')::numeric - (v_sum->>'verified_amount')::numeric, 0),
+      format('GT %s: pending must equal max(grand total - verified, 0)', v_case.grand_total);
+  end loop;
+end $$;
+
+-- ── The arithmetic is numeric, not binary floating point ───────────────────
+do $$
+declare v_pi uuid := gen_random_uuid(); v_sum jsonb;
 begin
   insert into public.order_submissions
     (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
   values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
-          'ASSERT decimals', 33333.33, 0, 33333.33);
+          'ASSERT float safety', 1.00, 0, 1.00);
 
   perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
-  v_r := public.record_pi_submission_payment(v_pi, 0.10, current_date, 'upi');
-  perform public.record_pi_submission_payment(v_pi, 0.20, current_date, 'upi');
-
+  perform public.record_pi_submission_payment(v_pi, 0.10, current_date, 'upi');
+  perform public.record_pi_submission_payment(v_pi, 0.20, current_date, 'cash');
   update public.finance_payment_requests
      set status = 'approved_unlinked', approved_by = current_setting('test.admin_id')::uuid, approved_at = now()
    where id in (select a.payment_request_id from public.finance_payment_allocations a
@@ -655,21 +754,31 @@ begin
 
   v_sum := public.pi_submission_payment_summary(v_pi);
 
-  -- 0.1 + 0.2 is exactly 0.30 in numeric. In a double it is 0.30000000000000004.
+  -- 0.1 + 0.2 is exactly 0.30 in numeric. As a double it is 0.30000000000000004,
+  -- and this equality would fail.
   assert (v_sum->>'verified_amount')::numeric = 0.30,
     format('0.10 + 0.20 must be exactly 0.30, got %s', v_sum->>'verified_amount');
 
-  -- 40% of 33333.33 = 13333.332, minus 0.30 = 13333.032, rounded to paise.
-  assert (v_sum->>'needed_for_standard')::numeric = 13333.03,
-    format('needed for standard must be 13333.03, got %s', v_sum->>'needed_for_standard');
+  -- Half-away-from-zero, asserted directly so the rule the cases above rely on
+  -- is pinned rather than assumed. A double would make the third of these 2.67.
+  assert round(0.125::numeric, 2) = 0.13
+     and round(0.135::numeric, 2) = 0.14
+     and round(2.675::numeric, 2) = 2.68,
+    'numeric rounding must be half away from zero';
 
-  assert (v_sum->>'pending_balance')::numeric = 33333.03,
-    format('pending balance must be 33333.03, got %s', v_sum->>'pending_balance');
+  -- Every input to the money rules is already exact to the paisa, which is what
+  -- makes the unrounded subtraction safe.
+  assert (select numeric_scale from information_schema.columns
+          where table_name = 'order_submissions' and column_name = 'grand_total') = 2,
+    'grand_total must be numeric(12,2)';
+  assert (select pg_get_constraintdef(oid) from pg_constraint
+          where conname = 'finance_payment_allocations_amount_valid')
+         like '%round(allocated_amount, 2)%',
+    'an allocation amount must be exact to the paisa';
 
-  -- And the figures leave the database as strings, which is what stops a JSON
-  -- double from touching them before the browser formats them.
-  assert jsonb_typeof(v_sum->'verified_amount') = 'number'
-     and (v_sum->>'verified_amount') like '%.%',
+  -- And the figures leave the database with their scale intact, so no JSON
+  -- double touches them before the browser formats them.
+  assert (v_sum->>'verified_amount') like '%.%',
     'money must cross the wire with its scale intact';
 end $$;
 

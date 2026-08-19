@@ -946,6 +946,34 @@ Rejected payments count in **neither** total but stay in the history. Reversed
 allocations count in neither, by both definitions. **Declared advance is never
 shown as payment** — the summary has no field for it and the RPC does not read it.
 
+#### The paise-rounding rule
+
+Every figure is PostgreSQL `numeric` end to end. `grand_total` is
+`numeric(12,2)` and `allocated_amount` carries a CHECK that it equals
+`round(x, 2)`, so **every input is already exact to the paisa**. Therefore:
+
+* **Subtraction is never rounded.** `pending_balance` is
+  `max(grand_total − verified, 0)` on two 2-decimal values — exact, with nothing
+  to round.
+* **Division is rounded, half away from zero.** The only operations that can
+  produce sub-paise are the 40% share (`grand_total × 40 / 100`) and the
+  percentages. Those are `round(…, 2)`, and PostgreSQL's `numeric` round is half
+  **away from zero**: `0.125 → 0.13`, `2.675 → 2.68`. A binary double gives
+  `2.67` for that second one, which is why no approval figure is allowed near a
+  float.
+* **Order of operations matters.** `needed_for_standard` is
+  `round(max(requirement − verified, 0), 2)` — the *result* is rounded, not the
+  requirement first. On a ₹33,333.33 PI the 40% requirement is ₹13,333.332: with
+  nothing verified the figure shown is **₹13,333.33**; with ₹0.30 already
+  verified it is **₹13,333.03**.
+* Money crosses the wire as a **string**, so no JSON double touches it before the
+  browser formats it. The browser recomputes nothing — asserted by feeding the
+  card deliberately inconsistent figures and requiring them to survive.
+
+Five exact cases are driven end to end through the RPC in
+`supabase/tests/pi_submission_payment_assertions.sql`, and the same five are
+asserted at the formatting boundary in `src/lib/finance/piPaymentView.test.ts`.
+
 **Order approval eligibility is unchanged.** `approve_order_submission()` still
 reads the declared advance and consults no allocation.
 

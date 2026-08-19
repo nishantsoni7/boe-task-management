@@ -386,3 +386,88 @@ describe('the browser performs no financial arithmetic', () => {
     assert.ok(!/\.reduce\(/.test(source), 'the card must not sum anything client-side')
   })
 })
+
+// ── The formatting boundary, at the same exact values ────────────────────────
+//
+// The database owns every figure and returns `numeric` AS A STRING, which is
+// what stops a JSON double from touching an approval figure. These cases prove
+// the browser then renders those strings faithfully — and, just as importantly,
+// that it does not recompute any of them.
+//
+// The five rows are the same ones pi_submission_payment_assertions.sql drives
+// end to end through the RPC, so if the two ever disagree one of them is wrong.
+
+describe('the card renders the database figures exactly', () => {
+  const CASES = [
+    { grand: '33333.33', verified: '0.00',     needed: '13333.33', pending: '33333.33', pct: '0.00'  },
+    { grand: '33333.33', verified: '10000.00', needed: '3333.33',  pending: '23333.33', pct: '30.00' },
+    { grand: '10000.00', verified: '4000.00',  needed: '0.00',     pending: '6000.00',  pct: '40.00' },
+    { grand: '0.30',     verified: '0.10',     needed: '0.02',     pending: '0.20',     pct: '33.33' },
+    // The sub-paise row: 40% of 33,333.33 is 13,333.332 and 0.30 is already
+    // verified, so 13,333.032 rounds to 13,333.03. The value a careless reading
+    // of "40% of 33,333.33" gets wrong.
+    { grand: '33333.33', verified: '0.30',     needed: '13333.03', pending: '33333.03', pct: '0.00'  },
+  ] as const
+
+  const EXPECTED = [
+    { verified: '₹0.00',      needed: '₹13,333.33', pending: '₹33,333.33', pct: '0%'     },
+    { verified: '₹10,000.00', needed: '₹3,333.33',  pending: '₹23,333.33', pct: '30%'    },
+    { verified: '₹4,000.00',  needed: '₹0.00',      pending: '₹6,000.00',  pct: '40%'    },
+    { verified: '₹0.10',      needed: '₹0.02',      pending: '₹0.20',      pct: '33.33%' },
+    { verified: '₹0.30',      needed: '₹13,333.03', pending: '₹33,333.03', pct: '0%'     },
+  ] as const
+
+  for (const [i, c] of CASES.entries()) {
+    test(`grand ${c.grand}, verified ${c.verified} renders faithfully`, () => {
+      const tiles = piPaymentTiles({
+        submission_id: 'pi-1',
+        grand_total: c.grand,
+        verified_amount: c.verified,
+        unverified_amount: '0.00',
+        verified_percent: c.pct,
+        unverified_percent: '0.00',
+        needed_for_standard: c.needed,
+        pending_balance: c.pending,
+        standard_percent: 40,
+        can_view_all_finance: false,
+        payments: [],
+      })
+      const e = EXPECTED[i]
+      assert.equal(tiles.find(t => t.key === 'verified')!.value,   e.verified)
+      assert.equal(tiles.find(t => t.key === 'needed')!.value,     e.needed)
+      assert.equal(tiles.find(t => t.key === 'balance')!.value,    e.pending)
+      assert.equal(tiles.find(t => t.key === 'percent')!.value,    e.pct)
+    })
+  }
+
+  test('a paise value never loses its second decimal', () => {
+    // The failure this guards against is a formatter defaulting to 0 fraction
+    // digits, which would print ₹13,333 and read as a different requirement.
+    assert.equal(formatMoney('13333.33'), '₹13,333.33')
+    assert.equal(formatMoney('13333.03'), '₹13,333.03')
+    assert.equal(formatMoney('0.02'), '₹0.02')
+    assert.equal(formatMoney('0.30'), '₹0.30')
+  })
+
+  test('the string the database sends is never re-derived from another field', () => {
+    // needed and pending are printed from their OWN fields. If the browser
+    // recomputed either from grand_total and verified it would "correct" these
+    // deliberately inconsistent inputs — and must not.
+    const tiles = piPaymentTiles({
+      submission_id: 'pi-1',
+      grand_total: '33333.33',
+      verified_amount: '0.00',
+      unverified_amount: '0.00',
+      verified_percent: '99.99',
+      unverified_percent: '0.00',
+      needed_for_standard: '1.11',
+      pending_balance: '2.22',
+      standard_percent: 40,
+      can_view_all_finance: false,
+      payments: [],
+    })
+    assert.equal(tiles.find(t => t.key === 'needed')!.value, '₹1.11')
+    assert.equal(tiles.find(t => t.key === 'balance')!.value, '₹2.22')
+    assert.equal(tiles.find(t => t.key === 'percent')!.value, '99.99%')
+  })
+})
