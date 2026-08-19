@@ -45,7 +45,9 @@ lower of the two.
 ### Protected permissions are Custom-only
 
 `delete` · `admin` · `manage` · `assign` · `dispatch` · `receive` · `mark_lost` ·
-`close` · `can_be_order_assignee`
+`close` · `can_be_order_assignee` · `view_all` · `view_quotations` ·
+`manage_quotations` · `approve_order` · `approve_advance_exception` ·
+`allocate` · `allocate_correct`
 
 No standard level grants any of these, at any module, ever. They exist because
 each one is a decision somebody should have to make on purpose — handing out a
@@ -311,6 +313,41 @@ create, edit, approve, manage, delete or export anywhere.
 | `finance_payment_requests` | `finance.view_all` | added |
 | `finance_payment_request_activity_log` | `finance.view_all` | added |
 | `payment_proof_attachments` | `finance.view_all` | added |
+| `finance_payment_allocations` | `finance.view_all` | added by `20260918000000` |
+
+## Payment allocation actions (`20260918000000`)
+
+Two protected Finance actions, added with the allocation foundation:
+
+| Action | Module | Grants |
+|---|---|---|
+| `allocate` | Finance | Allocate part or all of a **verified** payment to a PI submission or a Confirmed Order |
+| `allocate_correct` | Finance | **Reverse** an allocation that has already been recorded |
+
+They are independent of each other and of `finance.approve` **in every
+direction**, because they are three different jobs: `approve` says the money
+arrived (payment *verification*), `allocate` says which piece of business it
+belongs to, and `allocate_correct` undoes that. A person may hold any one
+without the others.
+
+`default_allowed` is false on both rows, no `role_permissions` row carries
+either, and the migration asserts at apply time that it granted them to nobody —
+so they arrive only through an explicit per-employee grant, or through the
+established active-admin bypass in `actor_has_module_permission`.
+
+Neither confers any visibility. `allocate` holders still have to be able to see
+the PI or Order they are naming; `allocate_payment_to_target()` checks that
+server-side, accepting the target's own participant rule **or**
+`finance.view_all`, so a Finance allocator does not need Order Management access
+to do their job.
+
+**Note for the UI phase.** `finance_payment_allocations` carries the standard
+RESTRICTIVE Finance module entry gate, like the other three Finance tables. A PI
+or Order participant with no Finance access therefore reaches no allocation, even
+on their own record. That is deliberate for a database-only phase — it widens
+nothing — and is the decision the payment-card phase has to revisit.
+
+---
 
 The split is the point: **order request attachments are operational documents**
 (PI, reference files) and follow Orders; **payment proof attachments are

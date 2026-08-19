@@ -166,6 +166,13 @@ registerModule({
     // already allow. SELECT authority only — it implies no mutation.
     // Registered by 20260903000000.
     { actionKey: 'view_all', displayName: 'View All Payments & Finance' },
+    // Deciding which PI or Order a verified payment belongs to, and undoing that
+    // decision. Two actions, not one: attaching money to a piece of business and
+    // rewriting an attachment that has already been reported are different
+    // authorities, and neither is finance.approve — which stays the verification
+    // authority. Both are protected (see levels.ts). Registered by 20260918000000.
+    { actionKey: 'allocate', displayName: 'Allocate Payments' },
+    { actionKey: 'allocate_correct', displayName: 'Correct Payment Allocations' },
   ],
 })
 

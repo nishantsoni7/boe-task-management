@@ -683,6 +683,17 @@ grants **no** PI-approval authority. Both are re-derived inside the RPCs.
 receipt or reconciliation entry, and both dialogs say so in as many words. No
 Finance table is read or written anywhere in this workflow.
 
+**Payment Phase 1 (`20260918000000`) does not change that.** It adds
+`finance_payment_allocations` — a child of `finance_payment_requests` recording
+how much of one payment is claimed by one PI or one Order — plus
+`allocate_payment_to_target()`, `reverse_payment_allocation()` and the two
+protected actions `finance.allocate` / `finance.allocate_correct`. A payment's
+unallocated balance is DERIVED (amount minus the sum of active allocations) and
+never stored; allocations are reversed, never deleted. `approve_order_submission()`
+still gates on the **declared** advance and reads no allocation, so Order approval
+eligibility is exactly what it was. See
+`docs/Module Docs/FINANCE_ORDER_WORKFLOW.md` §9a.
+
 **A verification goes stale the moment the record moves.** It is bound to the
 `submitted_at` it was made against, and a trigger clears it outright on any
 status change away from `submitted`. A PI returned and resubmitted must be

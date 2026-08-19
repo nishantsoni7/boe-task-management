@@ -51,7 +51,8 @@ This document is two things:
 | `finance_payment_requests` | `20260628000200` | **All five payment statuses live in this one table.** There is no separate received-payments table. |
 | `finance_payment_request_activity_log` | `20260674` | Append-only. |
 | `payment_proof_attachments` | `20260672` | |
-| `order_change_requests` | **`20260816000000` (new)** | Proposed amendments and cancellations. |
+| `order_change_requests` | `20260816000000` | Proposed amendments and cancellations. |
+| `finance_payment_allocations` | **`20260918000000` (new)** | **How much of one payment is claimed by one PI submission or one Order.** A CHILD of `finance_payment_requests`, not a second ledger. Reversed, never deleted. |
 | `tasks` (`task_type='quotation_request'`) | `20260652` | **Quotation Requests are a task type, not a module.** |
 
 ### 1.3 Key RPCs
@@ -64,10 +65,13 @@ This document is two things:
 `unlink_finance_payment_from_order_request`, `set_next_confirmed_order_number`,
 `get_confirmed_order_number_cycle`, `execute_test_data_cleanup`.
 
-**Added by this pass:** `amend_order`, `cancel_order`,
+**Added by the amendment pass:** `amend_order`, `cancel_order`,
 `approve_order_change_request`, `reject_order_change_request`,
 `order_linked_payment_total`, plus the internal `apply_order_amendment`,
 `cancel_order_with_audit`, `assert_order_amender`, `in_order_amendment`.
+
+**Added by Payment Phase 1 (`20260918000000`):** `allocate_payment_to_target`,
+`reverse_payment_allocation`. No existing RPC signature changed.
 
 ### 1.4 Statuses
 
@@ -78,6 +82,13 @@ This document is two things:
   `converted`.
 * **`finance_payment_requests.status`** — `pending_approval`,
   `needs_clarification`, `rejected`, `approved_unlinked`, `approved_linked`.
+  **Unchanged by Payment Phase 1.** `pending_approval` *is* "Awaiting
+  Verification"; that is a label the UI will apply later, not a sixth value. A
+  new status would break the exhaustive partition `paymentRouting.ts` relies on
+  (`REQUEST_STAGE_STATUSES` / `CONFIRMED_PAYMENT_STATUSES`) and five deployed
+  CHECK constraints.
+* **`finance_payment_allocations.status`** — `active`, `reversed`. Terminal in
+  one direction: a reversed allocation can never be made active again.
 
 ---
 
@@ -628,6 +639,92 @@ Also left: `20260814000000_create_meetings_module.sql` and
 `src/lib/meetings/schemaGuards.test.ts` cite migration `20260806000000` — the
 pre-renumber number of what is now `20260818000000`. The migration is already
 applied and must not be edited; the citation is stale but harmless.
+
+## 9a. Payment Phase 1 — the allocation foundation (`20260918000000`)
+
+Database only. **No UI, no approval-gate change, no production data touched.**
+
+### Why a child table rather than another column on the payment
+
+`finance_payment_requests` stays the only payment ledger. What it cannot express
+is the two things the business confirmed it needs:
+
+* a payment split across several PIs and Orders —
+  `finance_payment_requests_one_link_target` (`20260698000000`) permits at most
+  one link target per payment, and `amount` is a single scalar;
+* a **partly** allocated payment with a residual to assign later — there is no
+  concept of a residual anywhere; "unallocated" today means the whole payment is
+  unlinked.
+
+Adding `order_submission_id` as a fourth mutually-exclusive linkage column would
+have delivered PI targeting alone and then had to be unwound, on live money rows,
+the moment splitting landed. One child table costs one migration instead of two.
+
+### The unallocated balance is derived, never stored
+
+```
+balance = finance_payment_requests.amount
+        - sum(finance_payment_allocations.allocated_amount) where status = 'active'
+```
+
+There is no mutable balance column, and the migration's own assertions refuse one.
+The figure is trustworthy because exactly one invariant has to hold, and a trigger
+holds it on every write path — `finance_payment_allocations_enforce_capacity`,
+which locks the **parent payment** `FOR UPDATE` before reading the total, so two
+concurrent allocations against one payment serialize instead of both passing on a
+stale read. Its mirror, `finance_payment_requests_guard_allocated_amount`, refuses
+an amount correction that would drop a payment *below* what is already allocated.
+
+### What an allocation may ever do
+
+Created `active`, then reversed. Nothing else. Payment, target, amount, provenance
+and creation record are immutable; reversal is terminal and requires an actor, a
+time and a non-blank reason, all server-derived; and an allocation is never
+deleted — `finance_payment_allocations_guard_delete` refuses every path including
+a CASCADE from its payment, PI or Order, for every role including the service
+role. The single exemption is the transaction-local Test Data Cleanup context,
+which is what lets the existing claim → storage → finalize protocol keep working
+**unchanged**: `finalize_test_data_cleanup()` is not restated, and no claim or
+finalize safeguard is weakened.
+
+### Backfill
+
+Every payment that is `approved_linked` **and** names an Order received exactly
+one active allocation, for the full amount, against the same Order, with
+`confirmed_order` provenance and the payment's own approval actor and timestamp.
+Deliberately **not** backfilled: `approved_unlinked` payments (no target exists),
+Order-Request-linked payments (a separate live flow with its own conversion sweep)
+and anything pre-approval. Idempotent, and proved by apply-time assertions.
+
+### Permissions
+
+Two new **protected** Finance actions, `finance.allocate` and
+`finance.allocate_correct` — separate from each other and from `finance.approve`
+in every direction, so verifying that money arrived, deciding whose it is, and
+undoing that decision can be held by three different people. `default_allowed`
+is false on both, no role carries either, and the migration asserts that it
+granted them to nobody. `finance.approve` is **not** renamed or re-scoped; it
+remains the verification authority.
+
+### What Phase 1 deliberately did NOT do
+
+No UI. No payment entry against a PI (Phase 2). No `order_submission` value on
+`payment_target_type`. No sixth payment status. No PI-to-Order allocation move —
+Order creation from a PI is a later phase, and the transition guard will have to
+be restated then, on purpose, as a visible reviewed change. And
+`approve_order_submission()` still gates on the **declared** advance
+(`order_submission_advance_ready`); payment does not gate Order approval yet.
+
+### Known gap to settle before Phase 2
+
+The allocation table carries the standard RESTRICTIVE Finance module entry gate,
+matching the other three Finance tables. So a PI or Order participant who holds
+**no** Finance module access reaches no allocation, even on their own record. That
+is the conservative choice for a database-only phase — it widens nothing — but
+Phase 2 must decide deliberately whether an Order/PI payment card is Finance-gated
+or whether participants get a narrower read.
+
+---
 
 ## 10. Recommended next small task
 

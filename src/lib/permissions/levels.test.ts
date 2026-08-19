@@ -30,7 +30,7 @@ import {
 
 // Real module action sets, mirroring what production registers (verified
 // against permission_modules / module_permission_actions).
-const FINANCE = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']
+const FINANCE = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'allocate', 'allocate_correct']
 const ORDERS = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee', 'approve_order', 'approve_advance_exception']
 const ASSETS = ['view', 'create', 'edit', 'delete', 'manage', 'assign']
 const SAMPLES = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'dispatch', 'receive', 'mark_lost', 'close']
@@ -182,11 +182,40 @@ describe('Manager never receives a protected action', () => {
     // the same reason and in both directions: reviewing a PI and settling money
     // at risk are two decisions, assignable to two different people, and
     // neither may be acquired by picking a preset from a dropdown.
+    //
+    // And by two more in 20260918000000: `finance.allocate` and
+    // `finance.allocate_correct`. Allocation is what makes a verified payment
+    // count toward a PI or an Order, and reversal rewrites an allocation that
+    // has already been reported. They are separate from each other and from
+    // `finance.approve` — which remains payment VERIFICATION — in every
+    // direction, so that verifying money, deciding whose it is, and undoing
+    // that decision can be held by three different people.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
-      'admin', 'approve_advance_exception', 'approve_order', 'assign',
-      'can_be_order_assignee', 'close', 'delete', 'dispatch', 'manage',
-      'manage_quotations', 'mark_lost', 'receive', 'view_all', 'view_quotations',
+      'admin', 'allocate', 'allocate_correct', 'approve_advance_exception',
+      'approve_order', 'assign', 'can_be_order_assignee', 'close', 'delete',
+      'dispatch', 'manage', 'manage_quotations', 'mark_lost', 'receive',
+      'view_all', 'view_quotations',
     ])
+  })
+
+  test('neither allocation authority is granted by any preset', () => {
+    // The Phase 1 equivalent of the two Orders assertions above. Allocating a
+    // payment moves money onto a piece of business; reversing an allocation
+    // rewrites a financial fact somebody has already acted on. Neither may
+    // arrive by picking a word from a dropdown.
+    for (const level of PRESET_LEVELS) {
+      const map = presetAllowedActions(level, FINANCE)
+      assert.equal(map.allocate, false, `${level} granted allocate`)
+      assert.equal(map.allocate_correct, false, `${level} granted allocate_correct`)
+    }
+  })
+
+  test('approve is NOT protected, and allocation does not change that', () => {
+    // finance.approve is the verification authority and has always been
+    // preset-reachable at Manager. 20260918000000 must not have quietly
+    // narrowed it while adding two neighbours.
+    assert.equal(isProtectedAction('approve'), false)
+    assert.equal(presetAllowedActions('manager', FINANCE).approve, true)
   })
 
   test('a protected key smuggled into a level is still filtered out', () => {
