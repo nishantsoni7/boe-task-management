@@ -376,10 +376,64 @@ describe('the detail page renders only what it fetched', () => {
     // — so the payment vocabulary is named precisely rather than by the word
     // "finance", which the verification door legitimately carries.
     for (const forbidden of [
-      'allocate', 'payment', 'set_next_confirmed_order_number', 'convert_order_request',
+      'allocate', 'set_next_confirmed_order_number', 'convert_order_request',
     ]) {
       assert.ok(!rpcs.some(name => name.includes(forbidden)),
         `${forbidden} belongs to no phase this page can reach`)
+    }
+  })
+
+  // ── The writes this page reaches INDIRECTLY ────────────────────────────────
+  //
+  // WHY THIS EXISTS. The assertion above scans this file for `.rpc(`, so it went
+  // BLIND the moment Phase 2's payment write moved behind a library wrapper —
+  // which it had to, because two other rules on this page forbid handling a raw
+  // database error and forbid writing a table directly. A guard that a refactor
+  // can silently satisfy is worse than no guard, so the indirect writes are
+  // named here explicitly and the SAME closed-list discipline applies to them.
+  //
+  // Each entry is a reviewed library function with its own tests, and each is
+  // the only way this page reaches the write behind it.
+  test('every INDIRECT write from this page is named, and the list is closed', () => {
+    const HELPERS = [
+      // src/lib/finance/piPaymentView.ts — record_pi_submission_payment
+      'recordPiPayment',
+      // src/lib/finance/paymentProof.ts — storage upload + metadata row
+      'attachPaymentProof',
+    ] as const
+
+    const READ_ONLY_HELPERS = [
+      'loadPiPaymentSummary',   // pi_submission_payment_summary
+      'paymentProofSignedUrl',  // a signed URL for an existing object
+    ] as const
+
+    // Pure decisions. They touch no database at all — they only decide whether a
+    // control is drawn, and the server re-derives every one of them.
+    const PURE_HELPERS = [
+      'canAddPiPayment',
+    ] as const
+
+    // Anything imported from the Finance library must be on one of the two
+    // lists. A new helper appearing here is a new write this page can reach, and
+    // must be a deliberate, visible addition — exactly what the RPC list above
+    // demands of the direct calls.
+    const imported = [...source.matchAll(/import \{([^}]+)\} from '@\/lib\/finance\/[^']+'/g)]
+      .flatMap(m => m[1].split(',').map(x => x.trim().replace(/^type\s+/, '')))
+      .filter(Boolean)
+      .filter(name => /^[a-z]/.test(name))   // functions, not constants or types
+
+    for (const name of imported) {
+      assert.ok(
+        ([...HELPERS, ...READ_ONLY_HELPERS, ...PURE_HELPERS] as readonly string[]).includes(name),
+        `${name} is reached from this page but is on none of the write, read or pure lists`,
+      )
+    }
+
+    // And the two writers really are the only mutating ones: the page still
+    // performs no table write and no upload of its own.
+    for (const forbidden of ['.insert(', '.update(', '.delete(', '.upsert(', '.upload(']) {
+      assert.ok(!source.includes(forbidden),
+        `${forbidden} must not appear on this page — every write goes through a reviewed function`)
     }
     assert.ok(!source.includes('replace_order_submission_parse'),
       'the parsed-data writer is service-role only and unreachable from here')

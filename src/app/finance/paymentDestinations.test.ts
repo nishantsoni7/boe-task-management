@@ -5,8 +5,10 @@
  *   npx tsx --test src/app/finance/paymentDestinations.test.ts
  */
 
-import { test } from 'node:test'
+import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   DEFAULT_DESTINATION_KEY,
   EMPTY_COLLECTION_STATE,
@@ -21,6 +23,8 @@ import {
   paymentDestinationLabel,
   readCollectionState,
   readDestinationKey,
+  readDestinationKeyOrNull,
+  destinationWritePair,
   type CollectionState,
   type PaymentDestinationKey,
   type StoredCollection,
@@ -456,4 +460,92 @@ test('optional empties are omitted rather than printed as blank rows', () => {
     rawDate,
   )
   assert.deepEqual(d?.rows.map(row => row.label), ['Collected by', 'Handover status'])
+})
+
+// ── An unstated account is not an account ────────────────────────────────────
+//
+// REGRESSION, and a real one. Before this was fixed, opening the Payment
+// Requests edit modal on a payment recorded against a PI — which stores
+// received_in NULL, because only amount, date and mode are mandatory there —
+// resolved the destination through readDestinationKey, whose documented fallback
+// is the DEFAULT account. Saving any other field then wrote BOTH halves of the
+// pair back, silently turning a UPI payment with no stated account into a Bank
+// Transfer into HDFC. Two recorded financial facts, rewritten by a form the user
+// opened to fix a typo.
+
+describe('a stored pair that names no account resolves to null, not to a default', () => {
+  test('received_in NULL is null, whatever the mode', () => {
+    for (const payment_mode of ['upi', 'cash', 'cheque', 'bank_transfer', 'other']) {
+      assert.equal(readDestinationKeyOrNull({ payment_mode, received_in: null }), null, payment_mode)
+    }
+  })
+
+  test('an unrecognised legacy pair is null too', () => {
+    assert.equal(readDestinationKeyOrNull({ payment_mode: 'cheque', received_in: 'company_account' }), null)
+  })
+
+  test('a real pair still resolves to its account', () => {
+    assert.equal(readDestinationKeyOrNull({ payment_mode: 'bank_transfer', received_in: 'company_account' }), 'hdfc')
+    assert.equal(readDestinationKeyOrNull({ payment_mode: 'cash', received_in: 'cash_in_hand' }), 'paytm')
+  })
+
+  test('readDestinationKey keeps its own contract — a real, selectable choice', () => {
+    // Unchanged on purpose: callers that must land on something a user can pick
+    // still do. The edit form is simply no longer one of them.
+    assert.equal(readDestinationKey({ payment_mode: 'upi', received_in: 'company_account' }), 'hdfc')
+  })
+})
+
+describe('nothing is written back when no account was chosen', () => {
+  test('null yields no pair at all, so both columns are left alone', () => {
+    assert.equal(destinationWritePair(null), null)
+  })
+
+  test('a chosen destination yields exactly the stored pair', () => {
+    for (const d of PAYMENT_DESTINATIONS) {
+      assert.deepEqual(destinationWritePair(d.key), {
+        payment_mode: d.payment_mode, received_in: d.received_in,
+      })
+    }
+  })
+
+  test('spreading the null result adds no keys to an update payload', () => {
+    // This is exactly how the edit modal uses it: `...(pair ?? {})`.
+    const payload = { amount: 100, ...(destinationWritePair(null) ?? {}) }
+    assert.deepEqual(Object.keys(payload), ['amount'])
+    assert.equal('payment_mode' in payload, false)
+    assert.equal('received_in' in payload, false)
+  })
+})
+
+describe('an unstated destination carries no cash-trail requirement', () => {
+  test('captureFor tolerates null and asks for nothing', () => {
+    assert.equal(captureFor(null), 'none')
+    assert.equal(collectionErrorFor(null, EMPTY_COLLECTION_STATE, '2026-08-19'), null)
+  })
+})
+
+describe('the edit modal never restates where money went', () => {
+  test('it reads the nullable form and spreads the pair conditionally', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/finance/page.tsx'), 'utf8')
+    // The seed must be the honest reader.
+    assert.ok(source.includes('readDestinationKeyOrNull(r)'),
+      'the edit modal must seed its destination from the nullable reader')
+    // And the write must be conditional, never an unconditional pair.
+    assert.ok(source.includes('...(editDbMode ?? {})'),
+      'the edit modal must spread the pair conditionally')
+    assert.ok(!/payment_mode: editDbMode\.payment_mode/.test(source),
+      'the edit modal must not write payment_mode unconditionally')
+    assert.ok(!/received_in:  ?editDbMode\.received_in/.test(source),
+      'the edit modal must not write received_in unconditionally')
+  })
+
+  test('the Received Payments form treats an empty account as NULL, not as a value', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/app/finance/received/ReceivedPaymentsView.tsx'), 'utf8')
+    assert.ok(source.includes("form.receivedIn === '' ? null : form.receivedIn"),
+      'the not-stated sentinel must be stored as NULL')
+    assert.ok(source.includes("{ label: 'Not stated', value: '' }"),
+      'the account list must offer an explicit not-stated option')
+  })
 })

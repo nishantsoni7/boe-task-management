@@ -107,7 +107,13 @@ export function PaymentDestinationFields({
   disabled,
 }: {
   supabase: ReturnType<typeof createClient>
-  destination: PaymentDestinationKey
+  /**
+   * NULL means no account has been stated. A payment recorded against a PI
+   * carries none — only amount, date and mode are mandatory there — so no card
+   * is shown active, and the pair is left untouched until somebody picks one.
+   * Showing a default here would name an account the money never went to.
+   */
+  destination: PaymentDestinationKey | null
   onDestinationChange: (key: PaymentDestinationKey) => void
   collection: CollectionState
   onCollectionChange: (next: CollectionState) => void
@@ -185,6 +191,15 @@ export function PaymentDestinationFields({
         aria-label="Payment destination"
         style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}
       >
+        {destination === null && (
+          <div style={{
+            gridColumn: '1 / -1', fontSize: '11px', color: colors.muted,
+            marginBottom: '2px',
+          }}>
+            No account was stated when this payment was recorded. Choosing one
+            below will set it; leaving this alone keeps it unstated.
+          </div>
+        )}
         {PAYMENT_DESTINATIONS.map(d => {
           const active = destination === d.key
           const Icon = DESTINATION_ICON[d.iconKey]

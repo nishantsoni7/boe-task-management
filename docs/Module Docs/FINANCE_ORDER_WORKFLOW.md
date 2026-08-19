@@ -873,6 +873,36 @@ proves it with an account holding all four.
 > not fire — without the coalesce the check would have failed **open** for every
 > unrelated caller on any PI with no named reviewer. Caught by test 4.
 
+### `received_in` is now optional — and no screen may re-invent it
+
+**The audit of PR #43 found a real defect here.** Making the column nullable was
+only half the job: two Finance screens still assumed every payment carries a
+destination pair.
+
+* **Payment Requests → Edit** seeded its destination selector through
+  `readDestinationKey()`, whose *documented* fallback is the DEFAULT account, and
+  its save wrote **both** halves of the pair unconditionally. So a payment
+  recorded against a PI as **UPI, account not stated** became **Bank Transfer /
+  HDFC** the moment anyone opened that modal and saved *any* field — two recorded
+  financial facts silently rewritten by a form opened to fix a typo. A PI payment
+  is `pending_approval`, which is exactly what that page lists, so it was fully
+  reachable.
+* **Received Payments → Edit** bound a controlled `<select>` to a null value,
+  which React renders as the first option — showing an account the money never
+  went to.
+
+The fix, at its narrowest:
+
+| | |
+|---|---|
+| `readDestinationKeyOrNull()` | new; returns **null** when the stored pair names no account. `readDestinationKey()` keeps its own contract for callers that must land on a selectable choice |
+| `destinationWritePair(null)` | returns null, spread as `...(pair ?? {})`, so **both columns are left alone** |
+| destination selector | accepts null, shows no card active, and says the account was not stated |
+| Received Payments | an explicit **Not stated** option whose `''` maps back to `NULL`, and a `receivedInLabel()` that reads *Not stated* instead of rendering blank |
+
+Regression tests cover all of it, including a source-level assertion that the
+edit modal never writes the pair unconditionally again.
+
 ### `received_in` is now optional
 
 The confirmed rule is that only amount, date and mode may block entry.

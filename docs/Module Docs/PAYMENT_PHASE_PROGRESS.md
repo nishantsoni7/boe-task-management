@@ -61,6 +61,19 @@ detail page, at every open stage (draft, submitted, under review, needs changes)
 payment status; no new permission action; no payment splitting; no PI-to-Order
 allocation movement.
 
+**Found by the pre-deployment audit of PR #43:**
+
+* Making `received_in` nullable was only half the job. The Payment Requests edit
+  modal seeded its destination from `readDestinationKey()` — whose documented
+  fallback is the DEFAULT account — and wrote **both** halves of the pair
+  unconditionally on save. A PI payment recorded as *UPI, account not stated*
+  became *Bank Transfer / HDFC* the moment anyone opened that modal and saved any
+  field. Fixed with `readDestinationKeyOrNull()` and a conditional write.
+* The `draftsAccess` "only writes are the status RPCs" guard went **blind** when
+  the payment write moved behind a library wrapper — it scans the page file for
+  `.rpc(`. It now also names every indirect write the page reaches, on a closed
+  list, and a probe importing an unlisted helper fails it.
+
 **Two defects this phase's own tests caught, worth remembering:**
 
 * The authorization branch read

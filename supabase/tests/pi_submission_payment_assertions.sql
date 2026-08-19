@@ -152,6 +152,127 @@ begin
   end loop;
 end $$;
 
+-- ═══ B. THE STAGE MATRIX — every state a PI can actually be in ═════════════
+--
+-- The status domain is exactly five values (order_submissions_status_check):
+-- draft, submitted, needs_changes, rejected, approved. There is no separate
+-- "under review" value — `submitted` IS the state a PI sits in while management
+-- and finance look at it — and no reachable "approved but not converted": the
+-- transition trigger permits 'approved' only inside in_pi_submission_approval(),
+-- and approve_order_submission() writes status and order_id in ONE statement.
+-- So the matrix below is complete, and no status is invented to fill it.
+do $$
+declare v_pi uuid; v_r jsonb;
+begin
+  perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
+
+  -- ── OPEN: draft ──
+  v_pi := gen_random_uuid();
+  insert into public.order_submissions
+    (id, status, submitted_by, created_by, client_name, source_workbook_path,
+     gross_product_amount, discount_amount, grand_total)
+  values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
+          'ASSERT stage draft', 'submissions/' || v_pi::text || '/original/w.xlsx', 1000, 0, 1000);
+  v_r := public.record_pi_submission_payment(v_pi, 10.00, current_date, 'upi');
+  assert v_r->>'payment_request_id' is not null, 'a DRAFT PI must accept a payment';
+
+  -- ── OPEN: submitted (this is the under-review state) ──
+  update public.order_submissions set status = 'submitted' where id = v_pi;
+  assert (select status from public.order_submissions where id = v_pi) = 'submitted',
+    'the fixture must really be submitted';
+  v_r := public.record_pi_submission_payment(v_pi, 11.00, current_date, 'cash');
+  assert v_r->>'payment_request_id' is not null, 'a SUBMITTED PI must accept a payment';
+
+  -- ── OPEN: needs_changes ──
+  update public.order_submissions set status = 'needs_changes' where id = v_pi;
+  v_r := public.record_pi_submission_payment(v_pi, 12.00, current_date, 'cheque');
+  assert v_r->>'payment_request_id' is not null, 'a NEEDS CHANGES PI must accept a payment';
+
+  -- All three payments landed on the same PI and each carries its own allocation.
+  assert (select count(*) from public.finance_payment_allocations
+          where order_submission_id = v_pi and status = 'active') = 3,
+    'multiple payments must be recordable against one PI across its stages';
+
+  -- ── CLOSED: rejected ──
+  update public.order_submissions set status = 'submitted' where id = v_pi;
+  update public.order_submissions set status = 'rejected',
+         rejected_by = current_setting('test.admin_id')::uuid, rejected_at = now()
+   where id = v_pi;
+  begin
+    perform public.record_pi_submission_payment(v_pi, 13.00, current_date, 'upi');
+    assert false, 'a REJECTED PI must refuse a payment';
+  exception when raise_exception then
+    assert sqlerrm like '%ORDER_SUBMISSION_REJECTED%',
+      format('a rejected PI must raise ORDER_SUBMISSION_REJECTED, got: %s', sqlerrm);
+  end;
+
+  -- ── CLOSED: deletion-claimed ──
+  -- A FRESH draft PI: 'rejected' is terminal in the transition trigger, so the
+  -- one above cannot be reset, and forcing it would be testing a state the
+  -- schema does not permit.
+  v_pi := gen_random_uuid();
+  insert into public.order_submissions
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+  values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
+          'ASSERT stage claimed', 1000, 0, 1000);
+
+  -- The claim column is the freeze every other path honours; set directly here
+  -- because begin_order_submission_deletion() has its own authorization run that
+  -- belongs to 20260914000000's assertion file.
+  update public.order_submissions
+     set deletion_claim_token = gen_random_uuid(),
+         deletion_claimed_by  = current_setting('test.admin_id')::uuid,
+         deletion_claimed_at  = now()
+   where id = v_pi;
+  begin
+    perform public.record_pi_submission_payment(v_pi, 14.00, current_date, 'upi');
+    assert false, 'a DELETION-CLAIMED PI must refuse a payment';
+  exception when others then
+    assert sqlerrm like '%ORDER_SUBMISSION_DELETION_CLAIMED%',
+      format('a claimed PI must raise ORDER_SUBMISSION_DELETION_CLAIMED, got: %s', sqlerrm);
+  end;
+  update public.order_submissions set deletion_claim_token = null,
+         deletion_claimed_by = null, deletion_claimed_at = null where id = v_pi;
+
+  -- ── CLOSED: already an Order ──
+  -- order_id is what makes a PI an Order, and the RPC refuses on it directly, so
+  -- this is provable without driving a full approval.
+  declare v_order uuid := gen_random_uuid();
+  begin
+    insert into public.orders (id, display_number, client_name, requested_by, created_by,
+                               status, total_value)
+    values (v_order, null, 'ASSERT stage order', current_setting('test.sales_id')::uuid,
+            current_setting('test.admin_id')::uuid, 'running', 1000);
+    update public.order_submissions set order_id = v_order where id = v_pi;
+    assert false, 'a PI must not be linkable to an Order outside approve_order_submission()';
+  exception when others then
+    -- EXPECTED, AND ITSELF THE POINT. Two independent guards refuse this:
+    -- order_submissions_order_link_requires_approval (order_id only on an
+    -- approved PI) and order_submissions_guard_order_link
+    -- (ORDER_SUBMISSION_APPROVAL_PATH_REQUIRED). So a PI cannot carry an Order
+    -- except through approve_order_submission(), and "approved but not yet
+    -- converted" is not a reachable state to test.
+    assert sqlerrm like '%APPROVAL_PATH_REQUIRED%' or sqlerrm like '%order_link_requires_approval%',
+      format('linking an Order outside approval must be refused, got: %s', sqlerrm);
+  end;
+
+  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'record_pi_submission_payment')
+         like '%ORDER_SUBMISSION_CONVERTED%',
+    'a PI that has become an Order must be refused — the Order route records it';
+  -- And the refusal reads order_id, not only the status, so a PI carrying an
+  -- Order is closed however it got there.
+  assert (select pg_get_functiondef(oid) from pg_proc where proname = 'record_pi_submission_payment')
+         like '%v_sub.order_id is not null%',
+    'the conversion refusal must test order_id, not the status alone';
+
+  -- ── CLOSED: the PI does not exist ──
+  begin
+    perform public.record_pi_submission_payment(gen_random_uuid(), 15.00, current_date, 'upi');
+    assert false, 'a deleted or unknown PI must refuse a payment';
+  exception when no_data_found then null;
+  end;
+end $$;
+
 -- ═══ 1, 2, 3, 4. Who may record a payment against a PI ══════════════════════
 do $$
 declare v_r jsonb;
@@ -250,6 +371,50 @@ begin
    join public.finance_payment_requests f on f.id = a.payment_request_id
    where f.client_name like 'ASSERT PI%';
   assert v_p = v_a, format('payments (%s) and allocations (%s) must match one to one', v_p, v_a);
+end $$;
+
+-- ═══ D. Two separate identical requests are TWO payments ═══════════════════
+--
+-- REPORTED, NOT BLOCKED. A person can legitimately receive two identical
+-- amounts on the same day by the same method — two instalments, or two clients
+-- paying the same round figure — so a business-level duplicate blocker would
+-- refuse real money. No safe idempotency key exists either: nothing the browser
+-- sends is unique to an INTENT rather than to a request, and inventing one
+-- (hashing the fields, say) would collide on exactly those legitimate cases.
+--
+-- What IS prevented is the accidental double: canSubmitPiPayment() refuses a
+-- second submission while one is in flight, and the modal holds a ref that is
+-- set before the await. That covers the double-click; it deliberately does not
+-- cover two deliberate entries, which are two payments.
+do $$
+declare v_pi uuid := gen_random_uuid(); v_a jsonb; v_b jsonb;
+begin
+  insert into public.order_submissions
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+  values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
+          'ASSERT duplicates', 10000, 0, 10000);
+
+  perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
+  v_a := public.record_pi_submission_payment(v_pi, 500.00, current_date, 'upi', 'SAME-REF', 'same remark');
+  v_b := public.record_pi_submission_payment(v_pi, 500.00, current_date, 'upi', 'SAME-REF', 'same remark');
+
+  assert v_a->>'payment_request_id' <> v_b->>'payment_request_id',
+    'two separate identical requests must produce two distinct payments';
+  assert (select count(*) from public.finance_payment_allocations
+          where order_submission_id = v_pi and status = 'active') = 2,
+    'each of the two payments must carry its own allocation';
+
+  -- Both count, because both are real as far as the database can tell.
+  perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
+  assert (public.pi_submission_payment_summary(v_pi)->>'unverified_amount')::numeric = 1000.00,
+    'two identical payments must both count toward the unverified total';
+
+  -- And there is no idempotency parameter to pretend otherwise.
+  assert not exists (
+    select 1 from pg_proc p, unnest(p.proargnames) an
+    where p.proname = 'record_pi_submission_payment'
+      and an in ('p_idempotency_key', 'p_client_token', 'p_request_id', 'p_dedupe_key')
+  ), 'no idempotency key exists, so none may be implied';
 end $$;
 
 -- ═══ 6 + 7. The client is derived; actor and status cannot be forged ════════
@@ -427,6 +592,87 @@ begin
     format('pending balance must be 60000, got %s', v_sum->>'pending_balance');
 end $$;
 
+-- ═══ E. Needs Clarification is unverified money, and says so ═══════════════
+do $$
+declare v_pi uuid := gen_random_uuid(); v_r jsonb; v_sum jsonb; v_pay uuid;
+begin
+  insert into public.order_submissions
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+  values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
+          'ASSERT clarification', 10000, 0, 10000);
+
+  perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
+  v_r := public.record_pi_submission_payment(v_pi, 700.00, current_date, 'cheque');
+  v_pay := (v_r->>'payment_request_id')::uuid;
+
+  update public.finance_payment_requests
+     set status = 'needs_clarification', clarification_requested_at = now()
+   where id = v_pay;
+
+  v_sum := public.pi_submission_payment_summary(v_pi);
+
+  -- It counts as UNVERIFIED — money reported and not yet decided — and never as
+  -- verified.
+  assert (v_sum->>'unverified_amount')::numeric = 700.00,
+    format('needs_clarification must count as unverified, got %s', v_sum->>'unverified_amount');
+  assert (v_sum->>'verified_amount')::numeric = 0,
+    'needs_clarification must never count as verified';
+  assert not public.finance_payment_status_is_verified('needs_clarification'),
+    'the single verified rule must exclude needs_clarification';
+
+  -- And the ROW keeps its own status, so the card can label it separately rather
+  -- than folding it into a generic "awaiting" bucket.
+  assert exists (
+    select 1 from jsonb_array_elements(v_sum->'payments') p
+    where (p->>'payment_id')::uuid = v_pay
+      and p->>'status' = 'needs_clarification'
+      and (p->>'is_verified')::boolean = false
+  ), 'the payment row must carry needs_clarification so the card can label it';
+end $$;
+
+-- ═══ E. The figures are decimal-safe, not floating point ═══════════════════
+--
+-- Chosen so a float implementation would visibly disagree: 40% of 33,333.33 is
+-- 13,333.332, and 33,333.33 itself is not representable in binary. Every figure
+-- below is computed in `numeric` in the database and crosses the wire as a
+-- STRING, so nothing rounds on the way out.
+do $$
+declare v_pi uuid := gen_random_uuid(); v_r jsonb; v_sum jsonb;
+begin
+  insert into public.order_submissions
+    (id, status, submitted_by, created_by, client_name, gross_product_amount, discount_amount, grand_total)
+  values (v_pi, 'draft', current_setting('test.sales_id')::uuid, current_setting('test.sales_id')::uuid,
+          'ASSERT decimals', 33333.33, 0, 33333.33);
+
+  perform set_config('request.jwt.claim.sub', current_setting('test.sales_id'), true);
+  v_r := public.record_pi_submission_payment(v_pi, 0.10, current_date, 'upi');
+  perform public.record_pi_submission_payment(v_pi, 0.20, current_date, 'upi');
+
+  update public.finance_payment_requests
+     set status = 'approved_unlinked', approved_by = current_setting('test.admin_id')::uuid, approved_at = now()
+   where id in (select a.payment_request_id from public.finance_payment_allocations a
+                 where a.order_submission_id = v_pi);
+
+  v_sum := public.pi_submission_payment_summary(v_pi);
+
+  -- 0.1 + 0.2 is exactly 0.30 in numeric. In a double it is 0.30000000000000004.
+  assert (v_sum->>'verified_amount')::numeric = 0.30,
+    format('0.10 + 0.20 must be exactly 0.30, got %s', v_sum->>'verified_amount');
+
+  -- 40% of 33333.33 = 13333.332, minus 0.30 = 13333.032, rounded to paise.
+  assert (v_sum->>'needed_for_standard')::numeric = 13333.03,
+    format('needed for standard must be 13333.03, got %s', v_sum->>'needed_for_standard');
+
+  assert (v_sum->>'pending_balance')::numeric = 33333.03,
+    format('pending balance must be 33333.03, got %s', v_sum->>'pending_balance');
+
+  -- And the figures leave the database as strings, which is what stops a JSON
+  -- double from touching them before the browser formats them.
+  assert jsonb_typeof(v_sum->'verified_amount') = 'number'
+     and (v_sum->>'verified_amount') like '%.%',
+    'money must cross the wire with its scale intact';
+end $$;
+
 -- ═══ 15 + 16. Participant visibility, and what it does NOT confer ═══════════
 do $$
 declare v_n bigint; v_pi uuid := current_setting('test.pi')::uuid; v_pay uuid;
@@ -545,6 +791,26 @@ begin
     assert false, 'a participant must not hold finance.allocate_correct';
   exception when insufficient_privilege then null;
   end;
+
+  -- Nor REJECTION. The approver route is an RLS UPDATE policy
+  -- (finance_payment_requests_approver_decide) gated on finance.approve, so a
+  -- participant simply matches no row for the decision write.
+  perform set_config('role', 'authenticated', true);
+  declare v_rows integer;
+  begin
+    update public.finance_payment_requests
+       set status = 'rejected', admin_note = 'FORGED REJECTION'
+     where id = v_pay;
+    get diagnostics v_rows = row_count;
+    assert v_rows = 0, 'a participant must match no row for a rejection';
+  exception when others then null;
+  end;
+  perform set_config('role', 'postgres', true);
+
+  assert (select status from public.finance_payment_requests where id = v_pay) <> 'rejected'
+      or (select coalesce(admin_note,'') from public.finance_payment_requests where id = v_pay)
+         <> 'FORGED REJECTION',
+    'a participant must not be able to reject a payment';
 end $$;
 
 -- ── Admin and finance.view_all keep their wider sight ───────────────────────
