@@ -29,7 +29,6 @@
 import type { SubmissionActions } from '@/lib/orders/submissionWorkflow'
 import {
   ADVANCE_NONE_LABEL,
-  ADVANCE_STANDARD_PERCENT,
   type AdvanceView,
 } from '@/lib/orders/advanceRequirement'
 import {
@@ -174,7 +173,7 @@ export type AdvanceRequirement = {
   /** `Advance requirement` for a condition that stands, `Requested advance`
    *  for one still waiting on, or refused by, management. */
   label: string
-  /** `40% · ₹10,14,800`, `No advance · 0% · ₹0`, or `Not declared`. */
+  /** `₹10,14,800 · 40%`, `No advance · ₹0 · 0%`, or `Not declared`. */
   figures: string
   /** `Pending`, `Exception approved`, `Rejected` — or null when no exception
    *  decision exists to report. */
@@ -215,31 +214,34 @@ const EXCEPTION_TONE: Record<string, PiDetailTone> = {
 }
 
 /**
- * The percentage and the rupees on one line.
+ * The declared amount and the percentage it comes to, on one line.
  *
- * A 0% proposal is NAMED before it is numbered — "No advance · 0% · ₹0" — because
- * "0% · ₹0" on its own is a figure somebody has to interpret, and the thing being
- * interpreted is the most consequential term on the document.
+ * THE AMOUNT LEADS, because the amount is what was declared and the percentage
+ * is what it works out to. Management reviewing a PI is deciding about a figure.
+ *
+ * A ₹0 proposal is NAMED before it is numbered — "No advance · ₹0 · 0%" —
+ * because "₹0 · 0%" on its own is a figure somebody has to interpret, and the
+ * thing being interpreted is the most consequential term on the document.
  */
 function advanceFigureLine(advance: AdvanceView): string {
   if (advance.undeclared) return ADVANCE_UNDECLARED_LABEL
 
-  if (advance.condition === 'exception') {
-    // A stored exception whose percentage is unreadable — only reachable on a
-    // record written before this screen existed. Named, never guessed at.
-    if (advance.exceptionPercentLabel === null) return advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
-    const figures = advance.exceptionAmount === null
-      ? advance.exceptionPercentLabel
-      : `${advance.exceptionPercentLabel} · ${advance.exceptionAmount}`
-    return advance.isZeroPercent ? `${ADVANCE_NONE_LABEL_SHORT} · ${figures}` : figures
+  // A stored declaration whose figures are unreadable — only reachable on a
+  // record with no grand total to measure against. Named, never guessed at.
+  if (advance.declaredAmountValue === null) {
+    return advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
   }
 
-  return `${ADVANCE_STANDARD_PERCENT}% · ${advance.standardAmount}`
+  const figures = advance.declaredPercentLabel === null
+    ? advance.declaredAmount
+    : `${advance.declaredAmount} · ${advance.declaredPercentLabel}`
+
+  return advance.isZeroPercent ? `${ADVANCE_NONE_LABEL_SHORT} · ${figures}` : figures
 }
 
-/** "No advance", without the "(0%)" the choice label carries — the percentage
+/** "No advance", without the ": 0%" the choice label carries — the percentage
  *  is on the same line already, and saying it twice is what this pass removes. */
-const ADVANCE_NONE_LABEL_SHORT = ADVANCE_NONE_LABEL.replace(/\s*\(0%\)\s*$/, '')
+const ADVANCE_NONE_LABEL_SHORT = ADVANCE_NONE_LABEL.replace(/\s*:\s*0%\s*$/, '')
 
 /**
  * Everything the top-of-page snapshot prints.
@@ -488,23 +490,52 @@ export const ADVANCE_BAND_TITLE = 'Advance exception'
 /**
  * The one line describing what was asked for, for the band.
  *
- * `Reduced advance · 12.5% · ₹3,17,125` or `No advance · 0% · ₹0`. It names the
+ * `Reduced advance · ₹3,17,125 · 12.5%` or `No advance · ₹0 · 0%`. It names the
  * KIND of exception as well as the figures, because the person reading it is
  * being asked to grant exactly that and the two zero cases are not the same
  * decision as a reduction.
  */
 export function describeRequestedException(advance: AdvanceView): string {
-  if (advance.exceptionPercentLabel === null) {
+  if (advance.declaredAmountValue === null) {
     return advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
   }
-  const figures = advance.exceptionAmount === null
-    ? advance.exceptionPercentLabel
-    : `${advance.exceptionPercentLabel} · ${advance.exceptionAmount}`
+  const figures = advance.declaredPercentLabel === null
+    ? advance.declaredAmount
+    : `${advance.declaredAmount} · ${advance.declaredPercentLabel}`
   const kind = advance.isZeroPercent ? ADVANCE_NONE_LABEL_SHORT : ADVANCE_REDUCED_KIND
   return `${kind} · ${figures}`
 }
 
 const ADVANCE_REDUCED_KIND = 'Reduced advance'
+const ADVANCE_STANDARD_KIND = 'Standard advance'
+
+/**
+ * The advance as MANAGEMENT'S REVIEW SURFACES state it.
+ *
+ * THE AMOUNT IS ON IT, always, because that is what was declared and what the
+ * business is being asked to accept. A condition label on its own — "Advance:
+ * 40% or above" — tells a reviewer which route was taken and not one thing about
+ * the figure they are signing off, which is the whole question in front of them.
+ *
+ * `Standard advance · ₹10,14,800 · 40%`
+ * `Reduced advance · ₹3,17,125 · 12.5%`
+ * `No advance · ₹0 · 0%`
+ *
+ * Both the finance verification dialog and the final approval summary print
+ * this, so the two cannot state the same record differently.
+ */
+export function describeAdvanceForReview(advance: AdvanceView): string {
+  if (advance.undeclared || advance.declaredAmountValue === null) {
+    return advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
+  }
+  const kind = advance.condition === 'exception'
+    ? (advance.isZeroPercent ? ADVANCE_NONE_LABEL_SHORT : ADVANCE_REDUCED_KIND)
+    : ADVANCE_STANDARD_KIND
+  const figures = advance.declaredPercentLabel === null
+    ? advance.declaredAmount
+    : `${advance.declaredAmount} · ${advance.declaredPercentLabel}`
+  return `${kind} · ${figures}`
+}
 
 // ── 4. Blocking issues ────────────────────────────────────────────────────────
 

@@ -37,7 +37,6 @@
 
 import type { PiDraftListEntry } from './draftsView'
 import {
-  ADVANCE_PERCENT_OUT_OF_RANGE,
   ADVANCE_REASON_REQUIRED,
   ADVANCE_REASON_TOO_LONG,
   ADVANCE_TOTAL_MISSING,
@@ -378,7 +377,20 @@ const FAILURE_MESSAGES: readonly { marker: string; code: string; message: string
   { marker: 'ORDER_SUBMISSION_ADVANCE_CONDITION_INVALID', code: 'ADVANCE_CONDITION_INVALID',
     message: 'Choose the standard advance requirement or request an exception, and nothing in between.' },
   { marker: 'ORDER_SUBMISSION_ADVANCE_PERCENT_INVALID', code: 'ADVANCE_PERCENT_INVALID',
-    message: ADVANCE_PERCENT_OUT_OF_RANGE },
+    message: 'The proposed advance percentage is not one this PI can be submitted under.' },
+  // The four amount refusals the database can raise, each already carrying the
+  // figure it compared against — so the sentence names the number rather than
+  // restating a rule the reader then has to apply themselves.
+  { marker: 'ORDER_SUBMISSION_ADVANCE_AMOUNT_BELOW_STANDARD', code: 'ADVANCE_AMOUNT_BELOW_STANDARD',
+    message: 'The declared advance is below the standard requirement. Select a reduced advance to declare less.' },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_AMOUNT_NOT_REDUCED', code: 'ADVANCE_AMOUNT_NOT_REDUCED',
+    message: 'The declared advance is not below the standard requirement, so it is not a reduced advance.' },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_AMOUNT_ABOVE_TOTAL', code: 'ADVANCE_AMOUNT_ABOVE_TOTAL',
+    message: 'The declared advance is more than the grand total of this PI.' },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_AMOUNT_INVALID', code: 'ADVANCE_AMOUNT_INVALID',
+    message: 'Enter the advance amount as plain digits, with at most two decimal places.' },
+  { marker: 'ORDER_SUBMISSION_ADVANCE_MODE_INVALID', code: 'ADVANCE_MODE_INVALID',
+    message: 'This advance declaration could not be read. Refresh and try again.' },
   { marker: 'ORDER_SUBMISSION_ADVANCE_DECISION_REASON_REQUIRED', code: 'ADVANCE_DECISION_REASON_REQUIRED',
     message: REJECT_EXCEPTION_REASON_REQUIRED },
   { marker: 'ORDER_SUBMISSION_ADVANCE_REASON_REQUIRED', code: 'ADVANCE_REASON_REQUIRED',

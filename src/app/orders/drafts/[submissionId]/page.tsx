@@ -189,7 +189,7 @@ import {
 // at three breakpoints lives in the CSS module. This file keeps the reads, the
 // permissions and the RPCs, which is the part that has authority behind it.
 import {
-  ADVANCE_UNDECLARED_LABEL,
+  describeAdvanceForReview,
   buildApprovalSummary,
   buildCommercialSnapshot,
   buildIdentityFacts,
@@ -611,23 +611,27 @@ function PiDraftDetailPageInner() {
   /**
    * Submit, with the employee's optional reply on a resubmission.
    *
-   * TWO RPCs, ONE IMPLEMENTATION. The database keeps the original
-   * submit_order_submission(uuid) for a plain submission and adds
-   * submit_order_submission_with_note(uuid, text) for one carrying a reply; both
-   * are one line over the same internal function, so the actor, ownership,
-   * state, permission and completeness checks are identical either way. The
-   * screen picks the door by whether there is anything to say — never by
-   * authority, which is the database's to decide.
+   * FOUR RPCs, ONE IMPLEMENTATION. The database keeps the original
+   * submit_order_submission(uuid), submit_order_submission_with_note(uuid, text)
+   * and the percentage-carrying submit_order_submission_with_advance(...), and
+   * adds submit_order_submission_with_advance_amount(...) for the declared
+   * AMOUNT this screen sends. All four are one line over the same internal
+   * function, so the actor, ownership, state, permission and completeness checks
+   * are identical whichever door is used.
+   *
+   * THE AMOUNT IS SENT AND THE PERCENTAGE IS NOT. The database derives the
+   * percentage from the amount and the persisted grand total, so a browser
+   * cannot send two figures that disagree — and cannot send a percentage at all.
    */
   const submitForApproval = useCallback((
     note: string | null,
     advance: AdvanceSelection,
   ) => runAction('submit', async () => {
-    const { error } = await supabase.rpc('submit_order_submission_with_advance', {
+    const { error } = await supabase.rpc('submit_order_submission_with_advance_amount', {
       p_submission_id: submissionId,
       p_note: note,
       p_advance_condition: advance.condition,
-      p_advance_percent: advance.condition === 'exception' ? advance.percent : null,
+      p_advance_amount: advance.amount,
       p_advance_reason: advance.condition === 'exception' ? advance.reason : null,
     })
     return { error }
@@ -910,7 +914,9 @@ function PiDraftDetailPageInner() {
 
   /** The advance condition in one phrase, for the two dialogs. One source, so
    *  the dialog and the page cannot word the same condition differently. */
-  const advanceLabel = advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
+  // THE FIGURE, NOT JUST THE ROUTE. Finance verification and final approval are
+  // both decisions ABOUT the declared amount, so both are told what it is.
+  const advanceLabel = describeAdvanceForReview(advance)
 
   const clientLabel = orDash(submission.client_name ?? submission.bill_to_name)
   const grandTotalLabel = formatInr(grandTotalValue)
@@ -1238,7 +1244,7 @@ function PiDraftDetailPageInner() {
           // The dialog opens on whatever the record already says, so a PI
           // returned for an unrelated correction does not silently switch the
           // employee's advance condition while they fix something else.
-          initialAdvance={initialAdvanceSelection(submission)}
+          initialAdvance={initialAdvanceSelection(submission, grandTotalValue)}
           submitting={acting}
           failure={actionFailure}
           offerReply={submissionOffersReply(submission.status)}

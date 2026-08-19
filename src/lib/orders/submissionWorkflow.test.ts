@@ -384,6 +384,7 @@ describe('the review queue is a section of the drafts list', () => {
     // No advance requirement was declared. That is the honest state of a record
     // saved before Phase B, and of every draft until it is submitted.
     advance_condition: null,
+    advance_declared_amount: null,
     advance_exception_percent: null,
     advance_exception_reason: null,
     advance_exception_status: null,

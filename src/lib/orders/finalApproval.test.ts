@@ -86,6 +86,7 @@ const verified = (boundTo: string = SUBMITTED_AT): PersistedFinanceVerification 
 
 const noAdvance: PersistedAdvance = {
   advance_condition: null,
+  advance_declared_amount: null,
   advance_exception_percent: null,
   advance_exception_reason: null,
   advance_exception_status: null,

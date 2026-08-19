@@ -576,9 +576,11 @@ Full detail: `docs/Module Docs/ACCESS_CONTROL_V1.md`.
 
 ## Order Management — PI submission to Confirmed Order
 
-Status: **Phase C applied to production.** One follow-up fix,
-`20260916000000_order_submission_test_cleanup.sql`, is **written and unapplied** —
-see *Test Data Cleanup* at the foot of this section.
+Status: **Phase C applied to production.** Two forward migrations are **written
+and unapplied**: `20260916000000_order_submission_test_cleanup.sql` (see *Test
+Data Cleanup* at the foot of this section) and
+`20260917000000_order_submission_advance_amount.sql` (see *The advance
+declaration* below).
 
 An imported BOE PI workbook (`.xlsx`) becomes a Confirmed Order through one
 reviewed workflow. The record is `public.order_submissions`; the Order it
@@ -598,9 +600,10 @@ draft ──► submitted ──► needs_changes ──► submitted ──► 
    figure and product line comes from a server-side parse
    (`replace_order_submission_parse`, service role only). A browser cannot
    manufacture a price, a quantity or a total.
-2. **Submit**, declaring the advance requirement: the standard 40%, a reduced
-   percentage, or none. The last two are *exception requests* and need a
-   decision from a holder of `orders.approve_advance_exception`.
+2. **Submit**, declaring the advance **amount**: 40% of the grand total or more,
+   a reduced amount, or nothing. The last two are *exception requests* and need
+   a decision from a holder of `orders.approve_advance_exception`. See *The
+   advance declaration* below.
 3. **Finance verification** (Phase C). A finance authority signs off that the
    commercial figures and advance terms are correct.
 4. **Final approval** (Phase C). A PI reviewer approves, and exactly one
@@ -609,6 +612,59 @@ draft ──► submitted ──► needs_changes ──► submitted ──► 
 Management can send the PI back (`Needs Changes`) or end it (`Reject`) at any
 point while it is submitted — **including after finance has verified it**. A
 verified PI is not an approved one.
+
+### The advance declaration — the rule
+
+**The employee declares an AMOUNT in rupees. The percentage is derived from it.**
+What a client agrees to is a figure; "40%" is what that figure comes to. The
+Submit for Approval dialog offers three mutually exclusive choices:
+
+| Choice | Amount | Reason | Route |
+| --- | --- | --- | --- |
+| **Advance: 40% or above** | at least `grand_total × 40 ÷ 100`, at most the grand total. Pre-filled with the exact 40% figure and editable | none | standard — no exception, no decision |
+| **Reduced advance: below 40%** | above ₹0 and below `grand_total × 40 ÷ 100` | **mandatory** | the existing Admin advance-exception workflow |
+| **No advance: 0%** | fixed ₹0, no editable field | **mandatory** | the same exception workflow |
+
+**Classification uses the amount, never a displayed percentage.** ₹39,999.99
+against a ₹1,00,000 grand total is 39.99999%, which *rounds* to 40.00 — it is a
+reduced advance all the same, because the amount is a paisa short of the
+requirement. The comparison is `advance_declared_amount` against
+`grand_total * 40 / 100` in exact numeric arithmetic, as a table CHECK.
+
+**The derived percentage is truncated to two decimal places, never rounded up**,
+so no screen and no stored figure can claim the requirement is met by an amount
+that does not meet it — and so an exception percentage stays strictly below the
+40 its applied constraint demands.
+
+**The 40% reference figure is the ceiling to the paisa.** 40% of ₹100.01 is
+₹40.004, which nobody can pay; rounding gives ₹40.00, which is *below* the
+requirement. `order_submission_standard_advance_amount()` gives ₹40.01 — the
+smallest real figure that satisfies "at least 40%" — so the amount the dialog
+pre-fills is always one the database accepts.
+
+**An amount and the total it was measured against cannot disagree.** Replacing
+the parse changes `grand_total`; a BEFORE UPDATE trigger clears
+`advance_declared_amount` in the same statement, for every caller including the
+service role. The PI is in draft or needs-changes at that point and must be
+resubmitted anyway, which writes a fresh amount against the fresh total.
+
+**Records written before this existed keep working.** `advance_declared_amount`
+is NULL on every PI declared earlier, and NULL is read as what the record has
+always meant — the standard 40% of its current grand total, or its stored
+exception percentage of it. `order_submission_effective_advance_amount()` is the
+single place that rule lives, mirrored in `advanceRequirement.ts`. A legacy
+approved exception resubmitted at its equivalent amount stays approved.
+
+**Nothing here is a payment.** No payment is created, requested, verified,
+linked, allocated or reconciled, and no Finance table is read or written. The
+dialog says so: *"This records the advance amount declared for this PI. Payment
+verification and linking will be added separately."*
+
+`submit_order_submission_with_advance_amount(uuid, text, text, numeric, text)` is
+the door the screen uses. The three applied doors —
+`submit_order_submission`, `submit_order_submission_with_note` and the
+percentage-carrying `submit_order_submission_with_advance` — keep their exact
+names, signatures and behaviour, and all four run one implementation.
 
 ### Finance verification — the rule
 
@@ -641,8 +697,10 @@ locked row, and refuses on any one of them:
 - status is exactly `submitted`, and no Order is already linked;
 - the caller is authenticated, active, and holds `orders.approve_order`;
 - finance verification is **current** for this submission;
-- the advance requirement is settled — standard, or an **approved** exception
-  (pending and rejected both refuse, and so does an undeclared record);
+- the advance requirement is settled — a standard declaration (whose amount the
+  table CHECK holds at 40% or more of the grand total), or an **approved**
+  exception (pending and rejected both refuse, and so does an undeclared
+  record);
 - no blocking parse diagnostics;
 - the workbook still exists in storage at the exact validated path, as an
   `.xlsx`;

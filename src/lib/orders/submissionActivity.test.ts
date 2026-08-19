@@ -272,7 +272,7 @@ describe('internal bookkeeping stays internal', () => {
         item_count: 9,
       },
     })])
-    assert.equal(entry.figures, '12.5% · ₹1,47,500')
+    assert.equal(entry.figures, '₹1,47,500 · 12.5%')
     const rendered = `${entry.label} ${entry.actor} ${entry.figures} ${entry.note}`
     for (const leaked of ['1180000', 'standard_percent', 'exception_status', 'item_count', '9']) {
       assert.ok(!rendered.includes(leaked), `${leaked} must not reach the screen`)
@@ -310,7 +310,7 @@ describe('internal bookkeeping stays internal', () => {
       action: 'advance_exception_rejected',
       metadata: { advance_percent: '0', advance_amount: '0' },
     })])
-    assert.equal(entry.figures, '0% · ₹0')
+    assert.equal(entry.figures, '₹0 · 0%')
   })
 
   test('a zero-percent proposal shows ₹0 rather than nothing', () => {
@@ -318,7 +318,7 @@ describe('internal bookkeeping stays internal', () => {
       action: 'advance_exception_requested',
       metadata: { advance_percent: 0, advance_amount: 0 },
     })])
-    assert.equal(entry.figures, '0% · ₹0')
+    assert.equal(entry.figures, '₹0 · 0%')
   })
 
   test('an amount the server did not record leaves the percentage alone on the line', () => {

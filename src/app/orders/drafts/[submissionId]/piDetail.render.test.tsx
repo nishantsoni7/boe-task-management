@@ -135,6 +135,7 @@ function submission(over: Partial<PersistedSubmission> = {}): PersistedSubmissio
     created_at: '2026-08-01T06:00:00Z',
     updated_at: '2026-08-02T06:00:00Z',
     advance_condition: null,
+    advance_declared_amount: null,
     advance_exception_percent: null,
     advance_exception_reason: null,
     advance_exception_status: null,
@@ -419,7 +420,7 @@ describe('the advance condition is stated ONCE, in the top snapshot', () => {
   test('a standard requirement is one label, one figure line, no status', () => {
     const html = text(overviewHtml(submission({ status: 'submitted', advance_condition: 'standard' })))
     assert.ok(html.includes(ADVANCE_REQUIREMENT_LABEL))
-    assert.ok(html.includes(`40% · ${formatInr(472000)}`))
+    assert.ok(html.includes(`${formatInr(472000)} · 40%`))
     // The four rows this replaced are gone: no separate condition label, no
     // "Proposed advance" row, no second amount to compare against.
     for (const gone of ['Advance condition', 'Proposed advance', 'Standard advance (40%)',
@@ -434,7 +435,7 @@ describe('the advance condition is stated ONCE, in the top snapshot', () => {
       advance_exception_percent: 12.5, advance_exception_status: 'pending',
     })))
     assert.ok(html.includes(ADVANCE_REQUESTED_LABEL))
-    assert.ok(html.includes(`12.5% · ${formatInr(147500)}`))
+    assert.ok(html.includes(`${formatInr(147500)} · 12.5%`))
     assert.ok(html.includes('Pending'))
     assert.ok(!html.includes(formatInr(472000)),
       'the standard amount is not shown beside it — two figures read as two things owed')
@@ -462,8 +463,8 @@ describe('the advance condition is stated ONCE, in the top snapshot', () => {
     ] as const) {
       const html = zero(status)
       assert.ok(html.includes(label), `${status} uses "${label}"`)
-      assert.ok(html.includes('No advance · 0% · ₹0'),
-        '"0% · ₹0" alone is a figure somebody has to interpret')
+      assert.ok(html.includes('No advance · ₹0 · 0%'),
+        '"₹0 · 0%" alone is a figure somebody has to interpret')
       assert.ok(html.includes(state))
     }
   })
@@ -662,7 +663,7 @@ describe('the owner of a submitted PI', () => {
 
   test('can still see that an advance exception is waiting', () => {
     assert.ok(text(html).includes('Advance exception'))
-    assert.ok(text(html).includes('Reduced advance · 10% · '),
+    assert.ok(text(html).includes('Reduced advance · ₹1,18,000 · 10%'),
       'the condition being decided, in one line')
   })
 
@@ -799,7 +800,7 @@ describe('the advance-exception approver, who holds nothing else', () => {
 
   test('the band states the condition and the reason, and no audit facts', () => {
     const body = text(html)
-    assert.ok(body.includes('Reduced advance · 12.5% · '), 'what is being asked for')
+    assert.ok(body.includes('Reduced advance · ₹1,47,500 · 12.5%'), 'what is being asked for')
     assert.ok(body.includes('Long-standing client, settles on delivery.'),
       'and the employee’s own words, which exist nowhere else on this screen')
     for (const audit of ['Requested by', 'Decided by', 'Standard requirement',
@@ -849,7 +850,7 @@ describe('an admin holding both authorities', () => {
   })
 
   test('a 0% proposal is spelled out where it is being decided', () => {
-    assert.ok(html.includes('No advance · 0% · ₹0'))
+    assert.ok(html.includes('No advance · ₹0 · 0%'))
     assert.ok(!html.includes('No advance requested — the order would start'),
       'the label says it; the sentence under it said it again')
   })
@@ -1401,7 +1402,7 @@ describe('the activity trail', () => {
   })
 
   test('shows the advance figures that WERE the event', () => {
-    assert.ok(text(html).includes('12.5% · ₹1,47,500'))
+    assert.ok(text(html).includes('₹1,47,500 · 12.5%'))
   })
 
   test('is a marked, connected timeline rather than a stacked list', () => {
@@ -1874,7 +1875,7 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
-      'submit_order_submission_with_advance',
+      'submit_order_submission_with_advance_amount',
       'verify_pi_finance_check',
     ])
   })
