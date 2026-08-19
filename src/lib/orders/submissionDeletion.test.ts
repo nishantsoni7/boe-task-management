@@ -405,16 +405,28 @@ describe('the route reserves the record before it removes a single file', () => 
       'the sweep is unreachable without a claim token in hand')
   })
 
-  test('a failed sweep RELEASES the reservation and destroys nothing', () => {
-    assert.ok(route.includes('await release()'))
+  test('a failed sweep releases ONLY when nothing destructive was issued', () => {
+    // CORRECTED. This used to assert that every failure after the claim gave the
+    // record back, which is unsafe: a `.remove()` can delete objects and then
+    // lose its response, so an absent confirmation is not proof that nothing
+    // went. Releasing there unfreezes a PI whose workbook is already gone.
+    //
+    // The reservation is now given back only on the provably safe path — a
+    // listing that failed before any remove request went out.
     const release = route.indexOf('const release = async ()')
     const finalize = route.indexOf("'finalize_order_submission_deletion'")
     assert.ok(release > 0 && release < finalize)
     assert.ok(route.includes("code: 'STORAGE_CLEANUP_FAILED'"))
-    // Both failure shapes — the sweep throwing, and the sweep reporting leftovers.
     assert.ok(route.includes('if (removal.failed.length > 0)'))
-    assert.ok((route.match(/await release\(\)/g) ?? []).length >= 3,
-      'every failure path after the claim gives the record back')
+
+    assert.ok(route.includes('let removalAttempted = false'))
+    assert.ok(route.includes('onRemoveAttempt: () => { removalAttempted = true }'),
+      'the flag is set BEFORE each request, so a throw cannot hide it')
+    for (const match of [...route.matchAll(/await release\(\)/g)]) {
+      const line = route.slice(route.lastIndexOf('\n', match.index!) + 1, match.index! + 15)
+      assert.ok(/if \(!removalAttempted\)/.test(line),
+        `an unguarded release: ${line.trim()}`)
+    }
   })
 
   test('the release never throws over the error it is reporting', () => {
@@ -539,12 +551,18 @@ describe('the route survives a slow or failed sweep without losing the record', 
       'one call site, so there is no path that runs it twice')
   })
 
-  test('release is available on every failure after the claim', () => {
-    const claim = route.indexOf('const release = async ()')
-    const finalizeFail = route.lastIndexOf('await release()')
-    assert.ok(claim > 0 && finalizeFail > claim)
-    assert.ok((route.match(/await release\(\)/g) ?? []).length >= 3,
-      'timeout, surviving objects, and a refused finalization')
+  test('a refused finalization NEVER releases: by then the files are gone', () => {
+    // CORRECTED alongside the sweep rule above. The sweep reported success
+    // before finalization was attempted, so the objects ARE gone; handing the
+    // record back would produce a PI that looks healthy and has no workbook.
+    const finalizeFail = route.indexOf('if (delErr) {')
+    assert.ok(finalizeFail > 0)
+    const branch = route.slice(finalizeFail, finalizeFail + 700)
+    assert.ok(!branch.includes('await release()'),
+      'the reservation stands until another attempt finalizes it')
+    assert.ok(branch.includes('THE\n    // RESERVATION IS NOT RELEASED')
+      || /RESERVATION IS NOT RELEASED/.test(branch),
+      'and the reason is written down where the next reader will find it')
   })
 
   test('double-click protection is unchanged: the claim is what serializes it', () => {

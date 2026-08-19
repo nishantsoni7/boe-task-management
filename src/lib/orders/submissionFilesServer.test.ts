@@ -52,6 +52,14 @@ type FakeOptions = {
   listFails?: Set<string>
   /** Batches (by first key) whose remove must fail. */
   removeFails?: (batch: string[]) => boolean
+  /**
+   * Batches whose remove request THROWS — the lost-response case.
+   *
+   * The server may have deleted every key in the batch before the connection
+   * died. The client learns nothing, which is precisely why a caller may not
+   * read an absent confirmation as "nothing was removed".
+   */
+  removeThrows?: (batch: string[]) => boolean
   /** Keys the remove call should NOT report back as removed. */
   unreported?: Set<string>
   /** Milliseconds each list call takes. */
@@ -100,6 +108,10 @@ function fakeStorage(options: FakeOptions): Fake {
           async remove(paths: string[]) {
             removeCalls.push([...paths])
             await Promise.resolve()
+            if (options.removeThrows?.(paths)) {
+              // The objects may well be gone; the response is not.
+              throw new Error('socket hang up')
+            }
             if (options.removeFails?.(paths)) return { data: null, error: { message: 'nope' } }
             const reported = paths.filter(p => !options.unreported?.has(p))
             return { data: reported.map(name => ({ name })), error: null }
@@ -665,5 +677,109 @@ describe('there is no timeout, and no timer-triggered release', () => {
     // takeover recovers it later.
     assert.ok(!code(route).includes('finally'),
       'a finally-block release would run on paths where storage never settled')
+  })
+})
+
+// ── Destructive uncertainty ───────────────────────────────────────────────────
+//
+// THE DISTINCTION THESE TESTS DEFEND. `removed` is what storage CONFIRMED. It is
+// not what storage DID. A remove request can delete every key it was given and
+// then lose its response to a network or gateway failure, and the client sees a
+// throw — or a reply naming nothing at all.
+//
+// A caller that reads an absent confirmation as "nothing was removed" will give
+// back a record whose files are already gone. So the helper reports a separate
+// fact, `removalAttempted`, set immediately BEFORE the first request goes out,
+// and offers a callback so the caller knows even if this function never returns.
+
+describe('the helper reports whether a destructive request was ISSUED', () => {
+  test('a listing failure before any remove leaves it false — safe to release', async () => {
+    const tree = piTree(2)
+    const fake = fakeStorage({ tree, listFails: new Set([`${PREFIX}/images`]) })
+    await assert.rejects(() => removeAllObjectsForSubmission(fake.client, SUBMISSION, []))
+    assert.equal(fake.removeCalls.length, 0,
+      'nothing destructive was issued, so the caller may safely give the record back')
+  })
+
+  test('no keys at all means no request, and nothing to be uncertain about', async () => {
+    const fake = fakeStorage({ tree: { [PREFIX]: [] } })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, [])
+    assert.equal(result.removalAttempted, false)
+    assert.equal(fake.removeCalls.length, 0)
+  })
+
+  test('a remove that THROWS still reports the attempt', async () => {
+    // The server deleted the objects; the response was lost. `removed` is empty
+    // and that must not be read as "nothing happened".
+    const tree = piTree(1, 0)
+    const fake = fakeStorage({ tree, removeThrows: () => true })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, [])
+    assert.equal(result.removalAttempted, true, 'THE fact the caller must branch on')
+    assert.deepEqual(result.removed, [], 'and nothing was confirmed')
+    assert.ok(result.failed.length > 0)
+  })
+
+  test('a remove that returns an error still reports the attempt', async () => {
+    const tree = piTree(1, 0)
+    const fake = fakeStorage({ tree, removeFails: () => true })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, [])
+    assert.equal(result.removalAttempted, true)
+    assert.deepEqual(result.removed, [])
+  })
+
+  test('a response confirming NOTHING still reports the attempt', async () => {
+    // The request went out and came back naming no keys — the gateway truncated
+    // it, or the API answered oddly. The objects may be gone.
+    const tree = piTree(1, 0)
+    const all = [`${PREFIX}/original/abcd-Client PI.xlsx`,
+                 `${PREFIX}/images/item-0/representative/0-${'a'.repeat(64)}.png`]
+    const fake = fakeStorage({ tree, unreported: new Set(all) })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, [])
+    assert.equal(result.removalAttempted, true)
+    assert.deepEqual(result.removed, [], 'nothing confirmed')
+    assert.ok(result.failed.length > 0, 'and the keys are still reported as unremoved')
+  })
+
+  test('one batch succeeds while another loses its response', async () => {
+    // The mixed case, and the one an "any confirmed removals?" test would pass
+    // while still being wrong: some keys are provably gone, others are unknown.
+    const tree: Record<string, Entry[]> = {
+      [PREFIX]: [folder('original')],
+      [`${PREFIX}/original`]: Array.from({ length: REMOVE_BATCH + 10 },
+        (_, i) => file(`f${i}.xlsx`)),
+    }
+    let seen = 0
+    const fake = fakeStorage({ tree, removeThrows: () => { seen += 1; return seen === 2 } })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, [])
+    assert.equal(result.removalAttempted, true)
+    assert.ok(result.removed.length > 0, 'the first batch is confirmed')
+    assert.ok(result.failed.length > 0, 'the second is not, and may or may not be gone')
+    assert.equal(fake.removeCalls.length, 2)
+  })
+
+  test('the callback fires BEFORE each request, so a throw cannot hide it', async () => {
+    const tree = piTree(1, 0)
+    const attempts: number[] = []
+    const fake = fakeStorage({ tree, removeThrows: () => true })
+    await removeAllObjectsForSubmission(fake.client, SUBMISSION, [],
+      { onRemoveAttempt: () => attempts.push(fake.removeCalls.length) })
+    assert.deepEqual(attempts, [0],
+      'the callback ran while zero requests had yet been recorded — i.e. before the first')
+  })
+
+  test('a callback that throws does not abort the sweep', async () => {
+    const tree = piTree(1, 0)
+    const fake = fakeStorage({ tree })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, [],
+      { onRemoveAttempt: () => { throw new Error('caller bookkeeping blew up') } })
+    assert.equal(result.removalAttempted, true)
+    assert.ok(result.removed.length > 0, 'the removal still completed')
+  })
+
+  test('a successful sweep reports the attempt too', async () => {
+    const fake = fakeStorage({ tree: piTree(2) })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, [])
+    assert.equal(result.removalAttempted, true)
+    assert.deepEqual(result.failed, [])
   })
 })

@@ -101,6 +101,21 @@ export const SUBMISSION_ID_RE =
 export type SubmissionObjectRemoval = {
   /** Every key this submission owns, from the record and from the bucket. */
   found: string[]
+  /**
+   * Whether a DESTRUCTIVE request was issued — not whether one succeeded.
+   *
+   * THE DISTINCTION IS THE WHOLE POINT, and conflating the two is a data-loss
+   * bug. A `.remove()` can delete objects on the server and then lose its
+   * response to a network or gateway failure; the client sees a throw, or a
+   * reply naming nothing, and `removed` is empty. "Nothing was confirmed
+   * removed" is NOT "nothing was removed", and a caller that treats it as such
+   * will unfreeze a record whose files are already gone.
+   *
+   * So this is set to true immediately BEFORE the first remove request goes out
+   * and is never cleared. A caller deciding whether it is safe to give a record
+   * back must read THIS, never `removed.length`.
+   */
+  removalAttempted: boolean
   removed: string[]
   /**
    * Keys that still exist and could not be removed. A recorded path that was
@@ -295,10 +310,29 @@ export async function removeAllObjectsForSubmission(
   submissionId: string,
   /** The keys the record itself names, read by the caller from the database. */
   recordedPaths: readonly string[],
+  options: {
+    /**
+     * Called immediately BEFORE each remove request is issued.
+     *
+     * WHY A CALLBACK AND NOT ONLY THE RETURN VALUE. A return value arrives only
+     * if this function returns. If it throws — or if the process dies — a caller
+     * relying on the result learns nothing, and "I got no result" is exactly the
+     * case in which objects may already be gone. The callback fires while the
+     * request is still being made, so a caller that sets a flag in it knows the
+     * truth no matter how this call ends.
+     *
+     * It must not throw and must not be slow: it runs on the path of every
+     * batch.
+     */
+    onRemoveAttempt?: () => void
+  } = {},
 ): Promise<SubmissionObjectRemoval> {
   if (!SUBMISSION_ID_RE.test(submissionId)) {
     throw new Error('A valid submissionId is required.')
   }
+
+  /** Set before the first destructive request, never cleared. */
+  let removalAttempted = false
 
   const prefix = `submissions/${submissionId}`
   const inPrefix = (path: unknown): path is string =>
@@ -318,8 +352,10 @@ export async function removeAllObjectsForSubmission(
   const found = [...new Set([...recorded, ...present])].sort()
 
   if (found.length === 0) {
+    // Nothing to remove, so no destructive request is issued and the caller may
+    // safely give the record back.
     return {
-      found, removed: [], failed: [],
+      found, removalAttempted: false, removed: [], failed: [],
       stats: { directories: sweep.directories, batches: 0, listMs, removeMs: 0 },
     }
   }
@@ -336,6 +372,14 @@ export async function removeAllObjectsForSubmission(
     // runs every batch to completion instead of abandoning siblings mid-flight.
     // See the note on mapWithLimit: a remove still running when the caller
     // releases the reservation can delete the files of a PI that is live again.
+    // MARK BEFORE THE REQUEST, not after it. From this line on, objects may be
+    // gone whatever happens next — including a throw that never reaches the
+    // return below.
+    removalAttempted = true
+    try {
+      options.onRemoveAttempt?.()
+    } catch { /* a caller's bookkeeping must never abort a sweep */ }
+
     try {
       const { data, error } = await service.storage.from(ORDER_FILES_BUCKET).remove(batch)
       // A failed batch fails only its own keys. The others are reported on their
@@ -361,6 +405,7 @@ export async function removeAllObjectsForSubmission(
 
   return {
     found,
+    removalAttempted,
     removed: found.filter(path => removed.has(path)),
     failed,
     stats: { directories: sweep.directories, batches: batches.length, listMs, removeMs },

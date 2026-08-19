@@ -791,10 +791,25 @@ The remedy 20260914000000 already uses for ordinary PI deletion.
    children, delete the Order, complete the audit, reclaim the freed Order
    numbers, consume the claim.
 
-**Failure handling.** Nothing removed → `release_test_data_cleanup(token)` gives
-the records back whole. *Anything* removed → **the claim is kept**, the rows stay
-untouched and the records stay frozen; running it again re-claims, removes what
-remains and finalizes. Finalization is **idempotent**, so a lost response is safe.
+**Failure handling, and the distinction it turns on.** `removed` is what storage
+*confirmed*; it is not what storage *did*. A `.remove()` can delete every key it
+was given and then lose its response to a network or gateway failure — the client
+sees a throw, or a reply naming nothing. **"Not confirmed removed" is not
+"nothing removed"**, and releasing on an absent confirmation unfreezes a record
+whose files are already gone.
+
+So the helpers report a second, separate fact — `removalAttempted`, set
+immediately *before* each remove request goes out, and also delivered through an
+`onRemoveAttempt` callback so the caller knows even if the helper throws and
+returns nothing. The claim is released **only when it is positively proven that
+no destructive request was issued** — in practice, a listing or metadata read
+that failed first. Any failure at or after a remove attempt keeps the claim: the
+rows stay untouched, the records stay frozen, and running it again re-claims,
+removes what remains and finalizes. Finalization is **idempotent**, so a lost
+response is safe.
+
+A false-positive reservation is acceptable and recoverable — one more click
+finishes it. Releasing after uncertain deletion is not.
 
 **Why the claim, not the settings row, authorises finalization.** Once a file is
 destroyed there is no way back, so refusing to finalize would leave exactly the
@@ -856,7 +871,16 @@ approval, the advance workflow, payments and unrelated UI are all unchanged.
 
 `testDataCleanupPiSchema.test.ts` covers the claim, the freeze, the gate
 ordering, idempotent finalization, the deletion order, the number-reclaim rule,
-the retired door and the one-request page. The full suite shows **9 failures,
+the retired door, the one-request page and the attempted-vs-confirmed release
+rule. `submissionFilesServer.test.ts` and `orderRequestAttachmentsServer.test.ts`
+cover the destructive-uncertainty contract directly against a fake storage
+client: a remove that throws, a remove that returns an error, a response
+confirming nothing, one batch succeeding while another loses its response, and a
+listing failure before any remove (the one safe release).
+
+The same conservative rule was applied to the pre-existing PI deletion route
+(`/api/orders/submissions/delete`), which had the identical hole: it released the
+deletion reservation whenever nothing was confirmed removed. The full suite shows **9 failures,
 identical to production main** — all live-database tests requiring `.env.local`.
 TypeScript and the production build are clean; ESLint is unchanged from baseline.
 
