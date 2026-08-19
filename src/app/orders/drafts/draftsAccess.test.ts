@@ -480,24 +480,54 @@ describe('the drafts list', () => {
     assert.equal(draftStatusLabel(null), '—')
   })
 
-  test('a row carries the client, the file, the count, the total and the time', () => {
-    const entry = describeDraftListEntry(submission(), 12, formatInr)
+  test('a row carries the client, both people, the product value and the state', () => {
+    const entry = describeDraftListEntry(submission(), formatInr, { uploader: 'Priya Nair' })
     assert.equal(entry.client, 'Meridian Hotels')
-    assert.equal(entry.reference, 'PI-Meridian-Aug.xlsx')
-    assert.equal(entry.itemCount, 12)
-    assert.equal(entry.itemCountLabel, '12 products')
-    assert.equal(entry.grandTotal, '₹2,95,000')
+    assert.equal(entry.authoredBy, 'Ravi', 'the workbook’s own author')
+    assert.ok(entry.authoredOn.includes('2026'), 'and the date the document carries')
+    assert.equal(entry.uploader, 'Priya Nair', 'the app user who uploaded it')
+    assert.ok(entry.uploadedAt.includes('2026'), 'and when they did')
+    assert.equal(entry.productValue, '₹2,50,000', 'the goods, before costs and GST')
+    assert.equal(entry.grandTotal, '₹2,95,000', 'and what the client is billed')
     assert.equal(entry.statusLabel, 'Draft')
     assert.equal(entry.href, '/orders/drafts/11111111-1111-4111-8111-111111111111')
-    assert.ok(entry.savedAt.includes('2026'), 'and when it was last written')
   })
 
-  test('one product reads as one product', () => {
-    assert.equal(describeDraftListEntry(submission(), 1, formatInr).itemCountLabel, '1 product')
-    assert.equal(describeDraftListEntry(submission(), 0, formatInr).itemCountLabel, '0 products')
+  test('the two people are read from DIFFERENT places and never substituted', () => {
+    // A PI is written by one person and uploaded by another as a matter of
+    // routine. source_created_by is a name typed into the workbook by somebody
+    // who may have no login at all; the uploader is an app user. Neither may
+    // stand in for the other when it is missing.
+    const entry = describeDraftListEntry(
+      submission({ source_created_by: null }), formatInr, { uploader: 'Priya Nair' })
+    assert.equal(entry.authoredBy, '—', 'a blank author is a dash, not the uploader')
+    assert.equal(entry.uploader, 'Priya Nair')
+
+    const unresolved = describeDraftListEntry(submission(), formatInr)
+    assert.equal(unresolved.uploader, '—', 'an unresolved name is a dash, never a uuid')
+    assert.equal(unresolved.authoredBy, 'Ravi', 'and it does not disturb the workbook’s author')
   })
 
-  test('the reference is the uploaded FILE, never the number printed on it', () => {
+  test('the list no longer reads the file name, the count or the last write', () => {
+    // None of the three decided anything, and the product count cost a second
+    // unbounded read on every page load to print a number nobody acts on.
+    const view = read(DRAFTS_VIEW)
+    const listColumns = /PI_DRAFT_LIST_COLUMNS = \[([\s\S]*?)\]\.join/.exec(view)?.[1] ?? ''
+    assert.ok(listColumns.length > 0, 'the list column set must be readable')
+    assert.ok(!listColumns.includes("'source_workbook_name'"),
+      'the file name is not selected by the list any more')
+    assert.ok(listColumns.includes("'gross_product_amount'"))
+    assert.ok(listColumns.includes("'grand_total'"), 'both money figures are read')
+    assert.ok(listColumns.includes("'source_created_by'"))
+    assert.ok(listColumns.includes("'creation_date'"))
+
+    const page = read(LIST_PAGE)
+    assert.ok(!page.includes('order_submission_items'),
+      'the product-line count query went with the column it fed')
+    assert.ok(!page.includes('fetchAllRows'), 'and so did its paging helper')
+  })
+
+  test('the list never shows an order number, in any phase', () => {
     // The workbook's own B20 is normally the number of whatever older PI this
     // one was copied from. On a list it can only be read as this order's
     // number, and an imported PI has none until approval allocates one.
@@ -530,16 +560,39 @@ describe('the drafts list', () => {
 
   test('a draft with no client name still identifies itself', () => {
     const entry = describeDraftListEntry(
-      submission({ client_name: null, bill_to_name: null, source_workbook_name: null }), 0, formatInr,
+      submission({ client_name: null, bill_to_name: null }), formatInr,
     )
     assert.equal(entry.client, 'Unnamed client')
-    assert.equal(entry.reference, '—')
+    assert.equal(entry.productValue, '₹2,50,000')
     assert.equal(entry.grandTotal, '₹2,95,000')
   })
 
-  test('a workbook with no grand total shows a dash, never a zero', () => {
-    const entry = describeDraftListEntry(submission({ grand_total: null }), 3, formatInr)
-    assert.equal(entry.grandTotal, '—', '₹0 would be a figure nobody wrote')
+  test('a missing money figure shows a dash, never a zero', () => {
+    // ₹0 would be a figure nobody wrote, and the two are independent: a workbook
+    // can print one and not the other.
+    const noProduct = describeDraftListEntry(submission({ gross_product_amount: null }), formatInr)
+    assert.equal(noProduct.productValue, '—')
+    assert.equal(noProduct.grandTotal, '₹2,95,000', 'and the other figure is unaffected')
+
+    const noTotal = describeDraftListEntry(submission({ grand_total: null }), formatInr)
+    assert.equal(noTotal.grandTotal, '—')
+    assert.equal(noTotal.productValue, '₹2,50,000')
+  })
+
+  test('the row states both money figures, and never one as the other', () => {
+    // The gap between them is discount, fabric, packing, transport and GST. A
+    // list that showed one under a label meaning the other would misprice every
+    // order on the screen.
+    const page = read(LIST_PAGE)
+    assert.ok(page.includes('{entry.productValue}'))
+    assert.ok(page.includes('{entry.grandTotal}'))
+    assert.ok(page.includes("'Product value', 'Grand total'"),
+      'and the headers stand beside each other, in that order')
+  })
+
+  test('a PI with no creation date on it shows a dash', () => {
+    const entry = describeDraftListEntry(submission({ creation_date: null }), formatInr)
+    assert.equal(entry.authoredOn, '—')
   })
 
   test('the empty state is the agreed sentence', () => {
@@ -571,13 +624,16 @@ describe('the drafts list', () => {
       'the failure branch is decided before the emptiness branch')
   })
 
-  test('the item count cannot be silently truncated by PostgREST', () => {
+  test('the list makes exactly two reads, and neither can be silently truncated', () => {
+    // The product-line count was the only unbounded read on this screen, and it
+    // existed to print a number nobody acted on. What remains is the submissions
+    // themselves, capped by an explicit LIST_LIMIT, and one `in` lookup of the
+    // people named on them — bounded by the rows already fetched.
     const source = read(LIST_PAGE)
-    assert.ok(source.includes('fetchAllRows'),
-      'a capped response would print a wrong product count with total confidence')
-    assert.ok(source.includes('if (!items.ok || items.truncated)'))
-    assert.ok(source.includes(".order('id', { ascending: true })"),
-      'paging needs a deterministic order on a unique column')
+    assert.equal((source.match(/\.from\('order_submissions'\)/g) ?? []).length, 1)
+    assert.ok(source.includes('.limit(LIST_LIMIT)'), 'the listing states its own cap')
+    assert.ok(!source.includes('order_submission_items'),
+      'the count query is gone, and with it the only read that could be capped')
   })
 
   test('the list is newest first', () => {
@@ -1352,9 +1408,18 @@ describe('the drafts list carries the review queue', () => {
       'while the working list keeps the wording it had')
   })
 
-  test('names are read only when there is a queue to read', () => {
-    assert.ok(source.includes('reviewerRef.current\n      ? [...new Set(rows.filter(r => r.status === \'submitted\''),
-      'an employee’s own list names nobody, so the query is skipped')
+  test('both people are resolved in ONE read, and a submitter only for a reviewer', () => {
+    // Every row names its uploader now, so a name read happens for an employee's
+    // own list too — resolving exactly one id, their own. The SUBMITTER is still
+    // read only by somebody who has a queue, because only that queue states it.
+    assert.equal((source.match(/\.from\('users'\)\s*\n\s*\.select\('id, full_name'\)/g) ?? []).length, 1,
+      'one batched lookup, never one query per row')
+    assert.ok(source.includes('rows.map(r => r.created_by).filter'),
+      'the uploader is resolved for every row')
+    assert.ok(source.includes('reviewerRef.current'),
+      'and the submitter only where there is a queue')
+    assert.ok(source.includes("names.get(row.created_by) ?? null"),
+      'an unresolved name falls through to a dash rather than an id')
   })
 
   test('no navigation entry or dashboard was added', () => {
