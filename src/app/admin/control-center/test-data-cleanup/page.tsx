@@ -251,91 +251,63 @@ function TestDataCleanupInner() {
     setRunErr('')
     setStorageWarning('')
 
-    // Order Request attachments live in a private, DRAFT-ONLY-deletable bucket, so
-    // their objects are removed by the admin-only, DB-authoritative purge route
-    // (which loads each request's paths from the database itself — the browser
-    // never supplies them). This is done BEFORE the bulk DB delete: if any purge
-    // fails we ABORT and never delete the rows, so the metadata (and its
-    // discoverable paths) survive for a retry. Nothing is left as an
-    // undiscoverable orphaned file.
-    const requestIds = preview.to_delete.filter(r => r.type === 'order_request').map(r => r.id)
-    for (const requestId of requestIds) {
-      let purgeFailed = true
-      try {
-        const purgeRes = await fetch('/api/orders/requests/attachments/cleanup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requestId }),
-        })
-        const purgeBody = await purgeRes.json().catch(() => null)
-        purgeFailed = !purgeRes.ok || (purgeBody?.failed?.length ?? 0) > 0
-      } catch {
-        purgeFailed = true
-      }
-      if (purgeFailed) {
-        // Row + metadata left intact and discoverable. Nothing was DB-deleted.
-        setRunning(false)
-        setRunErr('One or more Order Request attachment files could not be removed from storage. Nothing was deleted — please retry.')
-        return
-      }
+    // ONE REQUEST. The browser does not coordinate destructive steps.
+    //
+    // WHY IT USED TO, AND WHY IT MUST NOT. This page previously purged Order
+    // Request attachments, then purged the PI's files, then called the delete
+    // RPC — three calls with nothing durable joining them. A sweep that removes
+    // some objects and then fails, or a sweep that succeeds followed by an RPC
+    // that refuses, both end the same way: an approved PI surviving with its
+    // workbook and images destroyed. A tab closed between two of the calls does
+    // it too.
+    //
+    // The route now owns the whole sequence behind a DURABLE CLAIM taken in the
+    // database — every gate first, records frozen, files removed, then the rows.
+    // A failure anywhere leaves the rows whole and the claim standing, and
+    // pressing the button again resumes exactly where it stopped.
+    //
+    // This page sends what the ADMIN typed and nothing else: no path, no
+    // submission id, no claim token. Every destructive target is derived from
+    // the database inside the claim.
+    let body: Record<string, unknown> | null = null
+    let ok = false
+    try {
+      const res = await fetch('/api/orders/test-data-cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rootType:     preview.root_type,
+          rootId:       preview.root_id,
+          reason,
+          confirmation: typed,
+        }),
+      })
+      ok = res.ok
+      body = await res.json().catch(() => null)
+    } catch {
+      setRunning(false)
+      setRunErr('The cleanup could not be reached. Nothing was deleted — please retry.')
+      return
     }
 
-    // The PI submission an Order was created from lives in the private
-    // order-files bucket, whose DELETE policy admits the OWNER of a DRAFT only —
-    // never an administrator, and never for an APPROVED PI. So its objects are
-    // removed by the admin-only, DB-authoritative route, which derives the
-    // submission FROM THE ORDER ITSELF: the browser sends one order id and never
-    // a submission id, never a prefix and never a path.
-    //
-    // BEFORE the bulk DB delete, and for the same reason the Order Request purge
-    // above is: if it fails we ABORT and delete nothing, so the PI row survives
-    // and its file keys stay discoverable from it for a retry. Losing the row
-    // first would strand objects nothing can name any more.
-    //
-    // An Order converted from an Order Request carries no PI at all; the route
-    // answers `skipped` for that and the cleanup proceeds untouched.
-    const orderIds = preview.to_delete.filter(r => r.type === 'order').map(r => r.id)
-    for (const orderId of orderIds) {
-      let piPurgeFailed = true
-      try {
-        const piRes = await fetch('/api/orders/submissions/test-cleanup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId }),
-        })
-        const piBody = await piRes.json().catch(() => null)
-        piPurgeFailed = !piRes.ok || (piBody?.failed?.length ?? 0) > 0
-      } catch {
-        piPurgeFailed = true
-      }
-      if (piPurgeFailed) {
-        setRunning(false)
-        setRunErr('The PI files for this Order could not be removed from storage. Nothing was deleted — please retry.')
-        return
-      }
-    }
-
-    const { data, error } = await supabase.rpc('execute_test_data_cleanup', {
-      p_root_type:    preview.root_type,
-      p_root_id:      preview.root_id,
-      p_reason:       reason,
-      p_confirmation: typed,
-    })
-
-    if (error) {
+    if (!ok) {
       // The reason and the typed confirmation are deliberately preserved: the
       // failure is usually something the admin can fix and retry, and making
       // them retype the confirmation adds friction without adding safety.
       setRunning(false)
-      setRunErr(error.message)
+      setRunErr(typeof body?.error === 'string'
+        ? body.error
+        : 'The cleanup did not complete. Nothing was deleted — please retry.')
       return
     }
 
-    const res = data as CleanupResult
+    const res = body as unknown as CleanupResult
 
     // Payment proofs live in a different bucket with a row-independent admin
-    // storage policy; they are removed after the commit from the RPC's own path
-    // list, as before. A failure is surfaced, never reported as a clean success.
+    // storage policy, and are removed AFTER the commit from the RPC's own path
+    // list — the safe side for them: a failure here strands files that the
+    // permanent audit still names, rather than destroying a proof whose payment
+    // record survives. A failure is surfaced, never reported as a clean success.
     const warnings: string[] = []
     if (res.storage_paths?.length) {
       const { data: removed, error: rmErr } =
