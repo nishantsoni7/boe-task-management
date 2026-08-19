@@ -748,76 +748,125 @@ cycle untouched.
 Status: **`20260916000000_order_submission_test_cleanup.sql` written, UNAPPLIED,
 awaiting Nishant's approval.**
 
-**The defect.** Phase C's provenance link points both ways, and both sides are
-`NO ACTION`:
+#### Two defects, not one
+
+**A — the reported one.** Phase C's provenance link points both ways, and both
+sides are `NO ACTION`:
 
 ```
 order_submissions.order_id           ->  orders(id)
 orders.source_order_submission_id    ->  order_submissions(id)
 ```
 
-Neither row can be deleted while the other exists. `execute_test_data_cleanup()`
-knew only how to release the older Order Request pair, so removing a test Order
-created from an approved PI failed in production on Order 0001 with a raw
-foreign-key violation.
+Neither row can be deleted while the other exists.
+`execute_test_data_cleanup()` knew only how to release the older Order Request
+pair, so removing a test Order created from an approved PI failed in production
+on Order 0001 with a raw foreign-key violation.
 
-**The fix.** The same remedy 20260706000000 already documents for the older pair,
-applied to this one. Inside the authorized cleanup transaction only:
+**B — found in review of the first fix.** Purging storage in one call and
+deleting rows in another is **unsafe**, and the comment claiming "a storage
+failure leaves a complete, retryable record" was **false**:
 
-1. clear `orders.source_order_submission_id` — the loop opens;
-2. delete the `order_submissions` row — items, images and activity cascade;
-3. delete the Order — its activity cascades.
+* `removeAllObjectsForSubmission()` deletes in batches and reports failures
+  *afterwards*, so a partial success is a real outcome;
+* even a completely successful sweep is followed by a *separate* database call
+  that can refuse — cleanup disabled meanwhile, eligibility changed, a dropped
+  connection, a closed laptop.
 
-Three guards gain the **existing** `boe.cleanup_context` exemption that the
-Order, Order Request and payment guards have carried since 20260705000000:
-`prevent_order_source_submission_change`, `order_submissions_guard_delete` and
-`order_submission_activity_guard_delete`. Neither foreign key is dropped,
-altered or made deferrable, and both uniqueness indexes are asserted present.
+Either way an approved PI survives **with its workbook and product images
+destroyed** — silent, permanent, and indistinguishable from a healthy record.
 
-**How a PI is judged to be test data.** `order_submissions` has no
-`is_test_data` column and does not gain one. An approved PI's only reason to
-exist is the Order it produced, the link is one-to-one in both directions and
-immutable, so the PI **inherits the Order's classification** — and the whole
-operation is refused if the two rows do not name each other.
+#### The fix: a durable claim
 
-**Eligibility.** Unchanged gates (admin, enabled setting, reason, exact typed
-confirmation, per-record test data), plus the PI in the chain and an explicit
-provenance assertion under the locks. The cleanup context is still set only
-after every gate.
+The remedy 20260914000000 already uses for ordinary PI deletion.
 
-**Storage.** PI files are removed **before** the database rows, by a new
-admin-only route `/api/orders/submissions/test-cleanup`, which takes an **order
-id** and derives the submission and its keys from the database — never a
-submission id and never a path from the browser. It reuses the established
-bounded-concurrency, settled, no-timeout sweep. A storage failure aborts the
-operation and deletes nothing, so the record survives with its keys still
-discoverable.
+1. **`begin_test_data_cleanup(root, reason, confirmation)`** — every gate, the
+   chain resolved, the rows locked, the provenance pair proved, the permanent
+   audit written, and a durable claim taken. Nothing is destroyed. The Order and
+   the PI are **frozen**: no competing claim, no mutation.
+2. The server route removes Order Request attachments and PI files with the
+   bounded, fully-settled sweeps. Both read their keys from the database.
+3. **`finalize_test_data_cleanup(token)`** — re-lock, re-validate, open the
+   cleanup context, break the Order's reference to the PI, delete the PI and its
+   children, delete the Order, complete the audit, reclaim the freed Order
+   numbers, consume the claim.
 
-**Numbering.** Untouched. The cleanup does not reset or reduce
-`order_number_cycle`. A freed number becomes reusable only in the sense it
-always has: with no Order holding it, `set_next_confirmed_order_number()` accepts
-it, because its rule is "> the highest existing Order number". The admin still
-decides.
+**Failure handling.** Nothing removed → `release_test_data_cleanup(token)` gives
+the records back whole. *Anything* removed → **the claim is kept**, the rows stay
+untouched and the records stay frozen; running it again re-claims, removes what
+remains and finalizes. Finalization is **idempotent**, so a lost response is safe.
 
-**Also fixed.** The Order detail Activity trail rendered the raw event key
+**Why the claim, not the settings row, authorises finalization.** Once a file is
+destroyed there is no way back, so refusing to finalize would leave exactly the
+corruption this design prevents. The five gates are enforced at claim time, when
+nothing has happened; a cleanup disabled between the steps stops the *next* claim
+and does not strand this one.
+
+**The single-call door is closed.** `execute_test_data_cleanup()` is retired — it
+raises `CLEANUP_USE_CLAIM_PROTOCOL` rather than being dropped, so a stale client
+gets a message instead of a missing function.
+
+#### Deletion order
+
+`clear orders.source_order_submission_id` → `delete order_submissions` (items,
+images and activity cascade) → `delete orders` (its activity cascades). Both
+directions of the mutual foreign key hold at every moment. Three guards gain the
+**existing** `boe.cleanup_context` exemption the Order, Order Request and payment
+guards have carried since 20260705000000. Neither foreign key is dropped, altered
+or made deferrable.
+
+#### How a PI is judged to be test data
+
+`order_submissions` has no `is_test_data` column and does not gain one. An
+approved PI's only reason to exist is the Order it produced; the link is
+one-to-one in both directions and immutable, so the PI **inherits the Order's
+classification** — and the operation is refused, with a reason, if the two rows
+do not name each other.
+
+#### Order numbering
+
+Finalization gives back **only the numbers this cleanup freed from the top of the
+range**, walking the cycle down while the number immediately below it is one just
+deleted. Deleting the only Order, 0001, therefore returns the cycle to 1 and
+**0001 is genuinely reusable with no manual repair**. Deleting 0025 while 0050
+survives changes nothing. It never advances the cycle, never goes below the
+highest surviving Order + 1, and never touches `configured_at` / `configured_by`
+— an administrator who deliberately set the cycle to 1000 has said something, and
+a test deletion is not a reason to unsay it.
+
+#### The browser makes one request
+
+`/api/orders/test-data-cleanup` owns claim → storage → finalize. The page sends
+the root type, root id, reason and confirmation, and **nothing else** — no path,
+no submission id, no claim token. The claim token never reaches a response body.
+Payment proofs are still removed after the commit, from their own bucket.
+
+#### Also fixed
+
+The Order detail Activity trail rendered the raw event key
 `order_created_from_pi_submission`; it now reads **"Order created from PI
 submission"**, in the same green as the other Order-created event.
 
-**Still excluded.** Normal PI deletion rules, real Order and real approved PI
-protection, final approval, numbering, payments and unrelated UI are all
-unchanged.
+#### Still excluded
 
-**Test status.** A new suite, `testDataCleanupPiSchema.test.ts`, covers the
-deletion order, the three exemptions, the provenance refusals, the server-side
-key derivation, the storage-before-rows sequencing and the Activity label. The
-full suite shows **9 failures, identical to production main** — all live-database
-tests requiring `.env.local`. TypeScript and the production build are clean;
-ESLint is unchanged from baseline.
+Normal PI deletion rules, real Order and real approved PI protection, final
+approval, the advance workflow, payments and unrelated UI are all unchanged.
 
-The database behaviour was proven by applying the real migration history to a
-throwaway local PostgreSQL 16, **reproducing the production error verbatim**, and
-then confirming the fix: the complete transaction is removed, no orphan survives
-in either direction, a real Order and a real approved PI stay undeletable, a
-disagreeing provenance pair is refused with a reason, every bypass attempt fails,
-the existing Order Request and payment cleanups still work, and `0001` becomes
-accepted by the admin number setter afterwards.
+#### Test status
+
+`testDataCleanupPiSchema.test.ts` covers the claim, the freeze, the gate
+ordering, idempotent finalization, the deletion order, the number-reclaim rule,
+the retired door and the one-request page. The full suite shows **9 failures,
+identical to production main** — all live-database tests requiring `.env.local`.
+TypeScript and the production build are clean; ESLint is unchanged from baseline.
+
+All ten failure windows were exercised against a throwaway local PostgreSQL 16
+with the real migration history applied: partial storage deletion then failure
+(rows and claim intact, retry finishes); finalize failing then succeeding once;
+a lost response (repeat finalize deletes nothing twice); cleanup disabled between
+claim and finalize (new claim refused, existing one still completes); two
+concurrent requests (`CLEANUP_CLAIMED_BY_OTHER`); wrong and consumed tokens; real
+Order and real PI impossible to claim; no orphan in either database or storage;
+Order Request and payment cleanups unchanged; and Order 0001 reissued to a new
+Order afterwards.
+

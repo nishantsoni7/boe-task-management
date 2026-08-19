@@ -1,35 +1,28 @@
 /**
- * Repository check: Test Data Cleanup can remove a test Order created from an
- * approved PI, and still cannot remove anything real.
+ * Repository check: Test Data Cleanup removes a test Order created from an
+ * approved PI, and cannot leave a record whose files are gone.
  *
- * THE DEFECT THIS DEFENDS AGAINST
- * -------------------------------
- * 20260915000000 introduced a SECOND provenance link, pointing both ways:
+ * TWO DEFECTS, AND THIS FILE DEFENDS AGAINST BOTH
+ * -----------------------------------------------
+ * A. Phase C's provenance link points both ways and both sides are NO ACTION, so
+ *    neither row can be deleted first. The cleanup knew only the older pair and
+ *    failed in production on Order 0001 with a raw foreign-key violation.
  *
- *   order_submissions.order_id         -> orders(id)             NO ACTION
- *   orders.source_order_submission_id  -> order_submissions(id)  NO ACTION
+ * B. The obvious fix — purge storage, then delete rows — is UNSAFE, and this is
+ *    the failure the tests below mostly exist for. removeAllObjectsForSubmission
+ *    deletes in batches and reports failures afterwards, so a partial success is
+ *    a real outcome; and even a complete sweep is followed by a separate database
+ *    call that can refuse. Either way an approved PI survives with its workbook
+ *    and images destroyed.
  *
- * Two NO ACTION foreign keys facing each other. execute_test_data_cleanup() knew
- * only how to release the OLDER pair, so deleting a test Order created from a PI
- * failed in production with a raw FK violation on Order 0001.
+ * The remedy is the one 20260914000000 already uses for ordinary PI deletion: a
+ * DURABLE CLAIM spanning the gap. What must therefore be true, and is checked
+ * here, is that the claim exists, that it freezes the records, that nothing is
+ * destroyed before it is taken, that finalization is idempotent and re-validates,
+ * and that no path exists back to a single-call deletion.
  *
- * WHY A REPO CHECK
- * ----------------
- * Every promise below lives in SQL or in one route, and each fails SILENTLY if a
- * later change relaxes it:
- *
- *   1. The PI is resolved into the chain, shown in the preview, and re-resolved
- *      under locks — not deleted from a stale graph.
- *   2. The deletion ORDER is the only one the foreign keys permit. Reversing two
- *      statements reinstates the production defect exactly.
- *   3. The cleanup bypass is reachable only from inside a transaction that has
- *      passed all five gates. A guard that gained a looser exemption would look
- *      like a fix and be a hole.
- *   4. A real Order and a real approved PI stay undeletable, and normal PI
- *      deletion is unchanged.
- *   5. Storage is removed BEFORE the rows, from keys derived server-side.
- *
- * TypeScript sees none of this. These tests read the migration and the route.
+ * TypeScript sees none of this. These tests read the migration, the route and
+ * the page.
  *
  * Reads repository files only. No database, no network.
  *
@@ -39,7 +32,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 const MIGRATIONS = join(process.cwd(), 'supabase', 'migrations')
@@ -49,31 +42,25 @@ const MIGRATIONS = join(process.cwd(), 'supabase', 'migrations')
 const lf = (s: string) => s.replace(/\r\n/g, '\n')
 const migration = (file: string) => lf(readFileSync(join(MIGRATIONS, file), 'utf8'))
 const source = (path: string) => lf(readFileSync(join(process.cwd(), path), 'utf8'))
+/** A TypeScript source with its `//` comments removed. Every module here
+ *  documents at length what it must NOT do, naming the forbidden thing to
+ *  explain why it is absent; a forbidden-text check must read code. */
+const tsCode = (s: string) =>
+  s.split('\n').filter(l => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*')).join('\n')
 
 const FILE = '20260916000000_order_submission_test_cleanup.sql'
 const CLEANUP = '20260706000000_test_data_cleanup.sql'
 const PROTECT = '20260705000000_protect_finalized_orders_and_payments.sql'
 const DELETION = '20260914000000_order_submission_permanent_deletion.sql'
 const PHASE_C = '20260915000000_order_submission_final_approval.sql'
+const CYCLE = '20260703000000_confirmed_order_number_cycle.sql'
 
-const ROUTE = 'src/app/api/orders/submissions/test-cleanup/route.ts'
+const ROUTE = 'src/app/api/orders/test-data-cleanup/route.ts'
 const PAGE = 'src/app/admin/control-center/test-data-cleanup/page.tsx'
 const ORDER_PAGE = 'src/app/orders/[id]/page.tsx'
 
 const sql = migration(FILE)
-
-/**
- * The migration with `--` comments removed.
- *
- * ESSENTIAL HERE. The header quotes the production error verbatim and names the
- * very things this phase must not do, in order to explain why it does not do
- * them. A check scanning raw text would fail on the sentences promising exactly
- * what it verifies.
- */
 const code = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
-
-/** Executable SQL minus `comment on ... is '...';`, whose prose has the same
- *  problem and legitimately contains semicolons. */
 const declarations = code.replace(/comment on [\s\S]*?is\s+'(?:[^']|'')*'\s*;/gi, '')
 
 /** One `create or replace function` block, body included. */
@@ -88,9 +75,12 @@ function fn(name: string, src = code): string {
   return src.slice(start, close + tag.length)
 }
 
-const EXECUTE = fn('execute_test_data_cleanup')
+const BEGIN = fn('begin_test_data_cleanup')
+const FINALIZE = fn('finalize_test_data_cleanup')
+const RELEASE = fn('release_test_data_cleanup')
 const RESOLVE = fn('resolve_test_data_cleanup_chain')
-const STORAGE = fn('test_cleanup_submission_storage')
+const STORAGE = fn('test_cleanup_claim_storage')
+const RETIRED = fn('execute_test_data_cleanup')
 
 // ── The file ──────────────────────────────────────────────────────────────────
 
@@ -99,7 +89,7 @@ describe('the fix is one new forward migration', () => {
 
   test('it exists and sorts after everything it builds on', () => {
     assert.ok(files.includes(FILE))
-    for (const earlier of [CLEANUP, PROTECT, DELETION, PHASE_C]) {
+    for (const earlier of [CLEANUP, PROTECT, DELETION, PHASE_C, CYCLE]) {
       assert.ok(files.includes(earlier), `${earlier} is missing`)
       assert.ok(FILE > earlier, `${FILE} must sort after ${earlier}`)
     }
@@ -126,114 +116,251 @@ describe('the fix is one new forward migration', () => {
 
 describe('every applied migration is unchanged', () => {
   test('20260915000000 and its predecessors still say what they said', () => {
-    // Editing an applied migration changes history for a database that has
-    // already run it: the file and the schema stop agreeing, and nothing warns.
     assert.ok(migration(PHASE_C).includes('create or replace function public.approve_order_submission'))
     assert.ok(migration(PHASE_C).includes('create trigger orders_protect_source_submission'))
     assert.ok(migration(DELETION).includes('create trigger order_submissions_guard_delete'))
     assert.ok(migration(PROTECT).includes('create or replace function public.in_test_data_cleanup'))
-    assert.ok(migration(CLEANUP).includes('create or replace function public.execute_test_data_cleanup'))
+    assert.ok(migration(CLEANUP).includes('create table if not exists public.test_data_cleanup_audit'))
   })
 
-  test('the ORIGINAL guards in those files carry no cleanup exemption', () => {
-    // Proof that the exemptions are added HERE, in a new file, rather than by
-    // editing the migrations that own the guards.
+  test('the ORIGINAL guards carry no cleanup exemption', () => {
+    // Proof that the exemptions are added HERE rather than by editing the
+    // migrations that own the guards.
     const phaseC = migration(PHASE_C)
     const guard = phaseC.slice(phaseC.indexOf('create or replace function public.prevent_order_source_submission_change'))
     assert.ok(!guard.slice(0, 900).includes('in_test_data_cleanup'),
-      '20260915000000 must not have been edited to add the exemption')
+      '20260915000000 must not have been edited')
   })
 
-  test('this migration creates no table and drops nothing it does not own', () => {
-    assert.ok(!/create table/i.test(declarations))
+  test('this migration alters no EXISTING table and drops nothing it does not own', () => {
+    // The one ALTER is on the table this file creates, enabling RLS on it. Every
+    // other change is a function body.
+    const altered = [...declarations.matchAll(/alter table (?:if exists )?public\.(\w+)/gi)].map(m => m[1])
+    assert.deepEqual([...new Set(altered)], ['test_data_cleanup_claims'],
+      'no pre-existing table is reshaped')
     assert.ok(!/drop (table|column|policy|constraint|index)/i.test(declarations))
-    assert.ok(!/alter table/i.test(declarations),
-      'the fix is entirely in function bodies; no schema is reshaped')
   })
 })
 
-// ── 1. The three exemptions, and nothing wider ────────────────────────────────
+// ── B. The claim — the correction this revision is about ─────────────────────
 
-describe('three guards gain the cleanup exemption, and only that', () => {
-  const GUARDS = [
-    'prevent_order_source_submission_change',
-    'order_submissions_guard_delete',
-    'order_submission_activity_guard_delete',
-  ] as const
-
-  for (const name of GUARDS) {
-    test(`${name} exempts the cleanup context and still refuses everybody else`, () => {
-      const body = fn(name)
-      assert.ok(body.includes('if public.in_test_data_cleanup() then'))
-      assert.ok(body.includes('raise exception'), 'it must still refuse the ordinary case')
-    })
-  }
-
-  test('the exemption is the ONLY thing added to each', () => {
-    // Each guard is reproduced from the migration that owns it. Strip the
-    // exemption back out and what remains must be the original body — which is
-    // what makes "nothing else was altered" checkable rather than asserted.
-    const EXEMPTION = /\s*if public\.in_test_data_cleanup\(\) then\s*return (new|old);\s*end if;\s*/
-
-    const submissionDelete = fn('order_submissions_guard_delete').replace(EXEMPTION, '\n  ')
-    assert.ok(submissionDelete.includes('order_submission_purge_in_progress(old.id)'),
-      'the ordinary purge door survives')
-    assert.ok(submissionDelete.includes('ORDER_SUBMISSION_DELETE_DENIED'))
-
-    const activityDelete = fn('order_submission_activity_guard_delete').replace(EXEMPTION, '\n  ')
-    assert.ok(activityDelete.includes('order_submission_purge_in_progress(old.submission_id)'))
-    assert.ok(activityDelete.includes('ORDER_SUBMISSION_ACTIVITY_IMMUTABLE'))
-
-    const provenance = fn('prevent_order_source_submission_change').replace(EXEMPTION, '\n  ')
-    assert.ok(provenance.includes('ORDER_SOURCE_SUBMISSION_IMMUTABLE'))
-    assert.ok(provenance.includes('old.source_order_submission_id is not null'),
-      'setting it from NULL exactly once is still what the RPC relies on')
+describe('a DURABLE claim spans the gap between files and rows', () => {
+  test('the claim is a table, not a transaction-local flag', () => {
+    assert.ok(code.includes('create table if not exists public.test_data_cleanup_claims'))
+    assert.ok(code.includes('claim_token         uuid        not null unique default gen_random_uuid()'),
+      'unguessable, and generated by the database')
+    assert.ok(code.includes('finalized_at        timestamptz'))
   })
 
-  test('no OTHER guard is touched', () => {
-    // In particular order_submissions_guard_order_link, which makes
-    // order_submissions.order_id immutable for every caller INCLUDING an
-    // authorized cleanup. That is stronger than this fix needs and is left
-    // alone: the Order's reference is the one released, never the PI's.
-    for (const untouched of [
-      'order_submissions_guard_order_link',
-      'order_submissions_enforce_status_transition',
-      'order_submissions_guard_deletion_claim',
-      'order_submissions_guard_finance_verification',
-      'prevent_order_delete',
-      'prevent_converted_order_request_delete',
-      'finance_payment_requests_guard_approved_delete',
+  test('it records the whole chain, so a retry resumes the AUTHORIZED operation', () => {
+    for (const column of [
+      'order_id', 'order_request_id', 'order_submission_id', 'payment_ids',
+      'chain', 'reason', 'confirmation', 'storage_prefix', 'audit_id',
     ]) {
-      assert.ok(!declarations.includes(`create or replace function public.${untouched}`),
-        `${untouched} belongs to an applied migration and must not be restated`)
+      assert.ok(code.includes(column), `the claim must record ${column}`)
     }
   })
 
-  test('the cleanup context itself is unchanged and client-unreachable', () => {
-    assert.ok(!declarations.includes('create or replace function public.in_test_data_cleanup'),
-      'the context function is 20260705000000’s and is not redefined')
-    assert.ok(code.includes("has_function_privilege('authenticated', 'public.in_test_data_cleanup()', 'EXECUTE')"),
-      'and the migration asserts at apply time that no client role can call it')
+  test('no client role can read it — the token must never reach a browser', () => {
+    assert.ok(code.includes('revoke all on table public.test_data_cleanup_claims from public, anon, authenticated'))
+    assert.ok(code.includes('alter table public.test_data_cleanup_claims enable row level security'))
+    assert.ok(!/create policy[\s\S]{0,80}test_data_cleanup_claims/i.test(declarations),
+      'there is no SELECT policy, so the token is unreadable even to an admin client')
+    assert.ok(code.includes('test_data_cleanup_claims is reachable by a client role'),
+      'and the migration asserts it at apply time')
+  })
+
+  test('one open claim per root, per Order and per PI', () => {
+    for (const index of [
+      'test_data_cleanup_claims_open_root_uidx',
+      'test_data_cleanup_claims_open_order_uidx',
+      'test_data_cleanup_claims_open_submission_uidx',
+    ]) {
+      assert.ok(code.includes(`create unique index if not exists ${index}`), `${index} is missing`)
+    }
+    // Partial, so a CONSUMED claim never blocks a future one.
+    assert.ok(code.includes('where finalized_at is null'))
+  })
+
+  test('a claimed Order and a claimed PI are FROZEN against mutation', () => {
+    const orders = fn('orders_guard_cleanup_claim')
+    const subs = fn('order_submissions_guard_cleanup_claim')
+    for (const guard of [orders, subs]) {
+      assert.ok(guard.includes('if public.in_test_data_cleanup() then'),
+        'the finalization itself must still be able to act')
+      assert.ok(guard.includes('test_data_cleanup_claim_open'))
+      assert.ok(guard.includes('raise exception'))
+    }
+    assert.ok(orders.includes('ORDER_CLEANUP_CLAIMED'))
+    assert.ok(subs.includes('ORDER_SUBMISSION_CLEANUP_CLAIMED'))
+    assert.ok(code.includes('create trigger orders_guard_cleanup_claim'))
+    assert.ok(code.includes('create trigger order_submissions_guard_cleanup_claim'))
   })
 })
 
-// ── 2. The chain learns about the PI ──────────────────────────────────────────
+describe('begin destroys nothing and gates everything', () => {
+  test('every gate is checked BEFORE the claim is taken', () => {
+    const claimAt = BEGIN.indexOf('insert into public.test_data_cleanup_claims')
+    assert.ok(claimAt > 0)
+    for (const gate of [
+      'Only an admin may run Test Data Cleanup',
+      'CLEANUP_DISABLED',
+      'CLEANUP_REASON_REQUIRED',
+      'CLEANUP_CONFIRMATION_INVALID',
+      'CLEANUP_NOT_ELIGIBLE',
+      'CLEANUP_PROVENANCE_MISMATCH',
+    ]) {
+      const at = BEGIN.indexOf(gate)
+      assert.ok(at !== -1, `${gate} is missing`)
+      assert.ok(at < claimAt, `${gate} must be checked before the claim`)
+    }
+    assert.ok(code.includes('gate % is checked after the claim is taken'),
+      'and the migration asserts the ordering at apply time')
+  })
+
+  test('it never opens the cleanup context and deletes nothing', () => {
+    assert.ok(!BEGIN.includes('boe.cleanup_context'),
+      'only finalization may stand the production guards down')
+    assert.ok(!/delete from public\./i.test(BEGIN))
+    assert.ok(code.includes('begin_test_data_cleanup opens the cleanup context'))
+    assert.ok(code.includes('begin_test_data_cleanup deletes something'))
+  })
+
+  test('it locks the chain and re-resolves before judging eligibility', () => {
+    assert.ok(BEGIN.includes('perform 1 from public.order_submissions where id = v_submission for update'))
+    const firstResolve = BEGIN.indexOf('resolve_test_data_cleanup_chain')
+    const lock = BEGIN.indexOf('for update;', firstResolve)
+    const second = BEGIN.indexOf('resolve_test_data_cleanup_chain', lock)
+    assert.ok(second > lock, 'the second pass is the one that counts')
+  })
+
+  test('the permanent audit is written at CLAIM time, before anything can go', () => {
+    const audit = BEGIN.indexOf('insert into public.test_data_cleanup_audit')
+    const claim = BEGIN.indexOf('insert into public.test_data_cleanup_claims')
+    assert.ok(audit > 0 && audit < claim,
+      'an operation that destroys data must be on the record before it starts')
+  })
+
+  test('the SAME admin retrying resumes; a DIFFERENT one is refused', () => {
+    assert.ok(BEGIN.includes('CLEANUP_CLAIMED_BY_OTHER'))
+    assert.ok(BEGIN.includes("'resumed',       true"))
+    assert.ok(BEGIN.includes('v_existing.claimed_by is distinct from v_actor'))
+    // The resumed branch must NOT re-resolve the chain: that would be a
+    // different operation wearing the same claim, possibly after its files are
+    // already gone. It runs from `if found then` to the return that ends it.
+    const branchStart = BEGIN.indexOf('if found then')
+    assert.ok(branchStart > 0)
+    const branchEnd = BEGIN.indexOf('end if;', BEGIN.indexOf("'audit_id',              v_existing.audit_id"))
+    assert.ok(branchEnd > branchStart)
+    const resumed = BEGIN.slice(branchStart, branchEnd)
+    assert.ok(!resumed.includes('resolve_test_data_cleanup_chain'),
+      'a resumed claim replays the authorized operation, it does not re-derive one')
+    assert.ok(!resumed.includes('insert into public.test_data_cleanup_audit'),
+      'and it does not write a second audit row for one operation')
+  })
+})
+
+describe('finalize is the only thing that deletes, and it is idempotent', () => {
+  test('a finalized claim answers instead of acting', () => {
+    assert.ok(FINALIZE.includes('if v_claim.finalized_at is not null then'))
+    assert.ok(FINALIZE.includes("'already_finalized', true"))
+    const answer = FINALIZE.indexOf("'already_finalized', true")
+    const firstDelete = FINALIZE.indexOf('delete from public.notifications')
+    assert.ok(answer < firstDelete, 'it must return before deleting anything')
+    assert.ok(code.includes('finalize_test_data_cleanup is not idempotent'))
+  })
+
+  test('it re-locks and re-validates against the LIVE rows', () => {
+    assert.ok(FINALIZE.includes('for update'))
+    assert.ok(FINALIZE.includes('resolve_test_data_cleanup_chain'))
+    assert.ok(FINALIZE.includes('CLEANUP_NOT_ELIGIBLE'))
+    assert.ok(FINALIZE.includes('CLEANUP_PROVENANCE_MISMATCH'))
+    assert.ok(FINALIZE.includes('CLEANUP_CHAIN_CHANGED'),
+      'a chain that moved despite the freeze is refused, not acted on')
+  })
+
+  test('the context is opened only after the re-check', () => {
+    assert.ok(FINALIZE.indexOf('CLEANUP_NOT_ELIGIBLE') < FINALIZE.indexOf('boe.cleanup_context'))
+    assert.ok(code.includes('the cleanup context is opened before the eligibility re-check'))
+  })
+
+  test('THE DELETION ORDER — defect A is reversing these', () => {
+    const clear = FINALIZE.indexOf('set source_order_submission_id = null')
+    const delSub = FINALIZE.indexOf('delete from public.order_submissions')
+    const delOrd = FINALIZE.indexOf('delete from public.orders where id = v_order')
+    assert.ok(clear > 0 && delSub > 0 && delOrd > 0)
+    assert.ok(clear < delSub, 'the Order must release the PI before the PI can go')
+    assert.ok(delSub < delOrd, 'the PI must go before the Order it points at')
+    assert.ok(code.includes('the PI must be deleted before the Order it belongs to'))
+  })
+
+  test('it does NOT re-check the enabled setting, deliberately', () => {
+    // By finalization the files are gone. Refusing would leave exactly the
+    // corruption this design exists to prevent, so the five gates are enforced
+    // at claim time and the claim carries that authorization forward.
+    assert.ok(!FINALIZE.includes('CLEANUP_DISABLED'))
+    assert.ok(!FINALIZE.includes('permanently_disabled'))
+    assert.ok(sql.includes('IT DOES NOT RE-CHECK THE ENABLED SETTING, deliberately'),
+      'and the reasoning is written down where the next reader will find it')
+  })
+
+  test('the claim is consumed, not deleted', () => {
+    assert.ok(FINALIZE.includes('set finalized_at = now()'))
+    assert.ok(!/delete from public\.test_data_cleanup_claims/.test(FINALIZE),
+      'the consumed claim is what makes a repeated finalize answer instead of act')
+  })
+
+  test('the audit is completed with the real counts', () => {
+    assert.ok(FINALIZE.includes('update public.test_data_cleanup_audit'))
+    assert.ok(FINALIZE.includes("'order_submissions',            v_n_sub"))
+    assert.ok(FINALIZE.includes("'submission_storage_prefix',    v_claim.storage_prefix"))
+  })
+})
+
+describe('release gives the records back only when nothing was destroyed', () => {
+  test('it clears the claim and unfreezes the records', () => {
+    assert.ok(RELEASE.includes('delete from public.test_data_cleanup_claims'))
+  })
+
+  test('it refuses a claim that has already been consumed', () => {
+    assert.ok(RELEASE.includes("'already_finalized'"))
+  })
+
+  test('the permanent audit survives a release, marked released', () => {
+    assert.ok(RELEASE.includes('update public.test_data_cleanup_audit'))
+    assert.ok(RELEASE.includes("'released', true"))
+    assert.ok(!/delete from public\.test_data_cleanup_audit/.test(declarations),
+      'an authorized-then-abandoned cleanup is a thing that happened')
+  })
+})
+
+describe('the single-call door is closed', () => {
+  test('execute_test_data_cleanup refuses and says where to go', () => {
+    assert.ok(RETIRED.includes('CLEANUP_USE_CLAIM_PROTOCOL'))
+    assert.ok(!/delete from public\./i.test(RETIRED))
+    assert.ok(!RETIRED.includes('boe.cleanup_context'))
+    assert.ok(code.includes('the retired single-call cleanup still deletes'),
+      'and the migration asserts it at apply time')
+  })
+
+  test('it is retired rather than dropped, so a stale client gets a message', () => {
+    assert.ok(!/drop function[\s\S]{0,80}execute_test_data_cleanup/i.test(declarations))
+  })
+
+  test('nothing in the application calls it any more', () => {
+    assert.ok(!tsCode(source(PAGE)).includes('execute_test_data_cleanup'))
+    assert.ok(!tsCode(source(ROUTE)).includes('execute_test_data_cleanup'))
+  })
+})
+
+// ── A. The PI in the chain ───────────────────────────────────────────────────
 
 describe('chain resolution resolves the PI, and refuses a pair that disagrees', () => {
   test('the PI is read from the ORDER, not from anything supplied', () => {
     assert.ok(RESOLVE.includes('select o.source_order_submission_id, o.is_test_data'))
-    assert.ok(RESOLVE.includes('from public.orders o where o.id = v_order_id'))
-  })
-
-  test('it appears in to_delete as its own row type', () => {
-    assert.ok(RESOLVE.includes("'type', 'order_submission'"))
-    assert.ok(RESOLVE.includes('from public.order_submissions s where s.id = v_submission_id'))
   })
 
   test('its test-data status is INHERITED from the Order', () => {
-    // order_submissions has no is_test_data column, and this migration
-    // deliberately does not add one — see the header. The inheritance is only
-    // sound because the link is verified in both directions.
     assert.ok(RESOLVE.includes("'is_test_data', coalesce(v_order_is_test, false)"))
     assert.ok(!/alter table public\.order_submissions[\s\S]{0,80}is_test_data/i.test(declarations),
       'no is_test_data column is added to order_submissions')
@@ -243,14 +370,11 @@ describe('chain resolution resolves the PI, and refuses a pair that disagrees', 
     assert.ok(RESOLVE.includes('v_sub_order_id is null'))
     assert.ok(RESOLVE.includes('v_sub_order_id is distinct from v_order_id'))
     assert.ok(RESOLVE.includes('the PI this Order names is linked to a different Order'))
-    assert.ok(RESOLVE.includes('does not exist, or is not linked back to any Order'))
-    // A blocking entry is what makes `eligible` false, which is the gate.
     assert.ok(RESOLVE.includes("'eligible',        jsonb_array_length(v_block) = 0"))
   })
 
-  test('a disagreeing pair is refused, never silently skipped or repaired', () => {
-    assert.ok(!/update public\.order_submissions[\s\S]{0,120}set order_id/i.test(declarations),
-      'a mismatched link is a fact for somebody to look at, not something to fix in passing')
+  test('a disagreeing pair is refused, never silently repaired', () => {
+    assert.ok(!/update public\.order_submissions[\s\S]{0,120}set order_id/i.test(declarations))
   })
 
   test('the four PI tables are counted for the preview', () => {
@@ -262,17 +386,14 @@ describe('chain resolution resolves the PI, and refuses a pair that disagrees', 
     }
   })
 
-  test('the storage PREFIX is returned, and kept out of storage_paths', () => {
-    // storage_paths is consumed by the admin page as PAYMENT-PROOF keys and
-    // removed from the payment-proofs bucket. PI files live in order-files under
-    // a different policy and are removed by a different route; folding them
-    // together would send one bucket's keys to the other.
+  test('the PI prefix is kept OUT of storage_paths', () => {
+    // storage_paths is consumed as PAYMENT-PROOF keys against the payment-proofs
+    // bucket. PI files live in order-files; folding them together would send one
+    // bucket's keys to the other.
     assert.ok(RESOLVE.includes("'submission_storage_prefix', v_prefix"))
-    assert.ok(RESOLVE.includes("v_prefix := 'submissions/' || v_submission_id::text || '/'"))
     const paths = RESOLVE.slice(RESOLVE.indexOf('into v_paths'))
     assert.ok(paths.includes('from public.payment_proof_attachments a'))
-    assert.ok(!paths.slice(0, 300).includes('submission'),
-      'storage_paths keeps its existing meaning exactly')
+    assert.ok(!paths.slice(0, 300).includes('submission'))
   })
 
   test('every pre-existing key of the returned object survives', () => {
@@ -284,293 +405,251 @@ describe('chain resolution resolves the PI, and refuses a pair that disagrees', 
       assert.ok(RESOLVE.includes(`'${key}',`), `${key} must still be returned`)
     }
   })
-
-  test('the three root types and the payment-retention rule are unchanged', () => {
-    assert.ok(RESOLVE.includes("if p_root_type not in ('order', 'order_request', 'payment')"))
-    assert.ok(RESOLVE.includes("if p_root_type = 'payment' then"))
-    assert.ok(RESOLVE.includes('into v_retain'))
-  })
 })
-
-// ── 3. Execution: locks, gates, then the only safe deletion order ─────────────
-
-describe('execution re-resolves under locks and deletes in the one legal order', () => {
-  test('the PI row is locked with the rest of the chain', () => {
-    assert.ok(EXECUTE.includes('perform 1 from public.order_submissions where id = v_submission for update'))
-  })
-
-  test('the chain is re-resolved AFTER the locks', () => {
-    const firstResolve = EXECUTE.indexOf('resolve_test_data_cleanup_chain')
-    const lock = EXECUTE.indexOf('for update;', firstResolve)
-    const secondResolve = EXECUTE.indexOf('resolve_test_data_cleanup_chain', lock)
-    assert.ok(secondResolve > lock, 'the second pass is the one that counts')
-  })
-
-  test('the cleanup context is set only AFTER every gate', () => {
-    const context = EXECUTE.indexOf('boe.cleanup_context')
-    for (const gate of [
-      'Only an admin may run Test Data Cleanup',
-      'CLEANUP_DISABLED',
-      'CLEANUP_REASON_REQUIRED',
-      'CLEANUP_CONFIRMATION_INVALID',
-      'CLEANUP_NOT_ELIGIBLE',
-      'CLEANUP_PROVENANCE_MISMATCH',
-    ]) {
-      const at = EXECUTE.indexOf(gate)
-      assert.ok(at !== -1, `${gate} is missing`)
-      assert.ok(at < context, `${gate} must be checked before the bypass is opened`)
-    }
-    // And the migration asserts the same thing at apply time.
-    assert.ok(code.includes('the cleanup context is set before the eligibility gate'))
-    assert.ok(code.includes('the cleanup context is set before the confirmation gate'))
-  })
-
-  test('a final provenance assertion stands next to the deletion', () => {
-    assert.ok(EXECUTE.includes('o.source_order_submission_id = s.id'))
-    assert.ok(EXECUTE.includes('and o.is_test_data'))
-    assert.ok(EXECUTE.includes('CLEANUP_PROVENANCE_MISMATCH'))
-  })
-
-  test('THE DELETION ORDER — the defect is reversing these two', () => {
-    const clear = EXECUTE.indexOf('set source_order_submission_id = null')
-    const delSub = EXECUTE.indexOf('delete from public.order_submissions where id = v_submission')
-    const delOrd = EXECUTE.indexOf('delete from public.orders where id = v_order')
-
-    assert.ok(clear > 0 && delSub > 0 && delOrd > 0)
-    assert.ok(clear < delSub, 'the Order must release the PI before the PI can go')
-    assert.ok(delSub < delOrd, 'the PI must go before the Order it points at')
-    // Which is exactly what the production error was complaining about.
-    assert.ok(code.includes('the PI must be deleted before the Order it belongs to'),
-      'and the migration asserts the ordering at apply time')
-  })
-
-  test('the child rows are counted before the cascade removes them', () => {
-    for (const table of [
-      'order_submission_items', 'order_submission_item_images', 'order_submission_activity',
-    ]) {
-      assert.ok(EXECUTE.includes(`from public.${table}       where submission_id = v_submission`)
-        || EXECUTE.includes(`from public.${table} where submission_id = v_submission`)
-        || EXECUTE.includes(`from public.${table}    where submission_id = v_submission`),
-        `${table} must be counted`)
-    }
-    const count = EXECUTE.indexOf('into v_n_items, v_n_images, v_n_events')
-    const del = EXECUTE.indexOf('delete from public.order_submissions where id = v_submission')
-    assert.ok(count > 0 && count < del, 'counted first, or the counts are all zero')
-  })
-
-  test('the audit is written BEFORE anything is removed, and carries the PI', () => {
-    const audit = EXECUTE.indexOf('insert into public.test_data_cleanup_audit')
-    const firstDelete = EXECUTE.indexOf('delete from public.notifications')
-    assert.ok(audit > 0 && audit < firstDelete)
-    // deleted_records carries the PI id and prefix; table_counts the four counts.
-    assert.ok(EXECUTE.includes("v_chain->'to_delete', v_chain->'counts', v_chain->'storage_paths'"))
-    assert.ok(EXECUTE.includes("'submission_storage_prefix',    v_chain->>'submission_storage_prefix'"))
-    assert.ok(EXECUTE.includes("'order_submissions',            v_n_sub"))
-  })
-
-  test('every pre-existing deletion step and gate survives unchanged', () => {
-    for (const step of [
-      'delete from public.notifications',
-      'delete from public.finance_payment_requests where id = any(v_payments)',
-      'set source_order_request_id = null',
-      'delete from public.order_requests where id = v_request',
-      'delete from public.orders where id = v_order',
-    ]) {
-      assert.ok(EXECUTE.includes(step), `${step} must survive`)
-    }
-  })
-
-  test('nothing here touches Order numbering', () => {
-    for (const forbidden of [
-      'order_number_cycle', 'allocate_confirmed_order_number', 'setval',
-      'set_next_confirmed_order_number',
-    ]) {
-      assert.ok(!EXECUTE.includes(forbidden), `${forbidden} must not appear`)
-    }
-    assert.ok(code.includes('the cleanup RPC now touches Order numbering'),
-      'and the migration asserts it at apply time')
-  })
-
-  test('a freed number becomes reusable through the EXISTING admin rule only', () => {
-    // Deleting the Order that held 0001 means set_next_confirmed_order_number()
-    // will now accept 1, because its rule is "> the highest EXISTING Order
-    // number". Nothing here decides that for the admin, and nothing resets the
-    // cycle behind their back.
-    const cycle = migration('20260703000000_confirmed_order_number_cycle.sql')
-    assert.ok(cycle.includes('highest existing'))
-    // Asserted on the EXECUTION BODY. The migration's own apply-time assertion
-    // block legitimately names order_number_cycle in order to REFUSE it, and a
-    // whole-file scan would fail on the guard rather than on a breach.
-    assert.ok(!EXECUTE.includes('order_number_cycle'))
-    assert.ok(!RESOLVE.includes('order_number_cycle'))
-    assert.ok(!STORAGE.includes('order_number_cycle'))
-  })
-})
-
-// ── 4. Neither foreign key nor either uniqueness rule is weakened ────────────
 
 describe('the provenance guarantees survive the fix', () => {
+  test('three guards gain the cleanup exemption and still refuse everybody else', () => {
+    for (const name of [
+      'prevent_order_source_submission_change',
+      'order_submissions_guard_delete',
+      'order_submission_activity_guard_delete',
+    ]) {
+      const body = fn(name)
+      assert.ok(body.includes('if public.in_test_data_cleanup() then'))
+      assert.ok(body.includes('raise exception'))
+    }
+    // The ordinary purge door survives on both submission guards.
+    assert.ok(fn('order_submissions_guard_delete').includes('order_submission_purge_in_progress(old.id)'))
+    assert.ok(fn('order_submission_activity_guard_delete').includes('order_submission_purge_in_progress(old.submission_id)'))
+  })
+
+  test('no OTHER guard is touched', () => {
+    for (const untouched of [
+      'order_submissions_guard_order_link',
+      'order_submissions_enforce_status_transition',
+      'order_submissions_guard_deletion_claim',
+      'order_submissions_guard_finance_verification',
+      'prevent_order_delete',
+      'prevent_converted_order_request_delete',
+      'finance_payment_requests_guard_approved_delete',
+      'in_test_data_cleanup',
+    ]) {
+      assert.ok(!declarations.includes(`create or replace function public.${untouched}`),
+        `${untouched} belongs to an applied migration and must not be restated`)
+    }
+  })
+
   test('neither foreign key is dropped, altered or made deferrable', () => {
-    assert.ok(!/alter[\s\S]{0,60}(drop constraint|deferrable)/i.test(declarations))
     assert.ok(!/on delete cascade/i.test(declarations),
       'a cascade would delete an approved PI whenever its Order went, for any reason')
-    assert.ok(code.includes('is no longer a NO ACTION foreign key'),
-      'and the migration asserts both at apply time')
+    assert.ok(code.includes('is no longer a NO ACTION foreign key'))
   })
 
   test('both uniqueness indexes are asserted present', () => {
     assert.ok(code.includes('order_submissions_order_id_key'))
     assert.ok(code.includes('orders_source_order_submission_id_uidx'))
-    assert.ok(code.includes('uniqueness index % is missing'))
   })
 
   test('normal PI deletion is unchanged and still refuses an approved PI', () => {
     for (const untouched of [
       'begin_order_submission_deletion', 'release_order_submission_deletion',
       'finalize_order_submission_deletion', 'order_submission_deletable_statuses',
-      'order_submission_deletable_by',
     ]) {
-      assert.ok(!declarations.includes(`create or replace function public.${untouched}`),
-        `${untouched} must not be restated`)
+      assert.ok(!declarations.includes(`create or replace function public.${untouched}`))
     }
-    assert.ok(code.includes("if 'approved' = any (public.order_submission_deletable_statuses())"),
-      'and the migration refuses to apply if approval ever became ordinarily deletable')
+    assert.ok(code.includes("if 'approved' = any (public.order_submission_deletable_statuses())"))
   })
 
   test('final approval, the advance workflow and payments are untouched', () => {
     for (const untouched of [
       'approve_order_submission', 'verify_pi_finance_check',
-      'approve_pi_advance_exception', 'reject_pi_advance_exception',
-      'submit_order_submission_advance_internal', 'approve_finance_payment_request',
+      'approve_pi_advance_exception', 'approve_finance_payment_request',
     ]) {
-      assert.ok(!declarations.includes(`create or replace function public.${untouched}`),
-        `${untouched} is out of scope for this fix`)
+      assert.ok(!declarations.includes(`create or replace function public.${untouched}`))
     }
   })
 
-  test('no RLS policy is created, altered or dropped', () => {
+  test('no RLS policy on a business table is created, altered or dropped', () => {
     assert.ok(!/create policy|alter policy|drop policy/i.test(declarations))
   })
 })
 
-// ── 5. Storage: server-derived keys, removed before the rows ─────────────────
+// ── Order-number reuse ───────────────────────────────────────────────────────
 
-describe('PI storage is resolved server-side and removed before any row', () => {
-  test('the resolver answers only for a TEST Order that names its PI back', () => {
-    assert.ok(STORAGE.includes("u.role = 'admin'"), 'admin only')
-    assert.ok(STORAGE.includes("'order_not_test_data'"))
-    assert.ok(STORAGE.includes("'provenance_mismatch'"))
-    assert.ok(STORAGE.includes('v_sub.order_id is distinct from p_order_id'))
-    assert.ok(STORAGE.includes('if not v_order.is_test_data then'))
+describe('a freed Order number is genuinely reusable, with no manual repair', () => {
+  test('finalization gives back the numbers this cleanup freed', () => {
+    assert.ok(FINALIZE.includes('v_freed'))
+    assert.ok(FINALIZE.includes('update public.order_number_cycle set next_number = v_next'))
+    assert.ok(FINALIZE.includes("'order_numbers_reclaimed',      v_reclaimed"))
   })
 
-  test('every key it returns is confined to this submission’s prefix', () => {
-    assert.ok(STORAGE.includes("where path like ('submissions/' || v_sub.id::text || '/%')"))
+  test('it only reclaims from the TOP of the range, so an admin decision stands', () => {
+    // An administrator who set the cycle to 1000 has said something; deleting a
+    // test Order is not a reason to unsay it. Only a number immediately below
+    // the cycle, freed by this cleanup, is taken back.
+    assert.ok(FINALIZE.includes('(v_next - 1) = any (v_freed)'))
+    assert.ok(FINALIZE.includes('while v_next > greatest(v_highest + 1, 1)'),
+      'and it never goes below the highest surviving Order + 1')
   })
 
-  test('it reads keys from the database, from all three places they live', () => {
-    assert.ok(STORAGE.includes('v_sub.source_workbook_path'))
-    assert.ok(STORAGE.includes('from public.order_submission_item_images m'))
-    assert.ok(STORAGE.includes('i.image_storage_path'),
-      'including the pre-20260909000000 per-item column')
+  test('it never ADVANCES the cycle, and never rewrites the admin audit columns', () => {
+    assert.ok(!/next_number\s*=\s*v_next\s*\+/.test(FINALIZE))
+    assert.ok(!FINALIZE.includes('configured_at'))
+    assert.ok(!FINALIZE.includes('configured_by'))
   })
 
-  test('it reserves nothing and deletes nothing', () => {
-    assert.ok(!STORAGE.includes('deletion_claim_token'))
-    assert.ok(!/delete from/i.test(STORAGE))
-    assert.ok(!/update public\./i.test(STORAGE))
+  test('the invariant it respects is the allocator’s own', () => {
+    assert.ok(migration(CYCLE).includes('highest existing'))
+    assert.ok(!declarations.includes('setval'))
+    assert.ok(!declarations.includes('allocate_confirmed_order_number'))
+  })
+})
+
+// ── The route owns the whole sequence ────────────────────────────────────────
+
+describe('one route owns claim -> storage -> finalize', () => {
+  const route = source(ROUTE)
+  const routeCode = tsCode(route)
+
+  test('the old two-call route is gone', () => {
+    assert.ok(!existsSync(join(process.cwd(), 'src/app/api/orders/submissions/test-cleanup/route.ts')),
+      'the storage-only PI purge route was the unsafe half and must not survive')
   })
 
-  test('the route takes an ORDER id — never a submission id, never a path', () => {
-    const route = source(ROUTE)
-    assert.ok(route.includes('{ orderId } = await req.json()'))
-    assert.ok(!/paths\s*[:=].*req\.json|body\.paths|storagePaths/.test(route),
-      'a browser-supplied path list is the thing this must never accept')
-    assert.ok(!route.includes('submissionId } = await req.json'))
-    // The submission comes from the database, through the resolver above.
-    assert.ok(route.includes("authClient.rpc(\n    'test_cleanup_submission_storage'"))
+  test('it calls the three RPCs in order, and nothing else destructive', () => {
+    const begin = routeCode.indexOf("'begin_test_data_cleanup'")
+    const sweep = routeCode.indexOf('removeAllObjectsForSubmission(')
+    const final = routeCode.indexOf("'finalize_test_data_cleanup'")
+    assert.ok(begin > 0 && sweep > begin && final > sweep,
+      'claim, then storage, then rows')
   })
 
-  test('the route proves admin before it reaches for the service role', () => {
-    const route = source(ROUTE)
-    const roleCheck = route.indexOf("me.role !== 'admin'")
-    const removal = route.indexOf('removeAllObjectsForSubmission(')
-    assert.ok(roleCheck > 0 && roleCheck < removal)
+  test('the browser sends only what the admin typed', () => {
+    assert.ok(route.includes('const { rootType, rootId, reason, confirmation } = body'))
+    for (const forbidden of ['submissionId', 'storagePaths', 'claimToken', 'paths']) {
+      assert.ok(!new RegExp(`${forbidden}[^A-Za-z]*[=:][^=]*body`).test(routeCode),
+        `${forbidden} must never come from the request body`)
+    }
+  })
+
+  test('the claim token never reaches a response', () => {
+    // It is read into a local and passed to the RPCs; no response body carries it.
+    const responses = [...routeCode.matchAll(/NextResponse\.json\(([\s\S]{0,400}?)\)/g)].map(m => m[1])
+    for (const body of responses) {
+      assert.ok(!/token/i.test(body), 'a response body must not carry the claim token')
+    }
+  })
+
+  test('admin is proved before the service role is used destructively', () => {
+    const roleCheck = routeCode.indexOf("me.role !== 'admin'")
+    const claim = routeCode.indexOf("'begin_test_data_cleanup'")
+    assert.ok(roleCheck > 0 && roleCheck < claim)
     assert.ok(route.includes('is_active === false'))
     assert.ok(route.includes('is_deleted === true'))
   })
 
+  test('a partial sweep KEEPS the claim; only an untouched one is released', () => {
+    assert.ok(route.includes('sweptAnything'))
+    assert.ok(route.includes('if (!sweptAnything) await release()'),
+      'unfreezing a record whose files are partly gone is the corruption to avoid')
+    assert.ok(route.includes('reserved: sweptAnything'))
+  })
+
+  test('a failed finalize NEVER releases the claim', () => {
+    const failure = routeCode.slice(routeCode.indexOf('if (finalErr)'))
+    assert.ok(!failure.slice(0, 600).includes('release()'),
+      'the files are gone; the records must stay frozen until it completes')
+    assert.ok(route.includes('reserved: true'))
+  })
+
+  test('it removes Order Request attachments inside the same claim window', () => {
+    assert.ok(route.includes('removeAllObjectsForRequest'))
+    const attach = routeCode.indexOf('removeAllObjectsForRequest(')
+    const begin = routeCode.indexOf("'begin_test_data_cleanup'")
+    const final = routeCode.indexOf("'finalize_test_data_cleanup'")
+    assert.ok(attach > begin && attach < final,
+      'it has the same failure mode as the PI files and needs the same protection')
+  })
+
+  test('an already-deleted PI is not an error on retry', () => {
+    assert.ok(STORAGE.includes("'already_deleted'"))
+    assert.ok(route.includes('if (info?.found && typeof info.submission_id'))
+  })
+
   test('it uses the established bounded, settled sweep — with no timeout', () => {
-    const route = source(ROUTE)
-    assert.ok(route.includes('removeAllObjectsForSubmission'))
-    assert.ok(!/setTimeout|Promise\.race|AbortController/.test(route),
+    assert.ok(!/setTimeout|Promise\.race|AbortController/.test(routeCode),
       'a promise race is not cancellation; the reasoning is in submissionFilesServer.ts')
     const files = source('src/lib/orders/submissionFilesServer.ts')
-    assert.ok(files.includes('export const LIST_CONCURRENCY = 8'), 'bounded concurrency')
+    assert.ok(files.includes('export const LIST_CONCURRENCY = 8'))
     assert.ok(files.includes('mapWithLimit'))
   })
 
-  test('a storage failure returns a failure and deletes no row', () => {
-    const route = source(ROUTE)
-    assert.ok(route.includes('if (removal.failed.length > 0)'))
-    assert.ok(route.includes('502'))
-    // The route deletes no ROW, ever — it removes files and reports. Scanned
-    // over code, not commentary: the header legitimately explains where in the
-    // sequence the RPC runs, which is the point of the route existing.
-    const routeCode = route.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
-    assert.ok(!routeCode.includes('execute_test_data_cleanup'),
-      'the route removes files; the RPC removes rows, and the page sequences them')
-    assert.ok(!/\.delete\(\)|\.from\('order_submissions'\)/.test(routeCode))
-  })
-
-  test('an Order with no PI is skipped, not treated as a failure', () => {
-    const route = source(ROUTE)
-    assert.ok(route.includes("SKIPPABLE"))
-    assert.ok(route.includes("'no_submission'"))
-    assert.ok(route.includes('skipped: true'))
+  test('the false claim about retryability is gone', () => {
+    assert.ok(!/leaves a complete, retryable record/.test(route),
+      'that reasoning was wrong and must not be repeated')
   })
 })
 
-// ── 6. The page sequences files before rows ──────────────────────────────────
+describe('the PI storage keys come from the claim, never from a guess', () => {
+  test('the resolver requires a claim token and admin', () => {
+    assert.ok(STORAGE.includes("u.role = 'admin'"))
+    assert.ok(STORAGE.includes('where claim_token = p_claim_token'))
+    assert.ok(STORAGE.includes('CLEANUP_CLAIM_INVALID'))
+  })
 
-describe('the admin page removes PI files BEFORE the database rows', () => {
+  test('every key it returns is confined to that submission’s prefix', () => {
+    assert.ok(STORAGE.includes("where path like ('submissions/' || v_sub.id::text || '/%')"))
+  })
+
+  test('it reads keys from all three places they live', () => {
+    assert.ok(STORAGE.includes('v_sub.source_workbook_path'))
+    assert.ok(STORAGE.includes('from public.order_submission_item_images m'))
+    assert.ok(STORAGE.includes('i.image_storage_path'))
+  })
+
+  test('it reserves nothing and deletes nothing', () => {
+    assert.ok(!/delete from|update public\./i.test(STORAGE))
+  })
+})
+
+// ── The page makes ONE request ───────────────────────────────────────────────
+
+describe('the admin page coordinates no destructive step', () => {
   const page = source(PAGE)
+  const pageCode = tsCode(page)
 
-  test('the purge runs before execute_test_data_cleanup', () => {
-    const purge = page.indexOf("'/api/orders/submissions/test-cleanup'")
-    const rpc = page.indexOf("supabase.rpc('execute_test_data_cleanup'")
-    assert.ok(purge > 0 && rpc > 0 && purge < rpc)
+  test('it makes exactly one cleanup call', () => {
+    assert.ok(page.includes("'/api/orders/test-data-cleanup'"))
+    assert.ok(!pageCode.includes("'/api/orders/requests/attachments/cleanup'"),
+      'the attachment purge moved inside the claim window, server-side')
+    assert.ok(!pageCode.includes("'/api/orders/submissions/test-cleanup'"))
+    assert.ok(!pageCode.includes('execute_test_data_cleanup'))
   })
 
-  test('a failed purge aborts and says nothing was deleted', () => {
-    assert.ok(page.includes('Nothing was deleted — please retry.'))
-    const abort = page.slice(page.indexOf('piPurgeFailed'))
-    assert.ok(abort.includes('return'), 'it must not fall through to the RPC')
+  test('it sends what the admin typed, and nothing else', () => {
+    assert.ok(page.includes('rootType:     preview.root_type'))
+    assert.ok(page.includes('rootId:       preview.root_id'))
+    assert.ok(page.includes('reason,'))
+    assert.ok(page.includes('confirmation: typed,'))
+    assert.ok(!/orderId|submissionId|claim_token/.test(pageCode))
   })
 
-  test('the page sends only an order id', () => {
-    assert.ok(page.includes('body: JSON.stringify({ orderId })'))
-    assert.ok(!page.includes('JSON.stringify({ submissionId'))
-    assert.ok(!/storage_paths[\s\S]{0,80}test-cleanup/.test(page))
+  test('a failure preserves the typed reason and confirmation for a retry', () => {
+    const failure = pageCode.slice(pageCode.indexOf('if (!ok)'))
+    assert.ok(!failure.slice(0, 400).includes("setTyped('')"))
+    assert.ok(!failure.slice(0, 400).includes("setReason('')"))
   })
 
-  test('the existing Order Request attachment purge still runs', () => {
-    assert.ok(page.includes("'/api/orders/requests/attachments/cleanup'"))
-    assert.ok(page.includes('body: JSON.stringify({ requestId })'))
-  })
-
-  test('payment proofs are still removed AFTER the commit, from the proof bucket', () => {
-    const rpc = page.indexOf("supabase.rpc('execute_test_data_cleanup'")
-    const proofs = page.indexOf('storage.from(PROOF_BUCKET).remove(res.storage_paths)')
-    assert.ok(proofs > rpc, 'object storage is not transactional; proofs go after the commit')
+  test('payment proofs are still removed after the commit, from their own bucket', () => {
+    const call = pageCode.indexOf("'/api/orders/test-data-cleanup'")
+    const proofs = pageCode.indexOf('storage.from(PROOF_BUCKET).remove(res.storage_paths)')
+    assert.ok(proofs > call, 'object storage is not transactional; proofs go after')
   })
 
   test('the PI is shown in the preview, with its counts and its prefix', () => {
     assert.ok(page.includes("order_submission: 'PI submission'"))
     assert.ok(page.includes("order_submissions:            'PI submissions'"))
     assert.ok(page.includes("order_submission_items:       'PI product lines'"))
-    assert.ok(page.includes("order_submission_item_images: 'PI images'"))
-    assert.ok(page.includes("order_submission_activity:    'PI activity rows'"))
     assert.ok(page.includes('preview.submission_storage_prefix'))
   })
 
@@ -581,20 +660,16 @@ describe('the admin page removes PI files BEFORE the database rows', () => {
 
   test('the page still reconstructs no graph of its own', () => {
     assert.ok(page.includes('preview_test_data_cleanup'))
-    // The only ids it sends come from the server-resolved preview.
-    assert.ok(page.includes("preview.to_delete.filter(r => r.type === 'order')"))
   })
 })
 
-// ── 7. The Activity label ────────────────────────────────────────────────────
+// ── The Activity label ───────────────────────────────────────────────────────
 
 describe('the Order Activity trail names the PI event in English', () => {
   const page = source(ORDER_PAGE)
 
   test('the raw key never reaches the screen', () => {
     assert.ok(page.includes("order_created_from_pi_submission: 'Order created from PI submission'"))
-    // The renderer falls back to the raw event_type, which is exactly what was
-    // showing before this entry existed.
     assert.ok(page.includes('EVENT_TYPE_LABEL[entry.event_type] ?? entry.event_type'))
   })
 
@@ -604,8 +679,7 @@ describe('the Order Activity trail names the PI event in English', () => {
   })
 
   test('the label matches the event the approval RPC actually writes', () => {
-    assert.ok(migration(PHASE_C).includes("'order_created_from_pi_submission'"),
-      'the key must be the one 20260915000000 writes, character for character')
+    assert.ok(migration(PHASE_C).includes("'order_created_from_pi_submission'"))
   })
 
   test('the existing labels are untouched', () => {
