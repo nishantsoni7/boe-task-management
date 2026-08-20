@@ -61,8 +61,10 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   finance_submitted:         { label: 'Needs review',    color: colors.amber, bg: colors.amberTint },
   finance_resubmitted:       { label: 'Resubmitted',     color: colors.blue,  bg: colors.blueTint  },
   finance_clarification:     { label: 'Clarification',   color: colors.blue,  bg: colors.blueTint  },
-  finance_approved_suspense: { label: 'Approved',        color: colors.green, bg: colors.greenTint },
-  finance_approved_linked:   { label: 'Approved',        color: colors.green, bg: colors.greenTint },
+  // The event KEYS are history and are never renamed; only the badge a person
+  // reads changes, so both routes to this one action say the same word.
+  finance_approved_suspense: { label: 'Verified',        color: colors.green, bg: colors.greenTint },
+  finance_approved_linked:   { label: 'Verified',        color: colors.green, bg: colors.greenTint },
   finance_rejected:          { label: 'Rejected',        color: colors.red,   bg: colors.redTint   },
   finance_linked:            { label: 'Linked',          color: colors.green, bg: colors.greenTint },
   finance_status_corrected:  { label: 'Status updated',  color: colors.amber, bg: colors.amberTint },

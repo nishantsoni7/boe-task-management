@@ -257,10 +257,10 @@ function isApproved(status: string): boolean {
 // approved after the modal was opened. The mutation is filtered on status
 // server-side, so the approved record is never touched — the stale UI is.
 const APPROVED_RACE_MESSAGE =
-  'This request has already been approved and can no longer be changed here.'
+  'This request has already been verified and can no longer be changed here.'
 
 const APPROVED_LOCK_NOTE =
-  'This request has been approved and is now managed under Received Payments.'
+  'This request has been verified and is now managed under Received Payments.'
 
 // Who may act on a request from this page. Ownership and role are re-checked by
 // RLS (finance_payment_requests_own_update / own_delete / admin_*) and by the
@@ -794,7 +794,7 @@ function DetailsModal({
           <div>
             <SectionHeader>Verification</SectionHeader>
             <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
-              Confirm that Finance has checked this payment. It will be recorded
+              Confirm that Finance has checked this payment. It will be verified
               as received{r.payment_against === 'new_order'
                 ? ' and held until an order is linked.'
                 : ` against ${r.order_number ?? 'the linked order'}.`}
@@ -858,7 +858,7 @@ function DetailsModal({
 
       {/* F. Admin controls — compact action panel. Never for
           approved_unlinked/approved_linked rows; those are managed only via
-          Mark Payment Received, Link, and Unlink. */}
+          Verify Payment, Link, and Unlink. */}
       {mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
@@ -1202,7 +1202,7 @@ function NewPaymentConfirmationModal({
             </div>
             {contextLabel && (
               <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-                {contextLabel} · an admin approves it before it can be linked
+                {contextLabel} · Finance verifies it before it can be linked
               </div>
             )}
           </div>
@@ -1715,13 +1715,13 @@ const REVIEW_DECISIONS: {
   tint: string
   Icon: LucideIcon
 }[] = [
-  { key: 'approve',             label: 'Mark Payment Received', hint: 'Confirm the money has arrived',        color: colors.green, tint: colors.greenTint, Icon: CircleCheck },
+  { key: 'approve',             label: 'Verify Payment',        hint: 'Confirm Finance has checked this payment', color: colors.green, tint: colors.greenTint, Icon: CircleCheck },
   { key: 'needs_clarification', label: 'Needs Clarification',   hint: 'Send back with a question',            color: colors.blue,  tint: colors.blueTint,  Icon: MessageCircleQuestion },
   { key: 'reject',              label: 'Reject',                hint: 'Decline this payment request',         color: colors.red,   tint: colors.redTint,   Icon: CircleX },
 ]
 
 // One decision as a full-width choice row rather than a chip in a wrapping bar.
-// Three chips labelled "Mark Payment Received" / "Needs Clarification" /
+// Three chips labelled "Verify Payment" / "Needs Clarification" /
 // "Reject" cannot sit on one line in a side column, so they wrapped into an
 // uneven cluster that read as three unrelated buttons. Stacked rows give each
 // outcome equal width, room for a one-line consequence, and a selected state
@@ -2082,10 +2082,10 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
                   lineHeight: 1.5,
                 }}>
                   {approvalTarget === 'confirmed_order'
-                    ? `This payment will be linked directly to order ${r.order_number ?? orderNoDisplay(r)}.`
+                    ? `This payment will be verified and linked directly to order ${r.order_number ?? orderNoDisplay(r)}.`
                     : approvalTarget === 'order_request'
-                      ? `This payment will be recorded as received and stay attached to Order Request ${r.order_request_number ?? ''}, where it counts as confirmed advance. It moves onto the Confirmed Order automatically when that request is converted.`
-                      : 'This payment will be recorded as received and moved to Suspense. No order or order number is created here — attach it to an order later from Order Requests or the Suspense list.'}
+                      ? `This payment will be verified and stay attached to Order Request ${r.order_request_number ?? ''}, where it counts as confirmed advance. It moves onto the Confirmed Order automatically when that request is converted.`
+                      : 'This payment will be verified and moved to Suspense. No order or order number is created here — attach it to an order later from Order Requests or the Suspense list.'}
                 </div>
               )
             })()}
@@ -2120,7 +2120,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
     : noteRequired && !adminNote.trim()
       ? 'A note is required for this decision.'
       : action === 'approve'
-        ? `${fmtAmount(r.amount)} will be recorded as received.`
+        ? `${fmtAmount(r.amount)} will be verified as received.`
         : action === 'needs_clarification'
           ? `Returns to ${r.submitted_by_name ?? 'the salesperson'} for clarification.`
           : 'This payment request will be rejected.'
@@ -2159,7 +2159,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
               cursor: confirmDisabled ? 'not-allowed' : 'pointer',
             }}
           >
-            {saving ? 'Saving…' : 'Confirm'}
+            {saving ? (action === 'approve' ? 'Verifying…' : 'Saving…') : 'Confirm'}
           </button>
         </div>
       </div>

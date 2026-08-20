@@ -333,6 +333,51 @@ describe('the details modal actually offers verification', () => {
     assert.ok(SOURCE.includes('Verify Payment'), 'the primary control must say Verify Payment')
   })
 
+  test('BOTH routes to this action are labelled the same way', () => {
+    // The page reaches one RPC by two doors: the details modal's primary button
+    // and the review modal's decision row. They used to be called "Verify
+    // Payment" and "Mark Payment Received", which read as two different powers.
+    const labelled = SOURCE.split('Verify Payment').length - 1
+    assert.ok(labelled >= 2,
+      `both the details panel and the review decision must say Verify Payment (found ${labelled})`)
+
+    for (const retired of ['Mark Payment Received', 'Approve Payment']) {
+      assert.ok(!SOURCE.includes(retired), `"${retired}" must not survive anywhere on this page`)
+    }
+  })
+
+  test('the copy changed and the WIRING did not', () => {
+    // The whole risk of a copy pass over a decision surface: renaming the thing
+    // people read is safe, renaming what the code dispatches on is a workflow
+    // change wearing a copy change's clothes. These are the identifiers the
+    // wording must not have dragged along with it.
+    assert.ok(SOURCE.includes("type AdminAction = 'approve' | 'needs_clarification' | 'reject'"),
+      'the three decision keys are the workflow and must be untouched')
+    assert.ok(SOURCE.includes("{ key: 'approve',"),
+      "the verification decision must still dispatch on the 'approve' key")
+    assert.ok(SOURCE.includes("action === 'approve'"),
+      "the approve branch must still be selected by its key, not by its label")
+
+    // Statuses, the RPC and the capability are database and permission facts,
+    // not copy. A rename here would be exactly the unauthorised change this
+    // guard exists to refuse.
+    for (const wiring of ['approved_unlinked', 'approved_linked', 'pending_approval',
+                          'approve_finance_payment_request', 'caps.canApprovePayment']) {
+      assert.ok(SOURCE.includes(wiring), `${wiring} must survive the wording change`)
+    }
+  })
+
+  test('verification is described as verification, start to finish', () => {
+    // Confirmation, in-flight and outcome text for the SAME action. A person who
+    // clicks Verify Payment should not be told the money was "approved".
+    assert.ok(SOURCE.includes("'Verifying…'"),
+      'the in-flight label must name the action being performed')
+    assert.ok(/will be verified/.test(SOURCE),
+      'the consequence text must describe verification')
+    assert.ok(!/has already been approved|has been approved and is now managed/.test(SOURCE),
+      'the stale-row messages must describe verification too')
+  })
+
   test('it calls the EXISTING RPC and builds no second approval flow', () => {
     const calls = [...SOURCE.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1])
     assert.ok(calls.includes('approve_finance_payment_request'),
