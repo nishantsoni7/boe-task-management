@@ -40,8 +40,18 @@ import {
   ADVANCE_REASON_REQUIRED,
   ADVANCE_REASON_TOO_LONG,
   ADVANCE_TOTAL_MISSING,
+  ADVANCE_TOTAL_NOT_POSITIVE,
   REJECT_EXCEPTION_REASON_REQUIRED,
 } from './advanceRequirement'
+import {
+  PAYMENT_ADMIN_APPROVAL_REQUIRED,
+  PAYMENT_AWAITING_VERIFICATION,
+  PAYMENT_EXCEPTION_PENDING,
+  PAYMENT_EXCEPTION_REJECTED,
+  PAYMENT_REASON_REQUIRED,
+  PAYMENT_TERMS_REQUIRED,
+  PAYMENT_TERMS_TOO_LONG,
+} from './paymentGate'
 
 // ── Labels ────────────────────────────────────────────────────────────────────
 
@@ -365,11 +375,33 @@ const FAILURE_MESSAGES: readonly { marker: string; code: string; message: string
     message: REJECT_REASON_REQUIRED },
   { marker: 'ORDER_SUBMISSION_TRANSITION_INVALID', code: 'STATE_CHANGED',
     message: 'This PI has already moved on. Refresh to see its current state.' },
+  // ── The verified-payment gate ──
+  //
+  // FIRST IN THE TABLE, and deliberately: these are the refusals Phase 3
+  // introduced and they must not be answered by the older advance sentences that
+  // share a prefix. Every message is business language and every one names the
+  // next step — the figure that is short, or who can decide instead.
+  { marker: 'ORDER_SUBMISSION_PAYMENT_AWAITING_VERIFICATION', code: 'PAYMENT_AWAITING_VERIFICATION',
+    message: `${PAYMENT_AWAITING_VERIFICATION} It does not count towards the requirement until Finance verifies it. ${PAYMENT_ADMIN_APPROVAL_REQUIRED}` },
+  { marker: 'ORDER_SUBMISSION_PAYMENT_INSUFFICIENT', code: 'PAYMENT_INSUFFICIENT',
+    message: `Verified payment has not reached the standard requirement. ${PAYMENT_ADMIN_APPROVAL_REQUIRED}` },
+  { marker: 'ORDER_SUBMISSION_PAYMENT_TERMS_REQUIRED', code: 'PAYMENT_TERMS_REQUIRED',
+    message: PAYMENT_TERMS_REQUIRED },
+  { marker: 'ORDER_SUBMISSION_EXCEPTION_REASON_REQUIRED', code: 'PAYMENT_REASON_REQUIRED',
+    message: PAYMENT_REASON_REQUIRED },
+  { marker: 'ORDER_SUBMISSION_EXCEPTION_PENDING', code: 'EXCEPTION_PENDING',
+    message: PAYMENT_EXCEPTION_PENDING },
+  { marker: 'ORDER_SUBMISSION_EXCEPTION_REJECTED', code: 'EXCEPTION_REJECTED',
+    message: PAYMENT_EXCEPTION_REJECTED },
+  { marker: 'ORDER_SUBMISSION_TERMS_TOO_LONG', code: 'TERMS_TOO_LONG',
+    message: PAYMENT_TERMS_TOO_LONG },
   // ── The advance requirement ──
   //
   // Ordered BEFORE the generic markers below for the same reason the rest of
   // this table is ordered: the first match wins, and 'ADVANCE_REASON_TOO_LONG'
   // must not be answered by a sentence about a reply.
+  { marker: 'ORDER_SUBMISSION_ADVANCE_TOTAL_NOT_POSITIVE', code: 'ADVANCE_TOTAL_NOT_POSITIVE',
+    message: ADVANCE_TOTAL_NOT_POSITIVE },
   { marker: 'ORDER_SUBMISSION_ADVANCE_TOTAL_MISSING', code: 'ADVANCE_TOTAL_MISSING',
     message: ADVANCE_TOTAL_MISSING },
   { marker: 'ORDER_SUBMISSION_ADVANCE_NOT_OWNER', code: 'ADVANCE_NOT_OWNER',

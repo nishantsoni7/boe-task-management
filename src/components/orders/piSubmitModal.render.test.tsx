@@ -3,30 +3,22 @@
  *
  * WHY THIS FILE EXISTS
  * --------------------
- * Phase B shipped a complete advance workflow — a validated three-way
- * declaration, an RPC that stores it, a management decision, an activity trail —
- * and every part of it was covered by tests over the pure helpers. What no test
- * looked at was the DIALOG. A helper that formats "No advance (0%)" correctly
- * proves nothing about whether anybody can ever see it, and the one thing an
- * employee reported was that they could not: the modal they opened offered a
- * client, a grand total, a warning and two buttons.
+ * The dialog used to ask the employee to DECLARE an advance, and a whole phase's
+ * worth of tests proved the declaration helpers were right while nobody had
+ * checked that the choice was reachable on screen at all — which, for a while,
+ * it was not. The lesson survives the rewrite: a helper can be right while the
+ * screen is wrong, and markup cannot.
  *
- * So these tests render the REAL PiSubmitConfirmModal — the same export the PI
- * detail page imports, with the same props that page passes it — and read the
- * markup that comes out. A helper can be right while the screen is wrong; markup
- * cannot.
+ * WHAT THE DIALOG ASKS NOW. Nothing about a declared advance. It STATES the PI's
+ * live verified-payment position — every figure computed in `numeric` by
+ * pi_submission_payment_summary() — and asks for the two things the business
+ * genuinely does not know: why an Order should be confirmed below the standard
+ * requirement, and how the rest of the money will be collected.
  *
  * WHY renderToStaticMarkup AND NOT A BROWSER. There is no DOM in this repository
- * and no test runner that provides one; adding either to assert on a dialog's
- * contents would be a larger change than the dialog. Every state this file needs
- * is reachable through `initialAdvance`, which is exactly how the page reaches
- * them on a resubmission — so the states are real states, arrived at the real
- * way, rather than a harness poking at internals.
- *
- * WHAT IS DELIBERATELY NOT ASSERTED HERE: what happens when a radio is clicked.
- * That is one call to `onChoice`, and what it produces is asserted over
- * validateAdvanceDeclaration and advanceDeclarationUntouched in
- * advanceRequirement.test.ts, at every boundary.
+ * and no test runner that provides one. Every state this file needs is reachable
+ * through the `payment` prop, which is exactly how the page reaches them — so
+ * the states are real states, arrived at the real way.
  *
  * Run:
  *   npx tsx --test src/components/orders/piSubmitModal.render.test.tsx
@@ -39,30 +31,54 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { PiSubmitConfirmModal } from './piReviewModals'
 import {
-  ADVANCE_AMOUNT_LABEL,
-  ADVANCE_NONE_HINT,
-  ADVANCE_NONE_LABEL,
-  ADVANCE_AMOUNT_REQUIRED,
-  ADVANCE_AMOUNT_ZERO_USE_NONE,
-  ADVANCE_PERCENT_LABEL,
-  ADVANCE_STANDARD_REFERENCE_LABEL,
-  ADVANCE_REASON_LABEL,
-  ADVANCE_REASON_REQUIRED,
-  ADVANCE_REDUCED_LABEL,
-  ADVANCE_SECTION_TITLE,
-  ADVANCE_STANDARD_HINT,
-  ADVANCE_STANDARD_LABEL,
-  ADVANCE_TOTAL_MISSING,
-  ADVANCE_ZERO_EXPLANATION,
-  initialAdvanceSelection,
-  type AdvanceDeclaration,
-  type PersistedAdvance,
-} from '@/lib/orders/advanceRequirement'
+  BILLING_TERMS_LABEL,
+  EMPTY_SUBMISSION_TERMS,
+  PAYMENT_POSITION_HINT,
+  PAYMENT_POSITION_LABEL,
+  PAYMENT_POSITION_UNKNOWN,
+  PAYMENT_REASON_LABEL,
+  PAYMENT_REASON_REQUIRED,
+  PAYMENT_STANDARD_PERCENT,
+  PAYMENT_TERMS_LABEL,
+  PAYMENT_TERMS_OPTIONAL_LABEL,
+  PAYMENT_TERMS_REQUIRED,
+  type PiSubmissionTerms,
+} from '@/lib/orders/paymentGate'
+import type { PiPaymentSummary } from '@/lib/finance/piPaymentView'
 import { SUBMIT_BUTTON_LABEL } from '@/lib/orders/submissionWorkflow'
 import { formatInr } from '@/lib/pi/previewView'
 
 const GRAND_TOTAL = 118000
-const STANDARD_AMOUNT = formatInr(47200) // 40% of 118000
+
+/** The summary the RPC returns, as the page hands it to the dialog. */
+const summary = (over: Partial<PiPaymentSummary> = {}): PiPaymentSummary => ({
+  submission_id: 'pi-1',
+  submission_status: 'draft',
+  grand_total: '118000.00',
+  verified_amount: '47200.00',
+  unverified_amount: '0.00',
+  verified_percent: '40.00',
+  unverified_percent: '0.00',
+  needed_for_standard: '0.00',
+  required_payment: '47200.00',
+  meets_standard: true,
+  approval_position: 'standard_met',
+  pending_balance: '70800.00',
+  standard_percent: 40,
+  can_view_all_finance: false,
+  payments: [],
+  ...over,
+})
+
+/** Below the requirement: ₹10,000 verified against a ₹1,18,000 total. */
+const below = (over: Partial<PiPaymentSummary> = {}): PiPaymentSummary => summary({
+  verified_amount: '10000.00',
+  verified_percent: '8.47',
+  needed_for_standard: '37200.00',
+  meets_standard: false,
+  approval_position: 'payment_required',
+  ...over,
+})
 
 /**
  * The dialog with the props THE PI DETAIL PAGE PASSES IT.
@@ -71,8 +87,8 @@ const STANDARD_AMOUNT = formatInr(47200) // 40% of 118000
  * stops being supplied there fails to compile here.
  */
 function render(over: {
-  initialAdvance?: AdvanceDeclaration
-  grandTotalValue?: number | null
+  payment?: PiPaymentSummary | null
+  initialTerms?: PiSubmissionTerms
   submitting?: boolean
   failure?: string | null
   offerReply?: boolean
@@ -81,9 +97,8 @@ function render(over: {
     <PiSubmitConfirmModal
       client="Kalyan Interiors"
       grandTotal={formatInr(GRAND_TOTAL)}
-      grandTotalValue={over.grandTotalValue === undefined ? GRAND_TOTAL : over.grandTotalValue}
-      standardAdvance={STANDARD_AMOUNT}
-      initialAdvance={over.initialAdvance ?? { choice: 'standard', amountText: '47200', reason: '' }}
+      payment={over.payment === undefined ? summary() : over.payment}
+      initialTerms={over.initialTerms ?? EMPTY_SUBMISSION_TERMS}
       submitting={over.submitting ?? false}
       failure={over.failure ?? null}
       offerReply={over.offerReply ?? false}
@@ -93,21 +108,6 @@ function render(over: {
   )
 }
 
-/** A persisted record, so the initial state is derived the way the page derives it. */
-const persisted = (over: Partial<PersistedAdvance> = {}): PersistedAdvance => ({
-  advance_condition: null,
-  advance_declared_amount: null,
-  advance_exception_percent: null,
-  advance_exception_reason: null,
-  advance_exception_status: null,
-  advance_exception_requested_by: null,
-  advance_exception_requested_at: null,
-  advance_exception_decided_by: null,
-  advance_exception_decided_at: null,
-  advance_exception_rejection_reason: null,
-  ...over,
-})
-
 /**
  * Whether the Submit button in this markup is disabled.
  *
@@ -116,10 +116,6 @@ const persisted = (over: Partial<PersistedAdvance> = {}): PersistedAdvance => ({
  * make a naive check pass for the wrong reason.
  */
 function submitDisabled(html: string): boolean {
-  // The confirm button is the LAST one in the panel — Cancel sits before it, and
-  // the × control before that. Anchoring on the label alone would find the
-  // dialog's own aria-label and heading instead, and while it is in flight the
-  // button does not carry the label at all.
   const button = html.lastIndexOf('<button')
   assert.ok(button >= 0, 'the Submit button must be on screen at all')
   const tail = html.slice(button)
@@ -129,27 +125,21 @@ function submitDisabled(html: string): boolean {
   return tail.slice(0, openTagEnd).includes('disabled=""')
 }
 
-// ── The defect itself ─────────────────────────────────────────────────────────
+// ── The position, stated rather than asked for ────────────────────────────────
 
-describe('the dialog an employee actually opens carries the advance choice', () => {
+describe('the dialog states the live verified-payment position', () => {
   const html = render()
 
-  test('it has an Advance requirement section, which is what was missing', () => {
-    assert.ok(html.includes(ADVANCE_SECTION_TITLE),
-      'the dialog used to show a client, a total, a warning and two buttons')
+  test('the five figures a salesperson needs are all on screen', () => {
+    for (const label of ['Grand total', 'Verified payment', 'Verified payment %',
+                         'Awaiting verification', 'Needed for standard approval']) {
+      assert.ok(html.includes(label), `"${label}" is missing from the dialog`)
+    }
   })
 
-  test('all THREE choices are on screen at once', () => {
-    assert.ok(html.includes(ADVANCE_STANDARD_LABEL), 'Standard advance (40%)')
-    assert.ok(html.includes(ADVANCE_REDUCED_LABEL), 'Reduced advance')
-    assert.ok(html.includes(ADVANCE_NONE_LABEL), 'No advance (0%)')
-  })
-
-  test('they are radios in one group, so exactly one can be chosen', () => {
-    const radios = html.match(/type="radio"/g) ?? []
-    assert.equal(radios.length, 3, 'three choices, three radios')
-    const named = html.match(/name="advance-choice"/g) ?? []
-    assert.equal(named.length, 3, 'and one group, so choosing one clears the others')
+  test('every figure is the database’s, formatted and not recomputed', () => {
+    assert.ok(html.includes('₹47,200.00'), 'the verified amount, as the RPC reported it')
+    assert.ok(html.includes('40%'))
   })
 
   test('the client and the grand total are still there', () => {
@@ -157,257 +147,139 @@ describe('the dialog an employee actually opens carries the advance choice', () 
     assert.ok(html.includes(formatInr(GRAND_TOTAL)))
   })
 
-  test('and it still draws the payment boundary, without claiming verification', () => {
-    assert.ok(html.includes(
-      'This records the advance amount declared for this PI. Payment verification and linking will be added separately.'))
-    assert.ok(!/verified through Finance|has been verified/i.test(html))
+  test('NOTHING asks for, or mentions, a declared advance', () => {
+    // The whole point of the phase: a declaration is not a payment, and the
+    // dialog no longer offers one to make.
+    assert.ok(!/declared advance|advance requirement|Reduced advance|No advance/i.test(html), html.slice(0, 400))
+    assert.ok(!html.includes('type="radio"'), 'there is no advance choice to make any more')
+  })
+
+  test('it says only verified payment counts, without claiming any verification', () => {
+    assert.ok(/Only payment Finance has verified counts/i.test(html))
+    assert.ok(!/has been verified by Finance/i.test(html))
   })
 })
 
-// ── Standard ──────────────────────────────────────────────────────────────────
+// ── At or above the requirement ───────────────────────────────────────────────
 
-describe('Standard advance is the default for a PI that has declared nothing', () => {
-  const html = render({ initialAdvance: initialAdvanceSelection(persisted(), GRAND_TOTAL) })
+describe('at or above the requirement the dialog asks for nothing mandatory', () => {
+  const html = render()
 
-  test('the standard radio is the checked one', () => {
-    const first = html.indexOf('type="radio"')
-    assert.ok(html.slice(first, first + 120).includes('checked=""'),
-      'the first choice — Standard — opens selected')
-    assert.equal((html.match(/checked=""/g) ?? []).length, 1)
+  test('it says the standard requirement is met', () => {
+    assert.ok(html.includes(PAYMENT_POSITION_LABEL.standard_met))
+    assert.ok(html.includes(PAYMENT_POSITION_HINT.standard_met))
   })
 
-  test('it shows the calculated 40% amount', () => {
-    assert.ok(html.includes(STANDARD_AMOUNT))
+  test('no reason is asked for', () => {
+    assert.ok(!html.includes(PAYMENT_REASON_LABEL))
   })
 
-  test('its helper is the short one, and promises nothing else', () => {
-    assert.ok(html.includes(ADVANCE_STANDARD_HINT))
+  test('the terms are OFFERED and both optional', () => {
+    assert.ok(html.includes(PAYMENT_TERMS_OPTIONAL_LABEL))
+    assert.ok(html.includes(BILLING_TERMS_LABEL))
   })
 
-  test('the amount box opens pre-filled with that exact figure', () => {
-    assert.ok(html.includes(`aria-label="${ADVANCE_AMOUNT_LABEL}"`))
-    assert.ok(html.includes('value="47200"'), 'the box holds the exact 40% amount')
-    assert.ok(html.includes(ADVANCE_STANDARD_REFERENCE_LABEL),
-      'and the calculated 40% is named as what it is measured against')
-  })
-
-  test('the derived percentage is shown beside it', () => {
-    assert.ok(html.includes(`${ADVANCE_PERCENT_LABEL}: 40%`))
-  })
-
-  test('it reveals no reason box', () => {
-    assert.ok(!html.includes('<textarea'), 'the standard route asks for no case to be made')
-  })
-
-  test('and Submit is enabled, because the default is already valid', () => {
+  test('Submit is available immediately', () => {
     assert.equal(submitDisabled(html), false)
   })
+})
 
-  test('an emptied box disables Submit and asks for the amount', () => {
-    const blank = render({ initialAdvance: { choice: 'standard', amountText: '', reason: '' } })
-    assert.equal(submitDisabled(blank), true)
-    assert.ok(blank.includes(ADVANCE_AMOUNT_REQUIRED))
+// ── Below the requirement ─────────────────────────────────────────────────────
+
+describe('below the requirement the dialog asks for a reason and payment terms', () => {
+  const html = render({ payment: below() })
+
+  test('it says Admin approval is required to proceed', () => {
+    assert.ok(html.includes(`Admin approval required to proceed below ${PAYMENT_STANDARD_PERCENT}%`))
   })
 
-  test('more than 40% is accepted on this route; a paisa less is not', () => {
-    assert.equal(submitDisabled(
-      render({ initialAdvance: { choice: 'standard', amountText: '60000', reason: '' } })), false)
-    assert.equal(submitDisabled(
-      render({ initialAdvance: { choice: 'standard', amountText: '47199.99', reason: '' } })), true)
+  test('both mandatory fields are on screen, marked mandatory', () => {
+    assert.ok(html.includes(PAYMENT_REASON_LABEL))
+    assert.ok(PAYMENT_REASON_LABEL.endsWith('*'))
+    assert.ok(html.includes(PAYMENT_TERMS_LABEL))
+    assert.ok(PAYMENT_TERMS_LABEL.endsWith('*'))
+  })
+
+  test('billing terms stay optional', () => {
+    assert.ok(html.includes(BILLING_TERMS_LABEL))
+    assert.ok(!BILLING_TERMS_LABEL.endsWith('*'))
+  })
+
+  test('Submit is disabled until both are given', () => {
+    assert.equal(submitDisabled(html), true)
+    assert.equal(
+      submitDisabled(render({
+        payment: below(),
+        initialTerms: { reason: 'client pays on delivery', paymentTerms: '', billingTerms: '' },
+      })),
+      true,
+      'a reason alone is not enough',
+    )
+    assert.equal(
+      submitDisabled(render({
+        payment: below(),
+        initialTerms: {
+          reason: 'client pays on delivery',
+          paymentTerms: '30% advance, 30% during production, 40% before dispatch',
+          billingTerms: '',
+        },
+      })),
+      false,
+    )
+  })
+
+  test('the shortfall is named, so the salesperson knows what would close it', () => {
+    assert.ok(html.includes('₹37,200.00'))
+  })
+
+  test('an untouched form is not scolded', () => {
+    // Somebody who has just opened the dialog has not made a mistake yet.
+    assert.ok(!html.includes(PAYMENT_REASON_REQUIRED))
+    const typed = render({
+      payment: below(),
+      initialTerms: { reason: 'client pays on delivery', paymentTerms: '', billingTerms: '' },
+    })
+    assert.ok(typed.includes(PAYMENT_TERMS_REQUIRED),
+      'but once they have started, the missing field is named')
   })
 })
 
-// ── Reduced ───────────────────────────────────────────────────────────────────
+// ── Money Finance has not decided ─────────────────────────────────────────────
 
-describe('Reduced advance asks for an amount and a reason', () => {
-  const filled = render({
-    initialAdvance: { choice: 'reduced', amountText: '14750', reason: 'client pays on delivery' },
+describe('unverified payment is shown and said not to count', () => {
+  const html = render({
+    payment: below({
+      unverified_amount: '40000.00',
+      unverified_percent: '33.90',
+      approval_position: 'verification_pending',
+    }),
   })
 
-  test('the amount field is present, and holds what was typed', () => {
-    assert.ok(filled.includes(`aria-label="${ADVANCE_AMOUNT_LABEL}"`))
-    assert.ok(filled.includes('value="14750"'))
+  test('the figure is on screen', () => {
+    assert.ok(html.includes('₹40,000.00'))
   })
 
-  test('the derived percentage is beside it, from the one formula', () => {
-    assert.ok(filled.includes(`${ADVANCE_PERCENT_LABEL}: 12.5%`), '₹14,750 of ₹1,18,000')
-    assert.ok(filled.includes(ADVANCE_STANDARD_REFERENCE_LABEL),
-      'and the 40% it must stay below is stated too')
+  test('and it is stated that Finance has not decided it', () => {
+    assert.ok(html.includes(PAYMENT_POSITION_HINT.verification_pending))
   })
 
-  test('the reason is a mandatory field, marked as one', () => {
-    assert.ok(filled.includes(`aria-label="${ADVANCE_REASON_LABEL}"`))
-    assert.ok(ADVANCE_REASON_LABEL.endsWith('*'))
-    assert.ok(filled.includes('client pays on delivery'))
-  })
-
-  test('a complete declaration enables Submit', () => {
-    assert.equal(submitDisabled(filled), false)
-  })
-
-  test('a blank reason disables Submit and says why', () => {
-    const html = render({ initialAdvance: { choice: 'reduced', amountText: '14750', reason: '' } })
-    assert.equal(submitDisabled(html), true)
-    assert.ok(html.includes(ADVANCE_REASON_REQUIRED))
-  })
-
-  test('a whitespace-only reason is not a reason', () => {
-    const html = render({ initialAdvance: { choice: 'reduced', amountText: '14750', reason: '   ' } })
-    assert.equal(submitDisabled(html), true)
-    assert.ok(html.includes(ADVANCE_REASON_REQUIRED))
-  })
-
-  test('ZERO here is refused, and the message names the choice to press', () => {
-    const html = render({ initialAdvance: { choice: 'reduced', amountText: '0', reason: 'agreed' } })
-    assert.equal(submitDisabled(html), true)
-    assert.ok(html.includes(ADVANCE_AMOUNT_ZERO_USE_NONE))
-    assert.ok(html.includes(ADVANCE_NONE_LABEL))
-  })
-
-  test('an out-of-range, over-precise or malformed figure all disable Submit', () => {
-    // 47200 is the 40% threshold on this PI, and 118001 is more than it is worth.
-    for (const amountText of ['47200', '50000', '118001', '-3', '12.345', '1,5', '12%',
-                              '1e5', 'NaN', 'Infinity']) {
-      const html = render({ initialAdvance: { choice: 'reduced', amountText, reason: 'agreed' } })
-      assert.equal(submitDisabled(html), true, `"${amountText}" must not be submittable`)
-    }
-  })
-
-  test('a blank amount asks for one instead of assuming zero', () => {
-    const html = render({ initialAdvance: { choice: 'reduced', amountText: '', reason: 'agreed' } })
-    assert.equal(submitDisabled(html), true)
-    assert.ok(html.includes(ADVANCE_AMOUNT_REQUIRED))
-  })
-
-  test('a freshly pressed choice is not scolded, but is still not submittable', () => {
-    const html = render({ initialAdvance: { choice: 'reduced', amountText: '', reason: '' } })
-    assert.equal(submitDisabled(html), true)
-    assert.ok(!html.includes(ADVANCE_AMOUNT_REQUIRED),
-      'nothing has been typed yet, so there is nothing to be told off about')
+  test('it does not close the gate on its own', () => {
+    assert.equal(submitDisabled(html), true, 'the mandatory fields are still required')
   })
 })
 
-// ── No advance ────────────────────────────────────────────────────────────────
+// ── An unreadable position ────────────────────────────────────────────────────
 
-describe('No advance: 0% is a choice, not a figure anybody has to guess', () => {
-  const html = render({ initialAdvance: { choice: 'none', amountText: '', reason: 'repeat buyer' } })
+describe('a PI whose payment position cannot be read fails CLOSED', () => {
+  const html = render({ payment: null })
 
-  test('it states ₹0 and 0% rather than offering a box to type them into', () => {
-    assert.ok(html.includes('0%'))
-    assert.ok(html.includes(formatInr(0)))
-    assert.ok(!html.includes(`aria-label="${ADVANCE_AMOUNT_LABEL}"`),
-      'there is no figure to get wrong, so there is no field for one')
-  })
-
-  test('it says management approval is required to proceed', () => {
-    assert.ok(html.includes(ADVANCE_NONE_HINT))
-    assert.ok(html.includes(ADVANCE_ZERO_EXPLANATION))
-  })
-
-  test('it never calls this a payment, a waiver or a receipt', () => {
-    for (const word of ['paid', 'payment received', 'waived', 'receipt', 'collected']) {
-      assert.ok(!new RegExp(word, 'i').test(html), `"${word}" must not appear`)
-    }
-  })
-
-  test('the reason is mandatory here too', () => {
-    assert.ok(html.includes(`aria-label="${ADVANCE_REASON_LABEL}"`))
-    assert.equal(submitDisabled(html), false)
-
-    const blank = render({ initialAdvance: { choice: 'none', amountText: '', reason: '' } })
-    assert.equal(submitDisabled(blank), true)
-  })
-
-  test('a leftover amount cannot make it submittable or unsubmittable', () => {
-    const html2 = render({ initialAdvance: { choice: 'none', amountText: '99000', reason: 'agreed' } })
-    assert.equal(submitDisabled(html2), false, 'the choice is the declaration')
-  })
-})
-
-// ── Resubmission ──────────────────────────────────────────────────────────────
-
-describe('a resubmission opens on what the record already says', () => {
-  const approvedReduced = persisted({
-    advance_condition: 'exception',
-    advance_exception_percent: '15.00',
-    advance_exception_reason: 'client is a repeat buyer',
-    advance_exception_status: 'approved',
-  })
-
-  const approvedZero = persisted({
-    advance_condition: 'exception',
-    advance_exception_percent: 0,
-    advance_exception_reason: 'long-standing account',
-    advance_exception_status: 'approved',
-  })
-
-  test('an approved reduced exception reopens filled in, and submittable unchanged', () => {
-    const html = render({
-      initialAdvance: initialAdvanceSelection(approvedReduced, GRAND_TOTAL),
-      offerReply: true,
-    })
-    assert.ok(html.includes('value="17700"'), '15% of ₹1,18,000, read from the stored percentage')
-    assert.ok(html.includes('client is a repeat buyer'))
-    assert.equal(submitDisabled(html), false,
-      'resubmitting it untouched must preserve the approval rather than be refused')
-  })
-
-  test('an approved 0% exception reopens on No advance, not on a reduced zero', () => {
-    const html = render({
-      initialAdvance: initialAdvanceSelection(approvedZero, GRAND_TOTAL),
-      offerReply: true,
-    })
-    assert.ok(!html.includes(`aria-label="${ADVANCE_AMOUNT_LABEL}"`),
-      'a 0 in the reduced box would be a declaration this dialog refuses')
-    assert.ok(html.includes(ADVANCE_ZERO_EXPLANATION))
-    assert.ok(html.includes('long-standing account'))
-    assert.equal(submitDisabled(html), false)
-  })
-
-  test('a rejected exception may be replaced by any of the three', () => {
-    // Nothing is locked: all three radios are enabled on a returned PI.
-    const html = render({
-      initialAdvance: initialAdvanceSelection(persisted({
-        advance_condition: 'exception',
-        advance_exception_percent: '5.00',
-        advance_exception_reason: 'was refused',
-        advance_exception_status: 'rejected',
-        advance_exception_rejection_reason: 'too low for a first order',
-      }), GRAND_TOTAL),
-      offerReply: true,
-    })
-    assert.equal((html.match(/type="radio"/g) ?? []).length, 3)
-    assert.ok(!/type="radio"[^>]*disabled/.test(html))
-  })
-
-  test('the optional employee reply appears only on a resubmission', () => {
-    assert.ok(render({ offerReply: true }).includes('Reply to management'))
-    assert.ok(!render({ offerReply: false }).includes('Reply to management'))
-  })
-})
-
-// ── The record itself failing closed ──────────────────────────────────────────
-
-describe('a PI with no stored grand total cannot declare anything', () => {
-  test('every choice is refused, and the reason is about the record', () => {
-    for (const initialAdvance of [
-      { choice: 'standard', amountText: '47200', reason: '' },
-      { choice: 'reduced', amountText: '12000', reason: 'agreed' },
-      { choice: 'none', amountText: '', reason: 'agreed' },
-    ] as AdvanceDeclaration[]) {
-      const html = render({ initialAdvance, grandTotalValue: null })
-      assert.equal(submitDisabled(html), true)
-      assert.ok(html.includes(ADVANCE_TOTAL_MISSING))
-    }
-  })
-
-  test('it is said immediately, even before anything is typed', () => {
-    const html = render({
-      initialAdvance: { choice: 'reduced', amountText: '', reason: '' },
-      grandTotalValue: null,
-    })
-    assert.ok(html.includes(ADVANCE_TOTAL_MISSING),
+  test('the reason is said immediately, before anything is typed', () => {
+    assert.ok(html.includes(PAYMENT_POSITION_UNKNOWN),
       'no amount of typing fixes this one, so it is not withheld')
+  })
+
+  test('and Submit stays disabled', () => {
+    assert.equal(submitDisabled(html), true)
   })
 })
 
@@ -415,7 +287,8 @@ describe('a PI with no stored grand total cannot declare anything', () => {
 
 describe('a submission in flight cannot be started twice', () => {
   const html = render({
-    initialAdvance: { choice: 'none', amountText: '', reason: 'agreed' },
+    payment: below(),
+    initialTerms: { reason: 'agreed', paymentTerms: '50% before dispatch', billingTerms: '' },
     submitting: true,
   })
 
@@ -425,19 +298,23 @@ describe('a submission in flight cannot be started twice', () => {
   })
 
   test('and every field is frozen with it', () => {
-    assert.equal((html.match(/type="radio"[^>]*disabled=""/g) ?? []).length, 3)
     assert.ok(/<textarea[^>]*disabled=""/.test(html))
   })
 })
 
 describe('a failed submission keeps the words on screen', () => {
-  test('the declaration survives, and the failure is shown beside it', () => {
+  test('the typed terms survive, and the failure is shown beside them', () => {
     const html = render({
-      initialAdvance: { choice: 'reduced', amountText: '14750', reason: 'client pays on delivery' },
+      payment: below(),
+      initialTerms: {
+        reason: 'client pays on delivery',
+        paymentTerms: '30% advance, 70% before dispatch',
+        billingTerms: '',
+      },
       failure: 'This PI could not be submitted just now. Try again in a moment.',
     })
-    assert.ok(html.includes('value="14750"'))
     assert.ok(html.includes('client pays on delivery'))
+    assert.ok(html.includes('30% advance, 70% before dispatch'))
     assert.ok(html.includes('could not be submitted just now'))
   })
 })
@@ -449,43 +326,55 @@ describe('this is the dialog the PI detail page opens, and the RPC it sends to',
     join(process.cwd(), 'src', 'app', 'orders', 'drafts', '[submissionId]', 'page.tsx'), 'utf8')
 
   test('the page imports THIS component, and there is no second submit modal', () => {
-    // The import list grew when Phase C added its two dialogs, so the name is
-    // matched rather than the whole line — what matters is that this component
-    // is the one the page opens, and that it comes from the single modals file.
     assert.ok(/import \{[\s\S]*?\bPiSubmitConfirmModal\b[\s\S]*?\} from '@\/components\/orders\/piReviewModals'/
       .test(page))
     assert.ok(page.includes('<PiSubmitConfirmModal'))
     assert.equal((page.match(/<PiSubmitConfirmModal/g) ?? []).length, 1)
   })
 
-  test('it hands the dialog the record’s own declaration', () => {
-    assert.ok(page.includes('initialAdvance={initialAdvanceSelection(submission, grandTotalValue)}'))
-    assert.ok(page.includes('grandTotalValue={grandTotalValue}'))
-    assert.ok(page.includes('standardAdvance={standardAdvanceLabel}'))
+  test('it hands the dialog the LIVE payment summary, not the record’s declaration', () => {
+    assert.ok(page.includes('payment={payments}'))
+    assert.ok(!page.includes('initialAdvance='),
+      'the declared advance no longer reaches this dialog')
+    assert.ok(!page.includes('standardAdvance='))
   })
 
-  test('all three choices go through the AMOUNT RPC, and never an earlier one', () => {
-    assert.ok(page.includes("supabase.rpc('submit_order_submission_with_advance_amount'"),
-      'one door, whatever was chosen')
-    assert.ok(!page.includes("supabase.rpc('submit_order_submission'"),
-      'the Phase A RPC must not be reachable from this screen')
-    assert.ok(!page.includes("supabase.rpc('submit_order_submission_with_note'"))
-    assert.ok(!page.includes("supabase.rpc('submit_order_submission_with_advance'"),
-      'and neither may the percentage door')
+  test('it hands the dialog the terms the record already agreed', () => {
+    assert.ok(page.includes('initialTerms={{'))
+    assert.ok(page.includes('payments?.payment_terms'))
+    assert.ok(page.includes('payments?.billing_terms'))
   })
 
-  test('the payload carries the condition and the amount, and no percentage', () => {
-    assert.ok(page.includes('p_advance_condition: advance.condition'))
-    assert.ok(page.includes('p_advance_amount: advance.amount'),
-      'the amount is declared on EVERY route, including the standard one')
-    assert.ok(!page.includes('p_advance_percent'),
-      'the database derives the percentage; a browser never supplies one')
-    assert.ok(page.includes("p_advance_reason: advance.condition === 'exception' ? advance.reason : null"))
+  test('submission goes through the ONE Phase 3 door, and no earlier one', () => {
+    assert.ok(page.includes("supabase.rpc('submit_pi_for_review'"),
+      'one door, whichever route the database chooses')
+    for (const retired of ['submit_order_submission', 'submit_order_submission_with_note',
+                           'submit_order_submission_with_advance',
+                           'submit_order_submission_with_advance_amount']) {
+      assert.ok(!page.includes(`supabase.rpc('${retired}'`),
+        `the ${retired} door must not be reachable from this screen`)
+    }
+  })
+
+  test('the payload carries the reason and the terms, and no advance figure', () => {
+    assert.ok(page.includes('p_reason: terms.reason'))
+    assert.ok(page.includes('p_payment_terms: terms.paymentTerms'))
+    assert.ok(page.includes('p_billing_terms: terms.billingTerms'))
+    for (const forbidden of ['p_advance_amount', 'p_advance_percent', 'p_advance_condition']) {
+      assert.ok(!page.includes(forbidden),
+        `${forbidden} must not be sent: the database decides the route from verified payment`)
+    }
   })
 
   test('the dialog opens for a draft AND for a returned PI', () => {
     assert.ok(page.includes("dialog === 'submit'"))
     assert.ok(page.includes('offerReply={submissionOffersReply(submission.status)}'),
       'the reply field is the only difference between the two paths')
+  })
+
+  test('the approver is told only when a decision is actually waiting', () => {
+    assert.ok(page.includes('exception_requested'),
+      'the RPC reports whether a fresh exception was raised')
+    assert.ok(page.includes("notifyPiSubmission({ event: 'pi_exception_requested'"))
   })
 })

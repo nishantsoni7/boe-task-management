@@ -374,6 +374,41 @@ named reviewer, or an explicit `finance.allocate` holder — and to nobody else.
 Wider Finance access (`view`, `view_all`, `approve`, `manage`) is deliberately not
 a route.
 
+### Payment Phase 3 (`20260921000000`) — no permission changes
+
+**No action is added, granted, revoked or widened, and no RLS policy is created,
+dropped or altered.** The migration's own assertion block fails the apply if any
+of that were true.
+
+The verified-payment gate reads the money that already exists; it confers no new
+sight and no new authority. The reduced-payment exception reuses
+`orders.approve_advance_exception` exactly as `20260913000000` defined it — a
+protected action no preset grants, independent of `orders.approve_order` in both
+directions — so the people who may decide it are the same people as before: an
+active admin, or an explicit per-employee grant holder.
+
+**One new function is worth naming here**, because it reads the permission engine:
+
+```sql
+public.users_with_module_permission(text, text)  -- SECURITY DEFINER, service_role only
+```
+
+It answers *"who would be allowed to take this module action"* — every active,
+non-deleted admin, plus everyone `resolve_permission()` grants it — so the
+server-side notify route can address the exception request to the people who can
+act on it. It grants nothing, changes nothing, and is **revoked from `public`,
+`anon` and `authenticated`**: an authenticated caller must not be able to
+enumerate who holds what. Its one caller is
+`/api/orders/submissions/notify`, which already runs with the service key.
+
+Two figures that decide eligibility are likewise reachable by **no client role at
+all** — `order_submission_verified_payment(uuid)` and
+`order_submission_unverified_payment(uuid)` are revoked from `public`, `anon`,
+`authenticated` **and** `service_role`. A caller who wants to read a PI's payment
+position calls `pi_submission_payment_summary(uuid)`, which checks
+`can_view_order_submission()` first and refuses an outsider without telling them
+whether the record exists.
+
 ---
 
 The split is the point: **order request attachments are operational documents**

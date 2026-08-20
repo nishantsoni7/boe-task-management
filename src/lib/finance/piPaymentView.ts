@@ -96,14 +96,44 @@ export type PiPaymentSummaryRow = {
 
 export type PiPaymentSummary = {
   submission_id: string
+  /** order_submissions.status, so the card can read the position in context. */
+  submission_status?: string | null
   grand_total: string | number | null
   verified_amount: string | number
   unverified_amount: string | number
   verified_percent: string | number | null
   unverified_percent: string | number | null
+  /**
+   * How much MORE verified payment is needed, rounded UP to whole paise by the
+   * database so the figure shown is always one that actually closes the gate.
+   */
   needed_for_standard: string | number | null
+  /** The exact 40% figure the gate compares against. */
+  required_payment?: string | number | null
+  /** Whether verified payment already satisfies the requirement. */
+  meets_standard?: boolean | null
+  /**
+   * Where this PI stands, resolved by the database in the same order
+   * approve_order_submission() resolves it. One of the six PaymentPosition
+   * codes; never re-derived in the browser.
+   */
+  approval_position?: string | null
   pending_balance: string | number | null
   standard_percent: string | number
+  /**
+   * The reduced-payment exception's state: pending | approved | rejected.
+   *
+   * The RPC also returns the submission's route, and this type deliberately does
+   * NOT carry it: the route is named after the pre-Phase-3 declared-advance
+   * column, and a payment view that read a declaration would be one step from
+   * showing it. The POSITION above is the answer this card needs.
+   */
+  exception_status?: string | null
+  exception_reason?: string | null
+  exception_rejection_reason?: string | null
+  /** The agreed commercial terms, as plain text. Never parsed. */
+  payment_terms?: string | null
+  billing_terms?: string | null
   can_view_all_finance: boolean
   payments: PiPaymentSummaryRow[]
 }
@@ -138,7 +168,7 @@ export function formatPercent(value: string | number | null | undefined): string
 export type PiPaymentTile = { key: string; label: string; value: string; hint?: string }
 
 /**
- * The five tiles, in the confirmed order. Read straight off the RPC result — no
+ * The six tiles, in the confirmed order. Read straight off the RPC result — no
  * total is recomputed here, which the tests assert by feeding deliberately
  * inconsistent figures and requiring them to survive unchanged.
  *
@@ -150,14 +180,37 @@ export function piPaymentTiles(summary: PiPaymentSummary | null): PiPaymentTile[
   if (!summary) return []
   const standard = summary.standard_percent ?? 40
   return [
+    // THE GRAND TOTAL LEADS, because every other figure on the card is a part of
+    // it and a reader who cannot see the whole cannot judge the parts.
+    { key: 'grand',      label: 'Grand total',           value: formatMoney(summary.grand_total) },
     { key: 'verified',   label: 'Verified payment',      value: formatMoney(summary.verified_amount) },
     { key: 'unverified', label: 'Awaiting verification', value: formatMoney(summary.unverified_amount) },
-    { key: 'percent',    label: 'Payment received',      value: formatPercent(summary.verified_percent),
+    { key: 'percent',    label: 'Verified payment %',    value: formatPercent(summary.verified_percent),
       hint: 'of grand total, verified only' },
     { key: 'needed',     label: 'Needed for approval',   value: formatMoney(summary.needed_for_standard),
       hint: `to reach the standard ${standard}%` },
     { key: 'balance',    label: 'Pending balance',       value: formatMoney(summary.pending_balance) },
   ]
+}
+
+export type PiPaymentTermLine = { key: 'payment_terms' | 'billing_terms'; label: string; value: string }
+
+/**
+ * The agreed commercial terms, when there are any.
+ *
+ * ABSENT RATHER THAN EMPTY. A PI that agreed no terms prints no rows at all,
+ * because "Payment terms —" reads as a field somebody forgot rather than as a
+ * question nobody was asked. Plain text, rendered exactly as it was typed: this
+ * is not a schedule and nothing here parses it.
+ */
+export function piPaymentTermLines(summary: PiPaymentSummary | null): PiPaymentTermLine[] {
+  if (!summary) return []
+  const lines: PiPaymentTermLine[] = []
+  const payment = (summary.payment_terms ?? '').trim()
+  const billing = (summary.billing_terms ?? '').trim()
+  if (payment !== '') lines.push({ key: 'payment_terms', label: 'Payment terms', value: payment })
+  if (billing !== '') lines.push({ key: 'billing_terms', label: 'Billing terms', value: billing })
+  return lines
 }
 
 // ── Who may add a payment ─────────────────────────────────────────────────────

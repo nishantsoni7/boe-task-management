@@ -547,3 +547,62 @@ soft-deleted admin keep Finance and Orders authority — both branches now requi
 an active, non-deleted user.
 
 Detail: `docs/Module Docs/ACCESS_CONTROL_V1.md`.
+
+---
+
+## Order Management — Payment Phase 3: the verified-payment approval gate
+*(branch `claude/boe-verified-payment-approval-phase3-hgevan`, migration
+`20260921000000_order_submission_verified_payment_gate.sql`, **not applied**)*
+
+**Why.** BOE's rule has always been that an Order is worked once 40% has been
+received. Until Payment Phases 1 and 2 there was no way to know whether it had,
+so the system asked the salesperson to DECLARE an advance and gated Order
+creation on that declaration. Every migration involved said, at length, that a
+declaration is not a payment — `20260913000000` opens with "THIS RECORDS A
+COMMERCIAL CONDITION. IT IS NOT A PAYMENT." The declaration was a proxy, and the
+proxy could be wrong in the one direction that costs money: an Order confirmed,
+numbered and worked against nothing received.
+
+**What changed.** `approve_order_submission()` now sums FINANCE-VERIFIED payment
+allocated to the PI, live, under row locks, at the instant of the decision, and
+compares it as exact `numeric` with 40% of the grand total. Below that, an
+Order number is assigned only when an authorised approver has approved
+proceeding on less — including on nothing.
+
+**What was deliberately NOT built.** A second exception system. The reduced- and
+zero-payment route reuses `20260913000000`'s columns, guard trigger, two decision
+RPCs and `orders.approve_advance_exception` permission unchanged; what changed is
+what the request means and that a reason and Payment Terms are mandatory to raise
+one. Building a parallel workflow would have split every audit trail in half.
+
+**Three things the design turns on:**
+
+* **Exact amounts, never a rounded percentage.** 40% of ₹100.01 is ₹40.004, and
+  ₹40.00 — which displays as "40%" — does not meet it. The figure a person is
+  shown as still outstanding is rounded **up** to whole paise, so paying it
+  always closes the gate.
+* **Money is tested before the decision that stands in for money.** A PI that
+  reaches 40% while an exception request sits in a queue is approved on the
+  standard route; the request simply stops mattering. The converse also holds: an
+  approved exception permits approval however little arrived, because that is
+  what approving it meant.
+* **The money MOVES; it is never copied.** At approval the PI's active
+  allocations are re-pointed onto the new Order in one `UPDATE` — same ids, same
+  payments, same amounts, same provenance — so proof, verification and Finance
+  history stay attached to a payment row nothing rewrote.
+  `finance_payment_allocations_guard_transition()` was restated to admit exactly
+  that one move, which `20260918000000` §6 had already written down as work Phase
+  3 would have to do "as a visible, reviewed change to one named function in its
+  own migration".
+
+**Legacy data.** No column dropped, no historical value rewritten.
+`advance_declared_amount` is retained and re-documented as legacy;
+`advance_exception_percent` is re-purposed as the verified-payment snapshot taken
+when a request is raised. `order_submission_advance_ready()` still exists and is
+simply no longer consulted.
+
+**Also added.** `payment_terms` and `billing_terms` — plain text, never parsed —
+and three notification types for the exception request and its two outcomes.
+
+Detail: `docs/Module Docs/FINANCE_ORDER_WORKFLOW.md` §11 and
+`docs/Module Docs/PAYMENT_PHASE_PROGRESS.md`.

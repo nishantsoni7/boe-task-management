@@ -349,12 +349,11 @@ describe('the detail page renders only what it fetched', () => {
     // appearing here that is not on this list would mean the screen had grown a
     // write of its own.
     //
-    // submit_order_submission_with_advance_amount is the same submission carrying
-    // the employee's optional reply AND their declared advance AMOUNT; it is one
-    // line over the same internal function the Phase A doors call, so none of
-    // them can diverge in what they check. The percentage is not sent at all —
-    // the database derives it from the amount and the persisted grand total, so
-    // a browser cannot supply two figures that disagree.
+    // submit_pi_for_review is the Phase 3 submission door: the employee's
+    // optional reply, an optional reason and the agreed commercial terms. NO
+    // advance figure is sent at all — the database sums verified payment itself
+    // and chooses the standard or the reduced-payment route, so a browser can
+    // neither declare an advance nor claim a payment position.
     //
     // Phase C adds the last two: verify_pi_finance_check records the finance
     // sign-off and nothing else, and approve_order_submission is the ONE
@@ -367,7 +366,7 @@ describe('the detail page renders only what it fetched', () => {
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
-      'submit_order_submission_with_advance_amount',
+      'submit_pi_for_review',
       'verify_pi_finance_check',
     ])
     // Still unreachable from a browser, in any phase: the number allocator, and
@@ -411,6 +410,11 @@ describe('the detail page renders only what it fetched', () => {
     // control is drawn, and the server re-derives every one of them.
     const PURE_HELPERS = [
       'canAddPiPayment',
+      // Formatters. They turn a `numeric` the database already computed into
+      // pixels and can no longer feed a decision — the page uses them for the
+      // one verified-payment line the review dialogs and the snapshot share.
+      'formatMoney',
+      'formatPercent',
     ] as const
 
     // Anything imported from the Finance library must be on one of the two
@@ -1077,12 +1081,17 @@ describe('the order overview is three sections, not a grid of unrelated facts', 
     assert.ok(view.includes('`Saved ${input.savedAt}`'))
   })
 
-  test('the commercial snapshot is built from the shared advance helper', () => {
+  test('the commercial snapshot reports VERIFIED PAYMENT, never a declared advance', () => {
     assert.ok(page.includes('const snapshot = buildCommercialSnapshot({'))
     assert.ok(page.includes('grandTotal: grandTotalLabel'))
-    assert.ok(page.includes('advance,'))
-    // Not one figure is derived here: the standard requirement and the proposed
-    // amount both come out of describeAdvance, which uses the one formula.
+    // The block is driven by pi_submission_payment_summary()'s answer — the
+    // money that actually arrived — and not by anything the employee declared.
+    assert.ok(page.includes('verifiedAmount: formatMoney(payments.verified_amount)'))
+    assert.ok(page.includes('position: asPaymentPosition(payments.approval_position)'))
+    assert.ok(!/buildCommercialSnapshot\(\{[\s\S]{0,300}?advance,/.test(page),
+      'the declared advance no longer reaches the snapshot')
+    // Not one figure is derived here: every total was computed in `numeric` in
+    // the database and this module only arranges it.
     for (const arithmetic of ['* 0.4', 'Math.round', '/ 100']) {
       assert.ok(!view.includes(arithmetic),
         `${arithmetic} must not appear — this module chooses words, not amounts`)
@@ -1572,19 +1581,23 @@ describe('the resubmission reply reaches the database and the trail', () => {
       'the gate is the shared helper, not an inline status comparison')
   })
 
-  test('one door carries the reply and the declared amount together', () => {
-    // Phase B replaced the two-door choice with one: the reply and the advance
-    // declaration travel on the same call, so a submission cannot land with one
-    // recorded and the other lost. p_note is still nullable, so an employee with
-    // nothing to add submits exactly as they did before.
-    assert.ok(source.includes("await supabase.rpc('submit_order_submission_with_advance_amount', {"))
+  test('one door carries the reply and the commercial terms together', () => {
+    // ONE CALL, so a submission cannot land with the reply recorded and the
+    // terms lost. p_note is still nullable, so an employee with nothing to add
+    // submits exactly as they did before.
+    //
+    // NO ADVANCE FIGURE IS SENT AT ALL. The database sums FINANCE-VERIFIED
+    // payment itself and chooses the standard or the reduced-payment route, so a
+    // browser can neither declare an advance nor claim a payment position.
+    assert.ok(source.includes("await supabase.rpc('submit_pi_for_review', {"))
     assert.ok(source.includes('p_note: note,'))
-    assert.ok(source.includes('p_advance_condition: advance.condition,'))
-    assert.ok(source.includes('p_advance_amount: advance.amount,'),
-      'the AMOUNT is what is declared, on every route including the standard one')
-    assert.ok(!/p_advance_percent/.test(source),
-      'no percentage is sent: the database derives it from the amount it was given')
-    assert.ok(source.includes("p_advance_reason: advance.condition === 'exception' ? advance.reason : null,"))
+    assert.ok(source.includes('p_reason: terms.reason,'))
+    assert.ok(source.includes('p_payment_terms: terms.paymentTerms,'))
+    assert.ok(source.includes('p_billing_terms: terms.billingTerms,'))
+    for (const forbidden of ['p_advance_percent', 'p_advance_amount', 'p_advance_condition']) {
+      assert.ok(!source.includes(forbidden),
+        `${forbidden} must not be sent — a declaration is not a payment`)
+    }
   })
 
   test('double submission is still prevented on every path', () => {
@@ -1648,8 +1661,12 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     assert.ok(!/canDecide=\{[^}]*canApproveOrderSubmission/.test(source))
   })
 
-  test('a draft shows no advance block, and everything past it does', () => {
-    assert.ok(read(DETAIL_VIEW).includes("const show = !advance.undeclared || input.status !== 'draft'"))
+  test('the payment block is absent until the position has actually been read', () => {
+    // NULL RATHER THAN A PLACEHOLDER. "Verified payment —" on a record whose
+    // summary has not loaded is a permanent block answering a question nobody
+    // has asked, and a figure invented to fill it would be worse still.
+    assert.ok(read(DETAIL_VIEW).includes('payment: payment === null ? null : {'))
+    assert.ok(read(DETAIL_PAGE).includes('payment: payments === null ? null : {'))
   })
 
   test('the current advance state is stated exactly once on the page', () => {
@@ -1677,15 +1694,18 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     for (const claim of ['Add Payment', 'payment received', 'Record Payment', 'finance_payment']) {
       assert.ok(!screen.includes(claim), `the screen must not say "${claim}"`)
     }
-    assert.ok(!/received|collected|\bpaid\b/i.test(read(DETAIL_VIEW)),
-      'the snapshot states a requirement, never a receipt')
-    // The disclaimer itself is gone from the record page: it appeared under
-    // every advance figure on a screen that never claimed one. It still stands
-    // in the submit dialog, which is where the declaration is actually made,
-    // and on the import preview's own commercial summary.
+    // The snapshot now reports VERIFIED payment, which is a receipt Finance has
+    // confirmed — so the rule is that it must never claim a receipt nobody
+    // verified, and the word it may not use is the unqualified one.
+    assert.ok(!/\bcollected\b/i.test(read(DETAIL_VIEW)),
+      'the snapshot states what Finance verified, never what somebody collected')
+    // The old declared-advance disclaimer is gone from the record page and from
+    // the submit dialog with it: there is no declaration left to disclaim. The
+    // boundary that remains is the one that matters — only verified payment
+    // counts — and it is stated where the position is shown.
     assert.ok(!screen.includes('ADVANCE_NOT_A_PAYMENT'))
-    assert.ok(read(REVIEW_MODALS).includes('{ADVANCE_NOT_A_PAYMENT}'),
-      'the boundary is stated at the point of declaration')
+    assert.ok(read(REVIEW_MODALS).includes('{PAYMENT_NOT_A_DECLARATION}'),
+      'the boundary is stated at the point the position is read')
     assert.ok(read('src/lib/pi/previewView.ts').includes('note: ADVANCE_NOT_A_PAYMENT_NOTE'),
       'and on the preview, whose summary is the only advance it states')
   })
@@ -1703,74 +1723,79 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     // phase of the roadmap. That is the difference between a disabled control
     // worth showing and the inert one this screen used to carry.
     assert.ok(/Finance must verify this PI/.test(approval))
-    assert.ok(/waiting for a decision/.test(approval))
+    assert.ok(/paymentApprovalBlocker/.test(approval),
+      'and the payment gate produces its own actionable sentence')
     assert.ok(!/order-approval phase|later phase|Available in/.test(approval),
       'this IS the phase; a blocker must never point at the roadmap')
   })
 })
 
-describe('the submit dialog asks one question and stays short', () => {
+describe('the submit dialog states the payment position and asks only what is unknown', () => {
   const source = read(REVIEW_MODALS)
 
-  test('the dialog opens on the record’s own declaration', () => {
-    assert.ok(source.includes('useState<AdvanceDeclaration>(initialAdvance)'))
-    assert.ok(source.includes('initialAdvance: AdvanceDeclaration'))
+  test('it opens on the LIVE payment summary, not on a stored declaration', () => {
+    assert.ok(source.includes('payment: PiPaymentSummary | null'))
+    assert.ok(source.includes('summary={payment}'))
+    assert.ok(!source.includes('AdvanceDeclaration'),
+      'no advance declaration reaches this dialog any more')
   })
 
-  test('all THREE choices are drawn, and none is hidden behind another', () => {
-    // The defect this replaced: two radio cards, with "no advance" reachable
-    // only by knowing 0 was an accepted percentage inside the second one.
-    assert.ok(source.includes('{ADVANCE_CHOICES.map(card)}'),
-      'the choices come from the shared list, so none can be forgotten here')
-    assert.ok(source.includes('{ADVANCE_CHOICE_LABEL[value]}'))
-    assert.ok(source.includes('{ADVANCE_CHOICE_HINT[value]}'))
-    assert.ok(!source.includes('ADVANCE_EXCEPTION_LABEL'),
-      'the old catch-all "Request advance exception" option is gone')
+  test('the five live figures are drawn from the shared builder', () => {
+    assert.ok(source.includes('paymentPositionLines({'),
+      'the lines come from one place, so the dialog and the card cannot disagree')
+    assert.ok(source.includes('formatFigure:      formatMoney'))
+    assert.ok(source.includes('formatPercentage:  formatPercent'))
   })
 
-  test('each choice reveals exactly what it needs, and nothing more', () => {
-    assert.ok(source.includes("{choice === 'standard' && ("),
-      'the standard route offers the amount box too — it is a figure, not a click')
-    assert.ok(source.includes("{choice === 'reduced' && ("),
-      'the same box, below the requirement rather than at or above it')
-    assert.ok(source.includes("{choice === 'none' && ("),
-      'No advance states its figures instead of offering a box')
-    assert.ok(source.includes('{ADVANCE_NONE_PERCENT_LABEL}'))
-    assert.ok(source.includes('{ADVANCE_NONE_AMOUNT_LABEL}'))
+  test('there is no advance choice left to make', () => {
+    for (const gone of ['ADVANCE_CHOICES', 'ADVANCE_CHOICE_LABEL', 'ADVANCE_CHOICE_HINT',
+                        'advanceChoiceChange', 'previewAdvancePercent',
+                        'validateAdvanceDeclaration', 'name="advance-choice"']) {
+      assert.ok(!source.includes(gone), `${gone} must be gone from the dialog`)
+    }
   })
 
-  test('the typed amount shows the percentage it comes to, immediately', () => {
-    assert.ok(source.includes('previewAdvancePercent(amountText, grandTotalValue)'))
-    assert.ok(source.includes('{ADVANCE_PERCENT_LABEL}: {derived}'))
-    assert.ok(source.includes('{ADVANCE_STANDARD_REFERENCE_LABEL}'),
-      'and the calculated 40% is stated as the figure it is measured against')
-    assert.ok(source.includes('{amount}'))
-    assert.ok(source.includes("if (value === 'standard') return standardAmount"))
+  test('whether the requirement is met is READ, never computed', () => {
+    assert.ok(source.includes('payment.meets_standard === true'),
+      'the database decided it in numeric; the browser never divides money')
+    assert.ok(!/verified[^\n]*[<>]=/.test(source), 'no comparison of money in the dialog')
+    assert.ok(!source.includes('parseFloat('), 'no second parser')
   })
 
-  test('changing choice clears what does not belong to the new one', () => {
-    assert.ok(source.includes('advanceChoiceChange(current, next, grandTotalValue)'),
-      'the clearing rule is the shared one, not an inline object spread')
-    assert.ok(!source.includes('({ ...current, choice: next })'),
-      'a bare choice swap would carry a stale amount and a stale reason with it')
+  test('below the requirement it asks for a reason and payment terms, and marks them', () => {
+    assert.ok(source.includes('{meetsStandard === false && ('))
+    assert.ok(source.includes('PAYMENT_REASON_LABEL'))
+    assert.ok(source.includes('PAYMENT_TERMS_LABEL'))
+    assert.ok(source.includes('BILLING_TERMS_LABEL'))
   })
 
-  test('0% is explained rather than left as a bare ₹0', () => {
-    assert.ok(source.includes('{ADVANCE_ZERO_EXPLANATION}'))
+  test('at or above the requirement it asks for nothing mandatory', () => {
+    assert.ok(source.includes('{meetsStandard === true && ('))
+    assert.ok(source.includes('PAYMENT_TERMS_OPTIONAL_LABEL'),
+      'the terms are still offered, and both optional')
   })
 
-  test('submit is disabled while the declaration is invalid or in flight', () => {
-    assert.ok(source.includes('const blocked = submitting || tooLong || !advance.ok'))
+  test('an unreadable position fails CLOSED rather than guessing a route', () => {
+    assert.ok(source.includes('{PAYMENT_POSITION_UNKNOWN}'))
+    assert.ok(source.includes('payment == null || payment.meets_standard == null ? null'))
+  })
+
+  test('submit is disabled while the terms are invalid or in flight', () => {
+    assert.ok(source.includes('const blocked = submitting || tooLong || !checked.ok'))
     assert.ok(source.includes('disabled={blocked}'))
-    assert.ok(source.includes('if (blocked || !advance.ok) return'),
+    assert.ok(source.includes('if (blocked || !checked.ok) return'),
       'and the handler refuses too, so a defeated button sends nothing')
   })
 
   test('the validation is the shared one, not a second copy in the dialog', () => {
-    assert.ok(source.includes('validateAdvanceDeclaration({'))
+    assert.ok(source.includes('validateSubmissionTerms({'))
     assert.ok(!/percent\s*[<>]=?\s*40/.test(source), 'no bare 40 in a JSX condition')
-    assert.ok(!source.includes('parseFloat('), 'no second parser')
-    assert.ok(!source.includes('Number(amountText'), 'the dialog never parses the box itself')
+  })
+
+  test('unverified money is said not to count, in as many words', () => {
+    assert.ok(source.includes('PAYMENT_UNVERIFIED_DOES_NOT_COUNT')
+           || source.includes('PAYMENT_POSITION_HINT'),
+      'the dialog must state that unverified payment does not close the gate')
   })
 
   test('the optional employee reply is preserved on a resubmission', () => {
@@ -1795,11 +1820,15 @@ describe('the submit dialog asks one question and stays short', () => {
       'because it can: the employee resubmits with a new proposal')
   })
 
-  test('nothing in the dialogs claims a payment', () => {
-    for (const claim of ['payment received', 'Add Payment', 'amount received', 'paid']) {
+  test('nothing in the dialogs claims a payment was verified', () => {
+    // The dialogs now legitimately SHOW payment — that is the whole phase — so
+    // the rule is narrower and sharper than "never say payment": they must never
+    // claim that money has been received or verified by anybody.
+    for (const claim of ['payment received', 'has been verified', 'amount received']) {
       assert.ok(!source.toLowerCase().includes(claim.toLowerCase()),
         `the dialogs must not say "${claim}"`)
     }
-    assert.ok(source.includes('{ADVANCE_NOT_A_PAYMENT}'))
+    assert.ok(source.includes('{PAYMENT_NOT_A_DECLARATION}'),
+      'and the boundary is stated where the position is shown')
   })
 })

@@ -233,9 +233,12 @@ export function PiOrderOverview({ billTo, shipTo, dates, snapshot }: {
           </section>
         )}
 
-        {/* C — what it is worth, and on what advance condition. THE SINGLE
-            CURRENT-STATE SOURCE for the advance: percentage, amount, condition
-            and decision, in one block that appears nowhere else on the page. */}
+        {/* C — what it is worth, and how much of it has actually been received
+            and VERIFIED BY FINANCE. THE SINGLE CURRENT-STATE SOURCE for the
+            payment position: the verified figure, the percentage it comes to and
+            where approval stands, in one block that appears nowhere else on the
+            page. The DECLARED advance is deliberately not among them — what a
+            client agreed to pay is not money that arrived. */}
         <section className="pi-detail-overview-section pi-detail-snapshot pi-detail-overview-divided">
           <SectionLabel icon={<Wallet size={12} strokeWidth={2} />}>Commercial snapshot</SectionLabel>
 
@@ -249,7 +252,7 @@ export function PiOrderOverview({ billTo, shipTo, dates, snapshot }: {
             </div>
           </div>
 
-          {snapshot.advance && <PiAdvanceRequirement advance={snapshot.advance} />}
+          {snapshot.payment && <PiPaymentPosition payment={snapshot.payment} />}
         </section>
 
       </div>
@@ -263,27 +266,28 @@ const SNAPSHOT_LABEL_STYLE: React.CSSProperties = {
 }
 
 /**
- * The advance condition, in one block.
+ * The verified-payment position, in one block.
  *
- * Three lines at most — what this figure is, what it comes to, and whether a
- * decision is outstanding. It replaced four rows plus a badge, and it is the
- * only place on the page where the current percentage and amount appear.
+ * Three lines at most — what has been verified, what it comes to as a
+ * percentage, and where approval stands. Every figure was computed in `numeric`
+ * in the database; nothing here calculates money, and nothing here shows a
+ * declared advance.
  */
-function PiAdvanceRequirement({ advance }: { advance: NonNullable<CommercialSnapshot['advance']> }) {
-  const tone = advance.statusTone ? TONE_STYLE[advance.statusTone] : null
+function PiPaymentPosition({ payment }: { payment: NonNullable<CommercialSnapshot['payment']> }) {
+  const tone = payment.statusTone ? TONE_STYLE[payment.statusTone] : null
 
   return (
     <div>
-      <div style={SNAPSHOT_LABEL_STYLE}>{advance.label}</div>
+      <div style={SNAPSHOT_LABEL_STYLE}>{payment.label}</div>
       <div style={{
         fontSize: '14px', fontWeight: 700, color: colors.primary,
         fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
       }}>
-        {advance.figures}
+        {payment.figures}
       </div>
-      {advance.status && tone && (
+      {payment.status && tone && (
         <div style={{ marginTop: '6px' }}>
-          <PiStatusBadge label={advance.status} tone={tone} />
+          <PiStatusBadge label={payment.status} tone={tone} />
         </div>
       )}
     </div>
@@ -704,12 +708,16 @@ export function PiApprovedOrderStrip({ order, onOpen, acting }: {
  */
 export function PiAdvanceBand({
   advance,
+  verifiedLine,
   canDecide,
   acting,
   onApprove,
   onReject,
 }: {
   advance: AdvanceView
+  /** The LIVE verified-payment line, when it has been read. Preferred over the
+   *  stored figures: the decision is about money that has actually arrived. */
+  verifiedLine?: string | null
   /** Whether THIS viewer may settle the proposal. Never PI-review authority. */
   canDecide: boolean
   acting: boolean
@@ -727,7 +735,7 @@ export function PiAdvanceBand({
           fontSize: '12.5px', fontWeight: 700, color: colors.primary,
           marginLeft: 'auto', fontVariantNumeric: 'tabular-nums', textAlign: 'right',
         }}>
-          {describeRequestedException(advance)}
+          {describeRequestedException(advance, verifiedLine)}
         </span>
       </div>
 

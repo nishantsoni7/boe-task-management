@@ -43,13 +43,12 @@ import {
   describeApprovedOrder,
   describeWorkflowPanel,
   omitDash,
-  ADVANCE_REQUESTED_LABEL,
-  ADVANCE_REQUIREMENT_LABEL,
+  ADVANCE_BAND_TITLE,
+  PAYMENT_SNAPSHOT_LABEL,
   STORED_COPY_NOTE,
   WORKFLOW_HEADING,
 } from './piDetailView'
 import {
-  APPROVAL_BLOCKED_ADVANCE_PENDING,
   APPROVAL_BLOCKED_FINANCE,
   APPROVED_ORDER_HEADING,
   FINANCE_PENDING_TEXT,
@@ -59,6 +58,12 @@ import {
   financeVerificationIsCurrent,
   financeVerifiedLine,
 } from '@/lib/orders/finalApproval'
+import {
+  PAYMENT_ADMIN_APPROVAL_REQUIRED,
+  PAYMENT_EXCEPTION_PENDING,
+  PAYMENT_POSITION_LABEL,
+  type PaymentPosition,
+} from '@/lib/orders/paymentGate'
 import { PiCommercialSummary } from '@/components/orders/piPreview'
 import {
   describeSubmissionActions,
@@ -163,6 +168,13 @@ function viewerState(row: PersistedSubmission, viewer: {
   canDecideAdvance?: boolean
   /** can_verify_pi_finance() — the SEPARATE finance authority. */
   canVerifyFinance?: boolean
+  /**
+   * Where the PI stands on the VERIFIED-PAYMENT gate, as
+   * pi_submission_payment_summary() would report it. Defaults to the requirement
+   * being met, so a test that is about something else does not have to say so.
+   */
+  paymentPosition?: PaymentPosition | null
+  neededForStandard?: string | null
 }) {
   const actions = describeSubmissionActions({
     status: row.status,
@@ -197,10 +209,15 @@ function viewerState(row: PersistedSubmission, viewer: {
     verifiedAt: row.finance_verified_at ? '02 Aug 2026, 02:15 pm' : null,
     verifierName: 'Asha Menon',
   })
+  // THE PAYMENT GATE, exactly as the page derives it: the position comes from
+  // pi_submission_payment_summary(). The harness models it as the fixture's own
+  // `paymentPosition`, so a test can put the record anywhere on the gate without
+  // inventing money.
   const readiness = describeApprovalReadiness({
     status: row.status,
     financeVerified,
-    advance: row,
+    paymentPosition: viewer.paymentPosition ?? 'standard_met',
+    neededForStandard: viewer.neededForStandard ?? '0.00',
     hasBlockingIssues: false,
     productCount: 3,
     deletionClaimed: row.deletion_claim_token !== null,
@@ -261,7 +278,6 @@ function workflowHtml(row: PersistedSubmission, viewer: Parameters<typeof viewer
 }
 
 function overviewHtml(row: PersistedSubmission, productCount = 12): string {
-  const advance = describeAdvance(row, Number(row.grand_total))
   return renderToStaticMarkup(
     <PiOrderOverview
       billTo={omitDash(row.bill_to_name ?? '—')}
@@ -275,8 +291,7 @@ function overviewHtml(row: PersistedSubmission, productCount = 12): string {
       snapshot={buildCommercialSnapshot({
         grandTotal: formatInr(Number(row.grand_total)),
         productCount,
-        advance,
-        status: row.status,
+        payment: { verifiedAmount: '₹0.00', verifiedPercent: '0%', position: 'payment_required' },
       })}
     />,
   )
@@ -408,7 +423,31 @@ describe('the top of the page answers the questions it exists to answer', () => 
 
 // ── 2. The commercial snapshot ────────────────────────────────────────────────
 
-describe('the advance condition is stated ONCE, in the top snapshot', () => {
+describe('the VERIFIED PAYMENT position is stated ONCE, in the top snapshot', () => {
+  /**
+   * The snapshot with an explicit payment position, exactly as the page builds
+   * it from pi_submission_payment_summary(). Every figure is already formatted
+   * by the database's own numbers; nothing here computes money.
+   */
+  const positioned = (
+    verifiedAmount: string,
+    verifiedPercent: string,
+    position: PaymentPosition | null,
+  ) => text(renderToStaticMarkup(
+    <PiOrderOverview
+      billTo="Kalyan Interiors, Bengaluru"
+      shipTo={null}
+      dates={buildOverviewDates({
+        created: '01 Aug 2026', confirmed: '04 Aug 2026', dispatch: '15 Sep 2026',
+        submittedAt: '02 Aug 2026, 11:30 am',
+      })}
+      snapshot={buildCommercialSnapshot({
+        grandTotal: formatInr(GRAND_TOTAL), productCount: 4,
+        payment: { verifiedAmount, verifiedPercent, position },
+      })}
+    />,
+  ))
+
   test('the Grand Total is in the snapshot section, as the largest figure', () => {
     const html = overviewHtml(submission())
     const snapshot = html.slice(html.indexOf('class="pi-detail-overview-section pi-detail-snapshot'))
@@ -417,69 +456,61 @@ describe('the advance condition is stated ONCE, in the top snapshot', () => {
     assert.equal((html.match(/pi-detail-snapshot-total/g) ?? []).length, 1)
   })
 
-  test('a standard requirement is one label, one figure line, no status', () => {
-    const html = text(overviewHtml(submission({ status: 'submitted', advance_condition: 'standard' })))
-    assert.ok(html.includes(ADVANCE_REQUIREMENT_LABEL))
+  test('a met requirement is one label, one figure line, and its position', () => {
+    const html = positioned(formatInr(472000), '40%', 'standard_met')
+    assert.ok(html.includes(PAYMENT_SNAPSHOT_LABEL))
     assert.ok(html.includes(`${formatInr(472000)} · 40%`))
-    // The four rows this replaced are gone: no separate condition label, no
-    // "Proposed advance" row, no second amount to compare against.
-    for (const gone of ['Advance condition', 'Proposed advance', 'Standard advance (40%)',
-                        'Selected condition', 'Standard requirement']) {
+    assert.ok(html.includes(PAYMENT_POSITION_LABEL.standard_met))
+    // The declared advance and every one of its old rows are gone from here.
+    for (const gone of ['Advance requirement', 'Requested advance', 'Advance condition',
+                        'Proposed advance', 'Standard advance (40%)', 'Not declared']) {
       assert.ok(!html.includes(gone), `"${gone}" must not be printed any more`)
     }
   })
 
-  test('a pending reduction reads as something ASKED for, with its state', () => {
-    const html = text(overviewHtml(submission({
-      status: 'submitted', advance_condition: 'exception',
-      advance_exception_percent: 12.5, advance_exception_status: 'pending',
-    })))
-    assert.ok(html.includes(ADVANCE_REQUESTED_LABEL))
+  test('a pending reduced-payment request reads as something ASKED for', () => {
+    const html = positioned(formatInr(147500), '12.5%', 'exception_pending')
+    assert.ok(html.includes(PAYMENT_SNAPSHOT_LABEL))
     assert.ok(html.includes(`${formatInr(147500)} · 12.5%`))
-    assert.ok(html.includes('Pending'))
+    assert.ok(html.includes(PAYMENT_POSITION_LABEL.exception_pending))
     assert.ok(!html.includes(formatInr(472000)),
       'the standard amount is not shown beside it — two figures read as two things owed')
   })
 
-  test('an approved reduction becomes the requirement that stands', () => {
-    const html = text(overviewHtml(submission({
-      status: 'submitted', advance_condition: 'exception',
-      advance_exception_percent: 12.5, advance_exception_status: 'approved',
-    })))
-    assert.ok(html.includes(ADVANCE_REQUIREMENT_LABEL))
-    assert.ok(!html.includes(ADVANCE_REQUESTED_LABEL))
-    assert.ok(html.includes('Exception approved'))
+  test('an approved exception reads as the position that now stands', () => {
+    const html = positioned(formatInr(0), '0%', 'exception_approved')
+    assert.ok(html.includes(PAYMENT_POSITION_LABEL.exception_approved))
+    assert.ok(!html.includes(PAYMENT_POSITION_LABEL.exception_pending))
   })
 
-  test('0% is named before it is numbered, in every decision state', () => {
-    const zero = (status: string) => text(overviewHtml(submission({
-      status: 'submitted', advance_condition: 'exception',
-      advance_exception_percent: 0, advance_exception_status: status,
-    })))
-    for (const [status, label, state] of [
-      ['pending', ADVANCE_REQUESTED_LABEL, 'Pending'],
-      ['approved', ADVANCE_REQUIREMENT_LABEL, 'Exception approved'],
-      ['rejected', ADVANCE_REQUESTED_LABEL, 'Rejected'],
-    ] as const) {
-      const html = zero(status)
-      assert.ok(html.includes(label), `${status} uses "${label}"`)
-      assert.ok(html.includes('No advance · ₹0 · 0%'),
-        '"₹0 · 0%" alone is a figure somebody has to interpret')
-      assert.ok(html.includes(state))
-    }
+  test('money Finance has not decided is named as its own position', () => {
+    const html = positioned(formatInr(0), '0%', 'verification_pending')
+    assert.ok(html.includes(PAYMENT_POSITION_LABEL.verification_pending))
   })
 
-  test('a record that declared nothing says so, once', () => {
-    const html = text(overviewHtml(submission({ status: 'submitted' })))
-    assert.ok(html.includes(ADVANCE_REQUIREMENT_LABEL))
-    assert.ok(html.includes('Not declared'))
+  test('₹0 verified is stated as a figure, not hidden', () => {
+    // The most consequential state on the document, and the one a reader must
+    // not have to infer from an absence.
+    const html = positioned(formatInr(0), '0%', 'payment_required')
+    assert.ok(html.includes(`${formatInr(0)} · 0%`))
+    assert.ok(html.includes(PAYMENT_POSITION_LABEL.payment_required))
   })
 
-  test('a draft that has declared nothing gets no advance block at all', () => {
-    const html = text(overviewHtml(submission({ status: 'draft' })))
-    assert.ok(!html.includes(ADVANCE_REQUIREMENT_LABEL))
-    assert.ok(!html.includes('Not declared'),
-      'nothing IS declared until submission; a permanent block would answer nobody')
+  test('a position that has not been read yet gets no block at all', () => {
+    const html = text(renderToStaticMarkup(
+      <PiOrderOverview
+        billTo="Kalyan Interiors, Bengaluru"
+        shipTo={null}
+        dates={buildOverviewDates({
+          created: '01 Aug 2026', confirmed: '—', dispatch: '—', submittedAt: null,
+        })}
+        snapshot={buildCommercialSnapshot({
+          grandTotal: formatInr(GRAND_TOTAL), productCount: 4, payment: null,
+        })}
+      />,
+    ))
+    assert.ok(!html.includes(PAYMENT_SNAPSHOT_LABEL),
+      'a placeholder would answer a question nobody has asked yet')
     assert.ok(html.includes(formatInr(GRAND_TOTAL)), 'the total is still there')
   })
 
@@ -512,7 +543,7 @@ describe('the overview spends no space on what the PI did not say', () => {
         dates={buildOverviewDates({ created: '—', confirmed: '—', dispatch: '—', submittedAt: null })}
         snapshot={buildCommercialSnapshot({
           grandTotal: formatInr(GRAND_TOTAL), productCount: 4,
-          advance: describeAdvance(submission(), GRAND_TOTAL), status: 'draft',
+          payment: { verifiedAmount: '₹0.00', verifiedPercent: '0%', position: 'payment_required' },
         })}
       />,
     )
@@ -534,7 +565,7 @@ describe('the overview spends no space on what the PI did not say', () => {
         dates={dateCount === 0 ? [] : [{ key: 'created', label: 'PI created', value: '01 Aug 2026' }]}
         snapshot={buildCommercialSnapshot({
           grandTotal: formatInr(GRAND_TOTAL), productCount: 4,
-          advance: describeAdvance(submission(), GRAND_TOTAL), status: 'draft',
+          payment: { verifiedAmount: '₹0.00', verifiedPercent: '0%', position: 'payment_required' },
         })}
       />,
     )
@@ -580,7 +611,7 @@ describe('the owner of a draft', () => {
   })
 
   test('sees no advance band, because nothing is waiting on anybody', () => {
-    assert.ok(!text(html).includes('Advance exception'))
+    assert.ok(!text(html).includes(ADVANCE_BAND_TITLE))
     assert.ok(!text(html).includes('Advance requirement'),
       'the requirement is stated in the snapshot at the top, and only there')
   })
@@ -617,7 +648,7 @@ describe('the owner of a returned PI', () => {
   })
 
   test('is not shown an advance band for a condition nobody is deciding', () => {
-    assert.ok(!text(html).includes('Advance exception'),
+    assert.ok(!text(html).includes(ADVANCE_BAND_TITLE),
       'the standard requirement is in the snapshot; there is nothing to settle here')
   })
 
@@ -662,7 +693,7 @@ describe('the owner of a submitted PI', () => {
   })
 
   test('can still see that an advance exception is waiting', () => {
-    assert.ok(text(html).includes('Advance exception'))
+    assert.ok(text(html).includes(ADVANCE_BAND_TITLE))
     assert.ok(text(html).includes('Reduced advance · ₹1,18,000 · 10%'),
       'the condition being decided, in one line')
   })
@@ -761,7 +792,7 @@ describe('the management reviewer', () => {
       advance_exception_status: 'pending',
     })
     const reviewerOnly = workflowHtml(exceptional, { id: REVIEWER, canReview: true })
-    assert.ok(text(reviewerOnly).includes('Advance exception'), 'the STATE is visible to them')
+    assert.ok(text(reviewerOnly).includes(ADVANCE_BAND_TITLE), 'the STATE is visible to them')
     assert.deepEqual(buttonLabels(reviewerOnly),
       [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL, APPROVE_BUTTON_LABEL],
       'orders.approve_order carries the three PI decisions and does not settle a commercial term')
@@ -874,7 +905,7 @@ describe('an admin holding both authorities', () => {
       [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL, APPROVE_BUTTON_LABEL],
       'the PI review decisions survive the advance decision')
     // And the settled exception does not redraw its own band.
-    assert.ok(!text(after).includes('Advance exception'))
+    assert.ok(!text(after).includes(ADVANCE_BAND_TITLE))
     assert.ok(!text(after).includes('Client pays on delivery.'),
       'the reason it was granted for lives in Activity now')
   })
@@ -979,24 +1010,37 @@ describe('the final approval control, for a reviewer', () => {
     ])
   })
 
-  test('an approved advance exception is approvable; a pending one is not', () => {
-    const approved = ready({
+  test('an approved reduced-payment exception is approvable; a pending one is not', () => {
+    const record = ready({
       advance_condition: 'exception',
       advance_exception_percent: 0,
       advance_exception_status: 'approved',
       advance_exception_reason: 'Client pays on delivery.',
     })
-    assert.ok(!text(workflowHtml(approved, { id: REVIEWER, canReview: true }))
-      .includes(APPROVAL_BLOCKED_ADVANCE_PENDING))
+    assert.ok(!text(workflowHtml(record, {
+      id: REVIEWER, canReview: true, paymentPosition: 'exception_approved',
+    })).includes(PAYMENT_EXCEPTION_PENDING))
 
-    const pending = ready({
-      advance_condition: 'exception',
-      advance_exception_percent: 12.5,
-      advance_exception_status: 'pending',
-      advance_exception_reason: 'Long-standing client.',
+    const html = text(workflowHtml(record, {
+      id: REVIEWER, canReview: true,
+      paymentPosition: 'exception_pending', neededForStandard: '400000.00',
+    }))
+    assert.ok(html.includes(PAYMENT_EXCEPTION_PENDING))
+  })
+
+  test('too little VERIFIED payment blocks approval, whatever was declared', () => {
+    // THE PHASE 3 RULE, on screen: a PI that declared the standard 40% is still
+    // refused while the money has not arrived and been verified.
+    const record = ready({
+      advance_condition: 'standard',
+      advance_declared_amount: 400000,
     })
-    const html = text(workflowHtml(pending, { id: REVIEWER, canReview: true }))
-    assert.ok(html.includes(APPROVAL_BLOCKED_ADVANCE_PENDING))
+    const html = text(workflowHtml(record, {
+      id: REVIEWER, canReview: true,
+      paymentPosition: 'payment_required', neededForStandard: '400000.00',
+    }))
+    assert.ok(html.includes('₹4,00,000'), 'and the shortfall is named')
+    assert.ok(html.includes(PAYMENT_ADMIN_APPROVAL_REQUIRED))
   })
 
   test('the employee is never offered it, whatever the record says', () => {
@@ -1081,7 +1125,7 @@ describe('a read-only viewer', () => {
   test('is still told where the record stands, and what it is waiting on', () => {
     assert.ok(text(html).includes(WORKFLOW_HEADING.submitted))
     assert.equal(WORKFLOW_HEADING.submitted, 'Submitted for review')
-    assert.ok(text(html).includes('Advance exception'),
+    assert.ok(text(html).includes(ADVANCE_BAND_TITLE),
       'a record waiting on somebody else must not look inert to the person waiting')
   })
 })
@@ -1875,7 +1919,7 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
-      'submit_order_submission_with_advance_amount',
+      'submit_pi_for_review',
       'verify_pi_finance_check',
     ])
   })

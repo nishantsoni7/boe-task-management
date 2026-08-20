@@ -126,6 +126,8 @@ import {
   PI_PAYMENT_PROOF_FAILED,
   PI_PAYMENT_RECORDED_BODY,
   canAddPiPayment,
+  formatMoney,
+  formatPercent,
   loadPiPaymentSummary,
   recordPiPayment,
   type PiPaymentFormState,
@@ -152,9 +154,9 @@ import {
   ADVANCE_REJECTED_INSTRUCTION,
   describeAdvance,
   describeAdvanceActions,
-  initialAdvanceSelection,
-  type AdvanceSelection,
 } from '@/lib/orders/advanceRequirement'
+import { asPaymentPosition } from '@/lib/orders/paymentGate'
+import { notifyPiSubmission } from '@/lib/notify'
 import {
   describeApprovalReadiness,
   describeFinanceStatus,
@@ -729,17 +731,32 @@ function PiDraftDetailPageInner() {
    */
   const submitForApproval = useCallback((
     note: string | null,
-    advance: AdvanceSelection,
+    terms: { reason: string | null; paymentTerms: string | null; billingTerms: string | null },
   ) => runAction('submit', async () => {
-    const { error } = await supabase.rpc('submit_order_submission_with_advance_amount', {
+    const { data, error } = await supabase.rpc('submit_pi_for_review', {
       p_submission_id: submissionId,
       p_note: note,
-      p_advance_condition: advance.condition,
-      p_advance_amount: advance.amount,
-      p_advance_reason: advance.condition === 'exception' ? advance.reason : null,
+      p_reason: terms.reason,
+      p_payment_terms: terms.paymentTerms,
+      p_billing_terms: terms.billingTerms,
     })
+    if (!error) {
+      // WHO IS TOLD FOLLOWS THE ROUTE THE DATABASE CHOSE, never the one the
+      // browser guessed: `exception_requested` comes back from the RPC and is
+      // true only when a fresh decision is actually waiting on somebody.
+      const requested =
+        (data as { exception_requested?: boolean } | null)?.exception_requested === true
+      // The card's figures move with the submission (the exception state is part
+      // of the position), so the payment section is re-read alongside the record.
+      await loadPayments()
+      // Fire-and-forget: the submission has already committed, and a
+      // notification problem must never undo it.
+      if (requested) {
+        void notifyPiSubmission({ event: 'pi_exception_requested', submissionId })
+      }
+    }
     return { error }
-  }), [runAction, supabase, submissionId])
+  }), [runAction, supabase, submissionId, loadPayments])
 
   /**
    * Accept the proposed advance. THE PI STAYS UNDER REVIEW.
@@ -753,16 +770,26 @@ function PiDraftDetailPageInner() {
     const { error } = await supabase.rpc('approve_pi_advance_exception', {
       p_submission_id: submissionId,
     })
+    if (!error) {
+      // The position changes with the decision, so the card is re-read; the
+      // owner is told, because the outcome is theirs to act on.
+      await loadPayments()
+      void notifyPiSubmission({ event: 'pi_exception_approved', submissionId })
+    }
     return { error }
-  }), [runAction, supabase, submissionId])
+  }), [runAction, supabase, submissionId, loadPayments])
 
   const rejectException = useCallback((reason: string) => runAction('reject_exception', async () => {
     const { error } = await supabase.rpc('reject_pi_advance_exception', {
       p_submission_id: submissionId,
       p_reason: reason,
     })
+    if (!error) {
+      await loadPayments()
+      void notifyPiSubmission({ event: 'pi_exception_rejected', submissionId })
+    }
     return { error }
-  }), [runAction, supabase, submissionId])
+  }), [runAction, supabase, submissionId, loadPayments])
 
   const requestChanges = useCallback((note: string) => runAction('request_changes', async () => {
     const { error } = await supabase.rpc('request_order_submission_changes', {
@@ -995,10 +1022,15 @@ function PiDraftDetailPageInner() {
     verifierName: draft.financeVerifierName,
   })
 
+  // THE PAYMENT GATE'S ANSWER COMES FROM THE DATABASE, not from this page.
+  // pi_submission_payment_summary() resolved the position in numeric, in the
+  // same order approve_order_submission() resolves it; a null summary means it
+  // could not be read at all and the control fails closed.
   const readiness = describeApprovalReadiness({
     status: submission.status,
     financeVerified,
-    advance: submission,
+    paymentPosition: asPaymentPosition(payments?.approval_position),
+    neededForStandard: payments?.needed_for_standard ?? null,
     hasBlockingIssues: draft.blocking.length > 0,
     productCount: products.length,
     deletionClaimed: submission.deletion_claim_token !== null,
@@ -1016,16 +1048,15 @@ function PiDraftDetailPageInner() {
     displayNumber: draft.orderDisplayNumber ?? approval?.displayNumber ?? null,
   })
 
-  /** The advance condition in one phrase, for the two dialogs. One source, so
-   *  the dialog and the page cannot word the same condition differently. */
-  // THE FIGURE, NOT JUST THE ROUTE. Finance verification and final approval are
-  // both decisions ABOUT the declared amount, so both are told what it is.
+  /**
+   * The advance condition in one phrase, kept ONLY for records written before
+   * the verified-payment gate. Both dialogs prefer the live verified figure
+   * below; this is the fallback while the summary has not been read.
+   */
   const advanceLabel = describeAdvanceForReview(advance)
 
   const clientLabel = orDash(submission.client_name ?? submission.bill_to_name)
   const grandTotalLabel = formatInr(grandTotalValue)
-  /** The standard requirement in rupees, through the ONE shared formula. */
-  const standardAdvanceLabel = advance.standardAmount
 
   // ── What the page SAYS, from the page's own view module ──
   //
@@ -1041,12 +1072,29 @@ function PiDraftDetailPageInner() {
     rejectedByName: draft.rejectedByName,
   })
 
+  // THE POSITION AND ITS FIGURES ARE THE DATABASE'S. `payments` is
+  // pi_submission_payment_summary()'s result; a null one means it has not been
+  // read yet, and the block is simply absent rather than guessed at.
   const snapshot = buildCommercialSnapshot({
     grandTotal: grandTotalLabel,
     productCount: products.length,
-    advance,
-    status: submission.status,
+    payment: payments === null ? null : {
+      verifiedAmount: formatMoney(payments.verified_amount),
+      verifiedPercent: formatPercent(payments.verified_percent),
+      position: asPaymentPosition(payments.approval_position),
+    },
   })
+
+  /**
+   * The verified-payment line the review dialogs and the decision band show.
+   *
+   * ONE SOURCE, so the band, the finance dialog and the approval dialog cannot
+   * word the same position three different ways — and so none of them can
+   * present a declared advance as money received.
+   */
+  const verifiedPaymentLabel = payments === null
+    ? null
+    : `${formatMoney(payments.verified_amount)} · ${formatPercent(payments.verified_percent)}`
 
   const identityFacts = buildIdentityFacts({
     productCount: products.length,
@@ -1086,6 +1134,7 @@ function PiDraftDetailPageInner() {
   const advanceBand = advanceActions.isPending ? (
     <PiAdvanceBand
       advance={advance}
+      verifiedLine={verifiedPaymentLabel}
       canDecide={advanceActions.canDecide}
       acting={acting}
       onApprove={() => { setActionFailure(null); approveException() }}
@@ -1377,12 +1426,17 @@ function PiDraftDetailPageInner() {
         <PiSubmitConfirmModal
           client={clientLabel}
           grandTotal={grandTotalLabel}
-          grandTotalValue={grandTotalValue}
-          standardAdvance={standardAdvanceLabel}
-          // The dialog opens on whatever the record already says, so a PI
-          // returned for an unrelated correction does not silently switch the
-          // employee's advance condition while they fix something else.
-          initialAdvance={initialAdvanceSelection(submission, grandTotalValue)}
+          // The LIVE position, from the same RPC the payment card reads. The
+          // dialog states it; it never computes it.
+          payment={payments}
+          // The dialog opens on whatever the record already agreed, so a PI
+          // returned for an unrelated correction does not silently drop the
+          // commercial terms while the employee fixes something else.
+          initialTerms={{
+            reason: payments?.exception_reason ?? '',
+            paymentTerms: payments?.payment_terms ?? '',
+            billingTerms: payments?.billing_terms ?? '',
+          }}
           submitting={acting}
           failure={actionFailure}
           offerReply={submissionOffersReply(submission.status)}
@@ -1395,7 +1449,7 @@ function PiDraftDetailPageInner() {
         <PiFinanceVerifyModal
           client={clientLabel}
           grandTotal={grandTotalLabel}
-          advanceLabel={advanceLabel}
+          advanceLabel={verifiedPaymentLabel ?? advanceLabel}
           saving={acting}
           failure={actionFailure}
           onCancel={closeDialog}
@@ -1409,7 +1463,7 @@ function PiDraftDetailPageInner() {
           rows={buildApprovalSummary({
             client: clientLabel,
             grandTotal: grandTotalLabel,
-            advanceLabel,
+            advanceLabel: verifiedPaymentLabel ?? advanceLabel,
             financeVerified,
             productCount: products.length,
           })}

@@ -12,6 +12,12 @@ import {
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
+import {
+  mergeOrderPayments,
+  receivedFromPayments,
+  type OrderAllocationRow,
+  type OrderPaymentRow,
+} from '@/lib/orders/orderPayments'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
@@ -63,15 +69,10 @@ type Order = {
   source_request_number: string | null
 }
 
-type LinkedPayment = {
-  id: string
-  client_name: string
-  amount: number
-  payment_date: string
-  payment_mode: string
-  order_number: string | null
-  status: string
-}
+// The list this screen shows is the LEGACY linked payments plus anything the
+// Order's own active allocations point at — see mergeOrderPayments. A PI's money
+// arrives here through a MOVED allocation, never through a copied payment row.
+type LinkedPayment = OrderPaymentRow
 
 type ActivityEntry = {
   id: string
@@ -469,12 +470,38 @@ export default function OrderDetailPage() {
     }
     setOrder(mapped)
 
+    // TWO ANCHORED READS, both scoped to this one Order and both RLS-checked.
+    //
+    //   the legacy link   payments carrying order_id — unchanged, so an Order
+    //                     converted from an Order Request behaves exactly as it
+    //                     always has
+    //   the allocations   what a PI's money became when its allocation MOVED
+    //                     onto this Order at approval; the payment row itself is
+    //                     untouched and carries no order_id
     const { data: pData } = await supabase
       .from('finance_payment_requests')
       .select('id, client_name, amount, payment_date, payment_mode, order_number, status')
       .eq('order_id', id)
       .order('payment_date', { ascending: false })
-    setPayments((pData ?? []) as LinkedPayment[])
+
+    const { data: allocData } = await supabase
+      .from('finance_payment_allocations')
+      // The embed names its FOREIGN KEY, not a column: PostgREST resolves an
+      // embedded resource by relationship, and naming the constraint
+      // (20260918000000 §1) is the form that cannot become ambiguous if this
+      // table ever gains a second reference to the ledger.
+      .select('id, allocated_amount, status, ' +
+              'payment:finance_payment_requests!finance_payment_allocations_payment_fk(' +
+              'id, client_name, amount, payment_date, payment_mode, order_number, status)')
+      .eq('order_id', id)
+      .eq('status', 'active')
+
+    setPayments(mergeOrderPayments(
+      (pData ?? []) as Parameters<typeof mergeOrderPayments>[0],
+      // PostgREST returns an embedded to-one relation as an object; the generated
+      // types cannot know the cardinality, so it is narrowed here once.
+      ((allocData ?? []) as unknown as OrderAllocationRow[]),
+    ))
 
     const { data: aData } = await supabase
       .from('order_activity_log')
@@ -601,9 +628,10 @@ export default function OrderDetailPage() {
     )
   }
 
-  const received = payments
-    .filter(p => p.status === 'approved_linked')
-    .reduce((sum, p) => sum + p.amount, 0)
+  // VERIFIED money, at its ALLOCATED figure. `approved_unlinked` counts now and
+  // did not before: a payment recorded against the PI and verified by Finance is
+  // verified money whether or not it also carries a legacy order_id.
+  const received = receivedFromPayments(payments)
   const pending    = (order.total_value ?? 0) - received
   const completion = order.total_value ? Math.round((received / order.total_value) * 100) : 0
 

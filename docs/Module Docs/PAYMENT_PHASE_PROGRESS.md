@@ -92,8 +92,9 @@ allocation movement.
 
 | | |
 |---|---|
-| Status | **PR open, not merged. Migration NOT applied.** |
-| Branch | `claude/boe-verify-pi-payment-hotfix` |
+| Status | **Merged and applied to production** |
+| PR | [#44](https://github.com/nishantsoni7/boe-task-management/pull/44) |
+| Squash merge | `f5613dea8adabe7b5065ddd00651dcb59a18dc16` |
 | Migration | `20260920000000_finance_approver_can_verify_payment.sql` |
 | Reported against | `PAY-REQ-2026-0038`, a payment recorded from a PI |
 
@@ -181,19 +182,155 @@ declared-advance rule are untouched.
 
 ---
 
+## Phase 3 — the verified-payment approval gate
+
+| | |
+|---|---|
+| Status | **PR open, not merged. Migration NOT applied.** |
+| Branch | `claude/boe-verified-payment-approval-phase3-hgevan` |
+| Migration | `20260921000000_order_submission_verified_payment_gate.sql` |
+| Built on | `f5613dea8adabe7b5065ddd00651dcb59a18dc16` (production `main`) |
+
+**The rule that changed, in one line.** An Order number is assigned only when at
+least **40% of the PI's grand total has actually been received and verified by
+Finance**, or when an authorised approver has accepted proceeding on less.
+
+| | Before | After |
+|---|---|---|
+| What the gate reads | `order_submission_advance_ready(advance_condition, advance_exception_percent, advance_exception_status)` — a DECLARATION | `order_submission_payment_ready(grand_total, VERIFIED PAYMENT summed live from `finance_payment_allocations` under row locks, advance_exception_status)` |
+| When it is read | at approval, from stored columns | at approval, re-derived from allocation rows under `FOR UPDATE` |
+| What a declared advance does | decides whether an Order exists | **nothing** |
+| What the salesperson declares | an advance amount, on every submission | nothing; a reason and Payment Terms only when below the requirement |
+
+### The two routes
+
+**Standard.** `verified >= grand_total * 40 / 100`, compared as exact `numeric`
+and never as a rounded displayed percentage. 40% of ₹100.01 is ₹40.004, and
+₹40.00 — which displays as "40%" — does not meet it. No exception is needed, and
+a pending one simply stops mattering.
+
+**Reduced or zero payment.** Below the requirement — zero included — the PI may
+still be submitted for management review, but:
+
+* a **reason** for asking to confirm an Order below 40% is mandatory;
+* **Payment Terms** are mandatory;
+* the request goes to the **existing** advance-exception route
+  (`orders.approve_advance_exception`, `approve_pi_advance_exception`,
+  `reject_pi_advance_exception`), which is adapted rather than duplicated;
+* management may review the PI while the exception is pending;
+* **no Order number is assigned** until it is approved;
+* a rejection returns the PI to Needs Changes, exactly as before.
+
+### What counts, and what does not
+
+`order_submission_verified_payment(uuid)` sums **active** allocations naming the
+PI whose **parent payment** is verified by Phase 1's single rule,
+`finance_payment_status_is_verified(text)`. So `pending_approval`,
+`needs_clarification`, `rejected` and any **reversed** allocation count as
+nothing — and an approved exception never converts unverified money into verified
+money. Finance verification of a payment and the PI Finance check remain two
+separate actions, both required, neither standing in for the other.
+
+### Legacy declared-advance treatment
+
+**No column is dropped and no historical value is rewritten.**
+
+| Column | Status after Phase 3 |
+|---|---|
+| `advance_declared_amount` | **Legacy.** Retained and readable; gates nothing; new submissions do not ask for it and write NULL. |
+| `advance_exception_percent` | **Re-purposed.** Now the verified-payment percentage at the moment the exception was requested — a snapshot for the reviewer and the trail, never the gate. Pre-Phase-3 rows keep their original meaning. |
+| `advance_condition` | **Operational.** `standard` / `exception`, now read as the payment route. |
+| `advance_exception_status` / `_reason` / `_requested_by` / `_requested_at` / `_decided_by` / `_decided_at` / `_rejection_reason` | **Operational.** They carry the reduced-payment exception unchanged. |
+
+`order_submission_advance_ready(text, numeric, text)` still exists and is still
+correct about what it describes; nothing consults it any more.
+
+### Payment Terms and Billing Terms
+
+Two new plain-text columns on `order_submissions`, non-blank when present and at
+most 500 characters. Payment Terms are the agreed collection arrangement
+(*"30% advance, 30% during production, 40% before dispatch"*); Billing Terms are
+the agreed invoicing arrangement (*"100% invoice before dispatch"*). Payment
+Terms are mandatory only on the reduced-payment route; Billing Terms are always
+optional. **Nothing parses either of them** — no instalments, no schedules, no
+due-date tracking, no reminders.
+
+### PI-to-Order allocation continuity
+
+At approval, inside the one transaction that creates the Order, the PI's **active
+allocations MOVE onto it**:
+
+* one `UPDATE`; no `INSERT`, no `DELETE`, no payment row created or copied;
+* allocation ids, `payment_request_id`, amounts, `created_by`, `created_at` and
+  `origin_target_type` are all unchanged, so provenance survives;
+* reversed allocations stay with the PI — that history belongs to it;
+* the PI stops counting the money and the Order starts, without a figure being
+  rewritten anywhere;
+* payment proof, verification status and Finance history stay attached to the
+  same payment row, findable by the same id.
+
+`finance_payment_allocations_guard_transition()` is **restated**, which
+`20260918000000` §6 said in as many words that Phase 3 would have to do. The one
+new move is admitted only when the transaction is inside
+`approve_order_submission()` **for that submission**, the allocation is active and
+names that submission, and the destination Order's `source_order_submission_id`
+is that submission. Everything else stays immutable, a reversal is still terminal,
+and there is no exemption for any role including the service role.
+
+If anything fails, the whole transaction rolls back: no Order row, no Order
+number consumed, no moved allocation.
+
+### Activity and notifications
+
+* `finance_payment_request_activity_log` gains **`allocation_moved`**, written by
+  the same trigger that writes `allocation_created` and `allocation_reversed`,
+  carrying both ends of the move and the unchanged provenance.
+* `order_submission_activity` gains **`payment_allocations_moved`**.
+* The `approved` event now carries `payment_route`, `verified_payment` and
+  `required_payment`, so the trail records **why** the approval was allowed
+  without inventing a second event for it.
+* The exception reuses `advance_exception_requested` / `_approved` / `_rejected`.
+* A **refused** approval writes nothing, deliberately: `approve_order_submission()`
+  raises, and a row written inside a transaction that raises would vanish with it.
+* Three notification types — `pi_exception_requested` (to everyone who may
+  decide), `pi_exception_approved` and `pi_exception_rejected` (to the submission
+  owner) — through a new server route that mirrors the existing Finance/Orders
+  notify pattern. Recipients are resolved server-side by
+  `users_with_module_permission('orders','approve_advance_exception')`.
+
+### UI
+
+* **Submit for Review** no longer asks for a declared advance at all. It states
+  the live position — Grand Total, Verified Payment, Verified Payment %, Awaiting
+  Verification, Needed for Standard Approval — and says *Standard payment
+  requirement met* or *Admin approval required to proceed below 40%*. Below the
+  requirement it asks for a reason and Payment Terms; Billing Terms stay optional.
+* The **PI Payments card** gains the Grand Total tile, the approval position with
+  its own sentence, and the agreed terms. It shows no declared advance.
+* The **commercial snapshot** at the top of the PI now reports **Verified
+  payment** and the approval position, in place of the declared advance.
+* The **Order detail** page reads its own active allocations alongside the legacy
+  `order_id` link, deduplicated by payment id, so a converted PI's money is
+  visible on the Order.
+
+### Not changed
+
+Numbering (no second allocator; a cancelled number still cannot be reused; a PI
+held for insufficient payment or a pending exception is assigned none); the
+Finance verification flow; the payment-splitting UI; unallocated-funds selection;
+allocation-correction requests; the Confirmed Payments view; Debit Notes; refunds;
+Order cancellation; Excel or PDF generation.
+
+---
+
 ## What remains
 
-**Phase 3 — the verified-payment approval gate.** `approve_order_submission()`
-still reads the DECLARED advance. Moving it onto verified allocated payment is
-the next bounded change, and Phase 1 already wrote the rule it must consult:
-`finance_payment_status_is_verified(text)`. It will also need the reduced/no-payment
-exception route re-pointed at the same figure.
-
-**Later, in no fixed order:** PI-to-Order allocation movement (the transition
-guard on `finance_payment_allocations` must be restated then, on purpose);
-payment splitting across several PIs/Orders in the UI; unallocated-funds
-selection; allocation-correction requests; the Confirmed Payments view rename;
-Debit Notes and refunds.
+**Phase 4 and beyond, in no fixed order:** payment splitting across several
+PIs/Orders in the UI; unallocated-funds selection; allocation-correction
+requests; the Confirmed Payments view rename; Debit Notes and refunds; Order
+cancellation and the post-Order commercial change requests that depend on it;
+numbered Excel and PDF generation.
+## What remains
 
 ### Known limitation carried forward
 
