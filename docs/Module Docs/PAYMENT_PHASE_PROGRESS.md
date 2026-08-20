@@ -440,6 +440,43 @@ LIMIT 1`), and is labelled by its **oldest** active Confirmed-Order allocation �
 deterministic, so the list and the counter beside it cannot disagree. No
 allocated amount and no split reaches the Finance list.
 
+**One deployment difference, caught by the migration's own assertions.** The
+first production `db push` **failed safely** on
+`ERROR: the projection is read-only; no write privilege may exist on it`,
+before any change was committed. Supabase bootstraps
+
+```sql
+alter default privileges in schema public
+  grant all on tables to postgres, anon, authenticated, service_role;
+```
+
+so every new table **and view** in `public` is created carrying `arwdDxt` for
+all three client roles — SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES
+and TRIGGER. `revoke all … from public, anon` cleared anon but left
+**`authenticated` able to write**, and the following `grant select` was a no-op
+because SELECT was already there. On a plain PostgreSQL cluster, where a view is
+born with an empty ACL, the same two statements were correct — which is why it
+only appeared on deployment.
+
+The fix is explicit privilege normalisation in the same unapplied migration:
+
+```sql
+revoke all privileges on public.finance_received_payments
+  from public, anon, authenticated;
+
+grant select on public.finance_received_payments to authenticated;
+```
+
+Order matters: the revoke must precede the grant, or the grant is taken away
+again. The assertion was **not** weakened — it was widened to the whole matrix
+(all seven privileges, both client roles, and PUBLIC read from the ACL itself,
+which `has_table_privilege()` cannot be asked about). Final state, verified under
+both Supabase-shaped default privileges and a plain cluster: `authenticated`
+SELECT only, `anon` nothing, `PUBLIC` nothing, `service_role` left exactly as the
+platform set it — this project's convention for every table it has shipped — and
+no write reaches the view in any case, because a view with joins is not
+auto-updatable.
+
 **Surfaces changed** — the data source only, no layout, columns, modals or
 actions: the two Received Payments lists, the sidebar counters, the
 `?payment=` deep-link resolver, and the Admin Action Queue's suspense item

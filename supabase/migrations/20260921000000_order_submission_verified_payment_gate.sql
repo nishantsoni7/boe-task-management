@@ -2559,9 +2559,52 @@ left join lateral (
 comment on view public.finance_received_payments is
   'Every payment row a caller may already read, plus whether its money is allocated to a Confirmed Order and which one. SECURITY INVOKER: every underlying policy is evaluated as the caller, so this can show nothing the tables beneath it would not. Exactly one row per payment — the name joins are on a primary key and the allocation lookup is a LATERAL LIMIT 1 — so a payment split across several Orders still appears once, labelled by its oldest active Confirmed-Order allocation. Exposes no allocation id, no allocated amount and no split. Read-only projection; it stores nothing and is not a second ledger.';
 
--- The same audience the payments themselves have, and no wider. RLS underneath
--- does the deciding; this only makes the projection reachable.
-revoke all on public.finance_received_payments from public, anon;
+-- ── PRIVILEGE NORMALISATION, AND WHY IT IS NOT A FORMALITY ───────────────────
+--
+-- THE DEPLOYMENT DIFFERENCE THIS EXISTS TO SURVIVE. A plain PostgreSQL cluster
+-- creates a view with an EMPTY ACL: the owner has everything, nobody else has
+-- anything, and a `grant select to authenticated` is then the whole story. This
+-- database is not a plain cluster. Supabase bootstraps
+--
+--     alter default privileges in schema public
+--       grant all on tables to postgres, anon, authenticated, service_role;
+--
+-- so EVERY new table AND VIEW in `public` is born carrying `arwdDxt` — SELECT,
+-- INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER — for all three
+-- client-facing roles. Nothing in this file granted those; the platform did,
+-- at CREATE VIEW, before the next statement ran.
+--
+-- Revoking from `public, anon` alone therefore left `authenticated` holding
+-- INSERT, UPDATE and DELETE on a read projection, and the `grant select` below
+-- was a no-op because SELECT was already there. The apply-time assertion caught
+-- it and refused the migration — which is exactly what it is for.
+--
+-- SO THE PRIVILEGES ARE NORMALISED EXPLICITLY: everything is taken away from
+-- every client role first, and the ONE privilege this object is meant to carry
+-- is then granted back.
+--
+-- THE ORDER MATTERS AND IS NOT INTERCHANGEABLE:
+--   1. CREATE VIEW      — the platform's default privileges land here
+--   2. REVOKE ALL       — from public, anon AND authenticated, undoing them
+--   3. GRANT SELECT     — to authenticated, the one thing it may do
+-- Granting before revoking would erase the grant.
+--
+-- `revoke ... from public` removes PUBLIC's own grants; it does not touch a
+-- role's individual ones, which is why `authenticated` has to be named.
+--
+-- SERVICE_ROLE IS LEFT AS THE PLATFORM SET IT, which is this project's
+-- established convention for every table it has shipped (20260703000000
+-- order_number_cycle, 20260706000000 test_data_cleanup_settings/_audit,
+-- 20260916000000 test_data_cleanup_claims — each revokes from `public, anon,
+-- authenticated` and says nothing about service_role). Nothing here GRANTS it
+-- anything, no client can reach it, it bypasses RLS by design, and a view with
+-- joins is not auto-updatable in any case — a write attempted through it fails
+-- whoever tries. The rule this file holds itself to is the one the assertions
+-- state: no CLIENT role may write.
+
+revoke all privileges on public.finance_received_payments
+  from public, anon, authenticated;
+
 grant select on public.finance_received_payments to authenticated;
 
 -- ═════════════════════════════════════════════════════════════════════════════
@@ -3711,26 +3754,57 @@ begin
     raise exception 'a reversed allocation must never classify a payment as linked';
   end if;
 
-  -- Reachable by authenticated, and by nobody else.
+  -- ── THE WHOLE PRIVILEGE PICTURE, NOT A SAMPLE OF IT ──
+  --
+  -- These caught a real deployment difference once already: on a platform whose
+  -- default privileges grant `arwdDxt` on every new table AND VIEW to the client
+  -- roles, a revoke that names only `public, anon` leaves `authenticated`
+  -- holding INSERT, UPDATE and DELETE. So the check is now the FULL matrix —
+  -- all seven privileges, both client roles, plus PUBLIC — rather than the three
+  -- that happened to be thought of.
+
+  -- Reachable by authenticated …
   if not has_table_privilege('authenticated', 'public.finance_received_payments', 'select') then
     raise exception 'the projection must be readable by authenticated';
   end if;
-  for v_bool in
-    select has_table_privilege(r, 'public.finance_received_payments', 'select')
-    from unnest(array['anon']) as r
-  loop
-    if v_bool then
-      raise exception 'the projection must not be readable by anon';
-    end if;
-  end loop;
+
+  -- … and SELECT is the ONLY thing it may do.
   for v_bool in
     select has_table_privilege('authenticated', 'public.finance_received_payments', pr)
-    from unnest(array['insert', 'update', 'delete']) as pr
+    from unnest(array['insert', 'update', 'delete',
+                      'truncate', 'references', 'trigger']) as pr
   loop
     if v_bool then
       raise exception 'the projection is read-only; no write privilege may exist on it';
     end if;
   end loop;
+
+  -- anon holds nothing at all — not read, not write.
+  for v_bool in
+    select has_table_privilege('anon', 'public.finance_received_payments', pr)
+    from unnest(array['select', 'insert', 'update', 'delete',
+                      'truncate', 'references', 'trigger']) as pr
+  loop
+    if v_bool then
+      raise exception 'anon must hold no privilege of any kind on the projection';
+    end if;
+  end loop;
+
+  -- AND NEITHER DOES PUBLIC. has_table_privilege() cannot be asked about PUBLIC,
+  -- so this reads the ACL itself: grantee 0 is PUBLIC, and it must have no entry.
+  -- Without this, a privilege granted to everyone would satisfy both loops above
+  -- by being invisible to them.
+  select coalesce(array_agg(distinct a.privilege_type order by a.privilege_type), '{}')
+    into v_cols
+  from pg_class c
+  cross join lateral aclexplode(coalesce(c.relacl, '{}'::aclitem[])) as a
+  where c.oid = 'public.finance_received_payments'::regclass
+    and a.grantee = 0;
+  if v_cols <> '{}'::text[] then
+    raise exception
+      'PUBLIC must hold no privilege on the projection, found: %',
+      array_to_string(v_cols, ', ');
+  end if;
 
   -- IT CHANGES NO POLICY AND NO LEDGER COLUMN. The payment rows are untouched:
   -- the invariant that decides linked/unlinked in the LEDGER still stands
@@ -3807,6 +3881,12 @@ end $$;
 -- anything already holds that name the migration stops instead of silently
 -- redefining somebody else's object, and CREATE OR REPLACE could not change the
 -- column list anyway.
+--
+-- ON RE-APPLY THE PLATFORM'S DEFAULT PRIVILEGES LAND ON THE NEW VIEW AGAIN —
+-- `arwdDxt` for anon, authenticated and service_role — and §8a's explicit
+-- REVOKE ALL … / GRANT SELECT removes them again, in that order. The final ACL
+-- is therefore the same on every apply and on every kind of cluster: SELECT for
+-- authenticated, nothing for anon, nothing for PUBLIC.
 --
 -- Allocations already MOVED onto an Order are not reversible by any of that, and
 -- must not be: the Order is numbered, the money is against it, and putting it

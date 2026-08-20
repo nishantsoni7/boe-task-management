@@ -937,8 +937,11 @@ describe('the Finance linkage projection', () => {
       'a general Finance read projection must never be SECURITY DEFINER')
   })
 
-  test('PUBLIC and anon are revoked; authenticated may only SELECT', () => {
-    assert.match(view, /revoke all on public\.finance_received_payments from public, anon;/)
+  test('PUBLIC, anon AND authenticated are revoked; only SELECT is given back', () => {
+    // Named individually because the platform's default privileges — not this
+    // file — put arwdDxt on the view for every client role the moment it was
+    // created. Revoking `public, anon` alone left authenticated able to write.
+    assert.match(view, /revoke all privileges on public\.finance_received_payments\s*\n\s*from public, anon, authenticated;/)
     assert.match(view, /grant select on public\.finance_received_payments to authenticated;/)
     assert.ok(!/grant (insert|update|delete|all) on public\.finance_received_payments/i.test(view),
       'the projection carries no write privilege')
@@ -949,6 +952,20 @@ describe('the Finance linkage projection', () => {
     assert.ok(!/drop policy/i.test(code), 'no policy may be dropped')
     assert.ok(!/alter table public\.finance_payment_requests[\s\S]{0,80}disable row level security/i.test(code),
       'RLS must never be disabled to make a read work')
+  })
+
+  test('the apply checks the WHOLE privilege matrix, not a sample of it', () => {
+    // The assertion that caught the real deployment difference. It must keep
+    // checking every privilege, both client roles, and PUBLIC — a narrower check
+    // is what let the gap through in the first place.
+    const block = sql.split('§11. Assertions')[1] ?? sql
+    for (const priv of ['insert', 'update', 'delete', 'truncate', 'references', 'trigger']) {
+      assert.ok(block.includes(`'${priv}'`), `the apply must reject a lingering ${priv.toUpperCase()}`)
+    }
+    assert.ok(block.includes('anon must hold no privilege of any kind on the projection'),
+      'anon must be checked across every privilege, not only SELECT')
+    assert.ok(block.includes('a.grantee = 0'),
+      'PUBLIC cannot be asked with has_table_privilege — the ACL itself must be read')
   })
 
   test('the apply refuses to succeed if any of that is untrue', () => {

@@ -1182,20 +1182,48 @@ begin
     format('the projection exposes allocation internals: %s', array_to_string(v_cols, ', '));
 
   -- REACHABLE BY authenticated, AND BY NOBODY ELSE.
+  --
+  -- THE FULL MATRIX, BECAUSE A NARROWER CHECK IS WHAT LET A REAL DEPLOYMENT
+  -- DIFFERENCE THROUGH. This platform's default privileges grant `arwdDxt` on
+  -- every new table AND VIEW in `public` to anon, authenticated and
+  -- service_role, so a view is born writable by the client roles and a revoke
+  -- that forgets one of them leaves it that way.
   assert has_table_privilege('authenticated', 'public.finance_received_payments', 'select'),
     'Finance users must be able to read the projection';
-  assert not has_table_privilege('anon', 'public.finance_received_payments', 'select'),
-    'anon must not read payments';
-  -- NO WRITE PRIVILEGE FOR ANY APPLICATION ROLE. (The view's owner holds the
-  -- implicit rights every owner holds; the roles the application connects as are
-  -- what this is about.) The projection is read-only, and every Finance mutation
-  -- keeps writing to finance_payment_requests by the payment's own id.
+
+  -- SELECT is the ONLY thing authenticated may do with it.
   select count(*) into v_n
-  from unnest(array['authenticated', 'anon', 'public']) as r(name)
-  cross join unnest(array['insert', 'update', 'delete']) as p(priv)
-  where has_table_privilege(r.name, 'public.finance_received_payments', p.priv);
+  from unnest(array['insert', 'update', 'delete',
+                    'truncate', 'references', 'trigger']) as p(priv)
+  where has_table_privilege('authenticated', 'public.finance_received_payments', p.priv);
   assert v_n = 0,
-    format('the projection must carry no write privilege, found %s grant(s)', v_n);
+    format('the projection must carry no write privilege for authenticated, found %s', v_n);
+
+  -- anon holds nothing at all.
+  select count(*) into v_n
+  from unnest(array['select', 'insert', 'update', 'delete',
+                    'truncate', 'references', 'trigger']) as p(priv)
+  where has_table_privilege('anon', 'public.finance_received_payments', p.priv);
+  assert v_n = 0,
+    format('anon must hold no privilege on the projection, found %s', v_n);
+
+  -- AND NEITHER DOES PUBLIC. has_table_privilege() cannot be asked about PUBLIC
+  -- — a privilege granted to everyone is invisible to it — so the ACL itself is
+  -- read: grantee 0 is PUBLIC, and it must have no entry.
+  select count(*) into v_n
+  from pg_class c
+  cross join lateral aclexplode(coalesce(c.relacl, '{}'::aclitem[])) as a
+  where c.oid = 'public.finance_received_payments'::regclass
+    and a.grantee = 0;
+  assert v_n = 0,
+    format('PUBLIC must hold no privilege on the projection, found %s', v_n);
+
+  -- The view's OWNER holds the implicit rights every owner holds, and
+  -- service_role keeps whatever the platform gave it — this project grants it
+  -- nothing here and every shipped table does the same. Neither is a client
+  -- route: a view with joins is not auto-updatable, so a write attempted through
+  -- it fails whoever tries, and every Finance mutation keeps writing to
+  -- finance_payment_requests by the payment's own id.
 
   raise notice '14a. projection security properties OK';
 end $$;

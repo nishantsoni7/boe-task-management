@@ -591,11 +591,40 @@ describe('the projection both pages read', () => {
       'a Finance-wide read projection must never be SECURITY DEFINER')
   })
 
-  test('PUBLIC and anon are revoked; only authenticated may select', () => {
-    assert.match(VIEW_SQL, /revoke all on public\.finance_received_payments from public, anon;/)
+  test('EVERY client role is revoked before authenticated is granted SELECT', () => {
+    // THE DEPLOYMENT FAILURE THIS EXISTS TO PREVENT RECURRING. Supabase's
+    // bootstrap runs `alter default privileges in schema public grant all on
+    // tables to postgres, anon, authenticated, service_role`, so a new VIEW is
+    // born with arwdDxt for all three client-facing roles. A revoke naming only
+    // `public, anon` left `authenticated` holding INSERT/UPDATE/DELETE on a read
+    // projection, and the migration's own assertion refused the apply.
+    assert.match(
+      VIEW_SQL,
+      /revoke all privileges on public\.finance_received_payments\s*\n\s*from public, anon, authenticated;/,
+      'the revoke must name authenticated — the platform granted it everything at CREATE VIEW',
+    )
     assert.match(VIEW_SQL, /grant select on public\.finance_received_payments to authenticated;/)
-    assert.ok(!/grant (insert|update|delete|all)/i.test(VIEW_SQL),
+    // Executable lines only: the comment above the statements QUOTES the
+    // platform's own `grant all on tables …` bootstrap, which is the thing being
+    // undone rather than something this file does.
+    const statements = VIEW_SQL.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
+    assert.ok(!/grant (insert|update|delete|all)/i.test(statements),
       'the projection carries no write privilege')
+  })
+
+  test('the revoke comes BEFORE the grant, or the grant is erased', () => {
+    const revoke = VIEW_SQL.indexOf('revoke all privileges on public.finance_received_payments')
+    const grant  = VIEW_SQL.indexOf('grant select on public.finance_received_payments')
+    assert.ok(revoke > -1 && grant > -1)
+    assert.ok(revoke < grant, 'REVOKE ALL after GRANT SELECT would take the grant away again')
+  })
+
+  test('nothing is granted to service_role, and nothing is granted to anon', () => {
+    const statements = VIEW_SQL.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
+    assert.ok(!/grant[^;]*finance_received_payments[^;]*to[^;]*service_role/i.test(statements),
+      'this file grants service_role nothing on the projection')
+    assert.ok(!/grant[^;]*finance_received_payments[^;]*to[^;]*anon/i.test(statements),
+      'anon must never be granted anything on the projection')
   })
 
   test('every table it reads is schema-qualified', () => {

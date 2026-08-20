@@ -1174,6 +1174,12 @@ Action Queue's suspense item read it; every mutation still writes to
                 OR an order_request_id
     Non-Linked  none of the three
 
+**Privileges on the projection are normalised explicitly** — `revoke all
+privileges … from public, anon, authenticated`, then `grant select … to
+authenticated` — because Supabase's default privileges grant `arwdDxt` on every
+new table and view to the client roles at creation time. The migration's
+apply-time assertions check the whole matrix and refuse the apply otherwise.
+
 A reversed allocation never classifies a payment as Linked. A payment split
 across several Orders is Linked, appears once, and is labelled by its oldest
 active Confirmed-Order allocation. **No payment record is copied during PI
