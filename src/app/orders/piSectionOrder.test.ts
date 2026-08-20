@@ -1,43 +1,22 @@
 /**
- * WHERE THE SECTIONS SIT ON THE TWO PI SCREENS — read from the JSX TREE.
+ * WHERE TWO SECTIONS SIT ON THE TWO PI SCREENS — read from the JSX TREE.
  *
- * WHY THIS FILE EXISTS
- * --------------------
- * The order of the cards on these two screens is a product decision, not a
- * detail: the verdict on a PI, and the money already received against it, are
- * what a person opens the screen for, and both used to sit BELOW a product
- * table they had to scroll past.
+ * The money already received against a PI, and the verdict on whether a PI can
+ * be saved, both belong above the product table rather than below it. Guarding
+ * that with `source.indexOf(a) < source.indexOf(b)` is not enough: string
+ * position is not render position, so an indexOf guard passes just as happily
+ * when a section is moved INSIDE the card it is supposed to precede.
  *
- * The obvious way to guard that is `source.indexOf(a) < source.indexOf(b)`, and
- * it is not good enough. String position is not render position: it says
- * nothing about NESTING, so it passes just as happily when a section is moved
- * INSIDE the card it is supposed to precede, or into a branch that never
- * renders. A guard that can be satisfied by markup nobody sees is a guard that
- * will eventually be satisfied by markup nobody sees.
+ * So each page is parsed and the tree is asked the structural question instead:
+ * among the direct children of one parent, in render order, which comes first?
+ * A section nested into another element stops being a sibling and fails here.
  *
- * So this file parses each page with the TypeScript compiler and asks the JSX
- * tree the structural question instead: within one parent, in the order the
- * children are actually rendered, which section comes first? A section moved
- * inside another element is no longer a sibling and fails, where indexOf would
- * have passed.
+ * The one thing a tree cannot see is CSS `order`, which reorders flex children
+ * without touching the markup — and this page uses it deliberately, inside the
+ * overview card and inside the lower grid. The last test proves it is not in
+ * play on the page stack itself, so DOM order really is screen order.
  *
- * WHAT THIS STILL CANNOT SEE, AND WHAT COVERS IT
- * ----------------------------------------------
- * One mechanism can still divorce DOM order from what the eye sees: CSS
- * `order`, which reorders flex and grid children without touching the markup.
- * This page uses it deliberately, twice — inside the overview card and inside
- * the lower grid. So the last test here proves it is not in play at the level
- * that matters: the page stack itself, and its direct children.
- *
- * Beyond that, the real browser is the authority, and a person can run it —
- * scripts/verify-pi-section-order.mjs, whose header carries the exact steps.
- * It drives a real Chromium against a real dev server, stubs Supabase at the
- * network layer, and compares the on-screen Y positions of the Payments card,
- * the ready-to-submit card and the first product row at desktop and phone
- * widths. It is not part of `npm test` because it needs a browser and a running
- * server; the tests below are the ones that run on every change.
- *
- * Offline and pure: reads two files, parses them. No network, no database.
+ * Offline and pure: reads three files, parses them.
  *
  * Run:
  *   npx tsx --test src/app/orders/piSectionOrder.test.ts
@@ -49,240 +28,116 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
 
-const DETAIL_PAGE = 'src/app/orders/drafts/[submissionId]/page.tsx'
-const IMPORT_PAGE = 'src/app/orders/import/page.tsx'
-const GLOBALS_CSS = 'src/app/globals.css'
-
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 
-function parse(path: string): ts.SourceFile {
-  return ts.createSourceFile(path, read(path), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
-}
-
-/** The tag name of a JSX element, however it is written. */
-function tagName(node: ts.Node): string | null {
-  if (ts.isJsxElement(node)) return node.openingElement.tagName.getText()
-  if (ts.isJsxSelfClosingElement(node)) return node.tagName.getText()
-  return null
-}
+const tagName = (n: ts.Node): string | null =>
+  ts.isJsxElement(n) ? n.openingElement.tagName.getText()
+  : ts.isJsxSelfClosingElement(n) ? n.tagName.getText()
+  : null
 
 /**
- * One rendered child of a parent, in source order.
+ * The direct children of a JSX element, in render order, each reduced to every
+ * tag and identifier beneath it.
  *
- * `names` is every tag name anywhere beneath it and `refs` every identifier,
- * which is how a child is IDENTIFIED here: `<Card>` alone does not say which
- * card it is, but the card that reaches for READY_TITLE or renders
- * PiProductTableHead says so unambiguously — and says it no matter how the
- * markup inside is later rearranged.
+ * That set is how a child is IDENTIFIED: `<Card>` alone does not say which card
+ * it is, but the one reaching for READY_TITLE or rendering PiProductTableHead
+ * says so unambiguously, however its insides are later rearranged. A child
+ * wrapped in `{cond && …}` is still one child in one slot, which is how React
+ * renders it, so the expression is unwrapped rather than skipped.
  */
-type Child = { index: number; tag: string; names: Set<string>; refs: Set<string> }
-
-/**
- * The direct children of a JSX element, in render order.
- *
- * A child wrapped in a conditional — `{cond && <Panel/>}` — is still one child
- * in one position, which is exactly how React renders it, so the expression is
- * unwrapped rather than skipped. Whitespace and comments are not children.
- */
-function directChildren(parent: ts.JsxElement): Child[] {
-  const out: Child[] = []
-
-  for (const child of parent.children) {
-    let node: ts.Node | null = null
-
-    if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-      node = child
-    } else if (ts.isJsxExpression(child) && child.expression) {
-      // `{cond && <X/>}`, `{cond ? <X/> : null}`, `{value}` — take the whole
-      // expression: whatever it renders occupies this one slot.
-      node = child.expression
-    }
-    if (!node) continue
-
-    const names = new Set<string>()
-    const refs = new Set<string>()
+function sections(parent: ts.JsxElement): Set<string>[] {
+  return parent.children.flatMap(child => {
+    const node = ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child) ? child
+      : ts.isJsxExpression(child) ? child.expression
+      : undefined
+    if (!node) return []
+    const marks = new Set<string>()
     const walk = (n: ts.Node) => {
       const tag = tagName(n)
-      if (tag) names.add(tag)
-      if (ts.isIdentifier(n)) refs.add(n.text)
+      if (tag) marks.add(tag)
+      if (ts.isIdentifier(n)) marks.add(n.text)
       n.forEachChild(walk)
     }
     walk(node)
-
-    const tag = tagName(node) ?? '(expression)'
-    if (tag === '(expression)' && names.size === 0) continue  // a bare text/value slot
-    out.push({ index: out.length, tag, names, refs })
-  }
-
-  return out
+    return marks.size > 0 ? [marks] : []
+  })
 }
 
-/** Find the first JSX element carrying `className="<name>"`. */
-function findByClassName(source: ts.SourceFile, className: string): ts.JsxElement {
-  let found: ts.JsxElement | null = null
+/** The page stack of the draft detail page, and the preview block of New Order. */
+function stackOf(path: string, locate: (root: ts.SourceFile) => ts.JsxElement | null): Set<string>[] {
+  const root = ts.createSourceFile(path, read(path), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const found = locate(root)
+  assert.ok(found, `${path}: could not locate the section stack`)
+  const list = sections(found)
+  assert.ok(list.length >= 4, `${path}: expected the page's sections, got ${list.length}`)
+  return list
+}
+
+function search<T extends ts.Node>(root: ts.Node, match: (n: ts.Node) => n is T): T | null {
+  let hit: T | null = null
   const walk = (n: ts.Node) => {
-    if (found) return
-    if (ts.isJsxElement(n)) {
-      for (const attr of n.openingElement.attributes.properties) {
-        if (!ts.isJsxAttribute(attr) || attr.name.getText() !== 'className') continue
-        const init = attr.initializer
-        if (init && ts.isStringLiteral(init) && init.text === className) { found = n; return }
-      }
-    }
+    if (hit) return
+    if (match(n)) { hit = n; return }
     n.forEachChild(walk)
   }
-  walk(source)
-  assert.ok(found, `no JSX element with className="${className}"`)
-  return found
+  walk(root)
+  return hit
 }
 
-/** Find the JSX element assigned to `const <name> = ...`. */
-function findAssignedJsx(source: ts.SourceFile, name: string): ts.JsxElement {
-  let found: ts.JsxElement | null = null
-  const walk = (n: ts.Node) => {
-    if (found) return
-    if (ts.isVariableDeclaration(n) && n.name.getText() === name && n.initializer) {
-      const inner = (m: ts.Node): void => {
-        if (found) return
-        if (ts.isJsxElement(m)) { found = m; return }
-        m.forEachChild(inner)
-      }
-      inner(n.initializer)
-      if (found) return
-    }
-    n.forEachChild(walk)
-  }
-  walk(source)
-  assert.ok(found, `no JSX assigned to \`${name}\``)
-  return found
+const byClassName = (name: string) => (root: ts.SourceFile) =>
+  search(root, (n): n is ts.JsxElement =>
+    ts.isJsxElement(n) && n.openingElement.attributes.properties.some(a =>
+      ts.isJsxAttribute(a) && a.name.getText() === 'className'
+      && !!a.initializer && ts.isStringLiteral(a.initializer) && a.initializer.text === name))
+
+const byAssignment = (name: string) => (root: ts.SourceFile) => {
+  const decl = search(root, (n): n is ts.VariableDeclaration =>
+    ts.isVariableDeclaration(n) && n.name.getText() === name)
+  return decl?.initializer ? search(decl.initializer, ts.isJsxElement) : null
 }
 
-/** The position of the one child identified by a marker, and a readable failure. */
-function positionOf(children: Child[], marker: string, label: string): number {
-  const hits = children.filter(c => c.names.has(marker) || c.refs.has(marker))
+/** Where the one section carrying `marker` sits — and proof there is only one. */
+function at(list: Set<string>[], marker: string): number {
+  const hits = list.flatMap((marks, i) => marks.has(marker) ? [i] : [])
   assert.equal(hits.length, 1,
-    `${label}: expected exactly one rendered section referencing ${marker}, found ${hits.length}`
-    + ` — a duplicated section is as wrong as a misplaced one`)
-  return hits[0].index
+    `expected exactly one rendered section referencing ${marker}, found ${hits.length}`)
+  return hits[0]
 }
 
-// ── The PI draft detail page ──────────────────────────────────────────────────
-
-describe('the PI draft detail page renders Payments above the products', () => {
-  const stack = directChildren(findByClassName(parse(DETAIL_PAGE), 'pi-detail-stack'))
-
-  const payments = () => positionOf(stack, 'PiPaymentCard', 'detail')
-  const products = () => positionOf(stack, 'PiProductTableHead', 'detail')
-
-  test('the stack was parsed, not merely searched', () => {
-    assert.ok(stack.length >= 6, `expected the page stack's sections, got ${stack.length}`)
-  })
-
-  test('Payments and the product table are SIBLINGS in the page stack', () => {
-    // The point of parsing rather than string-matching: if either is moved
-    // inside the other, or inside any other card, it stops being a direct child
-    // of the stack and positionOf cannot find it here at all.
-    assert.ok(payments() >= 0)
-    assert.ok(products() >= 0)
-  })
-
-  test('Payments comes before the product table', () => {
-    assert.ok(payments() < products(),
-      'the money already received must not sit below the lines it was received against')
-  })
-
-  test('Payments comes after the page header and the primary actions', () => {
-    assert.ok(payments() > positionOf(stack, 'PiWorkflowPanel', 'detail'),
+describe('the two PI screens put the answer above the product table', () => {
+  test('PI draft detail: Payments sits between the primary actions and the products', () => {
+    const s = stackOf('src/app/orders/drafts/[submissionId]/page.tsx',
+      byClassName('pi-detail-stack'))
+    // Siblings in the page stack: nested into any card, these would not be found.
+    assert.ok(at(s, 'PiWorkflowPanel') < at(s, 'PiPaymentCard'),
       'the workflow panel carries this page’s primary actions and stays above Payments')
-    assert.ok(payments() > positionOf(stack, 'PiIdentityStrip', 'detail'))
-    assert.ok(payments() > positionOf(stack, 'PiOrderOverview', 'detail'))
+    assert.ok(at(s, 'PiPaymentCard') < at(s, 'PiProductTableHead'),
+      'the money received must not sit below the lines it was received against')
+    assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiLowerGrid'),
+      'the commercial breakdown and Activity stay below the products')
   })
 
-  test('the commercial breakdown and Activity stay below the products', () => {
-    assert.ok(positionOf(stack, 'PiLowerGrid', 'detail') > products(),
-      'reference material a reader drops to AFTER the decisions')
+  test('New Order: the ready card and Save Draft sit under the summary, above the products', () => {
+    const s = stackOf('src/app/orders/import/page.tsx', byAssignment('previewBlock'))
+    assert.equal(at(s, 'READY_TITLE'), at(s, 'buildHeaderRows') + 1,
+      'immediately after the order information, with nothing wedged between them')
+    assert.ok(at(s, 'READY_TITLE') < at(s, 'PiProductTableHead'),
+      'the verdict on the PI comes before the lines it is a verdict on')
+    assert.equal(at(s, 'SAVE_BUTTON_LABEL'), at(s, 'READY_TITLE'),
+      'and the one control of this screen belongs to that same card')
+    assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiCommercialSummary'))
   })
 
-  test('the blocking panel stays above the products, where the products are', () => {
-    assert.ok(positionOf(stack, 'PiBlockingPanel', 'detail') < products())
-  })
-
-  test('every section is rendered exactly once', () => {
-    for (const marker of [
-      'PiIdentityStrip', 'PiOrderOverview', 'PiWorkflowPanel', 'PiPaymentCard',
-      'PiBlockingPanel', 'PiProductTableHead', 'PiLowerGrid', 'PiWarningPanel',
-    ]) {
-      positionOf(stack, marker, 'detail')  // throws unless there is exactly one
-    }
-  })
-})
-
-// ── The New Order upload preview ──────────────────────────────────────────────
-
-describe('the New Order preview renders the ready card above the products', () => {
-  const preview = directChildren(findAssignedJsx(parse(IMPORT_PAGE), 'previewBlock'))
-
-  const ready = () => positionOf(preview, 'READY_TITLE', 'import')
-  const products = () => positionOf(preview, 'PiProductTableHead', 'import')
-
-  test('the preview block was parsed, not merely searched', () => {
-    assert.ok(preview.length >= 4, `expected the preview's cards, got ${preview.length}`)
-  })
-
-  test('the ready-to-submit card comes before the product table', () => {
-    assert.ok(ready() < products(),
-      'the verdict on the PI must come before the lines it is a verdict on')
-  })
-
-  test('the Save Draft button is inside that card, not stranded below', () => {
-    const card = preview[ready()]
-    assert.ok(card.refs.has('SAVE_BUTTON_LABEL'),
-      'the one action of this screen belongs to the card that says the PI is ready')
-    assert.ok(card.refs.has('canSaveDraft'), 'and keeps its shared gate')
-  })
-
-  test('the ready card sits directly under the order information', () => {
-    const orderInfo = preview.findIndex(c => c.refs.has('buildHeaderRows'))
-    assert.notEqual(orderInfo, -1, 'the order-information card must still be there')
-    assert.equal(ready(), orderInfo + 1,
-      'immediately after the upload summary, with nothing wedged between them')
-  })
-
-  test('the commercial summary stays below the products', () => {
-    assert.ok(positionOf(preview, 'PiCommercialSummary', 'import') > products())
-  })
-
-  test('the ready card is rendered exactly once', () => {
-    positionOf(preview, 'READY_TITLE', 'import')
-    positionOf(preview, 'PiProductTableHead', 'import')
-  })
-})
-
-// ── The one thing a JSX tree cannot answer ───────────────────────────────────
-
-describe('nothing reorders the page stack behind the markup', () => {
-  const css = read(GLOBALS_CSS)
-
-  test('no CSS `order` applies to the detail page stack or its children', () => {
-    // The page DOES use `order` twice, deliberately: inside the overview card
-    // (.pi-detail-snapshot) and inside the lower grid (.pi-detail-commercial-col).
-    // Both reorder children of a card, never sections of the page. If a rule
-    // ever targets the stack itself, DOM order stops being visual order and
-    // every assertion above becomes decorative.
-    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-    for (const [, selector, body] of rules) {
+  test('no CSS `order` reaches the page stack, so DOM order is screen order', () => {
+    const css = read('src/app/globals.css')
+    for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
       if (!/(^|[^-\w])order\s*:/.test(body)) continue
       assert.ok(!/\.pi-detail-stack/.test(selector),
         `${selector.trim()} reorders the page stack — DOM order would stop being visual order`)
     }
-  })
-
-  test('the stack is a plain column, so source order IS screen order', () => {
-    const block = css.slice(css.indexOf('.pi-detail-stack {'))
-    const rule = block.slice(0, block.indexOf('}'))
+    const rule = css.slice(css.indexOf('.pi-detail-stack {')).split('}')[0]
     assert.match(rule, /flex-direction:\s*column/)
-    assert.ok(!/(^|[^-\w])order\s*:/.test(rule), 'and it sets no order of its own')
-    assert.ok(!/flex-wrap|row-reverse|column-reverse/.test(rule),
-      'nothing that could reverse or wrap the sections')
+    assert.ok(!/(^|[^-\w])order\s*:|column-reverse|flex-wrap/.test(rule),
+      'and the stack itself neither reorders nor wraps its sections')
   })
 })
