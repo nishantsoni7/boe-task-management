@@ -1710,6 +1710,31 @@ describe('the advance requirement is shown to everybody and decided by few', () 
       'and on the preview, whose summary is the only advance it states')
   })
 
+  test('the payment card sits above the products, and is drawn exactly once', () => {
+    // Where it is, not what it says. What has been paid, and the control that
+    // records a payment, belong with the decisions at the top of the record —
+    // not below a table somebody has to scroll past to reach them. The card
+    // itself is unchanged: same component, same permission gate, same figures.
+    assert.equal((source.match(/<PiPaymentCard/g) ?? []).length, 1,
+      'one placement, so a reader cannot meet two payment positions on one page')
+    assert.ok(source.indexOf('<PiPaymentCard') > source.indexOf('<PiWorkflowPanel'),
+      'below the page header and the primary actions')
+    assert.ok(source.indexOf('<PiPaymentCard') < source.indexOf('<PiProductTableHead'),
+      'and above the first product row')
+    assert.ok(source.indexOf('<PiPaymentCard') < source.indexOf('<PiLowerGrid'),
+      'the commercial breakdown and Activity stay below it')
+  })
+
+  test('moving the card changed nothing it is gated on', () => {
+    assert.ok(source.includes('canAdd={canAddPiPayment('),
+      'the same shared rule decides who may record a payment')
+    assert.ok(source.includes('isAdmin: false,') && source.includes('canAllocatePayment,'))
+    assert.ok(source.includes('onAdd={recordPayment}'))
+    assert.ok(source.includes('summary={payments}') && source.includes('loading={paymentsLoading}'))
+    assert.ok(source.includes('isMobile={isMobile}'),
+      'and it still takes the phone layout the rest of the page takes')
+  })
+
   test('no Finance or payment table is read by this page', () => {
     const tables = [...source.matchAll(/\.from\('([^']+)'\)/g)].map(m => m[1])
     for (const table of tables) {

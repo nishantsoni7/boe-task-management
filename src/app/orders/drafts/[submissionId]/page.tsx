@@ -1218,6 +1218,42 @@ function PiDraftDetailPageInner() {
           advanceBand={advanceBand}
         />
 
+        {/* ── Payments, ABOVE the products ──
+            What has actually been paid against this PI sits with the decisions,
+            not below the table: the figure and the Add payment control are the
+            reason most people open a draft that is already submitted. Every
+            figure it prints was summed in the database in numeric; this page
+            formats and never calculates. */}
+        <PiPaymentCard
+          summary={payments}
+          loading={paymentsLoading}
+          canAdd={canAddPiPayment(
+            {
+              userId: viewerId,
+              // NOT a role literal. deriveFinanceCapabilities short-circuits an
+              // active admin, so canAllocatePayment is already true for one —
+              // this page never reads users.role to decide an authority.
+              isAdmin: false,
+              canAllocatePayment,
+            },
+            {
+              status:          submission.status,
+              submittedBy:     submission.submitted_by ?? null,
+              createdBy:       submission.created_by ?? null,
+              assignedTo:      submission.assigned_to ?? null,
+              orderId:         submission.order_id ?? null,
+              deletionClaimed: Boolean(submission.deletion_claim_token),
+            },
+          )}
+          isMobile={isMobile}
+          todayIso={new Date().toISOString().slice(0, 10)}
+          saving={paymentSaving}
+          notice={paymentNotice}
+          onAdd={recordPayment}
+          onOpenProof={openPaymentProof}
+          onDismissNotice={() => setPaymentNotice(null)}
+        />
+
         {/* ── 4. What stops this being submitted ──
             Above the products, because it is the reason the primary action is
             disabled. Saved at parse time, so what the server thought of this
@@ -1365,40 +1401,6 @@ function PiDraftDetailPageInner() {
             which is why they are here and not above the table. Roughly 60/40 on
             a desktop, aligned at the top and never stretched to a common height;
             stacked in this order on anything narrower. */}
-        {/* ── Payments ──
-            One card, in the same quiet register as the Commercial breakdown and
-            Activity cards below it. Every figure it prints was summed in the
-            database in numeric; this page formats and never calculates. */}
-        <PiPaymentCard
-          summary={payments}
-          loading={paymentsLoading}
-          canAdd={canAddPiPayment(
-            {
-              userId: viewerId,
-              // NOT a role literal. deriveFinanceCapabilities short-circuits an
-              // active admin, so canAllocatePayment is already true for one —
-              // this page never reads users.role to decide an authority.
-              isAdmin: false,
-              canAllocatePayment,
-            },
-            {
-              status:          submission.status,
-              submittedBy:     submission.submitted_by ?? null,
-              createdBy:       submission.created_by ?? null,
-              assignedTo:      submission.assigned_to ?? null,
-              orderId:         submission.order_id ?? null,
-              deletionClaimed: Boolean(submission.deletion_claim_token),
-            },
-          )}
-          isMobile={isMobile}
-          todayIso={new Date().toISOString().slice(0, 10)}
-          saving={paymentSaving}
-          notice={paymentNotice}
-          onAdd={recordPayment}
-          onOpenProof={openPaymentProof}
-          onDismissNotice={() => setPaymentNotice(null)}
-        />
-
         <PiLowerGrid
           commercial={
             /* The stored figures, through the shared rows builder. Nothing on

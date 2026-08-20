@@ -107,12 +107,58 @@ describe('the PI product table is byte-for-byte what it was', () => {
 
 // ── The import preview ────────────────────────────────────────────────────────
 
+// WHY THE WHOLE-FILE COMPARISON NARROWED.
+//
+// This guard read the import screen byte-for-byte against the pinned commit,
+// because Phase C changes what happens AFTER a PI is submitted and nothing
+// about uploading one. That is still the property worth holding. What made the
+// whole-file proxy wrong is a later, deliberate layout decision: the
+// ready-to-submit card — the verdict on the PI and the Save Draft button — now
+// sits directly under the order information and above the product table,
+// instead of at the bottom of the preview.
+//
+// So the guard asserts the more specific thing the byte comparison stood in
+// for: the card's markup is IDENTICAL, everything around it is IDENTICAL, and
+// the only difference is where the card was inserted. A change to the drop
+// zone, the parse wiring, the save flow, or the card's own contents still fails
+// here, exactly as it did before.
+
+const READY_CARD_START = '{/* Ready state, and the one action this phase performs.'
+
+/** The ready-to-submit card, and the screen with that card lifted out of it. */
+function readyCard(source: string, label: string): { card: string; rest: string } {
+  const start = source.indexOf(READY_CARD_START)
+  assert.notEqual(start, -1, `${label}: the ready-to-submit card must still be there`)
+  // Its next sibling, whichever it now is: the standing-promise note when the
+  // card sits last, the products card when it sits above the table.
+  const ends = ['{/* The standing promise of this screen', '{/* Products */}']
+    .map(marker => source.indexOf(marker, start))
+    .filter(index => index !== -1)
+  assert.ok(ends.length > 0, `${label}: the card must be followed by a sibling this guard knows`)
+  const end = Math.min(...ends)
+  return { card: source.slice(start, end), rest: source.slice(0, start) + source.slice(end) }
+}
+
 describe('the import preview and the parser are untouched', () => {
-  test('the import screen is byte-for-byte what it was', () => {
+  test('the import screen is what it was, apart from where the ready card sits', () => {
     const base = atBase(IMPORT_PAGE)
     if (base === null) return
-    assert.equal(now(IMPORT_PAGE), base,
-      'Phase C changes what happens AFTER a PI is submitted, and nothing about uploading one')
+    const was = readyCard(base, 'base')
+    const is = readyCard(now(IMPORT_PAGE), 'current')
+    assert.equal(is.card, was.card,
+      'the verdict, the Save Draft button, the saving and failure states are unchanged')
+    assert.equal(is.rest, was.rest,
+      'and nothing else on the screen changed: Phase C still touches nothing about uploading a PI')
+  })
+
+  test('the ready card and its Save Draft button are above the product table', () => {
+    const source = now(IMPORT_PAGE)
+    assert.ok(source.indexOf(READY_CARD_START) < source.indexOf('{/* Products */}'),
+      'the verdict on the PI comes before the lines it is a verdict on')
+    assert.ok(source.indexOf('SAVE_BUTTON_LABEL}') < source.indexOf('<PiProductTableHead'),
+      'and so does the one control this screen has')
+    assert.equal((source.match(/READY_TITLE/g) ?? []).length, 2,
+      'the import and the one rendering of it — the card is drawn once, never twice')
   })
 
   test('the shared preview view layer is byte-for-byte what it was', () => {
