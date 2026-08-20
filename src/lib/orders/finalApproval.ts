@@ -34,15 +34,26 @@
 //   verify_pi_finance_check    can_verify_pi_finance(), a SUBMITTED record, no
 //                              deletion reservation. Idempotent.
 //   approve_order_submission   orders.approve_order, a SUBMITTED record, a
-//                              CURRENT finance verification, a settled advance
-//                              requirement, no blocking issues, the workbook and
-//                              every product image still in storage, no deletion
-//                              reservation, and no Order already linked.
+//                              CURRENT finance verification, FINANCE-VERIFIED
+//                              PAYMENT of at least 40% of the grand total or an
+//                              APPROVED reduced-payment exception, no blocking
+//                              issues, the workbook and every product image
+//                              still in storage, no deletion reservation, and no
+//                              Order already linked. It also MOVES the PI's
+//                              active allocations onto the new Order.
 //
 // So a hidden control is a courtesy and a defeated one gets a refusal from
 // Postgres.
 
-import { advanceIsReady, type PersistedAdvance } from './advanceRequirement'
+import {
+  PAYMENT_ADMIN_APPROVAL_REQUIRED,
+  PAYMENT_AWAITING_VERIFICATION,
+  PAYMENT_EXCEPTION_PENDING,
+  PAYMENT_EXCEPTION_REJECTED,
+  PAYMENT_EXCEPTION_STALE,
+  shortfallSentence,
+  type PaymentPosition,
+} from './paymentGate'
 
 // ── The persisted state, as the page reads it ─────────────────────────────────
 
@@ -253,12 +264,16 @@ export const APPROVAL_BLOCKED_BLOCKING_ISSUES =
   'This PI still has issues that must be fixed in the workbook before it can be approved.'
 export const APPROVAL_BLOCKED_FINANCE =
   'Finance must verify this PI before it can be approved.'
-export const APPROVAL_BLOCKED_ADVANCE_PENDING =
-  'The proposed advance exception is waiting for a decision.'
-export const APPROVAL_BLOCKED_ADVANCE_REJECTED =
-  'The proposed advance exception was refused, so this PI must be corrected and resubmitted.'
-export const APPROVAL_BLOCKED_ADVANCE_UNDECLARED =
-  'This PI was submitted without an advance requirement, so it must be resubmitted with one.'
+/**
+ * The payment position could not be read at all.
+ *
+ * FAILS CLOSED, and says why. A reviewer whose browser could not read the PI's
+ * payment position must not be offered a control whose outcome nobody can
+ * predict — and must not be told the payment is insufficient either, which would
+ * be a claim about money nobody has checked.
+ */
+export const APPROVAL_BLOCKED_PAYMENT_UNKNOWN =
+  'The verified payment position for this PI could not be read. Reload the page before approving.'
 export const APPROVAL_BLOCKED_NO_LINES =
   'This PI has no stored product lines.'
 export const APPROVAL_BLOCKED_DELETION =
@@ -268,11 +283,55 @@ export type ApprovalReadinessInput = {
   status: string
   /** Whether a CURRENT finance verification stands. */
   financeVerified: boolean
-  advance: PersistedAdvance
+  /**
+   * Where this PI stands on the verified-payment gate, exactly as
+   * pi_submission_payment_summary() reported it — or null when the summary could
+   * not be read. NEVER re-derived here: the browser has no opinion about how
+   * much money has arrived.
+   */
+  paymentPosition: PaymentPosition | null
+  /**
+   * How much MORE verified payment is needed, for the sentence. Read straight
+   * off the summary, already rounded up to a payable figure by the database.
+   */
+  neededForStandard: string | number | null
   hasBlockingIssues: boolean
   productCount: number
   /** order_submissions.deletion_claim_token — set while a deletion is in flight. */
   deletionClaimed: boolean
+}
+
+/**
+ * The one sentence a blocked payment gate produces, for each position.
+ *
+ * Kept beside the readiness rule rather than in paymentGate.ts because it is
+ * about APPROVAL specifically — what the reviewer looking at the disabled button
+ * needs — while the position hints in paymentGate.ts speak to everybody who
+ * opens the PI.
+ */
+export function paymentApprovalBlocker(
+  position: PaymentPosition,
+  neededForStandard: string | number | null,
+): string | null {
+  if (position === 'standard_met' || position === 'exception_approved') return null
+  if (position === 'exception_pending') return PAYMENT_EXCEPTION_PENDING
+  if (position === 'exception_rejected') return PAYMENT_EXCEPTION_REJECTED
+  // APPROVED, BUT FOR SOMETHING ELSE. Never folded into "not enough payment":
+  // that would send somebody to collect money when what is needed is for the
+  // approver to look at the terms that changed.
+  if (position === 'exception_stale') return PAYMENT_EXCEPTION_STALE
+
+  const shortfall = shortfallSentence(neededForStandard)
+  const lead = position === 'verification_pending'
+    ? PAYMENT_AWAITING_VERIFICATION
+    : null
+
+  // The shortfall first when there is one, because it is the figure somebody
+  // acts on; then who can decide instead. Unverified money is NAMED so nobody
+  // concludes the payment they entered this morning was lost.
+  return [lead, shortfall, PAYMENT_ADMIN_APPROVAL_REQUIRED]
+    .filter((part): part is string => part !== null)
+    .join(' ')
 }
 
 /**
@@ -298,12 +357,16 @@ export function describeApprovalReadiness(input: ApprovalReadinessInput): Approv
   if (input.deletionClaimed) return blocked(APPROVAL_BLOCKED_DELETION)
   if (!input.financeVerified) return blocked(APPROVAL_BLOCKED_FINANCE)
 
-  if (!advanceIsReady(input.advance)) {
-    const status = input.advance.advance_exception_status
-    if (status === 'pending') return blocked(APPROVAL_BLOCKED_ADVANCE_PENDING)
-    if (status === 'rejected') return blocked(APPROVAL_BLOCKED_ADVANCE_REJECTED)
-    return blocked(APPROVAL_BLOCKED_ADVANCE_UNDECLARED)
-  }
+  // THE PAYMENT GATE, where the advance declaration used to be.
+  //
+  // A DECLARED ADVANCE IS NOT A PAYMENT, and from Phase 3 it decides nothing:
+  // the database sums FINANCE-VERIFIED allocations at the instant of approval and
+  // compares them with the exact 40% of the grand total. This mirrors that answer
+  // so the sentence under a disabled button is the refusal the reviewer would
+  // have got — it never computes it.
+  if (input.paymentPosition === null) return blocked(APPROVAL_BLOCKED_PAYMENT_UNKNOWN)
+  const paymentBlocker = paymentApprovalBlocker(input.paymentPosition, input.neededForStandard)
+  if (paymentBlocker !== null) return blocked(paymentBlocker)
 
   if (input.hasBlockingIssues) return blocked(APPROVAL_BLOCKED_BLOCKING_ISSUES)
   if (input.productCount === 0) return blocked(APPROVAL_BLOCKED_NO_LINES)

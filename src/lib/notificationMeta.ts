@@ -75,6 +75,12 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   order_resubmitted:         { label: 'Resubmitted',     color: colors.blue,  bg: colors.blueTint  },
   order_rejected:            { label: 'Rejected',        color: colors.red,   bg: colors.redTint   },
   order_converted:           { label: 'Converted',       color: colors.green, bg: colors.greenTint },
+  // PI submissions — the reduced-payment exception. Amber for the request,
+  // because somebody must decide it before an Order number can exist; green and
+  // red for the two outcomes, which are what the salesperson is waiting on.
+  pi_exception_requested:    { label: 'Needs approval',  color: colors.amber, bg: colors.amberTint },
+  pi_exception_approved:     { label: 'Approved',        color: colors.green, bg: colors.greenTint },
+  pi_exception_rejected:     { label: 'Rejected',        color: colors.red,   bg: colors.redTint   },
   // Assets & Access
   asset_request_submitted:      { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },
   asset_edit_request_submitted: { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },
@@ -234,6 +240,23 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
   // `from=all` is the list tab the reader returns to via the detail page's Back
   // control — the "All" scope, the same one this link used to select when it
   // opened the list with a modal on top.
+  // ── PI submissions ─────────────────────────────────────────────────────────
+  // A reduced-payment exception belongs to ONE PI, and entity_id carries that
+  // submission's id, so the link opens the PI itself — where the payment
+  // position, the reason and the two decision controls all are. Tested before
+  // the `order` prefix below only because these types do not carry it; they are
+  // listed here so a reader finds them beside the Orders branch they belong to.
+  if (type.startsWith('pi_exception')) {
+    return {
+      category: 'order',
+      heading: 'Orders',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: n.entity_id ? `/orders/drafts/${n.entity_id}` : '/orders/drafts',
+      actionLabel: 'View PI',
+    }
+  }
+
   if (type.startsWith('order')) {
     const badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
     const href = n.entity_id

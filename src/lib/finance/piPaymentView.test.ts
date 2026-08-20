@@ -127,15 +127,18 @@ describe('the card formats the database totals and never recalculates them', () 
     ...over,
   })
 
-  test('the five confirmed tiles, in order', () => {
+  test('the six confirmed tiles, in order', () => {
+    // The GRAND TOTAL leads since Phase 3: every other figure on the card is a
+    // part of it, and a reader who cannot see the whole cannot judge the parts.
     const tiles = piPaymentTiles(summary())
     assert.deepEqual(tiles.map(t => t.key),
-      ['verified', 'unverified', 'percent', 'needed', 'balance'])
-    assert.equal(tiles[0].value, '₹30,000.00')
-    assert.equal(tiles[1].value, '₹10,000.00')
-    assert.equal(tiles[2].value, '30%')
-    assert.equal(tiles[3].value, '₹10,000.00')
-    assert.equal(tiles[4].value, '₹70,000.00')
+      ['grand', 'verified', 'unverified', 'percent', 'needed', 'balance'])
+    assert.equal(tiles[0].value, '₹1,00,000.00')
+    assert.equal(tiles[1].value, '₹30,000.00')
+    assert.equal(tiles[2].value, '₹10,000.00')
+    assert.equal(tiles[3].value, '30%')
+    assert.equal(tiles[4].value, '₹10,000.00')
+    assert.equal(tiles[5].value, '₹70,000.00')
   })
 
   test('DELIBERATELY INCONSISTENT figures survive unchanged', () => {
@@ -148,17 +151,17 @@ describe('the card formats the database totals and never recalculates them', () 
       needed_for_standard: '12345.67',
       pending_balance: '0.01',
     }))
-    assert.equal(tiles[0].value, '₹1.00')
-    assert.equal(tiles[2].value, '99%')
-    assert.equal(tiles[3].value, '₹12,345.67')
-    assert.equal(tiles[4].value, '₹0.01')
+    assert.equal(tiles[1].value, '₹1.00')
+    assert.equal(tiles[3].value, '99%')
+    assert.equal(tiles[4].value, '₹12,345.67')
+    assert.equal(tiles[5].value, '₹0.01')
   })
 
   test('an uncomputable percentage reads as a dash, never as zero', () => {
     // A PI with no stored grand total. 0% would say "nothing received", which is
     // a different and false statement.
     const tiles = piPaymentTiles(summary({ grand_total: null, verified_percent: null }))
-    assert.equal(tiles[2].value, '—')
+    assert.equal(tiles[3].value, '—')
     assert.equal(formatPercent(null), '—')
     assert.equal(formatMoney(null), '—')
   })
@@ -171,7 +174,7 @@ describe('the card formats the database totals and never recalculates them', () 
 
   test('the standard percentage comes from the summary, not from a literal', () => {
     const tiles = piPaymentTiles(summary({ standard_percent: 55 }))
-    assert.match(tiles[3].hint ?? '', /55%/)
+    assert.match(tiles[4].hint ?? '', /55%/)
   })
 
   test('no tile mentions the declared advance', () => {

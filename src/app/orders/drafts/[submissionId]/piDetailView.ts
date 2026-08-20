@@ -38,6 +38,7 @@ import {
   orderHref,
 } from '@/lib/orders/finalApproval'
 import { draftStatusLabel } from '@/lib/orders/draftsView'
+import { PAYMENT_POSITION_LABEL, type PaymentPosition } from '@/lib/orders/paymentGate'
 import type { PiAmountRow } from '@/lib/pi/previewView'
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
@@ -186,20 +187,39 @@ export type CommercialSnapshot = {
   grandTotal: string
   productLines: string
   /**
-   * Null on a draft that has declared nothing.
+   * Where this PI stands on the verified-payment requirement, or null while the
+   * payment position has not been read.
    *
-   * Nothing IS declared until the employee submits, so "Advance requirement /
-   * Not declared" on the commonest state of the commonest record would be a
-   * permanent block answering a question nobody has asked yet. Every other
-   * state shows it — including a legacy record that declared nothing, where the
-   * absence is exactly what a reviewer needs to see.
+   * IT IS NOT THE DECLARED ADVANCE, and cannot be: this block used to print the
+   * amount an employee DECLARED, which was a promise standing in for a fact. The
+   * fact now exists — pi_submission_payment_summary() reports what Finance has
+   * actually verified — and a screen that showed the promise beside it would be
+   * showing two answers to one question, one of which decides nothing.
+   *
+   * NULL RATHER THAN A PLACEHOLDER while it is unread: "Payment position —" on
+   * the commonest state of the commonest record is a permanent block answering a
+   * question nobody has asked yet.
    */
-  advance: AdvanceRequirement | null
+  payment: PaymentSnapshot | null
+}
+
+/** The payment block of the snapshot. */
+export type PaymentSnapshot = {
+  /** `Verified payment`. */
+  label: string
+  /** `₹4,00,000 · 40%`, or `₹0 · 0%`. Both figures come from the database. */
+  figures: string
+  /** The approval position, in its own words — or null while it is unknown. */
+  status: string | null
+  statusTone: PiDetailTone | null
 }
 
 export const ADVANCE_REQUIREMENT_LABEL = 'Advance requirement'
 export const ADVANCE_REQUESTED_LABEL = 'Requested advance'
 export const ADVANCE_UNDECLARED_LABEL = 'Not declared'
+
+/** The snapshot block's own heading, since Phase 3. */
+export const PAYMENT_SNAPSHOT_LABEL = 'Verified payment'
 
 export const EXCEPTION_STATUS_TEXT: Record<string, string> = {
   pending: 'Pending',
@@ -207,37 +227,20 @@ export const EXCEPTION_STATUS_TEXT: Record<string, string> = {
   rejected: 'Rejected',
 }
 
-const EXCEPTION_TONE: Record<string, PiDetailTone> = {
-  pending: 'amber',
-  approved: 'green',
-  rejected: 'red',
+
+/** The approval position, in the snapshot's tone vocabulary. One map, so the
+ *  band on the payment card and the block at the top of the page cannot colour
+ *  the same state differently. */
+const POSITION_TONE: Record<PaymentPosition, PiDetailTone> = {
+  standard_met:         'green',
+  exception_approved:   'green',
+  exception_stale:      'amber',
+  exception_pending:    'amber',
+  exception_rejected:   'red',
+  verification_pending: 'blue',
+  payment_required:     'amber',
 }
 
-/**
- * The declared amount and the percentage it comes to, on one line.
- *
- * THE AMOUNT LEADS, because the amount is what was declared and the percentage
- * is what it works out to. Management reviewing a PI is deciding about a figure.
- *
- * A ₹0 proposal is NAMED before it is numbered — "No advance · ₹0 · 0%" —
- * because "₹0 · 0%" on its own is a figure somebody has to interpret, and the
- * thing being interpreted is the most consequential term on the document.
- */
-function advanceFigureLine(advance: AdvanceView): string {
-  if (advance.undeclared) return ADVANCE_UNDECLARED_LABEL
-
-  // A stored declaration whose figures are unreadable — only reachable on a
-  // record with no grand total to measure against. Named, never guessed at.
-  if (advance.declaredAmountValue === null) {
-    return advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
-  }
-
-  const figures = advance.declaredPercentLabel === null
-    ? advance.declaredAmount
-    : `${advance.declaredAmount} · ${advance.declaredPercentLabel}`
-
-  return advance.isZeroPercent ? `${ADVANCE_NONE_LABEL_SHORT} · ${figures}` : figures
-}
 
 /** "No advance", without the ": 0%" the choice label carries — the percentage
  *  is on the same line already, and saying it twice is what this pass removes. */
@@ -255,27 +258,31 @@ export function buildCommercialSnapshot(input: {
   /** The formatted persisted grand total. */
   grandTotal: string
   productCount: number
-  advance: AdvanceView
-  /** order_submissions.status — see the note on CommercialSnapshot.advance. */
-  status: string
+  /**
+   * The payment position, exactly as pi_submission_payment_summary() reported
+   * it, already formatted — or null while it has not been read.
+   *
+   * NOTHING IS COMPUTED HERE. The amount, the percentage and the position were
+   * all decided in `numeric` in the database; this arranges them into one line.
+   */
+  payment: {
+    verifiedAmount: string
+    verifiedPercent: string
+    position: PaymentPosition | null
+  } | null
 }): CommercialSnapshot {
-  const { advance } = input
-  const status = advance.status
-  const show = !advance.undeclared || input.status !== 'draft'
+  const { payment } = input
 
   return {
     grandTotal: input.grandTotal,
     productLines: `${input.productCount} product line${input.productCount === 1 ? '' : 's'}`,
-    advance: !show ? null : {
-      // A pending or refused proposal is what somebody ASKED for. Anything else
-      // — the standard, an approved exception, an undeclared record — is the
-      // requirement that currently stands.
-      label: status === 'pending' || status === 'rejected'
-        ? ADVANCE_REQUESTED_LABEL
-        : ADVANCE_REQUIREMENT_LABEL,
-      figures: advanceFigureLine(advance),
-      status: status === null ? null : EXCEPTION_STATUS_TEXT[status] ?? null,
-      statusTone: status === null ? null : EXCEPTION_TONE[status] ?? null,
+    payment: payment === null ? null : {
+      label: PAYMENT_SNAPSHOT_LABEL,
+      // THE AMOUNT LEADS and the percentage follows it, because the amount is
+      // the fact and the percentage is what it comes to against this total.
+      figures: `${payment.verifiedAmount} · ${payment.verifiedPercent}`,
+      status: payment.position === null ? null : PAYMENT_POSITION_LABEL[payment.position],
+      statusTone: payment.position === null ? null : POSITION_TONE[payment.position],
     },
   }
 }
@@ -485,7 +492,7 @@ export function describeWorkflowPanel(input: {
  * band exists only while there is an EXCEPTION to settle, and the requirement
  * itself is stated once, in the snapshot at the top.
  */
-export const ADVANCE_BAND_TITLE = 'Advance exception'
+export const ADVANCE_BAND_TITLE = 'Reduced-payment approval'
 
 /**
  * The one line describing what was asked for, for the band.
@@ -495,7 +502,21 @@ export const ADVANCE_BAND_TITLE = 'Advance exception'
  * being asked to grant exactly that and the two zero cases are not the same
  * decision as a reduction.
  */
-export function describeRequestedException(advance: AdvanceView): string {
+export function describeRequestedException(
+  advance: AdvanceView,
+  /**
+   * The LIVE verified-payment line, when the payment summary has been read.
+   *
+   * PREFERRED OVER THE STORED FIGURES, always. Since Phase 3 the decision in
+   * front of the approver is "start this Order on the money that has actually
+   * arrived", and the money that has actually arrived is a figure that moves —
+   * so the band states the current one rather than the snapshot taken when the
+   * request was made. The stored wording below remains for records written
+   * before this phase, where a DECLARED advance is genuinely all there is.
+   */
+  verifiedLine?: string | null,
+): string {
+  if (verifiedLine) return verifiedLine
   if (advance.declaredAmountValue === null) {
     return advance.conditionLabel ?? ADVANCE_UNDECLARED_LABEL
   }

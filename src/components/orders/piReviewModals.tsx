@@ -2,8 +2,8 @@
 
 // The decisions taken on a saved PI, as dialogs.
 //
-//   PiSubmitConfirmModal   the employee hands their PI to management, under a
-//                          declared advance requirement
+//   PiSubmitConfirmModal   the employee hands their PI to management, with its
+//                          live verified-payment position on screen
 //   PiNoteModal            management sends it back, ends it, or refuses a
 //                          proposed advance
 //   PiFinanceVerifyModal   a finance authority signs off the commercial figures
@@ -66,32 +66,37 @@ import {
   deletionStatusLabel,
 } from '@/lib/orders/submissionDeletion'
 import {
-  ADVANCE_AMOUNT_LABEL,
-  ADVANCE_CHOICES,
-  ADVANCE_CHOICE_HINT,
-  ADVANCE_CHOICE_LABEL,
-  ADVANCE_NONE_AMOUNT_LABEL,
-  ADVANCE_NONE_PERCENT_LABEL,
-  ADVANCE_NOT_A_PAYMENT,
-  ADVANCE_PERCENT_LABEL,
-  ADVANCE_REASON_LABEL,
-  ADVANCE_AMOUNT_PLACEHOLDER,
-  ADVANCE_AMOUNT_READONLY_LABEL,
-  ADVANCE_REASON_MAX_LENGTH,
-  ADVANCE_REASON_PLACEHOLDER,
-  ADVANCE_SECTION_TITLE,
-  ADVANCE_STANDARD_REFERENCE_LABEL,
-  ADVANCE_ZERO_EXPLANATION,
   REJECT_EXCEPTION_BUTTON_LABEL,
   REJECT_EXCEPTION_REASON_LABEL,
-  advanceChoiceChange,
-  advanceDeclarationUntouched,
-  previewAdvancePercent,
-  validateAdvanceDeclaration,
-  type AdvanceChoice,
-  type AdvanceDeclaration,
-  type AdvanceSelection,
 } from '@/lib/orders/advanceRequirement'
+import {
+  BILLING_TERMS_LABEL,
+  BILLING_TERMS_PLACEHOLDER,
+  EMPTY_SUBMISSION_TERMS,
+  PAYMENT_POSITION_HINT,
+  PAYMENT_POSITION_LABEL,
+  PAYMENT_REASON_LABEL,
+  PAYMENT_REASON_MAX_LENGTH,
+  PAYMENT_REASON_PLACEHOLDER,
+  PAYMENT_STANDARD_PERCENT,
+  PAYMENT_TERMS_LABEL,
+  PAYMENT_TERMS_MAX_LENGTH,
+  PAYMENT_TERMS_OPTIONAL_LABEL,
+  PAYMENT_TERMS_PLACEHOLDER,
+  PAYMENT_NOT_A_DECLARATION,
+  PAYMENT_POSITION_UNKNOWN,
+  PAYMENT_UNVERIFIED_DOES_NOT_COUNT,
+  asPaymentPosition,
+  paymentPositionLines,
+  submissionTermsUntouched,
+  validateSubmissionTerms,
+  type PiSubmissionTerms,
+} from '@/lib/orders/paymentGate'
+import {
+  formatMoney,
+  formatPercent,
+  type PiPaymentSummary,
+} from '@/lib/finance/piPaymentView'
 
 // ── Shared furniture ──────────────────────────────────────────────────────────
 
@@ -195,275 +200,175 @@ const confirmStyle = (background: string, disabled: boolean): React.CSSPropertie
   opacity: disabled ? 0.5 : 1,
 })
 
-// ── The advance selector ──────────────────────────────────────────────────────
+// ── The live payment position ─────────────────────────────────────────────────
 
 /**
- * The THREE choices, and the fields each one reveals.
+ * What has actually been received against this PI, and what that means for
+ * approval.
  *
- * WHY THIS WAS REBUILT. It offered two radio cards — "Standard advance (40%)"
- * and "Request advance exception" — and proceeding with NO advance was reachable
- * only by choosing the second and knowing that 0 was an accepted percentage.
- * Nothing on screen said so. A choice that has to be guessed at is not a choice,
- * and "we need to start this order without an advance" is exactly the case
- * management most needs asked explicitly.
+ * WHY THIS REPLACED THE ADVANCE SELECTOR. The dialog used to ask the employee to
+ * DECLARE an advance — "40% or above", "Reduced", "No advance" — and that
+ * declaration then decided whether an Order could be numbered. It was a promise
+ * standing in for a fact, because until Payment Phases 1 and 2 there was no way
+ * to hold the fact. There is now, so the question stops being asked: the screen
+ * STATES the position instead, and the employee is only asked for the two things
+ * the business genuinely does not know — why an Order should be confirmed below
+ * the requirement, and how the rest will be collected.
  *
- * So the three business decisions are three controls:
+ * EVERY FIGURE IS THE DATABASE'S. pi_submission_payment_summary() computes them
+ * in numeric, including the percentage and the shortfall; this formats them and
+ * formats nothing else. There is no arithmetic in this file.
  *
- *   Advance: 40% or above   an AMOUNT, pre-filled with the exact 40% figure and
- *                           editable upwards, its percentage live beside it, and
- *                           the default for a PI that has never declared anything
- *   Reduced advance:        an AMOUNT above ₹0 and below 40% of the grand total,
- *   below 40%               its percentage live beside it, and a mandatory reason
- *   No advance: 0%          a FIXED ₹0 and 0% — no box to type a figure into,
- *                           because the figure is the choice — and the same
- *                           mandatory reason
- *
- * ALL THREE ARE ALWAYS VISIBLE. The two exceptions are not hidden behind an
- * "exception" disclosure, because somebody who does not know the disclosure
- * exists cannot find what is inside it. That is the whole defect.
- *
- * THE AMOUNT IS WHAT IS TYPED AND THE PERCENTAGE IS SHOWN BESIDE IT, live, for
- * both figures matter to different readers: the employee knows what the client
- * agreed in rupees, and management judges it against the 40% rule. Both come
- * from one place — standardAdvanceAmount and derivedAdvancePercent — which the
- * database mirrors function for function, so the two cannot disagree.
- *
- * SWITCHING A CHOICE CLEARS WHAT DOES NOT BELONG TO IT. An amount typed as a
- * reduced advance is not the same statement once "40% or above" is selected, and
- * a reason written for an exception means nothing under the standard route. See
- * advanceChoiceChange.
- *
- * IT SAYS NOTHING ABOUT PAYMENT, and says so out loud. "No advance" is a request
- * to start work on nothing received. It is not a payment, not a waiver and not a
- * receipt, and this phase records none of those.
+ * UNVERIFIED MONEY IS SHOWN AND SAID NOT TO COUNT, in as many words. Somebody
+ * who entered a payment this morning and sees "₹4,00,000 still needed" beside
+ * their own ₹4,00,000 would reasonably conclude the system lost it. It did not;
+ * Finance has not decided it yet, and that is a different sentence.
  */
-function AdvanceSelector({
-  declaration,
-  grandTotalValue,
-  standardAmount,
+function PaymentPositionPanel({
+  summary,
+  terms,
+  meetsStandard,
   disabled,
   invalid,
-  onChoice,
-  onAmount,
-  onReason,
+  onTerms,
 }: {
-  declaration: AdvanceDeclaration
-  grandTotalValue: number | null
-  standardAmount: string
+  summary: PiPaymentSummary | null
+  terms: PiSubmissionTerms
+  /** Null when the position could not be read at all — the dialog fails closed. */
+  meetsStandard: boolean | null
   disabled: boolean
-  /** The validation message, or null while the choice is usable. */
+  /** The validation message, or null while the fields are still usable. */
   invalid: string | null
-  onChoice: (next: AdvanceChoice) => void
-  onAmount: (next: string) => void
-  onReason: (next: string) => void
+  onTerms: (key: keyof PiSubmissionTerms, value: string) => void
 }) {
-  const { choice, amountText, reason } = declaration
-  const derived = previewAdvancePercent(amountText, grandTotalValue)
+  const position = asPaymentPosition(summary?.approval_position)
+  const lines = summary === null ? [] : paymentPositionLines({
+    grandTotal:        summary.grand_total,
+    verifiedAmount:    summary.verified_amount,
+    verifiedPercent:   summary.verified_percent,
+    unverifiedAmount:  summary.unverified_amount,
+    neededForStandard: summary.needed_for_standard,
+    formatFigure:      formatMoney,
+    formatPercentage:  formatPercent,
+  })
 
-  /**
-   * The figure printed on the right of each card.
-   *
-   * FIXED FIGURES ONLY. The standard card shows the calculated 40%, which is the
-   * REFERENCE the choice is measured against and never changes while somebody
-   * types; the No advance card shows ₹0, which is the choice itself. The reduced
-   * card shows nothing, because what it would show is whatever is in the box —
-   * and the box is directly beneath it.
-   */
-  const trailing = (value: AdvanceChoice): string | null => {
-    if (value === 'standard') return standardAmount
-    if (value === 'none') return ADVANCE_NONE_AMOUNT_LABEL
-    return null
-  }
-
-  /**
-   * The amount box and the percentage it works out to.
-   *
-   * ONE FIELD FOR BOTH TYPED CHOICES, so the standard route and the reduced one
-   * cannot drift into two different controls that behave differently. What
-   * changes between them is the placeholder guidance and the reference line
-   * above, not the mechanics.
-   */
-  const amountField = (
+  const field = (
+    key: keyof PiSubmissionTerms,
+    label: string,
+    placeholder: string,
+    maxLength: number,
+    rows: number,
+  ) => (
     <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...KEY_STYLE }}>
-      {ADVANCE_AMOUNT_LABEL}
-      <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={amountText}
-          onChange={e => onAmount(e.target.value)}
-          placeholder={ADVANCE_AMOUNT_PLACEHOLDER}
-          disabled={disabled}
-          aria-label={ADVANCE_AMOUNT_LABEL}
-          style={{
-            padding: '7px 10px', borderRadius: '6px',
-            border: `1px solid ${colors.border}`,
-            background: colors.base, color: colors.primary,
-            fontSize: '13px', width: '170px', boxSizing: 'border-box',
-            outline: 'none', fontVariantNumeric: 'tabular-nums',
-          }}
-        />
-        <span style={{
-          fontSize: '12.5px', fontWeight: 600, color: colors.secondary,
-          textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
-        }}>
-          {ADVANCE_PERCENT_LABEL}: {derived}
-        </span>
-      </span>
-    </label>
-  )
-
-  /** The calculated 40%, stated as the figure the declaration is measured against. */
-  const referenceLine = (
-    <span style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-      {ADVANCE_STANDARD_REFERENCE_LABEL}
-      <span style={{
-        color: colors.primary, fontWeight: 700, fontSize: '12.5px',
-        textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
-      }}>
-        {standardAmount}
-      </span>
-    </span>
-  )
-
-  const card = (value: AdvanceChoice) => {
-    const selected = choice === value
-    const amount = trailing(value)
-    return (
-      <label
-        key={value}
-        style={{
-          display: 'flex', gap: '9px', alignItems: 'flex-start',
-          padding: '9px 11px', borderRadius: '7px',
-          border: `1px solid ${selected ? 'rgba(85,133,232,0.55)' : colors.border}`,
-          background: selected ? colors.blueTint : 'transparent',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-        }}
-      >
-        <input
-          type="radio"
-          name="advance-choice"
-          value={value}
-          checked={selected}
-          disabled={disabled}
-          onChange={() => onChoice(value)}
-          style={{ marginTop: '2px', accentColor: '#2F5BB7', cursor: disabled ? 'not-allowed' : 'pointer' }}
-        />
-        <span style={{ minWidth: 0, flex: 1 }}>
-          <span style={{
-            display: 'flex', gap: '10px', justifyContent: 'space-between',
-            alignItems: 'baseline', flexWrap: 'wrap',
-          }}>
-            <span style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
-              {ADVANCE_CHOICE_LABEL[value]}
-            </span>
-            {amount !== null && (
-              <span style={{
-                fontSize: '12.5px', fontWeight: 700, color: colors.primary,
-                fontVariantNumeric: 'tabular-nums',
-              }}>
-                {amount}
-              </span>
-            )}
-          </span>
-          <span style={{ display: 'block', fontSize: '11.5px', color: colors.secondary, lineHeight: 1.45, marginTop: '2px' }}>
-            {ADVANCE_CHOICE_HINT[value]}
-          </span>
-        </span>
-      </label>
-    )
-  }
-
-  /** The mandatory reason, identical under both exception choices. */
-  const reasonField = (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', ...KEY_STYLE }}>
-      {ADVANCE_REASON_LABEL}
+      {label}
       <textarea
-        value={reason}
-        onChange={e => onReason(e.target.value)}
-        placeholder={ADVANCE_REASON_PLACEHOLDER}
+        value={terms[key]}
+        onChange={e => onTerms(key, e.target.value)}
+        placeholder={placeholder}
         disabled={disabled}
-        rows={3}
-        maxLength={ADVANCE_REASON_MAX_LENGTH}
-        aria-label={ADVANCE_REASON_LABEL}
+        rows={rows}
+        maxLength={maxLength}
+        aria-label={label}
         style={{
           padding: '7px 10px', borderRadius: '6px',
           border: `1px solid ${colors.border}`,
           background: colors.base, color: colors.primary,
           fontSize: '13px', width: '100%', boxSizing: 'border-box',
-          outline: 'none', minHeight: '68px', resize: 'vertical',
-          fontFamily: 'inherit', textTransform: 'none', letterSpacing: 0,
-          fontWeight: 400,
+          outline: 'none', minHeight: rows > 1 ? '58px' : '36px', resize: 'vertical',
+          fontFamily: 'inherit', textTransform: 'none', letterSpacing: 0, fontWeight: 400,
         }}
       />
     </label>
   )
 
-  const revealed: React.CSSProperties = {
-    display: 'flex', flexDirection: 'column', gap: '9px',
-    padding: '10px 11px', borderRadius: '7px',
-    border: `1px solid ${colors.border}`, background: colors.raised,
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <div style={KEY_STYLE}>{ADVANCE_SECTION_TITLE}</div>
+      <div style={KEY_STYLE}>Payment position</div>
 
-      {ADVANCE_CHOICES.map(card)}
-
-      {/* The standard route: the calculated 40% as the reference, and the amount
-          being declared against it — pre-filled with that exact figure and
-          editable upwards. Re-validated by the database on arrival. */}
-      {choice === 'standard' && (
-        <div style={revealed}>
-          {referenceLine}
-          {amountField}
+      {summary === null ? (
+        <div style={{
+          fontSize: '12px', color: '#991B1B', lineHeight: 1.45,
+          background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+          borderRadius: '7px', padding: '9px 11px',
+        }} role="alert">
+          {PAYMENT_POSITION_UNKNOWN}
         </div>
-      )}
-
-      {/* Reduced advance: the same reference and the same box, below the 40%
-          rather than at or above it, plus the mandatory reason. */}
-      {choice === 'reduced' && (
-        <div style={revealed}>
-          {referenceLine}
-          {amountField}
-          {reasonField}
-        </div>
-      )}
-
-      {/* No advance: the figures are FIXED and stated rather than typed, so
-          there is nothing here to get wrong and nothing to reinterpret. */}
-      {choice === 'none' && (
-        <div style={revealed}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <span style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-              {ADVANCE_AMOUNT_READONLY_LABEL}
+      ) : (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: '5px',
+          padding: '10px 11px', borderRadius: '7px',
+          border: `1px solid ${colors.border}`, background: colors.raised,
+        }}>
+          {lines.map(line => (
+            <span
+              key={line.key}
+              style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}
+            >
+              {line.label}
               <span style={{
                 color: colors.primary, fontWeight: 700, fontSize: '12.5px',
                 textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
               }}>
-                {ADVANCE_NONE_AMOUNT_LABEL}
+                {line.value}
               </span>
             </span>
-            <span style={{ ...KEY_STYLE, display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-              {ADVANCE_PERCENT_LABEL}
-              <span style={{
-                color: colors.primary, fontWeight: 700, fontSize: '12.5px',
-                textTransform: 'none', letterSpacing: 0, fontVariantNumeric: 'tabular-nums',
-              }}>
-                {ADVANCE_NONE_PERCENT_LABEL}
-              </span>
-            </span>
-          </div>
+          ))}
+        </div>
+      )}
 
-          {/* 0% is legitimate and is the one value whose meaning is not obvious
-              from the figure beside it, so it is spelled out rather than left
-              as a ₹0 the reader has to interpret. */}
-          <div style={{ fontSize: '11.5px', color: '#9A6212', lineHeight: 1.45 }}>
-            {ADVANCE_ZERO_EXPLANATION}
-          </div>
+      {/* THE POSITION, NAMED. Green when the requirement is met and no approval
+          to proceed below is needed; amber when it is, because that is a request
+          somebody must answer before an Order number exists. */}
+      {meetsStandard !== null && (
+        <div style={{
+          fontSize: '12px', lineHeight: 1.45,
+          background: meetsStandard ? colors.greenTint : colors.amberTint,
+          border: `1px solid ${meetsStandard ? 'rgba(69,168,112,0.3)' : 'rgba(232,160,48,0.3)'}`,
+          color: meetsStandard ? '#166534' : '#9A6212',
+          borderRadius: '7px', padding: '9px 11px',
+        }}>
+          <strong>
+            {meetsStandard
+              ? PAYMENT_POSITION_LABEL.standard_met
+              : `Admin approval required to proceed below ${PAYMENT_STANDARD_PERCENT}%`}
+          </strong>
+          <span style={{ display: 'block', marginTop: '2px' }}>
+            {position !== null && !meetsStandard
+              ? PAYMENT_POSITION_HINT[position]
+              : meetsStandard
+                ? PAYMENT_POSITION_HINT.standard_met
+                : PAYMENT_UNVERIFIED_DOES_NOT_COUNT}
+          </span>
+        </div>
+      )}
 
-          {reasonField}
+      {/* Below the requirement the two fields are MANDATORY and marked so. The
+          reason is what management is being asked to accept; the terms are how
+          the rest of the money is expected to arrive, and a request to start
+          early without them is a request nobody can weigh. */}
+      {meetsStandard === false && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: '9px',
+          padding: '10px 11px', borderRadius: '7px',
+          border: `1px solid ${colors.border}`, background: colors.raised,
+        }}>
+          {field('reason', PAYMENT_REASON_LABEL, PAYMENT_REASON_PLACEHOLDER, PAYMENT_REASON_MAX_LENGTH, 3)}
+          {field('paymentTerms', PAYMENT_TERMS_LABEL, PAYMENT_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
+          {field('billingTerms', BILLING_TERMS_LABEL, BILLING_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
+        </div>
+      )}
+
+      {/* At or above the requirement the terms are still OFFERED — a salesperson
+          who has agreed them has recorded a real commercial fact — but nothing is
+          required and no reason is asked for. */}
+      {meetsStandard === true && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: '9px',
+          padding: '10px 11px', borderRadius: '7px',
+          border: `1px solid ${colors.border}`, background: colors.raised,
+        }}>
+          {field('paymentTerms', PAYMENT_TERMS_OPTIONAL_LABEL, PAYMENT_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
+          {field('billingTerms', BILLING_TERMS_LABEL, BILLING_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
         </div>
       )}
 
@@ -474,7 +379,7 @@ function AdvanceSelector({
       )}
 
       <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
-        {ADVANCE_NOT_A_PAYMENT}
+        {PAYMENT_NOT_A_DECLARATION}
       </div>
     </div>
   )
@@ -499,9 +404,8 @@ function AdvanceSelector({
 export function PiSubmitConfirmModal({
   client,
   grandTotal,
-  grandTotalValue,
-  standardAdvance,
-  initialAdvance,
+  payment,
+  initialTerms,
   submitting,
   failure,
   offerReply,
@@ -511,29 +415,20 @@ export function PiSubmitConfirmModal({
   client: string
   grandTotal: string
   /**
-   * The PERSISTED grand total, as a number, or null when the workbook printed
-   * words rather than a figure.
+   * The PI's live payment position, exactly as pi_submission_payment_summary()
+   * returned it — or null when it could not be read.
    *
-   * A NULL FAILS THE DIALOG CLOSED. Nobody may declare a percentage of an amount
-   * nobody knows, so the choice is unusable and Submit stays disabled with the
-   * reason on screen — the same refusal the database gives, arrived at before
-   * the round trip rather than after it.
+   * A NULL FAILS THE DIALOG CLOSED. Which fields are mandatory depends on
+   * whether the requirement is met, and that is precisely what is unknown; a
+   * dialog that guessed would either demand a reason nobody owes or omit one the
+   * database will refuse. So Submit stays disabled with the reason on screen.
    */
-  grandTotalValue: number | null
-  /** The standard requirement in rupees, already formatted. */
-  standardAdvance: string
+  payment: PiPaymentSummary | null
   /**
-   * The choice this dialog opens on, as initialAdvanceSelection derived it from
-   * the record.
-   *
-   * Standard for a new submission — and ONLY for one that has never declared
-   * anything. On a RESUBMISSION it is whatever the record already carries, so a
-   * PI returned for an unrelated correction does not silently switch the
-   * employee's advance condition while they fix a fabric name, an approved
-   * exception resubmitted unchanged stays approved, and a stored 0% opens on
-   * "No advance" rather than on a Reduced advance with a zero in the box.
+   * The commercial terms the record already carries, so a resubmission does not
+   * silently drop what was agreed the first time.
    */
-  initialAdvance: AdvanceDeclaration
+  initialTerms: PiSubmissionTerms
   submitting: boolean
   failure: string | null
   /**
@@ -544,11 +439,14 @@ export function PiSubmitConfirmModal({
    */
   offerReply: boolean
   onCancel: () => void
-  /** The trimmed reply (null when there is none) and the validated declaration. */
-  onConfirm: (note: string | null, advance: AdvanceSelection) => void
+  /** The trimmed reply (null when there is none) and the validated terms. */
+  onConfirm: (
+    note: string | null,
+    terms: { reason: string | null; paymentTerms: string | null; billingTerms: string | null },
+  ) => void
 }) {
   /**
-   * THE TYPED REPLY AND THE TYPED DECLARATION SURVIVE A FAILED SUBMISSION.
+   * THE TYPED REPLY AND THE TYPED TERMS SURVIVE A FAILED SUBMISSION.
    *
    * They live here, in the dialog, and the dialog stays mounted when a
    * submission fails — so somebody who wrote three sentences and hit a network
@@ -556,31 +454,39 @@ export function PiSubmitConfirmModal({
    * closing, which happens on success, Cancel, Escape or the × control.
    */
   const [reply, setReply] = useState('')
-  const [declaration, setDeclaration] = useState<AdvanceDeclaration>(initialAdvance)
+  const [terms, setTerms] = useState<PiSubmissionTerms>(initialTerms ?? EMPTY_SUBMISSION_TERMS)
 
   const validation = validateResubmitReply(reply)
   const tooLong = !validation.ok
   const remaining = RESUBMIT_NOTE_MAX_LENGTH - reply.trim().length
 
-  const advance = validateAdvanceDeclaration({ ...declaration, grandTotal: grandTotalValue })
+  /**
+   * WHETHER THE STANDARD REQUIREMENT IS MET IS THE DATABASE'S ANSWER, not a
+   * comparison made here. `meets_standard` arrives on the summary already
+   * decided in numeric; the browser never divides money.
+   */
+  const meetsStandard: boolean | null =
+    payment == null || payment.meets_standard == null ? null : payment.meets_standard === true
+
+  const checked = validateSubmissionTerms({ meetsStandard, terms })
   /**
    * The message is withheld while the revealed fields are still untouched.
    *
-   * Somebody who has just pressed "Reduced advance" has not made a mistake yet —
-   * they have not typed anything — and greeting them with a red sentence about a
-   * percentage they were about to enter is scolding, not help. Submit is still
+   * Somebody who has just opened the dialog has not made a mistake yet — they
+   * have not typed anything — and greeting them with a red sentence about a
+   * reason they were about to write is scolding, not help. Submit is still
    * disabled throughout, so nothing invalid can be sent.
    *
-   * A MISSING GRAND TOTAL IS SAID IMMEDIATELY, untouched or not: that one is
-   * about the record rather than about anything the employee has yet to do, and
-   * no amount of typing will fix it here.
+   * AN UNREADABLE PAYMENT POSITION IS SAID IMMEDIATELY, untouched or not: that
+   * one is about the record rather than about anything the employee has yet to
+   * do, and no amount of typing will fix it here.
    */
-  const advanceMessage =
-    advance.ok || (advanceDeclarationUntouched(declaration) && grandTotalValue !== null)
+  const termsMessage =
+    checked.ok || (submissionTermsUntouched(terms) && meetsStandard !== null)
       ? null
-      : (advance as { ok: false; message: string }).message
+      : (checked as { ok: false; message: string }).message
 
-  const blocked = submitting || tooLong || !advance.ok
+  const blocked = submitting || tooLong || !checked.ok
 
   useScrollLock(true)
 
@@ -591,11 +497,11 @@ export function PiSubmitConfirmModal({
   useEscapeDismiss(dismiss, !submitting)
 
   const confirm = () => {
-    if (blocked || !advance.ok) return
-    // The dialog hands up the TRIMMED reply and the VALIDATED declaration, so
-    // what reaches the trail is what the database stored — no leading spaces,
-    // and nothing at all when the field was only whitespace.
-    onConfirm(offerReply && validation.ok ? validation.note : null, advance.value)
+    if (blocked || !checked.ok) return
+    // The dialog hands up the TRIMMED reply and the VALIDATED terms, so what
+    // reaches the database is what it stores — no leading spaces, and nothing at
+    // all where the field was only whitespace.
+    onConfirm(offerReply && validation.ok ? validation.note : null, checked.value)
   }
 
   return (
@@ -623,23 +529,13 @@ export function PiSubmitConfirmModal({
             </div>
           </div>
 
-          <AdvanceSelector
-            declaration={declaration}
-            grandTotalValue={grandTotalValue}
-            standardAmount={standardAdvance}
+          <PaymentPositionPanel
+            summary={payment}
+            terms={terms}
+            meetsStandard={meetsStandard}
             disabled={submitting}
-            invalid={advanceMessage}
-            // A CHANGE OF CHOICE CLEARS WHAT DOES NOT BELONG TO THE NEW ONE.
-            // advanceChoiceChange owns that rule: the amount box resets, because
-            // a figure typed as one kind of declaration is not the same
-            // statement as another, and the reason survives only between the two
-            // exception choices, which are the same request being reshaped. The
-            // validation message follows automatically — it is recomputed from
-            // the declaration, so an error about the previous choice cannot
-            // outlive it.
-            onChoice={next => setDeclaration(current => advanceChoiceChange(current, next, grandTotalValue))}
-            onAmount={next => setDeclaration(current => ({ ...current, amountText: next }))}
-            onReason={next => setDeclaration(current => ({ ...current, reason: next }))}
+            invalid={termsMessage}
+            onTerms={(key, value) => setTerms(current => ({ ...current, [key]: value }))}
           />
 
           <div style={{

@@ -9,6 +9,7 @@ import { LoadingScreen, EmptyState, AlertBanner } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { formatINR } from '@/lib/currency'
 import { useViewAs } from '@/hooks/useViewAs'
+import { RECEIVED_PAYMENTS_SOURCE, applyLinkageScope } from '@/app/finance/paymentRouting'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -83,7 +84,10 @@ type FinanceRow = {
   updated_at: string
   clarification_requested_at: string | null
   approved_at: string | null
+  /** Embedded by the two request-stage queries, which read the base table. */
   submitted_by_user: { full_name: string } | null
+  /** Already flattened by the suspense query's projection — see below. */
+  submitted_by_name?: string | null
 }
 
 type OrderRequestRow = {
@@ -130,14 +134,28 @@ export default function ActionQueuePage() {
         .from('finance_payment_requests')
         .select('id, request_number, client_name, amount, status, created_at, updated_at, clarification_requested_at, approved_at, submitted_by_user:users!submitted_by(full_name)')
         .eq('status', 'needs_clarification'),
-      supabase
-        .from('finance_payment_requests')
-        .select('id, request_number, client_name, amount, status, created_at, updated_at, clarification_requested_at, approved_at, submitted_by_user:users!submitted_by(full_name)')
-        .eq('status', 'approved_unlinked')
-        .is('order_id', null)
-        // A payment parked on an Order Request (20260698) is no longer an
-        // actionable suspense item — it links itself on conversion.
-        .is('order_request_id', null),
+      // SUSPENSE — money received that nothing at all points at, which is the
+      // only payment state that still needs an administrator. Read through
+      // RECEIVED_PAYMENTS_SOURCE and scoped by the SAME applyLinkageScope the
+      // Non-Linked Payments page and its counter use, so this queue cannot
+      // disagree with the page it links into.
+      //
+      // Reading the parent columns alone would list money that final PI approval
+      // has already moved onto a numbered Order: the allocation moves, the
+      // payment record deliberately does not (20260921000000 §7), so order_id
+      // stays null. The row would offer "Link suspense payment" for money that is
+      // already attached, and the obvious click would attach it twice.
+      //
+      // A payment parked on an Order Request (20260698) is likewise not an
+      // actionable suspense item — it links itself on conversion — and that
+      // exclusion is part of the same shared predicate.
+      applyLinkageScope(
+        supabase
+          .from(RECEIVED_PAYMENTS_SOURCE)
+          .select('id, request_number, client_name, amount, status, created_at, approved_at, submitted_by_name')
+          .eq('status', 'approved_unlinked'),
+        'unlinked',
+      ),
       supabase
         .from('order_requests')
         .select('id, request_number, client_name, total_value, created_at, created_by_user:users!created_by(full_name)')
@@ -206,7 +224,8 @@ export default function ActionQueuePage() {
         category: 'finance_suspense',
         actionLabel: CATEGORY_META.finance_suspense.actionLabel,
         clientName: r.client_name,
-        ownerName: r.submitted_by_user?.full_name ?? null,
+        // Flat on the projection rather than embedded; same value, same null.
+        ownerName: r.submitted_by_name ?? null,
         module: 'Finance',
         amount: r.amount,
         pendingSince: r.approved_at ?? r.created_at,

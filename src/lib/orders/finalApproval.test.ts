@@ -24,9 +24,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import {
-  APPROVAL_BLOCKED_ADVANCE_PENDING,
-  APPROVAL_BLOCKED_ADVANCE_REJECTED,
-  APPROVAL_BLOCKED_ADVANCE_UNDECLARED,
+  APPROVAL_BLOCKED_PAYMENT_UNKNOWN,
   APPROVAL_BLOCKED_BLOCKING_ISSUES,
   APPROVAL_BLOCKED_DELETION,
   APPROVAL_BLOCKED_FINANCE,
@@ -54,7 +52,13 @@ import { deriveOrdersCapabilities } from '../permissions/orders'
 import { deriveFinanceCapabilities } from '../permissions/finance'
 import { isProtectedAction } from '../permissions/levels'
 import type { EffectivePermission } from '../permissions/types'
-import type { PersistedAdvance } from './advanceRequirement'
+import {
+  PAYMENT_ADMIN_APPROVAL_REQUIRED,
+  PAYMENT_AWAITING_VERIFICATION,
+  PAYMENT_EXCEPTION_PENDING,
+  PAYMENT_EXCEPTION_REJECTED,
+  type PaymentPosition,
+} from './paymentGate'
 
 const perms = (actions: string[]): EffectivePermission[] =>
   actions.map(actionKey => ({ actionKey, allowed: true, source: 'role' }))
@@ -84,33 +88,7 @@ const verified = (boundTo: string = SUBMITTED_AT): PersistedFinanceVerification 
   finance_verified_submission_at: boundTo,
 })
 
-const noAdvance: PersistedAdvance = {
-  advance_condition: null,
-  advance_declared_amount: null,
-  advance_exception_percent: null,
-  advance_exception_reason: null,
-  advance_exception_status: null,
-  advance_exception_requested_by: null,
-  advance_exception_requested_at: null,
-  advance_exception_decided_by: null,
-  advance_exception_decided_at: null,
-  advance_exception_rejection_reason: null,
-}
 
-const standard: PersistedAdvance = { ...noAdvance, advance_condition: 'standard' }
-
-const exception = (
-  percent: number,
-  status: 'pending' | 'approved' | 'rejected',
-): PersistedAdvance => ({
-  ...noAdvance,
-  advance_condition: 'exception',
-  advance_exception_percent: percent,
-  advance_exception_reason: 'Client settles on delivery.',
-  advance_exception_status: status,
-  advance_exception_requested_by: VERIFIER,
-  advance_exception_requested_at: SUBMITTED_AT,
-})
 
 // ── The staleness rule ────────────────────────────────────────────────────────
 
@@ -235,13 +213,14 @@ describe('whether the final approval control may be pressed', () => {
   const ready = {
     status: 'submitted',
     financeVerified: true,
-    advance: standard,
+    paymentPosition: 'standard_met' as PaymentPosition,
+    neededForStandard: '0.00',
     hasBlockingIssues: false,
     productCount: 3,
     deletionClaimed: false,
   }
 
-  test('a verified, standard-advance, clean submitted PI is ready', () => {
+  test('a verified PI whose payment meets the standard requirement is ready', () => {
     const outcome = describeApprovalReadiness(ready)
     assert.equal(outcome.ready, true)
     assert.equal(outcome.blocker, null)
@@ -253,29 +232,57 @@ describe('whether the final approval control may be pressed', () => {
     assert.equal(outcome.blocker, APPROVAL_BLOCKED_FINANCE)
   })
 
-  test('a PENDING advance exception blocks approval', () => {
-    const outcome = describeApprovalReadiness({ ...ready, advance: exception(12.5, 'pending') })
+  test('a PENDING reduced-payment exception blocks approval', () => {
+    const outcome = describeApprovalReadiness({
+      ...ready, paymentPosition: 'exception_pending', neededForStandard: '400000.00',
+    })
     assert.equal(outcome.ready, false)
-    assert.equal(outcome.blocker, APPROVAL_BLOCKED_ADVANCE_PENDING)
+    assert.equal(outcome.blocker, PAYMENT_EXCEPTION_PENDING)
   })
 
-  test('a REJECTED advance exception blocks approval', () => {
-    const outcome = describeApprovalReadiness({ ...ready, advance: exception(12.5, 'rejected') })
+  test('a REJECTED reduced-payment exception blocks approval', () => {
+    const outcome = describeApprovalReadiness({
+      ...ready, paymentPosition: 'exception_rejected', neededForStandard: '400000.00',
+    })
     assert.equal(outcome.ready, false)
-    assert.equal(outcome.blocker, APPROVAL_BLOCKED_ADVANCE_REJECTED)
+    assert.equal(outcome.blocker, PAYMENT_EXCEPTION_REJECTED)
   })
 
-  test('an APPROVED exception — reduced or zero — is ready', () => {
-    for (const percent of [0, 0.5, 12.5, 39.99]) {
-      const outcome = describeApprovalReadiness({ ...ready, advance: exception(percent, 'approved') })
-      assert.equal(outcome.ready, true, `${percent}% approved`)
-    }
+  test('an APPROVED reduced-payment exception is ready at any level of payment', () => {
+    const outcome = describeApprovalReadiness({
+      ...ready, paymentPosition: 'exception_approved', neededForStandard: '1000000.00',
+    })
+    assert.equal(outcome.ready, true, 'including at zero payment')
+    assert.equal(outcome.blocker, null)
   })
 
-  test('an undeclared advance requirement blocks approval', () => {
-    const outcome = describeApprovalReadiness({ ...ready, advance: noAdvance })
+  test('too little VERIFIED payment blocks approval, and names the figure', () => {
+    const outcome = describeApprovalReadiness({
+      ...ready, paymentPosition: 'payment_required', neededForStandard: '400000.00',
+    })
     assert.equal(outcome.ready, false)
-    assert.equal(outcome.blocker, APPROVAL_BLOCKED_ADVANCE_UNDECLARED)
+    assert.ok(outcome.blocker?.includes('₹4,00,000'),
+      `the shortfall must be named: ${outcome.blocker}`)
+    assert.ok(outcome.blocker?.includes(PAYMENT_ADMIN_APPROVAL_REQUIRED),
+      'and so must the person who can decide instead')
+  })
+
+  test('money Finance has not verified is NAMED, never counted', () => {
+    // A salesperson looking at their own ₹4,00,000 beside "₹4,00,000 more
+    // required" would conclude the system lost it. It did not; Finance has not
+    // decided it yet, and that is a different sentence.
+    const outcome = describeApprovalReadiness({
+      ...ready, paymentPosition: 'verification_pending', neededForStandard: '400000.00',
+    })
+    assert.equal(outcome.ready, false)
+    assert.ok(outcome.blocker?.startsWith(PAYMENT_AWAITING_VERIFICATION), outcome.blocker ?? '')
+  })
+
+  test('an unreadable payment position fails CLOSED', () => {
+    // Not "insufficient" — that would be a claim about money nobody checked.
+    const outcome = describeApprovalReadiness({ ...ready, paymentPosition: null })
+    assert.equal(outcome.ready, false)
+    assert.equal(outcome.blocker, APPROVAL_BLOCKED_PAYMENT_UNKNOWN)
   })
 
   test('blocking diagnostics block approval', () => {
@@ -291,9 +298,6 @@ describe('whether the final approval control may be pressed', () => {
   })
 
   test('a deletion reservation blocks approval, ahead of everything else', () => {
-    // A record being erased is not a record to decide on, and it is checked
-    // first because every other blocker would be describing a record that is
-    // about to stop existing.
     const outcome = describeApprovalReadiness({
       ...ready, deletionClaimed: true, financeVerified: false, hasBlockingIssues: true,
     })
@@ -311,8 +315,8 @@ describe('whether the final approval control may be pressed', () => {
 
   test('every blocker is an actionable task, never a note about the roadmap', () => {
     for (const message of [
-      APPROVAL_BLOCKED_FINANCE, APPROVAL_BLOCKED_ADVANCE_PENDING,
-      APPROVAL_BLOCKED_ADVANCE_REJECTED, APPROVAL_BLOCKED_ADVANCE_UNDECLARED,
+      APPROVAL_BLOCKED_FINANCE, APPROVAL_BLOCKED_PAYMENT_UNKNOWN,
+      PAYMENT_EXCEPTION_PENDING, PAYMENT_EXCEPTION_REJECTED,
       APPROVAL_BLOCKED_BLOCKING_ISSUES, APPROVAL_BLOCKED_NO_LINES, APPROVAL_BLOCKED_DELETION,
     ]) {
       assert.ok(message.length > 0)
@@ -320,11 +324,26 @@ describe('whether the final approval control may be pressed', () => {
     }
   })
 
+  test('the declared advance no longer decides anything here', () => {
+    // THE PHASE 3 REGRESSION, stated as a rule rather than as a behaviour: the
+    // readiness input has no advance field at all, so no future edit can quietly
+    // reintroduce a promise as the gate.
+    const source = readFileSync('src/lib/orders/finalApproval.ts', 'utf8')
+    const start = source.indexOf('export function describeApprovalReadiness')
+    const body = source.slice(start, source.indexOf('\n}', start))
+    for (const forbidden of ['advanceIsReady', 'advance_condition', 'advance_exception',
+                             'advance_declared_amount']) {
+      assert.ok(!body.includes(forbidden),
+        `approval readiness must not read ${forbidden}: a declaration is not a payment`)
+    }
+  })
+
   test('the browser check follows the RPC’s own order of checks', () => {
     // A reviewer who fixes what the screen told them to fix must not then be
-    // refused for something the screen would have mentioned second.
+    // refused for something the screen would have mentioned second. This is the
+    // order approve_order_submission() applies.
     const source = readFileSync('src/lib/orders/finalApproval.ts', 'utf8')
-    const order = ['deletionClaimed', 'financeVerified', 'advanceIsReady', 'hasBlockingIssues', 'productCount']
+    const order = ['deletionClaimed', 'financeVerified', 'paymentPosition', 'hasBlockingIssues', 'productCount']
     let cursor = source.indexOf('export function describeApprovalReadiness')
     for (const step of order) {
       const next = source.indexOf(step, cursor)

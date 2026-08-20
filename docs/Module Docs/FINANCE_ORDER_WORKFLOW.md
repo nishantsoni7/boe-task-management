@@ -699,9 +699,10 @@ public.finance_payment_status_is_verified(text)
   -- true only for approved_unlinked and approved_linked
 ```
 
-That function is the single rule any future verified total must consult, in the
-same way `order_submission_advance_ready()` serves the advance rule. It is
-written now so Phase 3 does not re-invent it, and it gates nothing today.
+That function is the single rule any verified total consults. Phase 3
+(`20260921000000`) is the phase that started reading it: it is what
+`order_submission_verified_payment(uuid)` sums, and therefore what decides
+whether an Order number is assigned.
 
 A **rejected payment retains its allocations** — a rejection is frequently
 corrected and reapplied (`20260695000000`), and destroying the allocation would
@@ -781,6 +782,11 @@ Order creation from a PI is a later phase, and the transition guard will have to
 be restated then, on purpose, as a visible reviewed change. And
 `approve_order_submission()` still gates on the **declared** advance
 (`order_submission_advance_ready`); payment does not gate Order approval yet.
+
+> **Both of those last two were paid by Phase 3 (`20260921000000`).** The
+> transition guard *was* restated, exactly as foreseen, to admit one move and
+> nothing wider; and approval now gates on verified payment rather than on the
+> declaration. See §11.
 
 ### Participant visibility — and why this table has no Finance module gate
 
@@ -939,7 +945,7 @@ All computed in the database in `numeric`, never in the browser:
 | Verified payment | active allocations whose parent is verified (`finance_payment_status_is_verified`) |
 | Awaiting verification | active allocations whose parent is `pending_approval` or `needs_clarification` |
 | Payment received % | verified ÷ grand total |
-| Needed for approval | `max(40% of grand total − verified, 0)` — **reporting only** |
+| Needed for approval | `max(40% of grand total − verified, 0)` — reporting only until Phase 3, which made it the live gate and rounded it **up** (see §11) |
 | Pending balance | `max(grand total − verified, 0)` |
 
 Rejected payments count in **neither** total but stay in the history. Reversed
@@ -974,8 +980,9 @@ Five exact cases are driven end to end through the RPC in
 `supabase/tests/pi_submission_payment_assertions.sql`, and the same five are
 asserted at the formatting boundary in `src/lib/finance/piPaymentView.test.ts`.
 
-**Order approval eligibility is unchanged.** `approve_order_submission()` still
-reads the declared advance and consults no allocation.
+**Order approval eligibility was unchanged by Phase 2.** `approve_order_submission()`
+still read the declared advance and consulted no allocation. Phase 3
+(`20260921000000`) changed exactly that — see §11.
 
 ### Cleanup-chain dependency, closed
 
@@ -996,6 +1003,195 @@ The PI screen writes nothing itself: the payment goes through the RPC, and the
 optional proof through a shared `src/lib/finance/paymentProof.ts` helper, so the
 existing rule that PI screens hand-roll no persistence still holds. A proof
 failure **keeps the payment** and says so.
+
+---
+
+## 11. Payment Phase 3 — the verified-payment approval gate (`20260921000000`)
+
+*Not applied. PR open on `claude/boe-verified-payment-approval-phase3-hgevan`.*
+
+### The rule
+
+An Order number is assigned only when **verified payment allocated to the PI is
+at least 40% of its grand total**, or when an authorised approver has approved
+proceeding on less — including on nothing.
+
+```
+payment-ready  ⇔  verified >= grand_total * 40 / 100        the standard route
+                  OR advance_exception_status = 'approved'  the reduced-payment route
+```
+
+`verified` is summed **live, at the instant of approval, under row locks**, from
+active allocations naming the PI whose parent payment is verified by
+`finance_payment_status_is_verified()`. It is never read from a column, never
+supplied by a caller, and never frozen from a displayed percentage.
+
+**Exact amounts, not rounded percentages.** 40% of ₹100.01 is ₹40.004; ₹40.00
+displays as "40%" and does not meet the requirement. `numeric` end to end.
+
+### What no longer decides anything
+
+`order_submission_advance_ready(text, numeric, text)` and the declared advance it
+reads. The function still exists and is still correct about what it describes;
+`approve_order_submission()` no longer calls it, and the migration asserts that at
+apply time. `advance_declared_amount` is retained in full for historical records,
+re-documented as legacy, and written NULL by the new submission door.
+
+### The two things that DO still gate, and stay separate
+
+1. **The PI Finance check** (`order_submission_finance_verified`, `20260915000000`)
+   — somebody with finance authority has read the commercial figures. It goes
+   stale the moment the record moves, and it is judged **before** the payment
+   gate, exactly as it was.
+2. **Verified payment**, above.
+
+Neither sets the other. Verifying a payment does not stamp the PI finance check,
+and the PI finance check says nothing about money arriving. If payment changes
+after the finance check, approval still uses the live figure.
+
+### The reduced-payment exception
+
+The **existing** advance-exception workflow, adapted rather than duplicated:
+`orders.approve_advance_exception` (which no preset grants),
+`approve_pi_advance_exception(uuid)` and `reject_pi_advance_exception(uuid, text)`
+are unchanged. What changed is what the request MEANS — "proceed below 40%
+verified payment" rather than "proceed on a lower declared advance" — and that a
+reason and Payment Terms are mandatory to raise one. Rejection still returns the
+PI to Needs Changes with the reason as its correction instruction.
+
+Live recalculation handles the four cases that matter:
+
+| Situation | Outcome |
+|---|---|
+| Payment reaches 40% while a request is pending | Standard route succeeds; the exception is not consulted |
+| Payment reversed below 40% after an exception was approved | The approved exception still permits approval |
+| Payment reversed below 40% with no approved exception | Refused; the declared advance cannot rescue it |
+| A pending payment would take the total over 40% | Refused, and the refusal says the money is with Finance |
+| An approved exception with unverified payment | Order created; the payment stays unverified |
+
+### Payment Terms and Billing Terms
+
+`order_submissions.payment_terms` and `.billing_terms` — plain text, non-blank
+when present, ≤ 500 characters, never parsed. Payment Terms are mandatory on the
+reduced-payment route; Billing Terms are always optional. No instalments, no
+schedules, no due dates, no reminders.
+
+### PI-to-Order allocation continuity
+
+At approval, in the same transaction that creates the Order, the PI's **active
+allocations MOVE** — one `UPDATE`, no insert, no delete, no payment row created or
+copied. Ids, payment, amount, provenance and creation record are all unchanged;
+reversed allocations stay with the PI. The payment's proof, verification status
+and Finance history are untouched, because the payment row is untouched.
+
+`finance_payment_allocations_guard_transition()` is restated — the change
+`20260918000000` §6 said Phase 3 would have to make — to admit exactly that move:
+inside `approve_order_submission()`, for that submission, onto the Order whose
+`source_order_submission_id` is that submission, with every other column frozen.
+A reversed allocation cannot move; money cannot move to another Order or back to
+a PI; the amount cannot be edited on the way across.
+
+The Order detail page reads its own active allocations alongside the legacy
+`order_id` link and deduplicates by payment id, so a converted PI's money is
+visible on the Order and never counted twice.
+
+### Numbering
+
+Unchanged. `orders_assign_display_number` remains the only allocator; the
+approval function neither names nor computes `display_number`. A PI held for
+insufficient payment or a pending exception is assigned **no number at all**, and
+a failed approval consumes none because the cycle is advanced inside the same
+transaction that rolls back. Cancellation is not implemented in this phase; the
+confirmed decision that a cancelled number cannot be reused is unaffected.
+
+### The lock order, stated once for the whole module
+
+Every writer that touches a PI's or an Order's money takes its locks in this
+order, and multi-row sets in ascending `id`:
+
+```
+orders → order_requests → order_submissions → finance_payment_requests
+       → finance_payment_allocations → order_number_cycle
+```
+
+It is the order `finalize_test_data_cleanup()` (`20260916000000`) already walks
+and the one `reverse_payment_allocation()` (`20260918000000` §12) documents for
+itself. Phase 3 made it true on the one path that had it inverted:
+`allocate_payment_to_target_internal()` locked the payment first and read the PI
+**unlocked**, so an allocation could land on a PI that had just been approved —
+stranding money on a record that no longer counts it. It now locks the PI target
+first. Two concurrent sessions prove both halves: the old order deadlocks, the
+new one does not.
+
+### Exception currentness
+
+An approved exception is an approval of a PARTICULAR PI. The decision now records
+the grand total, the workbook hash and both sets of terms it was taken against
+(`advance_exception_decided_*`), and `order_submission_exception_current()` is the
+one rule that compares them. A replaced workbook, a corrected total or different
+terms make the approval stale, and final approval refuses it by name
+(`ORDER_SUBMISSION_EXCEPTION_STALE`) rather than as "not enough payment" — a
+different person has to do a different thing. The reason is frozen while an
+approval stands, and the recorded basis can only move with the decision itself.
+
+**A pre-Phase-3 approval recorded no basis and is never current.** It was a
+decision about a declared advance, which is a different question from verified
+payment; the migration reports how many PIs that affects rather than backfilling
+one.
+
+### Test Data Cleanup
+
+`resolve_test_data_cleanup_chain()` reaches a payment three ways: the legacy
+order/order-request link, an allocation still naming the PI (its reversed
+history), and an allocation that has MOVED onto the Order. The third branch is
+Phase 3's own — without it a converted test chain hid its payments and the NO
+ACTION foreign key refused the Order delete with a raw constraint error.
+
+### Finance linkage after the move — the allocation is authoritative
+
+After the move the parent payment still carries `order_id = NULL` and
+`approved_unlinked`: the record is deliberately left alone, so its proof, its
+verification, its Finance history and the salesperson's reference all stay where
+they are. **The parent linkage columns remain for backward compatibility; ACTIVE
+ALLOCATIONS ARE AUTHORITATIVE for current Confirmed-Order linkage.**
+
+Classifying from the parent columns alone would have put that money in
+**Non-Linked Payments** — the queue that means "nothing at all points at this" —
+and made the counters over-report. It cannot be fixed by linking the payment:
+`approved_linked` requires `order_number`, and on a PI payment that column holds
+the salesperson's reference/UTR.
+
+So the ledger is left alone and the read is corrected. `20260921000000` §8a adds
+**`public.finance_received_payments`**, a `security_invoker = true` view that
+carries every payment column Finance already read plus `is_order_allocated`,
+`allocated_order_id` and `allocated_order_number`. The two Received Payments
+lists, the sidebar counters, the `?payment=` deep-link resolver and the Admin
+Action Queue's suspense item read it; every mutation still writes to
+`finance_payment_requests` by the payment's own id.
+
+    Linked      an ACTIVE allocation naming a Confirmed Order
+                OR a legacy parent order_id
+                OR an order_request_id
+    Non-Linked  none of the three
+
+**Privileges on the projection are normalised explicitly** — `revoke all
+privileges … from public, anon, authenticated`, then `grant select … to
+authenticated` — because Supabase's default privileges grant `arwdDxt` on every
+new table and view to the client roles at creation time. The migration's
+apply-time assertions check the whole matrix and refuse the apply otherwise.
+
+A reversed allocation never classifies a payment as Linked. A payment split
+across several Orders is Linked, appears once, and is labelled by its oldest
+active Confirmed-Order allocation. **No payment record is copied during PI
+conversion, and no payment id changes.**
+
+### Trails
+
+`allocation_moved` on the payment's Finance trail (server-derived, from the same
+trigger that writes `allocation_created`), `payment_allocations_moved` on the PI,
+and `payment_route` / `verified_payment` / `required_payment` on the existing
+`approved` event. A **refused** approval writes nothing — the function raises, and
+a row written inside a transaction that raises would vanish with it.
 
 ---
 

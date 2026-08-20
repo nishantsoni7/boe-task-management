@@ -97,3 +97,43 @@ export async function notifyOrders(payload: OrderNotifyPayload): Promise<boolean
     return false
   }
 }
+
+// ── PI submissions: the reduced-payment exception ─────────────────────────────
+//
+// The same fire-and-forget shape, for the one workflow Phase 3 introduces: a
+// salesperson asks to confirm an Order below the standard verified-payment
+// requirement, and an authorised approver accepts or refuses it.
+//
+// THE PAYLOAD IS ONE ID. The client name, the submission's owner and the set of
+// people who may decide are all resolved server-side — a browser that could name
+// its own recipients could notify anybody.
+
+export type PiSubmissionNotifyEvent =
+  | 'pi_exception_requested'
+  | 'pi_exception_approved'
+  | 'pi_exception_rejected'
+
+export type PiSubmissionNotifyPayload = {
+  event: PiSubmissionNotifyEvent
+  /** order_submissions.id — also stored as entity_id for exact deep-linking. */
+  submissionId: string
+}
+
+export async function notifyPiSubmission(payload: PiSubmissionNotifyPayload): Promise<boolean> {
+  try {
+    const res = await fetch('/api/orders/submissions/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null)
+      console.error(`[notifyPiSubmission] ${payload.event} not delivered (HTTP ${res.status}):`, detail?.error ?? res.statusText)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('[notifyPiSubmission] failed:', err)
+    return false
+  }
+}

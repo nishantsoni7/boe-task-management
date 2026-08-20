@@ -31,6 +31,7 @@ import {
   piPaymentErrorMessage,
   piPaymentStatusLabel,
   piPaymentStatusTone,
+  piPaymentTermLines,
   piPaymentTiles,
   validatePiPaymentForm,
   type PiPaymentFormState,
@@ -38,6 +39,13 @@ import {
   type PiPaymentSummaryRow,
   type PiPaymentTone,
 } from '@/lib/finance/piPaymentView'
+import {
+  PAYMENT_POSITION_HINT,
+  PAYMENT_POSITION_LABEL,
+  PAYMENT_POSITION_TONE,
+  asPaymentPosition,
+  type PaymentPositionTone,
+} from '@/lib/orders/paymentGate'
 
 const TONE_COLOR: Record<PiPaymentTone, { fg: string; bg: string; border: string }> = {
   amber:   { fg: colors.amber, bg: colors.amberTint, border: 'rgba(232,160,48,0.25)' },
@@ -297,6 +305,29 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
   )
 }
 
+// ── The approval position ─────────────────────────────────────────────────────
+
+const POSITION_COLOR: Record<PaymentPositionTone, { fg: string; bg: string; border: string }> = {
+  green: { fg: '#166534', bg: colors.greenTint, border: 'rgba(69,168,112,0.28)' },
+  amber: { fg: '#9A6212', bg: colors.amberTint, border: 'rgba(232,160,48,0.28)' },
+  red:   { fg: '#991B1B', bg: colors.redTint,   border: 'rgba(217,79,79,0.28)' },
+  blue:  { fg: '#1E3A8A', bg: colors.blueTint,  border: 'rgba(85,133,232,0.28)' },
+}
+
+function PositionBand({ position }: { position: keyof typeof PAYMENT_POSITION_LABEL }) {
+  const tone = POSITION_COLOR[PAYMENT_POSITION_TONE[position]]
+  return (
+    <div style={{
+      margin: '0 20px 14px', padding: '9px 11px', borderRadius: '7px',
+      background: tone.bg, border: `1px solid ${tone.border}`, color: tone.fg,
+      fontSize: '12px', lineHeight: 1.45,
+    }}>
+      <strong>{PAYMENT_POSITION_LABEL[position]}</strong>
+      <span style={{ display: 'block', marginTop: '2px' }}>{PAYMENT_POSITION_HINT[position]}</span>
+    </div>
+  )
+}
+
 // ── The card ──────────────────────────────────────────────────────────────────
 
 export function PiPaymentCard({
@@ -316,6 +347,8 @@ export function PiPaymentCard({
 }) {
   const [open, setOpen] = useState(false)
   const tiles = piPaymentTiles(summary)
+  const terms = piPaymentTermLines(summary)
+  const position = asPaymentPosition(summary?.approval_position)
   const rows = summary?.payments ?? []
   const waiting = rows.filter(r => r.allocation_status === 'active' && isAwaitingVerification(r.status)).length
 
@@ -375,13 +408,39 @@ export function PiPaymentCard({
       <div style={{
         padding: isMobile ? '14px 16px' : '14px 20px',
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, minmax(0, 1fr))',
+        gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, minmax(0, 1fr))',
         gap: isMobile ? '12px' : '14px',
       }}>
         {loading && tiles.length === 0
           ? <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
           : tiles.map(t => <Tile key={t.key} label={t.label} value={t.value} hint={t.hint} />)}
       </div>
+
+      {/* WHERE THIS PI STANDS ON APPROVAL, in the card that already holds every
+          figure the answer is made of. A second card would put the question and
+          its answer in two places on one screen.
+
+          The position is the DATABASE'S, resolved in the same order
+          approve_order_submission() resolves it — money first, then the decision
+          that stands in for money, then what is missing. Nothing here re-derives
+          it. */}
+      {position && <PositionBand position={position} />}
+
+      {/* The agreed commercial terms, when there are any. Plain text, printed as
+          typed: this is not a schedule and nothing here parses it. */}
+      {terms.length > 0 && (
+        <div style={{
+          padding: isMobile ? '0 16px 14px' : '0 20px 14px',
+          display: 'flex', flexDirection: 'column', gap: '6px',
+        }}>
+          {terms.map(t => (
+            <div key={t.key} style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              <div style={{ fontSize: '11px', color: colors.muted }}>{t.label}</div>
+              <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.45 }}>{t.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div style={{

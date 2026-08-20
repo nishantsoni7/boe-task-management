@@ -576,11 +576,16 @@ Full detail: `docs/Module Docs/ACCESS_CONTROL_V1.md`.
 
 ## Order Management — PI submission to Confirmed Order
 
-Status: **Phase C applied to production.** Two forward migrations are **written
-and unapplied**: `20260916000000_order_submission_test_cleanup.sql` (see *Test
-Data Cleanup* at the foot of this section) and
-`20260917000000_order_submission_advance_amount.sql` (see *The advance
-declaration* below).
+Status: **Phase C, the advance-amount declaration, and Payment Phases 1, 2 and
+the verification hotfix are all applied to production** (production `main` is
+`f5613dea8adabe7b5065ddd00651dcb59a18dc16`; migration history matches through
+`20260920000000`).
+
+**One forward migration is written and unapplied:**
+`20260921000000_order_submission_verified_payment_gate.sql` — Payment Phase 3,
+which moves the final-approval gate off the DECLARED advance and onto
+**Finance-verified payment**, and moves a PI's allocations onto the Order it
+becomes. See *The payment gate on final approval* below.
 
 An imported BOE PI workbook (`.xlsx`) becomes a Confirmed Order through one
 reviewed workflow. The record is `public.order_submissions`; the Order it
@@ -600,10 +605,13 @@ draft ──► submitted ──► needs_changes ──► submitted ──► 
    figure and product line comes from a server-side parse
    (`replace_order_submission_parse`, service role only). A browser cannot
    manufacture a price, a quantity or a total.
-2. **Submit**, declaring the advance **amount**: 40% of the grand total or more,
-   a reduced amount, or nothing. The last two are *exception requests* and need
-   a decision from a holder of `orders.approve_advance_exception`. See *The
-   advance declaration* below.
+2. **Submit.** Until Phase 3 this meant declaring an advance **amount**. From
+   Phase 3 the employee declares nothing: the database reads how much
+   Finance-verified payment the PI has, and either the standard requirement is
+   met or a reduced-payment exception is raised — with a mandatory reason and
+   mandatory Payment Terms — for a holder of
+   `orders.approve_advance_exception`. See *The payment gate on final approval*
+   below.
 3. **Finance verification** (Phase C). A finance authority signs off that the
    commercial figures and advance terms are correct.
 4. **Final approval** (Phase C). A PI reviewer approves, and exactly one
@@ -703,11 +711,13 @@ participant SELECT visibility Phase 1 deferred, and one Payments card on the PI
 detail page. `received_in` becomes optional so only amount, date and mode block
 entry. A PI payment is `pending_approval` — shown as *Awaiting Verification* —
 and the existing Finance verify / correct-and-verify / reject authority is the
-only thing that changes that. **Order approval eligibility is still the declared
-advance**; no payment figure gates it. `approve_order_submission()`
-still gates on the **declared** advance and reads no allocation, so Order approval
-eligibility is exactly what it was. See
+only thing that changes that. **Payment Phase 2 left Order approval eligibility exactly as it was** — the
+declared advance, with no payment figure gating anything. See
 `docs/Module Docs/FINANCE_ORDER_WORKFLOW.md` §9a.
+
+**Payment Phase 3 (`20260921000000`, written and NOT applied)** is what changes
+it. See *The payment gate on final approval* below and
+`docs/Module Docs/FINANCE_ORDER_WORKFLOW.md` §11.
 
 **A verification goes stale the moment the record moves.** It is bound to the
 `submitted_at` it was made against, and a trigger clears it outright on any
@@ -723,10 +733,12 @@ locked row, and refuses on any one of them:
 - status is exactly `submitted`, and no Order is already linked;
 - the caller is authenticated, active, and holds `orders.approve_order`;
 - finance verification is **current** for this submission;
-- the advance requirement is settled — a standard declaration (whose amount the
-  table CHECK holds at 40% or more of the grand total), or an **approved**
-  exception (pending and rejected both refuse, and so does an undeclared
-  record);
+- **Phase 3 (unapplied):** verified payment allocated to the PI is at least the
+  exact 40% of its grand total, **or** a reduced-payment exception is approved.
+  Summed live from `finance_payment_allocations` under row locks; pending,
+  needs-clarification, rejected and reversed all count as nothing;
+  *(before Phase 3: the advance requirement was settled — a standard declaration
+  whose amount the table CHECK held at 40% or more, or an approved exception);*
 - no blocking parse diagnostics;
 - the workbook still exists in storage at the exact validated path, as an
   `.xlsx`;
@@ -805,6 +817,64 @@ submission, which the Order names.
   Order's terms is `amend_order()`'s job).
 - No production tracking, dispatch gate or notification.
 
+### The payment gate on final approval (Phase 3, `20260921000000`, unapplied)
+
+**An Order number is assigned only when at least 40% of the PI's grand total has
+actually been received and verified by Finance, or when an authorised approver
+has approved proceeding on less — including on nothing.**
+
+```
+payment-ready  ⇔  verified >= grand_total * 40 / 100        the standard route
+                  OR advance_exception_status = 'approved'  the reduced-payment route
+```
+
+* `verified` is summed **at the instant of approval, under row locks**, from
+  active allocations naming the PI whose parent payment is verified by
+  `finance_payment_status_is_verified()`. Never a stored column, never a figure a
+  caller sent, never a displayed percentage.
+* Exact `numeric` comparison. 40% of ₹100.01 is ₹40.004; ₹40.00 displays as "40%"
+  and does not meet it.
+* **The declared advance decides nothing.** `advance_declared_amount` is retained
+  in full for historical records and re-documented as legacy; new submissions do
+  not ask for it. `order_submission_advance_ready()` still exists and is no longer
+  consulted.
+* Below the requirement — zero included — the PI may still be submitted for
+  management review, but a **reason** and **Payment Terms** are mandatory and the
+  existing advance-exception route decides it. No Order number is assigned until
+  it is approved. Rejection returns the PI to Needs Changes, as before.
+* The **PI Finance check** remains required and remains a separate authority.
+  Verifying a payment does not stamp it, and it says nothing about money arriving.
+* **Payment Terms** and **Billing Terms** are new plain-text columns on
+  `order_submissions` — the agreed collection and invoicing arrangements. Never
+  parsed; no instalments, schedules, due dates or reminders.
+* At approval, the PI's **active allocations MOVE onto the new Order** in the same
+  transaction — one `UPDATE`, no payment row created or copied, ids and provenance
+  unchanged. `finance_payment_allocations_guard_transition()` is restated to admit
+  exactly that one move, which `20260918000000` §6 said Phase 3 would have to do.
+
+**Found by the pre-deployment audit of PR #45, and fixed in the same unapplied
+migration:** an allocation could race the approval and strand money (the
+allocation door now locks the PI before the payment); an approved exception
+outlived what it was a decision about (four `advance_exception_decided_*` columns
+plus `order_submission_exception_current()`); Test Data Cleanup lost a converted
+chain's payments; a rounded percentage could display "40%" beside a gate that
+refuses; and the notification helper's PostgREST shape was wrong.
+
+**The blocker that audit recorded is now fixed in the same unapplied
+migration.** After the move the parent payment still reads `approved_unlinked`
+with no `order_id`, so a linked/unlinked split reading the parent columns alone
+would misclassify it and the counters would over-report. It cannot be fixed by
+linking the payment — `approved_linked` requires `order_number`, which on a PI
+payment holds the salesperson's reference. The ledger is therefore left alone and
+the READ is corrected: §8a of `20260921000000` adds
+`public.finance_received_payments`, a `security_invoker = true` projection
+carrying `is_order_allocated` / `allocated_order_id` / `allocated_order_number`.
+**Parent linkage fields remain for backward compatibility; active allocations are
+authoritative for current confirmed-Order linkage; the Finance Linked/Non-Linked
+lists, their counters and the Admin Action Queue's suspense item read the
+allocation-aware projection; and no payment record is copied during PI
+conversion.** See `docs/Module Docs/PAYMENT_PHASE_PROGRESS.md`.
+
 ### Migration
 
 `supabase/migrations/20260915000000_order_submission_final_approval.sql` —
@@ -817,6 +887,11 @@ advance suite. The full repository suite shows **9 failures, identical to the
 starting commit** — all of them live-database tests requiring `.env.local`
 Supabase credentials. TypeScript and the production build are clean; ESLint is
 unchanged from baseline (5 pre-existing problems, none in Phase C files).
+
+Phase 3 adds three suites — `paymentGate.test.ts`, `orderPayments.test.ts` and
+`verifiedPaymentGateSchema.test.ts` — plus
+`supabase/tests/pi_verified_payment_gate_assertions.sql`, and leaves the same 9
+environmental failures and the same 5 ESLint problems.
 
 The database guarantees were additionally proven by applying the real migration
 history to a **throwaway local PostgreSQL 16** and exercising the workflow
