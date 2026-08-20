@@ -18,7 +18,7 @@
 
 import {
   AlertTriangle, Ban, CheckCircle2, ExternalLink, FileSpreadsheet, History,
-  Info, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload, Wallet,
+  Info, MapPin, Percent, Phone, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
@@ -50,11 +50,13 @@ import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActiv
 import {
   ADVANCE_BAND_TITLE,
   BLOCKING_INSTRUCTION,
+  NOT_PROVIDED,
   STORED_COPY_NOTE,
   describeRequestedException,
   type ApprovedOrderView,
-  type CommercialSnapshot,
-  type OverviewDate,
+  type ClientSummary,
+  type DateSummary,
+  type PaymentSummaryView,
   type PiDetailTone,
   type WorkflowPanel,
 } from './piDetailView'
@@ -134,125 +136,190 @@ export function PiIdentityStrip({ statusLabel, tone, facts, workbookName }: {
   )
 }
 
-// ── 2. Order overview ─────────────────────────────────────────────────────────
+// ── 2. The top summary ────────────────────────────────────────────────────────
 
 /**
- * A label over its value.
+ * THE TOP SUMMARY: who, when, and how much has actually arrived.
  *
- * THERE IS NO "MISSING" BRANCH ANY MORE. Every caller now omits a fact the PI
- * did not carry rather than reserving a labelled block for it: three stacked
- * "Not provided" lines were the single largest piece of dead space on the page,
- * and none of them asked anybody to do anything.
+ * WHAT REPLACED WHAT. This card replaces an overview that answered a different
+ * set of questions from the ones people actually open a saved PI to ask. It
+ * printed Bill to and Ship to as two strong fields — the same company name
+ * twice on most orders, and the page title a third time — a PI-created date and
+ * a prose dispatch commitment, a product-line count the Products card states on
+ * its own header, and a large standalone Grand Total whose only job was to be
+ * the thing payment is measured against. It answered "how much has been paid"
+ * in a small block here and again in a full card several screens down.
+ *
+ * The three groups below are the four questions instead: who the client is and
+ * how to reach them, when the order was confirmed and when it is due, and how
+ * much VERIFIED money has arrived against the order's worth — with the way in
+ * to every payment record, and to recording another, on the same line as the
+ * figure.
+ *
+ * PAYMENT IS THE STRONGEST GROUP and takes the most width, because it is the
+ * one thing on this card that changes.
+ *
+ * NOT ONE FIGURE IS COMPUTED HERE. See ./piDetailView.
  */
-function Field({ label, value, strong = false }: {
-  label: string
-  value: string
-  strong?: boolean
+export function PiSummaryCard({
+  client, dates, payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
+}: {
+  client: ClientSummary
+  dates: readonly DateSummary[]
+  /** null only while the payment summary has not been read yet. */
+  payment: PaymentSummaryView | null
+  canAdd: boolean
+  onOpenPayments: () => void
+  onAddPayment: () => void
+  notice: string | null
+  onDismissNotice: () => void
 }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-      <div style={{
-        fontSize: '10px', fontWeight: 600, color: colors.muted,
-        textTransform: 'uppercase', letterSpacing: '0.05em',
-      }}>
-        {label}
-      </div>
-      <MultilineText style={{
-        fontSize: strong ? '13.5px' : '12.5px',
-        fontWeight: strong ? 600 : 400,
-        color: strong ? colors.primary : colors.secondary,
-        margin: 0,
-      }}>
-        {value}
-      </MultilineText>
-    </div>
-  )
-}
-
-function SectionLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '7px',
-      fontSize: '10.5px', fontWeight: 700, color: colors.muted,
-      textTransform: 'uppercase', letterSpacing: '0.06em',
-    }}>
-      <span style={{ display: 'flex', color: colors.tertiary }}>{icon}</span>
-      {children}
-    </div>
-  )
-}
-
-/**
- * The one strong card under the page identity: who and where, when, and what it
- * is worth.
- *
- * THE CLIENT IS NOT REPEATED. It is the page title, and Bill to / Ship to carry
- * the destinations a reader actually compares.
- *
- * A SECTION WITH NOTHING IN IT IS NOT DRAWN, and the card re-columns around what
- * is left. Most saved PIs carry no order-confirmation date and no dispatch
- * commitment, and reserving a third of a wide card for three "Not provided"
- * lines was the largest piece of dead space on the screen. Three populated
- * groups get three columns; two get two balanced ones; a record with neither an
- * address nor a date leaves the commercial snapshot the whole card, which is the
- * one thing that is always worth showing.
- */
-export function PiOrderOverview({ billTo, shipTo, dates, snapshot }: {
-  billTo: string | null
-  shipTo: string | null
-  dates: readonly OverviewDate[]
-  snapshot: CommercialSnapshot
-}) {
-  const hasDelivery = billTo !== null || shipTo !== null
-  const hasDates = dates.length > 0
-  const groups = 1 + (hasDelivery ? 1 : 0) + (hasDates ? 1 : 0)
-
   return (
     <PiCard>
-      <div className={`pi-detail-overview pi-detail-overview-${groups}`}>
+      <div className="pi-detail-summary">
 
-        {/* A — who it is for and where it goes. Given real width, because an
-            address is the one field on this card that needs to be read rather
-            than glanced at. Ship to is dropped when the PI did not name one:
-            plenty of orders ship to the billing address and say so by omission. */}
-        {hasDelivery && (
-          <section className="pi-detail-overview-section">
-            <SectionLabel icon={<Send size={12} strokeWidth={2} />}>Client &amp; delivery</SectionLabel>
-            {billTo !== null && <Field label="Bill to" value={billTo} strong />}
-            {shipTo !== null && <Field label="Ship to" value={shipTo} strong />}
-          </section>
-        )}
+        <section className="pi-detail-summary-group">
+          <GroupLabel>Client</GroupLabel>
+          <MultilineText style={{
+            fontSize: '15px', fontWeight: 600, color: colors.primary, margin: 0, lineHeight: 1.3,
+          }}>
+            {client.name}
+          </MultilineText>
 
-        {/* B — when. Only the dates the document actually gave. */}
-        {hasDates && (
-          <section className="pi-detail-overview-section pi-detail-overview-divided">
-            <SectionLabel icon={<History size={12} strokeWidth={2} />}>Timeline</SectionLabel>
-            {dates.map(date => (
-              <Field key={date.key} label={date.label} value={date.value} />
-            ))}
-          </section>
-        )}
+          {/* Dialable where the PI gave a number worth dialling, plain text
+              where it did not. Never a link that dials nothing. */}
+          {client.phone ? (
+            <a
+              href={`tel:${client.phone.tel}`}
+              style={{
+                fontSize: '13px', color: colors.blue, textDecoration: 'none',
+                display: 'inline-flex', alignItems: 'center', gap: '5px', width: 'fit-content',
+              }}
+            >
+              <Phone size={12} strokeWidth={2} style={{ flexShrink: 0 }} />
+              {client.phone.label}
+            </a>
+          ) : (
+            <Absent icon={<Phone size={12} strokeWidth={2} />}>{NOT_PROVIDED}</Absent>
+          )}
 
-        {/* C — what it is worth, and how much of it has actually been received
-            and VERIFIED BY FINANCE. THE SINGLE CURRENT-STATE SOURCE for the
-            payment position: the verified figure, the percentage it comes to and
-            where approval stands, in one block that appears nowhere else on the
-            page. The DECLARED advance is deliberately not among them — what a
-            client agreed to pay is not money that arrived. */}
-        <section className="pi-detail-overview-section pi-detail-snapshot pi-detail-overview-divided">
-          <SectionLabel icon={<Wallet size={12} strokeWidth={2} />}>Commercial snapshot</SectionLabel>
-
-          <div>
-            <div style={SNAPSHOT_LABEL_STYLE}>Grand Total</div>
-            <div className="pi-detail-snapshot-total" style={{ color: colors.primary }}>
-              {snapshot.grandTotal}
+          {client.location ? (
+            <div style={{ display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
+              <MapPin size={12} strokeWidth={2} color={colors.muted}
+                      style={{ flexShrink: 0, marginTop: '3px' }} />
+              <MultilineText style={{
+                fontSize: '12.5px', color: colors.secondary, margin: 0, lineHeight: 1.45,
+              }}>
+                {client.location}
+              </MultilineText>
             </div>
-            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '3px' }}>
-              {snapshot.productLines}
-            </div>
-          </div>
+          ) : (
+            <Absent icon={<MapPin size={12} strokeWidth={2} />}>{NOT_PROVIDED}</Absent>
+          )}
+        </section>
 
-          {snapshot.payment && <PiPaymentPosition payment={snapshot.payment} />}
+        <section className="pi-detail-summary-group pi-detail-summary-divided">
+          <GroupLabel>Order dates</GroupLabel>
+          {dates.map(date => (
+            <div key={date.key} style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              <div style={{ fontSize: '11px', color: colors.muted }}>{date.label}</div>
+              {date.value ? (
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary }}>
+                  {date.value}
+                </div>
+              ) : (
+                <div style={{ fontSize: '12.5px', color: colors.muted }}>{NOT_PROVIDED}</div>
+              )}
+            </div>
+          ))}
+        </section>
+
+        <section className="pi-detail-summary-group pi-detail-summary-payment pi-detail-summary-divided">
+          <GroupLabel>Payment received</GroupLabel>
+
+          {payment === null ? (
+            <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+          ) : (
+            <>
+              {/* The figure IS the way in. One control carrying the amount, the
+                  total it is measured against and the percentage — so the thing
+                  a reader looks at is the thing they can click, rather than a
+                  "view details" link beside it. */}
+              <button
+                type="button"
+                onClick={onOpenPayments}
+                aria-haspopup="dialog"
+                className="pi-detail-summary-open"
+                title="Show every payment recorded against this PI"
+              >
+                <span style={{
+                  fontSize: '20px', fontWeight: 700, color: colors.primary,
+                  fontVariantNumeric: 'tabular-nums', lineHeight: 1.15,
+                }}>
+                  {payment.received}
+                </span>
+                <span style={{ fontSize: '12px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+                  {payment.ofTotal}
+                </span>
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div className="pi-detail-summary-bar" role="presentation">
+                  <div
+                    className="pi-detail-summary-bar-fill"
+                    style={{ width: `${payment.barPercent}%` }}
+                  />
+                </div>
+                <span style={{
+                  fontSize: '12.5px', fontWeight: 700, color: colors.primary,
+                  fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+                }}>
+                  {payment.percent}
+                </span>
+              </div>
+
+              {/* Money Finance has not decided is NOT in the bar or the
+                  percentage, and saying so is what keeps the two honest. */}
+              {payment.awaitingCount > 0 && (
+                <button type="button" onClick={onOpenPayments} className="pi-detail-summary-awaiting">
+                  {payment.awaitingCount} payment{payment.awaitingCount === 1 ? '' : 's'} awaiting
+                  verification — not counted above
+                </button>
+              )}
+
+              {notice && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px',
+                  padding: '7px 9px', borderRadius: '6px',
+                  background: colors.greenTint, border: '1px solid rgba(69,168,112,0.2)',
+                }}>
+                  <div style={{ fontSize: '11.5px', color: colors.secondary }}>{notice}</div>
+                  <button
+                    type="button" onClick={onDismissNotice} aria-label="Dismiss"
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+                {/* Unchanged gate: canAddPiPayment decides this, exactly as
+                    record_pi_submission_payment() decides it server-side. */}
+                {canAdd && (
+                  <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
+                    Add payment
+                  </button>
+                )}
+                <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
+                  {payment.hasDetail ? 'View payments' : 'Payment details'}
+                </button>
+              </div>
+            </>
+          )}
         </section>
 
       </div>
@@ -260,36 +327,25 @@ export function PiOrderOverview({ billTo, shipTo, dates, snapshot }: {
   )
 }
 
-const SNAPSHOT_LABEL_STYLE: React.CSSProperties = {
-  fontSize: '10px', fontWeight: 600, color: colors.muted,
-  textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px',
+/** A small sentence-case group label. Not uppercase: three shouted words over
+ *  every group was noise on a card meant to be scanned. */
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, marginBottom: '1px' }}>
+      {children}
+    </div>
+  )
 }
 
-/**
- * The verified-payment position, in one block.
- *
- * Three lines at most — what has been verified, what it comes to as a
- * percentage, and where approval stands. Every figure was computed in `numeric`
- * in the database; nothing here calculates money, and nothing here shows a
- * declared advance.
- */
-function PiPaymentPosition({ payment }: { payment: NonNullable<CommercialSnapshot['payment']> }) {
-  const tone = payment.statusTone ? TONE_STYLE[payment.statusTone] : null
-
+/** A fact the PI did not carry, said quietly and never invented. */
+function Absent({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div>
-      <div style={SNAPSHOT_LABEL_STYLE}>{payment.label}</div>
-      <div style={{
-        fontSize: '14px', fontWeight: 700, color: colors.primary,
-        fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
-      }}>
-        {payment.figures}
-      </div>
-      {payment.status && tone && (
-        <div style={{ marginTop: '6px' }}>
-          <PiStatusBadge label={payment.status} tone={tone} />
-        </div>
-      )}
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: '5px',
+      fontSize: '12.5px', color: colors.muted,
+    }}>
+      <span style={{ display: 'flex', flexShrink: 0 }}>{icon}</span>
+      {children}
     </div>
   )
 }

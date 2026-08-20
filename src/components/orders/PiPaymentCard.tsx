@@ -14,19 +14,16 @@
 // Every figure it prints is computed in the database (pi_submission_payment_summary)
 // in numeric. This file formats; it never calculates money.
 
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { colors } from '@/lib/tokens'
-import { PiCard, PiCardHeader } from '@/components/orders/piPreview'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import {
   EMPTY_PI_PAYMENT_FORM,
   PI_PAYMENT_MODES,
   PI_PAYMENT_PROOF_FAILED,
   PI_PAYMENT_RECORDED_BODY,
-  PI_PAYMENT_RECORDED_TITLE,
   canSubmitPiPayment,
   formatMoney,
-  isAwaitingVerification,
   paymentModeLabel,
   piPaymentErrorMessage,
   piPaymentStatusLabel,
@@ -330,83 +327,34 @@ function PositionBand({ position }: { position: keyof typeof PAYMENT_POSITION_LA
 
 // ── The card ──────────────────────────────────────────────────────────────────
 
-export function PiPaymentCard({
-  summary, loading, canAdd, isMobile, todayIso, saving, notice,
-  onAdd, onOpenProof, onDismissNotice,
-}: {
+/**
+ * Everything recorded against this PI, with no card and no chrome of its own.
+ *
+ * WHY THIS IS A BODY RATHER THAN A CARD. It used to be a full card sitting in
+ * the page, below the product table, which meant the page answered "how much has
+ * been paid" twice — once in the summary at the top and again several screens
+ * down. The summary at the top is now the only place that question is answered,
+ * and this is what opens out of it: the same tiles, the same approval position,
+ * the same agreed terms and the same rows, rendered inside the dialog.
+ *
+ * Nothing about the figures changed. Every one is still the database's, and this
+ * file still formats and never calculates.
+ */
+export function PiPaymentDetailBody({ summary, loading, isMobile, onOpenProof }: {
   summary: PiPaymentSummary | null
   loading: boolean
-  canAdd: boolean
   isMobile: boolean
-  todayIso: string
-  saving: boolean
-  notice: string | null
-  onAdd: (form: PiPaymentFormState, proof: File | null) => Promise<string | null>
   onOpenProof: (paymentId: string) => void
-  onDismissNotice: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const tiles = piPaymentTiles(summary)
   const terms = piPaymentTermLines(summary)
   const position = asPaymentPosition(summary?.approval_position)
   const rows = summary?.payments ?? []
-  const waiting = rows.filter(r => r.allocation_status === 'active' && isAwaitingVerification(r.status)).length
-
-  const handleAdd = useCallback(async (form: PiPaymentFormState, proof: File | null) => {
-    const err = await onAdd(form, proof)
-    if (!err) setOpen(false)
-    return err
-  }, [onAdd])
 
   return (
-    <PiCard>
-      <PiCardHeader
-        title="Payments"
-        right={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {waiting > 0 && (
-              <span style={{ fontSize: '11px', color: colors.amber, whiteSpace: 'nowrap' }}>
-                {waiting} awaiting verification
-              </span>
-            )}
-            {canAdd && (
-              <button
-                type="button" onClick={() => setOpen(true)}
-                style={{
-                  padding: '5px 11px', fontSize: '11px', fontWeight: 600, borderRadius: '6px',
-                  border: `1px solid ${colors.borderSoft}`, background: colors.base,
-                  color: colors.primary, cursor: 'pointer', whiteSpace: 'nowrap',
-                }}
-              >
-                Add payment
-              </button>
-            )}
-          </div>
-        }
-      />
-
-      {notice && (
-        <div style={{
-          margin: '12px 20px 0', padding: '8px 10px', borderRadius: '6px',
-          background: colors.greenTint, border: '1px solid rgba(69,168,112,0.2)',
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px',
-        }}>
-          <div style={{ fontSize: '12px', color: colors.secondary }}>
-            <strong style={{ color: colors.primary }}>{PI_PAYMENT_RECORDED_TITLE}.</strong>{' '}
-            {notice}
-          </div>
-          <button
-            type="button" onClick={onDismissNotice}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '14px', lineHeight: 1 }}
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{
-        padding: isMobile ? '14px 16px' : '14px 20px',
+        padding: isMobile ? '0 0 14px' : '0 0 14px',
         display: 'grid',
         gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, minmax(0, 1fr))',
         gap: isMobile ? '12px' : '14px',
@@ -416,23 +364,20 @@ export function PiPaymentCard({
           : tiles.map(t => <Tile key={t.key} label={t.label} value={t.value} hint={t.hint} />)}
       </div>
 
-      {/* WHERE THIS PI STANDS ON APPROVAL, in the card that already holds every
-          figure the answer is made of. A second card would put the question and
-          its answer in two places on one screen.
-
-          The position is the DATABASE'S, resolved in the same order
-          approve_order_submission() resolves it — money first, then the decision
-          that stands in for money, then what is missing. Nothing here re-derives
-          it. */}
-      {position && <PositionBand position={position} />}
+      {/* WHERE THIS PI STANDS ON APPROVAL. The position is the DATABASE'S,
+          resolved in the same order approve_order_submission() resolves it —
+          money first, then the decision that stands in for money, then what is
+          missing. Nothing here re-derives it. */}
+      {position && (
+        <div style={{ marginBottom: '14px' }}>
+          <PositionBand position={position} />
+        </div>
+      )}
 
       {/* The agreed commercial terms, when there are any. Plain text, printed as
           typed: this is not a schedule and nothing here parses it. */}
       {terms.length > 0 && (
-        <div style={{
-          padding: isMobile ? '0 16px 14px' : '0 20px 14px',
-          display: 'flex', flexDirection: 'column', gap: '6px',
-        }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingBottom: '14px' }}>
           {terms.map(t => (
             <div key={t.key} style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
               <div style={{ fontSize: '11px', color: colors.muted }}>{t.label}</div>
@@ -444,7 +389,7 @@ export function PiPaymentCard({
 
       {rows.length === 0 ? (
         <div style={{
-          padding: '16px 20px', fontSize: '12px', color: colors.secondary,
+          padding: '16px 0 4px', fontSize: '12px', color: colors.secondary,
           borderTop: `1px solid ${colors.border}`,
         }}>
           {loading ? 'Loading payments…' : 'No payment has been recorded against this PI yet.'}
@@ -456,16 +401,32 @@ export function PiPaymentCard({
           ))}
         </div>
       )}
+    </div>
+  )
+}
 
-      {open && (
-        <AddPiPaymentModal
-          todayIso={todayIso}
-          saving={saving}
-          onClose={() => setOpen(false)}
-          onSubmit={handleAdd}
-        />
-      )}
-    </PiCard>
+/**
+ * The same detail, in the dialog the rest of the application already uses.
+ *
+ * FinanceModal, not a new drawer: it is what Add payment opens, what the Finance
+ * screens open, and it already locks background scroll and closes on Escape.
+ */
+export function PiPaymentDetailsModal({ summary, loading, isMobile, onOpenProof, onClose }: {
+  summary: PiPaymentSummary | null
+  loading: boolean
+  isMobile: boolean
+  onOpenProof: (paymentId: string) => void
+  onClose: () => void
+}) {
+  return (
+    <FinanceModal title="Payments" onClose={onClose} width="620px">
+      <PiPaymentDetailBody
+        summary={summary}
+        loading={loading}
+        isMobile={isMobile}
+        onOpenProof={onOpenProof}
+      />
+    </FinanceModal>
   )
 }
 

@@ -192,6 +192,16 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   order_confirmation_date: string | null
   dispatch_commitment: string | null
 
+  // How to reach the client, and where the order goes. Parsed into these
+  // columns since 20260908000000 and stored ever since; the detail page only
+  // began READING them when its top summary started answering "who is this and
+  // how do I contact them" in one place.
+  contact_number: string | null
+  bill_to_phone: string | null
+  ship_to_phone: string | null
+  billing_address: string | null
+  shipping_address: string | null
+
   source_workbook_name: string | null
 
   gross_product_amount: number | string | null
@@ -309,6 +319,10 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   'created_by', 'submitted_by', 'assigned_to', 'submitted_at', 'rejected_by', 'rejected_at',
   'creation_date', 'source_created_by', 'bill_to_name', 'ship_to_name',
   'order_confirmation_date', 'dispatch_commitment',
+  // Contact and location, for the top summary. No new column: every one of
+  // these has been written by the save route since the table was created.
+  'contact_number', 'bill_to_phone', 'ship_to_phone',
+  'billing_address', 'shipping_address',
   'source_workbook_name',
   'gross_product_amount', 'discount_amount', 'subtotal_after_discount',
   'fabric_cost', 'fabric_cost_meaning', 'fabric_cost_text',

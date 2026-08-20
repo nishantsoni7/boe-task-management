@@ -374,6 +374,8 @@ describe('the review queue is a section of the drafts list', () => {
     finance_verified_submission_at: null, deletion_claim_token: null,
     creation_date: null, source_created_by: null, bill_to_name: null, ship_to_name: null,
     order_confirmation_date: null, dispatch_commitment: null, source_workbook_name: null,
+    contact_number: null, bill_to_phone: null, ship_to_phone: null,
+    billing_address: null, shipping_address: null,
     gross_product_amount: 0, discount_amount: 0, subtotal_after_discount: null,
     fabric_cost: null, fabric_cost_meaning: 'numeric', fabric_cost_text: null,
     packing_cost: null, packing_cost_meaning: 'numeric', packing_cost_text: null,

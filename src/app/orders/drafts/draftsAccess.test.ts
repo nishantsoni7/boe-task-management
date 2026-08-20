@@ -24,6 +24,7 @@
  *   npx tsx --test src/app/orders/drafts/draftsAccess.test.ts
  */
 
+import { buildDateSummary, telLink } from './[submissionId]/piDetailView'
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -127,6 +128,11 @@ const submission = (over: Partial<PersistedSubmission> = {}): PersistedSubmissio
   ship_to_name: 'Meridian Hotels — Jaipur',
   order_confirmation_date: '2026-08-12',
   dispatch_commitment: '6 weeks from date of confirmation',
+  contact_number: '+91 98200 11111',
+  bill_to_phone: null,
+  ship_to_phone: null,
+  billing_address: '4 Marine Drive\nMumbai 400020',
+  shipping_address: null,
   source_workbook_name: 'PI-Meridian-Aug.xlsx',
   gross_product_amount: 250000,
   discount_amount: 0,
@@ -410,6 +416,10 @@ describe('the detail page renders only what it fetched', () => {
     // control is drawn, and the server re-derives every one of them.
     const PURE_HELPERS = [
       'canAddPiPayment',
+      // A predicate on one status string. It decides whether a row is counted
+      // as awaiting a Finance decision, so the summary can say how many are —
+      // it reads no money and reaches no database.
+      'isAwaitingVerification',
       // Formatters. They turn a `numeric` the database already computed into
       // pixels and can no longer feed a decision — the page uses them for the
       // one verified-payment line the review dialogs and the snapshot share.
@@ -994,13 +1004,13 @@ describe('the page identity is a strip, not a card that repeats the title', () =
       'a fourth restatement of what this record is')
   })
 
-  test('the status badge sits with the identity, above the overview', () => {
+  test('the status badge sits with the identity, above the summary', () => {
     assert.ok(page.includes('<PiIdentityStrip'))
     assert.ok(page.includes('statusLabel={draftStatusLabel(submission.status)}'))
     assert.ok(page.includes('const tone = statusTone(draftStatusTone(submission.status))'),
       'the badge takes the drafts list’s own status vocabulary')
     assert.ok(page.includes('tone={tone}'))
-    assert.ok(page.indexOf('<PiIdentityStrip') < page.indexOf('<PiOrderOverview'))
+    assert.ok(page.indexOf('<PiIdentityStrip') < page.indexOf('<PiSummaryCard'))
   })
 
   test('the strip carries the facts the old metadata band carried', () => {
@@ -1027,81 +1037,81 @@ describe('the page identity is a strip, not a card that repeats the title', () =
   })
 })
 
-describe('the order overview is three sections, not a grid of unrelated facts', () => {
+describe('the top summary answers four questions and repeats none of them', () => {
   const page = read(DETAIL_PAGE)
   const sections = read(DETAIL_SECTIONS)
   const view = read(DETAIL_VIEW)
 
-  test('the three sections are client-and-delivery, timeline, commercial snapshot', () => {
-    for (const label of ['Client &amp; delivery', 'Timeline', 'Commercial snapshot']) {
+  test('three groups: the client, the dates, and what has been paid', () => {
+    for (const label of ['Client', 'Order dates', 'Payment received']) {
       assert.ok(sections.includes(label), `${label} must be one of the three`)
     }
-    assert.equal((sections.match(/<section className="pi-detail-overview-section/g) ?? []).length, 3)
+    assert.equal((sections.match(/<section className="pi-detail-summary-group/g) ?? []).length, 3)
   })
 
-  test('the client is not repeated inside the card that sits under its own title', () => {
-    assert.ok(page.includes("omitDash(headerValue('billTo'))"))
-    assert.ok(page.includes("omitDash(headerValue('shipTo'))"))
-    assert.ok(!page.includes("headerValue('client')"),
-      'Bill to and Ship to carry the destinations the reader actually compares')
-    assert.ok(!page.includes("headerValue('createdBy')"),
-      'and the document author is a fact about the file, stated once on the strip')
+  test('the client name is printed once, and the destinations are not two fields', () => {
+    // Bill to and Ship to carry the same company on most PIs, and the page
+    // title carries it a third time. buildClientSummary resolves one name, one
+    // number and one place, and only names a destination that genuinely differs.
+    assert.ok(page.includes('buildClientSummary({'))
+    assert.ok(!sections.includes('Bill to') && !sections.includes('Ship to'))
+    assert.ok(view.includes('Ships to: '), 'a different destination is labelled, not merged away')
   })
 
-  test('the order dates are still the shared builder’s, in the same words', () => {
-    for (const key of ['created', 'confirmed', 'dispatch']) {
-      assert.ok(page.includes(`headerValue('${key}')`), `${key} must survive the redesign`)
+  test('contact and location come from columns the save route has always written', () => {
+    for (const column of [
+      'contact_number', 'bill_to_phone', 'ship_to_phone', 'billing_address', 'shipping_address',
+    ]) {
+      assert.ok(read(DRAFTS_VIEW).includes(`'${column}'`),
+        `${column} must be selected for the summary to be able to show it`)
+      assert.ok(page.includes(`submission.${column}`), `${column} must reach the card`)
     }
-    assert.ok(page.includes('const headerRows = buildHeaderRows(persistedHeader(submission))'))
-    assert.ok(page.includes("headerRows.find(row => row.key === key)?.value ?? '—'"))
+    // No new column, and no new table: 20260908000000 created all five.
+    assert.ok(read(SUBMISSIONS_MIGRATION).includes('contact_number'))
+    assert.ok(read(SUBMISSIONS_MIGRATION).includes('billing_address'))
   })
 
-  test('a value the PI never gave costs no space at all', () => {
-    // It used to render a muted italic "Not provided" under its label, which was
-    // right while the labels were fixed — and wrong once three of them were
-    // optional and usually absent together. The em dash the shared builder
-    // returns still becomes an honest null; the null is now simply not drawn.
-    assert.ok(view.includes("trimmed === '—'"))
-    assert.ok(!view.includes('Not provided'))
-    assert.ok(!sections.includes('Not provided'))
-    assert.ok(sections.includes('{hasDates && ('), 'an empty section is not rendered')
-    assert.ok(sections.includes('{billTo !== null &&'))
-    assert.ok(sections.includes('{shipTo !== null &&'))
+  test('a phone number is dialable, and an undialable one is not offered as a link', () => {
+    assert.ok(view.includes('telLink'))
+    assert.ok(sections.includes('href={`tel:${client.phone.tel}`}'))
+    assert.deepEqual(telLink('+91 98450 22222'), { label: '+91 98450 22222', tel: '+919845022222' })
+    assert.equal(telLink('12345'), null, 'a fragment is not a phone number')
   })
 
-  test('and the card re-columns around what is left', () => {
-    assert.ok(sections.includes('const groups = 1 + (hasDelivery ? 1 : 0) + (hasDates ? 1 : 0)'))
-    assert.ok(sections.includes('`pi-detail-overview pi-detail-overview-${groups}`'),
-      'so a wide monitor never reserves a column-shaped hole')
+  test('the confirm date is the shared builder’s, and no due date is invented', () => {
+    assert.ok(page.includes("buildDateSummary({ confirmed: omitDash(headerValue('confirmed')) })"),
+      'the same formatted date both PI screens print')
+    // order_submissions has no due-date column. dispatch_commitment is TEXT and
+    // holds prose as often as a date, so nothing here derives one.
+    assert.equal(buildDateSummary({ confirmed: '31 Jan 2026' })[1].value, null)
+    assert.ok(!page.includes("headerValue('dispatch')"),
+      'the prose dispatch commitment is not in the summary')
+    assert.ok(!page.includes("headerValue('created')"), 'and neither is the PI-created date')
   })
 
-  test('the last-saved time is stated once, on the strip and not again', () => {
-    assert.ok(/Last saved/.test(view) === false && /Last saved/.test(sections) === false,
-      'the timeline band carries the ORDER’s dates, not the file’s')
-    assert.ok(view.includes('`Saved ${input.savedAt}`'))
-  })
-
-  test('the commercial snapshot reports VERIFIED PAYMENT, never a declared advance', () => {
-    assert.ok(page.includes('const snapshot = buildCommercialSnapshot({'))
-    assert.ok(page.includes('grandTotal: grandTotalLabel'))
-    // The block is driven by pi_submission_payment_summary()'s answer — the
-    // money that actually arrived — and not by anything the employee declared.
-    assert.ok(page.includes('verifiedAmount: formatMoney(payments.verified_amount)'))
-    assert.ok(page.includes('position: asPaymentPosition(payments.approval_position)'))
-    assert.ok(!/buildCommercialSnapshot\(\{[\s\S]{0,300}?advance,/.test(page),
-      'the declared advance no longer reaches the snapshot')
-    // Not one figure is derived here: every total was computed in `numeric` in
-    // the database and this module only arranges it.
-    for (const arithmetic of ['* 0.4', 'Math.round', '/ 100']) {
-      assert.ok(!view.includes(arithmetic),
-        `${arithmetic} must not appear — this module chooses words, not amounts`)
+  test('what the summary no longer spends space on', () => {
+    for (const gone of ['Commercial snapshot', 'Grand Total', 'pi-detail-overview']) {
+      assert.ok(!sections.includes(gone), `${gone} was removed from the top summary`)
     }
+    assert.ok(!page.includes('buildCommercialSnapshot'),
+      'the standalone grand total existed to be the thing payment is measured against')
+    // The count still reaches the approval rules and the approval dialog, which
+    // are decisions about the record. What it no longer does is open the page.
+    assert.ok(!/buildIdentityFacts\(\{[^}]*productCount/.test(page),
+      'the Products card states its own size on its own header')
   })
 
-  test('the section spends red as an accent, never as a panel', () => {
-    assert.ok(!/background: colors\.redTint/.test(
-      sections.slice(sections.indexOf('PiOrderOverview'), sections.indexOf('PiWorkflowPanel'))),
-      'no tinted band behind the overview fields')
+  test('the payment figures are the database’s, and only the bar width is derived', () => {
+    assert.ok(page.includes('verifiedAmount: formatInr(toNumber(payments.verified_amount))'))
+    assert.ok(page.includes('verifiedPercent: formatPercent(payments.verified_percent)'))
+    assert.ok(page.includes('grandTotal: formatInr(toNumber(payments.grand_total))'))
+    // The single derived quantity is a CSS width, clamped, never shown as a figure.
+    assert.ok(view.includes('Math.max(0, Math.min(100, raw))'))
+  })
+
+  test('the summary is absent, not guessed at, until the position has been read', () => {
+    assert.ok(page.includes('payments === null ? null : buildPaymentSummaryView({'))
+    assert.ok(sections.includes('payment === null ? ('))
   })
 })
 
@@ -1665,8 +1675,10 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     // NULL RATHER THAN A PLACEHOLDER. "Verified payment —" on a record whose
     // summary has not loaded is a permanent block answering a question nobody
     // has asked, and a figure invented to fill it would be worse still.
-    assert.ok(read(DETAIL_VIEW).includes('payment: payment === null ? null : {'))
-    assert.ok(read(DETAIL_PAGE).includes('payment: payments === null ? null : {'))
+    assert.ok(read(DETAIL_VIEW).includes('payment: payment === null ? null : {'),
+      'the submit dialog still withholds a position it has not read')
+    assert.ok(read(DETAIL_PAGE).includes('payments === null ? null : buildPaymentSummaryView({'),
+      'and so does the top summary')
   })
 
   test('the current advance state is stated exactly once on the page', () => {
@@ -1710,29 +1722,29 @@ describe('the advance requirement is shown to everybody and decided by few', () 
       'and on the preview, whose summary is the only advance it states')
   })
 
-  test('the payment card sits above the products, and is drawn exactly once', () => {
-    // Where it is, not what it says. What has been paid, and the control that
-    // records a payment, belong with the decisions at the top of the record —
-    // not below a table somebody has to scroll past to reach them. The card
-    // itself is unchanged: same component, same permission gate, same figures.
-    assert.equal((source.match(/<PiPaymentCard/g) ?? []).length, 1,
-      'one placement, so a reader cannot meet two payment positions on one page')
-    assert.ok(source.indexOf('<PiPaymentCard') > source.indexOf('<PiWorkflowPanel'),
-      'below the page header and the primary actions')
-    assert.ok(source.indexOf('<PiPaymentCard') < source.indexOf('<PiProductTableHead'),
+  test('the payment position is answered once, at the top, and opened from there', () => {
+    // It used to be answered twice — a block in the top overview and a full
+    // card below the product table. One compact summary now, with the records
+    // behind it.
+    assert.equal((source.match(/<PiSummaryCard/g) ?? []).length, 1)
+    assert.ok(!source.includes('<PiPaymentCard'), 'the standalone payments section is gone')
+    assert.ok(source.indexOf('<PiSummaryCard') < source.indexOf('<PiWorkflowPanel'),
+      'immediately below the page header and its actions')
+    assert.ok(source.indexOf('<PiSummaryCard') < source.indexOf('<PiProductTableHead'),
       'and above the first product row')
-    assert.ok(source.indexOf('<PiPaymentCard') < source.indexOf('<PiLowerGrid'),
-      'the commercial breakdown and Activity stay below it')
   })
 
   test('moving the card changed nothing it is gated on', () => {
-    assert.ok(source.includes('canAdd={canAddPiPayment('),
+    assert.ok(source.includes('const canAddPayment = canAddPiPayment('),
       'the same shared rule decides who may record a payment')
     assert.ok(source.includes('isAdmin: false,') && source.includes('canAllocatePayment,'))
-    assert.ok(source.includes('onAdd={recordPayment}'))
-    assert.ok(source.includes('summary={payments}') && source.includes('loading={paymentsLoading}'))
-    assert.ok(source.includes('isMobile={isMobile}'),
-      'and it still takes the phone layout the rest of the page takes')
+    assert.ok(source.includes('canAdd={canAddPayment}'), 'and it is what the summary is given')
+    // The entry form, its RPC and its proof upload are untouched: the dialog is
+    // the same component, opened from a different control.
+    assert.ok(source.includes('<AddPiPaymentModal'))
+    assert.ok(source.includes('const err = await recordPayment(form, proof)'))
+    assert.ok(source.includes("{paymentDialog === 'add' && canAddPayment && ("),
+      'and the gate is re-checked at the point the form is drawn')
   })
 
   test('no Finance or payment table is read by this page', () => {

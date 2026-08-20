@@ -13,8 +13,8 @@
  *
  * The one thing a tree cannot see is CSS `order`, which reorders flex children
  * without touching the markup — and this page uses it deliberately, inside the
- * overview card and inside the lower grid. The last test proves it is not in
- * play on the page stack itself, so DOM order really is screen order.
+ * lower grid. The last test proves it is not in play on the page stack itself,
+ * so DOM order really is screen order.
  *
  * Offline and pure: reads three files, parses them.
  *
@@ -105,13 +105,15 @@ function at(list: Set<string>[], marker: string): number {
 }
 
 describe('the two PI screens put the answer above the product table', () => {
-  test('PI draft detail: Payments sits between the primary actions and the products', () => {
+  test('PI draft detail: the summary is above the actions and the products', () => {
     const s = stackOf('src/app/orders/drafts/[submissionId]/page.tsx',
       byClassName('pi-detail-stack'))
     // Siblings in the page stack: nested into any card, these would not be found.
-    assert.ok(at(s, 'PiWorkflowPanel') < at(s, 'PiPaymentCard'),
-      'the workflow panel carries this page’s primary actions and stays above Payments')
-    assert.ok(at(s, 'PiPaymentCard') < at(s, 'PiProductTableHead'),
+    assert.ok(at(s, 'PiIdentityStrip') < at(s, 'PiSummaryCard'),
+      'the state of the record still reads first')
+    assert.ok(at(s, 'PiSummaryCard') < at(s, 'PiWorkflowPanel'),
+      'who, when and how much paid — above the controls that act on them')
+    assert.ok(at(s, 'PiSummaryCard') < at(s, 'PiProductTableHead'),
       'the money received must not sit below the lines it was received against')
     assert.ok(at(s, 'PiProductTableHead') < at(s, 'PiLowerGrid'),
       'the commercial breakdown and Activity stay below the products')
