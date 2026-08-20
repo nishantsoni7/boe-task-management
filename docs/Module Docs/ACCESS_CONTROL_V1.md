@@ -390,7 +390,8 @@ active admin, or an explicit per-employee grant holder.
 **One new function is worth naming here**, because it reads the permission engine:
 
 ```sql
-public.users_with_module_permission(text, text)  -- SECURITY DEFINER, service_role only
+public.users_with_module_permission(text, text)
+  RETURNS TABLE (user_id uuid)                  -- SECURITY DEFINER, service_role only
 ```
 
 It answers *"who would be allowed to take this module action"* — every active,

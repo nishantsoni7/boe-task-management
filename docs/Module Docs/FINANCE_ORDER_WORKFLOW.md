@@ -1104,6 +1104,60 @@ a failed approval consumes none because the cycle is advanced inside the same
 transaction that rolls back. Cancellation is not implemented in this phase; the
 confirmed decision that a cancelled number cannot be reused is unaffected.
 
+### The lock order, stated once for the whole module
+
+Every writer that touches a PI's or an Order's money takes its locks in this
+order, and multi-row sets in ascending `id`:
+
+```
+orders → order_requests → order_submissions → finance_payment_requests
+       → finance_payment_allocations → order_number_cycle
+```
+
+It is the order `finalize_test_data_cleanup()` (`20260916000000`) already walks
+and the one `reverse_payment_allocation()` (`20260918000000` §12) documents for
+itself. Phase 3 made it true on the one path that had it inverted:
+`allocate_payment_to_target_internal()` locked the payment first and read the PI
+**unlocked**, so an allocation could land on a PI that had just been approved —
+stranding money on a record that no longer counts it. It now locks the PI target
+first. Two concurrent sessions prove both halves: the old order deadlocks, the
+new one does not.
+
+### Exception currentness
+
+An approved exception is an approval of a PARTICULAR PI. The decision now records
+the grand total, the workbook hash and both sets of terms it was taken against
+(`advance_exception_decided_*`), and `order_submission_exception_current()` is the
+one rule that compares them. A replaced workbook, a corrected total or different
+terms make the approval stale, and final approval refuses it by name
+(`ORDER_SUBMISSION_EXCEPTION_STALE`) rather than as "not enough payment" — a
+different person has to do a different thing. The reason is frozen while an
+approval stands, and the recorded basis can only move with the decision itself.
+
+**A pre-Phase-3 approval recorded no basis and is never current.** It was a
+decision about a declared advance, which is a different question from verified
+payment; the migration reports how many PIs that affects rather than backfilling
+one.
+
+### Test Data Cleanup
+
+`resolve_test_data_cleanup_chain()` reaches a payment three ways: the legacy
+order/order-request link, an allocation still naming the PI (its reversed
+history), and an allocation that has MOVED onto the Order. The third branch is
+Phase 3's own — without it a converted test chain hid its payments and the NO
+ACTION foreign key refused the Order delete with a raw constraint error.
+
+### Known inconsistency, NOT fixed here
+
+After the move the parent payment still carries `order_id = NULL` and
+`approved_unlinked`, so Finance's linked/unlinked split — which reads only those
+legacy columns — puts it in **Non-Linked Payments** and the counters over-report.
+It cannot be fixed by linking the payment: `approved_linked` requires
+`order_number`, and on a PI payment that column holds the salesperson's
+reference. See `docs/Module Docs/PAYMENT_PHASE_PROGRESS.md` → *Blocker held for a
+decision* for the two costed options. The PI side, the Order side and the
+allocation trail are all correct; only the Finance classification is wrong.
+
 ### Trails
 
 `allocation_moved` on the payment's Finance trail (server-derived, from the same

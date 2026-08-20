@@ -129,6 +129,12 @@ export type PiPaymentSummary = {
    * showing it. The POSITION above is the answer this card needs.
    */
   exception_status?: string | null
+  /**
+   * Whether an APPROVED exception is still an approval of THIS PI — the same
+   * total, the same workbook and the same agreed terms it was decided against.
+   * False for a decision taken before Phase 3, which recorded no basis.
+   */
+  exception_current?: boolean | null
   exception_reason?: string | null
   exception_rejection_reason?: string | null
   /** The agreed commercial terms, as plain text. Never parsed. */

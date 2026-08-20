@@ -127,6 +127,69 @@ alter table public.order_submissions
   );
 
 -- ═════════════════════════════════════════════════════════════════════════════
+-- §1a. What a reduced-payment approval was actually a decision ABOUT
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- THE DEFECT THIS CLOSES. An approved exception is a decision to start an Order
+-- on less than 40% — taken against a PARTICULAR total, a PARTICULAR document and
+-- PARTICULAR collection terms. Nothing recorded what those were, so an approval
+-- given for "₹1,20,000 against a ₹3,00,000 PI, collected 50% before dispatch"
+-- would still authorise the same PI after its workbook was replaced with a
+-- ₹30,00,000 one. The employee resubmits, and the standing approval carries.
+--
+-- THE SHAPE, TAKEN FROM THE FINANCE CHECK. 20260915000000 §9 solved the same
+-- problem for finance verification by recording what the verification was made
+-- AGAINST (finance_verified_submission_at) and comparing it at approval. These
+-- four columns are that idea for the exception, and the comparison lives in
+-- order_submission_exception_current().
+--
+-- WHY THE WORKBOOK HASH AND NOT A PRODUCT COUNT. Every product line, every
+-- image anchor and every commercial figure on a PI comes from one parsed file.
+-- replace_order_submission_parse rewrites source_workbook_sha256 whenever that
+-- file is replaced, so one column covers "the products changed" and "the figures
+-- changed" together, exactly, with nothing to keep in step.
+--
+-- NULL MEANS "NOT RECORDED", AND THEREFORE NOT CURRENT. A decision taken before
+-- this migration carries no basis, and it was a decision about a DECLARED
+-- ADVANCE rather than about verified payment — a different question. It stays
+-- readable forever, and it authorises nothing until it is taken again. The
+-- assertion block at the foot reports how many records that is, rather than
+-- guessing on the business's behalf by backfilling one.
+
+alter table public.order_submissions
+  add column advance_exception_decided_grand_total    numeric,
+  add column advance_exception_decided_workbook_sha256 text,
+  add column advance_exception_decided_payment_terms  text,
+  add column advance_exception_decided_billing_terms  text;
+
+comment on column public.order_submissions.advance_exception_decided_grand_total is
+  'The grand total the reduced-payment exception was APPROVED against. NULL means no basis was recorded — a pre-Phase-3 decision, which is never current. Also the marker for whether a basis exists at all.';
+comment on column public.order_submissions.advance_exception_decided_workbook_sha256 is
+  'The source workbook hash the reduced-payment exception was APPROVED against. Every product line and every commercial figure comes from that one file, so this covers both together.';
+comment on column public.order_submissions.advance_exception_decided_payment_terms is
+  'The Payment Terms the reduced-payment exception was APPROVED against. Changing them makes the decision stale: the approver agreed to start early on a stated collection arrangement.';
+comment on column public.order_submissions.advance_exception_decided_billing_terms is
+  'The Billing Terms the reduced-payment exception was APPROVED against. Recorded for the same reason as the Payment Terms.';
+
+-- A BASIS BELONGS TO AN APPROVAL AND TO NOTHING ELSE. A pending request has not
+-- been decided; a rejected one sent the PI back and its basis would describe a
+-- record that has since been corrected. So the four columns are permitted only
+-- while the exception stands approved, and they are cleared with it — for every
+-- caller, including the service role.
+--
+-- The grand total is the completeness marker rather than all four, because the
+-- two terms columns are legitimately NULL when nothing was agreed, and a NULL
+-- there must not be indistinguishable from "never stamped".
+alter table public.order_submissions
+  add constraint order_submissions_exception_basis_scope check (
+    advance_exception_status = 'approved'
+    or (advance_exception_decided_grand_total     is null
+        and advance_exception_decided_workbook_sha256 is null
+        and advance_exception_decided_payment_terms  is null
+        and advance_exception_decided_billing_terms  is null)
+  );
+
+-- ═════════════════════════════════════════════════════════════════════════════
 -- §2. The declared advance, renamed in the documentation to what it now is
 -- ═════════════════════════════════════════════════════════════════════════════
 --
@@ -297,9 +360,9 @@ as $$
   select case
     when p_grand_total is null or p_grand_total = 'NaN'::numeric then null
     when p_verified is null or p_verified = 'NaN'::numeric then null
-    else greatest(
+    else round(greatest(
       ceil((public.order_submission_required_payment(p_grand_total) - p_verified) * 100) / 100,
-      0)
+      0), 2)
   end
 $$;
 
@@ -359,6 +422,670 @@ comment on function public.order_submission_payment_ready(numeric, numeric, text
 
 revoke execute on function public.order_submission_payment_ready(numeric, numeric, text) from public, anon;
 grant  execute on function public.order_submission_payment_ready(numeric, numeric, text) to authenticated;
+
+-- ── Whether an APPROVED exception still describes the record in front of us ──
+--
+-- An approved exception permits an Order below 40%. It must therefore be an
+-- approval OF THIS PI — this total, this document, these collection terms — and
+-- not of an earlier one that has since been replaced.
+--
+-- FOUR COMPARISONS, AND WHY EACH ONE:
+--
+--   the grand total   the decision was "start on less than 40% of THAT". A
+--                     different total is a different amount of money at risk.
+--   the workbook hash every product line and every commercial figure comes from
+--                     that one parsed file. If it changed, the order changed.
+--   payment terms     the approver agreed to start early on a stated collection
+--                     arrangement. Rewriting it rewrites what they agreed to.
+--   billing terms     the same, for invoicing.
+--
+-- The REASON is not compared here because it cannot drift: the guard trigger
+-- refuses to change it while the exception stands approved, so the words the
+-- approver read are the words on the record.
+--
+-- `is not distinct from` on the two terms, because NULL is a legitimate value
+-- there — nothing agreed — and `null = null` is not true.
+--
+-- IMMUTABLE and taking its inputs as ARGUMENTS: a definer function holding the
+-- LOCKED row must be able to ask about the row it is holding.
+create or replace function public.order_submission_exception_current(
+  p_status                   text,
+  p_decided_grand_total      numeric,
+  p_grand_total              numeric,
+  p_decided_workbook_sha256  text,
+  p_workbook_sha256          text,
+  p_decided_payment_terms    text,
+  p_payment_terms            text,
+  p_decided_billing_terms    text,
+  p_billing_terms            text
+)
+returns boolean
+language sql
+immutable
+parallel safe
+set search_path = public, pg_temp
+as $$
+  select coalesce(
+    p_status = 'approved'
+    -- NO RECORDED BASIS IS NOT CURRENT. A pre-Phase-3 decision was taken about a
+    -- DECLARED ADVANCE, which is a different question from verified payment, and
+    -- it authorises nothing until it is taken again.
+    and p_decided_grand_total is not null
+    and p_decided_grand_total = p_grand_total
+    and p_decided_workbook_sha256 is not distinct from p_workbook_sha256
+    and p_decided_payment_terms   is not distinct from p_payment_terms
+    and p_decided_billing_terms   is not distinct from p_billing_terms,
+    false
+  )
+$$;
+
+comment on function public.order_submission_exception_current(text, numeric, numeric, text, text, text, text, text, text) is
+  'True only when a reduced-payment exception is APPROVED and was approved against this PI''s current grand total, workbook, Payment Terms and Billing Terms. A decision with no recorded basis — every pre-Phase-3 one — is never current, because it was a decision about a declared advance rather than about verified payment. Authorises nothing by itself.';
+
+revoke execute on function public.order_submission_exception_current(text, numeric, numeric, text, text, text, text, text, text) from public, anon;
+grant  execute on function public.order_submission_exception_current(text, numeric, numeric, text, text, text, text, text, text) to authenticated;
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- §4a. The exception guard, restated: what may move once a decision stands
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- 20260913000000 §5's function, unchanged in every clause it already had, with
+-- TWO added:
+--
+--   1. THE REASON IS FROZEN WHILE THE APPROVAL STANDS. The approver decided
+--      about the words on the record. Rewriting them under a standing approval
+--      would leave the PI claiming management accepted an argument nobody put to
+--      them. Changing the ask means asking again — which the submit door already
+--      does, because a changed reason raises a fresh PENDING request.
+--   2. THE RECORDED BASIS MOVES ONLY WITH A DECISION. The four
+--      advance_exception_decided_* columns say what was approved; a write that
+--      touched them while the decision itself stood still would be forging
+--      currentness. They may change only in the same statement that changes the
+--      exception's status — which is to say, only by deciding, clearing or
+--      re-raising it.
+--
+-- SECURITY DEFINER and executable by no role, exactly as before: reached only as
+-- a trigger, with no exemption for admin, the service role or direct SQL.
+
+create or replace function public.order_submissions_guard_advance_exception()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'INSERT' then
+    -- A submission is created as an empty draft. It has declared nothing, and
+    -- stating that here stops a row being INSERTed with an approved exception
+    -- already on it by anything holding an INSERT privilege.
+    if new.advance_condition is not null or new.advance_exception_status is not null then
+      raise exception
+        'ORDER_SUBMISSION_ADVANCE_INVALID: a submission is created with no advance declaration'
+        using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  -- The declaration itself is the employee's, made at submission time only.
+  if new.advance_condition is distinct from old.advance_condition
+     and not (new.status = 'submitted' and old.status in ('draft', 'needs_changes')) then
+    raise exception
+      'ORDER_SUBMISSION_ADVANCE_INVALID: the advance condition of % is set only by submitting it', old.id
+      using errcode = '42501';
+  end if;
+
+  -- ── NEW: the words under a standing approval do not move ──
+  if old.advance_exception_status = 'approved'
+     and new.advance_exception_status is not distinct from old.advance_exception_status
+     and new.advance_exception_reason is distinct from old.advance_exception_reason
+  then
+    raise exception
+      'ORDER_SUBMISSION_EXCEPTION_REASON_FROZEN: the reason an approved reduced-payment exception was granted for cannot be rewritten. Resubmit to ask again.'
+      using errcode = '42501';
+  end if;
+
+  -- ── NEW: the recorded basis moves only with the decision it describes ──
+  if new.advance_exception_status is not distinct from old.advance_exception_status
+     and (new.advance_exception_decided_grand_total     is distinct from old.advance_exception_decided_grand_total
+       or new.advance_exception_decided_workbook_sha256 is distinct from old.advance_exception_decided_workbook_sha256
+       or new.advance_exception_decided_payment_terms   is distinct from old.advance_exception_decided_payment_terms
+       or new.advance_exception_decided_billing_terms   is distinct from old.advance_exception_decided_billing_terms)
+  then
+    raise exception
+      'ORDER_SUBMISSION_EXCEPTION_BASIS_IMMUTABLE: what a reduced-payment exception was approved against is written by the decision and by nothing else.'
+      using errcode = '42501';
+  end if;
+
+  if new.advance_exception_status is not distinct from old.advance_exception_status then
+    return new;
+  end if;
+
+  if new.advance_exception_status = 'pending' then
+    if new.status <> 'submitted' or old.status not in ('draft', 'needs_changes') then
+      raise exception
+        'ORDER_SUBMISSION_ADVANCE_INVALID: an advance exception is requested only by submitting the PI'
+        using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  if new.advance_exception_status in ('approved', 'rejected') then
+    -- A stale decision, a double click and a decision on a record that has
+    -- already moved on all land here and all fail.
+    if old.advance_exception_status is distinct from 'pending' or old.status <> 'submitted' then
+      raise exception
+        'ORDER_SUBMISSION_ADVANCE_NOT_PENDING: only a pending advance exception on a submitted PI can be decided'
+        using errcode = '42501';
+    end if;
+
+    -- Approving the advance condition is NOT approving the PI. The record stays
+    -- exactly where it was.
+    if new.advance_exception_status = 'approved' and new.status <> 'submitted' then
+      raise exception
+        'ORDER_SUBMISSION_ADVANCE_INVALID: approving an advance exception must leave the PI submitted'
+        using errcode = '42501';
+    end if;
+
+    -- Refusing the proposed advance is not refusing the PI. It goes back for
+    -- correction, in the same statement as the decision or not at all.
+    if new.advance_exception_status = 'rejected' and new.status <> 'needs_changes' then
+      raise exception
+        'ORDER_SUBMISSION_ADVANCE_INVALID: rejecting an advance exception must return the PI for correction'
+        using errcode = '42501';
+    end if;
+
+    return new;
+  end if;
+
+  -- Cleared. That is what choosing the standard requirement on a resubmission
+  -- does, and it is the only thing that may do it: the historical events stay in
+  -- the append-only trail, and only the ACTIONABLE state leaves the row.
+  if new.advance_exception_status is null then
+    if new.advance_condition is distinct from 'standard' or new.status <> 'submitted' then
+      raise exception
+        'ORDER_SUBMISSION_ADVANCE_INVALID: an advance exception is cleared only by resubmitting under the standard requirement'
+        using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  return new;
+end;
+$$;
+
+comment on function public.order_submissions_guard_advance_exception() is
+  'When the advance/reduced-payment exception state may move, for every caller including the service role: the declaration is written only by submitting, a request becomes pending only as the PI is submitted, only a pending request on a submitted PI can be decided, approval leaves the PI submitted, rejection returns it for correction, the exception clears only by resubmitting under the standard requirement, the REASON is frozen while an approval stands, and the recorded decision basis moves only with the decision itself.';
+
+revoke execute on function public.order_submissions_guard_advance_exception()
+  from public, anon, authenticated, service_role;
+
+-- The trigger is NOT recreated: 20260913000000 §5 installed
+-- order_submissions_guard_advance_exception with this function, and the name
+-- order matters (it sorts after the status-transition guard, so an illegal
+-- status move is refused before this runs). CREATE OR REPLACE FUNCTION keeps
+-- that wiring exactly as applied.
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- §4b. The two decisions, restated to record what they decided ABOUT
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- 20260913000000 §9a and §9b, unchanged in authority, in status handling, in
+-- error text and in what they log. The ONLY difference is that an approval now
+-- stamps the four basis columns, and a rejection clears them — because a refused
+-- exception describes a record that is about to be corrected.
+--
+-- THE AUTHORITY IS NOT TOUCHED. Both still require orders.approve_advance_exception,
+-- which no preset grants and which an active admin holds through the established
+-- bypass in actor_has_module_permission. Neither reads or writes the payment
+-- ledger, and the assertion block at the foot proves it.
+
+create or replace function public.approve_pi_advance_exception(p_submission_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor uuid := public.assert_order_submission_actor();
+  v_sub   public.order_submissions%rowtype;
+begin
+  -- NOT orders.approve_order. Holding that alone is deliberately not enough.
+  if not public.actor_has_module_permission('orders', 'approve_advance_exception') then
+    raise exception 'You do not have permission to decide advance exceptions'
+      using errcode = '42501';
+  end if;
+
+  select * into v_sub
+  from public.order_submissions
+  where id = p_submission_id
+  for update;
+
+  if not found then
+    raise exception 'Order submission % not found', p_submission_id using errcode = 'P0002';
+  end if;
+
+  if v_sub.status <> 'submitted' then
+    raise exception
+      'ORDER_SUBMISSION_NOT_UNDER_REVIEW: only a submitted PI can have its advance exception decided (this one is %)',
+      v_sub.status
+      using errcode = 'P0001';
+  end if;
+
+  if v_sub.advance_condition is distinct from 'exception'
+     or v_sub.advance_exception_status is distinct from 'pending' then
+    raise exception
+      'ORDER_SUBMISSION_ADVANCE_NOT_PENDING: this PI has no advance exception waiting for a decision'
+      using errcode = 'P0001';
+  end if;
+
+  -- THE PI STAYS SUBMITTED. Accepting the reduced-payment condition is not
+  -- accepting the PI: it makes the condition eligible for final approval and does
+  -- nothing else. It records no payment and verifies none.
+  --
+  -- THE BASIS IS STAMPED FROM THE LOCKED ROW, never from anything a caller sent:
+  -- this decision is about THIS total, THIS document and THESE terms, and
+  -- order_submission_exception_current() will refuse it the moment any of them
+  -- moves.
+  update public.order_submissions
+     set advance_exception_status = 'approved',
+         advance_exception_decided_by = v_actor,
+         advance_exception_decided_at = now(),
+         advance_exception_rejection_reason = null,
+         advance_exception_decided_grand_total     = v_sub.grand_total,
+         advance_exception_decided_workbook_sha256 = v_sub.source_workbook_sha256,
+         advance_exception_decided_payment_terms   = v_sub.payment_terms,
+         advance_exception_decided_billing_terms   = v_sub.billing_terms
+   where id = p_submission_id;
+
+  perform public.log_order_submission_activity(
+    p_submission_id, v_actor, 'advance_exception_approved', 'submitted', 'submitted', null,
+    jsonb_build_object(
+      'advance_condition', 'exception',
+      'advance_percent',   v_sub.advance_exception_percent,
+      'standard_percent',  public.order_submission_standard_advance_percent(),
+      'grand_total',       v_sub.grand_total,
+      'advance_amount',    public.order_submission_advance_amount(
+                             v_sub.grand_total, v_sub.advance_exception_percent),
+      'exception_status',  'approved',
+      'payment_terms',     v_sub.payment_terms,
+      'billing_terms',     v_sub.billing_terms,
+      'workbook_sha256',   v_sub.source_workbook_sha256
+    )
+  );
+
+  return jsonb_build_object(
+    'id', p_submission_id,
+    'status', 'submitted',
+    'advance_exception_status', 'approved'
+  );
+end;
+$$;
+
+revoke execute on function public.approve_pi_advance_exception(uuid) from public, anon;
+grant  execute on function public.approve_pi_advance_exception(uuid) to authenticated;
+
+comment on function public.approve_pi_advance_exception(uuid) is
+  'Accepts a pending reduced-payment exception on a submitted PI, for a caller holding orders.approve_advance_exception, and records the grand total, workbook, Payment Terms and Billing Terms it was decided against. The PI stays submitted: this approves the commercial condition only, never the PI, and creates and verifies no payment. The approval stops being current the moment any of that basis changes.';
+
+create or replace function public.reject_pi_advance_exception(
+  p_submission_id uuid,
+  p_reason        text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor  uuid := public.assert_order_submission_actor();
+  v_sub    public.order_submissions%rowtype;
+  v_reason text := nullif(btrim(coalesce(p_reason, '')), '');
+begin
+  if not public.actor_has_module_permission('orders', 'approve_advance_exception') then
+    raise exception 'You do not have permission to decide advance exceptions'
+      using errcode = '42501';
+  end if;
+
+  if v_reason is null then
+    raise exception
+      'ORDER_SUBMISSION_ADVANCE_DECISION_REASON_REQUIRED: say why the proposed advance is being refused'
+      using errcode = 'P0001';
+  end if;
+
+  if char_length(v_reason) > 1000 then
+    raise exception
+      'ORDER_SUBMISSION_ADVANCE_REASON_TOO_LONG: a reason may be at most 1000 characters (this one is %)',
+      char_length(v_reason)
+      using errcode = 'P0001';
+  end if;
+
+  select * into v_sub
+  from public.order_submissions
+  where id = p_submission_id
+  for update;
+
+  if not found then
+    raise exception 'Order submission % not found', p_submission_id using errcode = 'P0002';
+  end if;
+
+  if v_sub.status <> 'submitted' then
+    raise exception
+      'ORDER_SUBMISSION_NOT_UNDER_REVIEW: only a submitted PI can have its advance exception decided (this one is %)',
+      v_sub.status
+      using errcode = 'P0001';
+  end if;
+
+  if v_sub.advance_condition is distinct from 'exception'
+     or v_sub.advance_exception_status is distinct from 'pending' then
+    raise exception
+      'ORDER_SUBMISSION_ADVANCE_NOT_PENDING: this PI has no advance exception waiting for a decision'
+      using errcode = 'P0001';
+  end if;
+
+  -- ONE STATEMENT: the refusal, the reason and the PI's return happen together
+  -- or not at all. The basis columns are cleared with it — a refused exception
+  -- describes a record that is about to be corrected, so there is nothing left
+  -- for it to have been a decision about.
+  update public.order_submissions
+     set advance_exception_status = 'rejected',
+         advance_exception_decided_by = v_actor,
+         advance_exception_decided_at = now(),
+         advance_exception_rejection_reason = v_reason,
+         advance_exception_decided_grand_total     = null,
+         advance_exception_decided_workbook_sha256 = null,
+         advance_exception_decided_payment_terms   = null,
+         advance_exception_decided_billing_terms   = null,
+         status = 'needs_changes',
+         review_note = v_reason
+   where id = p_submission_id;
+
+  -- ONE EVENT FOR ONE ACTION. No 'changes_requested' row is written beside this:
+  -- the previous and new status on this row already say the PI was returned, and
+  -- two entries would read as two separate management decisions.
+  perform public.log_order_submission_activity(
+    p_submission_id, v_actor, 'advance_exception_rejected', 'submitted', 'needs_changes', v_reason,
+    jsonb_build_object(
+      'advance_condition', 'exception',
+      'advance_percent',   v_sub.advance_exception_percent,
+      'standard_percent',  public.order_submission_standard_advance_percent(),
+      'grand_total',       v_sub.grand_total,
+      'advance_amount',    public.order_submission_advance_amount(
+                             v_sub.grand_total, v_sub.advance_exception_percent),
+      'exception_status',  'rejected',
+      'pi_returned',       true
+    )
+  );
+
+  return jsonb_build_object(
+    'id', p_submission_id,
+    'status', 'needs_changes',
+    'advance_exception_status', 'rejected'
+  );
+end;
+$$;
+
+revoke execute on function public.reject_pi_advance_exception(uuid, text) from public, anon;
+grant  execute on function public.reject_pi_advance_exception(uuid, text) to authenticated;
+
+comment on function public.reject_pi_advance_exception(uuid, text) is
+  'Refuses a pending reduced-payment exception on a submitted PI and returns the PI for correction, in one atomic write, for a caller holding orders.approve_advance_exception. The reason is mandatory and becomes the visible correction instruction; any recorded decision basis is cleared with it. The PI itself is not rejected.';
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- §4c. One lock order, and the race it closes
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- THE DEFECT. approve_order_submission() holds the PI submission FOR UPDATE from
+-- its first statement, and every other writer that touches a PI's money takes
+-- that lock too — record_pi_submission_payment() (20260919000000 §2) locks the
+-- submission before it creates anything. One did not:
+-- allocate_payment_to_target_internal() locks the PAYMENT first and then reads
+-- the submission WITHOUT a lock, purely to check that it is eligible.
+--
+-- So a Finance allocator naming this PI could read `status = 'submitted'`, be
+-- descheduled, and INSERT its allocation after the approval had committed. The
+-- allocation lands ACTIVE, pointing at a PI that is now an Order — money the
+-- Order will never see, on a record that no longer counts it. The approval
+-- cannot notice: in READ COMMITTED the other transaction's row is not yet
+-- visible when step 14a runs its UPDATE.
+--
+-- THE FIX IS THE LOCK ORDER, NOT A RE-CHECK. A re-check after the move would
+-- read the same invisible row. What closes it is taking the submission's lock
+-- before the payment's, so the allocator either wins the race and the approval
+-- waits for it, or loses and re-reads a PI that says 'approved' and is refused
+-- by the eligibility check that was already there.
+--
+-- THE PROJECT-WIDE ORDER, now true on every path that touches these tables:
+--
+--   orders → order_requests → order_submissions → finance_payment_requests
+--          → finance_payment_allocations → order_number_cycle
+--
+-- with multi-row sets locked in ascending id. It is the order
+-- finalize_test_data_cleanup() (20260916000000) already walks, and the order
+-- reverse_payment_allocation() (20260918000000 §12) documents for itself.
+--
+-- WHAT THIS RESTATEMENT CHANGES, EXACTLY. The target-resolution block moves
+-- ahead of the payment lock and takes `for update` on a PI-submission target.
+-- Every check, every message, every errcode and the returned shape are
+-- unchanged. One consequence is visible and is stated rather than hidden: a call
+-- naming BOTH an unreadable target and a missing payment now reports the target
+-- first. Neither refusal tells a caller anything the other did not.
+--
+-- The Confirmed-Order branch keeps its unlocked read: an Order does not change
+-- into something else, nothing in this phase re-points an Order's allocations,
+-- and locking `orders` after the payment would be the inversion this section
+-- exists to remove.
+
+CREATE OR REPLACE FUNCTION public.allocate_payment_to_target_internal(p_payment_request_id uuid, p_order_submission_id uuid DEFAULT NULL::uuid, p_order_id uuid DEFAULT NULL::uuid, p_allocated_amount numeric DEFAULT NULL::numeric)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+declare
+  v_actor       uuid := auth.uid();
+  v_pay         public.finance_payment_requests%rowtype;
+  v_sub         public.order_submissions%rowtype;
+  v_ord         public.orders%rowtype;
+  v_finance_all boolean;
+  v_allocated   numeric;
+  v_available   numeric;
+  v_origin      text;
+  v_target_id   uuid;
+  v_id          uuid;
+begin
+  -- ── 1. Actor and permission, before anything is read ──
+  if v_actor is null then
+    raise exception 'Authentication required to allocate a payment' using errcode = '28000';
+  end if;
+
+  -- ── 2. The request's own shape, before any lock is taken ──
+  if num_nonnulls(p_order_submission_id, p_order_id) <> 1 then
+    raise exception
+      'ALLOCATION_TARGET_REQUIRED: name exactly one target — a PI submission or a Confirmed Order.'
+      using errcode = 'P0001';
+  end if;
+
+  if p_allocated_amount is null
+     or p_allocated_amount = 'NaN'::numeric
+     or p_allocated_amount <= 0
+     or p_allocated_amount <> round(p_allocated_amount, 2)
+  then
+    raise exception
+      'ALLOCATION_AMOUNT_INVALID: an allocation must be a positive amount in rupees and paise.'
+      using errcode = 'P0001';
+  end if;
+
+  v_finance_all := public.actor_has_module_permission('finance', 'view_all');
+
+  -- ── 3. THE TARGET, AND ITS LOCK — before the payment's, always ──
+  --
+  -- A PI SUBMISSION IS LOCKED. It is the record whose eligibility is being
+  -- judged, and holding it is what makes that judgement still true at COMMIT:
+  -- an approval in flight either has this lock and this call waits for it, or
+  -- waits for this call and then sees the allocation it created.
+  if p_order_submission_id is not null then
+    select * into v_sub
+    from public.order_submissions
+    where id = p_order_submission_id
+    for update;
+
+    -- Not found, deleted, and not visible are reported identically on purpose: a
+    -- caller must never learn that a record they have no access to exists.
+    if not found
+       or not (v_finance_all or public.can_view_order_submission(p_order_submission_id))
+    then
+      raise exception
+        'ALLOCATION_TARGET_NOT_AVAILABLE: the selected PI submission is not available.'
+        using errcode = '42501';
+    end if;
+
+    -- A reservation freezes the record for everybody, exactly as it does for
+    -- approval (20260915000000 §12 step 4).
+    if v_sub.deletion_claim_token is not null then
+      raise exception
+        'ALLOCATION_TARGET_CLAIMED: this PI is reserved for deletion and cannot receive an allocation.'
+        using errcode = '55P03';
+    end if;
+
+    -- An approved PI has become an Order; the money belongs to the Order. Same
+    -- rule, and the same refusal shape, that finance_payment_requests_derive_target
+    -- applies to a converted Order Request. Judged under the lock above, so an
+    -- approval committing in the same instant is seen rather than raced.
+    if v_sub.status = 'approved' or v_sub.order_id is not null then
+      raise exception
+        'ALLOCATION_TARGET_CONVERTED: this PI has been approved and is now an Order. Allocate to the Order instead.'
+        using errcode = 'P0001';
+    end if;
+
+    if v_sub.status = 'rejected' then
+      raise exception
+        'ALLOCATION_TARGET_NOT_ACTIVE: a rejected PI cannot receive an allocation.'
+        using errcode = 'P0001';
+    end if;
+
+    v_origin    := 'order_submission';
+    v_target_id := p_order_submission_id;
+
+  else
+    select * into v_ord
+    from public.orders
+    where id = p_order_id;
+
+    if not found
+       or not (
+         v_finance_all
+         or v_ord.requested_by = v_actor
+         or v_ord.assigned_to  = v_actor
+         or public.actor_has_module_permission('orders', 'view_all')
+         or exists (
+           select 1 from public.users u
+           where u.id = v_actor
+             and u.is_active
+             and coalesce(u.is_deleted, false) = false
+             and (u.role = 'admin' or u.team = 'operations')
+         )
+       )
+    then
+      raise exception
+        'ALLOCATION_TARGET_NOT_AVAILABLE: the selected Order is not available.'
+        using errcode = '42501';
+    end if;
+
+    -- Mirrors the cancelled-order refusal the deployed link RPCs already make.
+    if v_ord.status = 'cancelled' then
+      raise exception
+        'ALLOCATION_TARGET_NOT_ACTIVE: Order % is cancelled and cannot receive an allocation.',
+        v_ord.display_number
+        using errcode = 'P0001';
+    end if;
+
+    v_origin    := 'confirmed_order';
+    v_target_id := p_order_id;
+  end if;
+
+  -- ── 4. THE PAYMENT LOCK. Taken after the target's and before the payment's
+  --      state is judged, and held for the rest of the transaction, so the
+  --      balance computed below is the balance that will still be true at
+  --      COMMIT. Same lock the capacity trigger takes.
+  select * into v_pay
+  from public.finance_payment_requests
+  where id = p_payment_request_id
+  for update;
+
+  if not found then
+    raise exception 'PAYMENT_NOT_FOUND: payment request % not found', p_payment_request_id
+      using errcode = 'P0002';
+  end if;
+
+  -- Rejected money is refused, and only for NEW allocations. Existing ones stay.
+  if v_pay.status = 'rejected' then
+    raise exception
+      'PAYMENT_REJECTED: payment % was rejected and cannot receive a new allocation. Reapply it first.',
+      v_pay.request_number
+      using errcode = 'P0001';
+  end if;
+
+  -- ── 5. One active claim per payment per target ──
+  -- The partial unique indexes are the guarantee; this is the readable refusal.
+  if exists (
+    select 1 from public.finance_payment_allocations a
+    where a.payment_request_id = p_payment_request_id
+      and a.status = 'active'
+      and (a.order_submission_id = p_order_submission_id or a.order_id = p_order_id)
+  ) then
+    raise exception
+      'ALLOCATION_DUPLICATE: payment % is already allocated to this target. Reverse that allocation before creating another.',
+      v_pay.request_number
+      using errcode = 'P0001';
+  end if;
+
+  -- ── 6. The derived balance, under the lock ──
+  select coalesce(sum(a.allocated_amount), 0) into v_allocated
+  from public.finance_payment_allocations a
+  where a.payment_request_id = p_payment_request_id
+    and a.status = 'active';
+
+  v_available := v_pay.amount - v_allocated;
+
+  if p_allocated_amount > v_available then
+    raise exception
+      'ALLOCATION_EXCEEDS_PAYMENT: payment % has % unallocated; % cannot be allocated.',
+      v_pay.request_number, v_available, p_allocated_amount
+      using errcode = 'P0001';
+  end if;
+
+  -- ── 7. Write. created_by is auth.uid() and origin is derived — neither can be
+  --      supplied by the caller. The capacity trigger re-checks under the same
+  --      lock, and the activity trigger writes the trail.
+  insert into public.finance_payment_allocations (
+    payment_request_id, order_submission_id, order_id,
+    allocated_amount, status, origin_target_type, created_by
+  )
+  values (
+    p_payment_request_id, p_order_submission_id, p_order_id,
+    p_allocated_amount, 'active', v_origin, v_actor
+  )
+  returning id into v_id;
+
+  -- ── 8. Identifiers and figures the caller already holds ──
+  return jsonb_build_object(
+    'allocation_id',        v_id,
+    'payment_request_id',   p_payment_request_id,
+    'request_number',       v_pay.request_number,
+    'target_type',          v_origin,
+    'target_id',            v_target_id,
+    'allocated_amount',     p_allocated_amount,
+    'payment_amount',       v_pay.amount,
+    'unallocated_balance',  v_available - p_allocated_amount
+  );
+end;
+$function$;
+
+revoke execute on function public.allocate_payment_to_target_internal(uuid, uuid, uuid, numeric)
+  from public, anon, authenticated;
+
+comment on function public.allocate_payment_to_target_internal(uuid, uuid, uuid, numeric) is
+  'The single implementation of allocating part or all of one payment to one target. Locks the TARGET first and the payment second — the project-wide order — so an allocation to a PI cannot race that PI''s approval. Authorization belongs to its two doors; this decides eligibility, capacity and provenance. Executable by no client role.';
 
 -- ═════════════════════════════════════════════════════════════════════════════
 -- §5. The one move an allocation may now make
@@ -773,8 +1500,10 @@ declare
   v_required     numeric;
   v_shortfall    numeric;
   v_route        text;
+  v_exception_current boolean;
   v_moved_count  integer := 0;
   v_moved_amount numeric := 0;
+  v_stranded     integer;
 begin
   -- ── 1. Authorization, server-side, before anything is read ──
   if not public.actor_has_module_permission('orders', 'approve_order') then
@@ -877,9 +1606,23 @@ begin
   -- WHICH ROUTE, decided in the order the business decides it: money first, then
   -- the decision that stands in for money. A PI that meets the requirement needs
   -- no exception even if it once asked for one.
+  --
+  -- AN APPROVED EXCEPTION MUST STILL BE AN APPROVAL OF *THIS* PI. The decision
+  -- was taken against a grand total, a workbook and a set of collection terms;
+  -- if any of them has moved since, the approver agreed to something else.
+  -- order_submission_exception_current() is the whole rule, and a decision with
+  -- no recorded basis — every pre-Phase-3 one — is never current, because it was
+  -- a decision about a declared advance rather than about verified payment.
+  v_exception_current := public.order_submission_exception_current(
+    v_sub.advance_exception_status,
+    v_sub.advance_exception_decided_grand_total,     v_sub.grand_total,
+    v_sub.advance_exception_decided_workbook_sha256, v_sub.source_workbook_sha256,
+    v_sub.advance_exception_decided_payment_terms,   v_sub.payment_terms,
+    v_sub.advance_exception_decided_billing_terms,   v_sub.billing_terms);
+
   if v_verified >= v_required then
     v_route := 'standard';
-  elsif v_sub.advance_exception_status = 'approved' then
+  elsif v_exception_current then
     v_route := 'exception';
   else
     v_route := null;
@@ -898,6 +1641,15 @@ begin
     if v_sub.advance_exception_status = 'rejected' then
       raise exception
         'ORDER_SUBMISSION_EXCEPTION_REJECTED: The reduced-payment exception was rejected. Update the PI before resubmitting.'
+        using errcode = 'P0001';
+    end if;
+
+    -- APPROVED, BUT NOT OF THIS PI. Said in its own words, because "not enough
+    -- payment" would send the salesperson to collect money when what is actually
+    -- needed is for the approver to look again.
+    if v_sub.advance_exception_status = 'approved' then
+      raise exception
+        'ORDER_SUBMISSION_EXCEPTION_STALE: The reduced-payment approval was given for different commercial terms and must be approved again.'
         using errcode = 'P0001';
     end if;
 
@@ -1088,6 +1840,23 @@ begin
     into v_moved_count, v_moved_amount
   from moved;
 
+  -- NOTHING MAY BE LEFT BEHIND. §4c's lock order is what guarantees it: every
+  -- writer that can create an allocation against this PI takes the submission
+  -- lock we have held since step 2, so none can have landed since. This is the
+  -- proof rather than the mechanism — if the guarantee ever stopped holding, an
+  -- Order would be created with money stranded on a PI that no longer counts it,
+  -- and that must be a loud refusal rather than a silent loss.
+  select count(*) into v_stranded
+  from public.finance_payment_allocations
+  where order_submission_id = p_submission_id and status = 'active';
+
+  if v_stranded > 0 then
+    raise exception
+      'ORDER_SUBMISSION_ALLOCATION_NOT_MOVED: % allocation(s) still name this PI after conversion; no Order may be created over stranded money',
+      v_stranded
+      using errcode = 'P0001';
+  end if;
+
   -- ── 15. Both trails ──
   --
   -- The approval event now records WHY it was allowed. Not a separate event: the
@@ -1153,6 +1922,301 @@ revoke execute on function public.approve_order_submission(uuid) from public, an
 grant  execute on function public.approve_order_submission(uuid) to authenticated;
 
 -- ═════════════════════════════════════════════════════════════════════════════
+-- §7a. Test Data Cleanup follows the money across the move
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- THE REGRESSION THIS CLOSES, AND IT IS THIS PHASE'S OWN. 20260919000000 §7 had
+-- to teach the cleanup chain about payments that reach a record ONLY through an
+-- allocation, because a PI payment carries no order_id and its NO ACTION foreign
+-- key would otherwise refuse the delete with a raw constraint error rather than
+-- a readable refusal. It found them with:
+--
+--     where a.order_submission_id = v_submission_id
+--
+-- Phase 3 moves exactly those allocations onto the Order, clearing
+-- order_submission_id. The parent payment still carries no order_id — that is
+-- the whole point, its proof and its reference stay untouched — so after a
+-- conversion a test chain's payments are invisible to BOTH sweeps, and the
+-- failure 20260919000000 fixed comes straight back on the other side of the
+-- move.
+--
+-- ONE UNION BRANCH CLOSES IT, and the two are complementary rather than
+-- alternatives: the applied branch finds the REVERSED allocations that stay with
+-- the PI as its history, and the new one finds the ACTIVE ones that moved onto
+-- the Order. Everything downstream — the delete list, the blocking list, the
+-- eligibility test, the counts and the proof storage paths — reads v_payments,
+-- so all of them pick it up without being restated.
+--
+-- Nothing else in the function changes: not the root resolution, not the
+-- eligibility rules, not the retain/block lists, not one message.
+
+CREATE OR REPLACE FUNCTION public.resolve_test_data_cleanup_chain(p_root_type text, p_root_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_order_id      uuid;
+  v_request_id    uuid;
+  v_submission_id uuid;
+  v_sub_order_id  uuid;
+  v_sub_status    text;
+  v_payments      uuid[] := '{}';
+  v_root_num      text;
+  v_delete        jsonb := '[]'::jsonb;
+  v_retain        jsonb := '[]'::jsonb;
+  v_block         jsonb := '[]'::jsonb;
+  v_paths         jsonb := '[]'::jsonb;
+  v_prefix        text;
+  v_order_is_test boolean;
+  v_counts        jsonb;
+begin
+  if p_root_type not in ('order', 'order_request', 'payment') then
+    raise exception 'CLEANUP_ROOT_TYPE_INVALID: Unknown record type %', p_root_type
+      using errcode = 'P0001';
+  end if;
+
+  if p_root_type = 'order' then
+    select o.id, o.source_order_request_id, o.display_number
+      into v_order_id, v_request_id, v_root_num
+    from public.orders o where o.id = p_root_id;
+
+  elsif p_root_type = 'order_request' then
+    select r.id, r.converted_order_id, r.request_number
+      into v_request_id, v_order_id, v_root_num
+    from public.order_requests r where r.id = p_root_id;
+
+  else
+    select f.request_number into v_root_num
+    from public.finance_payment_requests f where f.id = p_root_id;
+
+    if v_root_num is not null then
+      v_payments := array[p_root_id];
+    end if;
+  end if;
+
+  if v_root_num is null then
+    raise exception 'CLEANUP_ROOT_NOT_FOUND: That record no longer exists'
+      using errcode = 'P0002';
+  end if;
+
+  if p_root_type in ('order', 'order_request') then
+    select coalesce(array_agg(f.id), '{}')
+      into v_payments
+    from public.finance_payment_requests f
+    where (v_order_id   is not null and f.order_id         = v_order_id)
+       or (v_request_id is not null and f.order_request_id = v_request_id);
+  end if;
+
+  -- ── The PI this Order came from ───────────────────────────────────────────
+  -- Read from the ORDER. An Order created by converting an Order Request carries
+  -- no PI and this resolves to null, which is the honest answer.
+  if v_order_id is not null then
+    select o.source_order_submission_id, o.is_test_data
+      into v_submission_id, v_order_is_test
+    from public.orders o where o.id = v_order_id;
+  end if;
+
+  if v_submission_id is not null then
+    select s.order_id, s.status
+      into v_sub_order_id, v_sub_status
+    from public.order_submissions s where s.id = v_submission_id;
+
+    -- ── PHASE 2: payments that reach this chain ONLY through an allocation ──
+    --
+    -- The sweep above finds payments by f.order_id / f.order_request_id, which
+    -- was complete while every allocation belonged to an already-linked payment.
+    -- Phase 2 lets a payment be recorded against a PI and allocated to it
+    -- WITHOUT ever being linked, so such a payment is invisible to that sweep —
+    -- and its NO ACTION foreign key would then refuse the PI delete with a raw
+    -- constraint error instead of a readable "not eligible".
+    --
+    -- SCOPED TO THIS CHAIN'S PI, and to nothing else. A payment allocated to a
+    -- different PI, to an Order outside this chain, or to nothing at all is not
+    -- reached. It is a UNION with the existing array, so a payment found both
+    -- ways is claimed once.
+    --
+    -- Every downstream consumer picks this up for free, which is the point of
+    -- adding it here rather than in the executor: the delete/blocking lists, the
+    -- eligibility test, the counts, and storage_paths all read v_payments.
+    select coalesce(array_agg(distinct p_id), '{}')
+      into v_payments
+    from (
+      select unnest(v_payments) as p_id
+      union
+      select a.payment_request_id
+      from public.finance_payment_allocations a
+      where a.order_submission_id = v_submission_id
+      union
+      -- ── PHASE 3: the same payments, after their allocation MOVED ──
+      --
+      -- Approving a PI re-points its ACTIVE allocations from order_submission_id
+      -- onto order_id, and deliberately does not touch the parent payment — its
+      -- proof, its verification, its Finance history and the reference the
+      -- salesperson typed all stay where they are, which means it still carries
+      -- no order_id.
+      --
+      -- So after conversion a chain's payments are invisible to BOTH sweeps
+      -- above: the f.order_id one never saw them, and the branch above no longer
+      -- does. Without this the NO ACTION foreign key would refuse the Order
+      -- delete with a raw constraint error — exactly the failure the Phase 2
+      -- branch was added to prevent, reappearing one phase later on the other
+      -- side of the move.
+      --
+      -- The two allocation branches are complementary and both are needed: this
+      -- one finds what moved, the one above finds the REVERSED allocations that
+      -- stay with the PI as its history.
+      select a.payment_request_id
+      from public.finance_payment_allocations a
+      where a.order_id is not null
+        and (a.order_id = v_order_id or a.order_id = v_sub_order_id)
+    ) merged;
+
+    v_prefix := 'submissions/' || v_submission_id::text || '/';
+  end if;
+
+  select coalesce(jsonb_agg(x order by x->>'type', x->>'number'), '[]'::jsonb)
+    into v_delete
+  from (
+    select jsonb_build_object(
+             'type', 'order', 'id', o.id, 'number', o.display_number,
+             'status', o.status, 'label', o.client_name, 'is_test_data', o.is_test_data) as x
+    from public.orders o where o.id = v_order_id
+    union all
+    select jsonb_build_object(
+             'type', 'order_request', 'id', r.id, 'number', r.request_number,
+             'status', r.status, 'label', r.client_name, 'is_test_data', r.is_test_data)
+    from public.order_requests r where r.id = v_request_id
+    union all
+    select jsonb_build_object(
+             'type', 'payment', 'id', f.id, 'number', f.request_number,
+             'status', f.status, 'label', f.client_name, 'amount', f.amount,
+             'is_test_data', f.is_test_data)
+    from public.finance_payment_requests f where f.id = any(v_payments)
+    union all
+    -- THE PI. order_submissions has NO is_test_data column and deliberately does
+    -- not gain one: an approved PI's only reason to exist is the Order it
+    -- produced, the link is one-to-one in both directions and immutable, so the
+    -- classification is INHERITED — and is only trustworthy because the pair is
+    -- verified immediately below.
+    select jsonb_build_object(
+             'type', 'order_submission', 'id', s.id, 'number', null,
+             'status', s.status, 'label', s.client_name,
+             'is_test_data', coalesce(v_order_is_test, false),
+             'storage_prefix', v_prefix)
+    from public.order_submissions s where s.id = v_submission_id
+  ) t;
+
+  select coalesce(jsonb_agg(x), '[]'::jsonb)
+    into v_block
+  from jsonb_array_elements(v_delete) x
+  where not (x->>'is_test_data')::boolean;
+
+  -- ── The provenance pair must name each other ──────────────────────────────
+  if v_submission_id is not null and v_sub_order_id is null then
+    v_block := v_block || jsonb_build_array(jsonb_build_object(
+      'type', 'order_submission', 'id', v_submission_id,
+      'number', null, 'status', coalesce(v_sub_status, 'missing'),
+      'is_test_data', false,
+      'reason', 'the PI this Order names does not exist, or is not linked back to any Order'));
+  elsif v_submission_id is not null and v_sub_order_id is distinct from v_order_id then
+    v_block := v_block || jsonb_build_array(jsonb_build_object(
+      'type', 'order_submission', 'id', v_submission_id,
+      'number', null, 'status', coalesce(v_sub_status, 'unknown'),
+      'is_test_data', false,
+      'reason', 'the PI this Order names is linked to a different Order'));
+  end if;
+
+  if p_root_type = 'payment' then
+    select coalesce(jsonb_agg(x order by x->>'type'), '[]'::jsonb)
+      into v_retain
+    from (
+      select jsonb_build_object('type','order','id',o.id,'number',o.display_number,
+                                'status',o.status,'is_test_data',o.is_test_data) as x
+      from public.orders o
+      join public.finance_payment_requests f on f.order_id = o.id
+      where f.id = p_root_id
+      union all
+      select jsonb_build_object('type','order_request','id',r.id,'number',r.request_number,
+                                'status',r.status,'is_test_data',r.is_test_data)
+      from public.order_requests r
+      join public.finance_payment_requests f on f.order_request_id = r.id
+      where f.id = p_root_id
+      union all
+      -- PHASE 2: a payment whose only relationship is an allocation to a PI.
+      -- Reported as RETAINED so the operator sees what the payment is attached
+      -- to, exactly as the two branches above do for an Order and a request. A
+      -- PI inherits its Order's classification (order_submissions has no
+      -- is_test_data of its own), so a PI with no Order is reported not-test and
+      -- correctly BLOCKS the cleanup rather than being silently deleted.
+      select jsonb_build_object('type','order_submission','id',s.id,'number',null,
+                                'status',s.status,
+                                'is_test_data', coalesce(o2.is_test_data, false))
+      from public.order_submissions s
+      join public.finance_payment_allocations a on a.order_submission_id = s.id
+      left join public.orders o2 on o2.id = s.order_id
+      where a.payment_request_id = p_root_id
+    ) t;
+
+    v_block := v_block || (
+      select coalesce(jsonb_agg(x), '[]'::jsonb)
+      from jsonb_array_elements(v_retain) x
+      where not (x->>'is_test_data')::boolean
+    );
+  end if;
+
+  -- storage_paths is UNCHANGED: payment-proof object keys, and nothing else.
+  select coalesce(jsonb_agg(a.storage_path order by a.storage_path), '[]'::jsonb)
+    into v_paths
+  from public.payment_proof_attachments a
+  where a.payment_request_id = any(v_payments);
+
+  v_counts := jsonb_build_object(
+    'orders',                   (select count(*) from public.orders where id = v_order_id),
+    'order_requests',           (select count(*) from public.order_requests where id = v_request_id),
+    'payment_requests',         coalesce(array_length(v_payments, 1), 0),
+    'order_activity_log',       (select count(*) from public.order_activity_log where order_id = v_order_id),
+    'order_request_activity',   (select count(*) from public.order_request_activity where order_request_id = v_request_id),
+    'payment_activity',         (select count(*) from public.finance_payment_request_activity_log where payment_request_id = any(v_payments)),
+    'proof_attachments',        (select count(*) from public.payment_proof_attachments where payment_request_id = any(v_payments)),
+    'notifications',            (select count(*) from public.notifications
+                                  where entity_id in (
+                                    select unnest(array_remove(array[v_order_id, v_request_id], null))
+                                    union all select unnest(v_payments))
+                                    and (type::text like 'order%' or type::text like 'finance%')),
+    'order_submissions',            (select count(*) from public.order_submissions where id = v_submission_id),
+    'order_submission_items',       (select count(*) from public.order_submission_items where submission_id = v_submission_id),
+    'order_submission_item_images', (select count(*) from public.order_submission_item_images where submission_id = v_submission_id),
+    'order_submission_activity',    (select count(*) from public.order_submission_activity where submission_id = v_submission_id)
+  );
+
+  return jsonb_build_object(
+    'root_type',       p_root_type,
+    'root_id',         p_root_id,
+    'root_number',     v_root_num,
+    'order_id',        v_order_id,
+    'order_request_id',v_request_id,
+    'payment_ids',     to_jsonb(v_payments),
+    'order_submission_id',       v_submission_id,
+    'submission_storage_prefix', v_prefix,
+    'to_delete',       v_delete,
+    'to_retain',       v_retain,
+    'blocking',        v_block,
+    'storage_paths',   v_paths,
+    'counts',          v_counts,
+    'eligible',        jsonb_array_length(v_block) = 0
+  );
+end;
+$function$;
+
+revoke execute on function public.resolve_test_data_cleanup_chain(text, uuid) from public, anon;
+grant  execute on function public.resolve_test_data_cleanup_chain(text, uuid) to authenticated;
+
+comment on function public.resolve_test_data_cleanup_chain(text, uuid) is
+  'Everything one test-data cleanup would delete, retain or be blocked by, from any root. Payments are reached three ways — the legacy order/order-request link, an allocation still naming the chain''s PI, and an allocation that has MOVED onto the Order that PI became — so a converted chain cannot hide money from the sweep. Reads only.';
+
+-- ═════════════════════════════════════════════════════════════════════════════
 -- §8. The PI payment card learns the approval position
 -- ═════════════════════════════════════════════════════════════════════════════
 --
@@ -1202,7 +2266,8 @@ declare
   v_unverif   numeric := 0;
   v_total     numeric;
   v_required  numeric;
-  v_meets     boolean;
+  v_meets      boolean;
+  v_exc_current boolean;
   v_position  text;
   v_is_admin  boolean;
   v_fin_all   boolean;
@@ -1242,6 +2307,15 @@ begin
   v_required := public.order_submission_required_payment(v_total);
   v_meets    := v_required is not null and v_verified >= v_required;
 
+  -- Whether the reduced-payment approval, if there is one, is an approval of the
+  -- PI as it stands NOW. One definition, shared with approve_order_submission().
+  v_exc_current := public.order_submission_exception_current(
+    v_sub.advance_exception_status,
+    v_sub.advance_exception_decided_grand_total,     v_sub.grand_total,
+    v_sub.advance_exception_decided_workbook_sha256, v_sub.source_workbook_sha256,
+    v_sub.advance_exception_decided_payment_terms,   v_sub.payment_terms,
+    v_sub.advance_exception_decided_billing_terms,   v_sub.billing_terms);
+
   -- ── WHERE THIS PI STANDS, in the order a reader resolves it ───────────────
   --
   -- Money first: a PI that meets the requirement is standing on the standard
@@ -1251,11 +2325,15 @@ begin
   -- shortfall, because "Finance has not looked at it yet" and "the client has
   -- not paid" are different problems belonging to different people.
   v_position := case
-    when v_meets                                    then 'standard_met'
-    when v_sub.advance_exception_status = 'approved' then 'exception_approved'
+    when v_meets                                     then 'standard_met'
+    when v_exc_current                               then 'exception_approved'
+    -- APPROVED, BUT FOR SOMETHING ELSE. Named in its own right, because a
+    -- salesperson told only "payment required" would go and collect money when
+    -- what is actually needed is for the approver to look at the new terms.
+    when v_sub.advance_exception_status = 'approved' then 'exception_stale'
     when v_sub.advance_exception_status = 'pending'  then 'exception_pending'
     when v_sub.advance_exception_status = 'rejected' then 'exception_rejected'
-    when v_unverif > 0                              then 'verification_pending'
+    when v_unverif > 0                               then 'verification_pending'
     else 'payment_required'
   end;
 
@@ -1299,10 +2377,14 @@ begin
     'grand_total',          v_total,
     'verified_amount',      v_verified,
     'unverified_amount',    v_unverif,
+    -- TRUNCATED, NEVER ROUNDED — the rule 20260917000000 §4 already states for
+    -- order_submission_advance_percent_of(): "Truncation cannot overstate."
+    -- 39.999% rounds to 40.00 and would print "40%" on a card beside a gate that
+    -- refuses; truncation prints 39.99 and the two agree.
     'verified_percent',     case when v_total is null or v_total = 0 then null
-                                 else round(v_verified * 100 / v_total, 2) end,
+                                 else trunc(v_verified * 100 / v_total, 2) end,
     'unverified_percent',   case when v_total is null or v_total = 0 then null
-                                 else round(v_unverif  * 100 / v_total, 2) end,
+                                 else trunc(v_unverif  * 100 / v_total, 2) end,
     -- Rounded UP to whole paise: the figure a person acts on must be a figure
     -- that, once paid and verified, actually satisfies the gate.
     'needed_for_standard',  public.order_submission_payment_shortfall(v_total, v_verified),
@@ -1314,6 +2396,7 @@ begin
     'standard_percent',     public.order_submission_standard_advance_percent(),
     'advance_condition',    v_sub.advance_condition,
     'exception_status',     v_sub.advance_exception_status,
+    'exception_current',    v_exc_current,
     'exception_reason',     v_sub.advance_exception_reason,
     'exception_rejection_reason', v_sub.advance_exception_rejection_reason,
     'payment_terms',        v_sub.payment_terms,
@@ -1536,12 +2619,30 @@ begin
     end if;
 
     -- AN APPROVED EXCEPTION SURVIVES A RESUBMISSION THAT DOES NOT CHANGE WHAT IS
-    -- BEING ASKED. The reason is the ask; the percentage is a snapshot of a fact
-    -- that legitimately moves, so it is refreshed rather than compared.
+    -- BEING ASKED — and nothing else does.
+    --
+    -- The ask is the REASON. The commercial basis is the grand total, the
+    -- workbook and the two sets of terms, and order_submission_exception_current()
+    -- owns that comparison so the submit door and the approval path cannot word
+    -- it differently. Anything that moves either of them — a replaced workbook, a
+    -- corrected total, different collection terms, different words, a previously
+    -- rejected or pending request, a decision with no recorded basis — becomes a
+    -- FRESH pending decision with a fresh requester and time.
+    --
+    -- The percentage is NOT compared: it is a snapshot of verified payment, which
+    -- legitimately moves, so it is refreshed rather than held against the record.
+    --
+    -- The terms compared are the ones being submitted NOW, not the ones on the
+    -- row: this statement is about to write them.
     v_keep := coalesce(
       v_sub.advance_condition = 'exception'
-      and v_sub.advance_exception_status = 'approved'
-      and v_sub.advance_exception_reason is not distinct from v_reason,
+      and v_sub.advance_exception_reason is not distinct from v_reason
+      and public.order_submission_exception_current(
+            v_sub.advance_exception_status,
+            v_sub.advance_exception_decided_grand_total,     v_sub.grand_total,
+            v_sub.advance_exception_decided_workbook_sha256, v_sub.source_workbook_sha256,
+            v_sub.advance_exception_decided_payment_terms,   v_pay_terms,
+            v_sub.advance_exception_decided_billing_terms,   v_bill_terms),
       false
     );
   end if;
@@ -1688,7 +2789,11 @@ begin
            advance_exception_requested_at = null,
            advance_exception_decided_by = null,
            advance_exception_decided_at = null,
-           advance_exception_rejection_reason = null
+           advance_exception_rejection_reason = null,
+           advance_exception_decided_grand_total     = null,
+           advance_exception_decided_workbook_sha256 = null,
+           advance_exception_decided_payment_terms   = null,
+           advance_exception_decided_billing_terms   = null
      where id = p_submission_id;
 
   elsif v_keep then
@@ -1716,7 +2821,11 @@ begin
            advance_exception_requested_at = now(),
            advance_exception_decided_by = null,
            advance_exception_decided_at = null,
-           advance_exception_rejection_reason = null
+           advance_exception_rejection_reason = null,
+           advance_exception_decided_grand_total     = null,
+           advance_exception_decided_workbook_sha256 = null,
+           advance_exception_decided_payment_terms   = null,
+           advance_exception_decided_billing_terms   = null
      where id = p_submission_id;
     v_requested := true;
   end if;
@@ -1849,7 +2958,11 @@ create or replace function public.users_with_module_permission(
   p_module_key text,
   p_action_key text
 )
-returns setof uuid
+-- RETURNS TABLE, NOT SETOF uuid, and the difference is not cosmetic: PostgREST
+-- renders a set-returning function's rows by COLUMN NAME, and an anonymous
+-- scalar set arrives under whatever name the function happens to have. A named
+-- column is what makes the caller's read unambiguous.
+returns table (user_id uuid)
 language sql
 stable
 security definer
@@ -1883,6 +2996,8 @@ declare
   v_n    integer;
   v_bool boolean;
   v_num  numeric;
+  v_name text;
+  v_def  text;
 begin
   -- ── The two new columns exist and are nullable text ──
   select count(*) into v_n
@@ -2207,6 +3322,179 @@ begin
       )
   ) then
     raise exception 'approve_order_submission must never assign or compute a display number itself';
+  end if;
+
+  -- ── The exception's recorded basis ──
+  select count(*) into v_n
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'order_submissions'
+    and column_name in ('advance_exception_decided_grand_total',
+                        'advance_exception_decided_workbook_sha256',
+                        'advance_exception_decided_payment_terms',
+                        'advance_exception_decided_billing_terms');
+  if v_n <> 4 then
+    raise exception 'the four exception-basis columns must exist (found %)', v_n;
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint c
+    join pg_class t on t.oid = c.conrelid
+    join pg_namespace ns on ns.oid = t.relnamespace
+    where ns.nspname = 'public' and t.relname = 'order_submissions'
+      and c.conname = 'order_submissions_exception_basis_scope' and c.convalidated
+  ) then
+    raise exception 'a decision basis must be permitted only on an approved exception';
+  end if;
+
+  -- CURRENTNESS, in every combination that decides something.
+  if not public.order_submission_exception_current(
+       'approved', 1000, 1000, 'sha', 'sha', '50% before dispatch', '50% before dispatch', null, null) then
+    raise exception 'an approval against the same total, workbook and terms must be current';
+  end if;
+  if public.order_submission_exception_current(
+       'approved', 1000, 2000, 'sha', 'sha', null, null, null, null) then
+    raise exception 'a changed grand total must make the approval stale';
+  end if;
+  if public.order_submission_exception_current(
+       'approved', 1000, 1000, 'sha', 'other', null, null, null, null) then
+    raise exception 'a replaced workbook must make the approval stale';
+  end if;
+  if public.order_submission_exception_current(
+       'approved', 1000, 1000, 'sha', 'sha', '50% now', '30% now', null, null) then
+    raise exception 'changed Payment Terms must make the approval stale';
+  end if;
+  if public.order_submission_exception_current(
+       'approved', 1000, 1000, 'sha', 'sha', null, null, '100% before dispatch', null) then
+    raise exception 'changed Billing Terms must make the approval stale';
+  end if;
+  if public.order_submission_exception_current(
+       'approved', null, 1000, null, 'sha', null, null, null, null) then
+    raise exception 'a decision with NO recorded basis must never be current';
+  end if;
+  for v_bool in
+    select public.order_submission_exception_current(
+             st, 1000, 1000, 'sha', 'sha', null, null, null, null)
+    from unnest(array['pending', 'rejected', null]) as st
+  loop
+    if v_bool then raise exception 'only an APPROVED exception can be current'; end if;
+  end loop;
+
+  -- ── The approval consults it, and says so in its own words ──
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'approve_order_submission'
+      and pg_get_functiondef(p.oid) ilike '%order_submission_exception_current%'
+      and pg_get_functiondef(p.oid) ilike '%ORDER_SUBMISSION_EXCEPTION_STALE%'
+      and pg_get_functiondef(p.oid) ilike '%ORDER_SUBMISSION_ALLOCATION_NOT_MOVED%'
+  ) then
+    raise exception
+      'final approval must require a CURRENT exception, refuse a stale one by name, and refuse to leave money on the PI';
+  end if;
+
+  -- ── The reason is frozen while an approval stands, and the basis moves only
+  --    with the decision ──
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'order_submissions_guard_advance_exception'
+      and pg_get_functiondef(p.oid) ilike '%ORDER_SUBMISSION_EXCEPTION_REASON_FROZEN%'
+      and pg_get_functiondef(p.oid) ilike '%ORDER_SUBMISSION_EXCEPTION_BASIS_IMMUTABLE%'
+      and pg_get_functiondef(p.oid) ilike '%ORDER_SUBMISSION_ADVANCE_NOT_PENDING%'
+  ) then
+    raise exception 'the exception guard must freeze the reason and the basis, and keep every applied clause';
+  end if;
+
+  -- ── ONE LOCK ORDER: the target before the payment, on every path ──
+  --
+  -- Asserted structurally, on the one function that had it the other way round.
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'allocate_payment_to_target_internal'
+      and position('from public.order_submissions' in pg_get_functiondef(p.oid))
+        < position('from public.finance_payment_requests' in pg_get_functiondef(p.oid))
+  ) then
+    raise exception
+      'allocate_payment_to_target_internal must lock the PI submission BEFORE the payment, or an allocation can race an approval';
+  end if;
+
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'allocate_payment_to_target_internal'
+      and pg_get_functiondef(p.oid) ilike '%where id = p_order_submission_id%for update%'
+  ) then
+    raise exception 'the PI-submission target must be locked FOR UPDATE';
+  end if;
+
+  -- The same order in both Phase 3 write paths.
+  for v_name in
+    select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('approve_order_submission', 'submit_pi_for_review_internal')
+  loop
+    select pg_get_functiondef(p.oid) into v_def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = v_name;
+
+    if position('from public.order_submissions' in v_def)
+       > position('from public.finance_payment_requests' in v_def) then
+      raise exception '% must lock the submission before any payment', v_name;
+    end if;
+    if position('from public.finance_payment_requests' in v_def)
+       > position('from public.finance_payment_allocations' in v_def) then
+      raise exception '% must lock payments before allocations', v_name;
+    end if;
+    if v_def not like '%order by f.id%' or v_def not like '%order by a.id%' then
+      raise exception '% must lock multi-row sets in a deterministic id order', v_name;
+    end if;
+  end loop;
+
+  -- ── The displayed percentage can never overstate ──
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'pi_submission_payment_summary'
+      and pg_get_functiondef(p.oid) ilike '%trunc(v_verified * 100 / v_total, 2)%'
+      and pg_get_functiondef(p.oid) ilike '%exception_stale%'
+  ) then
+    raise exception
+      'the summary must truncate the verified percentage and must name a stale approval';
+  end if;
+
+  -- ── The shortfall is whole paise, and always closes the gate ──
+  if public.order_submission_payment_shortfall(33333.33, 0) <> 13333.34 then
+    raise exception
+      '40%% of 33,333.33 is 13,333.332; the amount asked for must be 13,333.34, got %',
+      public.order_submission_payment_shortfall(33333.33, 0);
+  end if;
+  if not public.order_submission_payment_ready(
+       33333.33, public.order_submission_payment_shortfall(33333.33, 0), null) then
+    raise exception 'paying exactly the amount shown must always satisfy the gate';
+  end if;
+  if public.order_submission_payment_ready(
+       33333.33, round(public.order_submission_required_payment(33333.33), 2), null) then
+    raise exception 'the ROUNDED requirement must not satisfy the exact gate';
+  end if;
+  if scale(public.order_submission_payment_shortfall(100.01, 40.00)) > 2 then
+    raise exception 'the amount asked for must be a real two-decimal figure';
+  end if;
+
+  -- ── How many legacy approvals this makes non-current, reported not guessed ──
+  select count(*) into v_n
+  from public.order_submissions
+  where advance_exception_status = 'approved';
+  if v_n > 0 then
+    raise notice
+      'Phase 3: % PI(s) carry an approved advance exception with no recorded basis. Each was a decision about a DECLARED advance, not about verified payment, and must be approved again before that PI can be confirmed below 40%%.',
+      v_n;
+  end if;
+
+  -- ── Cleanup follows the money across the move ──
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'resolve_test_data_cleanup_chain'
+      and pg_get_functiondef(p.oid) ilike '%a.order_submission_id = v_submission_id%'
+      and pg_get_functiondef(p.oid) ilike '%a.order_id = v_order_id or a.order_id = v_sub_order_id%'
+  ) then
+    raise exception
+      'the cleanup chain must find a payment through an allocation on EITHER side of the PI-to-Order move';
   end if;
 
   raise notice 'Phase 3 verified-payment gate: all assertions passed';

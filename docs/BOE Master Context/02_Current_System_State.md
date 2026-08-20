@@ -852,6 +852,21 @@ payment-ready  ⇔  verified >= grand_total * 40 / 100        the standard route
   unchanged. `finance_payment_allocations_guard_transition()` is restated to admit
   exactly that one move, which `20260918000000` §6 said Phase 3 would have to do.
 
+**Found by the pre-deployment audit of PR #45, and fixed in the same unapplied
+migration:** an allocation could race the approval and strand money (the
+allocation door now locks the PI before the payment); an approved exception
+outlived what it was a decision about (four `advance_exception_decided_*` columns
+plus `order_submission_exception_current()`); Test Data Cleanup lost a converted
+chain's payments; a rounded percentage could display "40%" beside a gate that
+refuses; and the notification helper's PostgREST shape was wrong.
+
+**One blocker is held for a decision, not fixed:** after the move the parent
+payment still reads `approved_unlinked` with no `order_id`, so Finance's
+linked/unlinked split misclassifies it and the counters over-report. It cannot be
+fixed by linking the payment — `approved_linked` requires `order_number`, which
+on a PI payment holds the salesperson's reference. See
+`docs/Module Docs/PAYMENT_PHASE_PROGRESS.md`.
+
 ### Migration
 
 `supabase/migrations/20260915000000_order_submission_final_approval.sql` —

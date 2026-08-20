@@ -54,13 +54,14 @@ export const PAYMENT_STANDARD_PERCENT = ADVANCE_STANDARD_PERCENT
 export type PaymentPosition =
   | 'standard_met'
   | 'exception_approved'
+  | 'exception_stale'
   | 'exception_pending'
   | 'exception_rejected'
   | 'verification_pending'
   | 'payment_required'
 
 export const PAYMENT_POSITIONS: readonly PaymentPosition[] = [
-  'standard_met', 'exception_approved', 'exception_pending',
+  'standard_met', 'exception_approved', 'exception_stale', 'exception_pending',
   'exception_rejected', 'verification_pending', 'payment_required',
 ]
 
@@ -74,6 +75,7 @@ export function asPaymentPosition(value: string | null | undefined): PaymentPosi
 export const PAYMENT_POSITION_LABEL: Record<PaymentPosition, string> = {
   standard_met:         'Standard payment requirement met',
   exception_approved:   'Approved to proceed below 40%',
+  exception_stale:      'Reduced-payment approval is out of date',
   exception_pending:    'Awaiting approval to proceed below 40%',
   exception_rejected:   'Reduced-payment approval refused',
   verification_pending: 'Payment awaiting Finance verification',
@@ -85,6 +87,7 @@ export type PaymentPositionTone = 'green' | 'amber' | 'red' | 'blue'
 export const PAYMENT_POSITION_TONE: Record<PaymentPosition, PaymentPositionTone> = {
   standard_met:         'green',
   exception_approved:   'green',
+  exception_stale:      'amber',
   exception_pending:    'amber',
   exception_rejected:   'red',
   verification_pending: 'blue',
@@ -103,6 +106,8 @@ export const PAYMENT_POSITION_HINT: Record<PaymentPosition, string> = {
     `Verified payment is at or above ${PAYMENT_STANDARD_PERCENT}% of the grand total. No approval to proceed below is needed.`,
   exception_approved:
     `Admin has approved confirming this Order below ${PAYMENT_STANDARD_PERCENT}%.`,
+  exception_stale:
+    'The approval to proceed below 40% was given for different commercial terms — the grand total, the PI document or the agreed terms have changed since. It must be approved again.',
   exception_pending:
     `Admin approval is required to proceed below ${PAYMENT_STANDARD_PERCENT}%. Management can review the PI meanwhile; no Order number is assigned until this is decided.`,
   exception_rejected:
@@ -129,6 +134,12 @@ export const PAYMENT_EXCEPTION_PENDING =
   'The reduced-payment exception is still pending.'
 export const PAYMENT_EXCEPTION_REJECTED =
   'The reduced-payment exception was rejected. Update the PI before resubmitting.'
+export const PAYMENT_EXCEPTION_STALE =
+  'The reduced-payment approval was given for different commercial terms and must be approved again.'
+export const PAYMENT_EXCEPTION_REASON_FROZEN =
+  'The reason an approved reduced-payment exception was granted for cannot be rewritten. Resubmit to ask again.'
+export const PAYMENT_ALLOCATION_NOT_MOVED =
+  'This PI\u2019s payments could not be moved onto the Order, so no Order was created. Refresh and try once more.'
 export const PAYMENT_UNVERIFIED_DOES_NOT_COUNT =
   'Payment that Finance has not verified does not count towards the requirement.'
 export const PAYMENT_NOT_A_DECLARATION =
@@ -279,6 +290,9 @@ export const PAYMENT_GATE_FAILURES: readonly { marker: string; message: string }
     message: `Verified payment has not reached ${PAYMENT_STANDARD_PERCENT}% of the grand total. ${PAYMENT_ADMIN_APPROVAL_REQUIRED}`,
   },
   { marker: 'ORDER_SUBMISSION_EXCEPTION_PENDING',  message: PAYMENT_EXCEPTION_PENDING },
+  { marker: 'ORDER_SUBMISSION_EXCEPTION_STALE',    message: PAYMENT_EXCEPTION_STALE },
+  { marker: 'ORDER_SUBMISSION_EXCEPTION_REASON_FROZEN', message: PAYMENT_EXCEPTION_REASON_FROZEN },
+  { marker: 'ORDER_SUBMISSION_ALLOCATION_NOT_MOVED', message: PAYMENT_ALLOCATION_NOT_MOVED },
   { marker: 'ORDER_SUBMISSION_EXCEPTION_REJECTED', message: PAYMENT_EXCEPTION_REJECTED },
   { marker: 'ORDER_SUBMISSION_EXCEPTION_REASON_REQUIRED', message: PAYMENT_REASON_REQUIRED },
   { marker: 'ORDER_SUBMISSION_PAYMENT_TERMS_REQUIRED',    message: PAYMENT_TERMS_REQUIRED },

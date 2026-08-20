@@ -234,6 +234,7 @@ export const EXCEPTION_STATUS_TEXT: Record<string, string> = {
 const POSITION_TONE: Record<PaymentPosition, PiDetailTone> = {
   standard_met:         'green',
   exception_approved:   'green',
+  exception_stale:      'amber',
   exception_pending:    'amber',
   exception_rejected:   'red',
   verification_pending: 'blue',

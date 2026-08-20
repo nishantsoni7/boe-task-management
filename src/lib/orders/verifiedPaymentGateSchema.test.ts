@@ -46,12 +46,35 @@ const sql = migration(FILE)
 /** Executable SQL only — a comment explains, it does not run. */
 const code = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
 
+/**
+ * Every real read of a table in this migration's executable SQL.
+ *
+ * A `from public.x` that sits INSIDE a string literal is not a query — the
+ * assertion block at the foot of the migration quotes those table names when it
+ * checks a function's own source for its lock order. Matching them would report
+ * the guard as the thing it is guarding against.
+ */
+function tableReads(table: string): string[] {
+  const out: string[] = []
+  for (const m of code.matchAll(new RegExp(`from public\\.${table}\\b`, 'g'))) {
+    if (code[m.index! - 1] === "'") continue
+    out.push(code.slice(m.index!, m.index! + 300))
+  }
+  return out
+}
+
 /** The body of one function in this migration, from its header to its `$$;`. */
 function body(name: string): string {
-  const start = sql.indexOf(`create or replace function public.${name}`)
+  // Case-insensitive, and tolerant of both dollar tags: the restatement of
+  // allocate_payment_to_target_internal is copied verbatim from the applied
+  // migration, which pg_get_functiondef() wrote in upper case with $function$.
+  const start = sql.search(
+    new RegExp(`create\\s+or\\s+replace\\s+function\\s+public\\.${name}\\s*\\(`, 'i'))
   assert.ok(start > 0, `public.${name} is not defined in ${FILE}`)
-  const end = sql.indexOf('\n$$;', start)
-  assert.ok(end > start, `public.${name} has no closing $$`)
+  const plain = sql.indexOf('\n$$;', start)
+  const tagged = sql.indexOf('\n$function$;', start)
+  const end = [plain, tagged].filter(i => i > start).sort((a, b) => a - b)[0]
+  assert.ok(end !== undefined, `public.${name} has no closing dollar tag`)
   return sql.slice(start, end)
 }
 
@@ -160,11 +183,10 @@ describe('the standard route: 40% of the grand total, VERIFIED, and exact', () =
         `${name} must be bounded by the PI it is asked about`)
     }
     // And nothing in the file selects from the ledger without a predicate.
-    const selects = [...code.matchAll(/from public\.finance_payment_requests[^\n]*\n/g)]
+    const selects = tableReads('finance_payment_requests')
     assert.ok(selects.length > 0)
-    for (const match of selects) {
-      const after = code.slice(match.index!, match.index! + 400)
-      assert.ok(/where|join/i.test(after), 'every payment read is predicated')
+    for (const after of selects) {
+      assert.ok(/\bwhere\b/i.test(after), `unpredicated payment read: ${after.slice(0, 80)}`)
     }
   })
 
@@ -216,11 +238,18 @@ describe('the reduced-payment exception reuses the deployed workflow', () => {
   })
 
   test('only the authorised approver may decide, and this phase does not widen it', () => {
-    // The two decision RPCs are NOT restated here at all: they already require
-    // orders.approve_advance_exception, which no preset grants.
-    assert.ok(!code.includes('create or replace function public.approve_pi_advance_exception'))
-    assert.ok(!code.includes('create or replace function public.reject_pi_advance_exception'))
-    // And the migration asserts at apply time that both still require it.
+    // The two decision RPCs ARE restated — they now record what the decision was
+    // taken against — so the authority is asserted on the restatement itself.
+    for (const fn of ['approve_pi_advance_exception', 'reject_pi_advance_exception']) {
+      const restated = body(fn)
+      assert.ok(restated.includes("actor_has_module_permission('orders', 'approve_advance_exception')"),
+        `${fn} must still require the protected action`)
+      assert.ok(!restated.includes("'approve_order'"),
+        `${fn} must not accept PI-review authority instead`)
+      assert.ok(!restated.includes('finance_payment_requests'),
+        `${fn} must never read or write the payment ledger`)
+    }
+    // And the migration asserts the same at apply time.
     assert.ok(sql.includes('approving an exception must still require orders.approve_advance_exception'))
     assert.ok(sql.includes('rejecting an exception must still require the authority and still return the PI for changes'))
     // No permission is granted, revoked or invented by this file.
@@ -238,9 +267,11 @@ describe('the reduced-payment exception reuses the deployed workflow', () => {
     assert.ok(fn.includes('ORDER_SUBMISSION_EXCEPTION_PENDING'))
   })
 
-  test('an APPROVED exception permits approval below 40%, zero included', () => {
+  test('an APPROVED, CURRENT exception permits approval below 40%, zero included', () => {
     const fn = body('approve_order_submission')
-    assert.ok(fn.includes("elsif v_sub.advance_exception_status = 'approved' then\n    v_route := 'exception'"))
+    assert.ok(fn.includes("elsif v_exception_current then\n    v_route := 'exception'"))
+    assert.ok(fn.includes('order_submission_exception_current('),
+      'and it must be the shared currentness rule, not a status test')
     assert.ok(sql.includes("public.order_submission_payment_ready(1000, 0, 'approved')"),
       'and the apply-time assertion covers the zero case explicitly')
   })
@@ -282,6 +313,230 @@ describe('the reduced-payment exception reuses the deployed workflow', () => {
     assert.ok(fn.includes("status = 'submitted'"))
     assert.ok(!fn.includes("status = 'awaiting_exception'"),
       'no new status is invented, so the review queue is unchanged')
+  })
+})
+
+// ── Lock order and concurrency ────────────────────────────────────────────────
+
+describe('one deterministic lock order, on every path that touches this money', () => {
+  /**
+   * THE ORDER THE APPLIED HISTORY ALREADY WALKS, and which Phase 3 must not
+   * invert:
+   *
+   *   orders → order_requests → order_submissions → finance_payment_requests
+   *          → finance_payment_allocations → order_number_cycle
+   *
+   * It is the order finalize_test_data_cleanup() (20260916000000) takes, and the
+   * order reverse_payment_allocation() (20260918000000 §12) documents for itself.
+   */
+  const LOCK_ORDER = [
+    'orders',
+    'order_requests',
+    'order_submissions',
+    'finance_payment_requests',
+    'finance_payment_allocations',
+    'order_number_cycle',
+  ]
+
+  /** The tables one function body locks, in the order it locks them. */
+  function lockedTables(fnBody: string): string[] {
+    const stripped = fnBody.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
+    const out: string[] = []
+    for (const m of stripped.matchAll(
+      /from\s+public\.([a-z_]+)[\s\S]{0,400}?\bfor\s+update\b/g)) {
+      out.push(m[1])
+    }
+    return out
+  }
+
+  function assertOrdered(name: string, tables: string[]) {
+    let previous = -1
+    for (const table of tables) {
+      const rank = LOCK_ORDER.indexOf(table)
+      assert.notEqual(rank, -1, `${name} locks ${table}, which is not in the declared order`)
+      assert.ok(rank >= previous,
+        `${name} locks ${table} after a table that ranks below it — that is a deadlock`)
+      previous = rank
+    }
+  }
+
+  test('both Phase 3 write paths lock submission → payments → allocations', () => {
+    for (const fn of ['approve_order_submission', 'submit_pi_for_review_internal']) {
+      const tables = lockedTables(body(fn))
+      assert.deepEqual(tables,
+        ['order_submissions', 'finance_payment_requests', 'finance_payment_allocations'],
+        `${fn} must take exactly these three locks, in this order`)
+    }
+  })
+
+  test('multi-row lock sets are taken in a deterministic id order', () => {
+    // Two approvals sharing a payment must queue, not deadlock against each
+    // other — which needs an ORDER BY on the locking select, not just the right
+    // table order.
+    for (const fn of ['approve_order_submission', 'submit_pi_for_review_internal']) {
+      const fnBody = body(fn)
+      assert.ok(fnBody.includes('order by f.id\n  for update'),
+        `${fn} must lock payments in ascending id`)
+      assert.ok(fnBody.includes('order by a.id\n  for update'),
+        `${fn} must lock allocations in ascending id`)
+    }
+  })
+
+  test('the allocation door now locks its PI target BEFORE the payment', () => {
+    // THE RACE THIS CLOSES. The applied version locked the payment first and
+    // read the submission unlocked, so an allocation could land on a PI that had
+    // just been approved — money stranded on a record that no longer counts it,
+    // invisible to the Order.
+    const fn = body('allocate_payment_to_target_internal')
+    assert.deepEqual(lockedTables(fn), ['order_submissions', 'finance_payment_requests'])
+    assertOrdered('allocate_payment_to_target_internal', lockedTables(fn))
+    assert.ok(fn.includes('where id = p_order_submission_id\n    for update'),
+      'the PI target is locked, not merely read')
+  })
+
+  test('the applied version really did have it the other way round', () => {
+    // Stated so this test cannot quietly become vacuous if the restatement is
+    // ever dropped: the thing being corrected is on the record.
+    const applied = migration(PI_PAYMENT)
+    const start = applied.indexOf('CREATE OR REPLACE FUNCTION public.allocate_payment_to_target_internal')
+    const fn = applied.slice(start, applied.indexOf('\n$function$;', start))
+    assert.ok(fn.indexOf('from public.finance_payment_requests')
+            < fn.indexOf('from public.order_submissions'),
+      '20260919000000 locked the payment first — that is the inversion this phase removes')
+  })
+
+  test('every applied writer of this money agrees with the declared order', () => {
+    // Read out of the migrations themselves rather than trusted from a comment.
+    const paths: [string, string][] = [
+      [ALLOCATIONS, 'reverse_payment_allocation'],
+      [ALLOCATIONS, 'finance_payment_allocations_enforce_capacity'],
+      [PI_PAYMENT, 'record_pi_submission_payment'],
+    ]
+    for (const [file, fn] of paths) {
+      const src = migration(file)
+      const marker = new RegExp(`create or replace function public\\.${fn}\\s*\\(`, 'i')
+      const at = src.search(marker)
+      assert.ok(at > 0, `${fn} must be defined in ${file}`)
+      const end = src.indexOf('\n$$;', at)
+      assertOrdered(fn, lockedTables(src.slice(at, end)))
+    }
+  })
+
+  test('nothing can change under the gate between the figure and the move', () => {
+    const fn = body('approve_order_submission')
+    const gate = fn.indexOf('-- ── 7.')
+    const move = fn.indexOf('with moved as (')
+    assert.ok(gate > 0 && move > gate)
+    // The locks are taken before the total is summed, and nothing between the
+    // total and the move releases them — a plpgsql function holds row locks to
+    // the end of the transaction, so the proof is that no COMMIT appears.
+    assert.ok(fn.indexOf('for update') < fn.indexOf('order_submission_verified_payment'))
+    assert.ok(!fn.includes('commit'), 'nothing may commit between the figure and the move')
+    // And the move refuses to leave anything behind.
+    assert.ok(fn.includes('ORDER_SUBMISSION_ALLOCATION_NOT_MOVED'))
+  })
+})
+
+// ── Exception currentness ─────────────────────────────────────────────────────
+
+describe('an approved exception is an approval of THIS PI, and stops being one', () => {
+  test('the decision records what it was taken against', () => {
+    for (const column of ['advance_exception_decided_grand_total',
+                          'advance_exception_decided_workbook_sha256',
+                          'advance_exception_decided_payment_terms',
+                          'advance_exception_decided_billing_terms']) {
+      assert.ok(code.includes(`add column ${column}`), `${column} must exist`)
+    }
+    const approve = body('approve_pi_advance_exception')
+    assert.ok(approve.includes('advance_exception_decided_grand_total     = v_sub.grand_total'))
+    assert.ok(approve.includes('advance_exception_decided_workbook_sha256 = v_sub.source_workbook_sha256'))
+    assert.ok(approve.includes('advance_exception_decided_payment_terms   = v_sub.payment_terms'))
+    assert.ok(approve.includes('advance_exception_decided_billing_terms   = v_sub.billing_terms'))
+    assert.ok(approve.includes('v_sub'),
+      'and it is stamped from the LOCKED row, never from anything a caller sent')
+  })
+
+  test('a rejection clears the basis with it', () => {
+    const reject = body('reject_pi_advance_exception')
+    assert.ok(reject.includes('advance_exception_decided_grand_total     = null'))
+    assert.ok(reject.includes("status = 'needs_changes'"), 'and still returns the PI')
+  })
+
+  test('the workbook hash is what covers "the products changed"', () => {
+    // Every product line and every commercial figure comes from one parsed file,
+    // and replace_order_submission_parse rewrites the hash whenever it changes.
+    const parse = migration('20260909000000_order_submission_item_images.sql')
+      + migration('20260908000000_order_pi_submissions.sql')
+    assert.ok(parse.includes('source_workbook_sha256'),
+      'the hash must be written by the parse path this relies on')
+  })
+
+  test('final approval refuses a stale approval by name', () => {
+    const fn = body('approve_order_submission')
+    assert.ok(fn.includes('ORDER_SUBMISSION_EXCEPTION_STALE'))
+    // And it is a DIFFERENT sentence from "not enough payment", because it needs
+    // a different person to do a different thing.
+    assert.ok(fn.indexOf('ORDER_SUBMISSION_EXCEPTION_STALE')
+            < fn.indexOf('ORDER_SUBMISSION_PAYMENT_AWAITING_VERIFICATION'))
+  })
+
+  test('a resubmission that changes the basis raises a FRESH decision', () => {
+    const fn = body('submit_pi_for_review_internal')
+    assert.ok(fn.includes('public.order_submission_exception_current('),
+      'v_keep must consult the shared rule, not compare fields itself')
+    assert.ok(fn.includes('v_sub.advance_exception_decided_payment_terms,   v_pay_terms'),
+      'and it must compare against the terms being submitted now')
+  })
+
+  test('the words under a standing approval cannot be rewritten', () => {
+    assert.ok(body('order_submissions_guard_advance_exception')
+      .includes('ORDER_SUBMISSION_EXCEPTION_REASON_FROZEN'))
+  })
+
+  test('the recorded basis cannot be forged under a standing decision', () => {
+    assert.ok(body('order_submissions_guard_advance_exception')
+      .includes('ORDER_SUBMISSION_EXCEPTION_BASIS_IMMUTABLE'))
+  })
+
+  test('a legacy approval, which recorded nothing, is never current', () => {
+    assert.ok(sql.includes('a decision with NO recorded basis must never be current'))
+    // And the migration reports the blast radius rather than backfilling one.
+    assert.ok(sql.includes('carry an approved advance exception with no recorded basis'))
+    assert.ok(!/update public\.order_submissions[\s\S]{0,200}advance_exception_decided_grand_total\s*=\s*grand_total/.test(code),
+      'no backfill may bless a decision the business never took')
+  })
+
+  test('an approved exception still verifies no payment', () => {
+    for (const fn of ['approve_pi_advance_exception', 'reject_pi_advance_exception']) {
+      assert.ok(!body(fn).includes('finance_payment_requests'))
+      assert.ok(!body(fn).includes('finance_payment_allocations'))
+    }
+  })
+})
+
+// ── The paise rule ────────────────────────────────────────────────────────────
+
+describe('the amount a person is asked for always closes the gate', () => {
+  test('the shortfall is a CEILING to whole paise, then a two-decimal figure', () => {
+    const fn = body('order_submission_payment_shortfall')
+    assert.ok(fn.includes('ceil('), 'rounding down would understate what must be paid')
+    assert.ok(fn.includes('round(greatest('), 'and the result is a real two-decimal amount')
+  })
+
+  test('the ₹33,333.33 case is asserted at apply time', () => {
+    // 40% is ₹13,333.332. Rounded it prints ₹13,333.33, which does NOT satisfy
+    // the gate; the ceiling prints ₹13,333.34, which does.
+    assert.ok(sql.includes('public.order_submission_payment_shortfall(33333.33, 0) <> 13333.34'))
+    assert.ok(sql.includes('paying exactly the amount shown must always satisfy the gate'))
+    assert.ok(sql.includes('the ROUNDED requirement must not satisfy the exact gate'))
+  })
+
+  test('a displayed percentage can never overstate either', () => {
+    // 39.999% rounds to 40.00 and would print "40%" beside a gate that refuses.
+    const fn = body('pi_submission_payment_summary')
+    assert.ok(fn.includes('trunc(v_verified * 100 / v_total, 2)'))
+    assert.ok(fn.includes('trunc(v_unverif  * 100 / v_total, 2)'))
+    assert.ok(!fn.includes('round(v_verified * 100'), 'rounding here would overstate')
   })
 })
 
@@ -484,22 +739,33 @@ describe('what Phase 3 must NOT have changed', () => {
     }
   })
 
-  test('test-data cleanup still works after the move', () => {
-    // Cleanup classifies an allocation by its own is_test_data flag and resolves
-    // a chain through the payment, neither of which the move touches.
-    assert.ok(!code.includes('is_test_data'),
+  test('test-data cleanup follows the money across the move', () => {
+    // THE REGRESSION THIS PHASE CREATED, AND FIXED. 20260919000000 §7 taught the
+    // cleanup chain to find a payment through an allocation naming the PI. Phase
+    // 3 moves exactly those allocations onto the Order and leaves the parent
+    // payment carrying no order_id — so after a conversion the chain saw
+    // nothing, and the NO ACTION foreign key would have refused the Order delete
+    // with a raw constraint error.
+    const chain = body('resolve_test_data_cleanup_chain')
+    assert.ok(chain.includes('a.order_submission_id = v_submission_id'),
+      'the applied branch must survive — it finds the REVERSED allocations that stay with the PI')
+    assert.ok(chain.includes('a.order_id = v_order_id or a.order_id = v_sub_order_id'),
+      'and the new one must find the ACTIVE allocations that moved onto the Order')
+    // Nothing about the classification itself is rewritten.
+    assert.ok(!code.includes('is_test_data ='),
       'the move rewrites no cleanup classification')
-    assert.ok(!code.includes('resolve_test_data_cleanup_chain'),
-      'and the cleanup resolver is not restated')
+    assert.ok(!code.includes('begin_test_data_cleanup')
+           && !code.includes('finalize_test_data_cleanup'),
+      'and no claim, expiry, freeze or storage-removal rule is restated')
   })
 
   test('no new unbounded payment query is introduced', () => {
-    const froms = [...code.matchAll(/from public\.finance_payment_(requests|allocations)/g)]
+    const froms = [...tableReads('finance_payment_requests'),
+                   ...tableReads('finance_payment_allocations')]
     assert.ok(froms.length > 0)
-    for (const match of froms) {
-      const window = code.slice(match.index!, match.index! + 500)
-      assert.ok(/where |join /i.test(window),
-        `an unpredicated read of ${match[0]} would scan the whole ledger`)
+    for (const window of froms) {
+      assert.ok(/\bwhere\b/i.test(window),
+        `an unpredicated ledger read would scan the whole table: ${window.slice(0, 80)}`)
     }
   })
 
@@ -516,7 +782,15 @@ describe('what Phase 3 must NOT have changed', () => {
                              'max(display_number)', 'confirmed_order_number_cycle']) {
       assert.ok(!code.includes(forbidden), `${forbidden} would be a second allocator`)
     }
-    assert.ok(!code.includes('cancel'), 'and cancellation is explicitly out of scope')
+    // Order CANCELLATION is out of scope. The word appears only where the
+    // restated allocation door refuses a cancelled Order — the applied rule,
+    // carried through verbatim — and nowhere as a new capability.
+    for (const match of code.matchAll(/cancel\w*/g)) {
+      const line = code.slice(code.lastIndexOf('\n', match.index!) + 1,
+                              code.indexOf('\n', match.index!))
+      assert.ok(/ALLOCATION_TARGET_NOT_ACTIVE|v_ord\.status = 'cancelled'|is cancelled and cannot receive/.test(line),
+        `cancellation is out of scope; found "${line.trim()}"`)
+    }
   })
 })
 

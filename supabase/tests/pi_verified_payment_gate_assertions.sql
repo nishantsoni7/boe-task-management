@@ -663,6 +663,256 @@ begin
   raise notice '8. regression and security OK';
 end $$;
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 9. THE EXACT PAISE RULE — what is shown always closes the gate
+-- ═══════════════════════════════════════════════════════════════════════════
+
+do $$
+declare
+  v_total    numeric;
+  v_needed   numeric;
+  v_rounded  numeric;
+begin
+  -- The three cases the pre-deployment audit named, driven through the real
+  -- functions rather than restated as arithmetic here.
+  for v_total in select unnest(array[100.00, 100.01, 33333.33, 1000000.00]::numeric[])
+  loop
+    v_needed  := public.order_submission_payment_shortfall(v_total, 0);
+    v_rounded := round(public.order_submission_required_payment(v_total), 2);
+
+    -- 1. Paying exactly the figure the screen asks for ALWAYS satisfies the gate.
+    assert public.order_submission_payment_ready(v_total, v_needed, null),
+      format('paying the shown %s against a total of %s must satisfy the gate', v_needed, v_total);
+
+    -- 2. The figure shown is a real two-decimal amount somebody can transfer.
+    assert scale(v_needed) <= 2,
+      format('the amount shown must be whole paise, got %s', v_needed);
+
+    -- 3. It is never LESS than the exact requirement.
+    assert v_needed >= public.order_submission_required_payment(v_total),
+      format('the amount shown (%s) understates the requirement (%s)',
+             v_needed, public.order_submission_required_payment(v_total));
+
+    -- 4. And where the two differ, the ROUNDED requirement does not pass.
+    if v_rounded < public.order_submission_required_payment(v_total) then
+      assert not public.order_submission_payment_ready(v_total, v_rounded, null),
+        format('the rounded display %s must not satisfy a total of %s', v_rounded, v_total);
+    end if;
+  end loop;
+
+  -- The two worked examples, by name.
+  assert public.order_submission_payment_shortfall(100.01, 0) = 40.01,
+    format('40%% of 100.01 needs 40.01, got %s', public.order_submission_payment_shortfall(100.01, 0));
+  assert public.order_submission_payment_shortfall(33333.33, 0) = 13333.34,
+    format('40%% of 33,333.33 needs 13,333.34, got %s',
+           public.order_submission_payment_shortfall(33333.33, 0));
+  assert public.order_submission_payment_shortfall(100.00, 0) = 40.00,
+    'a total that divides exactly needs exactly 40.00';
+  assert not public.order_submission_payment_ready(33333.33, 13333.33, null),
+    '13,333.33 is below the exact 13,333.332 and must not pass';
+
+  raise notice '9. exact-paise behaviour OK';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 10. AN APPROVED EXCEPTION IS AN APPROVAL OF *THIS* PI
+-- ═══════════════════════════════════════════════════════════════════════════
+
+do $$
+declare
+  v_pi    uuid := current_setting('test.pi_other')::uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_sales uuid := current_setting('test.sales_id')::uuid;
+  v_msg   text;
+  v_cur   boolean;
+begin
+  -- A PI submitted under the reduced-payment route, with a decision taken.
+  update public.order_submissions
+     set status = 'submitted',
+         submitted_at = now(),
+         payment_terms = '50% before dispatch',
+         billing_terms = null,
+         source_workbook_sha256 = repeat('a', 64),
+         advance_condition = 'exception',
+         advance_exception_percent = 0,
+         advance_exception_reason = 'ASSERT client pays on delivery',
+         advance_exception_status = 'approved',
+         advance_exception_requested_by = v_sales,
+         advance_exception_requested_at = now(),
+         advance_exception_decided_by = v_admin,
+         advance_exception_decided_at = now(),
+         advance_exception_decided_grand_total     = 1000000,
+         advance_exception_decided_workbook_sha256 = repeat('a', 64),
+         advance_exception_decided_payment_terms   = '50% before dispatch',
+         advance_exception_decided_billing_terms   = null
+   where id = v_pi;
+
+  v_cur := public.order_submission_exception_current(
+    'approved', 1000000, 1000000, repeat('a', 64), repeat('a', 64),
+    '50% before dispatch', '50% before dispatch', null, null);
+  assert v_cur, 'an approval against the current basis must be current';
+
+  -- A REPLACED WORKBOOK makes it stale — which is how "the products changed"
+  -- and "the figures changed" are both covered by one column.
+  assert not public.order_submission_exception_current(
+    'approved', 1000000, 1000000, repeat('a', 64), repeat('b', 64),
+    '50% before dispatch', '50% before dispatch', null, null),
+    'a replaced workbook must make the approval stale';
+
+  -- A CHANGED GRAND TOTAL makes it stale.
+  assert not public.order_submission_exception_current(
+    'approved', 1000000, 5000000, repeat('a', 64), repeat('a', 64),
+    '50% before dispatch', '50% before dispatch', null, null),
+    'a changed grand total must make the approval stale';
+
+  -- CHANGED TERMS make it stale, in both directions.
+  assert not public.order_submission_exception_current(
+    'approved', 1000000, 1000000, repeat('a', 64), repeat('a', 64),
+    '50% before dispatch', '30% before dispatch', null, null),
+    'changed Payment Terms must make the approval stale';
+  assert not public.order_submission_exception_current(
+    'approved', 1000000, 1000000, repeat('a', 64), repeat('a', 64),
+    '50% before dispatch', '50% before dispatch', null, '100% before dispatch'),
+    'changed Billing Terms must make the approval stale';
+
+  -- A LEGACY DECISION, which recorded no basis, is never current.
+  assert not public.order_submission_exception_current(
+    'approved', null, 1000000, null, repeat('a', 64), null, null, null, null),
+    'a decision with no recorded basis must never be current';
+
+  -- ── The words under a standing approval are frozen ──
+  begin
+    update public.order_submissions
+       set advance_exception_reason = 'ASSERT rewritten after approval'
+     where id = v_pi;
+    raise exception 'the reason under a standing approval must not be rewritable';
+  exception when sqlstate '42501' then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg like 'ORDER_SUBMISSION_EXCEPTION_REASON_FROZEN%',
+      format('expected the frozen-reason refusal, got: %s', v_msg);
+  end;
+
+  -- ── The recorded basis cannot be forged under a standing decision ──
+  begin
+    update public.order_submissions
+       set advance_exception_decided_grand_total = 5000000
+     where id = v_pi;
+    raise exception 'the decision basis must not be writable on its own';
+  exception when sqlstate '42501' then
+    get stacked diagnostics v_msg = message_text;
+    assert v_msg like 'ORDER_SUBMISSION_EXCEPTION_BASIS_IMMUTABLE%',
+      format('expected the immutable-basis refusal, got: %s', v_msg);
+  end;
+
+  -- ── A STALE approval is refused at final approval, in its own words ──
+  update public.order_submissions
+     set finance_verified_by = v_admin,
+         finance_verified_at = now(),
+         finance_verified_submission_at = submitted_at
+   where id = v_pi;
+
+  -- The workbook is replaced under the standing approval. (Written directly:
+  -- replace_order_submission_parse is service-role-only and needs a draft, and
+  -- this section is about what APPROVAL does with the result.)
+  update public.order_submissions
+     set source_workbook_sha256 = repeat('c', 64)
+   where id = v_pi;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin)::text, true);
+  begin
+    perform public.approve_order_submission(v_pi);
+    reset role;
+    raise exception 'a stale reduced-payment approval must not create an Order';
+  exception when sqlstate 'P0001' then
+    get stacked diagnostics v_msg = message_text;
+    reset role;
+    assert v_msg like 'ORDER_SUBMISSION_EXCEPTION_STALE%',
+      format('expected the stale-approval refusal, got: %s', v_msg);
+  end;
+
+  raise notice '10. exception currentness OK';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 11. ONE LOCK ORDER
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Structural, and read out of the catalog rather than trusted from a comment.
+-- The concurrency proof itself needs two sessions and cannot live in a single
+-- transaction; it is recorded in the PR.
+
+do $$
+declare
+  v_def text;
+  v_fn  text;
+begin
+  -- The allocation door locks its PI TARGET before the payment. Without this an
+  -- allocation can land on a PI that has just been approved: money stranded on a
+  -- record that no longer counts it and an Order that will never see it.
+  select pg_get_functiondef(p.oid) into v_def
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'allocate_payment_to_target_internal';
+
+  assert position('from public.order_submissions' in v_def)
+       < position('from public.finance_payment_requests' in v_def),
+    'allocate_payment_to_target_internal must lock the PI submission before the payment';
+  assert v_def like '%where id = p_order_submission_id%for update%',
+    'and the PI target must be LOCKED, not merely read';
+
+  -- Both Phase 3 write paths take the same three locks in the same order, and
+  -- lock multi-row sets in a deterministic id order.
+  for v_fn in select unnest(array['approve_order_submission', 'submit_pi_for_review_internal'])
+  loop
+    select pg_get_functiondef(p.oid) into v_def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = v_fn;
+
+    assert position('from public.order_submissions' in v_def)
+         < position('from public.finance_payment_requests' in v_def),
+      format('%s must lock the submission before any payment', v_fn);
+    assert position('from public.finance_payment_requests' in v_def)
+         < position('from public.finance_payment_allocations' in v_def),
+      format('%s must lock payments before allocations', v_fn);
+    assert v_def like '%order by f.id%' and v_def like '%order by a.id%',
+      format('%s must lock multi-row sets in ascending id', v_fn);
+  end loop;
+
+  -- And the applied writers still agree with that order.
+  select pg_get_functiondef(p.oid) into v_def
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'reverse_payment_allocation';
+  assert position('from public.finance_payment_requests' in v_def)
+       < position('from public.finance_payment_allocations' in v_def),
+    'reverse_payment_allocation must still lock the payment before the allocation';
+
+  raise notice '11. lock order OK';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 12. CLEANUP FOLLOWS THE MONEY ACROSS THE MOVE
+-- ═══════════════════════════════════════════════════════════════════════════
+
+do $$
+declare
+  v_def text;
+begin
+  select pg_get_functiondef(p.oid) into v_def
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'resolve_test_data_cleanup_chain';
+
+  -- The applied branch finds the REVERSED allocations that stay with the PI.
+  assert v_def like '%a.order_submission_id = v_submission_id%',
+    'the cleanup chain must still find allocations naming the PI';
+  -- The new one finds the ACTIVE allocations that moved onto the Order. Without
+  -- it a converted test chain hides its payments and the NO ACTION foreign key
+  -- refuses the Order delete with a raw constraint error.
+  assert v_def like '%a.order_id = v_order_id or a.order_id = v_sub_order_id%',
+    'the cleanup chain must also find allocations that moved onto the Order';
+
+  raise notice '12. cleanup chain OK';
+end $$;
+
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;
 
 rollback;

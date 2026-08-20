@@ -30,6 +30,7 @@ import {
   PAYMENT_AWAITING_VERIFICATION,
   PAYMENT_EXCEPTION_PENDING,
   PAYMENT_EXCEPTION_REJECTED,
+  PAYMENT_EXCEPTION_STALE,
   PAYMENT_GATE_FAILURES,
   PAYMENT_POSITIONS,
   PAYMENT_POSITION_HINT,
@@ -89,6 +90,15 @@ describe('the six positions, and no seventh', () => {
       assert.ok(sql.includes(`'${position}'`),
         `${position} is named in the browser but the database never returns it`)
     }
+  })
+
+  test('a stale approval is its own position, never folded into "not enough"', () => {
+    // A salesperson told "payment required" would go and collect money. What is
+    // actually needed is for the approver to look at the terms that changed.
+    assert.ok(PAYMENT_POSITIONS.includes('exception_stale'))
+    assert.notEqual(PAYMENT_POSITION_LABEL.exception_stale,
+                    PAYMENT_POSITION_LABEL.payment_required)
+    assert.match(PAYMENT_POSITION_HINT.exception_stale, /approved again/i)
   })
 
   test('an unknown position is refused rather than relabelled', () => {
@@ -262,6 +272,8 @@ describe('every refusal is business language, and never the database’s own', (
     assert.equal(PAYMENT_EXCEPTION_PENDING, 'The reduced-payment exception is still pending.')
     assert.equal(PAYMENT_EXCEPTION_REJECTED,
       'The reduced-payment exception was rejected. Update the PI before resubmitting.')
+    assert.equal(PAYMENT_EXCEPTION_STALE,
+      'The reduced-payment approval was given for different commercial terms and must be approved again.')
     assert.ok(shortfallSentence('1.00')?.endsWith('more verified payment is required for standard approval.'))
   })
 
@@ -275,7 +287,19 @@ describe('every refusal is business language, and never the database’s own', (
     // ORDER_SUBMISSION_NOT_AVAILABLE is the payment summary's refusal to a
     // caller who may not open the PI. loadPiPaymentSummary() answers it with
     // NULL — no card content — which is not a page failure and not a sentence.
-    const SILENT = new Set(['ORDER_SUBMISSION_NOT_AVAILABLE'])
+    // Codes the SCREENS never show, each for a stated reason.
+    const SILENT = new Set([
+      // The payment summary's refusal to a caller who cannot open the PI.
+      // loadPiPaymentSummary() answers it with NULL — no card content — which is
+      // not a page failure and not a sentence.
+      'ORDER_SUBMISSION_NOT_AVAILABLE',
+      // Guard-trigger refusals. Nothing a browser can reach produces them: they
+      // exist to refuse a direct UPDATE, and the RPC in front of each one has
+      // already said the same thing in business language.
+      'ORDER_SUBMISSION_EXCEPTION_BASIS_IMMUTABLE',
+      'ORDER_SUBMISSION_ADVANCE_INVALID',
+      'ORDER_SUBMISSION_ADVANCE_NOT_PENDING',
+    ])
     for (const code of new Set(raised)) {
       if (SILENT.has(code)) continue
       assert.ok(mapped.has(code) || workflow.includes(code),

@@ -50,6 +50,7 @@ import {
   PAYMENT_AWAITING_VERIFICATION,
   PAYMENT_EXCEPTION_PENDING,
   PAYMENT_EXCEPTION_REJECTED,
+  PAYMENT_EXCEPTION_STALE,
   shortfallSentence,
   type PaymentPosition,
 } from './paymentGate'
@@ -315,6 +316,10 @@ export function paymentApprovalBlocker(
   if (position === 'standard_met' || position === 'exception_approved') return null
   if (position === 'exception_pending') return PAYMENT_EXCEPTION_PENDING
   if (position === 'exception_rejected') return PAYMENT_EXCEPTION_REJECTED
+  // APPROVED, BUT FOR SOMETHING ELSE. Never folded into "not enough payment":
+  // that would send somebody to collect money when what is needed is for the
+  // approver to look at the terms that changed.
+  if (position === 'exception_stale') return PAYMENT_EXCEPTION_STALE
 
   const shortfall = shortfallSentence(neededForStandard)
   const lead = position === 'verification_pending'

@@ -101,8 +101,11 @@ export async function POST(req: NextRequest) {
       .rpc('users_with_module_permission', {
         p_module_key: 'orders', p_action_key: 'approve_advance_exception',
       })
-    for (const row of (approvers ?? []) as ({ id?: string } | string)[]) {
-      push(typeof row === 'string' ? row : row.id,
+    // The RPC returns a NAMED column (`user_id`), so the shape is not a guess.
+    // A bare string is still accepted, because a scalar set is what PostgREST
+    // produces if the function is ever simplified back.
+    for (const row of (approvers ?? []) as ({ user_id?: string } | string)[]) {
+      push(typeof row === 'string' ? row : row.user_id,
         `${clientName} needs approval to confirm an Order below 40% payment.`)
     }
   } else if (event === 'pi_exception_approved') {

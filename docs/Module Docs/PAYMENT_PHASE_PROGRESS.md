@@ -321,6 +321,98 @@ Finance verification flow; the payment-splitting UI; unallocated-funds selection
 allocation-correction requests; the Confirmed Payments view; Debit Notes; refunds;
 Order cancellation; Excel or PDF generation.
 
+### Pre-deployment audit (PR #45)
+
+A strict audit before the linked migration deployment found **five defects and
+one blocker**. All five are fixed in the same migration, which is unapplied.
+
+**1. A new allocation could race the approval and strand money.**
+`allocate_payment_to_target_internal()` locked the PAYMENT first and then read
+the PI submission *without* a lock, purely to check eligibility. A Finance
+allocator could therefore read `status = 'submitted'`, be descheduled, and insert
+its allocation after the approval had committed — leaving an ACTIVE allocation on
+a PI that is now an Order. The money would be invisible to the Order and no
+longer counted by the PI. A re-check after the move cannot see it (READ
+COMMITTED), so the fix is the lock order: the function now locks the PI target
+**before** the payment, matching `record_pi_submission_payment()` and both Phase
+3 write paths. Proven with two concurrent sessions — the old order deadlocks
+(`ERROR: deadlock detected`), the new one does not.
+
+**2. An approved exception outlived what it was a decision about.** Nothing
+recorded the total, the document or the terms an approval was given against, so
+an approval for "start on ₹0 against a ₹3,00,000 PI" survived the workbook being
+replaced with a ₹30,00,000 one. Four `advance_exception_decided_*` columns now
+record the basis, `order_submission_exception_current()` is the single rule that
+compares it, the reason is frozen while an approval stands, and the basis can
+only move with the decision. **A pre-Phase-3 approval recorded nothing and is
+therefore never current** — it was a decision about a declared advance, not about
+verified payment. The migration reports how many PIs that affects rather than
+backfilling a decision nobody took.
+
+**3. Test Data Cleanup lost a converted chain's payments.** Phase 2 taught
+`resolve_test_data_cleanup_chain()` to find a payment through an allocation
+naming the PI. Phase 3 moves exactly those allocations onto the Order and leaves
+the parent payment carrying no `order_id`, so after a conversion *both* sweeps
+found nothing and the NO ACTION foreign key would have refused the Order delete
+with a raw constraint error — the failure Phase 2 fixed, reappearing one phase
+later on the other side of the move. One extra union branch closes it; the two
+branches are complementary (reversed allocations stay with the PI, active ones
+moved to the Order).
+
+**4. A displayed percentage could overstate.** `verified_percent` was rounded, so
+39.999% printed as "40%" beside a gate that refuses. Both percentages are now
+truncated — the rule `20260917000000` §4 already states for
+`order_submission_advance_percent_of()`: *"Truncation cannot overstate."*
+
+**5. The notification helper's shape was a guess.** `users_with_module_permission`
+returned `SETOF uuid`; PostgREST renders a set-returning function's rows by
+column name, and the route was reading a key that would never arrive — no
+approver would have been notified. It now `RETURNS TABLE (user_id uuid)`.
+
+Also found and fixed: `piDetail.render.test.tsx` had never run. Node's test
+runner treats a path argument as a glob, so the literal `[submissionId]` was read
+as a character class matching no directory that exists — 146 assertions reported
+`# tests 0` and the suite looked green. There is now an `npm test` script using
+recursive globs, and `src/lib/testDiscovery.test.ts` fails if any test file is
+ever unreachable from it again.
+
+### Blocker held for a decision — Finance linkage after the move
+
+**Phase 3 creates an inconsistency in the Confirmed Payments ledger that this PR
+does not fix.**
+
+After a PI's allocation moves onto its Order, the parent payment still carries
+`order_id = NULL` and `status = 'approved_unlinked'`. Finance's linked/unlinked
+split is `order_id IS NOT NULL OR order_request_id IS NOT NULL`, so the payment
+appears in **Non-Linked Payments** — a queue whose stated meaning is *"money that
+has arrived with nothing at all pointing at it, which is the only set that needs
+someone to act"*. That is now false for those rows, the sidebar counters
+over-report, and an administrator taking the obvious action would call
+`link_finance_payment_to_order`.
+
+It cannot be fixed by linking the payment. `finance_payment_requests_status_order_invariant`
+(`20260692000000`) requires `approved_linked ⇒ order_id IS NOT NULL AND
+order_number IS NOT NULL`, and on a PI payment `order_number` holds **the
+salesperson's reference/UTR** (`record_pi_submission_payment` writes
+`p_reference` there). Linking would overwrite a reference when one exists and
+invent one when it does not.
+
+The two costed options:
+
+| | Change | Risk |
+|---|---|---|
+| **A — read projection** *(recommended)* | A `security_invoker` view over `finance_payment_requests` exposing `is_order_allocated`, with `applyLinkageScope`, `linkageModeFor` and `resolveLinkedAgainst` reading it. Exact, RLS-preserving, no ledger change. | Touches both Finance money pages and their counters — a read-model change to the area this phase was fenced out of, and not verifiable without a UI pass. |
+| **B — ledger vocabulary** | Relax the invariant so `approved_linked` no longer demands `order_number`, then link the payment on conversion. | Changes a deployed financial CHECK and the meaning of a column. A ledger redesign. |
+
+Option A was **not** taken in this PR: it is a change to the Confirmed Payments
+read model, which this phase is explicitly scoped out of, and it cannot be
+verified here without browser testing. It is the smallest correct fix and belongs
+in its own PR, before or immediately after Phase 3 reaches production.
+
+Until then the PI side, the Order side and the allocation trail are all correct;
+only Finance's linked/unlinked classification is wrong for a converted PI's
+payments.
+
 ---
 
 ## What remains
