@@ -1,5 +1,7 @@
-import { test } from 'node:test'
+import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   CONFIRMED_PAYMENT_STATUSES,
   LINKED_OR_PREDICATE,
@@ -9,6 +11,7 @@ import {
   isRequestStageStatus,
   linkageModeFor,
   resolveLinkedAgainst,
+  canVerifyPayment,
 } from './paymentRouting'
 
 // Every status finance_payment_requests allows (20260628000200 + the two
@@ -260,4 +263,154 @@ test('the Payment Request number is never overwritten by the linkage label', () 
   // one of its inputs, so no linkage state can shadow it.
   const t = resolveLinkedAgainst(row({ order_id: 'o1', order_number: 'ORD-1' }))
   assert.equal('request_number' in t, false)
+})
+
+// ── Verification must be reachable, and only by the right people ─────────────
+//
+// THE PRODUCTION DEFECT THIS COVERS. Verification was reachable from exactly one
+// place: clicking a table row, which opened the review modal only for a viewer
+// holding the approval capability. The row's explicit "View" button opened the
+// DETAILS modal instead — and that modal had no verification control at all. An
+// administrator taking the obvious route saw Pending Review / Needs
+// Clarification / Rejected and Delete / Edit, and could not confirm the payment.
+// Reported against PAY-REQ-2026-0038, a payment recorded from a PI.
+//
+// It was never PI-specific: any pending payment opened through View was stuck.
+// PI payments simply made it the common case.
+
+describe('a pending payment can be verified', () => {
+  test('the approval capability plus a pending status is the whole rule', () => {
+    assert.equal(canVerifyPayment('pending_approval', true), true)
+  })
+
+  test('no approval capability, no control — whatever the status', () => {
+    for (const status of ['pending_approval', 'needs_clarification', 'rejected',
+                          'approved_unlinked', 'approved_linked']) {
+      assert.equal(canVerifyPayment(status, false), false, status)
+      assert.equal(canVerifyPayment(status, null), false, status)
+      assert.equal(canVerifyPayment(status, undefined), false, status)
+    }
+  })
+
+  test('only a PENDING payment is verifiable', () => {
+    // needs_clarification and rejected must travel back through the existing
+    // correction and reapply route first; the RPC refuses anything else and this
+    // agrees with it rather than offering a control that would fail.
+    for (const status of ['needs_clarification', 'rejected',
+                          'approved_unlinked', 'approved_linked']) {
+      assert.equal(canVerifyPayment(status, true), false, status)
+    }
+    assert.equal(canVerifyPayment(null, true), false)
+    assert.equal(canVerifyPayment(undefined, true), false)
+  })
+
+  test('an already-verified payment is never offered verification again', () => {
+    for (const status of CONFIRMED_PAYMENT_STATUSES) {
+      assert.equal(canVerifyPayment(status, true), false, status)
+    }
+  })
+
+  test('every request-stage status is answered, so none can fall through', () => {
+    for (const status of REQUEST_STAGE_STATUSES) {
+      assert.equal(typeof canVerifyPayment(status, true), 'boolean', status)
+    }
+  })
+})
+
+describe('the details modal actually offers verification', () => {
+  const SOURCE = readFileSync(join(process.cwd(), 'src/app/finance/page.tsx'), 'utf8')
+
+  test('it draws the control from the shared rule, not a local condition', () => {
+    assert.ok(SOURCE.includes('canVerifyPayment(r.status, mayApprovePayments)'),
+      'the details modal must decide from the shared rule')
+    assert.ok(SOURCE.includes('mayApprovePayments={caps.canApprovePayment}'),
+      'the capability passed in must be finance.approve, not another one')
+  })
+
+  test('the control is labelled Verify Payment, not Approve', () => {
+    // The action confirms Finance checked the money; "Approve" reads as
+    // approving the order.
+    assert.ok(SOURCE.includes('Verify Payment'), 'the primary control must say Verify Payment')
+  })
+
+  test('BOTH routes to this action are labelled the same way', () => {
+    // The page reaches one RPC by two doors: the details modal's primary button
+    // and the review modal's decision row. They used to be called "Verify
+    // Payment" and "Mark Payment Received", which read as two different powers.
+    const labelled = SOURCE.split('Verify Payment').length - 1
+    assert.ok(labelled >= 2,
+      `both the details panel and the review decision must say Verify Payment (found ${labelled})`)
+
+    for (const retired of ['Mark Payment Received', 'Approve Payment']) {
+      assert.ok(!SOURCE.includes(retired), `"${retired}" must not survive anywhere on this page`)
+    }
+  })
+
+  test('the copy changed and the WIRING did not', () => {
+    // The whole risk of a copy pass over a decision surface: renaming the thing
+    // people read is safe, renaming what the code dispatches on is a workflow
+    // change wearing a copy change's clothes. These are the identifiers the
+    // wording must not have dragged along with it.
+    assert.ok(SOURCE.includes("type AdminAction = 'approve' | 'needs_clarification' | 'reject'"),
+      'the three decision keys are the workflow and must be untouched')
+    assert.ok(SOURCE.includes("{ key: 'approve',"),
+      "the verification decision must still dispatch on the 'approve' key")
+    assert.ok(SOURCE.includes("action === 'approve'"),
+      "the approve branch must still be selected by its key, not by its label")
+
+    // Statuses, the RPC and the capability are database and permission facts,
+    // not copy. A rename here would be exactly the unauthorised change this
+    // guard exists to refuse.
+    for (const wiring of ['approved_unlinked', 'approved_linked', 'pending_approval',
+                          'approve_finance_payment_request', 'caps.canApprovePayment']) {
+      assert.ok(SOURCE.includes(wiring), `${wiring} must survive the wording change`)
+    }
+  })
+
+  test('verification is described as verification, start to finish', () => {
+    // Confirmation, in-flight and outcome text for the SAME action. A person who
+    // clicks Verify Payment should not be told the money was "approved".
+    assert.ok(SOURCE.includes("'Verifying…'"),
+      'the in-flight label must name the action being performed')
+    assert.ok(/will be verified/.test(SOURCE),
+      'the consequence text must describe verification')
+    assert.ok(!/has already been approved|has been approved and is now managed/.test(SOURCE),
+      'the stale-row messages must describe verification too')
+  })
+
+  test('it calls the EXISTING RPC and builds no second approval flow', () => {
+    const calls = [...SOURCE.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1])
+    assert.ok(calls.includes('approve_finance_payment_request'),
+      'verification must go through the existing RPC')
+    for (const name of calls) {
+      assert.ok(!/verify_payment|approve_payment_v2|confirm_payment/.test(name),
+        `${name} looks like a second approval flow`)
+    }
+  })
+
+  test('verified statuses are still absent from the correction dropdown', () => {
+    // 20260692000000 removed both approved statuses from the correction options
+    // precisely because moving into them needs the RPC's locking and
+    // bookkeeping. Adding a primary button must not have put them back.
+    const block = SOURCE.slice(SOURCE.indexOf('const STATUS_CORRECTION_OPTIONS'))
+      .slice(0, SOURCE.slice(SOURCE.indexOf('const STATUS_CORRECTION_OPTIONS')).indexOf(']'))
+    assert.ok(!block.includes('approved_unlinked') && !block.includes('approved_linked'),
+      'no approved status may be selectable in the correction dropdown')
+  })
+
+  test('a double click cannot submit verification twice', () => {
+    // A ref set BEFORE the await, not a state update that only lands on the next
+    // render. Verification is not idempotent from the caller's side.
+    assert.ok(SOURCE.includes('verifyingRef'),
+      'verification must be guarded by a ref, not by state alone')
+    assert.ok(/if \(verifyingRef\.current\) return/.test(SOURCE),
+      'the guard must return early on a second call')
+    assert.ok(SOURCE.includes('disabled={verifying}'),
+      'the confirm button must be disabled while the call is in flight')
+  })
+
+  test('Needs Clarification and Rejected remain separate decisions', () => {
+    assert.ok(SOURCE.includes("'needs_clarification'") && SOURCE.includes("'reject'"),
+      'the other two decisions must still exist independently')
+  })
 })

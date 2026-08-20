@@ -25,7 +25,17 @@ const NEW_MIGRATION = '20260901000000_finance_orders_permission_enforcement.sql'
 
 const lf = (s: string) => s.replace(/\r\n/g, '\n')
 const migrationText = lf(readFileSync(join(MIGRATIONS, NEW_MIGRATION), 'utf8'))
-const files = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f !== NEW_MIGRATION).sort()
+// Strictly EARLIER migrations, not merely "every file except this one".
+// Migration filenames are timestamps, so `<` is chronological order.
+//
+// This contract is about what 20260901000000 changed relative to the history it
+// was written against, so a LATER migration restating one of these functions is
+// not the baseline — it is a descendant. 20260920000000 restates
+// approve_finance_payment_request (to let a non-admin finance.approve holder
+// past the pending-decision guard); read as a baseline it would carry the new
+// authorization already, and this suite would report the substitution as
+// missing rather than as long since made.
+const files = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f < NEW_MIGRATION).sort()
 
 /** The last definition of `fnName` in the migration history before ours. */
 function latestDefinition(fnName: string): { text: string; file: string } {
@@ -388,5 +398,169 @@ describe('what the migration deliberately leaves alone', () => {
   test('a rollback plan is documented in the file itself', () => {
     assert.ok(migrationText.includes('ROLLBACK PLAN'))
     assert.ok(migrationText.includes('drop policy if exists "finance_payment_requests_approver_decide"\n--     on public.finance_payment_requests;'))
+  })
+})
+
+// ── 20260920000000: the same discipline, applied to the hotfix ───────────────
+//
+// That migration restates TWO deployed SECURITY DEFINER functions in order to
+// let a non-admin finance.approve holder past the pending-decision guard. The
+// guard listed approved_by and approved_at among the columns it refuses, and
+// approve_finance_payment_request stamps both, so the sanctioned approval path
+// refused every non-admin approver.
+//
+// Restating a 160-line function is how a business rule gets silently reverted,
+// so the additions are enumerated here and everything else must match the prior
+// definition character for character.
+
+const HOTFIX = '20260920000000_finance_approver_can_verify_payment.sql'
+const hotfixText = lf(readFileSync(join(MIGRATIONS, HOTFIX), 'utf8'))
+
+/**
+ * The dollar-quoted BODY of a definition, without its header.
+ *
+ * The hotfix's two bodies were extracted from the live database with
+ * pg_get_functiondef and patched programmatically rather than retyped, so their
+ * HEADERS are rendered in Postgres's own style (`CREATE OR REPLACE FUNCTION
+ * public.f(a uuid, b text DEFAULT NULL::text)` on one line, uppercase) while the
+ * prior migrations wrote them by hand, lowercase and across several lines. That
+ * difference is presentation. What must match character for character is the
+ * body, which is what these contracts are actually about.
+ */
+function bodyOf(definition: string): string {
+  const tag = /\$[A-Za-z_]*\$/.exec(definition)?.[0]
+  assert.ok(tag, 'a function definition must be dollar-quoted')
+  const open = definition.indexOf(tag)
+  const close = definition.indexOf(tag, open + tag.length)
+  assert.ok(close > open, 'a function body must be closed')
+  return definition.slice(open + tag.length, close)
+}
+
+/** The last definition of `fnName` strictly before the hotfix. */
+function definitionBeforeHotfix(fnName: string): { text: string; file: string } {
+  const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f < HOTFIX).sort()
+  const needle = `create or replace function public.${fnName}(`
+  let best: { text: string; file: string } | null = null
+  for (const file of all) {
+    const source = lf(readFileSync(join(MIGRATIONS, file), 'utf8'))
+    const lower = source.toLowerCase()
+    let from = 0
+    for (;;) {
+      const start = lower.indexOf(needle, from)
+      if (start === -1) break
+      from = start + needle.length
+      const tag = /\$[A-Za-z_]*\$/.exec(source.slice(start))?.[0]
+      if (!tag) continue
+      const bodyOpen = source.indexOf(tag, start)
+      const bodyClose = source.indexOf(tag, bodyOpen + tag.length)
+      if (bodyClose === -1) continue
+      const semi = source.indexOf(';', bodyClose + tag.length)
+      if (semi === -1) continue
+      best = { text: source.slice(start, semi + 1), file }
+    }
+  }
+  assert.ok(best, `no prior definition found for ${fnName}`)
+  return best
+}
+
+// The additions, and the ONLY additions. Each is `find` -> `find + add`, so the
+// substitution can only ever insert; it can never quietly drop a line.
+const HOTFIX_ADDITIONS: { fn: string; find: string; add: string }[] = [
+  {
+    fn: 'finance_payment_requests_guard_pending_decision',
+    find: `  if exists (select 1 from public.users u where u.id = v_actor and u.role = 'admin') then
+    return new;
+  end if;
+`,
+    add: `
+  if public.in_finance_payment_verification(old.id) then
+    return new;
+  end if;
+`,
+  },
+  {
+    fn: 'approve_finance_payment_request',
+    find: `  update public.finance_payment_requests
+     set status       = v_status,`,
+    add: '',  // handled by the pair of set_config assertions below
+  },
+]
+
+describe('the verification hotfix restates its two functions faithfully', () => {
+  test('the guard gains one pass-through and loses nothing', () => {
+    const contract = HOTFIX_ADDITIONS[0]
+    const prior = definitionBeforeHotfix(contract.fn)
+
+    assert.equal(
+      prior.text.split(contract.find).length - 1, 1,
+      `${contract.fn}: expected exactly one admin exemption in ${prior.file}`,
+    )
+
+    const expected = bodyOf(prior.text).replace(contract.find, contract.find + contract.add)
+    // `--.*` rather than `-- .*`: the hotfix's comment blocks use a bare `--`
+    // as a paragraph separator, and that line is documentation too.
+    const strip = (t: string) => t.replace(/^ *--.*\n/gm, '').replace(/\n{2,}/g, '\n')
+    assert.ok(
+      strip(hotfixText).includes(strip(expected)),
+      `${contract.fn}: the restated body is not the prior one plus the documented pass-through`,
+    )
+  })
+
+  test('every column the guard refused, it still refuses', () => {
+    // The whole point of 20260901000000 §4a. A pass-through added for the RPC
+    // must not have quietly shortened this list.
+    const prior = definitionBeforeHotfix('finance_payment_requests_guard_pending_decision')
+    const columns = [...prior.text.matchAll(/new\.([a-z_]+)\s+is distinct from/g)].map(m => m[1])
+    assert.ok(columns.length >= 17, `expected the full refusal list, found ${columns.length}`)
+    for (const c of columns) {
+      assert.ok(
+        new RegExp(`new\\.${c}\\s+is distinct from`).test(hotfixText),
+        `the guard no longer refuses ${c}`,
+      )
+    }
+  })
+
+  test('the RPC gains only the marker, around its own UPDATE', () => {
+    const prior = definitionBeforeHotfix('approve_finance_payment_request')
+    const strip = (t: string) =>
+      t.replace(/^ *--.*\n/gm, '')
+       .replace(/^ *perform set_config\('boe\.finance_payment_verification'.*\n/gm, '')
+       .replace(/\n{2,}/g, '\n')
+
+    // With the two marker lines and the comments removed, what is left in the
+    // hotfix is the deployed function, unchanged.
+    assert.ok(
+      strip(hotfixText).includes(strip(bodyOf(prior.text))),
+      `approve_finance_payment_request: the restated body differs from ${prior.file} by more than the marker`,
+    )
+  })
+
+  test('the marker is set and cleared, and pinned to one payment', () => {
+    assert.ok(hotfixText.includes(
+      "perform set_config('boe.finance_payment_verification', p_request_id::text, true);"),
+      'the marker must be pinned to the payment being verified')
+    assert.ok(hotfixText.includes(
+      "perform set_config('boe.finance_payment_verification', '', true);"),
+      'the marker must be cleared after the statement')
+  })
+
+  test('authorization is unchanged — approve, and nothing wider', () => {
+    assert.ok(hotfixText.includes("public.actor_has_module_permission('finance', 'approve')"),
+      'verification must still be gated on finance.approve')
+    for (const wider of ['view_all', 'manage', 'allocate']) {
+      assert.ok(!hotfixText.includes(`actor_has_module_permission('finance', '${wider}')`),
+        `verification must not be reachable through finance.${wider}`)
+    }
+  })
+
+  test('the marker predicate is reachable by no client role', () => {
+    assert.ok(/revoke execute on function public\.in_finance_payment_verification\(uuid\)\s*\n?\s*from public, anon, authenticated;/.test(hotfixText),
+      'in_finance_payment_verification must be revoked from every client role')
+  })
+
+  test('it sorts after the migrations it depends on', () => {
+    for (const stamp of ['20260901000000', '20260918000000', '20260919000000']) {
+      assert.ok(HOTFIX > stamp, `${HOTFIX} must sort after ${stamp}`)
+    }
   })
 })

@@ -144,3 +144,39 @@ export function resolveLinkedAgainst(row: {
   }
   return { kind: 'none', label: 'Not linked' }
 }
+
+// ── Who may VERIFY a payment, and when ────────────────────────────────────────
+//
+// THE DEFECT THIS EXISTS TO PREVENT RECURRING. Verification used to be reachable
+// from exactly one place: clicking a table row, which opened the review modal
+// only when the viewer held the approval capability. The row's explicit "View"
+// button — the obvious action in the action column — opened the DETAILS modal
+// instead, and that modal had no verification control at all. An administrator
+// who took the obvious route could send a payment back or reject it, but could
+// not confirm it. The rule now lives here, in one place, so both surfaces ask
+// the same question.
+//
+// This is a DRAWING rule, never an authorization one. Every call to
+// approve_finance_payment_request re-derives the actor, the finance.approve
+// permission and the row's status under a row lock, so hiding the control
+// protects nobody and showing it grants nothing.
+
+/**
+ * Whether a Verify Payment control should be offered.
+ *
+ * `mayApprove` is the finance.approve capability — deliberately NOT
+ * finance.manage, finance.view, finance.view_all or finance.allocate. Correcting
+ * a recorded payment, seeing payments and deciding which business money belongs
+ * to are three different authorities, and none of them is the authority to say
+ * the money arrived.
+ *
+ * Only `pending_approval` is verifiable. A payment awaiting clarification or
+ * already rejected has to travel back through the existing correction and
+ * reapply route first — the RPC refuses anything else, and this agrees with it.
+ */
+export function canVerifyPayment(
+  status: string | null | undefined,
+  mayApprove: boolean | null | undefined,
+): boolean {
+  return Boolean(mayApprove) && status === 'pending_approval'
+}

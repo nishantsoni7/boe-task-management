@@ -81,10 +81,10 @@ export async function POST(req: NextRequest) {
       push(creatorId, `Clarification requested for payment request ${requestNumber}.`)
       break
     case 'finance_approved_suspense':
-      push(creatorId, `Payment request ${requestNumber} was approved and moved to Suspense.`)
+      push(creatorId, `Payment request ${requestNumber} was verified and moved to Suspense.`)
       break
     case 'finance_approved_linked':
-      push(creatorId, `Payment request ${requestNumber} was approved and linked to Order${orderSuffix}.`)
+      push(creatorId, `Payment request ${requestNumber} was verified and linked to Order${orderSuffix}.`)
       break
     case 'finance_rejected':
       push(creatorId, `Payment request ${requestNumber} was rejected.`)

@@ -33,8 +33,9 @@ stored. Allocations are reversed, never deleted. Two protected Finance actions,
 
 | | |
 |---|---|
-| Status | **PR open, not merged. Migration NOT applied.** |
-| Branch | `claude/boe-pi-payment-entry-phase2` |
+| Status | **Merged and applied to production** |
+| PR | [#43](https://github.com/nishantsoni7/boe-task-management/pull/43) |
+| Squash merge | `8d3bbe61a67d6627e321adc0ccd8958c420749f7` |
 | Migration | `20260919000000_pi_submission_payment_entry.sql` |
 
 **What it delivers.** The entry point Phase 1 had no way to reach: a payment can
@@ -84,6 +85,99 @@ allocation movement.
 * Phase 1's allocation door required `finance.allocate`, which a PI's own
   uploader does not hold, so the atomic RPC refused the primary use case. Fixed
   by the two-door split rather than by widening the door.
+
+---
+
+## Hotfix — Finance/Admin could not verify a payment
+
+| | |
+|---|---|
+| Status | **PR open, not merged. Migration NOT applied.** |
+| Branch | `claude/boe-verify-pi-payment-hotfix` |
+| Migration | `20260920000000_finance_approver_can_verify_payment.sql` |
+| Reported against | `PAY-REQ-2026-0038`, a payment recorded from a PI |
+
+Reported as one problem. It was two, sitting on top of each other, and only the
+first is about PI payments at all.
+
+### Defect 1 — the UI had no verification control on the route people take
+
+Verification lived in exactly one place: `AdminReviewModal`, opened only by
+clicking a table **row**, and only for a viewer holding the approval capability.
+The row's explicit **View** button opened `DetailsModal` instead — which offered
+Pending Review / Needs Clarification / Rejected and Delete / Edit, and no way to
+verify anything. An administrator taking the obvious route was stuck.
+
+This was never PI-specific: *any* pending payment opened through View was stuck.
+PI payments merely made it the common case, because a PI payment is the kind
+somebody goes looking for rather than triages from the list.
+
+Fixed in the UI alone. `DetailsModal` gained a **Verify Payment** panel above
+Admin controls, with a two-step confirmation, a ref-guarded submit, and the
+existing RPC underneath. The rule is one exported function,
+`canVerifyPayment(status, mayApprove)` — approval capability **and**
+`pending_approval`, nothing else — so the modal and the row cannot disagree.
+
+Not put in the status-correction dropdown, deliberately: `20260692000000` removed
+both approved statuses from `STATUS_CORRECTION_OPTIONS` precisely because
+reaching them needs the RPC's row locking and `order_id` bookkeeping. A protected
+server action gets a primary button; it does not become an option in a `<select>`.
+
+### Defect 2 — no non-admin approver could verify ANY payment
+
+Found while writing the backend assertions for defect 1, and invisible to
+admin-only testing.
+
+`20260901000000` §4a added `finance_payment_requests_guard_pending_decision` so a
+`finance.approve` holder could **decide** a pending request without being able to
+rewrite it — an RLS `WITH CHECK` sees only the new row, so it cannot say "the
+amount may not change". Its stated intent was that everyone else "may change only
+the three decision columns" (`status`, `admin_note`, `updated_at`).
+
+But `approve_finance_payment_request` writes **five**: it also stamps
+`approved_by` and `approved_at`, which is the whole point of an audit trail. Both
+were on the guard's refusal list, so the sanctioned approval path raised
+
+```
+42501  Payment PAY-REQ-… may be approved or rejected, not edited
+```
+
+for every non-admin approver — PI payment, Order payment and Order Request
+payment alike. Admins were exempt from the guard, which is why this never showed
+up until a non-admin approver was put in front of it.
+
+`20260920000000` fixes it with the project's existing capability-marker pattern,
+taken verbatim from `in_payment_allocation_release` (`20260918000000` §7): the
+RPC marks the one payment it is deciding, transaction-locally, and the guard
+steps aside for exactly that row. The marker is set immediately before the
+statement, cleared immediately after, and sits behind a predicate function
+revoked from every client role.
+
+**Nothing was widened.** The gate is still, and only,
+`actor_has_module_permission('finance', 'approve')`. `finance.view`,
+`finance.view_all`, `finance.manage` and `finance.allocate` remain no route to
+verification, and outside the RPC the guard still refuses every column it
+refused before — proven from both sides in
+`supabase/tests/finance_payment_verification_assertions.sql`.
+
+### What the fix does not change
+
+A verified PI payment still lands in `approved_unlinked` with `order_id` left
+null; its allocation keeps its id, status, amount and PI; the payment keeps its
+id and number; nothing is copied. Needs Clarification and Rejected remain
+separate decisions on the direct-update route, and neither status can be verified
+without travelling back through correction first. The Order approval gate and the
+declared-advance rule are untouched.
+
+### Worth remembering
+
+* The repo's `migrationContract` suite finds "the last definition before ours" by
+  excluding **one filename**, not by comparing timestamps. A later migration
+  restating one of the eleven functions therefore became its own baseline and
+  reported a long-since-made substitution as missing. Now bounded with `<`.
+* A guard that greps for a comment pattern needs to match the comments actually
+  written: `/^ *-- .*\n/` silently skipped bare `--` separator lines, which was
+  enough to make a faithful restatement look unfaithful.
 
 ---
 
