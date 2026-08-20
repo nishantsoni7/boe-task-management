@@ -860,12 +860,20 @@ plus `order_submission_exception_current()`); Test Data Cleanup lost a converted
 chain's payments; a rounded percentage could display "40%" beside a gate that
 refuses; and the notification helper's PostgREST shape was wrong.
 
-**One blocker is held for a decision, not fixed:** after the move the parent
-payment still reads `approved_unlinked` with no `order_id`, so Finance's
-linked/unlinked split misclassifies it and the counters over-report. It cannot be
-fixed by linking the payment — `approved_linked` requires `order_number`, which
-on a PI payment holds the salesperson's reference. See
-`docs/Module Docs/PAYMENT_PHASE_PROGRESS.md`.
+**The blocker that audit recorded is now fixed in the same unapplied
+migration.** After the move the parent payment still reads `approved_unlinked`
+with no `order_id`, so a linked/unlinked split reading the parent columns alone
+would misclassify it and the counters would over-report. It cannot be fixed by
+linking the payment — `approved_linked` requires `order_number`, which on a PI
+payment holds the salesperson's reference. The ledger is therefore left alone and
+the READ is corrected: §8a of `20260921000000` adds
+`public.finance_received_payments`, a `security_invoker = true` projection
+carrying `is_order_allocated` / `allocated_order_id` / `allocated_order_number`.
+**Parent linkage fields remain for backward compatibility; active allocations are
+authoritative for current confirmed-Order linkage; the Finance Linked/Non-Linked
+lists, their counters and the Admin Action Queue's suspense item read the
+allocation-aware projection; and no payment record is copied during PI
+conversion.** See `docs/Module Docs/PAYMENT_PHASE_PROGRESS.md`.
 
 ### Migration
 

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { RECEIVED_PAYMENTS_SOURCE, linkageModeFor } from '@/app/finance/paymentRouting'
 
 // ── /finance/received — redirect only ─────────────────────────────────────────
 // Received Payments is no longer one list with an internal tab strip; it is two
@@ -44,15 +45,20 @@ function ReceivedPaymentsRedirect() {
 
     const resolve = async () => {
       const { data } = await supabase
-        .from('finance_payment_requests')
-        .select('order_id, order_request_id')
+        .from(RECEIVED_PAYMENTS_SOURCE)
+        .select('order_id, order_request_id, is_order_allocated')
         .eq('id', paymentId)
         .maybeSingle()
 
-      // Suspense only when both linkage columns are empty. A row that is
-      // missing or not readable under RLS falls through to Linked, the default,
-      // which simply highlights nothing — never an error page.
-      const isSuspense = !!data && !data.order_id && !data.order_request_id
+      // The SAME linkageModeFor the two pages classify their rows with, read
+      // from the SAME projection, so a deep link cannot forward to the page that
+      // does not hold the row — including money whose only attachment is an
+      // active allocation onto a Confirmed Order, which the base table's own
+      // columns still show as unattached.
+      //
+      // A row that is missing or not readable under RLS falls through to Linked,
+      // the default, which simply highlights nothing — never an error page.
+      const isSuspense = !!data && linkageModeFor(data) === 'unlinked'
       router.replace(`/finance/received/${isSuspense ? 'unlinked' : 'linked'}${suffix}`)
     }
     resolve()

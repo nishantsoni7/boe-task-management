@@ -17,6 +17,9 @@
 --                                                              verified payment)
 --              pi_submission_payment_summary                  (approval position)
 --   * activity order_submission_activity 'payment_allocations_moved'
+--   * view     finance_received_payments                      (§13-§15: Finance
+--              linkage read from the ALLOCATION, its security_invoker
+--              properties, RLS isolation, and both sides of the move)
 --
 -- Runs entirely inside ONE transaction that ends in ROLLBACK.
 --
@@ -911,6 +914,400 @@ begin
     'the cleanup chain must also find allocations that moved onto the Order';
 
   raise notice '12. cleanup chain OK';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 13. FINANCE CLASSIFICATION READS THE ALLOCATION, NOT THE PARENT COLUMNS
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- THE INCONSISTENCY THIS PHASE WOULD OTHERWISE SHIP. §5 moves a PI's active
+-- allocations onto the Order and leaves the payment record alone, so the money
+-- keeps `order_id IS NULL` and `approved_unlinked`. Classified from the parent
+-- columns, it would appear in NON-LINKED PAYMENTS — the queue that means
+-- "nothing at all points at this money" — and the counter beside it would
+-- over-report. finance_received_payments (20260921000000 §8a) is the read
+-- correction; these are its ten classification cases.
+--
+--   Linked      an ACTIVE allocation naming a Confirmed Order,
+--               OR a legacy parent order_id, OR an order_request_id
+--   Non-Linked  none of the three
+
+do $$
+declare
+  v_sales  uuid := current_setting('test.sales_id')::uuid;
+  v_admin  uuid := current_setting('test.admin_id')::uuid;
+  v_pi     uuid := gen_random_uuid();
+  v_order  uuid := gen_random_uuid();
+  v_order2 uuid := gen_random_uuid();
+  v_req    uuid;
+  p_legacy_linked   uuid := gen_random_uuid();
+  p_legacy_unlinked uuid := gen_random_uuid();
+  p_pi              uuid := gen_random_uuid();
+  p_reversed        uuid := gen_random_uuid();
+  p_pi_plus_rev     uuid := gen_random_uuid();
+  p_request         uuid := gen_random_uuid();
+  p_pending         uuid := gen_random_uuid();
+  p_split           uuid := gen_random_uuid();
+  v_all uuid[];
+  v_n   integer;
+  v_linked   integer;
+  v_unlinked integer;
+  v_label text;
+  v_flag  boolean;
+begin
+  insert into public.order_submissions (id, client_name, status, grand_total, created_by, submitted_by)
+  values (v_pi, 'ASSERT classify', 'submitted', 1000000, v_sales, v_sales);
+
+  insert into public.orders (id, client_name, total_value, created_by, status, source_order_submission_id)
+  values (v_order,  'ASSERT classify', 1000000, v_admin, 'running', v_pi),
+         (v_order2, 'ASSERT classify 2', 1000000, v_admin, 'running', null);
+
+  select id into v_req from public.order_requests limit 1;
+
+  -- Eight payments, one per shape. All are the salesperson's, so the RLS
+  -- section below can read them as that salesperson.
+  insert into public.finance_payment_requests
+    (id, client_name, amount, payment_date, payment_mode, status, submitted_by, order_id, order_number)
+  values
+    (p_legacy_linked, 'ASSERT classify', 100, current_date, 'upi', 'approved_linked', v_sales, v_order, 'ASSERT-ORD');
+
+  insert into public.finance_payment_requests
+    (id, client_name, amount, payment_date, payment_mode, status, submitted_by)
+  values
+    (p_legacy_unlinked, 'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
+    (p_pi,              'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
+    (p_reversed,        'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
+    (p_pi_plus_rev,     'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
+    (p_split,           'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales),
+    (p_pending,         'ASSERT classify', 100, current_date, 'upi', 'pending_approval',  v_sales);
+
+  if v_req is not null then
+    insert into public.finance_payment_requests
+      (id, client_name, amount, payment_date, payment_mode, status, submitted_by, order_request_id)
+    values (p_request, 'ASSERT classify', 100, current_date, 'upi', 'approved_unlinked', v_sales, v_req);
+  end if;
+
+  -- An ACTIVE allocation onto the PI: real money, no Order yet.
+  insert into public.finance_payment_allocations
+    (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  values (p_pi,          v_pi, 100, 'order_submission', v_sales),
+         (p_pi_plus_rev, v_pi, 100, 'order_submission', v_sales);
+
+  -- A REVERSED allocation naming an Order: a claim that was withdrawn.
+  insert into public.finance_payment_allocations
+    (payment_request_id, order_id, allocated_amount, origin_target_type, created_by,
+     status, reversed_by, reversed_at, reversal_reason)
+  values (p_reversed,    v_order, 100, 'confirmed_order', v_sales,
+          'reversed', v_sales, now(), 'ASSERT withdrawn'),
+         (p_pi_plus_rev, v_order, 100, 'confirmed_order', v_sales,
+          'reversed', v_sales, now(), 'ASSERT withdrawn');
+
+  -- A payment split across TWO Confirmed Orders — not something this phase
+  -- creates, and the classification must not assume it cannot happen.
+  -- Explicit, distinct creation times: "oldest" has to MEAN something, and two
+  -- rows inserted in one statement share the transaction's now().
+  insert into public.finance_payment_allocations
+    (payment_request_id, order_id, allocated_amount, origin_target_type, created_by, created_at)
+  values (p_split, v_order,  50, 'confirmed_order', v_sales, now() - interval '1 hour'),
+         (p_split, v_order2, 50, 'confirmed_order', v_sales, now());
+
+  v_all := array[p_legacy_linked, p_legacy_unlinked, p_pi, p_reversed,
+                 p_pi_plus_rev, p_split, p_pending] ||
+           case when v_req is null then '{}'::uuid[] else array[p_request] end;
+
+  -- ── 1. A legacy approved_linked payment stays Linked ──
+  select is_order_allocated into v_flag
+  from public.finance_received_payments where id = p_legacy_linked;
+  assert (select order_id is not null from public.finance_received_payments where id = p_legacy_linked),
+    '1. a legacy linked payment must keep its parent Order linkage';
+
+  -- ── 2. A legacy approved_unlinked payment with no allocation stays Non-Linked ──
+  select is_order_allocated into v_flag
+  from public.finance_received_payments where id = p_legacy_unlinked;
+  assert v_flag = false, '2. a payment with no allocation must not be allocated';
+
+  -- ── 3. A verified PI payment is Non-Linked BEFORE conversion ──
+  select is_order_allocated, allocated_order_id is null
+    into v_flag, v_label
+  from public.finance_received_payments where id = p_pi;
+  assert v_flag = false,
+    '3. an allocation onto a PI is not a Confirmed-Order allocation';
+
+  -- ── 6. A REVERSED Order allocation does not make a payment Linked ──
+  select is_order_allocated into v_flag
+  from public.finance_received_payments where id = p_reversed;
+  assert v_flag = false, '6. a reversed allocation must never classify as Linked';
+
+  -- ── 7. An active PI allocation PLUS a reversed Order allocation: Non-Linked ──
+  select is_order_allocated into v_flag
+  from public.finance_received_payments where id = p_pi_plus_rev;
+  assert v_flag = false,
+    '7. an active PI allocation and a withdrawn Order claim is still Non-Linked';
+
+  -- ── 8. An Order-Request payment is classified exactly as it is today ──
+  if v_req is not null then
+    select is_order_allocated into v_flag
+    from public.finance_received_payments where id = p_request;
+    assert v_flag = false,
+      '8. an Order Request is not a Confirmed-Order allocation …';
+    assert (select order_request_id is not null
+            from public.finance_received_payments where id = p_request),
+      '8. … and the Order-Request linkage that makes it Linked is unchanged';
+  else
+    -- Never silently green: an environment with no Order Request cannot prove
+    -- case 8, and says so rather than passing by omission.
+    raise notice
+      '13. case 8 SKIPPED — this database has no order_requests row to link a payment to';
+  end if;
+
+  -- ── The split payment: Linked, ONCE, labelled by its oldest Order ──
+  select count(*) into v_n from public.finance_received_payments where id = p_split;
+  assert v_n = 1,
+    format('a payment allocated to two Orders must appear once, found %s', v_n);
+  select is_order_allocated, allocated_order_id::text into v_flag, v_label
+  from public.finance_received_payments where id = p_split;
+  assert v_flag, 'one active Confirmed-Order allocation is enough to be Linked';
+  assert v_label = v_order::text,
+    'a split payment must be labelled by its OLDEST active Order allocation';
+  -- STABLE, not merely correct once: the list and the counter beside it read the
+  -- projection separately, and must not disagree about which Order it names.
+  assert v_label = (select allocated_order_id::text
+                    from public.finance_received_payments where id = p_split),
+    'the label a split payment carries must be the same on every read';
+
+  -- ── 4 + 5. The move flips the classification, and changes nothing else ──
+  perform set_config('boe.pi_submission_approval_id', v_pi::text, true);
+  update public.finance_payment_allocations
+     set order_submission_id = null, order_id = v_order
+   where order_submission_id = v_pi and status = 'active'
+     and payment_request_id = p_pi;
+  perform set_config('boe.pi_submission_approval_id', '', true);
+
+  select is_order_allocated, allocated_order_id::text into v_flag, v_label
+  from public.finance_received_payments where id = p_pi;
+  assert v_flag,
+    '4. the payment must become Linked the moment its allocation moves';
+  assert v_label = v_order::text,
+    '4. and the list must name the Order it moved to';
+  assert (select allocated_order_number from public.finance_received_payments where id = p_pi)
+     is not distinct from (select display_number from public.orders where id = v_order),
+    '4. the number shown must be that Order''s own, joined not stored';
+
+  -- 5. THE PAYMENT RECORD ITSELF IS UNTOUCHED: same id, same status, no parent
+  --    order_id invented and no salesperson reference overwritten.
+  select count(*) into v_n from public.finance_payment_requests
+   where id = p_pi and status = 'approved_unlinked'
+     and order_id is null and order_number is null;
+  assert v_n = 1,
+    '5. the payment id, status and reference must survive the move unchanged';
+
+  -- ── 9. Request-stage records are not received payments at all ──
+  select count(*) into v_n from public.finance_received_payments
+   where id = p_pending and status in ('approved_unlinked', 'approved_linked');
+  assert v_n = 0,
+    '9. a pending request must never be counted as money received';
+
+  -- ── 10 + no duplicates + mutual exclusivity ──
+  --     The two page predicates, exactly as applyLinkageScope sends them.
+  select count(*) into v_linked from public.finance_received_payments
+   where id = any(v_all)
+     and status in ('approved_unlinked', 'approved_linked')
+     and (is_order_allocated or order_id is not null or order_request_id is not null);
+  select count(*) into v_unlinked from public.finance_received_payments
+   where id = any(v_all)
+     and status in ('approved_unlinked', 'approved_linked')
+     and is_order_allocated = false and order_id is null and order_request_id is null;
+
+  select count(*) into v_n from public.finance_received_payments
+   where id = any(v_all) and status in ('approved_unlinked', 'approved_linked');
+  assert v_linked + v_unlinked = v_n,
+    format('10. every received payment must land on exactly one page (%s + %s <> %s)',
+           v_linked, v_unlinked, v_n);
+
+  -- COUNTERS USE DISTINCT PAYMENT IDS AND MATCH THE LISTS: the projection is one
+  -- row per payment, so a count and a list of the same predicate agree.
+  select count(distinct id) into v_n from public.finance_received_payments
+   where id = any(v_all);
+  assert v_n = array_length(v_all, 1),
+    format('the projection must yield exactly one row per payment (%s of %s)',
+           v_n, array_length(v_all, 1));
+
+  -- And no payment matches BOTH predicates.
+  select count(*) into v_n from public.finance_received_payments
+   where id = any(v_all)
+     and (is_order_allocated or order_id is not null or order_request_id is not null)
+     and (is_order_allocated = false and order_id is null and order_request_id is null);
+  assert v_n = 0, 'the two page predicates must be mutually exclusive';
+
+  raise notice '13. Finance classification OK (linked %, non-linked %)', v_linked, v_unlinked;
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 14. THE PROJECTION IS SECURITY INVOKER, AND PROVES IT UNDER RLS
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- A SECURITY DEFINER projection here would have shown every payment in the
+-- business to anybody who can open the Finance pages. These assert the object's
+-- own properties AND the behaviour that matters: for every role, the view
+-- returns exactly what the base table returns — never one row more.
+
+do $$
+declare
+  v_def  text;
+  v_cols text[];
+  v_n    integer;
+begin
+  assert exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'finance_received_payments' and c.relkind = 'v'
+  ), 'the Finance projection must be a VIEW — never a table, and never a second ledger';
+
+  select coalesce((
+    select opt from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    cross join lateral unnest(coalesce(c.reloptions, '{}'::text[])) as opt
+    where n.nspname = 'public' and c.relname = 'finance_received_payments'
+      and opt like 'security_invoker%'
+    limit 1), '') into v_def;
+  assert v_def = 'security_invoker=true',
+    format('the projection must be security_invoker=true, found "%s"', v_def);
+
+  -- A CLOSED COLUMN SET: no allocation id, no allocated amount, no provenance,
+  -- no reversal record, no split.
+  select coalesce(array_agg(column_name order by column_name), '{}') into v_cols
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'finance_received_payments';
+  assert not (v_cols && array['allocation_id', 'allocated_amount', 'origin_target_type',
+                              'reversal_reason', 'reversed_by', 'reversed_at']::text[]),
+    format('the projection exposes allocation internals: %s', array_to_string(v_cols, ', '));
+
+  -- REACHABLE BY authenticated, AND BY NOBODY ELSE.
+  assert has_table_privilege('authenticated', 'public.finance_received_payments', 'select'),
+    'Finance users must be able to read the projection';
+  assert not has_table_privilege('anon', 'public.finance_received_payments', 'select'),
+    'anon must not read payments';
+  -- NO WRITE PRIVILEGE FOR ANY APPLICATION ROLE. (The view's owner holds the
+  -- implicit rights every owner holds; the roles the application connects as are
+  -- what this is about.) The projection is read-only, and every Finance mutation
+  -- keeps writing to finance_payment_requests by the payment's own id.
+  select count(*) into v_n
+  from unnest(array['authenticated', 'anon', 'public']) as r(name)
+  cross join unnest(array['insert', 'update', 'delete']) as p(priv)
+  where has_table_privilege(r.name, 'public.finance_received_payments', p.priv);
+  assert v_n = 0,
+    format('the projection must carry no write privilege, found %s grant(s)', v_n);
+
+  raise notice '14a. projection security properties OK';
+end $$;
+
+-- ── RLS ISOLATION — the view can show nothing the base table would not ───────
+--
+-- 37. participant-only PI visibility does not become Finance-wide read access.
+-- 38. finance.view_all and Admin retain their expected visibility.
+-- 39. existing sales visibility restrictions remain intact.
+
+do $$
+declare
+  v_view integer;
+  v_base integer;
+begin
+  -- ADMIN. Whatever the deployed policies grant on the base table, the view
+  -- returns the same set — no more, and no fewer.
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('test.admin_id'))::text, true);
+  select count(*) into v_view from public.finance_received_payments;
+  select count(*) into v_base from public.finance_payment_requests;
+  reset role;
+  assert v_view = v_base,
+    format('38. an admin must see the same payments through the projection (%s vs %s)',
+           v_view, v_base);
+
+  -- SALES. The salesperson's own visibility is unchanged, and the projection
+  -- does not widen it: existing sales visibility restrictions remain intact.
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('test.sales_id'))::text, true);
+  select count(*) into v_view from public.finance_received_payments;
+  select count(*) into v_base from public.finance_payment_requests;
+  reset role;
+  assert v_view = v_base,
+    format('39. sales visibility must be identical through the projection (%s vs %s)',
+           v_view, v_base);
+
+  -- OUTSIDER. Being a participant on a PI — or on nothing at all — grants no
+  -- Finance-wide read: participant-only PI visibility must not reach the
+  -- projection, which is exactly what a SECURITY DEFINER view would have broken.
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', current_setting('test.outsider_id'))::text, true);
+  select count(*) into v_view from public.finance_received_payments;
+  select count(*) into v_base from public.finance_payment_requests;
+  reset role;
+  assert v_view = v_base,
+    format('37. participant-only PI visibility must not widen Finance reads (%s vs %s)',
+           v_view, v_base);
+
+  raise notice '14b. RLS isolation OK — the projection matches the base table for every role';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 15. THE MODULES EITHER SIDE OF THE MOVE STILL AGREE
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- 40. Order detail still shows the moved payment, and
+--     PI detail no longer includes the moved allocation. The same allocation
+--     row, read from the two sides it travels between.
+
+do $$
+declare
+  v_sales uuid := current_setting('test.sales_id')::uuid;
+  v_admin uuid := current_setting('test.admin_id')::uuid;
+  v_pi    uuid := gen_random_uuid();
+  v_order uuid := gen_random_uuid();
+  v_pay   uuid := gen_random_uuid();
+  v_alloc uuid := gen_random_uuid();
+  v_n     integer;
+begin
+  insert into public.order_submissions (id, client_name, status, grand_total, created_by, submitted_by)
+  values (v_pi, 'ASSERT sides', 'submitted', 1000000, v_sales, v_sales);
+  insert into public.orders (id, client_name, total_value, created_by, status, source_order_submission_id)
+  values (v_order, 'ASSERT sides', 1000000, v_admin, 'running', v_pi);
+  insert into public.finance_payment_requests
+    (id, client_name, amount, payment_date, payment_mode, status, submitted_by)
+  values (v_pay, 'ASSERT sides', 500000, current_date, 'upi', 'approved_unlinked', v_sales);
+  insert into public.finance_payment_allocations
+    (id, payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  values (v_alloc, v_pay, v_pi, 500000, 'order_submission', v_sales);
+
+  perform set_config('boe.pi_submission_approval_id', v_pi::text, true);
+  update public.finance_payment_allocations
+     set order_submission_id = null, order_id = v_order where id = v_alloc;
+  perform set_config('boe.pi_submission_approval_id', '', true);
+
+  -- ORDER DETAIL reads its payments through the allocation, so the moved money
+  -- is there — same allocation id, same amount, same payment.
+  select count(*) into v_n
+  from public.finance_payment_allocations a
+  join public.finance_payment_requests f on f.id = a.payment_request_id
+  where a.order_id = v_order and a.status = 'active'
+    and a.id = v_alloc and f.id = v_pay and a.allocated_amount = 500000;
+  assert v_n = 1, '14. Order detail must still show the moved payment';
+
+  -- PI DETAIL counts only allocations that still name the PI, so the moved one
+  -- has left — the money is not reported twice anywhere in the business.
+  select count(*) into v_n from public.finance_payment_allocations
+   where order_submission_id = v_pi and status = 'active';
+  assert v_n = 0, '15. PI detail must no longer include the moved allocation';
+  assert public.order_submission_verified_payment(v_pi) = 0,
+    '15. and the PI must stop counting it';
+
+  -- The Finance list agrees with both: one row, Linked, named by the Order.
+  select count(*) into v_n from public.finance_received_payments
+   where id = v_pay and is_order_allocated and allocated_order_id = v_order;
+  assert v_n = 1, 'the Finance list must show the payment once, on the Order';
+
+  raise notice '15. both sides of the move agree OK';
 end $$;
 
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;

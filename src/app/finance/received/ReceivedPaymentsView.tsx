@@ -14,6 +14,7 @@ import { notifyFinance } from '@/lib/notify'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import {
   CONFIRMED_PAYMENT_STATUSES,
+  RECEIVED_PAYMENTS_SOURCE,
   applyLinkageScope,
   resolveLinkedAgainst,
   type LinkedAgainst,
@@ -43,6 +44,15 @@ type PaymentRequest = {
   order_id: string | null
   order_request_id: string | null
   order_request_number: string | null
+  /** The Confirmed Order an ACTIVE allocation names, from the projection's
+   *  lateral (20260921000000 §8a). Null when no active allocation points at an
+   *  Order — which is every payment that predates Phase 3's move. Read only for
+   *  classification and the "Linked Against" label; never written. */
+  allocated_order_id: string | null
+  allocated_order_number: string | null
+  /** allocated_order_id IS NOT NULL, computed in the projection so the same
+   *  fact can be filtered server-side by applyLinkageScope. */
+  is_order_allocated: boolean
   sales_note: string | null
   status: string
   payment_against: string
@@ -1191,15 +1201,22 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
     // Same approved-only scope as before the split; the linkage predicate is
     // what makes the two pages disjoint. Filtered in the database rather than
     // in the browser so neither page ever holds the other's rows.
+    //
+    // RECEIVED_PAYMENTS_SOURCE, not the base table: it is the same payments, one
+    // row each, plus the ACTIVE-allocation columns this page needs to classify
+    // money that PI approval moved onto a Confirmed Order without touching the
+    // payment record. It is security_invoker, so RLS still decides what loads.
+    // EVERY MUTATION ON THIS PAGE STILL WRITES TO finance_payment_requests by
+    // the row's own id, which the projection carries through unchanged.
     const base = supabase
-      .from('finance_payment_requests')
+      .from(RECEIVED_PAYMENTS_SOURCE)
       .select(`
         id, request_number, client_name, amount, payment_date, payment_mode,
         received_in, proof_note, order_number, order_id,
         order_request_id, order_request_number, sales_note,
         status, payment_against, submitted_by, admin_note, created_at,
-        submitted_by_user:users!submitted_by(full_name),
-        approved_by_user:users!approved_by(full_name)
+        submitted_by_name, approved_by_name,
+        allocated_order_id, allocated_order_number, is_order_allocated
       `)
       .in('status', CONFIRMED_PAYMENT_STATUSES as unknown as string[])
 
@@ -1211,16 +1228,17 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
 
     const { data } = await scoped.order('created_at', { ascending: false })
 
+    // The two submitter/approver names arrive already flattened — the projection
+    // joins users itself, so what used to be two embedded resources to unwrap is
+    // now two plain columns. Same values, same nulls: approved_by_name is set by
+    // approve_finance_payment_request (20260688/20260690) and is null only on a
+    // row approved before that column existed. `?? undefined` keeps the optional
+    // fields optional so every consumer below reads exactly as before.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
       ...r,
-      submitted_by_name: r.submitted_by_user?.full_name ?? undefined,
-      // approved_by is set by approve_finance_payment_request (20260688/20260690)
-      // — the admin who confirmed the money arrived. Null only on a row approved
-      // before that column existed.
-      approved_by_name:  r.approved_by_user?.full_name ?? undefined,
-      submitted_by_user: undefined,
-      approved_by_user:  undefined,
+      submitted_by_name: r.submitted_by_name ?? undefined,
+      approved_by_name:  r.approved_by_name  ?? undefined,
     }))
     setRequests(mapped)
     setListLoading(false)

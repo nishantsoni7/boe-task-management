@@ -324,7 +324,7 @@ Order cancellation; Excel or PDF generation.
 ### Pre-deployment audit (PR #45)
 
 A strict audit before the linked migration deployment found **five defects and
-one blocker**. All five are fixed in the same migration, which is unapplied.
+one blocker**. All six are fixed in the same migration, which is unapplied.
 
 **1. A new allocation could race the approval and strand money.**
 `allocate_payment_to_target_internal()` locked the PAYMENT first and then read
@@ -376,42 +376,75 @@ as a character class matching no directory that exists — 146 assertions report
 recursive globs, and `src/lib/testDiscovery.test.ts` fails if any test file is
 ever unreachable from it again.
 
-### Blocker held for a decision — Finance linkage after the move
+### Resolved in the same PR — Finance linkage after the move
 
-**Phase 3 creates an inconsistency in the Confirmed Payments ledger that this PR
-does not fix.**
+**Phase 3 would have created an inconsistency in the Finance Received Payments
+classification. It is fixed in this PR, in the same unapplied migration.**
 
 After a PI's allocation moves onto its Order, the parent payment still carries
 `order_id = NULL` and `status = 'approved_unlinked'`. Finance's linked/unlinked
-split is `order_id IS NOT NULL OR order_request_id IS NOT NULL`, so the payment
-appears in **Non-Linked Payments** — a queue whose stated meaning is *"money that
-has arrived with nothing at all pointing at it, which is the only set that needs
-someone to act"*. That is now false for those rows, the sidebar counters
-over-report, and an administrator taking the obvious action would call
-`link_finance_payment_to_order`.
+split used to be `order_id IS NOT NULL OR order_request_id IS NOT NULL`, so the
+payment would have appeared in **Non-Linked Payments** — a queue whose stated
+meaning is *"money that has arrived with nothing at all pointing at it, which is
+the only set that needs someone to act"*. The sidebar counters would have
+over-reported, and the Admin Action Queue would have offered *Link suspense
+payment* for money already on a numbered Order.
 
 It cannot be fixed by linking the payment. `finance_payment_requests_status_order_invariant`
 (`20260692000000`) requires `approved_linked ⇒ order_id IS NOT NULL AND
 order_number IS NOT NULL`, and on a PI payment `order_number` holds **the
 salesperson's reference/UTR** (`record_pi_submission_payment` writes
 `p_reference` there). Linking would overwrite a reference when one exists and
-invent one when it does not.
+invent one when it does not; relaxing the invariant would change the meaning of a
+deployed financial CHECK. Both are ledger redesigns.
 
-The two costed options:
+**So the ledger is left alone and the READ is corrected.** The allocation table
+has been the source of truth for what money belongs to since Phase 1.
+`20260921000000` §8a adds `public.finance_received_payments`, a
+`security_invoker = true` view over `finance_payment_requests` that adds three
+derived columns and nothing else:
 
-| | Change | Risk |
-|---|---|---|
-| **A — read projection** *(recommended)* | A `security_invoker` view over `finance_payment_requests` exposing `is_order_allocated`, with `applyLinkageScope`, `linkageModeFor` and `resolveLinkedAgainst` reading it. Exact, RLS-preserving, no ledger change. | Touches both Finance money pages and their counters — a read-model change to the area this phase was fenced out of, and not verifiable without a UI pass. |
-| **B — ledger vocabulary** | Relax the invariant so `approved_linked` no longer demands `order_number`, then link the payment on conversion. | Changes a deployed financial CHECK and the meaning of a column. A ledger redesign. |
+| Column | Meaning |
+|---|---|
+| `is_order_allocated` | an ACTIVE allocation names a Confirmed Order |
+| `allocated_order_id` | which Order — the OLDEST such allocation, by `(created_at, id)` |
+| `allocated_order_number` | that Order's `display_number`, joined not stored |
 
-Option A was **not** taken in this PR: it is a change to the Confirmed Payments
-read model, which this phase is explicitly scoped out of, and it cannot be
-verified here without browser testing. It is the smallest correct fix and belongs
-in its own PR, before or immediately after Phase 3 reaches production.
+**Classification, after the fix:**
 
-Until then the PI side, the Order side and the allocation trail are all correct;
-only Finance's linked/unlinked classification is wrong for a converted PI's
-payments.
+* **Linked** — an active allocation naming a Confirmed Order, **or** a legacy
+  parent `order_id`, **or** an `order_request_id`.
+* **Non-Linked** — none of the three. That is: a verified payment allocated only
+  to a PI before conversion, and a fully unallocated verified payment.
+
+**Nothing else changes.** No payment record is copied, no payment id changes, no
+salesperson reference is overwritten, no row is forced to `approved_linked`, no
+second ledger is introduced, and the parent linkage columns stay exactly as they
+are for backward compatibility. Every Finance mutation — verify, correct, link,
+unlink, edit — still writes to `finance_payment_requests` by the payment's own
+id; the projection carries no write privilege at all.
+
+**Security.** `security_invoker = true`, so every underlying policy on payments,
+allocations, users and orders is evaluated as the caller: the view can show
+nothing the base tables would not. `PUBLIC` and `anon` are revoked; only
+`authenticated` may `SELECT`. Every relation is schema-qualified. A `SECURITY
+DEFINER` projection would have had to restate six payment policies and five
+allocation policies to be as safe; this restates none. Proven under a restricted
+role: the view and the base table return the same row count, where a definer
+equivalent returned every row in the ledger.
+
+**Multi-allocation.** The classification does not assume one allocation per
+payment. A payment with several active allocations, at least one naming a
+Confirmed Order, is **Linked**, appears **once** (the lookup is a `LATERAL …
+LIMIT 1`), and is labelled by its **oldest** active Confirmed-Order allocation —
+deterministic, so the list and the counter beside it cannot disagree. No
+allocated amount and no split reaches the Finance list.
+
+**Surfaces changed** — the data source only, no layout, columns, modals or
+actions: the two Received Payments lists, the sidebar counters, the
+`?payment=` deep-link resolver, and the Admin Action Queue's suspense item
+(which asks somebody to link a payment, and would otherwise ask it for money
+already on an Order).
 
 ---
 

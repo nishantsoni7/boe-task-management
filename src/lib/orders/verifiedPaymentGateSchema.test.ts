@@ -904,3 +904,98 @@ describe('the executable assertions exist and cover this phase', () => {
     }
   })
 })
+
+// ── §8a — the Finance linkage projection ──────────────────────────────────────
+//
+// The read correction this phase needs in order not to ship an inconsistency:
+// the allocation moves onto the Order and the payment record deliberately does
+// not, so anything classifying Finance's two Received Payments pages from the
+// PARENT columns would file money on a numbered Order under "nothing points at
+// this". These assert the projection's shape and its security, in the migration
+// text — the behaviour is proved in the SQL suite's §13–§15.
+
+describe('the Finance linkage projection', () => {
+  const view = sql.split('create view public.finance_received_payments')[1]?.split('§9.')[0] ?? ''
+
+  test('it exists, and in THIS migration rather than a later corrective one', () => {
+    assert.ok(view.length > 0, 'the projection must be part of the unapplied Phase 3 migration')
+    const later = readdirSync(MIGRATIONS).filter(f => f > FILE && f.endsWith('.sql'))
+    for (const f of later) {
+      assert.ok(!migration(f).includes('finance_received_payments'),
+        `${f} must not compensate for an unapplied migration`)
+    }
+  })
+
+  test('it is a VIEW and stores nothing — there is no second ledger', () => {
+    assert.ok(!/create (table|materialized view) public\.finance_received_payments/.test(code),
+      'the projection must never be a table or a materialized copy')
+  })
+
+  test('SECURITY INVOKER, so RLS is still the caller\'s', () => {
+    assert.match(view, /with \(security_invoker = true\)/)
+    assert.ok(!/security definer/i.test(view),
+      'a general Finance read projection must never be SECURITY DEFINER')
+  })
+
+  test('PUBLIC and anon are revoked; authenticated may only SELECT', () => {
+    assert.match(view, /revoke all on public\.finance_received_payments from public, anon;/)
+    assert.match(view, /grant select on public\.finance_received_payments to authenticated;/)
+    assert.ok(!/grant (insert|update|delete|all) on public\.finance_received_payments/i.test(view),
+      'the projection carries no write privilege')
+  })
+
+  test('no existing grant or policy is altered to make it work', () => {
+    // The correction is additive: nothing already deployed loosens.
+    assert.ok(!/drop policy/i.test(code), 'no policy may be dropped')
+    assert.ok(!/alter table public\.finance_payment_requests[\s\S]{0,80}disable row level security/i.test(code),
+      'RLS must never be disabled to make a read work')
+  })
+
+  test('the apply refuses to succeed if any of that is untrue', () => {
+    // The migration's own assertion block, which fails the apply rather than
+    // leave a half-correct projection in place.
+    for (const claim of [
+      'must exist as a VIEW, never a table',
+      'must be security_invoker=true',
+      'the projection exposes an unexpected column set',
+      'a reversed allocation must never classify a payment as linked',
+    ]) {
+      assert.ok(sql.includes(claim), `the apply-time assertions must check: ${claim}`)
+    }
+  })
+
+  test('the rollback plan says how to remove it, and what breaks if it is', () => {
+    const rollback = sql.split('ROLLBACK, for the record')[1] ?? ''
+    assert.ok(rollback.includes('drop view public.finance_received_payments'))
+    assert.ok(rollback.includes('Action Queue'),
+      'the rollback must name every surface that reads the projection')
+    assert.ok(/reapplication is clean/i.test(rollback),
+      'and state that re-running this file over a rolled-back database is safe')
+  })
+
+  test('the surfaces that read it are the Finance ones, and no more', () => {
+    // The read model is the smallest that makes the classification correct:
+    // the two lists, their counters, the deep-link resolver, and the one Admin
+    // queue that ASKS SOMEBODY TO LINK a payment.
+    const readers = [
+      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      'src/hooks/queries/useReceivedPaymentsCounts.ts',
+      'src/app/finance/received/page.tsx',
+      'src/app/admin/control-center/action-queue/page.tsx',
+    ]
+    for (const file of readers) {
+      assert.ok(existsSync(join(process.cwd(), file)), `${file} must exist`)
+      assert.ok(readFileSync(join(process.cwd(), file), 'utf8').includes('RECEIVED_PAYMENTS_SOURCE'),
+        `${file} must read the projection through the shared constant`)
+    }
+  })
+
+  test('the Order and PI detail pages are untouched by it', () => {
+    // They read allocations directly and always did; the projection is a
+    // Finance-list concern only.
+    for (const file of ['src/app/orders/[id]/page.tsx', 'src/lib/orders/orderPayments.ts']) {
+      assert.ok(!readFileSync(join(process.cwd(), file), 'utf8').includes('finance_received_payments'),
+        `${file} must not be rewired by a Finance list fix`)
+    }
+  })
+})

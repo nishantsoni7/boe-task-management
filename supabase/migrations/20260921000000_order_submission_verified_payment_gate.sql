@@ -2414,6 +2414,157 @@ revoke execute on function public.pi_submission_payment_summary(uuid) from publi
 grant  execute on function public.pi_submission_payment_summary(uuid) to authenticated;
 
 -- ═════════════════════════════════════════════════════════════════════════════
+-- §8a. Finance linkage, after the money moves
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- THE INCONSISTENCY THIS PHASE WOULD OTHERWISE SHIP.
+--
+-- §7 moves a PI's active allocations onto the Order and deliberately does not
+-- touch the parent payment: its proof, its verification, its Finance history and
+-- the reference the salesperson typed all stay exactly where they are. So the
+-- payment still carries `order_id = NULL` and `status = 'approved_unlinked'`.
+--
+-- Finance's two Received Payments pages and their sidebar counters split on the
+-- LEGACY parent columns alone:
+--
+--     linked    order_id is not null OR order_request_id is not null
+--     unlinked  both null
+--
+-- which means money genuinely allocated to a numbered Confirmed Order lands in
+-- **Non-Linked Payments** — a queue whose stated meaning is "money that has
+-- arrived with nothing at all pointing at it, which is the only set that needs
+-- someone to act". The counters over-report, and an administrator taking the
+-- obvious action would call link_finance_payment_to_order.
+--
+-- WHY THE PAYMENT IS NOT SIMPLY LINKED INSTEAD.
+-- finance_payment_requests_status_order_invariant (20260692000000) requires
+--
+--     approved_linked  ⇒  order_id IS NOT NULL AND order_number IS NOT NULL
+--
+-- and on a PI payment `order_number` holds THE SALESPERSON'S REFERENCE / UTR —
+-- record_pi_submission_payment (20260919000000 §6) writes p_reference into it.
+-- Linking would overwrite that reference where one exists and invent one where
+-- it does not. Relaxing the invariant instead would change the meaning of a
+-- deployed financial CHECK. Both are ledger redesigns; neither is this phase's
+-- business.
+--
+-- SO THE LEDGER IS LEFT ALONE AND THE READ IS CORRECTED. The allocation table is
+-- already the source of truth for what money belongs to — that is what Phase 1
+-- exists for — and this view is the smallest thing that lets the Finance lists
+-- read it.
+--
+-- WHAT THIS IS, EXACTLY:
+--
+--   * A VIEW, not a table: it stores nothing, and there is no second ledger.
+--   * SECURITY INVOKER, so every underlying policy is evaluated as the CALLER.
+--     It cannot show a payment, an allocation, an Order or a name the caller
+--     could not already read, and it cannot be more permissive than the tables
+--     beneath it. A SECURITY DEFINER projection would have had to restate six
+--     payment policies and five allocation policies to be safe; this restates
+--     none.
+--   * ONE ROW PER PAYMENT, structurally. The two name joins are on users.id, a
+--     primary key, so neither can multiply. The allocation lookup is a LATERAL
+--     with LIMIT 1, so a payment with several active Confirmed-Order allocations
+--     still yields exactly one row.
+--   * It exposes NO allocation id, NO allocated amount and NO split. Only
+--     whether a Confirmed-Order allocation exists, and which Order the first one
+--     names, so the list can label the row.
+--
+-- WHICH ORDER IS NAMED WHEN THERE ARE SEVERAL. The OLDEST active
+-- Confirmed-Order allocation, by (created_at, id) — deterministic, and stable
+-- across reads so a row cannot change label between the list and the counter.
+-- Splitting money across several Orders is not something any path in this phase
+-- creates; the classification simply does not assume it cannot happen. Such a
+-- payment is LINKED, appears once, and is labelled by its first Order.
+--
+-- THE SECOND SURFACE THIS HAS TO CORRECT, and the reason it is not left for
+-- later: the Admin Action Queue's SUSPENSE item is the same predicate under a
+-- different name — approved_unlinked with both parent columns null — and it does
+-- not merely count, it ASKS AN ADMINISTRATOR TO ACT. Left reading the parent
+-- columns it would offer "Link suspense payment" for money that is already on a
+-- numbered Order, and the obvious click would attach the payment a second time.
+-- That queue therefore reads this projection too, which is why approved_at is in
+-- the column list: it is the field the queue ages its rows by.
+--
+-- WHAT IS NOT CHANGED. Not one policy, not one grant on an existing object, not
+-- one column, not one RPC, and not the meaning of `linked` for anything that was
+-- already linked. An Order-Request linkage is still a linkage — 20260698000000's
+-- CHECK forbids both parent columns at once, and paymentRouting.ts states that
+-- rule at length — so an Order-Request payment is classified exactly as it is
+-- today.
+
+create view public.finance_received_payments
+with (security_invoker = true) as
+select
+  f.id,
+  f.request_number,
+  f.client_name,
+  f.amount,
+  f.payment_date,
+  f.payment_mode,
+  f.received_in,
+  f.proof_note,
+  f.order_number,
+  f.order_id,
+  f.order_request_id,
+  f.order_request_number,
+  f.sales_note,
+  f.status,
+  f.payment_against,
+  f.submitted_by,
+  f.approved_by,
+  f.admin_note,
+  f.created_at,
+  -- approved_at: when Finance confirmed the money arrived. Read by the Admin
+  -- Action Queue, which ages its suspense items from it — see §8a's note on the
+  -- second surface this projection has to correct.
+  f.approved_at,
+
+  -- The two names the list already renders. Flattened here rather than embedded
+  -- by the client, because a view has no foreign keys for PostgREST to embed
+  -- through — and because a LEFT JOIN on a primary key is the one shape that
+  -- cannot multiply a row. A name the caller may not read comes back NULL,
+  -- exactly as the embed did.
+  eb.full_name as submitted_by_name,
+  ab.full_name as approved_by_name,
+
+  -- The Confirmed Order this payment's money is allocated to, if any.
+  alloc.order_id       as allocated_order_id,
+  alloc.display_number as allocated_order_number,
+
+  -- THE CLASSIFICATION KEY. Derived from the allocation, never from the Order:
+  -- a caller who cannot see the Order still sees that the money is allocated,
+  -- and only loses the Order's number.
+  (alloc.order_id is not null) as is_order_allocated
+
+from public.finance_payment_requests f
+left join public.users eb on eb.id = f.submitted_by
+left join public.users ab on ab.id = f.approved_by
+left join lateral (
+  select a.order_id, o.display_number
+  from public.finance_payment_allocations a
+  left join public.orders o on o.id = a.order_id
+  where a.payment_request_id = f.id
+    -- ACTIVE ONLY. A reversed allocation is a claim that was withdrawn; it stays
+    -- in the Finance trail, where its reason is, and it is not money this Order
+    -- has. A payment whose only Confirmed-Order allocation was reversed is
+    -- Non-Linked, and a payment with an active PI allocation plus a reversed
+    -- Order one is Non-Linked too.
+    and a.status = 'active'
+    and a.order_id is not null
+  order by a.created_at, a.id
+  limit 1
+) alloc on true;
+
+comment on view public.finance_received_payments is
+  'Every payment row a caller may already read, plus whether its money is allocated to a Confirmed Order and which one. SECURITY INVOKER: every underlying policy is evaluated as the caller, so this can show nothing the tables beneath it would not. Exactly one row per payment — the name joins are on a primary key and the allocation lookup is a LATERAL LIMIT 1 — so a payment split across several Orders still appears once, labelled by its oldest active Confirmed-Order allocation. Exposes no allocation id, no allocated amount and no split. Read-only projection; it stores nothing and is not a second ledger.';
+
+-- The same audience the payments themselves have, and no wider. RLS underneath
+-- does the deciding; this only makes the projection reachable.
+revoke all on public.finance_received_payments from public, anon;
+grant select on public.finance_received_payments to authenticated;
+
+-- ═════════════════════════════════════════════════════════════════════════════
 -- §9. Submitting a PI for review, without declaring an advance
 -- ═════════════════════════════════════════════════════════════════════════════
 --
@@ -2998,6 +3149,7 @@ declare
   v_num  numeric;
   v_name text;
   v_def  text;
+  v_cols text[];
 begin
   -- ── The two new columns exist and are nullable text ──
   select count(*) into v_n
@@ -3497,6 +3649,113 @@ begin
       'the cleanup chain must find a payment through an allocation on EITHER side of the PI-to-Order move';
   end if;
 
+  -- ── The Finance linkage projection ──
+  if not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'finance_received_payments'
+      and c.relkind = 'v'
+  ) then
+    raise exception 'the Finance linkage projection must exist as a VIEW, never a table';
+  end if;
+
+  -- SECURITY INVOKER, and asserted rather than assumed: a definer view here
+  -- would show every payment to everyone who can open the Finance pages.
+  select coalesce((
+    select opt
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    cross join lateral unnest(coalesce(c.reloptions, '{}'::text[])) as opt
+    where n.nspname = 'public' and c.relname = 'finance_received_payments'
+      and opt like 'security_invoker%'
+    limit 1
+  ), '') into v_def;
+  if v_def is distinct from 'security_invoker=true' then
+    raise exception
+      'finance_received_payments must be security_invoker=true (found "%")', v_def;
+  end if;
+
+  -- ITS OUTPUT COLUMNS ARE A CLOSED SET, asserted on the columns themselves
+  -- rather than on the view's text: no allocation id, no allocated amount, no
+  -- provenance, no reversal record and no split. The list is exactly the columns
+  -- the Finance list already read, plus the two names it already rendered and
+  -- the three the classification needs.
+  select coalesce(array_agg(column_name order by column_name), '{}')
+    into v_cols
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'finance_received_payments';
+
+  if v_cols <> array[
+    'admin_note', 'allocated_order_id', 'allocated_order_number', 'amount',
+    'approved_at', 'approved_by', 'approved_by_name', 'client_name',
+    'created_at', 'id', 'is_order_allocated', 'order_id', 'order_number',
+    'order_request_id', 'order_request_number', 'payment_against',
+    'payment_date', 'payment_mode', 'proof_note', 'received_in',
+    'request_number', 'sales_note', 'status', 'submitted_by',
+    'submitted_by_name'
+  ]::text[] then
+    raise exception
+      'the projection exposes an unexpected column set: %', array_to_string(v_cols, ', ');
+  end if;
+
+  select pg_get_viewdef('public.finance_received_payments'::regclass, true) into v_def;
+
+  -- One row per payment, structurally: the two name joins are on a primary key
+  -- and the allocation lookup is a LATERAL LIMIT 1.
+  if v_def not ilike '%limit 1%' then
+    raise exception 'the allocation lookup must be a LATERAL LIMIT 1, or a split payment appears twice';
+  end if;
+  if v_def not ilike '%order by%' then
+    raise exception 'the allocation lookup must be deterministically ordered';
+  end if;
+  if v_def not ilike '%status = ''active''%' then
+    raise exception 'a reversed allocation must never classify a payment as linked';
+  end if;
+
+  -- Reachable by authenticated, and by nobody else.
+  if not has_table_privilege('authenticated', 'public.finance_received_payments', 'select') then
+    raise exception 'the projection must be readable by authenticated';
+  end if;
+  for v_bool in
+    select has_table_privilege(r, 'public.finance_received_payments', 'select')
+    from unnest(array['anon']) as r
+  loop
+    if v_bool then
+      raise exception 'the projection must not be readable by anon';
+    end if;
+  end loop;
+  for v_bool in
+    select has_table_privilege('authenticated', 'public.finance_received_payments', pr)
+    from unnest(array['insert', 'update', 'delete']) as pr
+  loop
+    if v_bool then
+      raise exception 'the projection is read-only; no write privilege may exist on it';
+    end if;
+  end loop;
+
+  -- IT CHANGES NO POLICY AND NO LEDGER COLUMN. The payment rows are untouched:
+  -- the invariant that decides linked/unlinked in the LEDGER still stands
+  -- exactly as 20260692000000 wrote it.
+  if not exists (
+    select 1 from pg_constraint c
+    join pg_class t on t.oid = c.conrelid
+    join pg_namespace n on n.oid = t.relnamespace
+    where n.nspname = 'public' and t.relname = 'finance_payment_requests'
+      and c.conname = 'finance_payment_requests_status_order_invariant'
+      and c.convalidated
+  ) then
+    raise exception
+      'the deployed approved_linked/order_id invariant must be left exactly as it is';
+  end if;
+
+  -- And the conversion still does not touch the parent payment.
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'approve_order_submission'
+      and pg_get_functiondef(p.oid) ilike '%update public.finance_payment_requests%'
+  ) then
+    raise exception 'approving a PI must never write the payment ledger';
+  end if;
+
   raise notice 'Phase 3 verified-payment gate: all assertions passed';
 end $$;
 
@@ -3516,8 +3775,38 @@ end $$;
 --      20260918000000;
 --   3. drop public.submit_pi_for_review(uuid, text, text, text, text) and
 --      public.submit_pi_for_review_internal(uuid, text, text, text, text);
---   4. leave order_submissions.payment_terms / billing_terms in place — they
+--   4. restore allocate_payment_to_target_internal(uuid, uuid, uuid, numeric),
+--      resolve_test_data_cleanup_chain(text, uuid),
+--      order_submissions_guard_advance_exception(),
+--      approve_pi_advance_exception(uuid) and
+--      reject_pi_advance_exception(uuid, text) from 20260919000000 and
+--      20260913000000 respectively, verbatim;
+--   5. drop view public.finance_received_payments — it stores nothing and
+--      nothing depends on it, so a plain DROP (no CASCADE) loses no data; but
+--      the two Received Payments pages, the sidebar counters, the received
+--      deep-link resolver and the Admin Action Queue's suspense item must be
+--      pointed back at public.finance_payment_requests in the same deploy or
+--      they will 404 — and they then classify from the parent columns again,
+--      which is the inconsistency §8a exists to remove;
+--   6. drop the four order_submissions.advance_exception_decided_* columns and
+--      the order_submissions_exception_basis_scope constraint, and
+--      drop public.order_submission_exception_current(...);
+--   7. leave order_submissions.payment_terms / billing_terms in place — they
 --      hold agreed commercial terms and dropping them destroys business data.
+--
+-- REAPPLICATION IS CLEAN. Every statement in this file is CREATE OR REPLACE,
+-- ADD COLUMN on a column that does not exist, ADD CONSTRAINT on a constraint
+-- that does not exist, ALTER TYPE ... ADD VALUE IF NOT EXISTS, or the one plain
+-- CREATE VIEW in §8a — which step 5 above drops, so the name is free again.
+-- Re-running the file over a rolled-back database therefore lands in the same
+-- state; re-running it over an already-applied one fails loudly on the duplicate
+-- column rather than half-applying, which is the intended behaviour for a
+-- migration runner that tracks what it has run.
+--
+-- CREATE VIEW, NOT CREATE OR REPLACE VIEW, and that is the safer of the two: if
+-- anything already holds that name the migration stops instead of silently
+-- redefining somebody else's object, and CREATE OR REPLACE could not change the
+-- column list anyway.
 --
 -- Allocations already MOVED onto an Order are not reversible by any of that, and
 -- must not be: the Order is numbered, the money is against it, and putting it

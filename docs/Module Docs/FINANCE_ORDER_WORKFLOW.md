@@ -1147,16 +1147,37 @@ history), and an allocation that has MOVED onto the Order. The third branch is
 Phase 3's own — without it a converted test chain hid its payments and the NO
 ACTION foreign key refused the Order delete with a raw constraint error.
 
-### Known inconsistency, NOT fixed here
+### Finance linkage after the move — the allocation is authoritative
 
 After the move the parent payment still carries `order_id = NULL` and
-`approved_unlinked`, so Finance's linked/unlinked split — which reads only those
-legacy columns — puts it in **Non-Linked Payments** and the counters over-report.
-It cannot be fixed by linking the payment: `approved_linked` requires
-`order_number`, and on a PI payment that column holds the salesperson's
-reference. See `docs/Module Docs/PAYMENT_PHASE_PROGRESS.md` → *Blocker held for a
-decision* for the two costed options. The PI side, the Order side and the
-allocation trail are all correct; only the Finance classification is wrong.
+`approved_unlinked`: the record is deliberately left alone, so its proof, its
+verification, its Finance history and the salesperson's reference all stay where
+they are. **The parent linkage columns remain for backward compatibility; ACTIVE
+ALLOCATIONS ARE AUTHORITATIVE for current Confirmed-Order linkage.**
+
+Classifying from the parent columns alone would have put that money in
+**Non-Linked Payments** — the queue that means "nothing at all points at this" —
+and made the counters over-report. It cannot be fixed by linking the payment:
+`approved_linked` requires `order_number`, and on a PI payment that column holds
+the salesperson's reference/UTR.
+
+So the ledger is left alone and the read is corrected. `20260921000000` §8a adds
+**`public.finance_received_payments`**, a `security_invoker = true` view that
+carries every payment column Finance already read plus `is_order_allocated`,
+`allocated_order_id` and `allocated_order_number`. The two Received Payments
+lists, the sidebar counters, the `?payment=` deep-link resolver and the Admin
+Action Queue's suspense item read it; every mutation still writes to
+`finance_payment_requests` by the payment's own id.
+
+    Linked      an ACTIVE allocation naming a Confirmed Order
+                OR a legacy parent order_id
+                OR an order_request_id
+    Non-Linked  none of the three
+
+A reversed allocation never classifies a payment as Linked. A payment split
+across several Orders is Linked, appears once, and is labelled by its oldest
+active Confirmed-Order allocation. **No payment record is copied during PI
+conversion, and no payment id changes.**
 
 ### Trails
 
