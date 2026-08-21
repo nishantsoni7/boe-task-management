@@ -2384,53 +2384,80 @@ body {
    that surface — there is one hairline in the card and no vertical rules.
    ────────────────────────────────────────────────────────────────────────── */
 
+/* TWO COLUMNS: everything ABOUT the order on the left, all the money on the
+   right. One column is the floor — the split arrives with width. */
 .pi-detail-summary {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   padding: 12px 18px 14px;
 }
 
-/* ── Identity band ────────────────────────────────────────────────────────── */
+/* ── The left column ──────────────────────────────────────────────────────── */
 
-.pi-detail-summary-identity {
+/* Client, dates, ownership, stacked. Ownership is pushed to the FOOT by the
+   auto margin below, so the column ends on it however tall the finance surface
+   opposite happens to be. */
+.pi-detail-summary-left {
+  min-width: 0;
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px 22px;
-  padding-bottom: 11px;
+  flex-direction: column;
+  gap: 9px;
 }
 
 .pi-detail-summary-party {
   min-width: 0;
-  flex: 1 1 240px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-/* Avatar, a two-line name block, provenance, then the state at the far right. */
-/* Ownership SHRINKS rather than dropping. Sized `auto` it demanded its full
-   content width and fell onto a second flex row a few pixels short of fitting,
-   which cost a whole band-height; sharing the row lets its second line wrap
-   instead, which costs one text line. */
+/* The boundaries inside the column are hairlines, never boxes and never a
+   vertical rule — the same one-hairline treatment the card has used since the
+   three-column form was taken out. */
+.pi-detail-summary-hr {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.07);
+}
+
+/* Avatar beside three lines: the name with the record's state opposite it,
+   what the name means and when the record last moved, then the workbook. */
 .pi-detail-summary-owner {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  align-items: flex-start;
   gap: 9px;
   min-width: 0;
-  flex: 1 1 240px;
 }
+
+/* The hairline immediately before ownership carries the auto margin, so the
+   pair travels to the bottom together rather than the rule staying put and
+   the block sliding away from it. */
+.pi-detail-summary-hr + .pi-detail-summary-owner { margin-top: 0; }
 
 .pi-detail-summary-owner-text {
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
+  align-items: flex-start;
+}
+
+/* Name left, state far right, on one line. */
+.pi-detail-summary-owner-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
 }
 
 .pi-detail-summary-owner-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13.5px;
   font-weight: 650;
   color: #111318;
@@ -2500,16 +2527,7 @@ body {
   white-space: nowrap;
 }
 
-/* ── The two areas ────────────────────────────────────────────────────────── */
-
-/* ONE hairline in the whole card. Phone stacks; the split arrives with width. */
-.pi-detail-summary-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  padding-top: 11px;
-  border-top: 1px solid rgba(0, 0, 0, 0.07);
-}
+/* ── Order dates ──────────────────────────────────────────────────────────── */
 
 .pi-detail-summary-dates {
   min-width: 0;
@@ -2577,12 +2595,18 @@ body {
 /* A surface, not a card: the established raised ground, a restrained border,
    a small radius, no shadow and no gradient. It is what separates the one
    thing on this card that is pressed from the four that are read. */
+/* FILLS the right column — the background runs the height of the content area
+   while the figures inside it stay at the top. Rows are never stretched to
+   meet the bottom edge: a ledger with air under it is a ledger; a ledger
+   spaced out to fill a box is a list of unrelated numbers. */
 .pi-detail-summary-paycard {
   min-width: 0;
+  height: 100%;
+  justify-content: flex-start;
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 8px 12px 9px;
+  padding: 10px 13px 11px;
   border-radius: 8px;
   background: #f8f9fb;
   border: 1px solid rgba(0, 0, 0, 0.07);
@@ -2781,33 +2805,40 @@ body {
 
 /* Overview takes the wider share: four measurements need the room, and payment
    is a contained component whose width is set by its own controls. */
-/* THE WORKBOOK CHIP IS DESKTOP-ONLY. It is provenance about the document and
-   the least load-bearing thing in the band — and at ~160px it is precisely what
-   tips ownership onto a second flex row between 768 and 1180, which costs far
-   more height than the chip is worth. Everything the band is FOR — who, when,
-   and what state — stays at every width. */
-@media (max-width: 1179px) {
-  .pi-detail-summary-file { display: none; }
-  /* And below the same width the client column is narrow enough that the phone
-     and the place take a line each. A separator between two things that are no
-     longer side by side is a dot dangling off the end of the first line, so it
-     goes wherever the row can wrap. */
-  .pi-detail-summary-dot { display: none; }
-  .pi-detail-summary-tel,
-  .pi-detail-summary-place,
-  .pi-detail-summary-absent { flex-basis: 100%; }
-}
+/* THE PHONE AND THE PLACE TAKE A LINE EACH, at every width, and the `·`
+   between them is gone with the row that used to hold both. The old rule asked
+   the VIEWPORT, because the client shared a full-width band; it now sits in a
+   column of roughly 420px however wide the screen is, which is not room for
+   both — and a separator between two things that are never side by side is a
+   dot dangling off the end of a line.
 
-/* WEIGHT FOLLOWS CONTENT. The dates are two short facts; the finance surface
-   carries four figures, a bar and two controls, so it takes the larger share —
-   roughly 40 / 60, the reverse of the split that held while the money was
-   divided between the two. */
+   The workbook chip, hidden below 1180px for the same reason, comes back at
+   every width: it has a line of its own inside the ownership block now, so it
+   can no longer tip anything onto an extra row. */
+.pi-detail-summary-dot { display: none; }
+
+.pi-detail-summary-tel,
+.pi-detail-summary-place,
+.pi-detail-summary-absent { flex-basis: 100%; }
+
+/* WEIGHT FOLLOWS CONTENT. The left column is three short groups; the finance
+   surface carries four figures, a bar and two controls, so it takes the larger
+   share — roughly 39 / 61. */
 @media (min-width: 900px) {
-  .pi-detail-summary-body {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  .pi-detail-summary {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.56fr);
     gap: 20px;
-    align-items: start;
+    align-items: stretch;
   }
+
+  /* Ownership drops to the foot only where there IS a column to fall down.
+     Stacked on a phone it would push a gap between the dates and the block
+     that follows them for no reason.
+
+     Targeted by its own class, not :last-of-type — the last DIV child of this
+     column is the ownership block itself, so the type selector matched nothing
+     and the rule silently did nothing at all. */
+  .pi-detail-summary-hr-foot { margin-top: auto; }
 }
 
 /* Wide enough that ownership can take its natural width and keep its second

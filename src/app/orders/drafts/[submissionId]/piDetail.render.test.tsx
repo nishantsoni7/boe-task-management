@@ -1712,20 +1712,30 @@ describe('the layout is CSS, at three real breakpoints', () => {
       'and the figures are tabular, so they line up digit for digit')
   })
 
-  test('the dates sit at the top of the finance surface, never centred against it', () => {
-    // Centring split the leftover space above and below the dates, which reads
-    // as a floating block beside a box. Both areas start on the same line.
+  test('the card is two columns, and the finance surface fills its own', () => {
+    assert.ok(/\.pi-detail-summary \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css),
+      'one column is the floor: the order, then the money, in reading order')
     assert.ok(
-      /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary-body \{[^}]*align-items: start/.test(css),
-      'the two areas share a top edge')
+      /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.56fr\)/.test(css),
+      'and roughly 39 / 61 once there is room for both')
+    // STRETCH plus height:100% is what makes the surface run the full height of
+    // the content area; justify-content keeps its rows at the top rather than
+    // spreading them to meet the bottom edge.
+    assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{[^}]*align-items: stretch/.test(css))
+    assert.ok(/\.pi-detail-summary-paycard \{[^}]*height: 100%/.test(css))
+    assert.ok(/\.pi-detail-summary-paycard \{[^}]*justify-content: flex-start/.test(css))
   })
 
-  test('dates and finance separate only when there is room for both', () => {
-    assert.ok(/\.pi-detail-summary-body \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css),
-      'one column is the floor: dates, then finance, in reading order')
-    assert.ok(
-      /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary-body \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.5fr\)/.test(css),
-      'finance takes the wider share — it carries four figures, a bar and two controls')
+  test('ownership falls to the foot of its column, by a class and not by type', () => {
+    // :last-of-type matched nothing here — the last DIV child of the column is
+    // the ownership block itself, so the rule silently did nothing.
+    assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary-hr-foot \{ margin-top: auto/.test(css))
+    assert.ok(!/\.pi-detail-summary-hr:last-of-type/.test(css))
+  })
+
+  test('the boundaries inside the left column are hairlines, never boxes', () => {
+    assert.ok(/\.pi-detail-summary-hr \{[^}]*height: 1px/.test(css))
+    assert.ok(!/\.pi-detail-summary-hr \{[^}]*border-left|\.pi-detail-summary-hr \{[^}]*border-right/.test(css))
   })
 
   test('payment sits on a surface, and it is the only thing that does', () => {
@@ -1737,10 +1747,12 @@ describe('the layout is CSS, at three real breakpoints', () => {
       'no shadow and no gradient')
   })
 
-  test('there is exactly one rule in the card, and it is horizontal', () => {
+  test('every rule in the card is horizontal', () => {
     // The old card drew vertical rules between three columns, which is what made
-    // it read as a form.
-    assert.ok(/\.pi-detail-summary-body \{[\s\S]*?border-top: 1px solid/.test(css))
+    // it read as a form. The two inside the left column are the boundaries
+    // between its three groups; there is no rule between the columns at all —
+    // the surface's own edge is the separation.
+    assert.ok(/\.pi-detail-summary-hr \{[\s\S]*?background: rgba\(0, 0, 0, 0\.07\)/.test(css))
     const vertical = css.match(/\.pi-detail-summary[a-z-]*\s*\{[^}]*border-(left|right):[^;]*solid/g)
     assert.equal(vertical, null, 'no vertical rules anywhere in the summary')
   })

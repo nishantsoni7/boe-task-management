@@ -160,8 +160,14 @@ export function PiSummaryCard({
     <PiCard>
       <div className="pi-detail-summary">
 
-        {/* ── Identity band: who the order is for, and whose PI it is ── */}
-        <div className="pi-detail-summary-identity">
+        {/* ── The left column: everything ABOUT the order ──
+            Who it is for, when it moves, and whose record it is — three groups
+            stacked and separated by hairlines rather than by boxes. Ownership
+            used to sit top-right, level with the client, where it read as a
+            header control belonging to the page rather than a fact about this
+            record. At the foot of this column it is plainly the last thing the
+            order says about itself. */}
+        <div className="pi-detail-summary-left">
 
           <div className="pi-detail-summary-party">
             <GroupLabel>Client</GroupLabel>
@@ -204,45 +210,7 @@ export function PiSummaryCard({
             </div>
           </div>
 
-          {/* Ownership as a BLOCK, not a sentence: the avatar and the name read
-              first, what they mean sits under them, and the state of the record
-              anchors the far right. */}
-          <div className="pi-detail-summary-owner">
-            {ownership.name && <Avatar name={ownership.name} size={30} />}
-            <div className="pi-detail-summary-owner-text">
-              <div className="pi-detail-summary-owner-name">
-                {ownership.name ?? 'Not named'}
-              </div>
-              <div className="pi-detail-summary-owner-when">
-                PI created by · {ownership.when}
-              </div>
-            </div>
-            {workbookName && (
-              <span
-                className="pi-detail-summary-file"
-                title={workbookName}
-                style={{ fontSize: '11px', color: colors.tertiary }}
-              >
-                <FileSpreadsheet size={11.5} strokeWidth={1.9} style={{ flexShrink: 0 }} />
-                <span className="pi-detail-summary-file-name">{workbookName}</span>
-              </span>
-            )}
-            <PiStatusBadge label={statusLabel} tone={tone} />
-          </div>
-        </div>
-
-        {/* ── Two areas, split by MEANING rather than by cell count ──
-            WHEN the order moves on the left; MONEY on the right, entire.
-            Product value and Total before GST used to sit in the left grid
-            beside the dates, because four short label-over-value pairs tiled
-            into a square — a layout reason, not a meaning reason. It made the
-            card claim those four things were one group when only two of them
-            were, and it split the commercial picture across the hairline under
-            a heading about the order's schedule. What the order is worth and
-            what has been paid against it are the same subject, so they share
-            one surface and read top to bottom: worth, then paid, then the
-            controls that change it. */}
-        <div className="pi-detail-summary-body">
+          <div className="pi-detail-summary-hr" role="presentation" />
 
           <section className="pi-detail-summary-dates">
             <GroupLabel>Order dates</GroupLabel>
@@ -264,123 +232,158 @@ export function PiSummaryCard({
             </div>
           </section>
 
-          {/* ── The finance surface ──
-              What the order is worth, a rule, then what has arrived against it:
-              the label and the percentage on one line, the amount as the
-              strongest number under them, one full-width bar, and the two
-              controls beneath. The percentage lives in the header rather than
-              floating beside the bar, where it read as a caption for the track
-              instead of a figure in its own right. */}
-          <section className="pi-detail-summary-paycard">
+          {/* ── Whose record this is, at the FOOT of the column it belongs to ──
+              Avatar beside three lines: the creator's name with the record's
+              state anchored opposite it, what that name means and when the
+              record last moved, and the workbook it came from when there is
+              one. Pushed to the bottom of the column so it reads as the last
+              thing the order says about itself rather than as a control. */}
+          <div className="pi-detail-summary-hr pi-detail-summary-hr-foot" role="presentation" />
 
-            {/* Names the surface for what it is. Quiet, and on the same footing
-                as "Order dates" opposite it, so the card reads as two named
-                subjects rather than one named area and one anonymous box. */}
-            <div className="pi-detail-summary-finlabel">Financial summary</div>
-
-            {/* The order's worth, as label-left / figure-right rows — the same
-                idiom the Commercial breakdown card below uses, because these are
-                two lines OF that breakdown. Side by side as label-over-value
-                pairs they drifted to opposite ends of the surface and stopped
-                reading as a pair at all.
-
-                Outside the payment branch below because these come from the
-                record itself: they must not blank out while the payment summary
-                is still being read. */}
-            <div className="pi-detail-summary-values">
-              {figures.map(figure => (
-                <div key={figure.key} className="pi-detail-summary-value-row">
-                  <span className="pi-detail-summary-metric-label">{figure.label}</span>
-                  <span className={figure.kind === 'missing'
-                    ? 'pi-detail-summary-metric-absent'
-                    : 'pi-detail-summary-money'}>
-                    {figure.value}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Worth above, received below — one rule inside the surface, which
-                separates without making a second box. */}
-            <div className="pi-detail-summary-payrule" role="presentation" />
-
-            {payment === null ? (
-              <>
-                <div className="pi-detail-summary-payhead">
-                  <span className="pi-detail-summary-metric-label">Payment received</span>
-                </div>
-                <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
-              </>
-            ) : (
-              <>
-                <div className="pi-detail-summary-payhead">
-                  <span className="pi-detail-summary-metric-label">Payment received</span>
-                  <span className="pi-detail-summary-percent">{payment.percent}</span>
-                </div>
-
-                {/* The figure IS the way in — one control carrying the amount
-                    and the total it is measured against. */}
-                <button
-                  type="button"
-                  onClick={onOpenPayments}
-                  aria-haspopup="dialog"
-                  className="pi-detail-summary-open"
-                  title="Show every payment recorded against this PI"
+          <div className="pi-detail-summary-owner">
+            {ownership.name && <Avatar name={ownership.name} size={30} />}
+            <div className="pi-detail-summary-owner-text">
+              <div className="pi-detail-summary-owner-top">
+                <span className="pi-detail-summary-owner-name">
+                  {ownership.name ?? 'Not named'}
+                </span>
+                <PiStatusBadge label={statusLabel} tone={tone} />
+              </div>
+              {/* "PI created by", never "Assignee": nobody was assigned this
+                  record — somebody made it. */}
+              <div className="pi-detail-summary-owner-when">
+                PI created by · {ownership.when}
+              </div>
+              {workbookName && (
+                <span
+                  className="pi-detail-summary-file"
+                  title={workbookName}
+                  style={{ fontSize: '11px', color: colors.tertiary }}
                 >
-                  <span className="pi-detail-summary-received">{payment.received}</span>
-                  <span className="pi-detail-summary-oftotal">{payment.ofTotal}</span>
-                </button>
-
-                <div className="pi-detail-summary-bar" role="presentation">
-                  <div
-                    className="pi-detail-summary-bar-fill"
-                    style={{ width: `${payment.barPercent}%` }}
-                  />
-                </div>
-
-                {/* Money Finance has not decided is NOT in the bar or the
-                    percentage, and saying so is what keeps the two honest. */}
-                {payment.awaitingCount > 0 && (
-                  <button type="button" onClick={onOpenPayments} className="pi-detail-summary-awaiting">
-                    {payment.awaitingCount} payment{payment.awaitingCount === 1 ? '' : 's'} awaiting
-                    verification — not counted above
-                  </button>
-                )}
-
-                {notice && (
-                  <div className="pi-detail-summary-notice">
-                    <span style={{ fontSize: '11.5px', color: colors.secondary }}>{notice}</span>
-                    <button
-                      type="button" onClick={onDismissNotice} aria-label="Dismiss"
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-
-                <div className="pi-detail-summary-actions">
-                  {/* Unchanged gate: canAddPiPayment decides this, exactly as
-                      record_pi_submission_payment() decides it server-side. */}
-                  {canAdd && (
-                    <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
-                      Add payment
-                    </button>
-                  )}
-                  {/* ONE label, always. It opens PiPaymentDetailsModal in
-                      either case, so wording that changed with the record made
-                      the same control look like two. */}
-                  <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
-                    {PAYMENT_DETAILS_LABEL}
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
+                  <FileSpreadsheet size={11.5} strokeWidth={1.9} style={{ flexShrink: 0 }} />
+                  <span className="pi-detail-summary-file-name">{workbookName}</span>
+                </span>
+              )}
+            </div>
+          </div>
         </div>
+
+      {/* ── The finance surface ──
+            What the order is worth, a rule, then what has arrived against it:
+            the label and the percentage on one line, the amount as the
+            strongest number under them, one full-width bar, and the two
+            controls beneath. The percentage lives in the header rather than
+            floating beside the bar, where it read as a caption for the track
+            instead of a figure in its own right. */}
+        <section className="pi-detail-summary-paycard">
+
+          {/* Names the surface for what it is. Quiet, and on the same footing
+              as "Order dates" opposite it, so the card reads as two named
+              subjects rather than one named area and one anonymous box. */}
+          <div className="pi-detail-summary-finlabel">Financial summary</div>
+
+          {/* The order's worth, as label-left / figure-right rows — the same
+              idiom the Commercial breakdown card below uses, because these are
+              two lines OF that breakdown. Side by side as label-over-value
+              pairs they drifted to opposite ends of the surface and stopped
+              reading as a pair at all.
+
+              Outside the payment branch below because these come from the
+              record itself: they must not blank out while the payment summary
+              is still being read. */}
+          <div className="pi-detail-summary-values">
+            {figures.map(figure => (
+              <div key={figure.key} className="pi-detail-summary-value-row">
+                <span className="pi-detail-summary-metric-label">{figure.label}</span>
+                <span className={figure.kind === 'missing'
+                  ? 'pi-detail-summary-metric-absent'
+                  : 'pi-detail-summary-money'}>
+                  {figure.value}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Worth above, received below — one rule inside the surface, which
+              separates without making a second box. */}
+          <div className="pi-detail-summary-payrule" role="presentation" />
+
+          {payment === null ? (
+            <>
+              <div className="pi-detail-summary-payhead">
+                <span className="pi-detail-summary-metric-label">Payment received</span>
+              </div>
+              <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+            </>
+          ) : (
+            <>
+              <div className="pi-detail-summary-payhead">
+                <span className="pi-detail-summary-metric-label">Payment received</span>
+                <span className="pi-detail-summary-percent">{payment.percent}</span>
+              </div>
+
+              {/* The figure IS the way in — one control carrying the amount
+                  and the total it is measured against. */}
+              <button
+                type="button"
+                onClick={onOpenPayments}
+                aria-haspopup="dialog"
+                className="pi-detail-summary-open"
+                title="Show every payment recorded against this PI"
+              >
+                <span className="pi-detail-summary-received">{payment.received}</span>
+                <span className="pi-detail-summary-oftotal">{payment.ofTotal}</span>
+              </button>
+
+              <div className="pi-detail-summary-bar" role="presentation">
+                <div
+                  className="pi-detail-summary-bar-fill"
+                  style={{ width: `${payment.barPercent}%` }}
+                />
+              </div>
+
+              {/* Money Finance has not decided is NOT in the bar or the
+                  percentage, and saying so is what keeps the two honest. */}
+              {payment.awaitingCount > 0 && (
+                <button type="button" onClick={onOpenPayments} className="pi-detail-summary-awaiting">
+                  {payment.awaitingCount} payment{payment.awaitingCount === 1 ? '' : 's'} awaiting
+                  verification — not counted above
+                </button>
+              )}
+
+              {notice && (
+                <div className="pi-detail-summary-notice">
+                  <span style={{ fontSize: '11.5px', color: colors.secondary }}>{notice}</span>
+                  <button
+                    type="button" onClick={onDismissNotice} aria-label="Dismiss"
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              <div className="pi-detail-summary-actions">
+                {/* Unchanged gate: canAddPiPayment decides this, exactly as
+                    record_pi_submission_payment() decides it server-side. */}
+                {canAdd && (
+                  <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
+                    Add payment
+                  </button>
+                )}
+                {/* ONE label, always. It opens PiPaymentDetailsModal in
+                    either case, so wording that changed with the record made
+                    the same control look like two. */}
+                <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
+                  {PAYMENT_DETAILS_LABEL}
+                </button>
+              </div>
+            </>
+          )}
+        </section>
 
       </div>
     </PiCard>

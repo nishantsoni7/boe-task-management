@@ -1062,10 +1062,16 @@ describe('the top summary answers four questions and repeats none of them', () =
     ]) {
       assert.ok(sections.includes(label), `${label} must be in the card`)
     }
-    assert.ok(sections.includes('pi-detail-summary-identity'))
+    assert.ok(sections.includes('pi-detail-summary-left'),
+      'the order — who, when, whose — is one column')
     assert.ok(sections.includes('pi-detail-summary-grid'), 'the dates sit in their own grid')
     assert.ok(sections.includes('pi-detail-summary-paycard'),
-      'and money is a surface of its own')
+      'and money is a surface of its own, filling the other column')
+    // Ownership belongs to the left column now, after the dates rather than
+    // level with the client, so it reads as a fact about the record instead of
+    // a control belonging to the page.
+    assert.ok(sections.indexOf('Order dates') < sections.indexOf('PI created by'),
+      'ownership sits below the dates, at the foot of its column')
     assert.ok(!sections.includes('pi-detail-summary-divided'),
       'the vertical rules that made it read as a form are gone')
   })
