@@ -560,6 +560,45 @@ const dateValue = (iso: string | null): PiDateValue | null =>
   iso ? { iso, text: iso, source: 'serial' } : null
 
 /**
+ * EXACTLY the columns persistedHeader reads, and no more.
+ *
+ * A `Pick` rather than the whole row, so a caller that legitimately selects
+ * FEWER columns still type-checks — /orders/[id] reads the approved PI a
+ * Confirmed Order came from and has no business pulling that PI's review notes,
+ * its advance decision or its deletion reservation. Every existing caller passes
+ * a full PersistedSubmission, which satisfies this by construction.
+ */
+export type PersistedHeaderSource = Pick<
+  PersistedSubmission,
+  | 'client_name'
+  | 'creation_date'
+  | 'source_created_by'
+  | 'bill_to_name'
+  | 'ship_to_name'
+  | 'order_confirmation_date'
+  | 'dispatch_commitment'
+>
+
+/** EXACTLY the columns persistedCommercial reads. Same reasoning as above. */
+export type PersistedCommercialSource = Pick<
+  PersistedSubmission,
+  | 'gross_product_amount'
+  | 'discount_amount'
+  | 'subtotal_after_discount'
+  | 'fabric_cost'
+  | 'fabric_cost_meaning'
+  | 'fabric_cost_text'
+  | 'packing_cost'
+  | 'packing_cost_meaning'
+  | 'packing_cost_text'
+  | 'transportation_amount'
+  | 'transportation_text'
+  | 'total_before_gst'
+  | 'gst_amount'
+  | 'grand_total'
+>
+
+/**
  * The persisted header, in the parser's own shape, so buildHeaderRows decides
  * which fields appear and how they are worded — here as on the import screen.
  *
@@ -571,7 +610,7 @@ const dateValue = (iso: string | null): PiDateValue | null =>
  * often as a date), so it is rebuilt as a text-sourced value and formatPiDate
  * returns the words unchanged.
  */
-export function persistedHeader(row: PersistedSubmission): PiHeader {
+export function persistedHeader(row: PersistedHeaderSource): PiHeader {
   const commitment = text(row.dispatch_commitment)
   return {
     sourceOrderNumber: null,
@@ -643,7 +682,7 @@ export function persistedCost(
  * and that is computed by the shared helper from the grand total, exactly as it
  * is on the import preview.
  */
-export function persistedCommercial(row: PersistedSubmission): PiCommercialSummary {
+export function persistedCommercial(row: PersistedCommercialSource): PiCommercialSummary {
   const gross = toNumber(row.gross_product_amount) ?? 0
   const discount = toNumber(row.discount_amount) ?? 0
 

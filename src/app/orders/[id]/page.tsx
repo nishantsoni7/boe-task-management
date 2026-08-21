@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -38,6 +38,33 @@ import {
   type OrderChangeRequest,
   type AmendedActivityPayload,
 } from '@/lib/orders/amendments'
+import {
+  ORDER_PI_HANDOFF_COLUMNS,
+  ORDER_PI_WORKBOOK_URL_TTL_SECONDS,
+  buildOrderPiHandoff,
+  orderPiWorkbookPath,
+  type OrderPiHandoff,
+  type OrderPiRow,
+} from '@/lib/orders/orderPiHandoff'
+import {
+  ORDER_FILES_BUCKET,
+  PI_DRAFT_IMAGE_URL_TTL_SECONDS,
+  PI_DRAFT_ITEM_COLUMNS,
+  PI_DRAFT_ITEM_IMAGE_COLUMNS,
+  persistedImageUrlMaps,
+  persistedProducts,
+  type PersistedItem,
+  type PersistedItemImage,
+  type PersistedProduct,
+} from '@/lib/orders/draftsView'
+import { buildImageViewerItems, viewerNav, type PiViewerItem } from '@/lib/pi/previewView'
+import { PiCommercialSummary, PiImageViewer, type PiThumbnailProps } from '@/components/orders/piPreview'
+import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
+import {
+  OrderPiProducts,
+  OrderPiSummaryCard,
+  OrderPiUnavailable,
+} from './OrderPiSections'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,6 +94,16 @@ type Order = {
   // immutable in the database once set, so they are never edited here.
   source_order_request_id: string | null
   source_request_number: string | null
+  // The approved PI this Order was created from, written by
+  // approve_order_submission() (20260915000000) and frozen once set
+  // (20260916000000). Null for an Order created any other way. It is the ONLY
+  // input to the handoff below: no PI, no handoff, and the screen is exactly
+  // what it has always been.
+  source_order_submission_id: string | null
+  // The declared billing percentage, carried across at approval by
+  // 20260923000000. Read here only so the handoff can tell a declared
+  // percentage from an undeclared one without a second read of the PI.
+  billing_percentage?: number | string | null
 }
 
 // The list this screen shows is the LEGACY linked payments plus anything the
@@ -127,6 +164,16 @@ const PAYMENT_STATUS_META: Record<string, { label: string; color: string }> = {
   needs_clarification: { label: 'Needs Clarification', color: '#1E40AF' },
   rejected:            { label: 'Rejected',            color: '#991B1B' },
 }
+
+/** The width below which the PI product table becomes a stack of cards. The
+ *  same breakpoint both PI screens use, so a product line does not change shape
+ *  at a different width depending on which screen shows it. */
+const MOBILE_BREAKPOINT = 768
+
+/** What the workbook control says when the download is refused. One sentence,
+ *  no internals: a refusal is almost always a permission answer and saying so
+ *  in detail would confirm what the reader is not entitled to. */
+const WORKBOOK_UNAVAILABLE = 'That file is not available to you right now.'
 
 const LEAD_SOURCE_LABEL: Record<string, string> = {
   reference:       'Reference',
@@ -433,11 +480,129 @@ export default function OrderDetailPage() {
   const [cancelOpen,     setCancelOpen]     = useState(false)
   const [reviewing,      setReviewing]      = useState<OrderChangeRequest | null>(null)
 
+  // ── The approved PI this Order came from ──
+  //
+  // `none` until the Order has been read, which is the honest starting state:
+  // an Order with no source PI never leaves it, and the screen is then exactly
+  // what it has always been. See src/lib/orders/orderPiHandoff.ts.
+  const [piHandoff,   setPiHandoff]   = useState<OrderPiHandoff>({ kind: 'none' })
+  const [piProducts,  setPiProducts]  = useState<PersistedProduct[]>([])
+  const [piImages,    setPiImages]    = useState<{
+    representativeByRow: ReadonlyMap<number, string>
+    customizationByRow: ReadonlyMap<number, readonly string[]>
+    unresolved: number
+    viewerItems: readonly PiViewerItem[]
+  }>({ representativeByRow: new Map(), customizationByRow: new Map(), unresolved: 0, viewerItems: [] })
+  const [clientOpen,  setClientOpen]  = useState(false)
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+  const [wbBusy,      setWbBusy]      = useState(false)
+  const [wbError,     setWbError]     = useState<string | null>(null)
+  // The PI's private workbook key. Held in state and NEVER rendered: the screen
+  // shows source_workbook_name, and this is only what gets handed to Supabase's
+  // own signer at the moment of a click.
+  const [wbPath,      setWbPath]      = useState<string | null>(null)
+  const [isMobile,    setIsMobile]    = useState(false)
+
+  // Which thumbnail opened the viewer, so focus goes back to it on close, and
+  // where those thumbnails live. Refs rather than state: neither is rendered.
+  const viewerOpenedFrom = useRef<string | null>(null)
+  const thumbnailRefs = useRef(new Map<string, HTMLButtonElement | null>())
+
   const router     = useRouter()
   const params     = useParams()
   const id         = params.id as string
   const supabase   = useMemo(() => createClient(), [])
   const { viewAsUserId } = useViewAs()
+
+  /**
+   * THE APPROVED PI BEHIND A CONFIRMED ORDER.
+   *
+   * READ UNDER THE CALLER'S OWN RLS, exactly like every other read on this page.
+   * Migration 20260924000000 adds the door — can_view_order_submission_via_order,
+   * which asks the ORDER's visibility, not the PI's review visibility — so a
+   * viewer entitled to this Order gets the row and a viewer who is not gets
+   * nothing. There is no branch here that decides who may see what, and there
+   * must not be: a client-side visibility rule would be a second, weaker answer
+   * to a question the database already answers.
+   *
+   * A MISSING ROW IS `unavailable`, NEVER AN ERROR AND NEVER ZERO. The Order
+   * itself is perfectly readable; one card reports one absence.
+   *
+   * THREE READS, ISSUED TOGETHER, and only when the Order actually names a PI.
+   * An Order with no source submission costs nothing at all here.
+   */
+  const loadPiHandoff = async (order: Order) => {
+    const submissionId = order.source_order_submission_id
+    if (!submissionId) {
+      setPiHandoff({ kind: 'none' })
+      setPiProducts([])
+      setWbPath(null)
+      return
+    }
+
+    const [subRes, itemsRes, imagesRes] = await Promise.all([
+      supabase
+        .from('order_submissions')
+        .select(ORDER_PI_HANDOFF_COLUMNS)
+        .eq('id', submissionId)
+        .maybeSingle(),
+      supabase
+        .from('order_submission_items')
+        .select(PI_DRAFT_ITEM_COLUMNS)
+        .eq('submission_id', submissionId)
+        .order('sort_order', { ascending: true }),
+      supabase
+        .from('order_submission_item_images')
+        .select(PI_DRAFT_ITEM_IMAGE_COLUMNS)
+        .eq('submission_id', submissionId)
+        .order('position', { ascending: true }),
+    ])
+
+    const row = subRes.data as unknown as OrderPiRow | null
+    if (subRes.error || !row) {
+      setPiHandoff({ kind: 'unavailable' })
+      setPiProducts([])
+      setWbPath(null)
+      return
+    }
+
+    const products = persistedProducts((itemsRes.data ?? []) as unknown as PersistedItem[])
+    const images = (imagesRes.data ?? []) as unknown as PersistedItemImage[]
+
+    // THE BUCKET STAYS PRIVATE. Nothing here builds a public URL — there is none
+    // to build. Each object is signed on demand through the caller's own
+    // session, so the storage policies decide again, per object, whether this
+    // person may see this picture. A refusal yields no URL and the table shows
+    // its honest "No image" box rather than a broken one.
+    const signedByPath = new Map<string, string>()
+    const paths = [...new Set(images.map(i => i.storage_path).filter(Boolean))]
+    if (paths.length > 0) {
+      const { data: signed } = await supabase
+        .storage
+        .from(ORDER_FILES_BUCKET)
+        .createSignedUrls(paths, PI_DRAFT_IMAGE_URL_TTL_SECONDS)
+      for (const entry of signed ?? []) {
+        if (entry?.path && entry.signedUrl && !entry.error) signedByPath.set(entry.path, entry.signedUrl)
+      }
+    }
+
+    const urls = persistedImageUrlMaps(products, images, signedByPath)
+
+    setPiProducts(products)
+    setPiImages({
+      representativeByRow: urls.representativeByRow,
+      customizationByRow: urls.customizationByRow,
+      unresolved: urls.unresolved,
+      // The same helper both PI screens use, so a picture is labelled and
+      // ordered identically wherever it is opened.
+      viewerItems: buildImageViewerItems(products, urls),
+    })
+    setWbPath(orderPiWorkbookPath(row))
+    setPiHandoff(buildOrderPiHandoff(row, {
+      totalProductValue: order.total_product_value,
+      totalValue: order.total_value,
+    }))
+  }
 
   const loadOrder = async () => {
     const { data: o } = await supabase
@@ -448,6 +613,7 @@ export default function OrderDetailPage() {
         confirm_date, due_date, total_value, total_product_value,
         lead_source, status, notes, created_at, updated_at,
         source_order_request_id, source_request_number, is_test_data,
+        source_order_submission_id, billing_percentage,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
         created_by_user:users!created_by(full_name)
@@ -470,7 +636,16 @@ export default function OrderDetailPage() {
     }
     setOrder(mapped)
 
-    // TWO ANCHORED READS, both scoped to this one Order and both RLS-checked.
+    // The approved PI, started HERE rather than awaited later: it depends only
+    // on the Order row just read, so it overlaps the four reads below instead
+    // of queueing behind them. Awaited at the end so a refresh still settles in
+    // one commit.
+    const handoff = loadPiHandoff(mapped)
+
+    // FOUR ANCHORED READS, every one scoped to this Order and every one
+    // RLS-checked — issued TOGETHER because none of them depends on another's
+    // answer. They used to run one after the next, so the slowest decided the
+    // page and the other three waited for no reason.
     //
     //   the legacy link   payments carrying order_id — unchanged, so an Order
     //                     converted from an Order Request behaves exactly as it
@@ -478,23 +653,54 @@ export default function OrderDetailPage() {
     //   the allocations   what a PI's money became when its allocation MOVED
     //                     onto this Order at approval; the payment row itself is
     //                     untouched and carries no order_id
-    const { data: pData } = await supabase
-      .from('finance_payment_requests')
-      .select('id, client_name, amount, payment_date, payment_mode, order_number, status')
-      .eq('order_id', id)
-      .order('payment_date', { ascending: false })
+    //   the activity      the Order's own trail
+    //   change requests   not filtered to 'pending': a reader needs to see that
+    //                     their last request was rejected, not just that they
+    //                     have none open
+    const [
+      { data: pData },
+      { data: allocData },
+      { data: aData },
+      { data: cData },
+    ] = await Promise.all([
+      supabase
+        .from('finance_payment_requests')
+        .select('id, client_name, amount, payment_date, payment_mode, order_number, status')
+        .eq('order_id', id)
+        .order('payment_date', { ascending: false }),
 
-    const { data: allocData } = await supabase
-      .from('finance_payment_allocations')
-      // The embed names its FOREIGN KEY, not a column: PostgREST resolves an
-      // embedded resource by relationship, and naming the constraint
-      // (20260918000000 §1) is the form that cannot become ambiguous if this
-      // table ever gains a second reference to the ledger.
-      .select('id, allocated_amount, status, ' +
-              'payment:finance_payment_requests!finance_payment_allocations_payment_fk(' +
-              'id, client_name, amount, payment_date, payment_mode, order_number, status)')
-      .eq('order_id', id)
-      .eq('status', 'active')
+      supabase
+        .from('finance_payment_allocations')
+        // The embed names its FOREIGN KEY, not a column: PostgREST resolves an
+        // embedded resource by relationship, and naming the constraint
+        // (20260918000000 §1) is the form that cannot become ambiguous if this
+        // table ever gains a second reference to the ledger.
+        .select('id, allocated_amount, status, ' +
+                'payment:finance_payment_requests!finance_payment_allocations_payment_fk(' +
+                'id, client_name, amount, payment_date, payment_mode, order_number, status)')
+        .eq('order_id', id)
+        .eq('status', 'active'),
+
+      supabase
+        .from('order_activity_log')
+        .select(`id, event_type, payload, created_at, actor:users!actor_id(full_name)`)
+        .eq('order_id', id)
+        .order('created_at', { ascending: false }),
+
+      supabase
+        .from('order_change_requests')
+        .select(`
+          id, order_id, order_number_snapshot, request_type, requested_by, reason,
+          proposed_client_name, proposed_total_value, proposed_total_product_value,
+          proposed_confirm_date, proposed_due_date, proposed_lead_source, proposed_notes,
+          baseline_client_name, baseline_total_value, baseline_total_product_value,
+          baseline_confirm_date, baseline_due_date, baseline_lead_source, baseline_notes,
+          status, reviewed_by, reviewed_at, review_note, created_at,
+          requester:users!requested_by(full_name)
+        `)
+        .eq('order_id', id)
+        .order('created_at', { ascending: false }),
+    ])
 
     setPayments(mergeOrderPayments(
       (pData ?? []) as Parameters<typeof mergeOrderPayments>[0],
@@ -502,12 +708,6 @@ export default function OrderDetailPage() {
       // types cannot know the cardinality, so it is narrowed here once.
       ((allocData ?? []) as unknown as OrderAllocationRow[]),
     ))
-
-    const { data: aData } = await supabase
-      .from('order_activity_log')
-      .select(`id, event_type, payload, created_at, actor:users!actor_id(full_name)`)
-      .eq('order_id', id)
-      .order('created_at', { ascending: false })
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mappedActivity: ActivityEntry[] = ((aData ?? []) as any[]).map(a => ({
@@ -519,28 +719,14 @@ export default function OrderDetailPage() {
     }))
     setActivity(mappedActivity)
 
-    // Change requests. Not filtered to 'pending' here: a reader needs to see
-    // that their last request was rejected, not just that they have none open.
-    const { data: cData } = await supabase
-      .from('order_change_requests')
-      .select(`
-        id, order_id, order_number_snapshot, request_type, requested_by, reason,
-        proposed_client_name, proposed_total_value, proposed_total_product_value,
-        proposed_confirm_date, proposed_due_date, proposed_lead_source, proposed_notes,
-        baseline_client_name, baseline_total_value, baseline_total_product_value,
-        baseline_confirm_date, baseline_due_date, baseline_lead_source, baseline_notes,
-        status, reviewed_by, reviewed_at, review_note, created_at,
-        requester:users!requested_by(full_name)
-      `)
-      .eq('order_id', id)
-      .order('created_at', { ascending: false })
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setChangeRequests(((cData ?? []) as any[]).map(c => ({
       ...c,
       requested_by_name: c.requester?.full_name ?? undefined,
       requester: undefined,
     })) as OrderChangeRequest[])
+
+    await handoff
   }
 
   useEffect(() => {
@@ -576,6 +762,89 @@ export default function OrderDetailPage() {
     await supabase.auth.signOut()
     router.replace('/login')
   }
+
+  // The product table lays out differently at phone width, exactly as it does
+  // on both PI screens.
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  /**
+   * The original uploaded workbook, downloaded through a SHORT-LIVED SIGNED URL.
+   *
+   * THE BUCKET IS PRIVATE AND STAYS PRIVATE. There is no public URL to build and
+   * none is built. The URL is minted through the reader's OWN session, so the
+   * order-files SELECT policies decide again, at the moment of the click, for
+   * this exact object — a viewer whose Order access has been withdrawn since the
+   * page loaded gets a refusal, not a stale link.
+   *
+   * THE PATH IS NEVER TAKEN FROM THE UI. It is the column the PI record itself
+   * carries, re-checked by orderPiWorkbookPath against this submission's own
+   * original/ prefix, so a malformed or foreign key never reaches the signer.
+   *
+   * A REFUSAL IS ONE QUIET LINE. It never throws the page and never explains
+   * more than it should.
+   */
+  const downloadWorkbook = async () => {
+    if (!wbPath || wbBusy) return
+    setWbBusy(true)
+    setWbError(null)
+    const { data, error } = await supabase
+      .storage
+      .from(ORDER_FILES_BUCKET)
+      .createSignedUrl(wbPath, ORDER_PI_WORKBOOK_URL_TTL_SECONDS, { download: true })
+    setWbBusy(false)
+    if (error || !data?.signedUrl) { setWbError(WORKBOOK_UNAVAILABLE); return }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  // ── The image viewer ──
+  //
+  // The same three moves both PI screens make: remember which thumbnail opened
+  // it so focus can be given back, step by index, and close by clearing it.
+  const viewerItem = viewerIndex !== null ? piImages.viewerItems[viewerIndex] ?? null : null
+  const viewerNavState = viewerIndex !== null
+    ? viewerNav(viewerIndex, piImages.viewerItems.length)
+    : null
+
+  const openViewer = (key: string) => {
+    const index = piImages.viewerItems.findIndex(item => item.key === key)
+    if (index < 0) return
+    viewerOpenedFrom.current = key
+    setViewerIndex(index)
+  }
+
+  const closeViewer = () => {
+    setViewerIndex(null)
+    const key = viewerOpenedFrom.current
+    viewerOpenedFrom.current = null
+    if (key !== null) thumbnailRefs.current.get(key)?.focus()
+  }
+
+  const stepViewer = (index: number | null) => {
+    if (index === null) return
+    setViewerIndex(index)
+    viewerOpenedFrom.current = piImages.viewerItems[index]?.key ?? viewerOpenedFrom.current
+  }
+
+  const thumbnailFor = (key: string, url: string | undefined): PiThumbnailProps => ({
+    url,
+    label: piImages.viewerItems.find(item => item.key === key)?.label,
+    onOpen: () => openViewer(key),
+    buttonRef: (el: HTMLButtonElement | null) => { thumbnailRefs.current.set(key, el) },
+  })
+
+  const representativeThumbnail = (row: number) =>
+    thumbnailFor(`representative-${row}`, piImages.representativeByRow.get(row))
+
+  const customizationThumbnails = (row: number) =>
+    (piImages.customizationByRow.get(row) ?? []).map((url, index) => {
+      const key = `customization-${row}-${index}`
+      return { key, props: thumbnailFor(key, url) }
+    })
 
   const canCleanUp = cleanupEnabled && !!order?.is_test_data
 
@@ -900,6 +1169,57 @@ export default function OrderDetailPage() {
           )}
         </SectionCard>
 
+        {/* ── The approved PI this Order came from ──
+
+            ADDITIVE, AND PLACED WITHOUT MOVING ANYTHING. Every Order-owned
+            section above and below keeps its position: this is what the Order
+            gains, not a rearrangement of what it had.
+
+            NOTHING IS RENDERED FOR AN ORDER WITH NO PI. `none` is the state of
+            an Order created from an Order Request or by any other path, and the
+            screen is then exactly what it has always been — no empty card, and
+            no panel explaining the absence of a thing that was never there.
+
+            AND THERE IS NO SECOND PAYMENT SURFACE. The Order's own Payment
+            Summary above states the verified position from the Order's
+            allocations; a PI-side payment block here would answer the same
+            question a second time, with a figure that stopped being the
+            authority when the money moved onto the Order. */}
+        {piHandoff.kind === 'unavailable' && <OrderPiUnavailable />}
+
+        {piHandoff.kind === 'ready' && (
+          <>
+            <OrderPiSummaryCard
+              client={piHandoff.client}
+              onOpenClient={() => setClientOpen(true)}
+              dates={piHandoff.dates}
+              figures={piHandoff.figures}
+              billing={piHandoff.billing}
+              workbookName={wbPath ? piHandoff.workbookName : null}
+              onDownloadWorkbook={downloadWorkbook}
+              downloading={wbBusy}
+              downloadError={wbError}
+            />
+
+            <OrderPiProducts
+              products={piProducts}
+              isMobile={isMobile}
+              representativeThumbnail={representativeThumbnail}
+              customizationThumbnails={customizationThumbnails}
+              unresolvedImages={piImages.unresolved}
+            />
+
+            {/* The stored figures, through the shared rows builder. Nothing on
+                this page recomputes a total; these are literally the same
+                strings the approved PI screen prints. */}
+            <PiCommercialSummary
+              rows={piHandoff.commercialRows}
+              title="Commercial breakdown"
+              variant="detail"
+            />
+          </>
+        )}
+
         {/* ── Change requests ──
             Rendered only when there is something to show, so an Order nobody
             has ever asked to change carries no empty card. An admin sees every
@@ -1024,6 +1344,23 @@ export default function OrderDetailPage() {
           onDone={afterChange}
         />
       )}
+      {/* The client dialog the PI card's name opens: the contact number and both
+          parties, spelled out. The same component the PI screen uses. */}
+      {clientOpen && piHandoff.kind === 'ready' && (
+        <PiClientDetailsModal client={piHandoff.client} onClose={() => setClientOpen(false)} />
+      )}
+
+      {viewerItem && viewerNavState && (
+        <PiImageViewer
+          key={viewerItem.key}
+          item={viewerItem}
+          nav={viewerNavState}
+          onClose={closeViewer}
+          onPrev={() => stepViewer(viewerNavState.prevIndex)}
+          onNext={() => stepViewer(viewerNavState.nextIndex)}
+        />
+      )}
+
       {reviewing && (
         <ReviewChangeRequestModal
           request={reviewing}
