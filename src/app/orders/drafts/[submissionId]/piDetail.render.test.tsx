@@ -1680,19 +1680,29 @@ describe('the lower grid pairs the two reference cards', () => {
 describe('the layout is CSS, at three real breakpoints', () => {
   const css = pageCss()
 
-  test('the four metrics are a 2x2 at every width, and never a stretched row', () => {
+  test('the dates are a capped pair; the figures are a right-aligned ledger', () => {
+    // Two pairs, two treatments, and each is a measurement rather than a taste.
+    // The dates sit side by side and are CAPPED — filling their column they
+    // drift far enough apart to stop reading as a pair. The two figures cannot
+    // use that treatment on a 650px surface at all, so they take the idiom the
+    // Commercial breakdown already uses for the same two lines: label left,
+    // figure right, which lines the digits up down the surface.
     assert.ok(/\.pi-detail-summary-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css),
-      'two by two, so the four align against each other rather than reading as a list')
-    assert.ok(/\.pi-detail-summary-grid \{[^}]*max-width: 400px/.test(css),
-      'and capped, so they do not drift 300px apart on a wide screen')
+      'the dates are two columns, so they align against each other')
+    assert.ok(/\.pi-detail-summary-grid \{[^}]*max-width: 380px/.test(css),
+      'and capped, so they do not drift apart on a wide screen')
+    assert.ok(/\.pi-detail-summary-value-row \{[^}]*justify-content: space-between/.test(css),
+      'each figure row puts its label left and its figure right')
+    assert.ok(/\.pi-detail-summary-money \{[^}]*font-variant-numeric: tabular-nums/.test(css),
+      'and the figures are tabular, so they line up digit for digit')
   })
 
-  test('overview and payment separate only when there is room for both', () => {
+  test('dates and finance separate only when there is room for both', () => {
     assert.ok(/\.pi-detail-summary-body \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css),
-      'one column is the floor: overview, then payment, in reading order')
+      'one column is the floor: dates, then finance, in reading order')
     assert.ok(
-      /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary-body \{\s*grid-template-columns: minmax\(0, 1\.35fr\) minmax\(0, 1fr\)/.test(css),
-      'overview takes the wider share; payment is a contained component')
+      /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary-body \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.5fr\)/.test(css),
+      'finance takes the wider share — it carries four figures, a bar and two controls')
   })
 
   test('payment sits on a surface, and it is the only thing that does', () => {

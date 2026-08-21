@@ -2511,25 +2511,23 @@ body {
   border-top: 1px solid rgba(0, 0, 0, 0.07);
 }
 
-.pi-detail-summary-overview {
+.pi-detail-summary-dates {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
 
-/* Two by two at every width. Four measurements in a column is a list; in a
-   square they align against each other and read as one group. */
-/* CAPPED, not stretched. Left to fill the overview column the two pairs sat
-   300px apart on a wide screen and stopped reading as a group at all; held to a
-   square they align against each other, and the space that would have been
-   spent separating them becomes the gap before the payment surface. */
+/* The two dates side by side, CAPPED rather than stretched. Left to fill their
+   column they drift hundreds of pixels apart on a wide screen and stop reading
+   as a pair; held to a width they align against each other, and the space that
+   would have separated them becomes the gap before the finance surface. */
 .pi-detail-summary-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px 20px;
   min-width: 0;
-  max-width: 400px;
+  max-width: 380px;
 }
 
 .pi-detail-summary-metric {
@@ -2552,13 +2550,6 @@ body {
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
-}
-
-/* The two money figures carry a little more weight than the dates: on this
-   card they are what the order is WORTH, and the dates are when it moves. */
-.pi-detail-summary-metric-money {
-  font-size: 14.5px;
-  font-weight: 700;
 }
 
 .pi-detail-summary-metric-absent {
@@ -2595,6 +2586,43 @@ body {
   border-radius: 8px;
   background: #f8f9fb;
   border: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+/* What the order is WORTH, at the top of the surface that also carries what
+   has been paid against it — label left, figure right, which is the idiom the
+   Commercial breakdown card uses for the very same two lines. As label-over-
+   value pairs side by side they drifted to opposite ends of a 650px surface. */
+.pi-detail-summary-values {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pi-detail-summary-value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* Right-aligned figures line up digit for digit down the surface, and against
+   the amount below them. */
+.pi-detail-summary-money {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The one rule INSIDE the surface. It separates worth from received without
+   making a second box, which a border or a second background would. */
+.pi-detail-summary-payrule {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: 3px 0 2px;
 }
 
 /* Label left, percentage right. The percentage belongs to the amount, not to
@@ -2758,11 +2786,15 @@ body {
   .pi-detail-summary-absent { flex-basis: 100%; }
 }
 
+/* WEIGHT FOLLOWS CONTENT. The dates are two short facts; the finance surface
+   carries four figures, a bar and two controls, so it takes the larger share —
+   roughly 40 / 60, the reverse of the split that held while the money was
+   divided between the two. */
 @media (min-width: 900px) {
   .pi-detail-summary-body {
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
     gap: 20px;
-    align-items: start;
+    align-items: center;
   }
 }
 

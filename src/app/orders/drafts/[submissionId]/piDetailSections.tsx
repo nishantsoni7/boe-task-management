@@ -221,15 +221,21 @@ export function PiSummaryCard({
           </div>
         </div>
 
-        {/* ── Two areas, separated by layout rather than by rules ──
-            The four measurements are one thing to read; what has been paid is
-            another, and it is the only part of this card anybody presses. So
-            payment gets a surface of its own and the metrics get room to align
-            against each other. */}
+        {/* ── Two areas, split by MEANING rather than by cell count ──
+            WHEN the order moves on the left; MONEY on the right, entire.
+            Product value and Total before GST used to sit in the left grid
+            beside the dates, because four short label-over-value pairs tiled
+            into a square — a layout reason, not a meaning reason. It made the
+            card claim those four things were one group when only two of them
+            were, and it split the commercial picture across the hairline under
+            a heading about the order's schedule. What the order is worth and
+            what has been paid against it are the same subject, so they share
+            one surface and read top to bottom: worth, then paid, then the
+            controls that change it. */}
         <div className="pi-detail-summary-body">
 
-          <section className="pi-detail-summary-overview">
-            <GroupLabel>Order overview</GroupLabel>
+          <section className="pi-detail-summary-dates">
+            <GroupLabel>Order dates</GroupLabel>
             <div className="pi-detail-summary-grid">
               {dates.map(date => (
                 <div key={date.key} className="pi-detail-summary-metric">
@@ -241,31 +247,48 @@ export function PiSummaryCard({
                   )}
                   {/* Clamped to two lines. A long commitment is prose about a
                       lead time; left unbounded it sets the height of the row
-                      the other three metrics have to align inside. */}
+                      the other metric has to align inside. */}
                   {date.note && <div className="pi-detail-summary-metric-note">{date.note}</div>}
-                </div>
-              ))}
-
-              {figures.map(figure => (
-                <div key={figure.key} className="pi-detail-summary-metric">
-                  <div className="pi-detail-summary-metric-label">{figure.label}</div>
-                  <div className={figure.kind === 'missing'
-                    ? 'pi-detail-summary-metric-absent'
-                    : 'pi-detail-summary-metric-value pi-detail-summary-metric-money'}>
-                    {figure.value}
-                  </div>
                 </div>
               ))}
             </div>
           </section>
 
-          {/* ── The payment surface ──
-              One contained component: the label and the percentage on its top
-              line, the amount as the strongest number under them, one full-width
-              bar, and the two controls beneath. The percentage lives in the
-              header rather than floating beside the bar, where it read as a
-              caption for the track instead of a figure in its own right. */}
+          {/* ── The finance surface ──
+              What the order is worth, a rule, then what has arrived against it:
+              the label and the percentage on one line, the amount as the
+              strongest number under them, one full-width bar, and the two
+              controls beneath. The percentage lives in the header rather than
+              floating beside the bar, where it read as a caption for the track
+              instead of a figure in its own right. */}
           <section className="pi-detail-summary-paycard">
+
+            {/* The order's worth, as label-left / figure-right rows — the same
+                idiom the Commercial breakdown card below uses, because these are
+                two lines OF that breakdown. Side by side as label-over-value
+                pairs they drifted to opposite ends of the surface and stopped
+                reading as a pair at all.
+
+                Outside the payment branch below because these come from the
+                record itself: they must not blank out while the payment summary
+                is still being read. */}
+            <div className="pi-detail-summary-values">
+              {figures.map(figure => (
+                <div key={figure.key} className="pi-detail-summary-value-row">
+                  <span className="pi-detail-summary-metric-label">{figure.label}</span>
+                  <span className={figure.kind === 'missing'
+                    ? 'pi-detail-summary-metric-absent'
+                    : 'pi-detail-summary-money'}>
+                    {figure.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Worth above, received below — one rule inside the surface, which
+                separates without making a second box. */}
+            <div className="pi-detail-summary-payrule" role="presentation" />
+
             {payment === null ? (
               <>
                 <div className="pi-detail-summary-payhead">

@@ -1054,15 +1054,16 @@ describe('the top summary answers four questions and repeats none of them', () =
 
   test('two levels: who it is and whose it is, then what it is worth', () => {
     // The card used to be three columns of unequal content with rules between
-    // them. It is an identity band, then a body that separates what the order
-    // is from what has been paid against it.
-    for (const label of ['Client', 'PI created by', 'Order overview', 'Payment received']) {
+    // them. It is an identity band, then a body split by SUBJECT: when the
+    // order moves on one side, what it is worth and what has been paid on the
+    // other.
+    for (const label of ['Client', 'PI created by', 'Order dates', 'Payment received']) {
       assert.ok(sections.includes(label), `${label} must be in the card`)
     }
     assert.ok(sections.includes('pi-detail-summary-identity'))
-    assert.ok(sections.includes('pi-detail-summary-grid'), 'the dates and figures sit in one grid')
+    assert.ok(sections.includes('pi-detail-summary-grid'), 'the dates sit in their own grid')
     assert.ok(sections.includes('pi-detail-summary-paycard'),
-      'and payment is a surface of its own, not another cell of that grid')
+      'and money is a surface of its own')
     assert.ok(!sections.includes('pi-detail-summary-divided'),
       'the vertical rules that made it read as a form are gone')
   })
