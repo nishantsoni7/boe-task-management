@@ -32,8 +32,13 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
+import { MultilineText } from '@/components/ui/MultilineText'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import { shouldCloseFormModal, type ModalDismissReason } from '@/lib/ui/modalDismissal'
+import {
+  NOT_PROVIDED,
+  type ClientDetails,
+} from '@/app/orders/drafts/[submissionId]/piDetailView'
 import {
   SUBMIT_BUTTON_LABEL,
   SUBMIT_CONFIRM_NOTE,
@@ -1106,6 +1111,77 @@ export function PiDeleteConfirmModal({
               {deleting ? DELETE_PI_BUSY_LABEL : DELETE_PI_CONFIRM_LABEL}
             </button>
           </Footer>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── The client, in full ───────────────────────────────────────────────────────
+
+/**
+ * WHAT THE CARD STOPPED SAYING.
+ *
+ * The summary card printed the client's name, a phone number and a merged
+ * address on a supporting line under it. Three of those four facts are
+ * reference material: nobody scans a PI to re-read the billing address, they
+ * open it to answer a question about the order. So the card keeps the name and
+ * this dialog holds the rest, one click away.
+ *
+ * BILLING AND SHIPPING ARE ANSWERED SEPARATELY, ALWAYS — including when they
+ * carry the same text. The card was right to merge them for one line; a
+ * details dialog is where somebody checks where an order is going, and
+ * "the same as billing" is an answer they have to be shown rather than left to
+ * infer from an absence.
+ *
+ * NOTHING IS FETCHED. Every value here is already on the page: the same
+ * columns buildClientDetails read out of the submission the detail view
+ * already loaded. This dialog adds no request and no route.
+ */
+export function PiClientDetailsModal({ client, onClose }: {
+  client: ClientDetails
+  onClose: () => void
+}) {
+  useScrollLock(true)
+  useEscapeDismiss(() => onClose(), true)
+
+  const row = (label: string, body: React.ReactNode) => (
+    <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      <div style={KEY_STYLE}>{label}</div>
+      <div style={{ fontSize: '13px', color: colors.primary, lineHeight: 1.45 }}>{body}</div>
+    </div>
+  )
+
+  /** An absent value is stated, never left as a blank line to be puzzled over. */
+  const absent = <span style={{ color: colors.muted }}>{NOT_PROVIDED}</span>
+
+  const party = (label: string, p: { name: string | null; address: string | null }) =>
+    row(label, (
+      <>
+        {p.name && <div style={{ fontWeight: 600 }}>{p.name}</div>}
+        {p.address
+          ? <MultilineText style={{ margin: 0, fontSize: '13px', lineHeight: 1.45 }}>{p.address}</MultilineText>
+          : (p.name ? absent : absent)}
+      </>
+    ))
+
+  return (
+    // A backdrop click closes: this dialog holds no input to lose, so the
+    // form-modal rule that makes an outside click inert does not apply.
+    <div style={OVERLAY} role="dialog" aria-modal="true" aria-label="Client details" onClick={onClose}>
+      <div style={PANEL} onClick={e => e.stopPropagation()}>
+        <ModalHeader title="Client details" subtitle={client.name} onClose={onClose} disabled={false} />
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {row('Client', <span style={{ fontWeight: 600 }}>{client.name}</span>)}
+          {row('Contact number', client.phone
+            ? <a href={`tel:${client.phone.tel}`} style={{ color: '#5585e8', textDecoration: 'none' }}>
+                {client.phone.label}
+              </a>
+            /* Present but not dialable: shown as the text it is, never as a
+               link that would dial nothing. */
+            : client.phoneText ?? absent)}
+          {party('Billing details', client.billTo)}
+          {party('Shipping details', client.shipTo)}
         </div>
       </div>
     </div>

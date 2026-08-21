@@ -21,8 +21,10 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 
+import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import {
   PAYMENT_DETAILS_LABEL,
   PiActivityTimeline,
@@ -36,7 +38,8 @@ import {
   statusTone,
 } from './piDetailSections'
 import {
-  buildClientSummary,
+  buildClientDetails,
+  NOT_PROVIDED,
   buildDateSummary,
   summaryCommercialFigures,
   buildOwnership,
@@ -421,7 +424,7 @@ describe('the card carries who the PI belongs to, and says it once', () => {
 const COMMERCIAL_ROWS = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission())))
 
 const summaryHtml = (over: {
-  client?: Parameters<typeof buildClientSummary>[0]
+  client?: Parameters<typeof buildClientDetails>[0]
   payment?: PaymentSummaryView | null
   canAdd?: boolean
   confirmed?: string | null
@@ -440,7 +443,8 @@ const summaryHtml = (over: {
     statusLabel={draftStatusLabel('submitted')}
     tone={statusTone(draftStatusTone('submitted'))}
     workbookName={over.workbookName === undefined ? 'Kalyan-PI-Aug.xlsx' : over.workbookName}
-    client={buildClientSummary(over.client ?? {
+    onOpenClient={() => {}}
+    client={buildClientDetails(over.client ?? {
       clientName: 'Kalyan Interiors',
       billToName: 'Kalyan Interiors',
       shipToName: 'Kalyan Interiors',
@@ -627,49 +631,46 @@ describe('the top summary repeats two commercial figures, and only two', () => {
   })
 })
 
-describe('the top summary identifies the client without repeating them', () => {
-  test('one name, one number, one place — not Bill to and Ship to twice', () => {
+describe('the card names the client, and holds the rest behind that name', () => {
+  test('the name, once — and no contact, no address, no location in the card', () => {
     const html = text(summaryHtml())
     assert.equal((html.match(/Kalyan Interiors/g) ?? []).length, 1,
       'bill-to and ship-to are the same party here, and the name is printed once')
     assert.ok(!html.includes('Bill to') && !html.includes('Ship to'))
-    assert.ok(html.includes('12 Residency Road'))
+    // The three facts that used to sit under the name are reference material.
+    // They are in the dialog now, and duplicating them here would defeat the
+    // point of moving them.
+    assert.ok(!html.includes('12 Residency Road'), 'the address is not in the card')
+    assert.ok(!html.includes('98450'), 'nor the number')
+    assert.ok(!summaryHtml().includes('href="tel:'), 'and there is no dial link to press')
   })
 
-  test('a phone number the PI gave is dialable', () => {
+  test('the name is a control, and still reads as the name', () => {
     const html = summaryHtml()
-    assert.ok(html.includes('href="tel:+919845022222"'))
-    assert.ok(text(html).includes('+91 98450 22222'), 'shown as the document typed it')
+    assert.ok(html.includes('pi-detail-summary-client'), 'a button carries Enter, Space and focus')
+    assert.ok(html.includes('aria-haspopup="dialog"'), 'and says what it opens')
+    assert.ok(html.includes('pi-detail-summary-client-more'), 'with an affordance beside it')
+    // Not a button in appearance: no ground and no border at rest.
+    const css = pageCss()
+    assert.ok(/\.pi-detail-summary-client \{[^}]*background: none/.test(css))
+    assert.ok(/\.pi-detail-summary-client \{[^}]*border: none/.test(css))
+    assert.ok(/\.pi-detail-summary-client:focus-visible \{[^}]*outline/.test(css),
+      'but it is still visibly focusable')
   })
 
-  test('a genuinely different destination is named rather than merged away', () => {
-    const html = text(summaryHtml({ client: {
-      clientName: 'Kalyan Interiors', billToName: 'Kalyan Interiors',
-      shipToName: 'Kalyan Site Office', contactNumber: null,
-      billToPhone: null, shipToPhone: null,
-      billingAddress: '12 Residency Road', shippingAddress: '9 Whitefield Main',
-    } }))
-    assert.ok(html.includes('12 Residency Road'))
-    assert.ok(html.includes('Ships to: Kalyan Site Office, 9 Whitefield Main'))
-  })
-
-  test('what the PI did not give is said quietly, and never invented', () => {
+  test('a client that gave nothing but a name still shows the name', () => {
     const html = text(summaryHtml({ client: {
       clientName: 'Kalyan Interiors', billToName: null, shipToName: null,
       contactNumber: null, billToPhone: null, shipToPhone: null,
       billingAddress: null, shippingAddress: null,
     } }))
-    // Each absence NAMES ITSELF now — "Contact not provided", not a bare "Not
-    // provided" whose subject you have to infer from position. That matters more
-    // in the new composition, where the two sit on one line rather than in two
-    // labelled rows.
-    assert.ok(html.includes('Contact not provided'))
-    assert.ok(html.includes('Location not provided'))
-    // The due date says "Not set" instead: not something the PI omitted, but
-    // something nobody has decided yet, and worth distinguishing to whoever has
-    // to chase one of them.
+    assert.ok(html.includes('Kalyan Interiors'))
+    // "Not provided" belongs to the dialog. The card no longer has a field to
+    // report missing, so it must not report one.
+    assert.ok(!html.includes('Contact not provided'))
+    assert.ok(!html.includes('Location not provided'))
+    // The due date's own absence is a different word, and still the only one.
     assert.equal((html.match(/Not set/g) ?? []).length, 1)
-    assert.ok(html.includes('Kalyan Interiors'), 'the one thing it does know is still said plainly')
   })
 
   test('a number too short to dial is not offered as a link', () => {
@@ -677,6 +678,65 @@ describe('the top summary identifies the client without repeating them', () => {
     assert.equal(telLink('  '), null)
     assert.equal(telLink('n/a'), null)
     assert.deepEqual(telLink('022 4567 8900'), { label: '022 4567 8900', tel: '02245678900' })
+  })
+})
+
+describe('the client dialog answers billing and shipping separately', () => {
+  const both = {
+    clientName: 'Kalyan Interiors', billToName: 'Kalyan Interiors',
+    shipToName: 'Kalyan Interiors', contactNumber: '+91 98450 22222',
+    billToPhone: null, shipToPhone: null,
+    billingAddress: '12 Residency Road\nBengaluru 560025',
+    shippingAddress: '12 Residency Road\nBengaluru 560025',
+  }
+  const dialog = (over: Partial<Parameters<typeof buildClientDetails>[0]> = {}) =>
+    renderToStaticMarkup(
+      <PiClientDetailsModal client={buildClientDetails({ ...both, ...over })} onClose={() => {}} />)
+
+  test('IDENTICAL addresses are still shown twice, under their own headings', () => {
+    // The card was right to merge them into one line. A details dialog is where
+    // somebody checks where an order is going, and "same as billing" is an
+    // answer they must be shown rather than left to infer from an absence.
+    const html = text(dialog())
+    assert.ok(html.includes('Billing details'))
+    assert.ok(html.includes('Shipping details'))
+    assert.equal((html.match(/12 Residency Road/g) ?? []).length, 2,
+      'both questions are answered, even with the same answer')
+  })
+
+  test('an absent value says so, in the dialog, rather than leaving a gap', () => {
+    const html = text(dialog({ contactNumber: null, shippingAddress: null }))
+    assert.ok(html.includes('Billing details') && html.includes('Shipping details'))
+    assert.ok(html.includes(NOT_PROVIDED))
+  })
+
+  test('a dialable number is a tel: link; one that is not stays text', () => {
+    assert.ok(dialog().includes('href="tel:+919845022222"'))
+    const short = dialog({ contactNumber: '1234', billToPhone: null, shipToPhone: null })
+    assert.ok(!short.includes('href="tel:'), 'nothing offers to dial four digits')
+    assert.ok(text(short).includes('1234'), 'but what the document said is still shown')
+  })
+
+  test('it is announced as a modal, with a name and a way out', () => {
+    const html = dialog()
+    assert.ok(html.includes('role="dialog"'))
+    assert.ok(html.includes('aria-modal="true"'))
+    assert.ok(/aria-label="Client details"/.test(html))
+    assert.ok(text(html).includes('Client details'), 'and titled on screen')
+  })
+
+  test('it reads the page’s own values — no request, no route', () => {
+    const page = readFileSync(
+      join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
+    assert.ok(page.includes('<PiClientDetailsModal client={clientDetails}'),
+      'the object already built for the card is the object the dialog shows')
+    const source = readFileSync(
+      join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8')
+    const dialogSource = source.slice(source.indexOf('export function PiClientDetailsModal'))
+    for (const forbidden of ['supabase', 'fetch(', 'useEffect(() =>', 'router', 'href="/']) {
+      assert.ok(!dialogSource.includes(forbidden),
+        `the dialog must not ${forbidden} — every value is already on the page`)
+    }
   })
 })
 
@@ -1767,8 +1827,16 @@ describe('the layout is CSS, at three real breakpoints', () => {
     // between its three groups; there is no rule between the columns at all —
     // the surface's own edge is the separation.
     assert.ok(/\.pi-detail-summary-hr \{[\s\S]*?background: rgba\(0, 0, 0, 0\.07\)/.test(css))
-    const vertical = css.match(/\.pi-detail-summary[a-z-]*\s*\{[^}]*border-(left|right):[^;]*solid/g)
-    assert.equal(vertical, null, 'no vertical rules anywhere in the summary')
+    // ONE EXCEPTION, NAMED: the due date's left accent. That is emphasis on a
+    // single value, not a rule dividing two areas — which is what made the old
+    // three-column card read as a form. Any OTHER vertical border is that
+    // mistake coming back, so the exception is spelled out rather than the
+    // guard loosened.
+    const vertical = (css.match(/\.pi-detail-summary[a-z-]*\s*\{[^}]*border-(left|right):[^;]*solid/g) ?? [])
+      .filter(rule => !rule.startsWith('.pi-detail-summary-due '))
+    assert.deepEqual(vertical, [], 'no vertical rules dividing the summary')
+    assert.ok(/\.pi-detail-summary-due \{[^}]*border-left: 2px solid/.test(css),
+      'and the one accent that is allowed is the due date’s')
   })
 
   test('the progress bar cannot overflow its track and respects reduced motion', () => {

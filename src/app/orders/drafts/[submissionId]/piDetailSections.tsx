@@ -17,8 +17,8 @@
 // These draw the answers.
 
 import {
-  AlertTriangle, Ban, CheckCircle2, ExternalLink, FileSpreadsheet, History,
-  Info, MapPin, Percent, Phone, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
+  AlertTriangle, Ban, CheckCircle2, ChevronRight, ExternalLink, FileSpreadsheet,
+  History, Info, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
@@ -54,7 +54,7 @@ import {
   STORED_COPY_NOTE,
   describeRequestedException,
   type ApprovedOrderView,
-  type ClientSummary,
+  type ClientDetails,
   type DateSummary,
   type PiOwnership,
   type SummaryFigure,
@@ -129,10 +129,13 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
  * NOT ONE FIGURE IS COMPUTED HERE. See ./piDetailView.
  */
 export function PiSummaryCard({
-  client, ownership, statusLabel, tone, workbookName,
+  client, onOpenClient, ownership, statusLabel, tone, workbookName,
   dates, figures, payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
 }: {
-  client: ClientSummary
+  client: ClientDetails
+  /** Opens the client dialog. The card carries the name; the dialog carries
+      the contact and the two parties. */
+  onOpenClient: () => void
   /** Who the PI belongs to, and when it last moved. */
   ownership: PiOwnership
   statusLabel: string
@@ -150,12 +153,6 @@ export function PiSummaryCard({
   notice: string | null
   onDismissNotice: () => void
 }) {
-  // The address as one line. The stored value carries newlines — a street, a
-  // city, and sometimes a different shipping party — and the supporting line
-  // beneath the client name is not the place to spend three rows on them. The
-  // full text stays available on hover.
-  const location = client.location?.split('\n').map(part => part.trim()).join(', ') ?? null
-
   return (
     <PiCard>
       <div className="pi-detail-summary">
@@ -169,54 +166,46 @@ export function PiSummaryCard({
             order says about itself. */}
         <div className="pi-detail-summary-left">
 
+          {/* THE NAME IS THE CONTROL, and it still looks like the name.
+              A button element carries Enter, Space, focus and the announcement
+              for free — what it must not carry is the LOOK of a button, because
+              this is the heading of the card. So: no border, no ground, no
+              padding beyond what the focus ring needs, and a chevron that says
+              there is more behind it. The contact number and both addresses
+              used to sit under here as a supporting line; they are reference
+              material, and they live in the dialog now. */}
           <div className="pi-detail-summary-party">
-            <GroupLabel>Client</GroupLabel>
-            <MultilineText style={{
-              fontSize: '16px', fontWeight: 650, color: colors.primary, margin: 0, lineHeight: 1.25,
-            }}>
-              {client.name}
-            </MultilineText>
-
-            {/* ONE supporting line. Two absences took two rows as separate
-                fields, which is most of why the old left column was empty. */}
-            <div className="pi-detail-summary-contact">
-              {client.phone ? (
-                <a href={`tel:${client.phone.tel}`} className="pi-detail-summary-tel">
-                  <Phone size={11.5} strokeWidth={2} style={{ flexShrink: 0 }} />
-                  {client.phone.label}
-                </a>
-              ) : (
-                /* MUTED, never the link colour. A blue "Contact not provided"
-                   invites a click on something that does not exist. */
-                <span className="pi-detail-summary-absent">
-                  <Phone size={11.5} strokeWidth={2} style={{ flexShrink: 0 }} />
-                  Contact not provided
-                </span>
-              )}
-
-              <span className="pi-detail-summary-dot" aria-hidden="true">·</span>
-
-              {location ? (
-                <span className="pi-detail-summary-place" title={client.location ?? undefined}>
-                  <MapPin size={11.5} strokeWidth={2} style={{ flexShrink: 0 }} />
-                  {location}
-                </span>
-              ) : (
-                <span className="pi-detail-summary-absent">
-                  <MapPin size={11.5} strokeWidth={2} style={{ flexShrink: 0 }} />
-                  Location not provided
-                </span>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={onOpenClient}
+              className="pi-detail-summary-client"
+              aria-haspopup="dialog"
+              title="Contact number, billing and shipping details"
+            >
+              <MultilineText style={{
+                fontSize: '16px', fontWeight: 650, color: colors.primary, margin: 0, lineHeight: 1.25,
+              }}>
+                {client.name}
+              </MultilineText>
+              <ChevronRight size={15} strokeWidth={2.2} className="pi-detail-summary-client-more" />
+            </button>
           </div>
 
           <div className="pi-detail-summary-hr" role="presentation" />
 
           <section className="pi-detail-summary-dates">
-            <GroupLabel>Order dates</GroupLabel>
             <div className="pi-detail-summary-grid">
               {dates.map(date => (
-                <div key={date.key} className="pi-detail-summary-metric">
+                /* THE DUE DATE IS THE ONE PEOPLE ARE LOOKING FOR. It carries a
+                   warm ground and a left accent; the confirm date stays plain.
+                   No red anywhere: nothing in this codebase decides that an
+                   order is overdue, so nothing here may imply it. */
+                <div
+                  key={date.key}
+                  className={date.key === 'due'
+                    ? 'pi-detail-summary-metric pi-detail-summary-due'
+                    : 'pi-detail-summary-metric'}
+                >
                   <div className="pi-detail-summary-metric-label">{date.label}</div>
                   {date.value ? (
                     <div className="pi-detail-summary-metric-value">{date.value}</div>
@@ -276,11 +265,6 @@ export function PiSummaryCard({
             floating beside the bar, where it read as a caption for the track
             instead of a figure in its own right. */}
         <section className="pi-detail-summary-paycard">
-
-          {/* Names the surface for what it is. Quiet, and on the same footing
-              as "Order dates" opposite it, so the card reads as two named
-              subjects rather than one named area and one anonymous box. */}
-          <div className="pi-detail-summary-finlabel">Financial summary</div>
 
           {/* The order's worth, as label-left / figure-right rows — the same
               idiom the Commercial breakdown card below uses, because these are
@@ -392,14 +376,6 @@ export function PiSummaryCard({
 
 /** A small sentence-case group label. Not uppercase: three shouted words over
  *  every group was noise on a card meant to be scanned. */
-function GroupLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, marginBottom: '1px' }}>
-      {children}
-    </div>
-  )
-}
-
 // ── 3. Workflow and actions ───────────────────────────────────────────────────
 
 /** Somebody's own words, verbatim, on a tinted ground. */

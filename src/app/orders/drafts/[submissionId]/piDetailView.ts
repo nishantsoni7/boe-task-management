@@ -745,12 +745,36 @@ export function describeApprovedOrder(input: {
 /** "Not provided", said once, so the three groups cannot word it differently. */
 export const NOT_PROVIDED = 'Not provided'
 
-export type ClientSummary = {
+/**
+ * The client, as the card shows them and as the dialog behind the name
+ * spells them out.
+ *
+ * ONE SHAPE, TWO AUDIENCES. The card prints `name` and nothing else; the dialog
+ * prints all of it. They cannot disagree about who the client is, because there
+ * is only one resolution of the name and it happens here.
+ *
+ * NOTHING IS DEDUPLICATED. The card used to merge billing and shipping into one
+ * "location" and drop the second when it matched the first, which is right for
+ * a one-line summary and wrong for a details dialog: where an order is BILLED
+ * and where it is SHIPPED are different questions, and a reader who is checking
+ * them needs to see both answered — including, and especially, when the answer
+ * is the same. So both are carried, verbatim, and the dialog labels them.
+ */
+export type ClientDetails = {
+  /** The resolved client name — the header line, and the dialog's subject. */
   name: string
-  /** A dialable number and the digits to dial, or null when the PI gave none. */
+  /** A dialable number and the digits to dial, or null when none is dialable. */
   phone: { label: string; tel: string } | null
-  /** One place. Never the same text twice — see buildClientSummary. */
-  location: string | null
+  /**
+   * A contact number that exists but cannot be dialled — an extension, a
+   * fragment, a typo. Shown as text rather than offered as a link that would
+   * dial nothing. Null when there is no number at all.
+   */
+  phoneText: string | null
+  /** Who the order is billed to, and where. Either may be absent. */
+  billTo: { name: string | null; address: string | null }
+  /** Who the order ships to, and where. Either may be absent. */
+  shipTo: { name: string | null; address: string | null }
 }
 
 /**
@@ -777,20 +801,20 @@ const clean = (value: string | null | undefined): string | null => {
 }
 
 /**
- * Who the client is, how to reach them, and where they are — deduplicated.
+ * Who the client is, and both parties the order names — from columns the save
+ * route has always written. No new field, no second read.
  *
- * THE REPEATED NAME IS THE POINT. Most PIs bill and ship to the same party, and
- * the old card printed that party's name three times: as the page title, as
- * "Bill to" and as "Ship to". One name is shown here. A ship-to name is only
- * worth its line when it names somebody ELSE, and then it is shown as part of
- * the location rather than as a second identity.
+ * THE NAME resolves once: the PI's own client name, then the bill-to party,
+ * then the absent wording. The card shows this and only this; everything else
+ * below is for the dialog the name opens.
  *
  * THE PHONE FALLS BACK IN THE ORDER THE DOCUMENT MEANS IT: the header's own
  * contact number first, then the bill-to phone, then the ship-to phone. The
- * first that is dialable wins; the rest are not printed, because three numbers
- * with no way to tell them apart is not more contactable than one.
+ * first DIALABLE one wins. A number that exists but cannot be dialled is not
+ * discarded — it comes back as `phoneText`, so the reader sees what the
+ * document said instead of being told there is no number.
  */
-export function buildClientSummary(input: {
+export function buildClientDetails(input: {
   clientName: string | null
   billToName: string | null
   shipToName: string | null
@@ -799,29 +823,22 @@ export function buildClientSummary(input: {
   shipToPhone: string | null
   billingAddress: string | null
   shippingAddress: string | null
-}): ClientSummary {
+}): ClientDetails {
   const name = clean(input.clientName) ?? clean(input.billToName) ?? NOT_PROVIDED
 
-  const phone = telLink(input.contactNumber)
-    ?? telLink(input.billToPhone)
-    ?? telLink(input.shipToPhone)
+  const numbers = [input.contactNumber, input.billToPhone, input.shipToPhone]
+  const phone = numbers.map(telLink).find(Boolean) ?? null
+  // Only when nothing at all was dialable: the first number the document
+  // actually carried, shown as the text it is.
+  const phoneText = phone ? null : (numbers.map(clean).find(Boolean) ?? null)
 
-  const billing = clean(input.billingAddress)
-  const shipping = clean(input.shippingAddress)
-  const shipTo = clean(input.shipToName)
-  const billTo = clean(input.billToName)
-
-  // The billing address is where the client IS; the shipping address is where
-  // this order goes. They are the same for most orders, so the second is only
-  // added when it genuinely differs — and then it is labelled by the party it
-  // belongs to rather than left to be guessed at.
-  let location = billing ?? shipping
-  if (billing && shipping && billing !== shipping) {
-    const shipsTo = shipTo && shipTo !== billTo ? `${shipTo}, ${shipping}` : shipping
-    location = `${billing}\nShips to: ${shipsTo}`
+  return {
+    name,
+    phone,
+    phoneText,
+    billTo: { name: clean(input.billToName), address: clean(input.billingAddress) },
+    shipTo: { name: clean(input.shipToName), address: clean(input.shippingAddress) },
   }
-
-  return { name, phone, location }
 }
 
 export type DateSummary = {

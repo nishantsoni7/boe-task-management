@@ -2412,6 +2412,53 @@ body {
   gap: 3px;
 }
 
+/* THE NAME IS A CONTROL AND STILL LOOKS LIKE THE NAME. A button gives Enter,
+   Space, focus and the announcement for free; what it must not take with them
+   is the LOOK of a button, because this is the heading of the card. No border,
+   no ground at rest, and negative margins so the padding the focus ring needs
+   does not shift the name off the column's left edge. */
+.pi-detail-summary-client {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.pi-detail-summary-client:hover { background: rgba(0, 0, 0, 0.04); }
+
+.pi-detail-summary-client:focus-visible {
+  outline: 2px solid rgba(85, 133, 232, 0.6);
+  outline-offset: 1px;
+}
+
+/* The affordance: quiet at rest, and it firms up under the pointer rather than
+   announcing itself beside a name somebody is only reading. */
+.pi-detail-summary-client-more {
+  flex-shrink: 0;
+  color: #b3bac7;
+  transition: color 0.12s ease, transform 0.12s ease;
+}
+
+.pi-detail-summary-client:hover .pi-detail-summary-client-more,
+.pi-detail-summary-client:focus-visible .pi-detail-summary-client-more {
+  color: #5585e8;
+  transform: translateX(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pi-detail-summary-client-more { transition: none; }
+}
+
 /* The boundaries inside the column are hairlines, never boxes and never a
    vertical rule — the same one-hairline treatment the card has used since the
    three-column form was taken out. */
@@ -2474,39 +2521,14 @@ body {
 
 /* ── The client's supporting line ─────────────────────────────────────────── */
 
-.pi-detail-summary-contact {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1px 7px;
-  min-width: 0;
-  font-size: 12.5px;
-  line-height: 1.4;
-}
 
-.pi-detail-summary-tel,
-.pi-detail-summary-place,
-.pi-detail-summary-absent {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-}
 
-.pi-detail-summary-tel {
-  color: #5585e8;
-  text-decoration: none;
-}
 
-.pi-detail-summary-tel:hover { text-decoration: underline; }
 
-.pi-detail-summary-place { color: #4a5261; min-width: 0; }
 
 /* An absence is MUTED, never the link colour: a blue "Contact not provided"
    offers a click on something that does not exist. */
-.pi-detail-summary-absent { color: #8c94a6; }
 
-.pi-detail-summary-dot { color: #c3c9d4; }
 
 .pi-detail-summary-file {
   max-width: 160px;
@@ -2553,6 +2575,32 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+/* THE DUE DATE, PICKED OUT. A warm ground, a left accent and a heavier figure —
+   enough to find at a glance, and short of an alarm. The padding is cancelled
+   by an equal negative margin so the emphasis does not shift the value out of
+   line with the confirm date beside it.
+
+   DELIBERATELY NOT RED, in any state. Red means late, and nothing in this
+   system decides that a PI is late: there is no overdue rule, so the card must
+   not imply one. `Not set` is the same warm family, one step darker. */
+.pi-detail-summary-due {
+  margin: -4px -8px -5px;
+  padding: 4px 8px 5px;
+  border-left: 2px solid #e0b667;
+  border-radius: 0 5px 5px 0;
+  background: #fdf8ef;
+}
+
+.pi-detail-summary-due .pi-detail-summary-metric-value {
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.pi-detail-summary-due .pi-detail-summary-metric-absent {
+  color: #96702e;
+  font-weight: 600;
 }
 
 .pi-detail-summary-metric-label {
@@ -2615,13 +2663,6 @@ body {
 /* Names the surface, quietly, on the same footing as "Order dates" opposite.
    Its own line rather than a heading: it identifies the area without competing
    with the figures inside it, and the tightening below pays for its height. */
-.pi-detail-summary-finlabel {
-  font-size: 11px;
-  font-weight: 600;
-  color: #8c94a6;
-  line-height: 1.2;
-  margin-bottom: 1px;
-}
 
 /* What the order is WORTH, at the top of the surface that also carries what
    has been paid against it — label left, figure right, which is the idiom the
@@ -2812,24 +2853,6 @@ body {
 .pi-detail-summary-view:hover { background: #f2f4f7; }
 
 /* ── Where the two areas separate ─────────────────────────────────────────── */
-
-/* Overview takes the wider share: four measurements need the room, and payment
-   is a contained component whose width is set by its own controls. */
-/* THE PHONE AND THE PLACE TAKE A LINE EACH, at every width, and the `·`
-   between them is gone with the row that used to hold both. The old rule asked
-   the VIEWPORT, because the client shared a full-width band; it now sits in a
-   column of roughly 420px however wide the screen is, which is not room for
-   both — and a separator between two things that are never side by side is a
-   dot dangling off the end of a line.
-
-   The workbook chip, hidden below 1180px for the same reason, comes back at
-   every width: it has a line of its own inside the ownership block now, so it
-   can no longer tip anything onto an extra row. */
-.pi-detail-summary-dot { display: none; }
-
-.pi-detail-summary-tel,
-.pi-detail-summary-place,
-.pi-detail-summary-absent { flex-basis: 100%; }
 
 /* WEIGHT FOLLOWS CONTENT. The left column is three short groups; the finance
    surface carries four figures, a bar and two controls, so it takes the larger

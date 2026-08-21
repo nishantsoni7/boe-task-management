@@ -109,6 +109,7 @@ import {
   type PiThumbnailProps,
 } from '@/components/orders/piPreview'
 import {
+  PiClientDetailsModal,
   PiSubmitConfirmModal,
   PiNoteModal,
   PiFinanceVerifyModal,
@@ -206,7 +207,7 @@ import {
 import {
   describeAdvanceForReview,
   buildApprovalSummary,
-  buildClientSummary,
+  buildClientDetails,
   buildDateSummary,
   buildOwnership,
   buildPaymentSummaryView,
@@ -333,6 +334,9 @@ function PiDraftDetailPageInner() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   /** Which payment dialog is open, if either. The summary card opens both. */
   const [paymentDialog, setPaymentDialog] = useState<'details' | 'add' | null>(null)
+  // The client dialog behind the name in the summary card. Nothing is
+  // fetched for it — it reads the submission the page already holds.
+  const [clientDialog, setClientDialog] = useState(false)
 
   /**
    * WHO IS LOOKING, AND WHAT THEY MAY DO — resolved for the SIGNED-IN account.
@@ -1134,7 +1138,7 @@ function PiDraftDetailPageInner() {
     },
   )
 
-  const clientSummary = buildClientSummary({
+  const clientDetails = buildClientDetails({
     clientName: submission.client_name,
     billToName: submission.bill_to_name,
     shipToName: submission.ship_to_name,
@@ -1257,7 +1261,8 @@ function PiDraftDetailPageInner() {
             arrived against what the order is worth — with the way in to every
             payment record, and to recording another, beside the figure. */}
         <PiSummaryCard
-          client={clientSummary}
+          client={clientDetails}
+          onOpenClient={() => setClientDialog(true)}
           ownership={ownership}
           statusLabel={draftStatusLabel(submission.status)}
           tone={tone}
@@ -1474,6 +1479,12 @@ function PiDraftDetailPageInner() {
           rows with their status, mode, reference and rejection note — now in the
           dialog the rest of the application already uses, so the page answers
           "how much has been paid" in exactly one place. */}
+      {/* The client's contact and both parties, behind the name in the card.
+          No request: clientDetails came off the submission already on screen. */}
+      {clientDialog && (
+        <PiClientDetailsModal client={clientDetails} onClose={() => setClientDialog(false)} />
+      )}
+
       {paymentDialog === 'details' && (
         <PiPaymentDetailsModal
           summary={payments}

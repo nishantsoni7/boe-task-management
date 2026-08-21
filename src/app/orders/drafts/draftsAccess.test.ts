@@ -1052,37 +1052,47 @@ describe('the top summary answers four questions and repeats none of them', () =
   const sections = read(DETAIL_SECTIONS)
   const view = read(DETAIL_VIEW)
 
-  test('two levels: who it is and whose it is, then what it is worth', () => {
-    // The card used to be three columns of unequal content with rules between
-    // them. It is an identity band, then a body split by SUBJECT: when the
-    // order moves on one side, what it is worth and what has been paid on the
-    // other.
-    for (const label of [
-      'Client', 'PI created by', 'Order dates', 'Financial summary', 'Payment received',
-    ]) {
+  test('two columns, and every group in them names itself without a heading', () => {
+    // The card carries four labelled headings fewer than it did: Client, Order
+    // dates and Financial summary all stated what the values under them plainly
+    // are. What is left is the values themselves.
+    for (const label of ['PI created by', 'Payment received']) {
       assert.ok(sections.includes(label), `${label} must be in the card`)
+    }
+    // The two figures are labelled by the view model, not by the component.
+    assert.ok(view.includes("'Product value'") && view.includes("'Total before GST'"))
+    for (const heading of ['<GroupLabel>', 'Financial summary']) {
+      assert.ok(!sections.includes(heading), `${heading} is a label for something already obvious`)
     }
     assert.ok(sections.includes('pi-detail-summary-left'),
       'the order — who, when, whose — is one column')
     assert.ok(sections.includes('pi-detail-summary-grid'), 'the dates sit in their own grid')
     assert.ok(sections.includes('pi-detail-summary-paycard'),
       'and money is a surface of its own, filling the other column')
-    // Ownership belongs to the left column now, after the dates rather than
-    // level with the client, so it reads as a fact about the record instead of
-    // a control belonging to the page.
-    assert.ok(sections.indexOf('Order dates') < sections.indexOf('PI created by'),
+    // Ownership belongs to the left column now, below the dates, so it reads as
+    // a fact about the record instead of a control belonging to the page.
+    assert.ok(sections.indexOf('Confirm date') < sections.indexOf('PI created by')
+      || sections.indexOf('dates.map') < sections.indexOf('PI created by'),
       'ownership sits below the dates, at the foot of its column')
     assert.ok(!sections.includes('pi-detail-summary-divided'),
       'the vertical rules that made it read as a form are gone')
   })
 
-  test('the client name is printed once, and the destinations are not two fields', () => {
-    // Bill to and Ship to carry the same company on most PIs, and the page
-    // title carries it a third time. buildClientSummary resolves one name, one
-    // number and one place, and only names a destination that genuinely differs.
-    assert.ok(page.includes('buildClientSummary({'))
+  test('the card shows the name; the dialog behind it shows the rest', () => {
+    // The contact number and the two addresses are reference material. Keeping
+    // them on the card cost three lines under a name nobody was reading them
+    // with, so they moved behind the name — and must not be printed twice.
+    assert.ok(page.includes('buildClientDetails({'))
     assert.ok(!sections.includes('Bill to') && !sections.includes('Ship to'))
-    assert.ok(view.includes('Ships to: '), 'a different destination is labelled, not merged away')
+    assert.ok(sections.includes('onOpenClient'), 'the name opens the dialog')
+    assert.ok(sections.includes('aria-haspopup="dialog"'))
+    for (const moved of ['billing_address', 'client.phone', 'Contact not provided']) {
+      assert.ok(!sections.includes(moved), `${moved} belongs to the dialog now`)
+    }
+    // And billing and shipping are answered separately there, even when equal.
+    const modals = read('src/components/orders/piReviewModals.tsx')
+    assert.ok(modals.includes("party('Billing details'"))
+    assert.ok(modals.includes("party('Shipping details'"))
   })
 
   test('contact and location come from columns the save route has always written', () => {
@@ -1100,7 +1110,9 @@ describe('the top summary answers four questions and repeats none of them', () =
 
   test('a phone number is dialable, and an undialable one is not offered as a link', () => {
     assert.ok(view.includes('telLink'))
-    assert.ok(sections.includes('href={`tel:${client.phone.tel}`}'))
+    // The link lives in the dialog now — the card carries no number at all.
+    assert.ok(read('src/components/orders/piReviewModals.tsx')
+      .includes('href={`tel:${client.phone.tel}`}'))
     assert.deepEqual(telLink('+91 98450 22222'), { label: '+91 98450 22222', tel: '+919845022222' })
     assert.equal(telLink('12345'), null, 'a fragment is not a phone number')
   })
