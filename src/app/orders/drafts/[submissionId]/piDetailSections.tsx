@@ -298,13 +298,17 @@ export function PiSummaryCard({
 
             <div className="pi-detail-summary-values">
               {figures.map(figure => (
+                /* Label OVER value, the same way in both rows. Side by side as
+                   label-left/figure-right they need ~166px, and 38% of this
+                   surface at tablet is not that — the label wrapped, which is
+                   the compressed reading a narrow column has to avoid. */
                 <div key={figure.key} className="pi-detail-summary-value-row">
-                  <span className="pi-detail-summary-metric-label">{figure.label}</span>
-                  <span className={figure.kind === 'missing'
+                  <div className="pi-detail-summary-metric-label">{figure.label}</div>
+                  <div className={figure.kind === 'missing'
                     ? 'pi-detail-summary-metric-absent'
                     : 'pi-detail-summary-money'}>
                     {figure.value}
-                  </span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -370,33 +374,30 @@ export function PiSummaryCard({
                 </div>
               )}
 
+              {/* THE CONTROLS BELONG TO THE PAYMENT SECTION, immediately under
+                  the bar they act on. As a footer spanning the whole surface
+                  they were detached from the thing they change, and the auto
+                  margin that pushed them down opened a hole in the middle of
+                  the card. */}
+              <div className="pi-detail-summary-actions">
+                {/* Unchanged gate: canAddPiPayment decides this, exactly as
+                    record_pi_submission_payment() decides it server-side. */}
+                {canAdd && (
+                  <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
+                    Add payment
+                  </button>
+                )}
+                {/* ONE label, always. It opens PiPaymentDetailsModal in either
+                    case, so wording that changed with the record made the same
+                    control look like two. */}
+                <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
+                  {PAYMENT_DETAILS_LABEL}
+                </button>
+              </div>
             </>
           )}
             </div>
           </div>
-
-          {/* ── The action footer ──
-              It belongs to the WHOLE surface, not to the payment area: what it
-              does is add to, and open, the record both areas describe. So it
-              spans the full width beneath them, right-aligned, pushed to the
-              bottom by the auto margin rather than by anything positioned. */}
-          {payment !== null && (
-            <div className="pi-detail-summary-actions">
-              {/* Unchanged gate: canAddPiPayment decides this, exactly as
-                  record_pi_submission_payment() decides it server-side. */}
-              {canAdd && (
-                <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
-                  Add payment
-                </button>
-              )}
-              {/* ONE label, always. It opens PiPaymentDetailsModal in either
-                  case, so wording that changed with the record made the same
-                  control look like two. */}
-              <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
-                {PAYMENT_DETAILS_LABEL}
-              </button>
-            </div>
-          )}
         </section>
 
       </div>

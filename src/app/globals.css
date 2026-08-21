@@ -2664,11 +2664,13 @@ body {
    separator in a card that already had a band, a border and a hairline; the
    groups are told apart by the space between them and by the size of the
    figures, which is separation that costs nothing. */
-/* ONE surface, THREE parts: worth and received side by side, then a footer
-   under both. No shadow, no gradient, one restrained border. */
+/* CONTENT-DRIVEN, never stretched. Filling the row height left a hole in the
+   middle of the surface and pushed the controls away from the bar they act on;
+   the surface is as tall as what is in it, and the left column is free to be
+   taller. No shadow, no gradient, one restrained border. */
 .pi-detail-summary-paycard {
   min-width: 0;
-  height: 100%;
+  align-self: start;
   display: flex;
   flex-direction: column;
   padding: 11px 13px 12px;
@@ -2681,18 +2683,23 @@ body {
    pushed apart by their own contents. */
 .pi-detail-summary-paybody {
   display: grid;
-  grid-template-columns: minmax(0, 0.66fr) 1px minmax(0, 1fr);
-  align-items: start;
-  gap: 0 8px;
+  grid-template-columns: minmax(0, 0.64fr) 1px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0 6px;
   min-width: 0;
 }
 
-/* Inset from the surface's padding by an element rather than a border: a
-   border would run the full height of whatever carried it. */
+/* The shorter group sits at the MIDDLE of the taller one rather than at its
+   top, which is what stops the left of the surface reading as half empty. */
+.pi-detail-summary-values { align-self: center; }
+
+/* An element, not a border — and inset top and bottom, so it divides the
+   content rather than standing up as a wall the height of the surface. */
 .pi-detail-summary-payrule {
   align-self: stretch;
   width: 1px;
-  background: rgba(0, 0, 0, 0.08);
+  margin: 3px 6px;
+  background: rgba(0, 0, 0, 0.075);
 }
 
 .pi-detail-summary-paystate {
@@ -2710,20 +2717,18 @@ body {
    has been paid against it — label left, figure right, which is the idiom the
    Commercial breakdown card uses for the very same two lines. As label-over-
    value pairs side by side they drifted to opposite ends of a 650px surface. */
-/* Compact ledger rows: label left, figure right, tabular so the two line up
-   digit for digit with each other. */
+/* ONE compact group: label over value, twice, the same way both times. */
 .pi-detail-summary-values {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 9px;
   min-width: 0;
 }
 
 .pi-detail-summary-value-row {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  gap: 1px;
   min-width: 0;
 }
 
@@ -2854,26 +2859,25 @@ body {
    The padding is the FLOOR on that separation: auto can go to zero, and the
    bar must never end up sitting on the buttons. 8px here plus the surface's
    own 3px gap is 11px between the track and the controls at worst. */
-/* THE FOOTER BELONGS TO THE WHOLE SURFACE. The auto margin takes whatever room
-   the two areas left, so it meets the bottom edge with nothing under it; the
-   hairline and 9px are the separation, neither of them heavy. */
+/* UNDER THE BAR THEY ACT ON, and nothing pushes them anywhere: no auto margin,
+   no rule above them, no footer. The 8px here plus the payment column's own 3px
+   gap is the 11px that separates them from the track. */
 .pi-detail-summary-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 9px;
-  border-top: 1px solid rgba(0, 0, 0, 0.055);
+  gap: 6px;
+  padding-top: 8px;
 }
 
 /* THE HIERARCHY STAYS, THE SHOUT GOES. Solid black against a near-white
    surface was the loudest thing in a calm card, and it was competing with the
    figure above it for the eye. The primary is the app's own ink at a lighter
    weight; the secondary loses its border and keeps only a ground. */
+/* 10px of side padding, not 12: at tablet the payment column is ~221px and the
+   pair needs to sit on ONE row under the bar they act on. */
 .pi-detail-summary-add,
 .pi-detail-summary-view {
-  padding: 6px 11px;
+  padding: 6px 10px;
   font-size: 12px;
   font-weight: 600;
   border-radius: 6px;
@@ -2902,32 +2906,21 @@ body {
 /* WEIGHT FOLLOWS CONTENT. The left column is three short groups; the finance
    surface carries four figures, a bar and two controls, so it takes the larger
    share — roughly 39 / 61. */
-/* THE LEDGER DECIDES THE SPLIT WHERE IT IS TIGHT. At tablet the surface is
-   ~400px, and 39% of it is not enough for "Total before GST" and its figure on
-   one line — the label wrapped to two, which is the compressed reading the
-   proportions exist to avoid. Below 1180px the two areas share the width
-   evenly instead; the 39/61 recommendation is a desktop one, and a wrapped
-   ledger row is a worse outcome than an even split. */
-@media (max-width: 1179px) {
-  .pi-detail-summary-paybody {
-    grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
-  }
-}
-
 /* AT PHONE WIDTH THE TWO AREAS STACK, and the hairline lies down with them:
    the same element, turned from a 1px column into a 1px row, so there is never
    a second divider to keep in step with the first. */
+/* AT PHONE WIDTH THE TWO AREAS STACK, and the separation is SPACE. A rule laid
+   across a single column would be a horizontal divider inside the surface,
+   which this card does not have. */
 @media (max-width: 700px) {
   .pi-detail-summary-paybody {
     grid-template-columns: minmax(0, 1fr);
-    gap: 10px 0;
+    gap: 12px 0;
   }
 
-  .pi-detail-summary-payrule {
-    align-self: auto;
-    width: auto;
-    height: 1px;
-  }
+  .pi-detail-summary-payrule { display: none; }
+
+  .pi-detail-summary-values { align-self: stretch; }
 }
 
 @media (min-width: 900px) {

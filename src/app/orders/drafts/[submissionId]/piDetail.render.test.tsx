@@ -1800,23 +1800,29 @@ describe('the layout is CSS, at three real breakpoints', () => {
     assert.ok(!/\.pi-detail-summary-due \{/.test(css), 'the amber block is gone')
   })
 
-  test('the order values are ledger rows: label left, figure right, tabular', () => {
-    assert.ok(/\.pi-detail-summary-value-row \{[^}]*justify-content: space-between/.test(css),
-      'label left, figure right')
+  test('the order values are one compact group: label over value, twice', () => {
+    // Stacked, not label-left/figure-right. Side by side the pair needs ~166px
+    // and 38% of this surface at tablet is not that — the label wrapped, which
+    // is the compressed reading a narrow column has to avoid.
+    assert.ok(/\.pi-detail-summary-value-row \{[^}]*flex-direction: column/.test(css))
     assert.ok(/\.pi-detail-summary-money \{[^}]*font-variant-numeric: tabular-nums/.test(css),
       'so the two figures line up digit for digit')
+    assert.ok(/\.pi-detail-summary-values \{ align-self: center/.test(css),
+      'and the shorter group sits at the middle of the taller one')
   })
 
   test('the surface splits worth from received, and stacks them on a phone', () => {
     // A 1px TRACK, not a border: neither area can push the other around, and
     // the divider insets from the surface's padding instead of running its
     // full height.
-    assert.ok(/\.pi-detail-summary-paybody \{[^}]*grid-template-columns: minmax\(0, 0\.66fr\) 1px minmax\(0, 1fr\)/.test(css))
+    assert.ok(/\.pi-detail-summary-paybody \{[^}]*grid-template-columns: minmax\(0, 0\.64fr\) 1px minmax\(0, 1fr\)/.test(css))
     assert.ok(/\.pi-detail-summary-payrule \{[^}]*align-self: stretch/.test(css))
     // The same element lies down at phone width — one divider, two orientations,
     // so there is never a second one to keep in step.
     assert.ok(/@media \(max-width: 700px\)[\s\S]*?\.pi-detail-summary-paybody \{\s*grid-template-columns: minmax\(0, 1fr\)/.test(css))
-    assert.ok(/@media \(max-width: 700px\)[\s\S]*?\.pi-detail-summary-payrule \{[^}]*height: 1px/.test(css))
+    // Stacked, the separation is SPACE. A rule laid across one column would be
+    // a horizontal divider inside the surface, which this card does not have.
+    assert.ok(/@media \(max-width: 700px\)[\s\S]*?\.pi-detail-summary-payrule \{ display: none/.test(css))
   })
 
   test('the card is two columns, and the finance surface fills its own', () => {
@@ -1825,28 +1831,36 @@ describe('the layout is CSS, at three real breakpoints', () => {
     assert.ok(
       /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.56fr\)/.test(css),
       'and roughly 39 / 61 once there is room for both')
-    // STRETCH plus height:100% is what makes the surface run the full height of
-    // the content area. What keeps its contents at the top is the footer's own
-    // auto margin, which takes the leftover room — see the footer test below.
-    assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{[^}]*align-items: stretch/.test(css))
-    assert.ok(/\.pi-detail-summary-paycard \{[^}]*height: 100%/.test(css))
+    // The surface is CONTENT-DRIVEN: align-self: start opts it out of the row's
+    // stretch, so it is as tall as what is in it and the left column is free to
+    // be taller. Stretching it left a hole in its middle and pushed the controls
+    // away from the bar they act on.
+    assert.ok(/\.pi-detail-summary-paycard \{[^}]*align-self: start/.test(css))
+    assert.ok(!/\.pi-detail-summary-paycard \{[^}]*height: 100%/.test(css))
   })
 
-  test('the footer spans the surface, sits at its foot, and is right-aligned', () => {
-    // It belongs to the WHOLE surface — it adds to and opens the record both
-    // areas describe — so it is a sibling of the two-column body, not a child
-    // of either column. `auto` takes whatever room they left, so it meets the
-    // bottom edge with nothing under it; the padding is the floor when there is
-    // no room to take, on a phone or with an awaiting line filling the surface.
-    assert.ok(/\.pi-detail-summary-actions \{[^}]*margin-top: auto/.test(css))
-    assert.ok(/\.pi-detail-summary-actions \{[^}]*padding-top: 9px/.test(css))
-    assert.ok(/\.pi-detail-summary-actions \{[^}]*justify-content: flex-end/.test(css))
-    // Neither upper area may hold a control.
+  test('the controls sit under the bar they act on, pushed by nothing', () => {
+    // As a footer spanning the whole surface they were detached from the thing
+    // they change, and the auto margin that held them at the bottom opened a
+    // hole in the middle of the card. They are part of the payment section.
+    assert.ok(/\.pi-detail-summary-actions \{[^}]*padding-top: 8px/.test(css))
+    assert.ok(!/\.pi-detail-summary-actions \{[^}]*margin-top: auto/.test(css),
+      'nothing pushes them to the bottom')
+    assert.ok(!/\.pi-detail-summary-actions \{[^}]*border-top/.test(css),
+      'and there is no rule above them')
     const html = summaryHtml({ canAdd: true })
-    const body = html.slice(html.indexOf('pi-detail-summary-paybody'),
-      html.indexOf('pi-detail-summary-actions'))
+    const state = html.slice(html.indexOf('pi-detail-summary-paystate'))
     for (const control of ['pi-detail-summary-add', 'pi-detail-summary-view']) {
-      assert.ok(!body.includes(control), `${control} must not sit inside an upper section`)
+      assert.ok(state.includes(control), `${control} belongs to the payment section`)
+    }
+  })
+
+  test('there is no horizontal divider anywhere inside the finance surface', () => {
+    // Two areas, one vertical hairline. A horizontal rule inside the surface is
+    // the treatment this card removed twice over.
+    for (const sel of ['paycard', 'paybody', 'paystate', 'values', 'actions']) {
+      assert.ok(!new RegExp(`\\.pi-detail-summary-${sel} \\{[^}]*border-(top|bottom):`).test(css),
+        `${sel} must not carry a horizontal rule`)
     }
   })
 
