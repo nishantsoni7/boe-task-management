@@ -191,6 +191,14 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   ship_to_name: string | null
   order_confirmation_date: string | null
   dispatch_commitment: string | null
+  /**
+   * The dispatch due date, or null.
+   *
+   * Written ONLY from an explicit, plausible calendar date — see
+   * src/lib/orders/dueDate.ts and migration 20260922000000. Never derived from
+   * the prose in dispatch_commitment beside it.
+   */
+  due_date: string | null
 
   // How to reach the client, and where the order goes. Parsed into these
   // columns since 20260908000000 and stored ever since; the detail page only
@@ -319,6 +327,10 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   'created_by', 'submitted_by', 'assigned_to', 'submitted_at', 'rejected_by', 'rejected_at',
   'creation_date', 'source_created_by', 'bill_to_name', 'ship_to_name',
   'order_confirmation_date', 'dispatch_commitment',
+  // The dispatch DATE, when the PI stated an explicit one. Added by migration
+  // 20260922000000 and read here with everything else — dispatch_commitment
+  // above keeps the prose, and the two are never confused for one another.
+  'due_date',
   // Contact and location, for the top summary. No new column: every one of
   // these has been written by the save route since the table was created.
   'contact_number', 'bill_to_phone', 'ship_to_phone',

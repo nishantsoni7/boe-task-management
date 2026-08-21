@@ -129,6 +129,8 @@ const submission = (over: Partial<PersistedSubmission> = {}): PersistedSubmissio
   ship_to_name: 'Meridian Hotels — Jaipur',
   order_confirmation_date: '2026-08-12',
   dispatch_commitment: '6 weeks from date of confirmation',
+  // Prose, so the fixture PI has no due date — the common case.
+  due_date: null,
   contact_number: '+91 98200 11111',
   bill_to_phone: null,
   ship_to_phone: null,
@@ -1085,7 +1087,7 @@ describe('the top summary answers four questions and repeats none of them', () =
     // The due date comes from order_submissions.due_date, read separately so a
     // build deployed before migration 20260922000000 still renders. It is never
     // derived from the prose beside it.
-    assert.ok(page.includes('due: draft.dueDate'), 'the stored column, not a derivation')
+    assert.ok(page.includes('due: submission.due_date'), 'the stored column, not a derivation')
     assert.ok(!page.includes("headerValue('dispatch')"),
       'the prose dispatch commitment is not read as a date')
     assert.ok(!page.includes("headerValue('created')"), 'and the PI-created date is not shown')
@@ -1110,14 +1112,14 @@ describe('the top summary answers four questions and repeats none of them', () =
     assert.equal(dated.note, null)
   })
 
-  test('the page reads due_date tolerantly, so it cannot break before the migration', () => {
-    // A column that does not exist yet makes PostgREST reject the WHOLE row
-    // read. Naming it in PI_DRAFT_DETAIL_COLUMNS would take the page down
-    // between the deploy and the migration; a separate read degrades to
-    // "Not set" instead.
-    assert.ok(!PI_DRAFT_DETAIL_COLUMNS.includes('due_date'),
-      'due_date must not be in the main submission select yet')
-    assert.ok(page.includes("dueResult.error"), 'a refusal resolves to no due date')
+  test('the due date arrives with the record, in the read the page already makes', () => {
+    // 20260922000000 is applied, so the column is named alongside every other
+    // header field. What this pins is that it costs NO EXTRA REQUEST: the page
+    // reads the submission once, and the due date comes with it.
+    assert.ok(PI_DRAFT_DETAIL_COLUMNS.includes('due_date'))
+    assert.equal((page.match(/\.from\('order_submissions'\)/g) ?? []).length, 1,
+      'exactly one read of order_submissions on this page')
+    assert.ok(page.includes('due: submission.due_date'), 'straight off the row')
   })
 
   test('what the summary no longer spends space on', () => {
