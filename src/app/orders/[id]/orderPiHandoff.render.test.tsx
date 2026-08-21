@@ -24,10 +24,23 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   ORDER_PI_PRODUCTS_TITLE,
   ORDER_PI_SECTION_TITLE,
+  OrderDocumentsCard,
   OrderPiProducts,
   OrderPiSummaryCard,
   OrderPiUnavailable,
 } from './OrderPiSections'
+import {
+  ORDER_DOCUMENTS_EXCEL_LABEL,
+  ORDER_DOCUMENTS_GENERATE_LABEL,
+  ORDER_DOCUMENTS_NONE,
+  ORDER_DOCUMENTS_PDF_LABEL,
+  ORDER_DOCUMENTS_RETRY_LABEL,
+  ORDER_DOCUMENTS_WORKING,
+  ORDER_DOCUMENT_FAILURES,
+  buildOrderDocumentsView,
+  orderDocumentAttemptPath,
+  type OrderDocumentRow,
+} from '@/lib/orders/orderDocuments'
 import {
   ORDER_PI_UNAVAILABLE_BODY,
   ORDER_PI_WORKBOOK_LABEL,
@@ -436,5 +449,185 @@ describe('/orders/[id] itself', () => {
 
   test('the Order select asks for the link and the billing percentage', () => {
     assert.ok(page.includes('source_order_submission_id, billing_percentage'))
+  })
+})
+
+// ── 9. The confirmed documents card ───────────────────────────────────────────
+
+const DOC_ORDER = '11111111-2222-3333-4444-555555555555'
+
+function docRow(over: Partial<OrderDocumentRow> = {}): OrderDocumentRow {
+  return {
+    id: 'v1', order_id: DOC_ORDER, version: 1, status: 'ready', attempt_count: 1,
+    claimed_at: null, completed_at: '2026-08-20T10:00:00Z',
+    last_error_code: null, last_error_message: null,
+    excel_path: orderDocumentAttemptPath(DOC_ORDER, 1, 1, 'xlsx'),
+    pdf_path: orderDocumentAttemptPath(DOC_ORDER, 1, 1, 'pdf'),
+    excel_sha256: 'a'.repeat(64), pdf_sha256: 'b'.repeat(64),
+    excel_bytes: 1000, pdf_bytes: 2000,
+    created_at: '2026-08-20T09:00:00Z', updated_at: '2026-08-20T10:00:00Z',
+    ...over,
+  }
+}
+
+function documentsMarkup(rows: OrderDocumentRow[], opts: {
+  canGenerate?: boolean
+  generating?: boolean
+  downloading?: 'xlsx' | 'pdf' | null
+  error?: string | null
+} = {}) {
+  return renderToStaticMarkup(
+    <OrderDocumentsCard
+      view={buildOrderDocumentsView(rows)}
+      canGenerate={opts.canGenerate ?? false}
+      onGenerate={() => {}}
+      generating={opts.generating ?? false}
+      onDownload={() => {}}
+      downloading={opts.downloading ?? null}
+      error={opts.error ?? null}
+    />,
+  )
+}
+
+describe('the confirmed documents card', () => {
+  test('an Order nobody has asked about says so, and offers no download', () => {
+    const html = documentsMarkup([])
+    assert.ok(html.includes(ORDER_DOCUMENTS_NONE))
+    assert.ok(!html.includes(ORDER_DOCUMENTS_EXCEL_LABEL))
+    assert.ok(!html.includes(ORDER_DOCUMENTS_PDF_LABEL))
+  })
+
+  test('a ready version offers BOTH downloads', () => {
+    const html = documentsMarkup([docRow()])
+    assert.ok(html.includes(ORDER_DOCUMENTS_EXCEL_LABEL))
+    assert.ok(html.includes(ORDER_DOCUMENTS_PDF_LABEL))
+    assert.ok(html.includes('Ready'))
+    assert.ok(html.includes('Version 1'))
+  })
+
+  test('NO STORAGE PATH AND NO URL reaches the markup', () => {
+    // The link is minted on the click, through the reader's own session, so the
+    // page never carries one that could outlive it.
+    const html = documentsMarkup([docRow()])
+    assert.ok(!html.includes('orders/'))
+    assert.ok(!html.includes('approved.xlsx'))
+    assert.ok(!html.includes(DOC_ORDER))
+    assert.ok(!/href=/.test(html))
+    assert.ok(!html.includes('token='))
+  })
+
+  test('a HALF-ready version offers nothing — document-ready means both files', () => {
+    for (const half of [{ pdf_path: null }, { excel_path: null }]) {
+      const html = documentsMarkup([docRow(half)])
+      assert.ok(!html.includes(ORDER_DOCUMENTS_EXCEL_LABEL), JSON.stringify(half))
+      assert.ok(!html.includes(ORDER_DOCUMENTS_PDF_LABEL), JSON.stringify(half))
+    }
+  })
+
+  test('a generation in flight says so, with NO progress bar and no estimate', () => {
+    const html = documentsMarkup([docRow({
+      status: 'claimed', excel_path: null, pdf_path: null, completed_at: null,
+    })])
+    assert.ok(html.includes(ORDER_DOCUMENTS_WORKING))
+    assert.ok(html.includes('Generating'), 'a lease is not a person\'s concern')
+    assert.ok(!html.includes('Claimed'))
+    assert.ok(!/%/.test(html.replace(/max-width:\s*100%/g, '')))
+  })
+
+  test('a failure shows its PREWRITTEN sentence and never its code', () => {
+    const html = documentsMarkup([docRow({
+      status: 'failed', excel_path: null, pdf_path: null, completed_at: null,
+      last_error_code: 'WORKBOOK_UNREADABLE',
+      last_error_message: ORDER_DOCUMENT_FAILURES.WORKBOOK_UNREADABLE,
+    })])
+    assert.ok(html.includes(ORDER_DOCUMENT_FAILURES.WORKBOOK_UNREADABLE))
+    assert.ok(!html.includes('WORKBOOK_UNREADABLE'))
+  })
+
+  test('the generate control appears only for somebody who may press it', () => {
+    assert.ok(!documentsMarkup([]).includes(ORDER_DOCUMENTS_GENERATE_LABEL))
+    assert.ok(documentsMarkup([], { canGenerate: true }).includes(ORDER_DOCUMENTS_GENERATE_LABEL))
+  })
+
+  test('and it reads `Try again` once a version has failed', () => {
+    const failed = docRow({
+      status: 'failed', excel_path: null, pdf_path: null, completed_at: null,
+      last_error_code: 'PDF_RENDER_FAILED',
+      last_error_message: ORDER_DOCUMENT_FAILURES.PDF_RENDER_FAILED,
+    })
+    const html = documentsMarkup([failed], { canGenerate: true })
+    assert.ok(html.includes(ORDER_DOCUMENTS_RETRY_LABEL))
+    assert.ok(!html.includes(ORDER_DOCUMENTS_GENERATE_LABEL))
+  })
+
+  test('it is HIDDEN while a generation is in flight, so nobody queues a second', () => {
+    const busy = docRow({ status: 'pending', excel_path: null, pdf_path: null, completed_at: null })
+    const html = documentsMarkup([busy], { canGenerate: true })
+    assert.ok(!html.includes(ORDER_DOCUMENTS_GENERATE_LABEL))
+    assert.ok(!html.includes(ORDER_DOCUMENTS_RETRY_LABEL))
+  })
+
+  test('an amendment generating over existing documents keeps BOTH truths', () => {
+    const ready1 = docRow({ id: 'v1', version: 1 })
+    const busy2 = docRow({
+      id: 'v2', version: 2, status: 'claimed',
+      excel_path: null, pdf_path: null, completed_at: null,
+    })
+    const html = documentsMarkup([ready1, busy2])
+    assert.ok(html.includes(ORDER_DOCUMENTS_EXCEL_LABEL), 'version 1 is still downloadable')
+    assert.ok(html.includes(ORDER_DOCUMENTS_WORKING), 'and version 2 is on its way')
+  })
+
+  test('a refusal is one quiet line and the card survives it', () => {
+    const html = documentsMarkup([docRow()], { error: 'That could not be done just now.' })
+    assert.ok(html.includes('That could not be done just now.'))
+    assert.ok(html.includes(ORDER_DOCUMENTS_EXCEL_LABEL))
+  })
+
+  test('a download being prepared disables BOTH buttons', () => {
+    const html = documentsMarkup([docRow()], { downloading: 'pdf' })
+    assert.ok(html.includes('Preparing…'))
+    assert.equal((html.match(/disabled/g) ?? []).length, 2)
+  })
+})
+
+// ── 10. The page wires the documents card the way the module intends ─────────
+
+describe('/orders/[id] and its documents', () => {
+  const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
+
+  test('reads the register with NAMED columns, and never the lease token', () => {
+    assert.ok(page.includes("from('order_document_versions')"))
+    assert.ok(page.includes('ORDER_DOCUMENT_COLUMNS'))
+    // Comments stripped: the page DOCUMENTS that the token is unreadable, and a
+    // raw search would match the sentence promising the thing it verifies.
+    const code = page
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .split('\n').filter(line => !line.trim().startsWith('//')).join('\n')
+    assert.ok(!code.includes('claim_token'))
+  })
+
+  test('the generate control is gated on the approval authority, not on a role', () => {
+    assert.ok(page.includes('ordersCaps.canApproveOrderSubmission'))
+    assert.ok(page.includes('mayGenerateDocuments'))
+    // Suppressed under View As, exactly as every other authority on this page.
+    assert.match(page, /canApproveOrderSubmission && !viewAsUserId/)
+  })
+
+  test('the request goes to the route, with NO body of its own', () => {
+    assert.match(page, /fetch\(`\/api\/orders\/\$\{id\}\/documents`, \{ method: 'POST' \}\)/)
+  })
+
+  test('a download is signed on demand and never built as a public URL', () => {
+    assert.ok(page.includes('ORDER_DOCUMENT_URL_TTL_SECONDS'))
+    assert.ok(!page.includes('getPublicUrl'))
+  })
+
+  test('no service-role credential exists anywhere in this client page', () => {
+    assert.ok(!/SERVICE_ROLE|createServiceClient/.test(page))
+  })
+
+  test('an Order with NO source PI gets no documents card at all', () => {
+    assert.match(page, /piHandoff\.kind !== 'none' && \(/)
   })
 })

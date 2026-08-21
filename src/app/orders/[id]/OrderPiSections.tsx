@@ -47,6 +47,17 @@ import {
   ORDER_PI_UNAVAILABLE_TITLE,
   ORDER_PI_WORKBOOK_LABEL,
 } from '@/lib/orders/orderPiHandoff'
+import {
+  ORDER_DOCUMENTS_EXCEL_LABEL,
+  ORDER_DOCUMENTS_GENERATE_LABEL,
+  ORDER_DOCUMENTS_NONE,
+  ORDER_DOCUMENTS_PDF_LABEL,
+  ORDER_DOCUMENTS_RETRY_LABEL,
+  ORDER_DOCUMENTS_TITLE,
+  ORDER_DOCUMENTS_WORKING,
+  type OrderDocumentTone,
+  type OrderDocumentsView,
+} from '@/lib/orders/orderDocuments'
 
 /** The one heading the handoff sits under, said once so the card and its tests
  *  cannot word it differently. */
@@ -443,6 +454,147 @@ export function OrderPiProducts({
           </table>
         </div>
       )}
+    </PiCard>
+  )
+}
+
+// ── The generated documents ───────────────────────────────────────────────────
+
+const DOCUMENT_TONE: Record<OrderDocumentTone, { bg: string; color: string; border: string }> = {
+  neutral: { bg: colors.raised,    color: colors.secondary, border: colors.border },
+  blue:    { bg: colors.blueTint,  color: '#2F5BB7',        border: 'rgba(85,133,232,0.3)' },
+  green:   { bg: colors.greenTint, color: '#2F7A52',        border: 'rgba(69,168,112,0.25)' },
+  red:     { bg: colors.redTint,   color: colors.red,       border: 'rgba(217,79,79,0.3)' },
+}
+
+/**
+ * THE CONFIRMED DOCUMENTS, and what to do about them.
+ *
+ * DOCUMENT-READY MEANS BOTH FILES, so there is one downloadable state and never
+ * a half of one: `view.downloadable` is false unless the register names both
+ * objects, and the database refuses to record `ready` any other way.
+ *
+ * THE DOWNLOADS ARE SIGNED ON THE CLICK, through the reader's own session, so
+ * the order-files rule decides again per object at that moment — and that rule
+ * authorizes an object only when a READY version names it, which is what keeps a
+ * failed attempt's half-upload unreachable.
+ *
+ * THE GENERATE CONTROL IS NOT THE SECURITY. Two RLS policies re-derive both the
+ * management approval authority and sight of the Order when the request lands.
+ * Hiding the button is a courtesy to everybody who would only be refused.
+ */
+export function OrderDocumentsCard({
+  view, canGenerate, onGenerate, generating, onDownload, downloading, error,
+}: {
+  view: OrderDocumentsView
+  canGenerate: boolean
+  onGenerate: () => void
+  generating: boolean
+  onDownload: (kind: 'xlsx' | 'pdf') => void
+  /** Which download is being signed, if any. */
+  downloading: 'xlsx' | 'pdf' | null
+  /** One quiet line. Never a stack trace, never a storage message. */
+  error: string | null
+}) {
+  const tone = view.tone ? DOCUMENT_TONE[view.tone] : null
+
+  return (
+    <PiCard>
+      <PiCardHeader
+        title={ORDER_DOCUMENTS_TITLE}
+        right={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {view.statusLabel && tone && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center',
+                padding: '3px 10px', borderRadius: '5px',
+                fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
+                background: tone.bg, color: tone.color, border: `1px solid ${tone.border}`,
+              }}>
+                {view.statusLabel}
+              </span>
+            )}
+            {view.version !== null && (
+              <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                Version {view.version}
+              </span>
+            )}
+          </div>
+        }
+      />
+
+      <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {view.version === null && (
+          <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
+            {ORDER_DOCUMENTS_NONE}
+          </div>
+        )}
+
+        {/* NO PROGRESS BAR AND NO ESTIMATE. Nothing here knows how long a render
+            takes, and a bar that creeps to 90% and stops is worse than a
+            sentence that is honest. */}
+        {view.working && (
+          <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
+            {ORDER_DOCUMENTS_WORKING}
+          </div>
+        )}
+
+        {view.failure && (
+          <div style={{ fontSize: '12.5px', color: colors.red, lineHeight: 1.55 }}>
+            {view.failure}
+            {view.attempts !== null && (
+              <span style={{ color: colors.muted }}> · {view.attempts} attempts</span>
+            )}
+          </div>
+        )}
+
+        {view.downloadable && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => onDownload('xlsx')}
+              disabled={downloading !== null}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+            >
+              <FileSpreadsheet size={13} strokeWidth={1.9} />
+              {downloading === 'xlsx' ? 'Preparing…' : ORDER_DOCUMENTS_EXCEL_LABEL}
+            </button>
+            <button
+              type="button"
+              onClick={() => onDownload('pdf')}
+              disabled={downloading !== null}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+            >
+              <Download size={13} strokeWidth={2} />
+              {downloading === 'pdf' ? 'Preparing…' : ORDER_DOCUMENTS_PDF_LABEL}
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45 }}>{error}</div>
+        )}
+
+        {canGenerate && !view.working && (
+          <div>
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={generating}
+              className="boe-btn boe-btn-primary"
+              style={{ padding: '7px 14px', fontSize: '12px', fontWeight: 600, opacity: generating ? 0.6 : 1 }}
+            >
+              {generating
+                ? 'Starting…'
+                : view.failure
+                  ? ORDER_DOCUMENTS_RETRY_LABEL
+                  : ORDER_DOCUMENTS_GENERATE_LABEL}
+            </button>
+          </div>
+        )}
+      </div>
     </PiCard>
   )
 }

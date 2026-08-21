@@ -61,10 +61,17 @@ import { buildImageViewerItems, viewerNav, type PiViewerItem } from '@/lib/pi/pr
 import { PiCommercialSummary, PiImageViewer, type PiThumbnailProps } from '@/components/orders/piPreview'
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import {
+  OrderDocumentsCard,
   OrderPiProducts,
   OrderPiSummaryCard,
   OrderPiUnavailable,
 } from './OrderPiSections'
+import {
+  ORDER_DOCUMENT_COLUMNS,
+  ORDER_DOCUMENT_URL_TTL_SECONDS,
+  buildOrderDocumentsView,
+  type OrderDocumentRow,
+} from '@/lib/orders/orderDocuments'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -174,6 +181,11 @@ const MOBILE_BREAKPOINT = 768
  *  no internals: a refusal is almost always a permission answer and saying so
  *  in detail would confirm what the reader is not entitled to. */
 const WORKBOOK_UNAVAILABLE = 'That file is not available to you right now.'
+
+/** What the documents card says when a request or a download is refused. One
+ *  sentence, no internals: a refusal is almost always a permission answer, and
+ *  elaborating would confirm what the reader is not entitled to. */
+const DOCUMENTS_REFUSED = 'That could not be done just now.'
 
 const LEAD_SOURCE_LABEL: Record<string, string> = {
   reference:       'Reference',
@@ -503,6 +515,17 @@ export default function OrderDetailPage() {
   const [wbPath,      setWbPath]      = useState<string | null>(null)
   const [isMobile,    setIsMobile]    = useState(false)
 
+  // ── The generated documents ──
+  //
+  // The register, read under the caller's own RLS: can_view_order decides, so a
+  // reader who may open the Order sees its document state and nobody else does.
+  // claim_token is not among the columns and could not be selected if it were —
+  // it is granted to no client role.
+  const [documents,   setDocuments]   = useState<OrderDocumentRow[]>([])
+  const [docBusy,     setDocBusy]     = useState(false)
+  const [docDownload, setDocDownload] = useState<'xlsx' | 'pdf' | null>(null)
+  const [docError,    setDocError]    = useState<string | null>(null)
+
   // Which thumbnail opened the viewer, so focus goes back to it on close, and
   // where those thumbnails live. Refs rather than state: neither is rendered.
   const viewerOpenedFrom = useRef<string | null>(null)
@@ -662,6 +685,7 @@ export default function OrderDetailPage() {
       { data: allocData },
       { data: aData },
       { data: cData },
+      { data: dData },
     ] = await Promise.all([
       supabase
         .from('finance_payment_requests')
@@ -688,6 +712,12 @@ export default function OrderDetailPage() {
         .order('created_at', { ascending: false }),
 
       supabase
+        .from('order_document_versions')
+        .select(ORDER_DOCUMENT_COLUMNS)
+        .eq('order_id', id)
+        .order('version', { ascending: false }),
+
+      supabase
         .from('order_change_requests')
         .select(`
           id, order_id, order_number_snapshot, request_type, requested_by, reason,
@@ -701,6 +731,8 @@ export default function OrderDetailPage() {
         .eq('order_id', id)
         .order('created_at', { ascending: false }),
     ])
+
+    setDocuments((dData ?? []) as unknown as OrderDocumentRow[])
 
     setPayments(mergeOrderPayments(
       (pData ?? []) as Parameters<typeof mergeOrderPayments>[0],
@@ -801,6 +833,64 @@ export default function OrderDetailPage() {
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
 
+  /**
+   * Ask for this Order's documents.
+   *
+   * THE BUTTON IS NOT THE SECURITY. The route calls
+   * request_order_document_generation through the CALLER'S own session, and two
+   * RLS policies re-derive both the management approval authority and sight of
+   * this Order. Hiding the control is a courtesy to everybody who would only be
+   * refused.
+   *
+   * A refusal is one quiet line, never a thrown page.
+   */
+  const requestDocuments = async () => {
+    if (docBusy) return
+    setDocBusy(true)
+    setDocError(null)
+    try {
+      const response = await fetch(`/api/orders/${id}/documents`, { method: 'POST' })
+      const body = await response.json().catch(() => null) as { message?: string } | null
+      if (!response.ok && response.status !== 202) {
+        setDocError(typeof body?.message === 'string' ? body.message : DOCUMENTS_REFUSED)
+      }
+    } catch {
+      setDocError(DOCUMENTS_REFUSED)
+    }
+    setDocBusy(false)
+    // Re-read either way: a refusal may still have moved the register, and a
+    // success certainly did.
+    await loadOrder()
+  }
+
+  /**
+   * Download one confirmed document.
+   *
+   * SIGNED ON THE CLICK, through the reader's own session, so the order-files
+   * rule decides again at that moment — and that rule authorizes an object only
+   * when a READY version names it, which is what keeps a failed attempt's
+   * half-upload unreachable however well somebody knows its key.
+   *
+   * The PATH comes from the register, which is itself RLS-filtered. Nothing here
+   * builds a key.
+   */
+  const downloadDocument = async (kind: 'xlsx' | 'pdf') => {
+    if (docDownload) return
+    const view = buildOrderDocumentsView(documents)
+    const path = kind === 'xlsx' ? view.excelPath : view.pdfPath
+    if (!path) { setDocError(DOCUMENTS_REFUSED); return }
+
+    setDocDownload(kind)
+    setDocError(null)
+    const { data, error } = await supabase
+      .storage
+      .from(ORDER_FILES_BUCKET)
+      .createSignedUrl(path, ORDER_DOCUMENT_URL_TTL_SECONDS, { download: true })
+    setDocDownload(null)
+    if (error || !data?.signedUrl) { setDocError(DOCUMENTS_REFUSED); return }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
   // ── The image viewer ──
   //
   // The same three moves both PI screens make: remember which thumbnail opened
@@ -866,6 +956,26 @@ export default function OrderDetailPage() {
     hasPendingChangeRequest(changeRequests, order.id, profile.id, 'cancel')
 
   const pendingRequests = changeRequests.filter(r => r.status === 'pending')
+
+  /**
+   * WHO SEES THE GENERATE CONTROL.
+   *
+   * orders.approve_order — the existing management approval authority, the same
+   * protected action that decides whether a person may turn a PI into an Order.
+   * deriveOrdersCapabilities short-circuits an active admin, so this page never
+   * reads users.role to decide it.
+   *
+   * SUPPRESSED UNDER VIEW AS, for the reason every other authority on this page
+   * is: viewing as somebody else must not lend them your authority.
+   *
+   * And it is not the enforcement. Two RLS policies re-derive both this and
+   * sight of the Order when the request actually lands.
+   */
+  const mayGenerateDocuments = ordersCaps.canApproveOrderSubmission && !viewAsUserId
+
+  /** ONE ANSWER about the documents, so the card, the buttons and the tests
+   *  cannot disagree about whether there is anything to download. */
+  const documentsView = buildOrderDocumentsView(documents)
 
   const amendableOrder = order && {
     id: order.id,
@@ -1185,6 +1295,23 @@ export default function OrderDetailPage() {
             allocations; a PI-side payment block here would answer the same
             question a second time, with a figure that stopped being the
             authority when the money moved onto the Order. */}
+        {/* ── The confirmed documents ──
+            Rendered for every Order that came from a PI, including one nobody
+            has asked about yet: "no documents have been generated" is the
+            answer to a question somebody opening this page is asking. An Order
+            with no PI has no documents to generate and gets no card. */}
+        {piHandoff.kind !== 'none' && (
+          <OrderDocumentsCard
+            view={documentsView}
+            canGenerate={mayGenerateDocuments}
+            onGenerate={requestDocuments}
+            generating={docBusy}
+            onDownload={downloadDocument}
+            downloading={docDownload}
+            error={docError}
+          />
+        )}
+
         {piHandoff.kind === 'unavailable' && <OrderPiUnavailable />}
 
         {piHandoff.kind === 'ready' && (
