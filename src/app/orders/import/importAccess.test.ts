@@ -880,8 +880,16 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
     assert.ok(read(IMPORT_PAGE).includes('<PiCommercialSummary rows={buildCommercialRows('),
       'the preview renders the builder’s rows unchanged')
     const detail = read(DRAFT_DETAIL_PAGE)
-    assert.ok(detail.includes('<PiCommercialSummary rows={commercialBreakdownRows(buildCommercialRows('),
-      'and the detail page renders the same builder through a named, tested filter')
+    // The detail page builds those rows ONCE into `commercialRows` — the top
+    // summary repeats two of them beside the payment and must not be able to
+    // disagree with the breakdown — so the filter and the builder are asserted
+    // where they are composed rather than inline in the JSX.
+    assert.ok(detail.includes('const commercialRows = commercialBreakdownRows(buildCommercialRows('),
+      'the detail page runs the same builder through the same named filter')
+    assert.ok(detail.includes('<PiCommercialSummary rows={commercialRows}'),
+      'and the breakdown renders exactly those rows')
+    assert.ok(detail.includes('summaryCommercialFigures(commercialRows)'),
+      'and the summary card picks its two figures out of the same array')
   })
 
   test('the preview keeps the presentation it shipped with', () => {

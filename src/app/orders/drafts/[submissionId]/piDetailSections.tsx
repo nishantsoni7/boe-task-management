@@ -56,6 +56,7 @@ import {
   type ApprovedOrderView,
   type ClientSummary,
   type DateSummary,
+  type SummaryFigure,
   type PaymentSummaryView,
   type PiDetailTone,
   type WorkflowPanel,
@@ -162,10 +163,12 @@ export function PiIdentityStrip({ statusLabel, tone, facts, workbookName }: {
  * NOT ONE FIGURE IS COMPUTED HERE. See ./piDetailView.
  */
 export function PiSummaryCard({
-  client, dates, payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
+  client, dates, figures, payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
 }: {
   client: ClientSummary
   dates: readonly DateSummary[]
+  /** The two commercial figures, picked out of the breakdown's own rows. */
+  figures: readonly SummaryFigure[]
   /** null only while the payment summary has not been read yet. */
   payment: PaymentSummaryView | null
   canAdd: boolean
@@ -288,6 +291,33 @@ export function PiSummaryCard({
                   {payment.percent}
                 </span>
               </div>
+
+              {/* WHAT THE ORDER IS MADE OF, in the space the payment column
+                  already had. Two figures, not the breakdown: the product lines
+                  before anything is added, and the pre-tax total. GST, discount,
+                  fabric, packing and transport stay in the Commercial breakdown
+                  — repeating the whole calculation here would make a second
+                  place to read it, which is what this card exists to avoid.
+
+                  Both values are the breakdown's OWN strings, picked from the
+                  same rows it renders. An em dash means the PI never stated the
+                  figure and is deliberately not a zero. */}
+              {figures.length > 0 && (
+                <div className="pi-detail-summary-figures">
+                  {figures.map(figure => (
+                    <div key={figure.key}>
+                      <div style={{ fontSize: '11px', color: colors.muted }}>{figure.label}</div>
+                      <div style={{
+                        fontSize: '13px', fontWeight: 600,
+                        color: figure.kind === 'missing' ? colors.muted : colors.secondary,
+                        fontVariantNumeric: 'tabular-nums',
+                      }}>
+                        {figure.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Money Finance has not decided is NOT in the bar or the
                   percentage, and saying so is what keeps the two honest. */}

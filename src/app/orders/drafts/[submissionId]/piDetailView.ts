@@ -316,6 +316,51 @@ export function commercialBreakdownRows(rows: readonly PiAmountRow[]): PiAmountR
   return rows.filter(row => row.key !== ADVANCE_ROW_KEY)
 }
 
+/**
+ * The two commercial figures the top summary repeats beside the payment.
+ *
+ * PICKED OUT OF THE BREAKDOWN'S OWN ROWS, not recomputed from the submission.
+ * The card and the Commercial breakdown are handed the SAME PiAmountRow[], so
+ * "Product value" here and "Gross product amount" there are the identical
+ * formatted string by construction — there is no second formatting path that
+ * could round differently, and no arithmetic here at all.
+ *
+ * WHY THE LABEL DIFFERS FROM THE BREAKDOWN'S. The breakdown is a calculation and
+ * names each line as the workbook's own arithmetic does. The summary is read at
+ * a glance by somebody asking what the order is worth, and "Product value" is
+ * that question's wording. The FIGURE is the same figure; only the caption
+ * suits its context.
+ *
+ * MISSING IS NOT ZERO. `total_before_gst` is nullable, and formatPiValue already
+ * renders an absent one as an em dash with kind `missing`. That is carried
+ * through untouched: a PI whose workbook never stated a pre-tax total says so,
+ * rather than claiming ₹0. `gross_product_amount` is NOT NULL in the schema, so
+ * a zero there is a real zero and prints as one.
+ */
+export type SummaryFigure = {
+  key: 'gross' | 'beforeGst'
+  label: string
+  /** Already formatted by the shared builder. Never re-formatted here. */
+  value: string
+  /** `missing` when the PI never stated it — the caller may mute it. */
+  kind: PiAmountRow['kind']
+}
+
+const SUMMARY_FIGURE_LABEL: Record<'gross' | 'beforeGst', string> = {
+  gross: 'Product value',
+  beforeGst: 'Total before GST',
+}
+
+export function summaryCommercialFigures(rows: readonly PiAmountRow[]): SummaryFigure[] {
+  return (['gross', 'beforeGst'] as const).flatMap(key => {
+    const row = rows.find(r => r.key === key)
+    // A row the builder did not produce is not invented here. In practice both
+    // always exist; this simply refuses to print a figure that has no source.
+    if (!row) return []
+    return [{ key, label: SUMMARY_FIGURE_LABEL[key], value: row.value, kind: row.kind }]
+  })
+}
+
 // ── 3. Workflow and actions ───────────────────────────────────────────────────
 
 export type WorkflowPanel = {

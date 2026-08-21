@@ -211,6 +211,7 @@ import {
   buildIdentityFacts,
   buildPaymentSummaryView,
   commercialBreakdownRows,
+  summaryCommercialFigures,
   describeApprovedOrder,
   describeWorkflowPanel,
   omitDash,
@@ -1160,6 +1161,17 @@ function PiDraftDetailPageInner() {
   })
 
   /**
+   * The commercial rows, built ONCE and shared.
+   *
+   * The top summary repeats two of them beside the payment; the Commercial
+   * breakdown below renders the lot. Both are handed this same array, so the
+   * figure in the card and the figure in the breakdown cannot drift apart —
+   * they are literally the same string.
+   */
+  const commercialRows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission)))
+  const summaryFigures = summaryCommercialFigures(commercialRows)
+
+  /**
    * The compact payment block. Every figure is the RPC's, already summed in
    * numeric; the only thing derived here is how many rows Finance has not
    * decided yet, which is a count of rows and not a sum of money.
@@ -1256,6 +1268,7 @@ function PiDraftDetailPageInner() {
         <PiSummaryCard
           client={clientSummary}
           dates={summaryDates}
+          figures={summaryFigures}
           payment={paymentSummary}
           canAdd={canAddPayment}
           onOpenPayments={() => setPaymentDialog('details')}
@@ -1443,7 +1456,7 @@ function PiDraftDetailPageInner() {
                this page recomputes a total, and `fill` only tells the shared
                component to use its column rather than cap and right-align
                itself the way it does under the import preview's table. */
-            <PiCommercialSummary rows={commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission)))} title="Commercial breakdown" variant="detail" />
+            <PiCommercialSummary rows={commercialRows} title="Commercial breakdown" variant="detail" />
           }
           activity={<PiActivityTimeline entries={draft.activity} />}
         />

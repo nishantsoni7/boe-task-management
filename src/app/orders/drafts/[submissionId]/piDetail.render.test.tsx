@@ -38,6 +38,7 @@ import {
 import {
   buildClientSummary,
   buildDateSummary,
+  summaryCommercialFigures,
   buildIdentityFacts,
   buildPaymentSummaryView,
   telLink,
@@ -408,12 +409,17 @@ describe('the top of the page answers the questions it exists to answer', () => 
 // about what it SAYS — which figure counts, which does not, and what it does
 // when the PI gave nothing.
 
+/** The breakdown's own rows, so the card's figures come from where they will
+ *  in the page: one array, shared by the summary and the Commercial breakdown. */
+const COMMERCIAL_ROWS = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission())))
+
 const summaryHtml = (over: {
   client?: Parameters<typeof buildClientSummary>[0]
   payment?: PaymentSummaryView | null
   canAdd?: boolean
   confirmed?: string | null
   dates?: ReturnType<typeof buildDateSummary>
+  figures?: ReturnType<typeof summaryCommercialFigures>
 } = {}) => renderToStaticMarkup(
   <PiSummaryCard
     client={buildClientSummary(over.client ?? {
@@ -427,6 +433,7 @@ const summaryHtml = (over: {
       shippingAddress: null,
     })}
     dates={over.dates ?? buildDateSummary({ confirmed: over.confirmed ?? '31 Jan 2026' })}
+    figures={over.figures ?? summaryCommercialFigures(COMMERCIAL_ROWS)}
     payment={over.payment === undefined ? PAID_PART : over.payment}
     canAdd={over.canAdd ?? false}
     onOpenPayments={() => {}}
@@ -509,6 +516,78 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
     const html = text(summaryHtml({ payment: null }))
     assert.ok(html.includes('Loading…'))
     assert.ok(!html.includes('of ₹'), 'never a figure invented to fill the space')
+  })
+})
+
+describe('the top summary repeats two commercial figures, and only two', () => {
+  test('each one is the Commercial breakdown’s own string, character for character', () => {
+    // Not "equal to two decimal places" — the SAME string. The card and the
+    // breakdown are handed one array, so there is no second formatting path.
+    const figures = summaryCommercialFigures(COMMERCIAL_ROWS)
+    const byKey = Object.fromEntries(COMMERCIAL_ROWS.map(r => [r.key, r.value]))
+
+    assert.equal(figures.length, 2)
+    assert.deepEqual(figures.map(f => f.key), ['gross', 'beforeGst'])
+    assert.equal(figures[0].value, byKey.gross,
+      'Product value IS Gross product amount')
+    assert.equal(figures[1].value, byKey.beforeGst,
+      'Total before GST IS Total before GST')
+
+    // And both reach the screen.
+    const html = text(summaryHtml())
+    assert.ok(html.includes('Product value'))
+    assert.ok(html.includes('Total before GST'))
+    assert.ok(html.includes(byKey.gross))
+    assert.ok(html.includes(byKey.beforeGst))
+  })
+
+  test('the label is the summary’s wording, the figure is the breakdown’s', () => {
+    const figures = summaryCommercialFigures(COMMERCIAL_ROWS)
+    assert.equal(figures[0].label, 'Product value')
+    assert.equal(figures[1].label, 'Total before GST')
+    // The breakdown keeps naming the same row as the workbook's arithmetic does.
+    assert.equal(COMMERCIAL_ROWS.find(r => r.key === 'gross')?.label, 'Gross product amount')
+  })
+
+  test('a figure the PI never stated is an em dash, never a ₹0', () => {
+    // total_before_gst is nullable. formatPiValue already renders an absent one
+    // as a dash with kind `missing`, and that is carried through rather than
+    // being coerced into a zero somebody would read as "nothing is owed".
+    const rows = commercialBreakdownRows(buildCommercialRows(
+      persistedCommercial(submission({ total_before_gst: null }))))
+    const beforeGst = summaryCommercialFigures(rows)[1]
+    assert.equal(beforeGst.kind, 'missing')
+    assert.equal(beforeGst.value, '—')
+    assert.ok(!beforeGst.value.includes('0'), 'an absent total is not ₹0')
+
+    const html = text(summaryHtml({ figures: summaryCommercialFigures(rows) }))
+    assert.ok(html.includes('Total before GST'))
+  })
+
+  test('a genuine zero still prints as a zero', () => {
+    // gross_product_amount is NOT NULL in the schema, so nothing there is
+    // "missing" — a PI of entirely free items really is worth ₹0 in products.
+    const rows = commercialBreakdownRows(buildCommercialRows(
+      persistedCommercial(submission({ gross_product_amount: 0 }))))
+    const gross = summaryCommercialFigures(rows)[0]
+    assert.equal(gross.kind, 'amount')
+    assert.equal(gross.value, formatInr(0))
+  })
+
+  test('the rest of the breakdown stays in the breakdown', () => {
+    // "Total before GST" is one of the two figures, so the word GST legitimately
+    // appears inside that label. What must NOT appear is a GST ROW — the tax as
+    // a figure of its own — or any other breakdown line.
+    const html = text(summaryHtml()).split('Total before GST').join('')
+    for (const elsewhere of ['GST', 'Discount', 'Packing', 'Transportation', 'Subtotal', 'Fabric']) {
+      assert.ok(!html.includes(elsewhere), `${elsewhere} belongs to the Commercial breakdown alone`)
+    }
+    // And the payment figures the column exists for are all still there.
+    assert.ok(html.includes('Payment received'))
+    assert.ok(html.includes('of ₹'))
+    assert.ok(summaryHtml().includes('pi-detail-summary-bar'))
+    assert.ok(text(summaryHtml({ canAdd: true })).includes('Add payment'))
+    assert.ok(html.includes('View payments') || html.includes('Payment details'))
   })
 })
 

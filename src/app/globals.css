@@ -2478,6 +2478,25 @@ body {
 
 /* Verified payment only. Nothing awaiting a Finance decision reaches this
    width — see buildPaymentSummaryView. */
+/* THE TWO COMMERCIAL FIGURES, in the space the payment column already had.
+   Two columns on every width, because the pair is a comparison — what the
+   products came to, and what that becomes before tax — and reading them side by
+   side is the point. `minmax(0, 1fr)` twice lets a long figure shrink its own
+   column rather than widen the card or push a scrollbar onto the page, so the
+   pair stays on one line on a phone as well. */
+.pi-detail-summary-figures {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px 14px;
+  padding-top: 2px;
+  min-width: 0;
+}
+
+.pi-detail-summary-figures > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .pi-detail-summary-bar {
   flex: 1;
   min-width: 0;
