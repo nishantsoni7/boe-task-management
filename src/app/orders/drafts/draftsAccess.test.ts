@@ -1066,7 +1066,8 @@ describe('the top summary answers four questions and repeats none of them', () =
     }
     assert.ok(sections.includes('pi-detail-summary-left'),
       'the order — who, when, whose — is one column')
-    assert.ok(sections.includes('pi-detail-summary-grid'), 'the dates sit in their own grid')
+    assert.ok(sections.includes('pi-detail-summary-schedule'),
+      'the two dates share one band rather than one carrying a box of its own')
     assert.ok(sections.includes('pi-detail-summary-paycard'),
       'and money is a surface of its own, filling the other column')
     // Ownership belongs to the left column now, below the dates, so it reads as

@@ -1759,21 +1759,27 @@ describe('the lower grid pairs the two reference cards', () => {
 describe('the layout is CSS, at three real breakpoints', () => {
   const css = pageCss()
 
-  test('the dates are a capped pair; the figures are a right-aligned ledger', () => {
-    // Two pairs, two treatments, and each is a measurement rather than a taste.
-    // The dates sit side by side and are CAPPED — filling their column they
-    // drift far enough apart to stop reading as a pair. The two figures cannot
-    // use that treatment on a 650px surface at all, so they take the idiom the
-    // Commercial breakdown already uses for the same two lines: label left,
-    // figure right, which lines the digits up down the surface.
-    assert.ok(/\.pi-detail-summary-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css),
-      'the dates are two columns, so they align against each other')
-    assert.ok(/\.pi-detail-summary-grid \{[^}]*max-width: 380px/.test(css),
-      'and capped, so they do not drift apart on a wide screen')
-    assert.ok(/\.pi-detail-summary-value-row \{[^}]*justify-content: space-between/.test(css),
-      'each figure row puts its label left and its figure right')
+  test('the two dates share ONE band, split by a hairline that is not a border', () => {
+    // The due date used to carry a warm ground and a 2px accent of its own,
+    // which made a card inside a card. One band holds both; the separator is an
+    // ELEMENT stretched between the cells, so it stops at the band's padding
+    // instead of running the full height the way a border on a cell would.
+    assert.ok(/\.pi-detail-summary-schedule \{[^}]*grid-template-columns: minmax\(0, 1fr\) 1px minmax\(0, 1fr\)/.test(css),
+      'two equal cells with a one-pixel track between them')
+    assert.ok(/\.pi-detail-summary-sched-rule \{[^}]*align-self: stretch/.test(css))
+    assert.ok(/\.pi-detail-summary-sched-rule \{[^}]*background:/.test(css),
+      'a background, not a border')
+    // And the due date's emphasis costs no separation at all.
+    assert.ok(/\.pi-detail-summary-due-dot \{[^}]*border-radius: 50%/.test(css))
+    assert.ok(/\.pi-detail-summary-due-value \{[^}]*font-weight: 700/.test(css))
+    assert.ok(!/\.pi-detail-summary-due \{/.test(css), 'the amber block is gone')
+  })
+
+  test('the order values are two metrics, and they are tabular', () => {
+    assert.ok(/\.pi-detail-summary-values \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css),
+      'side by side, equal, label over value')
     assert.ok(/\.pi-detail-summary-money \{[^}]*font-variant-numeric: tabular-nums/.test(css),
-      'and the figures are tabular, so they line up digit for digit')
+      'so they line up digit for digit with each other and with the amount')
   })
 
   test('the card is two columns, and the finance surface fills its own', () => {
@@ -1812,13 +1818,20 @@ describe('the layout is CSS, at three real breakpoints', () => {
     assert.ok(!/\.pi-detail-summary-hr \{[^}]*border-left|\.pi-detail-summary-hr \{[^}]*border-right/.test(css))
   })
 
-  test('payment sits on a surface, and it is the only thing that does', () => {
-    // The separation between what is READ and what is PRESSED comes from that
-    // surface, not from a rule between them.
-    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?background: #f8f9fb/.test(css))
-    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?border-radius: 8px/.test(css))
-    assert.ok(!/\.pi-detail-summary-paycard \{[\s\S]*?(box-shadow|gradient)/.test(css),
-      'no shadow and no gradient')
+  test('two soft surfaces, each doing one job, and neither shouting', () => {
+    // The schedule band and the finance surface. Both are quiet grounds rather
+    // than boxes: no shadow, no gradient, and a border only on the one that has
+    // to hold its own against the white card beside it.
+    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?background: #fafbfc/.test(css))
+    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?border-radius: 9px/.test(css))
+    assert.ok(/\.pi-detail-summary-schedule \{[^}]*background: #f7f8fa/.test(css))
+    assert.ok(/\.pi-detail-summary-schedule \{[^}]*border-radius: 7px/.test(css))
+    assert.ok(!/\.pi-detail-summary-schedule \{[^}]*border:/.test(css),
+      'the band needs no outline of its own')
+    for (const surface of ['paycard', 'schedule']) {
+      assert.ok(!new RegExp(`\\.pi-detail-summary-${surface} \\{[^}]*(box-shadow|gradient)`).test(css),
+        `${surface}: no shadow and no gradient`)
+    }
   })
 
   test('every rule in the card is horizontal', () => {
@@ -1827,16 +1840,12 @@ describe('the layout is CSS, at three real breakpoints', () => {
     // between its three groups; there is no rule between the columns at all —
     // the surface's own edge is the separation.
     assert.ok(/\.pi-detail-summary-hr \{[\s\S]*?background: rgba\(0, 0, 0, 0\.07\)/.test(css))
-    // ONE EXCEPTION, NAMED: the due date's left accent. That is emphasis on a
-    // single value, not a rule dividing two areas — which is what made the old
-    // three-column card read as a form. Any OTHER vertical border is that
-    // mistake coming back, so the exception is spelled out rather than the
-    // guard loosened.
-    const vertical = (css.match(/\.pi-detail-summary[a-z-]*\s*\{[^}]*border-(left|right):[^;]*solid/g) ?? [])
-      .filter(rule => !rule.startsWith('.pi-detail-summary-due '))
-    assert.deepEqual(vertical, [], 'no vertical rules dividing the summary')
-    assert.ok(/\.pi-detail-summary-due \{[^}]*border-left: 2px solid/.test(css),
-      'and the one accent that is allowed is the due date’s')
+    // NO EXCEPTIONS ANY MORE. The due date's 2px left accent was the last
+    // vertical border in the card and it is gone with the amber block; the one
+    // vertical line left — inside the schedule band — is an element, not a
+    // border, so this guard is absolute again.
+    const vertical = css.match(/\.pi-detail-summary[a-z-]*\s*\{[^}]*border-(left|right):[^;]*solid/g)
+    assert.equal(vertical, null, 'no vertical borders anywhere in the summary')
   })
 
   test('the progress bar cannot overflow its track and respects reduced motion', () => {
@@ -1855,7 +1864,10 @@ describe('the layout is CSS, at three real breakpoints', () => {
       // `repeat(N, minmax(0, …))` is just as bounded as a list of minmax()
       // tracks; unwrapping it is what lets the same check cover both.
       for (const track of value.replace(/repeat\(\d+,\s*/g, '').split(/\)\s+/)) {
-        assert.ok(track.startsWith('minmax(0,'),
+        // A FIXED length cannot be widened by its content either — the schedule
+        // band's separator is a 1px track — so the rule is "bounded", not
+        // "spelled minmax". Anything flexible still has to say minmax(0, …).
+        assert.ok(track.startsWith('minmax(0,') || /^\d+px\b/.test(track),
           `${value} must not be able to overflow its grid`)
       }
     }

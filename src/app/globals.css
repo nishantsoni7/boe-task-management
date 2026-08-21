@@ -2398,11 +2398,14 @@ body {
 /* Client, dates, ownership, stacked. Ownership is pushed to the FOOT by the
    auto margin below, so the column ends on it however tall the finance surface
    opposite happens to be. */
+/* Client, schedule, ownership. The gap is the separation between the first two
+   — a full-width rule under the client name was one line too many in a column
+   that already ends on one. */
 .pi-detail-summary-left {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 16px;
 }
 
 .pi-detail-summary-party {
@@ -2459,13 +2462,16 @@ body {
   .pi-detail-summary-client-more { transition: none; }
 }
 
-/* The boundaries inside the column are hairlines, never boxes and never a
-   vertical rule — the same one-hairline treatment the card has used since the
-   three-column form was taken out. */
+/* THE ONLY full-width divider in the card: the line above ownership. Every
+   other boundary here is space, a soft ground, or the finance surface's own
+   edge. */
 .pi-detail-summary-hr {
   height: 1px;
   background: rgba(0, 0, 0, 0.07);
 }
+
+/* Comfortable but compact either side of it, and no dead gap above. */
+.pi-detail-summary-hr-foot { margin-bottom: -3px; }
 
 /* Avatar beside three lines: the name with the record's state opposite it,
    what the name means and when the record last moved, then the workbook. */
@@ -2551,54 +2557,61 @@ body {
 
 /* ── Order dates ──────────────────────────────────────────────────────────── */
 
-.pi-detail-summary-dates {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
+/* ── The schedule band ────────────────────────────────────────────────────── */
 
-/* The two dates side by side, CAPPED rather than stretched. Left to fill their
-   column they drift hundreds of pixels apart on a wide screen and stop reading
-   as a pair; held to a width they align against each other, and the space that
-   would have separated them becomes the gap before the finance surface. */
-.pi-detail-summary-grid {
+/* ONE SURFACE FOR BOTH DATES. The due date used to carry a warm ground and a
+   2px accent of its own, which made a card inside a card and said the two dates
+   were different kinds of fact. They are the same kind. The band is a single
+   soft neutral surface; the split is a hairline that stops inside the band's own
+   padding; and the emphasis the due date still needs is a dot and a heavier
+   figure, which cost no separation at all. */
+.pi-detail-summary-schedule {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px 20px;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  align-items: start;
+  gap: 0 12px;
   min-width: 0;
-  max-width: 380px;
+  padding: 8px 12px 9px;
+  border-radius: 7px;
+  background: #f7f8fa;
 }
 
-.pi-detail-summary-metric {
+.pi-detail-summary-sched-cell {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-/* THE DUE DATE, PICKED OUT. A warm ground, a left accent and a heavier figure —
-   enough to find at a glance, and short of an alarm. The padding is cancelled
-   by an equal negative margin so the emphasis does not shift the value out of
-   line with the confirm date beside it.
-
-   DELIBERATELY NOT RED, in any state. Red means late, and nothing in this
-   system decides that a PI is late: there is no overdue rule, so the card must
-   not imply one. `Not set` is the same warm family, one step darker. */
-.pi-detail-summary-due {
-  margin: -4px -8px -5px;
-  padding: 4px 8px 5px;
-  border-left: 2px solid #e0b667;
-  border-radius: 0 5px 5px 0;
-  background: #fdf8ef;
+/* The hairline is an ELEMENT, not a border: stretched to the cells it divides,
+   it stops at the band's padding instead of running the full height the way a
+   border on a cell would. */
+.pi-detail-summary-sched-rule {
+  align-self: stretch;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.09);
 }
 
-.pi-detail-summary-due .pi-detail-summary-metric-value {
-  font-size: 14.5px;
+
+/* THE DUE DATE, PICKED OUT — by three small things instead of a box.
+   DELIBERATELY NOT RED, in any state. Red means late, and nothing in this
+   system decides that a PI is late: there is no overdue rule, so the card must
+   not imply one. `Not set` is warm text, one step darker than the dot. */
+.pi-detail-summary-due-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: #d9a441;
+}
+
+.pi-detail-summary-due-value {
   font-weight: 700;
 }
 
-.pi-detail-summary-due .pi-detail-summary-metric-absent {
+.pi-detail-summary-schedule .pi-detail-summary-metric-absent {
   color: #96702e;
   font-weight: 600;
 }
@@ -2647,6 +2660,10 @@ body {
    while the figures inside it stay at the top. Rows are never stretched to
    meet the bottom edge: a ledger with air under it is a ledger; a ledger
    spaced out to fill a box is a list of unrelated numbers. */
+/* ONE surface, TWO groups, NO rule between them. The rule was a fourth kind of
+   separator in a card that already had a band, a border and a hairline; the
+   groups are told apart by the space between them and by the size of the
+   figures, which is separation that costs nothing. */
 .pi-detail-summary-paycard {
   min-width: 0;
   height: 100%;
@@ -2654,11 +2671,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 10px 13px 11px;
-  border-radius: 8px;
-  background: #f8f9fb;
-  border: 1px solid rgba(0, 0, 0, 0.07);
+  padding: 11px 13px 12px;
+  border-radius: 9px;
+  background: #fafbfc;
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
+
+/* The space that replaced the rule. */
+.pi-detail-summary-payhead { margin-top: 11px; }
 
 /* Names the surface, quietly, on the same footing as "Order dates" opposite.
    Its own line rather than a heading: it identifies the area without competing
@@ -2669,21 +2689,13 @@ body {
    Commercial breakdown card uses for the very same two lines. As label-over-
    value pairs side by side they drifted to opposite ends of a 650px surface. */
 .pi-detail-summary-values {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 2px 12px;
   min-width: 0;
 }
 
-.pi-detail-summary-value-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-  min-width: 0;
-}
-
-/* Right-aligned figures line up digit for digit down the surface, and against
+/* Tabular, so the two figures line up digit for digit with each other and with
    the amount below them. */
 .pi-detail-summary-money {
   font-size: 13.5px;
@@ -2691,14 +2703,6 @@ body {
   color: #111318;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-/* The one rule INSIDE the surface. It separates worth from received without
-   making a second box, which a border or a second background would. */
-.pi-detail-summary-payrule {
-  height: 1px;
-  background: rgba(0, 0, 0, 0.11);
-  margin: 2px 0;
 }
 
 /* Label left, percentage right. The percentage belongs to the amount, not to
@@ -2826,9 +2830,13 @@ body {
   padding-top: 8px;
 }
 
+/* THE HIERARCHY STAYS, THE SHOUT GOES. Solid black against a near-white
+   surface was the loudest thing in a calm card, and it was competing with the
+   figure above it for the eye. The primary is the app's own ink at a lighter
+   weight; the secondary loses its border and keeps only a ground. */
 .pi-detail-summary-add,
 .pi-detail-summary-view {
-  padding: 6px 12px;
+  padding: 6px 11px;
   font-size: 12px;
   font-weight: 600;
   border-radius: 6px;
@@ -2838,19 +2846,19 @@ body {
 
 .pi-detail-summary-add {
   border: none;
-  background: #111318;
+  background: #2f3542;
   color: #fff;
 }
 
-.pi-detail-summary-add:hover { background: #2a2e38; }
+.pi-detail-summary-add:hover { background: #454c5c; }
 
 .pi-detail-summary-view {
-  border: 1px solid rgba(0, 0, 0, 0.13);
-  background: #fff;
+  border: none;
+  background: rgba(0, 0, 0, 0.045);
   color: #4a5261;
 }
 
-.pi-detail-summary-view:hover { background: #f2f4f7; }
+.pi-detail-summary-view:hover { background: rgba(0, 0, 0, 0.075); }
 
 /* ── Where the two areas separate ─────────────────────────────────────────── */
 

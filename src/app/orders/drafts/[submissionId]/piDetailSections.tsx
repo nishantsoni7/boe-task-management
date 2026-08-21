@@ -191,34 +191,46 @@ export function PiSummaryCard({
             </button>
           </div>
 
-          <div className="pi-detail-summary-hr" role="presentation" />
-
-          <section className="pi-detail-summary-dates">
-            <div className="pi-detail-summary-grid">
-              {dates.map(date => (
-                /* THE DUE DATE IS THE ONE PEOPLE ARE LOOKING FOR. It carries a
-                   warm ground and a left accent; the confirm date stays plain.
-                   No red anywhere: nothing in this codebase decides that an
-                   order is overdue, so nothing here may imply it. */
-                <div
-                  key={date.key}
-                  className={date.key === 'due'
-                    ? 'pi-detail-summary-metric pi-detail-summary-due'
-                    : 'pi-detail-summary-metric'}
-                >
-                  <div className="pi-detail-summary-metric-label">{date.label}</div>
+          {/* ── ONE SCHEDULE BAND, not two treatments ──
+              The due date used to sit in its own warm box behind a 2px accent,
+              which read as a card inserted into a card and made the two dates
+              look like different KINDS of fact. They are the same kind: when
+              the order was agreed, and when it is owed. So one soft surface
+              holds both, split by a hairline that stops inside the band's own
+              padding, and the emphasis the due date still needs is carried by a
+              dot and a heavier figure rather than by a ground of its own. */}
+          <section className="pi-detail-summary-schedule">
+            {dates.flatMap((date, i) => [
+              i > 0
+                ? <div key={`${date.key}-rule`} className="pi-detail-summary-sched-rule" role="presentation" />
+                : null,
+              (
+                <div key={date.key} className="pi-detail-summary-sched-cell">
+                  <div className="pi-detail-summary-metric-label">
+                    {date.label}
+                    {/* The whole of the due date's emphasis at label level: one
+                        small amber dot. Decorative — the label already says
+                        which date this is. */}
+                    {date.key === 'due' && (
+                      <span className="pi-detail-summary-due-dot" aria-hidden="true" />
+                    )}
+                  </div>
                   {date.value ? (
-                    <div className="pi-detail-summary-metric-value">{date.value}</div>
+                    <div className={date.key === 'due'
+                      ? 'pi-detail-summary-metric-value pi-detail-summary-due-value'
+                      : 'pi-detail-summary-metric-value'}>
+                      {date.value}
+                    </div>
                   ) : (
                     <div className="pi-detail-summary-metric-absent">{date.absent}</div>
                   )}
                   {/* Clamped to two lines. A long commitment is prose about a
-                      lead time; left unbounded it sets the height of the row
-                      the other metric has to align inside. */}
+                      lead time; left unbounded it sets the height of the band
+                      the other date has to align inside. */}
                   {date.note && <div className="pi-detail-summary-metric-note">{date.note}</div>}
                 </div>
-              ))}
-            </div>
+              ),
+            ])}
           </section>
 
           {/* ── Whose record this is, at the FOOT of the column it belongs to ──
@@ -277,20 +289,16 @@ export function PiSummaryCard({
               is still being read. */}
           <div className="pi-detail-summary-values">
             {figures.map(figure => (
-              <div key={figure.key} className="pi-detail-summary-value-row">
-                <span className="pi-detail-summary-metric-label">{figure.label}</span>
-                <span className={figure.kind === 'missing'
+              <div key={figure.key} className="pi-detail-summary-sched-cell">
+                <div className="pi-detail-summary-metric-label">{figure.label}</div>
+                <div className={figure.kind === 'missing'
                   ? 'pi-detail-summary-metric-absent'
                   : 'pi-detail-summary-money'}>
                   {figure.value}
-                </span>
+                </div>
               </div>
             ))}
           </div>
-
-          {/* Worth above, received below — one rule inside the surface, which
-              separates without making a second box. */}
-          <div className="pi-detail-summary-payrule" role="presentation" />
 
           {payment === null ? (
             <>
