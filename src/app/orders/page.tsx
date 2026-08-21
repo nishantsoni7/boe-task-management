@@ -395,7 +395,19 @@ export default function OrdersDashboardPage() {
                         cursor: 'pointer',
                         transition: 'background 0.1s',
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
+                      /* HOVER IS THE EARLIEST HONEST SIGNAL that this row is
+                         about to be opened, and prefetching the Order detail
+                         route on it means the code for that screen is already
+                         in hand when the click lands. It fetches the ROUTE, not
+                         the Order: no record, no permission and no file is read
+                         until the page mounts and asks under the reader's own
+                         session, so this can neither leak a row nor show a
+                         stale one. Next de-duplicates repeated prefetches, so
+                         moving down a list of forty costs forty cache hits. */
+                      onMouseEnter={e => {
+                        router.prefetch(`/orders/${o.id}`)
+                        ;(e.currentTarget as HTMLTableRowElement).style.background = colors.raised
+                      }}
                       onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
                     >
                       <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>

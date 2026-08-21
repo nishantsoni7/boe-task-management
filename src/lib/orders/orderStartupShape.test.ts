@@ -35,6 +35,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -310,5 +311,56 @@ describe('what did NOT change', () => {
     for (const path of ALL_SCREENS) {
       assert.ok(!stripComments(read(path)).includes(".select('*')"), path)
     }
+  })
+})
+
+// ══ 5. Two smaller changes in the same pass ══════════════════════════════════
+
+describe('the Order lists prefetch what a hover says is coming', () => {
+  for (const path of [DASHBOARD, ALL]) {
+    test(`${path} prefetches the Order detail route on row hover`, () => {
+      const source = stripComments(read(path))
+      assert.match(source, /router\.prefetch\(`\/orders\/\$\{o\.id\}`\)/, path)
+    })
+
+    test(`${path} prefetches the ROUTE and reads no record`, () => {
+      // A prefetch that fetched DATA would be a cache of a private row, and the
+      // brief forbids exactly that. This fetches the screen's code; every read
+      // still happens when the page mounts, under the reader's own session.
+      const source = stripComments(read(path))
+      const at = source.indexOf('router.prefetch(')
+      const around = source.slice(at, at + 200)
+      assert.ok(!/\.from\(|\.rpc\(/.test(around), `${path}: a prefetch must not read a record`)
+    })
+  }
+})
+
+describe('product photographs were deliberately LEFT ALONE', () => {
+  const preview = 'src/components/orders/piPreview.tsx'
+
+  test('piPreview.tsx is byte-for-byte what origin/main has', () => {
+    // decoding="async" WAS ADDED to both <img> elements and then reverted.
+    //
+    // finalApprovalScope.test.ts holds this file byte-for-byte, and its reason
+    // is a good one: piPreview.tsx is shared with the import preview, so a
+    // change here changes two screens — and one of those screens is the same
+    // one a whole phase promised not to touch.
+    //
+    // Moving image decode off the paint is a real improvement on a PI with
+    // forty photographs, and it is not worth weakening a guard that stands
+    // between a performance pass and the two screens a PI is read on. Recorded
+    // here so the option, and the reason it was refused, are both findable.
+    const base = execFileSync('git', ['show', `origin/main:${preview}`], {
+      encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
+    }).replace(/\r\n/g, '\n')
+    assert.equal(read(preview).replace(/\r\n/g, '\n'), base)
+  })
+
+  test('and are still a plain <img>, never the optimizer', () => {
+    // The source is a blob: URL or a short-lived signed URL for a private
+    // object, and neither is something next/image can or should fetch.
+    const imports = read(preview)
+      .split('\n').filter(line => line.trimStart().startsWith('import'))
+    assert.ok(!imports.some(line => line.includes('next/image')))
   })
 })
