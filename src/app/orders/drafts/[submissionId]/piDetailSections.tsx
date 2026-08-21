@@ -150,11 +150,7 @@ export function PiSummaryCard({
     <PiCard>
       <div className="pi-detail-summary">
 
-        {/* ── Level 1: who this is, and whose it is ──
-            Two facts side by side, both of them identities. Everything that
-            used to be a dot-separated strip ABOVE the card lives here now, so
-            the record's owner sits beside the client rather than floating over
-            them as metadata. */}
+        {/* ── Identity band: who the order is for, and whose PI it is ── */}
         <div className="pi-detail-summary-identity">
 
           <div className="pi-detail-summary-party">
@@ -165,11 +161,8 @@ export function PiSummaryCard({
               {client.name}
             </MultilineText>
 
-            {/* ONE supporting line, not two stacked fields. Contact and place
-                are both "how do I reach them"; splitting them into separate
-                rows gave two absences two rows to occupy on a PI that carried
-                neither, which is how the old card came to be mostly empty on
-                its left. */}
+            {/* ONE supporting line. Two absences took two rows as separate
+                fields, which is most of why the old left column was empty. */}
             <div className="pi-detail-summary-contact">
               {client.phone ? (
                 <a href={`tel:${client.phone.tel}`} className="pi-detail-summary-tel">
@@ -177,6 +170,8 @@ export function PiSummaryCard({
                   {client.phone.label}
                 </a>
               ) : (
+                /* MUTED, never the link colour. A blue "Contact not provided"
+                   invites a click on something that does not exist. */
                 <span className="pi-detail-summary-absent">
                   <Phone size={11.5} strokeWidth={2} style={{ flexShrink: 0 }} />
                   Contact not provided
@@ -199,131 +194,110 @@ export function PiSummaryCard({
             </div>
           </div>
 
+          {/* Ownership as a BLOCK, not a sentence: the avatar and the name read
+              first, what they mean sits under them, and the state of the record
+              anchors the far right. */}
           <div className="pi-detail-summary-owner">
-            {/* ONE row: who, when, where it stands, and which workbook it came
-                from. As three stacked rows this was the tallest thing in the
-                band and set the height of a card whose left side needed two. */}
-            <div className="pi-detail-summary-owner-line">
-              {/* TWO GROUPS, so the wrap is deterministic: who-and-when stays
-                  together, and state-and-provenance drops beneath it as a unit
-                  when the band narrows. Left to wrap item by item, these four
-                  became four lines on a tablet and the band grew taller than
-                  the card it replaced. */}
-              <span className="pi-detail-summary-who">
-                {/* The label leads the line rather than sitting above its right
-                    edge, where it read as a caption for the workbook chip
-                    several hundred pixels away from the name it describes. */}
-                <span className="pi-detail-summary-owner-label">PI created by</span>
-                {ownership.name && <Avatar name={ownership.name} size={26} />}
-                <span className="pi-detail-summary-owner-name">
-                  {ownership.name ?? 'Not named'}
-                </span>
-                <span className="pi-detail-summary-owner-when">{ownership.when}</span>
-              </span>
-
-              <span className="pi-detail-summary-state">
-              <PiStatusBadge label={statusLabel} tone={tone} />
-              {workbookName && (
-                <span
-                  className="pi-detail-summary-file"
-                  title={workbookName}
-                  style={{ fontSize: '11px', color: colors.tertiary }}
-                >
-                  <FileSpreadsheet size={11.5} strokeWidth={1.9} style={{ flexShrink: 0 }} />
-                  <span className="pi-detail-summary-file-name">{workbookName}</span>
-                </span>
-              )}
-              </span>
+            {ownership.name && <Avatar name={ownership.name} size={30} />}
+            <div className="pi-detail-summary-owner-text">
+              <div className="pi-detail-summary-owner-name">
+                {ownership.name ?? 'Not named'}
+              </div>
+              <div className="pi-detail-summary-owner-when">
+                PI created by · {ownership.when}
+              </div>
             </div>
+            {workbookName && (
+              <span
+                className="pi-detail-summary-file"
+                title={workbookName}
+                style={{ fontSize: '11px', color: colors.tertiary }}
+              >
+                <FileSpreadsheet size={11.5} strokeWidth={1.9} style={{ flexShrink: 0 }} />
+                <span className="pi-detail-summary-file-name">{workbookName}</span>
+              </span>
+            )}
+            <PiStatusBadge label={statusLabel} tone={tone} />
           </div>
         </div>
 
-        {/* ── Level 2: what the order is, and what has arrived against it ──
-            One row, one rule above it. Four compact metrics read left to right
-            in the order somebody asks them — when was it confirmed, when is it
-            due, what are the goods worth, what is that before tax — and then
-            the answer the page exists for. */}
-        <div className="pi-detail-summary-metrics">
+        {/* ── Two areas, separated by layout rather than by rules ──
+            The four measurements are one thing to read; what has been paid is
+            another, and it is the only part of this card anybody presses. So
+            payment gets a surface of its own and the metrics get room to align
+            against each other. */}
+        <div className="pi-detail-summary-body">
 
-          {dates.map(date => (
-            <div key={date.key} className="pi-detail-summary-metric">
-              <div className="pi-detail-summary-metric-label">{date.label}</div>
-              {date.value ? (
-                <div className="pi-detail-summary-metric-value">{date.value}</div>
-              ) : (
-                <div className="pi-detail-summary-metric-absent">{date.absent}</div>
-              )}
-              {/* The commitment the document stated, under an absent due date
-                  only — prose about a lead time, prefixed so it can never read
-                  as the date the row above it does not have. */}
-              {date.note && <div className="pi-detail-summary-metric-note">{date.note}</div>}
+          <section className="pi-detail-summary-overview">
+            <GroupLabel>Order overview</GroupLabel>
+            <div className="pi-detail-summary-grid">
+              {dates.map(date => (
+                <div key={date.key} className="pi-detail-summary-metric">
+                  <div className="pi-detail-summary-metric-label">{date.label}</div>
+                  {date.value ? (
+                    <div className="pi-detail-summary-metric-value">{date.value}</div>
+                  ) : (
+                    <div className="pi-detail-summary-metric-absent">{date.absent}</div>
+                  )}
+                  {/* Clamped to two lines. A long commitment is prose about a
+                      lead time; left unbounded it sets the height of the row
+                      the other three metrics have to align inside. */}
+                  {date.note && <div className="pi-detail-summary-metric-note">{date.note}</div>}
+                </div>
+              ))}
+
+              {figures.map(figure => (
+                <div key={figure.key} className="pi-detail-summary-metric">
+                  <div className="pi-detail-summary-metric-label">{figure.label}</div>
+                  <div className={figure.kind === 'missing'
+                    ? 'pi-detail-summary-metric-absent'
+                    : 'pi-detail-summary-metric-value pi-detail-summary-metric-money'}>
+                    {figure.value}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </section>
 
-          {figures.map(figure => (
-            <div key={figure.key} className="pi-detail-summary-metric">
-              <div className="pi-detail-summary-metric-label">{figure.label}</div>
-              <div className={figure.kind === 'missing'
-                ? 'pi-detail-summary-metric-absent'
-                : 'pi-detail-summary-metric-value'}>
-                {figure.value}
-              </div>
-            </div>
-          ))}
-
-          {/* The payment group: the figure, what it is measured against, the
-              bar, and the two controls — one connected block rather than an
-              amount at the top of a column and buttons at the bottom of it. */}
-          <div className="pi-detail-summary-payment">
-            <div className="pi-detail-summary-metric-label">Payment received</div>
-
+          {/* ── The payment surface ──
+              One contained component: the label and the percentage on its top
+              line, the amount as the strongest number under them, one full-width
+              bar, and the two controls beneath. The percentage lives in the
+              header rather than floating beside the bar, where it read as a
+              caption for the track instead of a figure in its own right. */}
+          <section className="pi-detail-summary-paycard">
             {payment === null ? (
-              <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+              <>
+                <div className="pi-detail-summary-payhead">
+                  <span className="pi-detail-summary-metric-label">Payment received</span>
+                </div>
+                <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+              </>
             ) : (
               <>
-                {/* The figure IS the way in. One control carrying the amount and
-                    the total it is measured against, so the thing a reader looks
-                    at is the thing they can press. */}
-                {/* The amount and the two controls on ONE line. Stacking them
-                    made the payment group four rows tall against metrics that
-                    are two, which put a band of dead space under the four and
-                    left the actions floating away from the figure they act on. */}
                 <div className="pi-detail-summary-payhead">
-                  <div className="pi-detail-summary-figure">
-                  <button
-                    type="button"
-                    onClick={onOpenPayments}
-                    aria-haspopup="dialog"
-                    className="pi-detail-summary-open"
-                    title="Show every payment recorded against this PI"
-                  >
-                    <span className="pi-detail-summary-received">{payment.received}</span>
-                    <span className="pi-detail-summary-oftotal">{payment.ofTotal}</span>
-                  </button>
+                  <span className="pi-detail-summary-metric-label">Payment received</span>
+                  <span className="pi-detail-summary-percent">{payment.percent}</span>
+                </div>
 
-                  <div className="pi-detail-summary-progress">
-                    <div className="pi-detail-summary-bar" role="presentation">
-                      <div
-                        className="pi-detail-summary-bar-fill"
-                        style={{ width: `${payment.barPercent}%` }}
-                      />
-                    </div>
-                    <span className="pi-detail-summary-percent">{payment.percent}</span>
-                  </div>
-                  </div>
+                {/* The figure IS the way in — one control carrying the amount
+                    and the total it is measured against. */}
+                <button
+                  type="button"
+                  onClick={onOpenPayments}
+                  aria-haspopup="dialog"
+                  className="pi-detail-summary-open"
+                  title="Show every payment recorded against this PI"
+                >
+                  <span className="pi-detail-summary-received">{payment.received}</span>
+                  <span className="pi-detail-summary-oftotal">{payment.ofTotal}</span>
+                </button>
 
-                  <div className="pi-detail-summary-actions">
-                    {/* Unchanged gate: canAddPiPayment decides this, exactly as
-                        record_pi_submission_payment() decides it server-side. */}
-                    {canAdd && (
-                      <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
-                        Add payment
-                      </button>
-                    )}
-                    <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
-                      {payment.hasDetail ? 'View payments' : 'Payment details'}
-                    </button>
-                  </div>
+                <div className="pi-detail-summary-bar" role="presentation">
+                  <div
+                    className="pi-detail-summary-bar-fill"
+                    style={{ width: `${payment.barPercent}%` }}
+                  />
                 </div>
 
                 {/* Money Finance has not decided is NOT in the bar or the
@@ -349,9 +323,22 @@ export function PiSummaryCard({
                     </button>
                   </div>
                 )}
+
+                <div className="pi-detail-summary-actions">
+                  {/* Unchanged gate: canAddPiPayment decides this, exactly as
+                      record_pi_submission_payment() decides it server-side. */}
+                  {canAdd && (
+                    <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
+                      Add payment
+                    </button>
+                  )}
+                  <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
+                    {payment.hasDetail ? 'View payments' : 'Payment details'}
+                  </button>
+                </div>
               </>
             )}
-          </div>
+          </section>
         </div>
 
       </div>
@@ -496,6 +483,25 @@ export function PiWorkflowPanel({
     panel.instruction || reviewNote || employeeReply || advanceRefusal
     || finance || approvedOrder || (isReviewer && approvalBlocker),
   )
+
+  /**
+   * A PANEL WITH NOTHING IN IT IS NOT DRAWN.
+   *
+   * describeWorkflowPanel gives a plain draft viewed by somebody who can
+   * neither submit nor review it `heading: "Draft"`, `meta: null` and no
+   * instruction — so the card came out as a bordered white box containing one
+   * word, directly under a summary whose status badge already says it. That is
+   * a restatement occupying a full section of the page, and it pushed the
+   * product table down for nothing.
+   *
+   * The test is emptiness, NOT the draft state: any status that offers this
+   * viewer no action and carries no note, no finance line, no advance band and
+   * no Order link is the same empty box. Every state that carries any of those
+   * — a returned PI with management's note, a submitted one with the finance
+   * line, a reviewer's decisions, an approved one naming its Order — still
+   * renders exactly as before, because each sets hasActions or hasBody.
+   */
+  if (!hasActions && !hasBody && !panel.meta && !advanceBand) return null
 
   return (
     <PiCard style={panel.closed ? undefined : { borderColor: tone.border }}>

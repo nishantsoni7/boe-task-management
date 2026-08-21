@@ -1273,11 +1273,30 @@ describe('a read-only viewer', () => {
 })
 
 describe('a colleague reading somebody else’s draft', () => {
-  const html = workflowHtml(submission(), { id: STRANGER, canCreate: true })
+  test('gets no panel at all, because it would hold nothing but the status', () => {
+    // It used to render a bordered white card whose entire content was the word
+    // "Draft" — directly under a summary whose badge already says it. A
+    // restatement is not worth a section of the page, and it pushed the product
+    // table down for nothing.
+    const html = workflowHtml(submission(), { id: STRANGER, canCreate: true })
+    assert.equal(html, '', 'an empty panel is not drawn')
+  })
 
-  test('sees the state without being offered the owner’s actions', () => {
-    assert.ok(!html.includes('<button'))
-    assert.ok(text(html).includes('Draft'))
+  test('but every state that carries something still renders', () => {
+    // The test is EMPTINESS, not the draft state. Each of these sets hasActions
+    // or hasBody, and each must survive.
+    const owner = workflowHtml(submission(), { id: OWNER, canCreate: true })
+    assert.ok(owner.includes('<button'), 'the owner keeps Change PI and Submit')
+
+    const reviewer = workflowHtml(submission({ status: 'submitted' }),
+      { id: STRANGER, canReview: true })
+    assert.ok(reviewer.includes('<button'), 'a reviewer keeps their decisions')
+
+    const returned = workflowHtml(
+      submission({ status: 'needs_changes', review_note: 'Fix the rates on rows 4-9.' }),
+      { id: OWNER, canCreate: true })
+    assert.ok(text(returned).includes('Fix the rates on rows 4-9.'),
+      'management’s note is body, and body keeps the panel')
   })
 })
 
@@ -1661,31 +1680,36 @@ describe('the lower grid pairs the two reference cards', () => {
 describe('the layout is CSS, at three real breakpoints', () => {
   const css = pageCss()
 
-  test('the metrics go two-up on a phone, 2x2 on a tablet, five across on a desktop', () => {
-    assert.ok(/\.pi-detail-summary-metrics \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css),
-      'two columns is the floor, so four short metrics never become four tall rows')
-    assert.ok(
-      /@media \(min-width: 768px\)[\s\S]*?\.pi-detail-summary-metrics \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1\.6fr\)/.test(css),
-      'a deliberate 2x2 of metrics beside payment on a tablet, not five squeezed groups')
-    assert.ok(
-      /@media \(min-width: 1180px\)[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\) minmax\(0, 2\.5fr\)/.test(css),
-      'and payment widest on the one row — the width at which its figure and both controls fit one line')
+  test('the four metrics are a 2x2 at every width, and never a stretched row', () => {
+    assert.ok(/\.pi-detail-summary-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css),
+      'two by two, so the four align against each other rather than reading as a list')
+    assert.ok(/\.pi-detail-summary-grid \{[^}]*max-width: 400px/.test(css),
+      'and capped, so they do not drift 300px apart on a wide screen')
   })
 
-  test('payment spans the full width until it has a column of its own', () => {
-    assert.ok(/\.pi-detail-summary-payment \{[\s\S]*?grid-column: 1 \/ -1/.test(css),
-      'full width beneath the metrics on phone and tablet')
-    assert.ok(/@media \(min-width: 1180px\)[\s\S]*?\.pi-detail-summary-payment \{[\s\S]*?grid-column: auto/.test(css),
-      'and it joins the row only where there is room for it')
+  test('overview and payment separate only when there is room for both', () => {
+    assert.ok(/\.pi-detail-summary-body \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css),
+      'one column is the floor: overview, then payment, in reading order')
+    assert.ok(
+      /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary-body \{\s*grid-template-columns: minmax\(0, 1\.35fr\) minmax\(0, 1fr\)/.test(css),
+      'overview takes the wider share; payment is a contained component')
+  })
+
+  test('payment sits on a surface, and it is the only thing that does', () => {
+    // The separation between what is READ and what is PRESSED comes from that
+    // surface, not from a rule between them.
+    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?background: #f8f9fb/.test(css))
+    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?border-radius: 8px/.test(css))
+    assert.ok(!/\.pi-detail-summary-paycard \{[\s\S]*?(box-shadow|gradient)/.test(css),
+      'no shadow and no gradient')
   })
 
   test('there is exactly one rule in the card, and it is horizontal', () => {
     // The old card drew vertical rules between three columns, which is what made
-    // it read as a form. One hairline separates the identity band from the
-    // metrics; nothing else in the card is bordered.
-    assert.ok(/\.pi-detail-summary-metrics \{[\s\S]*?border-top: 1px solid/.test(css))
-    const summaryRules = css.match(/\.pi-detail-summary[^{]*\{[^}]*border-(left|right): [^;]*solid/g)
-    assert.equal(summaryRules, null, 'no vertical rules anywhere in the summary')
+    // it read as a form.
+    assert.ok(/\.pi-detail-summary-body \{[\s\S]*?border-top: 1px solid/.test(css))
+    const vertical = css.match(/\.pi-detail-summary[a-z-]*\s*\{[^}]*border-(left|right):[^;]*solid/g)
+    assert.equal(vertical, null, 'no vertical rules anywhere in the summary')
   })
 
   test('the progress bar cannot overflow its track and respects reduced motion', () => {
