@@ -39,6 +39,11 @@ import {
 } from '@/lib/orders/finalApproval'
 import { draftStatusLabel } from '@/lib/orders/draftsView'
 import { PAYMENT_POSITION_LABEL, type PaymentPosition } from '@/lib/orders/paymentGate'
+import {
+  COMMITMENT_PREFIX,
+  DUE_DATE_ABSENT,
+  supportingCommitment,
+} from '@/lib/orders/dueDate'
 import type { PiAmountRow } from '@/lib/pi/previewView'
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
@@ -60,7 +65,6 @@ export type PiDetailTone = 'neutral' | 'blue' | 'amber' | 'red' | 'green'
  * line rather than being allowed to push everything else onto a second row.
  */
 export function buildIdentityFacts(input: {
-  productCount: number
   /** Already formatted. This module does no date work. */
   savedAt: string
   /** order_submissions.source_created_by — whoever the PI document itself named. */
@@ -69,9 +73,11 @@ export function buildIdentityFacts(input: {
   submitterName: string | null
   submittedAt: string | null
 }): string[] {
-  const facts: string[] = [
-    `${input.productCount} product line${input.productCount === 1 ? '' : 's'}`,
-  ]
+  // THE PRODUCT COUNT IS NOT HERE ANY MORE. The Products card states it on its
+  // own header, three lines further down, and a strip that opened with it made
+  // the reader's first fact about this record the size of its table rather than
+  // where the record stands.
+  const facts: string[] = []
 
   // Submitted supersedes saved as "the last thing that happened to this record",
   // so the two are never printed side by side.
@@ -308,6 +314,51 @@ export const ADVANCE_ROW_KEY = 'advance'
 
 export function commercialBreakdownRows(rows: readonly PiAmountRow[]): PiAmountRow[] {
   return rows.filter(row => row.key !== ADVANCE_ROW_KEY)
+}
+
+/**
+ * The two commercial figures the top summary repeats beside the payment.
+ *
+ * PICKED OUT OF THE BREAKDOWN'S OWN ROWS, not recomputed from the submission.
+ * The card and the Commercial breakdown are handed the SAME PiAmountRow[], so
+ * "Product value" here and "Gross product amount" there are the identical
+ * formatted string by construction — there is no second formatting path that
+ * could round differently, and no arithmetic here at all.
+ *
+ * WHY THE LABEL DIFFERS FROM THE BREAKDOWN'S. The breakdown is a calculation and
+ * names each line as the workbook's own arithmetic does. The summary is read at
+ * a glance by somebody asking what the order is worth, and "Product value" is
+ * that question's wording. The FIGURE is the same figure; only the caption
+ * suits its context.
+ *
+ * MISSING IS NOT ZERO. `total_before_gst` is nullable, and formatPiValue already
+ * renders an absent one as an em dash with kind `missing`. That is carried
+ * through untouched: a PI whose workbook never stated a pre-tax total says so,
+ * rather than claiming ₹0. `gross_product_amount` is NOT NULL in the schema, so
+ * a zero there is a real zero and prints as one.
+ */
+export type SummaryFigure = {
+  key: 'gross' | 'beforeGst'
+  label: string
+  /** Already formatted by the shared builder. Never re-formatted here. */
+  value: string
+  /** `missing` when the PI never stated it — the caller may mute it. */
+  kind: PiAmountRow['kind']
+}
+
+const SUMMARY_FIGURE_LABEL: Record<'gross' | 'beforeGst', string> = {
+  gross: 'Product value',
+  beforeGst: 'Total before GST',
+}
+
+export function summaryCommercialFigures(rows: readonly PiAmountRow[]): SummaryFigure[] {
+  return (['gross', 'beforeGst'] as const).flatMap(key => {
+    const row = rows.find(r => r.key === key)
+    // A row the builder did not produce is not invented here. In practice both
+    // always exist; this simply refuses to print a figure that has no source.
+    if (!row) return []
+    return [{ key, label: SUMMARY_FIGURE_LABEL[key], value: row.value, kind: row.kind }]
+  })
 }
 
 // ── 3. Workflow and actions ───────────────────────────────────────────────────
@@ -660,4 +711,206 @@ export function describeApprovedOrder(input: {
   const displayNumber = (input.displayNumber ?? '').trim()
   if (orderId === '' || displayNumber === '') return null
   return { orderId, displayNumber, href: orderHref(orderId) }
+}
+
+// ── The top summary: who, when, and how much has actually arrived ─────────────
+//
+// WHAT THIS SECTION IS FOR. A salesperson or a manager opening a saved PI wants
+// four things inside a few seconds: who the client is and how to reach them,
+// when the order was confirmed, how much verified money has come in against it,
+// and how to add more. Everything below builds exactly those, and nothing else.
+//
+// NO MONEY IS COMPUTED HERE. Every payment figure — the amount, the percentage,
+// the grand total — was summed in `numeric` by pi_submission_payment_summary().
+// This module formats them and arranges them. The one number it derives is the
+// progress bar's WIDTH, which is a pixel quantity clamped to 0–100 and is never
+// shown as a figure or used in a decision.
+
+/** "Not provided", said once, so the three groups cannot word it differently. */
+export const NOT_PROVIDED = 'Not provided'
+
+export type ClientSummary = {
+  name: string
+  /** A dialable number and the digits to dial, or null when the PI gave none. */
+  phone: { label: string; tel: string } | null
+  /** One place. Never the same text twice — see buildClientSummary. */
+  location: string | null
+}
+
+/**
+ * A phone number the browser can dial.
+ *
+ * `tel:` needs the digits and nothing else; the LABEL keeps whatever the
+ * workbook typed, because a number a person recognises is worth more than a
+ * normalised one. A value with no digits at all is not a phone number and
+ * resolves to null rather than to a link that dials nothing.
+ */
+export function telLink(value: string | null | undefined): { label: string; tel: string } | null {
+  const label = (value ?? '').trim()
+  if (label === '') return null
+  const digits = label.replace(/[^\d+]/g, '')
+  // A leading + is meaningful; anything shorter than six digits is an extension,
+  // a fragment or a typo, and dialling it would be worse than not offering to.
+  if (digits.replace(/\D/g, '').length < 6) return null
+  return { label, tel: digits }
+}
+
+const clean = (value: string | null | undefined): string | null => {
+  const trimmed = (value ?? '').trim()
+  return trimmed === '' || trimmed === '—' ? null : trimmed
+}
+
+/**
+ * Who the client is, how to reach them, and where they are — deduplicated.
+ *
+ * THE REPEATED NAME IS THE POINT. Most PIs bill and ship to the same party, and
+ * the old card printed that party's name three times: as the page title, as
+ * "Bill to" and as "Ship to". One name is shown here. A ship-to name is only
+ * worth its line when it names somebody ELSE, and then it is shown as part of
+ * the location rather than as a second identity.
+ *
+ * THE PHONE FALLS BACK IN THE ORDER THE DOCUMENT MEANS IT: the header's own
+ * contact number first, then the bill-to phone, then the ship-to phone. The
+ * first that is dialable wins; the rest are not printed, because three numbers
+ * with no way to tell them apart is not more contactable than one.
+ */
+export function buildClientSummary(input: {
+  clientName: string | null
+  billToName: string | null
+  shipToName: string | null
+  contactNumber: string | null
+  billToPhone: string | null
+  shipToPhone: string | null
+  billingAddress: string | null
+  shippingAddress: string | null
+}): ClientSummary {
+  const name = clean(input.clientName) ?? clean(input.billToName) ?? NOT_PROVIDED
+
+  const phone = telLink(input.contactNumber)
+    ?? telLink(input.billToPhone)
+    ?? telLink(input.shipToPhone)
+
+  const billing = clean(input.billingAddress)
+  const shipping = clean(input.shippingAddress)
+  const shipTo = clean(input.shipToName)
+  const billTo = clean(input.billToName)
+
+  // The billing address is where the client IS; the shipping address is where
+  // this order goes. They are the same for most orders, so the second is only
+  // added when it genuinely differs — and then it is labelled by the party it
+  // belongs to rather than left to be guessed at.
+  let location = billing ?? shipping
+  if (billing && shipping && billing !== shipping) {
+    const shipsTo = shipTo && shipTo !== billTo ? `${shipTo}, ${shipping}` : shipping
+    location = `${billing}\nShips to: ${shipsTo}`
+  }
+
+  return { name, phone, location }
+}
+
+export type DateSummary = {
+  key: 'confirmed' | 'due'
+  label: string
+  /** null prints the absent wording quietly. Nothing here invents a date. */
+  value: string | null
+  /** What to say when there is no value. */
+  absent: string
+  /**
+   * A muted second line under an absent due date — the commitment the document
+   * actually stated, prefixed so it can never be misread as a date. Null on
+   * every other row and whenever there is a real date to show.
+   */
+  note?: string | null
+}
+
+/**
+ * The two dates the summary states.
+ *
+ * THE DUE DATE IS A STORED COLUMN AND NOTHING ELSE. `due_date` is written only
+ * from an explicit, plausible calendar date — see src/lib/orders/dueDate.ts and
+ * migration 20260922000000. This function does not parse it, validate it or
+ * derive it; by the time a value arrives here the rule has already been applied
+ * by the save path or by the backfill.
+ *
+ * WHEN THERE IS NONE, the row says `Not set` and, if the PI carried one, the
+ * commitment is shown beneath as `Commitment: 6 weeks from date of
+ * confirmation`. That text is prose and is presented as prose. It is never
+ * turned into a date, and no duration is ever added to anything.
+ */
+export function buildDateSummary(input: {
+  /** Already formatted by the shared header builder, or null. */
+  confirmed: string | null
+  /** The formatted due date, or null when the record has none. */
+  due?: string | null
+  /** order_submissions.dispatch_commitment, verbatim. */
+  commitment?: string | null
+}): DateSummary[] {
+  const due = input.due ?? null
+  // The commitment is supporting text for an ABSENT due date only. Beside a real
+  // date it would be a second, vaguer answer to a question already answered.
+  const note = due === null ? supportingCommitment(input.commitment) : null
+
+  return [
+    {
+      key: 'confirmed',
+      label: 'Confirm date',
+      value: input.confirmed ?? null,
+      absent: NOT_PROVIDED,
+    },
+    {
+      key: 'due',
+      label: 'Due date',
+      value: due,
+      absent: DUE_DATE_ABSENT,
+      note: note === null ? null : `${COMMITMENT_PREFIX} ${note}`,
+    },
+  ]
+}
+
+export type PaymentSummaryView = {
+  /** The verified figure alone, for the strong line. */
+  received: string
+  /** "₹0 of ₹8,76,563" — the same verified figure against the order's worth. */
+  ofTotal: string
+  /** "0%" — verified only. Awaiting verification is deliberately excluded. */
+  percent: string
+  /** 0–100, for the bar's width. A pixel quantity, never shown as a figure. */
+  barPercent: number
+  /** How many rows Finance has not decided yet, for the one-line note. */
+  awaitingCount: number
+  /** Whether there is anything at all to open. */
+  hasDetail: boolean
+}
+
+/**
+ * The compact payment block: what arrived, against what, and how far that is.
+ *
+ * VERIFIED ONLY, everywhere. `verified_amount` and `verified_percent` are the
+ * database's, computed against the same grand total shown beside them, and a
+ * payment Finance has not decided contributes to NEITHER. It is not hidden —
+ * the count below sends the reader into the details, where the row and its
+ * status are — but it may not move a bar that reads as money in hand.
+ */
+export function buildPaymentSummaryView(input: {
+  verifiedAmount: string
+  grandTotal: string
+  verifiedPercent: string
+  /** The raw percentage, for the bar only. */
+  percentValue: number | null
+  awaitingCount: number
+  paymentCount: number
+}): PaymentSummaryView {
+  const raw = input.percentValue
+  const barPercent = raw === null || !Number.isFinite(raw)
+    ? 0
+    : Math.max(0, Math.min(100, raw))
+
+  return {
+    received: input.verifiedAmount,
+    ofTotal: `${input.verifiedAmount} of ${input.grandTotal}`,
+    percent: input.verifiedPercent,
+    barPercent,
+    awaitingCount: input.awaitingCount,
+    hasDetail: input.paymentCount > 0 || input.awaitingCount > 0,
+  }
 }

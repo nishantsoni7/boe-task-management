@@ -28,6 +28,7 @@ import {
 } from '../pi/imageFormats'
 import type { PiAmountOrText, PiImageRole, PiProduct, PiProductImage, PiWorkbook } from '../pi/types'
 import type { PiBlockingIssue, PiWarning } from '../pi/types'
+import { plausibleDueDate } from './dueDate'
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
@@ -482,6 +483,25 @@ export function buildSubmissionPlan(input: {
       shipping_address: textOrNull(header.shippingAddress),
       order_confirmation_date: isoOrNull(header.orderConfirmationDate),
       dispatch_commitment: commitmentText(header.dispatchCommitment),
+      // THE DATE THE DISPATCH CELL CARRIED, when it carried one at all.
+      //
+      // commitmentText above keeps storing the cell VERBATIM, unchanged — the
+      // prose is the record of what the document said and this does not touch
+      // it. What stops being discarded is the parser's own `.iso`, which is set
+      // only when E113 held a real Excel date serial.
+      //
+      // `.text` is offered as a second candidate for the one case `.iso` cannot
+      // cover: a cell somebody typed `2026-03-25` into as text rather than as a
+      // date. plausibleDueDate accepts it only if it is a strict, real,
+      // in-range calendar date, which is exactly the rule migration
+      // 20260922000000 applies to the rows already stored — so a PI saved today
+      // and the same PI backfilled resolve identically. Nothing is calculated:
+      // "6 weeks from date of confirmation" and "90" both yield null.
+      due_date: plausibleDueDate({
+        candidate: header.dispatchCommitment?.iso ?? header.dispatchCommitment?.text ?? null,
+        orderConfirmationDate: isoOrNull(header.orderConfirmationDate),
+        creationDate: isoOrNull(header.creationDate),
+      }),
       // Provenance only. It is never shown as an order number and never seeds
       // one; the column comment in 20260908000000 says so too.
       source_order_number: textOrNull(header.sourceOrderNumber),

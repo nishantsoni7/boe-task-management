@@ -910,6 +910,121 @@ function NewOrderPiImportPageInner() {
         </div>
       </Card>
 
+      {/* Ready state, and the one action this phase performs. Saving stores a
+          PRIVATE DRAFT — it does not submit for approval, take a payment or
+          allocate an order number, and the success state says so. */}
+      {preview.groups.readyToSubmit && (
+        <Card style={{ borderColor: saveSuccess ? 'rgba(69,168,112,0.4)' : 'rgba(69,168,112,0.3)' }}>
+          <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <CheckCircle2 size={18} strokeWidth={1.8} color={colors.green} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+                {saveSuccess ? 'Draft saved' : READY_TITLE}
+              </div>
+
+              {saveSuccess ? (
+                <>
+                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+                    {/* The SERVER's counts, from its own re-parse — not the
+                        browser's. If the two ever disagreed, what was saved is
+                        what must be shown. */}
+                    {saveSuccess.summary} were saved to a private draft.
+                  </div>
+                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '2px' }}>
+                    {saveSuccess.note}
+                  </div>
+                  {saveSuccess.warningCodes.length > 0 && (
+                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                      Saved with {saveSuccess.warningCodes.length} warning
+                      {saveSuccess.warningCodes.length === 1 ? '' : 's'} recorded on the draft.
+                    </div>
+                  )}
+                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '4px' }}>
+                    Opening the saved draft…
+                  </div>
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {/* The save already navigates to the draft. This is the
+                        fallback for the one case where it cannot — a blocked or
+                        cancelled client-side navigation — so a saved record is
+                        never left with nothing pointing at it. */}
+                    <button
+                      className="boe-btn boe-btn-primary"
+                      onClick={() => router.push(draftDetailHref(saveSuccess.submissionId))}
+                    >
+                      Open saved draft
+                    </button>
+                    <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
+                      All PI Drafts
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
+                    Nothing blocks this PI. Saving stores it as a private draft — the server reads the
+                    workbook again and saves its own verified copy. Submitting for approval comes later.
+                  </div>
+
+                  {saving && (
+                    <div style={{
+                      marginTop: '8px', padding: '10px 12px',
+                      background: colors.raised, border: `1px solid ${colors.border}`,
+                      borderRadius: '8px',
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                    }}>
+                      <Loader2 size={14} strokeWidth={2} color={colors.blue}
+                               style={{ animation: 'boe-spin 0.8s linear infinite', flexShrink: 0 }} />
+                      <span style={{ fontSize: '12px', color: colors.primary, fontWeight: 600 }}>
+                        {saveStageLabel(saveStage!)}
+                      </span>
+                      <span style={{ fontSize: '11px', color: colors.muted, marginLeft: 'auto' }}>
+                        Step {saveStageIndex(saveStage!)} of {SAVE_STAGES.length}
+                      </span>
+                    </div>
+                  )}
+
+                  {saveFailure && (
+                    <div style={{
+                      marginTop: '8px', padding: '10px 12px',
+                      background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
+                      borderRadius: '8px',
+                    }}>
+                      <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
+                        {saveFailure.message}
+                      </div>
+                      {saveFailure.serverRejectedDocument && (
+                        <div style={{ fontSize: '11px', color: colors.red, marginTop: '4px', lineHeight: 1.5 }}>
+                          The server checked the workbook itself and its result is the one that counts.
+                          This PI is not ready to save.
+                        </div>
+                      )}
+                      <div style={{ fontSize: '10px', color: colors.muted, marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
+                        {saveFailure.code}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: '10px' }}>
+                    <button
+                      className="boe-btn boe-btn-primary"
+                      onClick={saveDraft}
+                      disabled={replaceBlocked || !canSaveDraft({
+                        hasPreview: true,
+                        blockingCount: preview.groups.blocking.length,
+                        saving,
+                        saved: false,
+                      })}
+                    >
+                      {saving ? 'Saving…' : SAVE_BUTTON_LABEL}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Products */}
       <Card>
         <CardHeader
@@ -1116,121 +1231,6 @@ function NewOrderPiImportPageInner() {
             </span>
           </div>
           <DiagnosticList entries={preview.groups.warnings} tone="amber" />
-        </Card>
-      )}
-
-      {/* Ready state, and the one action this phase performs. Saving stores a
-          PRIVATE DRAFT — it does not submit for approval, take a payment or
-          allocate an order number, and the success state says so. */}
-      {preview.groups.readyToSubmit && (
-        <Card style={{ borderColor: saveSuccess ? 'rgba(69,168,112,0.4)' : 'rgba(69,168,112,0.3)' }}>
-          <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-            <CheckCircle2 size={18} strokeWidth={1.8} color={colors.green} style={{ flexShrink: 0, marginTop: '1px' }} />
-            <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
-                {saveSuccess ? 'Draft saved' : READY_TITLE}
-              </div>
-
-              {saveSuccess ? (
-                <>
-                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
-                    {/* The SERVER's counts, from its own re-parse — not the
-                        browser's. If the two ever disagreed, what was saved is
-                        what must be shown. */}
-                    {saveSuccess.summary} were saved to a private draft.
-                  </div>
-                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '2px' }}>
-                    {saveSuccess.note}
-                  </div>
-                  {saveSuccess.warningCodes.length > 0 && (
-                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                      Saved with {saveSuccess.warningCodes.length} warning
-                      {saveSuccess.warningCodes.length === 1 ? '' : 's'} recorded on the draft.
-                    </div>
-                  )}
-                  <div style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5, marginTop: '4px' }}>
-                    Opening the saved draft…
-                  </div>
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {/* The save already navigates to the draft. This is the
-                        fallback for the one case where it cannot — a blocked or
-                        cancelled client-side navigation — so a saved record is
-                        never left with nothing pointing at it. */}
-                    <button
-                      className="boe-btn boe-btn-primary"
-                      onClick={() => router.push(draftDetailHref(saveSuccess.submissionId))}
-                    >
-                      Open saved draft
-                    </button>
-                    <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
-                      All PI Drafts
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
-                    Nothing blocks this PI. Saving stores it as a private draft — the server reads the
-                    workbook again and saves its own verified copy. Submitting for approval comes later.
-                  </div>
-
-                  {saving && (
-                    <div style={{
-                      marginTop: '8px', padding: '10px 12px',
-                      background: colors.raised, border: `1px solid ${colors.border}`,
-                      borderRadius: '8px',
-                      display: 'flex', alignItems: 'center', gap: '8px',
-                    }}>
-                      <Loader2 size={14} strokeWidth={2} color={colors.blue}
-                               style={{ animation: 'boe-spin 0.8s linear infinite', flexShrink: 0 }} />
-                      <span style={{ fontSize: '12px', color: colors.primary, fontWeight: 600 }}>
-                        {saveStageLabel(saveStage!)}
-                      </span>
-                      <span style={{ fontSize: '11px', color: colors.muted, marginLeft: 'auto' }}>
-                        Step {saveStageIndex(saveStage!)} of {SAVE_STAGES.length}
-                      </span>
-                    </div>
-                  )}
-
-                  {saveFailure && (
-                    <div style={{
-                      marginTop: '8px', padding: '10px 12px',
-                      background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
-                      borderRadius: '8px',
-                    }}>
-                      <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
-                        {saveFailure.message}
-                      </div>
-                      {saveFailure.serverRejectedDocument && (
-                        <div style={{ fontSize: '11px', color: colors.red, marginTop: '4px', lineHeight: 1.5 }}>
-                          The server checked the workbook itself and its result is the one that counts.
-                          This PI is not ready to save.
-                        </div>
-                      )}
-                      <div style={{ fontSize: '10px', color: colors.muted, marginTop: '4px', fontFamily: 'var(--font-mono)' }}>
-                        {saveFailure.code}
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{ marginTop: '10px' }}>
-                    <button
-                      className="boe-btn boe-btn-primary"
-                      onClick={saveDraft}
-                      disabled={replaceBlocked || !canSaveDraft({
-                        hasPreview: true,
-                        blockingCount: preview.groups.blocking.length,
-                        saving,
-                        saved: false,
-                      })}
-                    >
-                      {saving ? 'Saving…' : SAVE_BUTTON_LABEL}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
         </Card>
       )}
 

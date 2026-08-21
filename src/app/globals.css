@@ -2413,111 +2413,167 @@ body {
   white-space: nowrap;
 }
 
-/* ── Order overview ───────────────────────────────────────────────────────────
-   Three meaningful sections rather than a uniform grid of unrelated facts:
-   who and where, when, and what it is worth.
+/* ── The top summary ─────────────────────────────────────────────────────────
+   One card answering the four questions a saved PI is opened for: who the
+   client is and how to reach them, when the order was confirmed and when it is
+   due, and how much VERIFIED money has arrived against what it is worth.
 
-   THE COLUMN COUNT FOLLOWS WHAT THE RECORD ACTUALLY CARRIES. A section with
-   nothing in it is not rendered at all, and the modifier class says how many
-   survived, so the card never reserves a third of a wide monitor for a column
-   of "Not provided". Most saved PIs give no order-confirmation date and no
-   dispatch commitment, which is the common case this exists for. */
+   THREE GROUPS, AND PAYMENT GETS THE MOST ROOM. Payment is the only group on
+   this card whose value changes, it carries a figure, a bar, a percentage and
+   two controls, and it is what the card exists to put above the fold. The other
+   two are reference. Below the breakpoint the three stack in reading order —
+   Client, then dates, then payment — and the dividing rules become horizontal,
+   because a vertical rule between stacked blocks is a line to nowhere. */
 
-.pi-detail-overview {
+.pi-detail-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
+  gap: 16px;
   padding: 16px 20px 18px;
 }
 
-.pi-detail-overview-section {
+.pi-detail-summary-group {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 8px;
 }
 
-/* THE COMMERCIAL SNAPSHOT IS READ FIRST ON A PHONE. The total and the advance
-   condition are the two facts the page exists to answer quickly, and on one
-   column they must not sit below a block of postal addresses. */
-.pi-detail-snapshot {
-  order: -1;
+/* Stacked: a rule above each group after the first. Becomes a vertical rule at
+   the breakpoint below. */
+.pi-detail-summary-divided {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 14px;
 }
 
-@media (min-width: 768px) {
-  .pi-detail-overview {
-    column-gap: 26px;
-  }
-  .pi-detail-snapshot {
-    order: 0;
-  }
+/* ── The payment block ─────────────────────────────────────────────────────── */
 
-  /* Two populated groups: two balanced columns, and they stay that way at every
-     width above this — two facts do not become three by widening the window. */
-  .pi-detail-overview-2 {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  /* Three populated groups, tablet: the addresses and the dates share a row and
-     the snapshot takes a full-width row of its own rather than a third of one. */
-  .pi-detail-overview-3 {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .pi-detail-overview-3 .pi-detail-snapshot {
-    grid-column: 1 / -1;
-    padding-top: 16px;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
-  }
+/* The figure IS the control, so it carries no button chrome until it is
+   reached for. Left-aligned and padded back to the group's edge so the amount
+   still lines up with the labels above it. */
+.pi-detail-summary-open {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  margin: -4px -6px 0;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
 }
 
-@media (min-width: 1180px) {
-  .pi-detail-overview-3 {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.8fr) minmax(0, 1fr);
-    column-gap: 0;
-  }
-  .pi-detail-overview-3 .pi-detail-snapshot {
-    grid-column: auto;
-    padding-top: 0;
-    border-top: none;
-  }
-  /* Hairlines only where there is genuinely a column edge to mark. A section
-     that is alone on its row, or first in it, gets none. */
-  .pi-detail-overview-3 .pi-detail-overview-divided {
-    border-left: 1px solid rgba(0, 0, 0, 0.08);
-    padding-left: 24px;
-    margin-left: 24px;
-  }
+.pi-detail-summary-open:hover {
+  background: #f8f9fb;
 }
 
-/* The strongest number on the page. Larger than the page title, and tabular so
-   it lines up with the advance figure under it. */
-.pi-detail-snapshot-total {
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.015em;
-  font-variant-numeric: tabular-nums;
+.pi-detail-summary-open:focus-visible {
+  outline: 2px solid rgba(85, 133, 232, 0.6);
+  outline-offset: 1px;
+}
+
+/* Verified payment only. Nothing awaiting a Finance decision reaches this
+   width — see buildPaymentSummaryView. */
+/* THE TWO COMMERCIAL FIGURES, in the space the payment column already had.
+   Two columns on every width, because the pair is a comparison — what the
+   products came to, and what that becomes before tax — and reading them side by
+   side is the point. `minmax(0, 1fr)` twice lets a long figure shrink its own
+   column rather than widen the card or push a scrollbar onto the page, so the
+   pair stays on one line on a phone as well. */
+.pi-detail-summary-figures {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px 14px;
+  padding-top: 2px;
+  min-width: 0;
+}
+
+.pi-detail-summary-figures > div {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-@media (min-width: 1180px) {
-  .pi-detail-snapshot-total {
-    font-size: 28px;
-  }
+.pi-detail-summary-bar {
+  flex: 1;
+  min-width: 0;
+  height: 7px;
+  border-radius: 999px;
+  background: #e8ebf0;
+  overflow: hidden;
 }
 
-/* A record with neither an address nor a date leaves the snapshot the whole
-   card. Nothing is competing with it, so it is allowed to be bigger. */
+.pi-detail-summary-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #45a870;
+  transition: width 220ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pi-detail-summary-bar-fill { transition: none; }
+}
+
+.pi-detail-summary-awaiting {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #9a6212;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The two controls take the established BOE button treatments rather than a
+   third one invented here. Both stay full-width-friendly on a phone so neither
+   becomes a tap target at the edge of the screen. */
+.pi-detail-summary-add,
+.pi-detail-summary-view {
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pi-detail-summary-add {
+  border: none;
+  background: #111318;
+  color: #fff;
+}
+
+.pi-detail-summary-add:hover { background: #2a2e38; }
+
+.pi-detail-summary-view {
+  border: 1px solid rgba(0, 0, 0, 0.13);
+  background: #fff;
+  color: #4a5261;
+}
+
+.pi-detail-summary-view:hover { background: #f8f9fb; }
+
 @media (min-width: 768px) {
-  .pi-detail-overview-1 .pi-detail-snapshot-total {
-    font-size: 32px;
+  /* Payment takes the widest column; the dates need the least. */
+  .pi-detail-summary {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.75fr) minmax(0, 1.4fr);
+    column-gap: 26px;
+    row-gap: 0;
   }
-}
 
-.pi-detail-snapshot-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+  .pi-detail-summary-divided {
+    border-top: none;
+    padding-top: 0;
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+    padding-left: 26px;
+  }
 }
 
 /* ── Workflow and actions ─────────────────────────────────────────────────── */

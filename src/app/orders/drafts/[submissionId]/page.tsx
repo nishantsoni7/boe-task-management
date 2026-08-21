@@ -121,13 +121,14 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
-import { PiPaymentCard } from '@/components/orders/PiPaymentCard'
+import { AddPiPaymentModal, PiPaymentDetailsModal } from '@/components/orders/PiPaymentCard'
 import {
   PI_PAYMENT_PROOF_FAILED,
   PI_PAYMENT_RECORDED_BODY,
   canAddPiPayment,
   formatMoney,
   formatPercent,
+  isAwaitingVerification,
   loadPiPaymentSummary,
   recordPiPayment,
   type PiPaymentFormState,
@@ -169,6 +170,7 @@ import {
   buildHeaderRows,
   buildImageViewerItems,
   formatInr,
+  formatPiDate,
   orDash,
   viewerNav,
   type PiDiagnosticEntry,
@@ -204,10 +206,12 @@ import {
 import {
   describeAdvanceForReview,
   buildApprovalSummary,
-  buildCommercialSnapshot,
+  buildClientSummary,
+  buildDateSummary,
   buildIdentityFacts,
-  buildOverviewDates,
+  buildPaymentSummaryView,
   commercialBreakdownRows,
+  summaryCommercialFigures,
   describeApprovedOrder,
   describeWorkflowPanel,
   omitDash,
@@ -218,7 +222,7 @@ import {
   PiBlockingPanel,
   PiIdentityStrip,
   PiLowerGrid,
-  PiOrderOverview,
+  PiSummaryCard,
   PiSavedStrip,
   PiStoredCopyNote,
   PiWarningPanel,
@@ -328,6 +332,8 @@ function PiDraftDetailPageInner() {
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null)
   const [canAllocatePayment, setCanAllocatePayment] = useState(false)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+  /** Which payment dialog is open, if either. The summary card opens both. */
+  const [paymentDialog, setPaymentDialog] = useState<'details' | 'add' | null>(null)
 
   /**
    * WHO IS LOOKING, AND WHAT THEY MAY DO — resolved for the SIGNED-IN account.
@@ -1072,18 +1078,6 @@ function PiDraftDetailPageInner() {
     rejectedByName: draft.rejectedByName,
   })
 
-  // THE POSITION AND ITS FIGURES ARE THE DATABASE'S. `payments` is
-  // pi_submission_payment_summary()'s result; a null one means it has not been
-  // read yet, and the block is simply absent rather than guessed at.
-  const snapshot = buildCommercialSnapshot({
-    grandTotal: grandTotalLabel,
-    productCount: products.length,
-    payment: payments === null ? null : {
-      verifiedAmount: formatMoney(payments.verified_amount),
-      verifiedPercent: formatPercent(payments.verified_percent),
-      position: asPaymentPosition(payments.approval_position),
-    },
-  })
 
   /**
    * The verified-payment line the review dialogs and the decision band show.
@@ -1097,18 +1091,103 @@ function PiDraftDetailPageInner() {
     : `${formatMoney(payments.verified_amount)} · ${formatPercent(payments.verified_percent)}`
 
   const identityFacts = buildIdentityFacts({
-    productCount: products.length,
     savedAt,
     documentAuthor,
     submitterName: draft.submitterName,
     submittedAt,
   })
 
-  const overviewDates = buildOverviewDates({
-    created: headerValue('created'),
-    confirmed: headerValue('confirmed'),
-    dispatch: headerValue('dispatch'),
-    submittedAt,
+  /**
+   * The top summary's three groups.
+   *
+   * The client group reads the contact and address columns the save route has
+   * always written and this page has only now started selecting; the shared
+   * header builder still decides the CONFIRM DATE's format, so the two PI
+   * screens cannot print the same date differently.
+   *
+   * DUE DATE IS NOT PASSED. order_submissions has no due-date column — see
+   * buildDateSummary — so the row says `Not provided` rather than deriving a
+   * date from the prose in dispatch_commitment.
+   */
+  /**
+   * Who may record a payment against this PI — the SAME shared rule, unmoved.
+   *
+   * It was computed inline on the payment card that used to sit below the
+   * products; the card is now a dialog the summary opens, so the answer is
+   * resolved here and passed to both. Not one input to it changed.
+   */
+  const canAddPayment = canAddPiPayment(
+    {
+      userId: viewerId,
+      // NOT a role literal. deriveFinanceCapabilities short-circuits an
+      // active admin, so canAllocatePayment is already true for one —
+      // this page never reads users.role to decide an authority.
+      isAdmin: false,
+      canAllocatePayment,
+    },
+    {
+      status:          submission.status,
+      submittedBy:     submission.submitted_by ?? null,
+      createdBy:       submission.created_by ?? null,
+      assignedTo:      submission.assigned_to ?? null,
+      orderId:         submission.order_id ?? null,
+      deletionClaimed: Boolean(submission.deletion_claim_token),
+    },
+  )
+
+  const clientSummary = buildClientSummary({
+    clientName: submission.client_name,
+    billToName: submission.bill_to_name,
+    shipToName: submission.ship_to_name,
+    contactNumber: submission.contact_number,
+    billToPhone: submission.bill_to_phone,
+    shipToPhone: submission.ship_to_phone,
+    billingAddress: submission.billing_address,
+    shippingAddress: submission.shipping_address,
+  })
+
+  const summaryDates = buildDateSummary({
+    confirmed: omitDash(headerValue('confirmed')),
+    // The stored column, read with the rest of the record. Nothing derives it:
+    // it was decided once, on save or in 20260922000000's backfill.
+    //
+    // formatPiDate re-spells the ISO string WITHOUT constructing a Date — the
+    // same timezone-safe path every other date on this page uses, so a 25 March
+    // due date reads as 25 March in Jaipur and in a CI runner alike.
+    due: submission.due_date
+      ? formatPiDate({ iso: submission.due_date, text: submission.due_date, source: 'serial' })
+      : null,
+    commitment: submission.dispatch_commitment,
+  })
+
+  /**
+   * The commercial rows, built ONCE and shared.
+   *
+   * The top summary repeats two of them beside the payment; the Commercial
+   * breakdown below renders the lot. Both are handed this same array, so the
+   * figure in the card and the figure in the breakdown cannot drift apart —
+   * they are literally the same string.
+   */
+  const commercialRows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission)))
+  const summaryFigures = summaryCommercialFigures(commercialRows)
+
+  /**
+   * The compact payment block. Every figure is the RPC's, already summed in
+   * numeric; the only thing derived here is how many rows Finance has not
+   * decided yet, which is a count of rows and not a sum of money.
+   */
+  const paymentSummary = payments === null ? null : buildPaymentSummaryView({
+    // formatInr, the page's own money format — the one the Commercial breakdown
+    // and the page title already use. It prints whole rupees as whole rupees and
+    // keeps paise only when there are any, so a summary reads `₹8,76,563` while
+    // an odd figure still reads `₹3,50,625.20`. Nothing is rounded away.
+    verifiedAmount: formatInr(toNumber(payments.verified_amount)),
+    grandTotal: formatInr(toNumber(payments.grand_total)),
+    verifiedPercent: formatPercent(payments.verified_percent),
+    percentValue: Number(payments.verified_percent ?? 0),
+    awaitingCount: (payments.payments ?? []).filter(
+      row => row.allocation_status === 'active' && isAwaitingVerification(row.status)).length,
+    paymentCount: (payments.payments ?? []).length,
   })
 
   /**
@@ -1181,15 +1260,21 @@ function PiDraftDetailPageInner() {
           workbookName={workbookName}
         />
 
-        {/* ── 2. Order overview ──
-            Three meaningful sections: who and where, when, and what it is worth.
-            The Grand Total and the active advance condition are both above the
-            fold, which is the whole point of the arrangement. */}
-        <PiOrderOverview
-          billTo={omitDash(headerValue('billTo'))}
-          shipTo={omitDash(headerValue('shipTo'))}
-          dates={overviewDates}
-          snapshot={snapshot}
+        {/* ── 2. The top summary ──
+            Who the client is and how to reach them, when the order was
+            confirmed and when it is due, and how much VERIFIED money has
+            arrived against what the order is worth — with the way in to every
+            payment record, and to recording another, beside the figure. */}
+        <PiSummaryCard
+          client={clientSummary}
+          dates={summaryDates}
+          figures={summaryFigures}
+          payment={paymentSummary}
+          canAdd={canAddPayment}
+          onOpenPayments={() => setPaymentDialog('details')}
+          onAddPayment={() => setPaymentDialog('add')}
+          notice={paymentNotice}
+          onDismissNotice={() => setPaymentNotice(null)}
         />
 
         {/* ── 3. Workflow and actions, ABOVE the products ──
@@ -1365,47 +1450,13 @@ function PiDraftDetailPageInner() {
             which is why they are here and not above the table. Roughly 60/40 on
             a desktop, aligned at the top and never stretched to a common height;
             stacked in this order on anything narrower. */}
-        {/* ── Payments ──
-            One card, in the same quiet register as the Commercial breakdown and
-            Activity cards below it. Every figure it prints was summed in the
-            database in numeric; this page formats and never calculates. */}
-        <PiPaymentCard
-          summary={payments}
-          loading={paymentsLoading}
-          canAdd={canAddPiPayment(
-            {
-              userId: viewerId,
-              // NOT a role literal. deriveFinanceCapabilities short-circuits an
-              // active admin, so canAllocatePayment is already true for one —
-              // this page never reads users.role to decide an authority.
-              isAdmin: false,
-              canAllocatePayment,
-            },
-            {
-              status:          submission.status,
-              submittedBy:     submission.submitted_by ?? null,
-              createdBy:       submission.created_by ?? null,
-              assignedTo:      submission.assigned_to ?? null,
-              orderId:         submission.order_id ?? null,
-              deletionClaimed: Boolean(submission.deletion_claim_token),
-            },
-          )}
-          isMobile={isMobile}
-          todayIso={new Date().toISOString().slice(0, 10)}
-          saving={paymentSaving}
-          notice={paymentNotice}
-          onAdd={recordPayment}
-          onOpenProof={openPaymentProof}
-          onDismissNotice={() => setPaymentNotice(null)}
-        />
-
         <PiLowerGrid
           commercial={
             /* The stored figures, through the shared rows builder. Nothing on
                this page recomputes a total, and `fill` only tells the shared
                component to use its column rather than cap and right-align
                itself the way it does under the import preview's table. */
-            <PiCommercialSummary rows={commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission)))} title="Commercial breakdown" variant="detail" />
+            <PiCommercialSummary rows={commercialRows} title="Commercial breakdown" variant="detail" />
           }
           activity={<PiActivityTimeline entries={draft.activity} />}
         />
@@ -1421,6 +1472,36 @@ function PiDraftDetailPageInner() {
             at length that no order number exists. */}
         <PiStoredCopyNote />
       </div>
+
+      {/* Every payment recorded against this PI, opened from the summary's
+          figure. The SAME content the standalone card used to render below the
+          products — the tiles, the approval position, the agreed terms and the
+          rows with their status, mode, reference and rejection note — now in the
+          dialog the rest of the application already uses, so the page answers
+          "how much has been paid" in exactly one place. */}
+      {paymentDialog === 'details' && (
+        <PiPaymentDetailsModal
+          summary={payments}
+          loading={paymentsLoading}
+          isMobile={isMobile}
+          onOpenProof={openPaymentProof}
+          onClose={() => setPaymentDialog(null)}
+        />
+      )}
+
+      {/* The unchanged entry form, on the unchanged gate and the unchanged RPC. */}
+      {paymentDialog === 'add' && canAddPayment && (
+        <AddPiPaymentModal
+          todayIso={new Date().toISOString().slice(0, 10)}
+          saving={paymentSaving}
+          onClose={() => setPaymentDialog(null)}
+          onSubmit={async (form, proof) => {
+            const err = await recordPayment(form, proof)
+            if (!err) setPaymentDialog(null)
+            return err
+          }}
+        />
+      )}
 
       {dialog === 'submit' && (
         <PiSubmitConfirmModal
