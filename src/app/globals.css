@@ -2664,16 +2664,18 @@ body {
    separator in a card that already had a band, a border and a hairline; the
    groups are told apart by the space between them and by the size of the
    figures, which is separation that costs nothing. */
-/* CONTENT-DRIVEN, never stretched. Filling the row height left a hole in the
-   middle of the surface and pushed the controls away from the bar they act on;
-   the surface is as tall as what is in it, and the left column is free to be
-   taller. No shadow, no gradient, one restrained border. */
+/* THE SURFACE MATCHES THE COLUMN BESIDE IT. The outer grid stretches it — no
+   height is set here — so its bottom edge lands on the left column's, and the
+   card finishes square. Where the extra height GOES is the whole question: not
+   into a footer under both areas, but into the payment column alone, between
+   the bar and the controls that act on it. No shadow, no gradient, one
+   restrained border. */
 .pi-detail-summary-paycard {
   min-width: 0;
-  align-self: start;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 11px 13px 12px;
+  padding: 15px 17px;
   border-radius: 9px;
   background: #fafbfc;
   border: 1px solid rgba(0, 0, 0, 0.06);
@@ -2683,10 +2685,13 @@ body {
    pushed apart by their own contents. */
 .pi-detail-summary-paybody {
   display: grid;
-  grid-template-columns: minmax(0, 0.64fr) 1px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 0.636fr) 1px minmax(0, 1fr);
   align-items: stretch;
-  gap: 0 6px;
+  gap: 0 5px;
   min-width: 0;
+  /* Fills the surface, so the payment column below inherits its full height and
+     has room to push its controls to the foot. */
+  flex: 1 1 auto;
 }
 
 /* The shorter group sits at the MIDDLE of the taller one rather than at its
@@ -2698,15 +2703,21 @@ body {
 .pi-detail-summary-payrule {
   align-self: stretch;
   width: 1px;
-  margin: 3px 6px;
+  /* Vertical inset only. Horizontal margins on a 1px TRACK overflow it and
+     quietly steal width from both columns — which is what pulled the split
+     off its 38 / 60. The grid gap is what separates it from the content. */
+  margin: 3px 0;
   background: rgba(0, 0, 0, 0.075);
 }
 
+/* THE PAYMENT COLUMN IS THE ONE THAT GROWS. Its reading matter stays at the
+   top; the controls take the foot; the slack lands between them. */
 .pi-detail-summary-paystate {
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 8px;
 }
 
 /* Names the surface, quietly, on the same footing as "Order dates" opposite.
@@ -2859,25 +2870,28 @@ body {
    The padding is the FLOOR on that separation: auto can go to zero, and the
    bar must never end up sitting on the buttons. 8px here plus the surface's
    own 3px gap is 11px between the track and the controls at worst. */
-/* UNDER THE BAR THEY ACT ON, and nothing pushes them anywhere: no auto margin,
-   no rule above them, no footer. The 8px here plus the payment column's own 3px
-   gap is the 11px that separates them from the track. */
+/* AT THE FOOT OF THE PAYMENT COLUMN — and of nothing wider. The auto margin
+   takes the surface's spare height, so the breathing room appears between the
+   progress bar and these two controls rather than as a band under both areas.
+   With no spare height (a phone, where the surface is its content) it collapses
+   and the 8px plus the column's own gap leave the usual 10-12px under the bar. */
 .pi-detail-summary-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding-top: 8px;
+  margin-top: auto;
+  padding-top: 3px;
 }
 
 /* THE HIERARCHY STAYS, THE SHOUT GOES. Solid black against a near-white
    surface was the loudest thing in a calm card, and it was competing with the
    figure above it for the eye. The primary is the app's own ink at a lighter
    weight; the secondary loses its border and keeps only a ground. */
-/* 10px of side padding, not 12: at tablet the payment column is ~221px and the
+/* 9px of side padding, not 12: at tablet the payment column is ~218px and the
    pair needs to sit on ONE row under the bar they act on. */
 .pi-detail-summary-add,
 .pi-detail-summary-view {
-  padding: 6px 10px;
+  padding: 6px 9px;
   font-size: 12px;
   font-weight: 600;
   border-radius: 6px;

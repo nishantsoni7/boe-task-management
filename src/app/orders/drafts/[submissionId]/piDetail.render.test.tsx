@@ -1815,7 +1815,10 @@ describe('the layout is CSS, at three real breakpoints', () => {
     // A 1px TRACK, not a border: neither area can push the other around, and
     // the divider insets from the surface's padding instead of running its
     // full height.
-    assert.ok(/\.pi-detail-summary-paybody \{[^}]*grid-template-columns: minmax\(0, 0\.64fr\) 1px minmax\(0, 1fr\)/.test(css))
+    assert.ok(/\.pi-detail-summary-paybody \{[^}]*grid-template-columns: minmax\(0, 0\.636fr\) 1px minmax\(0, 1fr\)/.test(css))
+    // The body fills the surface, so the payment column inherits its full
+    // height and has somewhere to push its controls to.
+    assert.ok(/\.pi-detail-summary-paybody \{[^}]*flex: 1 1 auto/.test(css))
     assert.ok(/\.pi-detail-summary-payrule \{[^}]*align-self: stretch/.test(css))
     // The same element lies down at phone width — one divider, two orientations,
     // so there is never a second one to keep in step.
@@ -1831,28 +1834,37 @@ describe('the layout is CSS, at three real breakpoints', () => {
     assert.ok(
       /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.56fr\)/.test(css),
       'and roughly 39 / 61 once there is room for both')
-    // The surface is CONTENT-DRIVEN: align-self: start opts it out of the row's
-    // stretch, so it is as tall as what is in it and the left column is free to
-    // be taller. Stretching it left a hole in its middle and pushed the controls
-    // away from the bar they act on.
-    assert.ok(/\.pi-detail-summary-paycard \{[^}]*align-self: start/.test(css))
-    assert.ok(!/\.pi-detail-summary-paycard \{[^}]*height: 100%/.test(css))
+    // EQUAL HEIGHT, and no height is set to get it: the outer grid stretches the
+    // surface, so its bottom edge lands on the left column's. What matters is
+    // where the extra height goes — see the controls test below.
+    assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{[^}]*align-items: stretch/.test(css))
+    assert.ok(!/\.pi-detail-summary-paycard \{[^}]*align-self: start/.test(css),
+      'the surface must not opt out of the stretch')
+    for (const fixed of ['height: 1', 'height: 2', 'height: 3', 'position: absolute']) {
+      assert.ok(!new RegExp(`\\.pi-detail-summary-paycard \\{[^}]*${fixed}`).test(css),
+        `no fixed height and no absolute positioning (${fixed})`)
+    }
   })
 
-  test('the controls sit under the bar they act on, pushed by nothing', () => {
-    // As a footer spanning the whole surface they were detached from the thing
-    // they change, and the auto margin that held them at the bottom opened a
-    // hole in the middle of the card. They are part of the payment section.
-    assert.ok(/\.pi-detail-summary-actions \{[^}]*padding-top: 8px/.test(css))
-    assert.ok(!/\.pi-detail-summary-actions \{[^}]*margin-top: auto/.test(css),
-      'nothing pushes them to the bottom')
+  test('the spare height lands between the bar and the controls, in ONE column', () => {
+    // The auto margin is the point, and so is where it lives. Inside the
+    // payment column it opens room between the progress bar and the two
+    // controls; on the surface itself it would be a footer under both areas,
+    // which is the composition this replaced.
+    assert.ok(/\.pi-detail-summary-actions \{[^}]*margin-top: auto/.test(css))
     assert.ok(!/\.pi-detail-summary-actions \{[^}]*border-top/.test(css),
       'and there is no rule above them')
     const html = summaryHtml({ canAdd: true })
     const state = html.slice(html.indexOf('pi-detail-summary-paystate'))
     for (const control of ['pi-detail-summary-add', 'pi-detail-summary-view']) {
-      assert.ok(state.includes(control), `${control} belongs to the payment section`)
+      assert.ok(state.includes(control), `${control} belongs to the payment column`)
     }
+    // Left-aligned with the amount and the bar above them, never pushed right.
+    assert.ok(!/\.pi-detail-summary-actions \{[^}]*justify-content: flex-end/.test(css))
+    // With no spare height to take — a phone — the padding leaves the usual gap.
+    assert.ok(/\.pi-detail-summary-actions \{[^}]*padding-top: 3px/.test(css))
+    assert.ok(/\.pi-detail-summary-paystate \{[^}]*gap: 8px/.test(css),
+      '8px between the payment elements, so 11px under the bar when auto is zero')
   })
 
   test('there is no horizontal divider anywhere inside the finance surface', () => {
