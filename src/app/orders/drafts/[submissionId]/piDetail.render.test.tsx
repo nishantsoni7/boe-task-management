@@ -725,6 +725,26 @@ describe('the client dialog answers billing and shipping separately', () => {
     assert.ok(text(html).includes('Client details'), 'and titled on screen')
   })
 
+  test('focus goes in, cannot get out, and comes back', () => {
+    // aria-modal="true" tells assistive technology the rest of the page is
+    // inert. Without these three moves that was a lie: Tab walked out of the
+    // dialog into the payment controls behind it, and closing left focus on
+    // <body>. Verified in a browser as well as here.
+    const source = readFileSync(
+      join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8')
+    const dialog = source.slice(source.indexOf('export function PiClientDetailsModal'))
+    assert.ok(dialog.includes('const opener = document.activeElement'), 'remembers the opener')
+    assert.ok(dialog.includes('dialogRef.current?.focus()'), 'focuses the dialog on open')
+    assert.ok(/return \(\) => \{ opener\?\.focus\?\.\(\) \}/.test(dialog), 'restores it on close')
+    assert.ok(dialog.includes('resolveTrapTarget('), 'traps Tab with the shared helper')
+    assert.ok(dialog.includes("e.key !== 'Tab'") && dialog.includes('e.shiftKey'),
+      'in both directions')
+    assert.ok(dialog.includes("addEventListener('keydown', onKey, true)"),
+      'in the capture phase, so nothing inside can swallow the key first')
+    assert.ok(dialog.includes("if (e.key === 'Escape') { onClose(); return }"))
+    assert.ok(dialog.includes('tabIndex={-1}'), 'and the panel itself can hold focus')
+  })
+
   test('it reads the page’s own values — no request, no route', () => {
     const page = readFileSync(
       join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
@@ -733,10 +753,15 @@ describe('the client dialog answers billing and shipping separately', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8')
     const dialogSource = source.slice(source.indexOf('export function PiClientDetailsModal'))
-    for (const forbidden of ['supabase', 'fetch(', 'useEffect(() =>', 'router', 'href="/']) {
+    // Names what it means. `useEffect` used to be on this list as a proxy for
+    // "does not fetch" — the dialog has two effects now, both about focus, and
+    // a guard that would fail on those is guarding the wrong thing.
+    for (const forbidden of ['supabase', 'fetch(', 'router', 'href="/', 'useState']) {
       assert.ok(!dialogSource.includes(forbidden),
         `the dialog must not ${forbidden} — every value is already on the page`)
     }
+    assert.ok(!/useEffect\([\s\S]{0,400}?(await|then\()/.test(dialogSource),
+      'and no effect of its own goes and gets anything')
   })
 })
 
@@ -1775,11 +1800,23 @@ describe('the layout is CSS, at three real breakpoints', () => {
     assert.ok(!/\.pi-detail-summary-due \{/.test(css), 'the amber block is gone')
   })
 
-  test('the order values are two metrics, and they are tabular', () => {
-    assert.ok(/\.pi-detail-summary-values \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css),
-      'side by side, equal, label over value')
+  test('the order values are ledger rows: label left, figure right, tabular', () => {
+    assert.ok(/\.pi-detail-summary-value-row \{[^}]*justify-content: space-between/.test(css),
+      'label left, figure right')
     assert.ok(/\.pi-detail-summary-money \{[^}]*font-variant-numeric: tabular-nums/.test(css),
-      'so they line up digit for digit with each other and with the amount')
+      'so the two figures line up digit for digit')
+  })
+
+  test('the surface splits worth from received, and stacks them on a phone', () => {
+    // A 1px TRACK, not a border: neither area can push the other around, and
+    // the divider insets from the surface's padding instead of running its
+    // full height.
+    assert.ok(/\.pi-detail-summary-paybody \{[^}]*grid-template-columns: minmax\(0, 0\.66fr\) 1px minmax\(0, 1fr\)/.test(css))
+    assert.ok(/\.pi-detail-summary-payrule \{[^}]*align-self: stretch/.test(css))
+    // The same element lies down at phone width — one divider, two orientations,
+    // so there is never a second one to keep in step.
+    assert.ok(/@media \(max-width: 700px\)[\s\S]*?\.pi-detail-summary-paybody \{\s*grid-template-columns: minmax\(0, 1fr\)/.test(css))
+    assert.ok(/@media \(max-width: 700px\)[\s\S]*?\.pi-detail-summary-payrule \{[^}]*height: 1px/.test(css))
   })
 
   test('the card is two columns, and the finance surface fills its own', () => {
@@ -1789,21 +1826,28 @@ describe('the layout is CSS, at three real breakpoints', () => {
       /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.56fr\)/.test(css),
       'and roughly 39 / 61 once there is room for both')
     // STRETCH plus height:100% is what makes the surface run the full height of
-    // the content area; justify-content keeps its rows at the top rather than
-    // spreading them to meet the bottom edge.
+    // the content area. What keeps its contents at the top is the footer's own
+    // auto margin, which takes the leftover room — see the footer test below.
     assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{[^}]*align-items: stretch/.test(css))
     assert.ok(/\.pi-detail-summary-paycard \{[^}]*height: 100%/.test(css))
-    assert.ok(/\.pi-detail-summary-paycard \{[^}]*justify-content: flex-start/.test(css))
   })
 
-  test('the controls fall to the foot of the surface, but never onto the bar', () => {
-    // Two rules doing two jobs. `auto` takes whatever room the ledger left, so
-    // the buttons meet the bottom edge rather than leaving a pool of empty
-    // ground under them. `padding-top` is the FLOOR when there is no room to
-    // take — a phone, or an awaiting line filling the surface — because auto
-    // collapses to zero there and the bar would otherwise sit on the buttons.
+  test('the footer spans the surface, sits at its foot, and is right-aligned', () => {
+    // It belongs to the WHOLE surface — it adds to and opens the record both
+    // areas describe — so it is a sibling of the two-column body, not a child
+    // of either column. `auto` takes whatever room they left, so it meets the
+    // bottom edge with nothing under it; the padding is the floor when there is
+    // no room to take, on a phone or with an awaiting line filling the surface.
     assert.ok(/\.pi-detail-summary-actions \{[^}]*margin-top: auto/.test(css))
-    assert.ok(/\.pi-detail-summary-actions \{[^}]*padding-top: 8px/.test(css))
+    assert.ok(/\.pi-detail-summary-actions \{[^}]*padding-top: 9px/.test(css))
+    assert.ok(/\.pi-detail-summary-actions \{[^}]*justify-content: flex-end/.test(css))
+    // Neither upper area may hold a control.
+    const html = summaryHtml({ canAdd: true })
+    const body = html.slice(html.indexOf('pi-detail-summary-paybody'),
+      html.indexOf('pi-detail-summary-actions'))
+    for (const control of ['pi-detail-summary-add', 'pi-detail-summary-view']) {
+      assert.ok(!body.includes(control), `${control} must not sit inside an upper section`)
+    }
   })
 
   test('ownership falls to the foot of its column, by a class and not by type', () => {

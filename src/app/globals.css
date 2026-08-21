@@ -2664,21 +2664,43 @@ body {
    separator in a card that already had a band, a border and a hairline; the
    groups are told apart by the space between them and by the size of the
    figures, which is separation that costs nothing. */
+/* ONE surface, THREE parts: worth and received side by side, then a footer
+   under both. No shadow, no gradient, one restrained border. */
 .pi-detail-summary-paycard {
   min-width: 0;
   height: 100%;
-  justify-content: flex-start;
   display: flex;
   flex-direction: column;
-  gap: 3px;
   padding: 11px 13px 12px;
   border-radius: 9px;
   background: #fafbfc;
   border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-/* The space that replaced the rule. */
-.pi-detail-summary-payhead { margin-top: 11px; }
+/* Worth | rule | received. The rule is a 1px TRACK, so the two areas cannot be
+   pushed apart by their own contents. */
+.pi-detail-summary-paybody {
+  display: grid;
+  grid-template-columns: minmax(0, 0.66fr) 1px minmax(0, 1fr);
+  align-items: start;
+  gap: 0 8px;
+  min-width: 0;
+}
+
+/* Inset from the surface's padding by an element rather than a border: a
+   border would run the full height of whatever carried it. */
+.pi-detail-summary-payrule {
+  align-self: stretch;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.pi-detail-summary-paystate {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
 
 /* Names the surface, quietly, on the same footing as "Order dates" opposite.
    Its own line rather than a heading: it identifies the area without competing
@@ -2688,10 +2710,20 @@ body {
    has been paid against it — label left, figure right, which is the idiom the
    Commercial breakdown card uses for the very same two lines. As label-over-
    value pairs side by side they drifted to opposite ends of a 650px surface. */
+/* Compact ledger rows: label left, figure right, tabular so the two line up
+   digit for digit with each other. */
 .pi-detail-summary-values {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 2px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pi-detail-summary-value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -2822,12 +2854,17 @@ body {
    The padding is the FLOOR on that separation: auto can go to zero, and the
    bar must never end up sitting on the buttons. 8px here plus the surface's
    own 3px gap is 11px between the track and the controls at worst. */
+/* THE FOOTER BELONGS TO THE WHOLE SURFACE. The auto margin takes whatever room
+   the two areas left, so it meets the bottom edge with nothing under it; the
+   hairline and 9px are the separation, neither of them heavy. */
 .pi-detail-summary-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(0, 0, 0, 0.055);
 }
 
 /* THE HIERARCHY STAYS, THE SHOUT GOES. Solid black against a near-white
@@ -2865,6 +2902,34 @@ body {
 /* WEIGHT FOLLOWS CONTENT. The left column is three short groups; the finance
    surface carries four figures, a bar and two controls, so it takes the larger
    share — roughly 39 / 61. */
+/* THE LEDGER DECIDES THE SPLIT WHERE IT IS TIGHT. At tablet the surface is
+   ~400px, and 39% of it is not enough for "Total before GST" and its figure on
+   one line — the label wrapped to two, which is the compressed reading the
+   proportions exist to avoid. Below 1180px the two areas share the width
+   evenly instead; the 39/61 recommendation is a desktop one, and a wrapped
+   ledger row is a worse outcome than an even split. */
+@media (max-width: 1179px) {
+  .pi-detail-summary-paybody {
+    grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  }
+}
+
+/* AT PHONE WIDTH THE TWO AREAS STACK, and the hairline lies down with them:
+   the same element, turned from a 1px column into a 1px row, so there is never
+   a second divider to keep in step with the first. */
+@media (max-width: 700px) {
+  .pi-detail-summary-paybody {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px 0;
+  }
+
+  .pi-detail-summary-payrule {
+    align-self: auto;
+    width: auto;
+    height: 1px;
+  }
+}
+
 @media (min-width: 900px) {
   .pi-detail-summary {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.56fr);

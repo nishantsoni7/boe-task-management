@@ -287,19 +287,31 @@ export function PiSummaryCard({
               Outside the payment branch below because these come from the
               record itself: they must not blank out while the payment summary
               is still being read. */}
-          <div className="pi-detail-summary-values">
-            {figures.map(figure => (
-              <div key={figure.key} className="pi-detail-summary-sched-cell">
-                <div className="pi-detail-summary-metric-label">{figure.label}</div>
-                <div className={figure.kind === 'missing'
-                  ? 'pi-detail-summary-metric-absent'
-                  : 'pi-detail-summary-money'}>
-                  {figure.value}
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* ── The surface's two upper areas, side by side ──
+              What the order is WORTH on the left, what has ARRIVED against it
+              on the right, one hairline between them. The hairline is an
+              element rather than a border, so it insets from the surface's top
+              and bottom padding instead of running its whole height; at phone
+              width the same element lies down and becomes the horizontal rule
+              between the two stacked areas. */}
+          <div className="pi-detail-summary-paybody">
 
+            <div className="pi-detail-summary-values">
+              {figures.map(figure => (
+                <div key={figure.key} className="pi-detail-summary-value-row">
+                  <span className="pi-detail-summary-metric-label">{figure.label}</span>
+                  <span className={figure.kind === 'missing'
+                    ? 'pi-detail-summary-metric-absent'
+                    : 'pi-detail-summary-money'}>
+                    {figure.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="pi-detail-summary-payrule" role="presentation" />
+
+            <div className="pi-detail-summary-paystate">
           {payment === null ? (
             <>
               <div className="pi-detail-summary-payhead">
@@ -358,22 +370,32 @@ export function PiSummaryCard({
                 </div>
               )}
 
-              <div className="pi-detail-summary-actions">
-                {/* Unchanged gate: canAddPiPayment decides this, exactly as
-                    record_pi_submission_payment() decides it server-side. */}
-                {canAdd && (
-                  <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
-                    Add payment
-                  </button>
-                )}
-                {/* ONE label, always. It opens PiPaymentDetailsModal in
-                    either case, so wording that changed with the record made
-                    the same control look like two. */}
-                <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
-                  {PAYMENT_DETAILS_LABEL}
-                </button>
-              </div>
             </>
+          )}
+            </div>
+          </div>
+
+          {/* ── The action footer ──
+              It belongs to the WHOLE surface, not to the payment area: what it
+              does is add to, and open, the record both areas describe. So it
+              spans the full width beneath them, right-aligned, pushed to the
+              bottom by the auto margin rather than by anything positioned. */}
+          {payment !== null && (
+            <div className="pi-detail-summary-actions">
+              {/* Unchanged gate: canAddPiPayment decides this, exactly as
+                  record_pi_submission_payment() decides it server-side. */}
+              {canAdd && (
+                <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
+                  Add payment
+                </button>
+              )}
+              {/* ONE label, always. It opens PiPaymentDetailsModal in either
+                  case, so wording that changed with the record made the same
+                  control look like two. */}
+              <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
+                {PAYMENT_DETAILS_LABEL}
+              </button>
+            </div>
           )}
         </section>
 

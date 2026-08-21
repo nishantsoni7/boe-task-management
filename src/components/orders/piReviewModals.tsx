@@ -29,12 +29,17 @@
 // NOTHING HERE DECIDES AUTHORITY. These are dialogs; the RPCs behind them
 // re-derive the actor, the permission and the record's state in the database.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { useScrollLock } from '@/hooks/useScrollLock'
-import { shouldCloseFormModal, type ModalDismissReason } from '@/lib/ui/modalDismissal'
+import {
+  FOCUSABLE_SELECTOR,
+  resolveTrapTarget,
+  shouldCloseFormModal,
+  type ModalDismissReason,
+} from '@/lib/ui/modalDismissal'
 import {
   NOT_PROVIDED,
   type ClientDetails,
@@ -1143,7 +1148,49 @@ export function PiClientDetailsModal({ client, onClose }: {
   onClose: () => void
 }) {
   useScrollLock(true)
-  useEscapeDismiss(() => onClose(), true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * FOCUS GOES IN AND COMES BACK.
+   *
+   * `aria-modal="true"` tells assistive technology that the rest of the page is
+   * inert. Without this, that was a lie: Tab walked straight out of the dialog
+   * into the payment controls behind it, and closing left focus on <body> with
+   * no way back to where the reader had been.
+   *
+   * Same three moves as OrderModal, which is where this pattern already lives:
+   * remember the opener, focus the dialog, restore the opener on unmount.
+   */
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    dialogRef.current?.focus()
+    return () => { opener?.focus?.() }
+  }, [])
+
+  // Escape closes; Tab and Shift+Tab cannot leave. Capture phase, so the trap
+  // runs before anything inside the dialog handles the key.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      if (e.key !== 'Tab') return
+
+      const root = dialogRef.current
+      if (!root) return
+
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onClose])
 
   const row = (label: string, body: React.ReactNode) => (
     <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
@@ -1168,8 +1215,16 @@ export function PiClientDetailsModal({ client, onClose }: {
   return (
     // A backdrop click closes: this dialog holds no input to lose, so the
     // form-modal rule that makes an outside click inert does not apply.
-    <div style={OVERLAY} role="dialog" aria-modal="true" aria-label="Client details" onClick={onClose}>
-      <div style={PANEL} onClick={e => e.stopPropagation()}>
+    <div style={OVERLAY} onClick={onClose}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Client details"
+        tabIndex={-1}
+        style={{ ...PANEL, outline: 'none' }}
+        onClick={e => e.stopPropagation()}
+      >
         <ModalHeader title="Client details" subtitle={client.name} onClose={onClose} disabled={false} />
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {row('Client', <span style={{ fontWeight: 600 }}>{client.name}</span>)}
