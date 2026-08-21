@@ -364,17 +364,34 @@ describe('the detail page renders only what it fetched', () => {
     // and chooses the standard or the reduced-payment route, so a browser can
     // neither declare an advance nor claim a payment position.
     //
-    // Phase C adds the last two: verify_pi_finance_check records the finance
-    // sign-off and nothing else, and approve_order_submission is the ONE
-    // authoritative approval door — it is the only thing on this screen that
-    // creates an Order, and the browser reaches it by id alone.
-    const rpcs = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
+    // Phase C adds two: verify_pi_finance_check records the finance sign-off and
+    // nothing else, and approve_order_submission is the ONE authoritative
+    // approval door — the only thing on this screen that creates an Order, and
+    // the browser reaches it by id alone.
+    //
+    // set_order_submission_billing_percentage is the one write here that is NOT
+    // a status move, and it is deliberately narrow: one column on one row, no
+    // money, no state transition, and gated by can_edit_order_submission — the
+    // existing draft/needs_changes owner-or-admin rule, unwidened. A SUBMITTED
+    // record refuses it like every other edit.
+    // READ-ONLY CAPABILITY PROBES ARE NOT WRITES, and are named here rather than
+    // folded into the list below — a write allowlist that quietly accepted
+    // read-shaped names would stop being a write allowlist.
+    // can_edit_order_submission is `stable`, takes a submission id, and returns
+    // a boolean; it is the authority this page asks instead of restating.
+    const READ_ONLY_RPCS = ['can_edit_order_submission']
+    const called = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
+    for (const probe of READ_ONLY_RPCS) {
+      assert.ok(called.includes(probe), `${probe} should be the capability this page asks`)
+    }
+    const rpcs = called.filter(name => !READ_ONLY_RPCS.includes(name))
     assert.deepEqual(rpcs, [
       'approve_order_submission',
       'approve_pi_advance_exception',
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
+      'set_order_submission_billing_percentage',
       'submit_pi_for_review',
       'verify_pi_finance_check',
     ])
@@ -389,6 +406,19 @@ describe('the detail page renders only what it fetched', () => {
       assert.ok(!rpcs.some(name => name.includes(forbidden)),
         `${forbidden} belongs to no phase this page can reach`)
     }
+  })
+
+  test('the billing writer introduces no new authority, and no new gate', () => {
+    // The whole safety of this field is that it reuses the rule that already
+    // governs editing a PI. A second authority function, or a submitted-state
+    // exception, would be the thing to catch here.
+    const migration = read('supabase/migrations/20260923000000_order_submission_billing_percentage.sql')
+    assert.ok(migration.includes('if not public.can_edit_order_submission(p_submission_id) then'))
+    assert.ok(!migration.includes('can_declare_billing_percentage'))
+    assert.ok(!/status\s*=\s*'submitted'/.test(migration),
+      'nothing here makes a submitted record editable')
+    // And the field is optional: no submission or approval path may refuse over it.
+    assert.ok(!/billing[\s\S]{0,80}cannot be submitted/i.test(migration))
   })
 
   // ── The writes this page reaches INDIRECTLY ────────────────────────────────
@@ -1007,22 +1037,29 @@ describe('the page identity is a strip, not a card that repeats the title', () =
       'a fourth restatement of what this record is')
   })
 
-  test('the status badge sits with the identity, above the summary', () => {
-    assert.ok(page.includes('<PiIdentityStrip'))
+  test('the status badge lives inside the card, with the record’s owner', () => {
+    // It used to sit in a strip ABOVE the card, beside a dot-separated line of
+    // facts. Status, creator, timestamp and workbook are one group now, so the
+    // page opens with a card rather than with metadata floating over one.
     assert.ok(page.includes('statusLabel={draftStatusLabel(submission.status)}'))
     assert.ok(page.includes('const tone = statusTone(draftStatusTone(submission.status))'),
       'the badge takes the drafts list’s own status vocabulary')
     assert.ok(page.includes('tone={tone}'))
-    assert.ok(page.indexOf('<PiIdentityStrip') < page.indexOf('<PiSummaryCard'))
+    assert.ok(!page.includes('<PiIdentityStrip'), 'the loose strip is gone')
+    assert.ok(read(DETAIL_SECTIONS).includes('<PiStatusBadge'),
+      'and the badge renders in the card')
   })
 
-  test('the strip carries the facts the old metadata band carried', () => {
+  test('the ownership facts the old strip carried all survive, in one group', () => {
     const view = read(DETAIL_VIEW)
-    for (const fact of ['product line', 'Saved ', 'Submitted ', 'PI by ']) {
+    for (const fact of ['Saved ', 'Submitted ']) {
       assert.ok(view.includes(fact), `${fact} must survive the redesign`)
     }
     assert.ok(page.includes('documentAuthor,'),
       'including whoever the PI document itself named')
+    assert.ok(page.includes('ownership={ownership}'))
+    assert.ok(page.includes('workbookName={workbookName}'),
+      'and the workbook moved into the card rather than being dropped')
   })
 
   test('an absent filename shows no block at all', () => {
@@ -1045,20 +1082,48 @@ describe('the top summary answers four questions and repeats none of them', () =
   const sections = read(DETAIL_SECTIONS)
   const view = read(DETAIL_VIEW)
 
-  test('three groups: the client, the dates, and what has been paid', () => {
-    for (const label of ['Client', 'Order dates', 'Payment received']) {
-      assert.ok(sections.includes(label), `${label} must be one of the three`)
+  test('two columns, and every group in them names itself without a heading', () => {
+    // The card carries four labelled headings fewer than it did: Client, Order
+    // dates and Financial summary all stated what the values under them plainly
+    // are. What is left is the values themselves.
+    for (const label of ['PI created by', 'Payment received']) {
+      assert.ok(sections.includes(label), `${label} must be in the card`)
     }
-    assert.equal((sections.match(/<section className="pi-detail-summary-group/g) ?? []).length, 3)
+    // The two figures are labelled by the view model, not by the component.
+    assert.ok(view.includes("'Product value'") && view.includes("'Total before GST'"))
+    for (const heading of ['<GroupLabel>', 'Financial summary']) {
+      assert.ok(!sections.includes(heading), `${heading} is a label for something already obvious`)
+    }
+    assert.ok(sections.includes('pi-detail-summary-left'),
+      'the order — who, when, whose — is one column')
+    assert.ok(sections.includes('pi-detail-summary-schedule'),
+      'the two dates share one band rather than one carrying a box of its own')
+    assert.ok(sections.includes('pi-detail-summary-paycard'),
+      'and money is a surface of its own, filling the other column')
+    // Ownership belongs to the left column now, below the dates, so it reads as
+    // a fact about the record instead of a control belonging to the page.
+    assert.ok(sections.indexOf('Confirm date') < sections.indexOf('PI created by')
+      || sections.indexOf('dates.map') < sections.indexOf('PI created by'),
+      'ownership sits below the dates, at the foot of its column')
+    assert.ok(!sections.includes('pi-detail-summary-divided'),
+      'the vertical rules that made it read as a form are gone')
   })
 
-  test('the client name is printed once, and the destinations are not two fields', () => {
-    // Bill to and Ship to carry the same company on most PIs, and the page
-    // title carries it a third time. buildClientSummary resolves one name, one
-    // number and one place, and only names a destination that genuinely differs.
-    assert.ok(page.includes('buildClientSummary({'))
+  test('the card shows the name; the dialog behind it shows the rest', () => {
+    // The contact number and the two addresses are reference material. Keeping
+    // them on the card cost three lines under a name nobody was reading them
+    // with, so they moved behind the name — and must not be printed twice.
+    assert.ok(page.includes('buildClientDetails({'))
     assert.ok(!sections.includes('Bill to') && !sections.includes('Ship to'))
-    assert.ok(view.includes('Ships to: '), 'a different destination is labelled, not merged away')
+    assert.ok(sections.includes('onOpenClient'), 'the name opens the dialog')
+    assert.ok(sections.includes('aria-haspopup="dialog"'))
+    for (const moved of ['billing_address', 'client.phone', 'Contact not provided']) {
+      assert.ok(!sections.includes(moved), `${moved} belongs to the dialog now`)
+    }
+    // And billing and shipping are answered separately there, even when equal.
+    const modals = read('src/components/orders/piReviewModals.tsx')
+    assert.ok(modals.includes("party('Billing details'"))
+    assert.ok(modals.includes("party('Shipping details'"))
   })
 
   test('contact and location come from columns the save route has always written', () => {
@@ -1076,7 +1141,9 @@ describe('the top summary answers four questions and repeats none of them', () =
 
   test('a phone number is dialable, and an undialable one is not offered as a link', () => {
     assert.ok(view.includes('telLink'))
-    assert.ok(sections.includes('href={`tel:${client.phone.tel}`}'))
+    // The link lives in the dialog now — the card carries no number at all.
+    assert.ok(read('src/components/orders/piReviewModals.tsx')
+      .includes('href={`tel:${client.phone.tel}`}'))
     assert.deepEqual(telLink('+91 98450 22222'), { label: '+91 98450 22222', tel: '+919845022222' })
     assert.equal(telLink('12345'), null, 'a fragment is not a phone number')
   })

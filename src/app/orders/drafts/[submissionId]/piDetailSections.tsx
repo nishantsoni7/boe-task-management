@@ -17,12 +17,13 @@
 // These draw the answers.
 
 import {
-  AlertTriangle, Ban, CheckCircle2, ExternalLink, FileSpreadsheet, History,
-  Info, MapPin, Percent, Phone, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
+  AlertTriangle, Ban, CheckCircle2, ChevronRight, ExternalLink, FileSpreadsheet,
+  History, Info, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
+import { Avatar } from '@/components/ui/atoms'
 import { draftStatusLabel, type PiDraftStatusTone } from '@/lib/orders/draftsView'
 import {
   APPROVE_BUTTON_LABEL,
@@ -50,12 +51,15 @@ import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActiv
 import {
   ADVANCE_BAND_TITLE,
   BLOCKING_INSTRUCTION,
-  NOT_PROVIDED,
   STORED_COPY_NOTE,
   describeRequestedException,
   type ApprovedOrderView,
-  type ClientSummary,
+  BILLING_LABEL,
+  BILLING_VALUE_LABEL,
+  type BillingSummary,
+  type ClientDetails,
   type DateSummary,
+  type PiOwnership,
   type SummaryFigure,
   type PaymentSummaryView,
   type PiDetailTone,
@@ -78,6 +82,16 @@ export const TONE_STYLE: Record<PiDetailTone, ToneStyle> = {
 /** The status vocabulary of the drafts list is the same one, by another name. */
 export const statusTone = (tone: PiDraftStatusTone): ToneStyle => TONE_STYLE[tone]
 
+/**
+ * The one name for the control that opens the payment record.
+ *
+ * It used to read "View payments" when the PI had payments and "Payment
+ * details" when it had none — one control wearing two names depending on state.
+ * Both press the same thing: PiPaymentDetailsModal, which is also what the page
+ * calls it (`setPaymentDialog('details')`). So the established name is the name.
+ */
+export const PAYMENT_DETAILS_LABEL = 'Payment details'
+
 /** A small state chip. Present, legible, and never a banner. */
 export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle }) {
   return (
@@ -89,51 +103,6 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
     }}>
       {label}
     </span>
-  )
-}
-
-// ── 1. Page identity ──────────────────────────────────────────────────────────
-
-/**
- * Status and a short line of facts, directly under the client name the layout
- * header already carries.
- *
- * IT IS NOT A CARD. A card here would be a bordered box whose whole content is
- * one badge and one sentence, sitting above a card that repeats them — which is
- * how the old page opened. This is a strip on the page ground: it costs one line
- * of vertical space and says who, what state, how big and when.
- */
-export function PiIdentityStrip({ statusLabel, tone, facts, workbookName }: {
-  statusLabel: string
-  tone: ToneStyle
-  facts: readonly string[]
-  /** Only when the record actually names one. A labelled hole is worse. */
-  workbookName: string | null
-}) {
-  return (
-    <div className="pi-detail-identity">
-      <PiStatusBadge label={statusLabel} tone={tone} />
-
-      <div className="pi-detail-identity-meta" style={{ fontSize: '12px', color: colors.secondary }}>
-        {facts.map((fact, i) => (
-          <span key={fact} style={{ whiteSpace: 'nowrap' }}>
-            {i > 0 && <span style={{ color: colors.muted, margin: '0 6px' }}>·</span>}
-            {fact}
-          </span>
-        ))}
-      </div>
-
-      {workbookName && (
-        <span
-          className="pi-detail-identity-file"
-          title={workbookName}
-          style={{ fontSize: '11.5px', color: colors.tertiary }}
-        >
-          <FileSpreadsheet size={12} strokeWidth={1.9} style={{ flexShrink: 0 }} />
-          <span className="pi-detail-identity-file-name">{workbookName}</span>
-        </span>
-      )}
-    </div>
   )
 }
 
@@ -163,12 +132,33 @@ export function PiIdentityStrip({ statusLabel, tone, facts, workbookName }: {
  * NOT ONE FIGURE IS COMPUTED HERE. See ./piDetailView.
  */
 export function PiSummaryCard({
-  client, dates, figures, payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
+  client, onOpenClient, ownership, statusLabel, tone, workbookName,
+  dates, figures, billing, canEditBilling, onEditBilling,
+  payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
 }: {
-  client: ClientSummary
+  client: ClientDetails
+  /** Opens the client dialog. The card carries the name; the dialog carries
+      the contact and the two parties. */
+  onOpenClient: () => void
+  /** Who the PI belongs to, and when it last moved. */
+  ownership: PiOwnership
+  statusLabel: string
+  tone: ToneStyle
+  /** Provenance, only when the record names a workbook. */
+  workbookName: string | null
   dates: readonly DateSummary[]
   /** The two commercial figures, picked out of the breakdown's own rows. */
   figures: readonly SummaryFigure[]
+  /** The billing declaration, and what it comes to. */
+  billing: BillingSummary
+  /**
+   * Whether THIS viewer may declare one — describeSubmissionActions' answer,
+   * which is draft/needs_changes and owner-or-admin. Hiding the control is not
+   * the security: set_order_submission_billing_percentage re-derives the same
+   * rule against the record's own state.
+   */
+  canEditBilling: boolean
+  onEditBilling: () => void
   /** null only while the payment summary has not been read yet. */
   payment: PaymentSummaryView | null
   canAdd: boolean
@@ -181,84 +171,223 @@ export function PiSummaryCard({
     <PiCard>
       <div className="pi-detail-summary">
 
-        <section className="pi-detail-summary-group">
-          <GroupLabel>Client</GroupLabel>
-          <MultilineText style={{
-            fontSize: '15px', fontWeight: 600, color: colors.primary, margin: 0, lineHeight: 1.3,
-          }}>
-            {client.name}
-          </MultilineText>
+        {/* ── The left column: everything ABOUT the order ──
+            Who it is for, when it moves, and whose record it is — three groups
+            stacked and separated by hairlines rather than by boxes. Ownership
+            used to sit top-right, level with the client, where it read as a
+            header control belonging to the page rather than a fact about this
+            record. At the foot of this column it is plainly the last thing the
+            order says about itself. */}
+        <div className="pi-detail-summary-left">
 
-          {/* Dialable where the PI gave a number worth dialling, plain text
-              where it did not. Never a link that dials nothing. */}
-          {client.phone ? (
-            <a
-              href={`tel:${client.phone.tel}`}
-              style={{
-                fontSize: '13px', color: colors.blue, textDecoration: 'none',
-                display: 'inline-flex', alignItems: 'center', gap: '5px', width: 'fit-content',
-              }}
+          {/* THE NAME IS THE CONTROL, and it still looks like the name.
+              A button element carries Enter, Space, focus and the announcement
+              for free — what it must not carry is the LOOK of a button, because
+              this is the heading of the card. So: no border, no ground, no
+              padding beyond what the focus ring needs, and a chevron that says
+              there is more behind it. The contact number and both addresses
+              used to sit under here as a supporting line; they are reference
+              material, and they live in the dialog now. */}
+          <div className="pi-detail-summary-party">
+            <button
+              type="button"
+              onClick={onOpenClient}
+              className="pi-detail-summary-client"
+              aria-haspopup="dialog"
+              title="Contact number, billing and shipping details"
             >
-              <Phone size={12} strokeWidth={2} style={{ flexShrink: 0 }} />
-              {client.phone.label}
-            </a>
-          ) : (
-            <Absent icon={<Phone size={12} strokeWidth={2} />}>{NOT_PROVIDED}</Absent>
-          )}
-
-          {client.location ? (
-            <div style={{ display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
-              <MapPin size={12} strokeWidth={2} color={colors.muted}
-                      style={{ flexShrink: 0, marginTop: '3px' }} />
               <MultilineText style={{
-                fontSize: '12.5px', color: colors.secondary, margin: 0, lineHeight: 1.45,
+                fontSize: '16px', fontWeight: 650, color: colors.primary, margin: 0, lineHeight: 1.25,
               }}>
-                {client.location}
+                {client.name}
               </MultilineText>
-            </div>
-          ) : (
-            <Absent icon={<MapPin size={12} strokeWidth={2} />}>{NOT_PROVIDED}</Absent>
-          )}
-        </section>
+              <ChevronRight size={15} strokeWidth={2.2} className="pi-detail-summary-client-more" />
+            </button>
+          </div>
 
-        <section className="pi-detail-summary-group pi-detail-summary-divided">
-          <GroupLabel>Order dates</GroupLabel>
-          {dates.map(date => (
-            <div key={date.key} style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-              <div style={{ fontSize: '11px', color: colors.muted }}>{date.label}</div>
-              {date.value ? (
-                <div style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary }}>
-                  {date.value}
+          {/* ── ONE SCHEDULE BAND, not two treatments ──
+              The due date used to sit in its own warm box behind a 2px accent,
+              which read as a card inserted into a card and made the two dates
+              look like different KINDS of fact. They are the same kind: when
+              the order was agreed, and when it is owed. So one soft surface
+              holds both, split by a hairline that stops inside the band's own
+              padding, and the emphasis the due date still needs is carried by a
+              dot and a heavier figure rather than by a ground of its own. */}
+          <section className="pi-detail-summary-schedule">
+            {dates.flatMap((date, i) => [
+              i > 0
+                ? <div key={`${date.key}-rule`} className="pi-detail-summary-sched-rule" role="presentation" />
+                : null,
+              (
+                <div key={date.key} className="pi-detail-summary-sched-cell">
+                  <div className="pi-detail-summary-metric-label">
+                    {date.label}
+                    {/* The whole of the due date's emphasis at label level: one
+                        small amber dot. Decorative — the label already says
+                        which date this is. */}
+                    {date.key === 'due' && (
+                      <span className="pi-detail-summary-due-dot" aria-hidden="true" />
+                    )}
+                  </div>
+                  {date.value ? (
+                    <div className={date.key === 'due'
+                      ? 'pi-detail-summary-metric-value pi-detail-summary-due-value'
+                      : 'pi-detail-summary-metric-value'}>
+                      {date.value}
+                    </div>
+                  ) : (
+                    <div className="pi-detail-summary-metric-absent">{date.absent}</div>
+                  )}
+                  {/* Clamped to two lines. A long commitment is prose about a
+                      lead time; left unbounded it sets the height of the band
+                      the other date has to align inside. */}
+                  {date.note && <div className="pi-detail-summary-metric-note">{date.note}</div>}
                 </div>
-              ) : (
-                <div style={{ fontSize: '12.5px', color: colors.muted }}>{date.absent}</div>
+              ),
+            ])}
+          </section>
+
+          {/* ── Whose record this is, at the FOOT of the column it belongs to ──
+              Avatar beside three lines: the creator's name with the record's
+              state anchored opposite it, what that name means and when the
+              record last moved, and the workbook it came from when there is
+              one. Pushed to the bottom of the column so it reads as the last
+              thing the order says about itself rather than as a control. */}
+          <div className="pi-detail-summary-hr pi-detail-summary-hr-foot" role="presentation" />
+
+          <div className="pi-detail-summary-owner">
+            {ownership.name && <Avatar name={ownership.name} size={30} />}
+            <div className="pi-detail-summary-owner-text">
+              <div className="pi-detail-summary-owner-top">
+                <span className="pi-detail-summary-owner-name">
+                  {ownership.name ?? 'Not named'}
+                </span>
+                <PiStatusBadge label={statusLabel} tone={tone} />
+              </div>
+              {/* "PI created by", never "Assignee": nobody was assigned this
+                  record — somebody made it. */}
+              <div className="pi-detail-summary-owner-when">
+                PI created by · {ownership.when}
+              </div>
+              {workbookName && (
+                <span
+                  className="pi-detail-summary-file"
+                  title={workbookName}
+                  style={{ fontSize: '11px', color: colors.tertiary }}
+                >
+                  <FileSpreadsheet size={11.5} strokeWidth={1.9} style={{ flexShrink: 0 }} />
+                  <span className="pi-detail-summary-file-name">{workbookName}</span>
+                </span>
               )}
-              {/* The commitment the document stated, under an absent due date
-                  only. Muted, prefixed, and at the size of supporting text — it
-                  is prose about a lead time, and it must never read as the date
-                  the row above it does not have. */}
-              {date.note && (
-                <div style={{
-                  fontSize: '11.5px', color: colors.muted, lineHeight: 1.4, marginTop: '1px',
-                }}>
-                  {date.note}
+            </div>
+          </div>
+        </div>
+
+      {/* ── The finance surface ──
+            What the order is worth, a rule, then what has arrived against it:
+            the label and the percentage on one line, the amount as the
+            strongest number under them, one full-width bar, and the two
+            controls beneath. The percentage lives in the header rather than
+            floating beside the bar, where it read as a caption for the track
+            instead of a figure in its own right. */}
+        <section className="pi-detail-summary-paycard">
+
+          {/* The order's worth, as label-left / figure-right rows — the same
+              idiom the Commercial breakdown card below uses, because these are
+              two lines OF that breakdown. Side by side as label-over-value
+              pairs they drifted to opposite ends of the surface and stopped
+              reading as a pair at all.
+
+              Outside the payment branch below because these come from the
+              record itself: they must not blank out while the payment summary
+              is still being read. */}
+          {/* ── The surface's two upper areas, side by side ──
+              What the order is WORTH on the left, what has ARRIVED against it
+              on the right, one hairline between them. The hairline is an
+              element rather than a border, so it insets from the surface's top
+              and bottom padding instead of running its whole height; at phone
+              width the same element lies down and becomes the horizontal rule
+              between the two stacked areas. */}
+          <div className="pi-detail-summary-paybody">
+
+            <div className="pi-detail-summary-values">
+              {figures.map(figure => (
+                /* Label OVER value, the same way in both rows. Side by side as
+                   label-left/figure-right they need ~166px, and 38% of this
+                   surface at tablet is not that — the label wrapped, which is
+                   the compressed reading a narrow column has to avoid. */
+                <div key={figure.key} className="pi-detail-summary-value-row">
+                  <div className="pi-detail-summary-metric-label">{figure.label}</div>
+                  <div className={figure.kind === 'missing'
+                    ? 'pi-detail-summary-metric-absent'
+                    : 'pi-detail-summary-money'}>
+                    {figure.value}
+                  </div>
+                </div>
+              ))}
+
+              {/* ── The billing declaration ──
+                  Below the two figures it is measured against, in space this
+                  column already had. Not another card and not behind a rule: a
+                  wider gap above it is what says "a different kind of fact",
+                  and the label treatment is the figures' own. */}
+              <div className="pi-detail-summary-value-row pi-detail-summary-billing">
+                <div className="pi-detail-summary-billing-head">
+                  <span className="pi-detail-summary-metric-label">{BILLING_LABEL}</span>
+                  {canEditBilling && (
+                    <button
+                      type="button"
+                      onClick={onEditBilling}
+                      className="pi-detail-summary-billing-action"
+                      aria-haspopup="dialog"
+                      aria-label={`${billing.action} ${BILLING_LABEL.toLowerCase()}`}
+                    >
+                      {billing.action}
+                    </button>
+                  )}
+                </div>
+                {/* UNDECLARED IS MUTED, and says so in words. Not 0%, not an em
+                    dash — nobody has decided yet. */}
+                <div className={billing.declared
+                  ? 'pi-detail-summary-money'
+                  : 'pi-detail-summary-metric-absent'}>
+                  {billing.percent}
+                </div>
+              </div>
+
+              {/* Only where there is a percentage to measure. A missing pre-GST
+                  total shows the card's own missing treatment, never ₹0. */}
+              {billing.declared && (
+                <div className="pi-detail-summary-value-row">
+                  <div className="pi-detail-summary-metric-label">{BILLING_VALUE_LABEL}</div>
+                  <div className={billing.amountMissing
+                    ? 'pi-detail-summary-metric-absent'
+                    : 'pi-detail-summary-money'}>
+                    {billing.amount}
+                  </div>
                 </div>
               )}
             </div>
-          ))}
-        </section>
 
-        <section className="pi-detail-summary-group pi-detail-summary-payment pi-detail-summary-divided">
-          <GroupLabel>Payment received</GroupLabel>
+            <div className="pi-detail-summary-payrule" role="presentation" />
 
+            <div className="pi-detail-summary-paystate">
           {payment === null ? (
-            <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+            <>
+              <div className="pi-detail-summary-payhead">
+                <span className="pi-detail-summary-metric-label">Payment received</span>
+              </div>
+              <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+            </>
           ) : (
             <>
-              {/* The figure IS the way in. One control carrying the amount, the
-                  total it is measured against and the percentage — so the thing
-                  a reader looks at is the thing they can click, rather than a
-                  "view details" link beside it. */}
+              <div className="pi-detail-summary-payhead">
+                <span className="pi-detail-summary-metric-label">Payment received</span>
+                <span className="pi-detail-summary-percent">{payment.percent}</span>
+              </div>
+
+              {/* The figure IS the way in — one control carrying the amount
+                  and the total it is measured against. */}
               <button
                 type="button"
                 onClick={onOpenPayments}
@@ -266,58 +395,16 @@ export function PiSummaryCard({
                 className="pi-detail-summary-open"
                 title="Show every payment recorded against this PI"
               >
-                <span style={{
-                  fontSize: '20px', fontWeight: 700, color: colors.primary,
-                  fontVariantNumeric: 'tabular-nums', lineHeight: 1.15,
-                }}>
-                  {payment.received}
-                </span>
-                <span style={{ fontSize: '12px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
-                  {payment.ofTotal}
-                </span>
+                <span className="pi-detail-summary-received">{payment.received}</span>
+                <span className="pi-detail-summary-oftotal">{payment.ofTotal}</span>
               </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div className="pi-detail-summary-bar" role="presentation">
-                  <div
-                    className="pi-detail-summary-bar-fill"
-                    style={{ width: `${payment.barPercent}%` }}
-                  />
-                </div>
-                <span style={{
-                  fontSize: '12.5px', fontWeight: 700, color: colors.primary,
-                  fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-                }}>
-                  {payment.percent}
-                </span>
+              <div className="pi-detail-summary-bar" role="presentation">
+                <div
+                  className="pi-detail-summary-bar-fill"
+                  style={{ width: `${payment.barPercent}%` }}
+                />
               </div>
-
-              {/* WHAT THE ORDER IS MADE OF, in the space the payment column
-                  already had. Two figures, not the breakdown: the product lines
-                  before anything is added, and the pre-tax total. GST, discount,
-                  fabric, packing and transport stay in the Commercial breakdown
-                  — repeating the whole calculation here would make a second
-                  place to read it, which is what this card exists to avoid.
-
-                  Both values are the breakdown's OWN strings, picked from the
-                  same rows it renders. An em dash means the PI never stated the
-                  figure and is deliberately not a zero. */}
-              {figures.length > 0 && (
-                <div className="pi-detail-summary-figures">
-                  {figures.map(figure => (
-                    <div key={figure.key}>
-                      <div style={{ fontSize: '11px', color: colors.muted }}>{figure.label}</div>
-                      <div style={{
-                        fontSize: '13px', fontWeight: 600,
-                        color: figure.kind === 'missing' ? colors.muted : colors.secondary,
-                        fontVariantNumeric: 'tabular-nums',
-                      }}>
-                        {figure.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
 
               {/* Money Finance has not decided is NOT in the bar or the
                   percentage, and saying so is what keeps the two honest. */}
@@ -329,12 +416,8 @@ export function PiSummaryCard({
               )}
 
               {notice && (
-                <div style={{
-                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px',
-                  padding: '7px 9px', borderRadius: '6px',
-                  background: colors.greenTint, border: '1px solid rgba(69,168,112,0.2)',
-                }}>
-                  <div style={{ fontSize: '11.5px', color: colors.secondary }}>{notice}</div>
+                <div className="pi-detail-summary-notice">
+                  <span style={{ fontSize: '11.5px', color: colors.secondary }}>{notice}</span>
                   <button
                     type="button" onClick={onDismissNotice} aria-label="Dismiss"
                     style={{
@@ -347,7 +430,12 @@ export function PiSummaryCard({
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+              {/* THE CONTROLS BELONG TO THE PAYMENT SECTION, immediately under
+                  the bar they act on. As a footer spanning the whole surface
+                  they were detached from the thing they change, and the auto
+                  margin that pushed them down opened a hole in the middle of
+                  the card. */}
+              <div className="pi-detail-summary-actions">
                 {/* Unchanged gate: canAddPiPayment decides this, exactly as
                     record_pi_submission_payment() decides it server-side. */}
                 {canAdd && (
@@ -355,12 +443,17 @@ export function PiSummaryCard({
                     Add payment
                   </button>
                 )}
+                {/* ONE label, always. It opens PiPaymentDetailsModal in either
+                    case, so wording that changed with the record made the same
+                    control look like two. */}
                 <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
-                  {payment.hasDetail ? 'View payments' : 'Payment details'}
+                  {PAYMENT_DETAILS_LABEL}
                 </button>
               </div>
             </>
           )}
+            </div>
+          </div>
         </section>
 
       </div>
@@ -370,27 +463,6 @@ export function PiSummaryCard({
 
 /** A small sentence-case group label. Not uppercase: three shouted words over
  *  every group was noise on a card meant to be scanned. */
-function GroupLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, marginBottom: '1px' }}>
-      {children}
-    </div>
-  )
-}
-
-/** A fact the PI did not carry, said quietly and never invented. */
-function Absent({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div style={{
-      display: 'inline-flex', alignItems: 'center', gap: '5px',
-      fontSize: '12.5px', color: colors.muted,
-    }}>
-      <span style={{ display: 'flex', flexShrink: 0 }}>{icon}</span>
-      {children}
-    </div>
-  )
-}
-
 // ── 3. Workflow and actions ───────────────────────────────────────────────────
 
 /** Somebody's own words, verbatim, on a tinted ground. */
@@ -518,6 +590,25 @@ export function PiWorkflowPanel({
     panel.instruction || reviewNote || employeeReply || advanceRefusal
     || finance || approvedOrder || (isReviewer && approvalBlocker),
   )
+
+  /**
+   * A PANEL WITH NOTHING IN IT IS NOT DRAWN.
+   *
+   * describeWorkflowPanel gives a plain draft viewed by somebody who can
+   * neither submit nor review it `heading: "Draft"`, `meta: null` and no
+   * instruction — so the card came out as a bordered white box containing one
+   * word, directly under a summary whose status badge already says it. That is
+   * a restatement occupying a full section of the page, and it pushed the
+   * product table down for nothing.
+   *
+   * The test is emptiness, NOT the draft state: any status that offers this
+   * viewer no action and carries no note, no finance line, no advance band and
+   * no Order link is the same empty box. Every state that carries any of those
+   * — a returned PI with management's note, a submitted one with the finance
+   * line, a reviewer's decisions, an approved one naming its Order — still
+   * renders exactly as before, because each sets hasActions or hasBody.
+   */
+  if (!hasActions && !hasBody && !panel.meta && !advanceBand) return null
 
   return (
     <PiCard style={panel.closed ? undefined : { borderColor: tone.border }}>

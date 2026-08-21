@@ -29,11 +29,27 @@
 // NOTHING HERE DECIDES AUTHORITY. These are dialogs; the RPCs behind them
 // re-derive the actor, the permission and the record's state in the database.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
+import { MultilineText } from '@/components/ui/MultilineText'
 import { useScrollLock } from '@/hooks/useScrollLock'
-import { shouldCloseFormModal, type ModalDismissReason } from '@/lib/ui/modalDismissal'
+import {
+  FOCUSABLE_SELECTOR,
+  resolveTrapTarget,
+  shouldCloseFormModal,
+  type ModalDismissReason,
+} from '@/lib/ui/modalDismissal'
+import {
+  BILLING_LABEL,
+  NOT_PROVIDED,
+  type ClientDetails,
+} from '@/app/orders/drafts/[submissionId]/piDetailView'
+import {
+  BILLING_RANGE_HELP,
+  BILLING_UNDECLARED,
+  parseBillingPercentage,
+} from '@/lib/orders/billingPercentage'
 import {
   SUBMIT_BUTTON_LABEL,
   SUBMIT_CONFIRM_NOTE,
@@ -1107,6 +1123,299 @@ export function PiDeleteConfirmModal({
             </button>
           </Footer>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── The client, in full ───────────────────────────────────────────────────────
+
+/**
+ * WHAT THE CARD STOPPED SAYING.
+ *
+ * The summary card printed the client's name, a phone number and a merged
+ * address on a supporting line under it. Three of those four facts are
+ * reference material: nobody scans a PI to re-read the billing address, they
+ * open it to answer a question about the order. So the card keeps the name and
+ * this dialog holds the rest, one click away.
+ *
+ * BILLING AND SHIPPING ARE ANSWERED SEPARATELY, ALWAYS — including when they
+ * carry the same text. The card was right to merge them for one line; a
+ * details dialog is where somebody checks where an order is going, and
+ * "the same as billing" is an answer they have to be shown rather than left to
+ * infer from an absence.
+ *
+ * NOTHING IS FETCHED. Every value here is already on the page: the same
+ * columns buildClientDetails read out of the submission the detail view
+ * already loaded. This dialog adds no request and no route.
+ */
+export function PiClientDetailsModal({ client, onClose }: {
+  client: ClientDetails
+  onClose: () => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * FOCUS GOES IN AND COMES BACK.
+   *
+   * `aria-modal="true"` tells assistive technology that the rest of the page is
+   * inert. Without this, that was a lie: Tab walked straight out of the dialog
+   * into the payment controls behind it, and closing left focus on <body> with
+   * no way back to where the reader had been.
+   *
+   * Same three moves as OrderModal, which is where this pattern already lives:
+   * remember the opener, focus the dialog, restore the opener on unmount.
+   */
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    dialogRef.current?.focus()
+    return () => { opener?.focus?.() }
+  }, [])
+
+  // Escape closes; Tab and Shift+Tab cannot leave. Capture phase, so the trap
+  // runs before anything inside the dialog handles the key.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      if (e.key !== 'Tab') return
+
+      const root = dialogRef.current
+      if (!root) return
+
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onClose])
+
+  const row = (label: string, body: React.ReactNode) => (
+    <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      <div style={KEY_STYLE}>{label}</div>
+      <div style={{ fontSize: '13px', color: colors.primary, lineHeight: 1.45 }}>{body}</div>
+    </div>
+  )
+
+  /** An absent value is stated, never left as a blank line to be puzzled over. */
+  const absent = <span style={{ color: colors.muted }}>{NOT_PROVIDED}</span>
+
+  const party = (label: string, p: { name: string | null; address: string | null }) =>
+    row(label, (
+      <>
+        {p.name && <div style={{ fontWeight: 600 }}>{p.name}</div>}
+        {p.address
+          ? <MultilineText style={{ margin: 0, fontSize: '13px', lineHeight: 1.45 }}>{p.address}</MultilineText>
+          : (p.name ? absent : absent)}
+      </>
+    ))
+
+  return (
+    // A backdrop click closes: this dialog holds no input to lose, so the
+    // form-modal rule that makes an outside click inert does not apply.
+    <div style={OVERLAY} onClick={onClose}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Client details"
+        tabIndex={-1}
+        style={{ ...PANEL, outline: 'none' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <ModalHeader title="Client details" subtitle={client.name} onClose={onClose} disabled={false} />
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {row('Client', <span style={{ fontWeight: 600 }}>{client.name}</span>)}
+          {row('Contact number', client.phone
+            ? <a href={`tel:${client.phone.tel}`} style={{ color: '#5585e8', textDecoration: 'none' }}>
+                {client.phone.label}
+              </a>
+            /* Present but not dialable: shown as the text it is, never as a
+               link that would dial nothing. */
+            : client.phoneText ?? absent)}
+          {party('Billing details', client.billTo)}
+          {party('Shipping details', client.shipTo)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── The billing declaration ───────────────────────────────────────────────────
+
+/**
+ * DECLARING HOW MUCH OF THE PRE-GST VALUE GETS BILLED.
+ *
+ * A dialog rather than a field left open on the card: the summary is read far
+ * more often than it is edited, and a permanent form in it would be a control
+ * competing with the figures it sits beside.
+ *
+ * WHAT THIS COMPONENT DOES NOT DECIDE. Not who may open it — the card only
+ * offers the trigger to a viewer describeSubmissionActions says may edit — and
+ * not whether the value is acceptable in the end. Both are re-derived by
+ * set_order_submission_billing_percentage against the record's own state, so a
+ * dialog reached some other way still cannot write.
+ *
+ * CLEARING IS A SEPARATE ANSWER, behind its own confirmation. Returning a
+ * declared percentage to undeclared is a real commercial change and reads
+ * nothing like a typo, so it is never one keystroke away from Save.
+ */
+export function PiBillingPercentageModal({
+  current, saving, failure, onCancel, onSave, onClear,
+}: {
+  /** The declared percentage, or null while undeclared. */
+  current: number | null
+  saving: boolean
+  failure: string | null
+  onCancel: () => void
+  onSave: (value: number) => void
+  onClear: () => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const inputId = useId()
+  const errorId = useId()
+  const [raw, setRaw] = useState(current === null ? '' : String(current))
+  const [confirmClear, setConfirmClear] = useState(false)
+  // Nothing is said about the value until the person has stopped typing it for
+  // the first time; an error appearing under a half-typed "3" is noise.
+  const [touched, setTouched] = useState(false)
+
+  const parsed = parseBillingPercentage(raw)
+  const unchanged = parsed.ok && current !== null && parsed.value === current
+  const canSave = parsed.ok && !unchanged && !saving
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    dialogRef.current?.focus()
+    return () => { opener?.focus?.() }
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    // The guard is here as well as on the button: Enter in a text input submits
+    // a form whatever the button's disabled state says.
+    if (!canSave || !parsed.ok) return
+    onSave(parsed.value)
+  }
+
+  const showError = touched && !parsed.ok && parsed.reason !== 'empty'
+
+  return (
+    // A backdrop click is inert: this holds typed input, by the BOE form-modal rule.
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={BILLING_LABEL}
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '400px', outline: 'none' }}
+      >
+        <ModalHeader
+          title={BILLING_LABEL}
+          subtitle="Of the total before GST"
+          onClose={onCancel}
+          disabled={saving}
+        />
+
+        <form onSubmit={submit} style={{ padding: '16px 20px', display: 'flex',
+          flexDirection: 'column', gap: '12px' }}>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <label htmlFor={inputId} style={KEY_STYLE}>{BILLING_LABEL}</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+              <input
+                id={inputId}
+                value={raw}
+                onChange={e => { setRaw(e.target.value); setConfirmClear(false) }}
+                onBlur={() => setTouched(true)}
+                disabled={saving}
+                inputMode="decimal"
+                autoFocus
+                placeholder="65"
+                aria-describedby={showError ? errorId : undefined}
+                aria-invalid={showError || undefined}
+                style={{
+                  flex: '1 1 auto', minWidth: 0, padding: '7px 10px', fontSize: '14px',
+                  fontVariantNumeric: 'tabular-nums',
+                  border: `1px solid ${showError ? '#d9534f' : colors.border}`,
+                  borderRadius: '7px', background: colors.base, color: colors.primary,
+                }}
+              />
+              <span aria-hidden="true" style={{ fontSize: '14px', fontWeight: 600, color: colors.secondary }}>
+                %
+              </span>
+            </div>
+            {showError
+              ? <div id={errorId} role="alert" style={{ fontSize: '11.5px', color: '#d9534f' }}>
+                  {parsed.ok ? '' : parsed.message}
+                </div>
+              : <div style={{ fontSize: '11.5px', color: colors.muted }}>{BILLING_RANGE_HELP}</div>}
+          </div>
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+
+            {/* Only where there is something to clear, and never in one press. */}
+            {current !== null && (
+              <span style={{ marginLeft: 'auto' }}>
+                {confirmClear ? (
+                  <button
+                    type="button" className="boe-btn boe-btn-ghost" disabled={saving}
+                    onClick={onClear}
+                    style={{ color: '#b3541e' }}
+                  >
+                    Confirm — return to {BILLING_UNDECLARED}
+                  </button>
+                ) : (
+                  <button
+                    type="button" className="boe-btn boe-btn-ghost" disabled={saving}
+                    onClick={() => setConfirmClear(true)}
+                  >
+                    Clear
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        </form>
       </div>
     </div>
   )

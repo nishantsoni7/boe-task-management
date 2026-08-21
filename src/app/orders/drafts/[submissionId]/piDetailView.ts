@@ -44,7 +44,12 @@ import {
   DUE_DATE_ABSENT,
   supportingCommitment,
 } from '@/lib/orders/dueDate'
-import type { PiAmountRow } from '@/lib/pi/previewView'
+import {
+  billingValue,
+  formatBillingPercentage,
+  readBillingPercentage,
+} from '@/lib/orders/billingPercentage'
+import { formatInr, type PiAmountRow } from '@/lib/pi/previewView'
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
 
@@ -64,36 +69,52 @@ export type PiDetailTone = 'neutral' | 'blue' | 'amber' | 'red' | 'green'
  * be sixty characters long, and it gets its own quiet file treatment beside the
  * line rather than being allowed to push everything else onto a second row.
  */
-export function buildIdentityFacts(input: {
-  /** Already formatted. This module does no date work. */
-  savedAt: string
+export type PiOwnership = {
+  /** Whose PI this is, for the avatar and the name. Null when nobody is named. */
+  name: string | null
+  /** "Submitted 03 Aug 2026, 09:30 AM" — already formatted by the caller. */
+  when: string
+}
+
+/**
+ * WHO THIS PI BELONGS TO, as one group rather than a strip of loose facts.
+ *
+ * It used to be a dot-separated line above the card — "Submitted … by R. Sharma
+ * · PI by R. Sharma" — which printed the same person twice on the common PI and
+ * left the card's own identity band with only the client in it. The name, the
+ * timestamp and the status now sit together inside the card, beside the client
+ * they belong next to.
+ *
+ * THE NAME IS THE DOCUMENT'S OWN AUTHOR where the PI named one — that is what
+ * "PI created by" means, and it is a fact about the document rather than about
+ * the record's progress. The submitter is the fallback, because a PI that named
+ * nobody was still put there by somebody.
+ *
+ * AND IT IS NEVER SAID TWICE. When the submitter IS the named creator — which is
+ * the ordinary case — the timestamp line drops the "by …" it would otherwise
+ * carry, because the avatar beside it already answers who.
+ */
+export function buildOwnership(input: {
   /** order_submissions.source_created_by — whoever the PI document itself named. */
   documentAuthor: string | null
   /** Resolved display name of the person who submitted it, when it was. */
   submitterName: string | null
+  /** Already formatted. This module does no date work. */
   submittedAt: string | null
-}): string[] {
-  // THE PRODUCT COUNT IS NOT HERE ANY MORE. The Products card states it on its
-  // own header, three lines further down, and a strip that opened with it made
-  // the reader's first fact about this record the size of its table rather than
-  // where the record stands.
-  const facts: string[] = []
+  savedAt: string
+}): PiOwnership {
+  const name = input.documentAuthor ?? input.submitterName ?? null
 
-  // Submitted supersedes saved as "the last thing that happened to this record",
-  // so the two are never printed side by side.
-  if (input.submittedAt) {
-    facts.push(
-      input.submitterName
-        ? `Submitted ${input.submittedAt} by ${input.submitterName}`
-        : `Submitted ${input.submittedAt}`,
-    )
-  } else {
-    facts.push(`Saved ${input.savedAt}`)
+  if (!input.submittedAt) return { name, when: `Saved ${input.savedAt}` }
+
+  const submitter = input.submitterName
+  const attribute = submitter !== null && submitter !== name
+  return {
+    name,
+    when: attribute
+      ? `Submitted ${input.submittedAt} by ${submitter}`
+      : `Submitted ${input.submittedAt}`,
   }
-
-  if (input.documentAuthor) facts.push(`PI by ${input.documentAuthor}`)
-
-  return facts
 }
 
 // ── 2. Order overview ─────────────────────────────────────────────────────────
@@ -359,6 +380,63 @@ export function summaryCommercialFigures(rows: readonly PiAmountRow[]): SummaryF
     if (!row) return []
     return [{ key, label: SUMMARY_FIGURE_LABEL[key], value: row.value, kind: row.kind }]
   })
+}
+
+/**
+ * The billing declaration, as the card shows it.
+ *
+ * TWO STATES, NEVER THREE. Either a percentage was declared — and then there is
+ * a value to go with it — or it was not, and the card says `Undeclared` and
+ * shows no figure at all. There is no third state where a percentage exists but
+ * its value is unknown, because the value is derived from a total the record
+ * either has or does not.
+ *
+ * WHY `value` MAY BE MISSING WHILE `percent` IS DECLARED. total_before_gst is
+ * nullable. A PI whose workbook never stated a pre-tax total cannot produce a
+ * billing value, and the card must say so with its existing missing treatment
+ * rather than print ₹0 — a figure somebody would act on.
+ *
+ * NOTHING HERE DECIDES WHO MAY EDIT IT. `canEdit` is handed in, resolved from
+ * the same describeSubmissionActions the rest of the page uses, and enforced
+ * again by the RPC. See set_order_submission_billing_percentage.
+ */
+export type BillingSummary = {
+  /** `65%`, `35.5%`, or the undeclared wording. Never `0%`. */
+  percent: string
+  /** True when somebody has actually declared one. */
+  declared: boolean
+  /** The raw number, for the editor to start from. Null when undeclared. */
+  value: number | null
+  /** The billed amount, formatted — or null when there is nothing to show. */
+  amount: string | null
+  /** True when a percentage is declared but the pre-GST total is missing. */
+  amountMissing: boolean
+  /** `Set` for an undeclared record, `Edit` for a declared one. */
+  action: string
+}
+
+export const BILLING_LABEL = 'Billing percentage'
+export const BILLING_VALUE_LABEL = 'Billing value'
+
+export function buildBillingSummary(input: {
+  /** The stored column, as PostgREST returned it. */
+  raw: unknown
+  /** The authoritative pre-GST total, as a number. Never a formatted string. */
+  totalBeforeGst: number | null
+}): BillingSummary {
+  const value = readBillingPercentage(input.raw)
+  const declared = value !== null
+  const amount = billingValue({ totalBeforeGst: input.totalBeforeGst, percentage: value })
+  return {
+    percent: formatBillingPercentage(value),
+    declared,
+    value,
+    // formatInr renders a null as the em dash the rest of the card uses for a
+    // figure the record does not have.
+    amount: declared ? formatInr(amount) : null,
+    amountMissing: declared && amount === null,
+    action: declared ? 'Edit' : 'Set',
+  }
 }
 
 // ── 3. Workflow and actions ───────────────────────────────────────────────────
@@ -729,12 +807,36 @@ export function describeApprovedOrder(input: {
 /** "Not provided", said once, so the three groups cannot word it differently. */
 export const NOT_PROVIDED = 'Not provided'
 
-export type ClientSummary = {
+/**
+ * The client, as the card shows them and as the dialog behind the name
+ * spells them out.
+ *
+ * ONE SHAPE, TWO AUDIENCES. The card prints `name` and nothing else; the dialog
+ * prints all of it. They cannot disagree about who the client is, because there
+ * is only one resolution of the name and it happens here.
+ *
+ * NOTHING IS DEDUPLICATED. The card used to merge billing and shipping into one
+ * "location" and drop the second when it matched the first, which is right for
+ * a one-line summary and wrong for a details dialog: where an order is BILLED
+ * and where it is SHIPPED are different questions, and a reader who is checking
+ * them needs to see both answered — including, and especially, when the answer
+ * is the same. So both are carried, verbatim, and the dialog labels them.
+ */
+export type ClientDetails = {
+  /** The resolved client name — the header line, and the dialog's subject. */
   name: string
-  /** A dialable number and the digits to dial, or null when the PI gave none. */
+  /** A dialable number and the digits to dial, or null when none is dialable. */
   phone: { label: string; tel: string } | null
-  /** One place. Never the same text twice — see buildClientSummary. */
-  location: string | null
+  /**
+   * A contact number that exists but cannot be dialled — an extension, a
+   * fragment, a typo. Shown as text rather than offered as a link that would
+   * dial nothing. Null when there is no number at all.
+   */
+  phoneText: string | null
+  /** Who the order is billed to, and where. Either may be absent. */
+  billTo: { name: string | null; address: string | null }
+  /** Who the order ships to, and where. Either may be absent. */
+  shipTo: { name: string | null; address: string | null }
 }
 
 /**
@@ -761,20 +863,20 @@ const clean = (value: string | null | undefined): string | null => {
 }
 
 /**
- * Who the client is, how to reach them, and where they are — deduplicated.
+ * Who the client is, and both parties the order names — from columns the save
+ * route has always written. No new field, no second read.
  *
- * THE REPEATED NAME IS THE POINT. Most PIs bill and ship to the same party, and
- * the old card printed that party's name three times: as the page title, as
- * "Bill to" and as "Ship to". One name is shown here. A ship-to name is only
- * worth its line when it names somebody ELSE, and then it is shown as part of
- * the location rather than as a second identity.
+ * THE NAME resolves once: the PI's own client name, then the bill-to party,
+ * then the absent wording. The card shows this and only this; everything else
+ * below is for the dialog the name opens.
  *
  * THE PHONE FALLS BACK IN THE ORDER THE DOCUMENT MEANS IT: the header's own
  * contact number first, then the bill-to phone, then the ship-to phone. The
- * first that is dialable wins; the rest are not printed, because three numbers
- * with no way to tell them apart is not more contactable than one.
+ * first DIALABLE one wins. A number that exists but cannot be dialled is not
+ * discarded — it comes back as `phoneText`, so the reader sees what the
+ * document said instead of being told there is no number.
  */
-export function buildClientSummary(input: {
+export function buildClientDetails(input: {
   clientName: string | null
   billToName: string | null
   shipToName: string | null
@@ -783,29 +885,22 @@ export function buildClientSummary(input: {
   shipToPhone: string | null
   billingAddress: string | null
   shippingAddress: string | null
-}): ClientSummary {
+}): ClientDetails {
   const name = clean(input.clientName) ?? clean(input.billToName) ?? NOT_PROVIDED
 
-  const phone = telLink(input.contactNumber)
-    ?? telLink(input.billToPhone)
-    ?? telLink(input.shipToPhone)
+  const numbers = [input.contactNumber, input.billToPhone, input.shipToPhone]
+  const phone = numbers.map(telLink).find(Boolean) ?? null
+  // Only when nothing at all was dialable: the first number the document
+  // actually carried, shown as the text it is.
+  const phoneText = phone ? null : (numbers.map(clean).find(Boolean) ?? null)
 
-  const billing = clean(input.billingAddress)
-  const shipping = clean(input.shippingAddress)
-  const shipTo = clean(input.shipToName)
-  const billTo = clean(input.billToName)
-
-  // The billing address is where the client IS; the shipping address is where
-  // this order goes. They are the same for most orders, so the second is only
-  // added when it genuinely differs — and then it is labelled by the party it
-  // belongs to rather than left to be guessed at.
-  let location = billing ?? shipping
-  if (billing && shipping && billing !== shipping) {
-    const shipsTo = shipTo && shipTo !== billTo ? `${shipTo}, ${shipping}` : shipping
-    location = `${billing}\nShips to: ${shipsTo}`
+  return {
+    name,
+    phone,
+    phoneText,
+    billTo: { name: clean(input.billToName), address: clean(input.billingAddress) },
+    shipTo: { name: clean(input.shipToName), address: clean(input.shippingAddress) },
   }
-
-  return { name, phone, location }
 }
 
 export type DateSummary = {
@@ -878,8 +973,6 @@ export type PaymentSummaryView = {
   barPercent: number
   /** How many rows Finance has not decided yet, for the one-line note. */
   awaitingCount: number
-  /** Whether there is anything at all to open. */
-  hasDetail: boolean
 }
 
 /**
@@ -898,7 +991,6 @@ export function buildPaymentSummaryView(input: {
   /** The raw percentage, for the bar only. */
   percentValue: number | null
   awaitingCount: number
-  paymentCount: number
 }): PaymentSummaryView {
   const raw = input.percentValue
   const barPercent = raw === null || !Number.isFinite(raw)
@@ -911,6 +1003,5 @@ export function buildPaymentSummaryView(input: {
     percent: input.verifiedPercent,
     barPercent,
     awaitingCount: input.awaitingCount,
-    hasDetail: input.paymentCount > 0 || input.awaitingCount > 0,
   }
 }

@@ -199,6 +199,15 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
    * the prose in dispatch_commitment beside it.
    */
   due_date: string | null
+  /**
+   * How much of total_before_gst should be billed, as a percentage — or null
+   * for undeclared, which is neither 0 nor 100. Added by migration
+   * 20260923000000. PostgREST hands numeric back as a STRING; readBillingPercentage
+   * in src/lib/orders/billingPercentage.ts is the one place that converts it.
+   *
+   * Optional on the type so a payload from before the migration still parses.
+   */
+  billing_percentage?: number | string | null
 
   // How to reach the client, and where the order goes. Parsed into these
   // columns since 20260908000000 and stored ever since; the detail page only
@@ -331,6 +340,10 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // 20260922000000 and read here with everything else — dispatch_commitment
   // above keeps the prose, and the two are never confused for one another.
   'due_date',
+  // The declared billing percentage, read with everything else — one request,
+  // as before. Migration 20260923000000 adds it; see the deployment note in
+  // that file's header for why the migration goes first.
+  'billing_percentage',
   // Contact and location, for the top summary. No new column: every one of
   // these has been written by the save route since the table was created.
   'contact_number', 'bill_to_phone', 'ship_to_phone',

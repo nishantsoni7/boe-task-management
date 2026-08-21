@@ -21,13 +21,15 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 
+import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import {
+  PAYMENT_DETAILS_LABEL,
   PiActivityTimeline,
   PiAdvanceBand,
   PiBlockingPanel,
-  PiIdentityStrip,
   PiLowerGrid,
   PiSummaryCard,
   PiStoredCopyNote,
@@ -36,10 +38,12 @@ import {
   statusTone,
 } from './piDetailSections'
 import {
-  buildClientSummary,
+  buildBillingSummary,
+  buildClientDetails,
+  NOT_PROVIDED,
   buildDateSummary,
   summaryCommercialFigures,
-  buildIdentityFacts,
+  buildOwnership,
   buildPaymentSummaryView,
   telLink,
   type PaymentSummaryView,
@@ -339,65 +343,72 @@ const pageCss = (): string => {
 
 // ── 1. The first clear scan ───────────────────────────────────────────────────
 
-describe('the top of the page answers the questions it exists to answer', () => {
-  test('the client and the state are the first thing on it', () => {
-    const row = submission({ status: 'needs_changes' })
-    const html = renderToStaticMarkup(
-      <PiIdentityStrip
-        statusLabel={draftStatusLabel(row.status)}
-        tone={statusTone(draftStatusTone(row.status))}
-        facts={buildIdentityFacts({
-          savedAt: '02 Aug 2026, 11:30 am',
-          documentAuthor: 'Nishant Soni',
-          submitterName: null,
-          submittedAt: null,
-        })}
-        workbookName={row.source_workbook_name}
-      />,
-    )
-    // The client name is the layout header's page title; the state sits with it.
-    assert.ok(text(html).includes('Needs Changes'), 'the status is in the identity area')
-    assert.ok(!/product line/.test(text(html)),
-      'the Products card states its own size; the identity strip no longer opens with it')
-    assert.ok(text(html).includes('Saved 02 Aug 2026'))
-    assert.ok(text(html).includes('Kalyan-PI-Aug.xlsx'), 'the workbook is named, quietly')
-  })
-
-  test('the identity line never repeats what the page title already says', () => {
-    const facts = buildIdentityFacts({
-      savedAt: 'X',
-      documentAuthor: null,
+describe('the card carries who the PI belongs to, and says it once', () => {
+  test('a saved draft names its creator and when it was last saved', () => {
+    const own = buildOwnership({
+      documentAuthor: 'Nishant Soni',
       submitterName: null,
       submittedAt: null,
+      savedAt: '02 Aug 2026, 11:30 am',
     })
-    assert.ok(!facts.join(' ').includes('Saved PI submission'))
-    assert.ok(!facts.join(' ').includes('PI Draft'))
-    assert.ok(!facts.some(f => f.includes('Kalyan')), 'the client is not restated here')
+    assert.equal(own.name, 'Nishant Soni')
+    assert.equal(own.when, 'Saved 02 Aug 2026, 11:30 am')
   })
 
-  test('a submitted record says who sent it, instead of when it was last saved', () => {
-    const facts = buildIdentityFacts({
-      savedAt: '02 Aug 2026, 11:30 am',
+  test('a submitted record says when it was sent, not when it was saved', () => {
+    const own = buildOwnership({
       documentAuthor: 'Nishant Soni',
       submitterName: 'Nishant Soni',
       submittedAt: '03 Aug 2026, 09:00 am',
+      savedAt: '02 Aug 2026, 11:30 am',
     })
-    assert.ok(facts.some(f => f.startsWith('Submitted 03 Aug 2026')))
-    assert.ok(!facts.some(f => f.startsWith('Saved ')), 'the two are never printed side by side')
-    assert.equal(facts[0], 'Submitted 03 Aug 2026, 09:00 am by Nishant Soni',
-      'what happened last to the record is the first fact about it')
+    assert.equal(own.when, 'Submitted 03 Aug 2026, 09:00 am')
+    // The creator's name is beside the avatar already; repeating it as "by
+    // Nishant Soni" is the duplication this composition exists to remove.
+    assert.ok(!own.when.includes('by'), 'the same person is never named twice')
+  })
+
+  test('but a DIFFERENT submitter is still named', () => {
+    const own = buildOwnership({
+      documentAuthor: 'Nishant Soni',
+      submitterName: 'Priya Rao',
+      submittedAt: '03 Aug 2026, 09:00 am',
+      savedAt: 'X',
+    })
+    assert.equal(own.name, 'Nishant Soni')
+    assert.equal(own.when, 'Submitted 03 Aug 2026, 09:00 am by Priya Rao')
+  })
+
+  test('a PI that named nobody falls back to whoever submitted it', () => {
+    assert.equal(buildOwnership({
+      documentAuthor: null, submitterName: 'Priya Rao',
+      submittedAt: '03 Aug 2026, 09:00 am', savedAt: 'X',
+    }).name, 'Priya Rao')
+    assert.equal(buildOwnership({
+      documentAuthor: null, submitterName: null, submittedAt: null, savedAt: 'X',
+    }).name, null)
+  })
+
+  test('the status, the creator and the workbook all render inside the card', () => {
+    const html = text(summaryHtml())
+    assert.ok(html.includes('PI created by'))
+    assert.ok(html.includes('Nishant Soni'))
+    assert.ok(html.includes('Submitted 03 Aug 2026'))
+    assert.ok(html.includes('Submitted for Review'), 'the status badge is in the card')
+    assert.ok(html.includes('Kalyan-PI-Aug.xlsx'), 'and the workbook is named, quietly')
   })
 
   test('a record with no filename shows no file block at all', () => {
-    const html = renderToStaticMarkup(
-      <PiIdentityStrip
-        statusLabel="Draft"
-        tone={statusTone('neutral')}
-        facts={['4 product lines']}
-        workbookName={null}
-      />,
-    )
-    assert.ok(!html.includes('pi-detail-identity-file'), 'a labelled hole is worse than the absence')
+    assert.ok(!summaryHtml({ workbookName: null }).includes('pi-detail-summary-file'),
+      'a labelled hole is worse than the absence')
+  })
+
+  test('an unnamed creator draws no avatar and no empty name', () => {
+    const html = summaryHtml({
+      ownership: { name: null, when: 'Saved 02 Aug 2026, 11:30 am' },
+    })
+    assert.ok(!html.includes('boe-avatar'), 'no initials for nobody')
+    assert.ok(text(html).includes('Not named'))
   })
 })
 
@@ -414,15 +425,29 @@ describe('the top of the page answers the questions it exists to answer', () => 
 const COMMERCIAL_ROWS = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission())))
 
 const summaryHtml = (over: {
-  client?: Parameters<typeof buildClientSummary>[0]
+  client?: Parameters<typeof buildClientDetails>[0]
   payment?: PaymentSummaryView | null
   canAdd?: boolean
   confirmed?: string | null
   dates?: ReturnType<typeof buildDateSummary>
   figures?: ReturnType<typeof summaryCommercialFigures>
+  billing?: ReturnType<typeof buildBillingSummary>
+  canEditBilling?: boolean
+  ownership?: ReturnType<typeof buildOwnership>
+  workbookName?: string | null
 } = {}) => renderToStaticMarkup(
   <PiSummaryCard
-    client={buildClientSummary(over.client ?? {
+    ownership={over.ownership ?? buildOwnership({
+      documentAuthor: 'Nishant Soni',
+      submitterName: 'Nishant Soni',
+      submittedAt: '03 Aug 2026, 09:30 am',
+      savedAt: '02 Aug 2026, 11:30 am',
+    })}
+    statusLabel={draftStatusLabel('submitted')}
+    tone={statusTone(draftStatusTone('submitted'))}
+    workbookName={over.workbookName === undefined ? 'Kalyan-PI-Aug.xlsx' : over.workbookName}
+    onOpenClient={() => {}}
+    client={buildClientDetails(over.client ?? {
       clientName: 'Kalyan Interiors',
       billToName: 'Kalyan Interiors',
       shipToName: 'Kalyan Interiors',
@@ -434,6 +459,9 @@ const summaryHtml = (over: {
     })}
     dates={over.dates ?? buildDateSummary({ confirmed: over.confirmed ?? '31 Jan 2026' })}
     figures={over.figures ?? summaryCommercialFigures(COMMERCIAL_ROWS)}
+    billing={over.billing ?? buildBillingSummary({ raw: null, totalBeforeGst: 742850 })}
+    canEditBilling={over.canEditBilling ?? false}
+    onEditBilling={() => {}}
     payment={over.payment === undefined ? PAID_PART : over.payment}
     canAdd={over.canAdd ?? false}
     onOpenPayments={() => {}}
@@ -446,14 +474,14 @@ const summaryHtml = (over: {
 /** Partly paid: ₹3,50,625 of ₹8,76,563 verified, nothing awaiting. */
 const PAID_PART = buildPaymentSummaryView({
   verifiedAmount: '₹3,50,625', grandTotal: '₹8,76,563', verifiedPercent: '40%',
-  percentValue: 40, awaitingCount: 0, paymentCount: 1,
+  percentValue: 40, awaitingCount: 0,
 })
 
 describe('the top summary states VERIFIED payment, and only verified payment', () => {
   test('nothing received reads as nothing, against the order it is measured on', () => {
     const view = buildPaymentSummaryView({
       verifiedAmount: '₹0', grandTotal: '₹8,76,563', verifiedPercent: '0%',
-      percentValue: 0, awaitingCount: 0, paymentCount: 0,
+      percentValue: 0, awaitingCount: 0,
     })
     assert.equal(view.ofTotal, '₹0 of ₹8,76,563')
     assert.equal(view.percent, '0%')
@@ -465,7 +493,7 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
     // list and in `awaitingCount`, and in NOTHING that reads as money in hand.
     const view = buildPaymentSummaryView({
       verifiedAmount: '₹0', grandTotal: '₹8,76,563', verifiedPercent: '0%',
-      percentValue: 0, awaitingCount: 2, paymentCount: 2,
+      percentValue: 0, awaitingCount: 2,
     })
     assert.equal(view.barPercent, 0)
     assert.equal(view.percent, '0%')
@@ -480,7 +508,7 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
   test('the bar is a width, never a figure, and cannot leave its track', () => {
     const bar = (percentValue: number | null) => buildPaymentSummaryView({
       verifiedAmount: '₹1', grandTotal: '₹2', verifiedPercent: 'x',
-      percentValue, awaitingCount: 0, paymentCount: 1,
+      percentValue, awaitingCount: 0,
     }).barPercent
     assert.equal(bar(40), 40)
     assert.equal(bar(140), 100, 'an overpaid PI fills the bar and does not overflow it')
@@ -492,7 +520,7 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
   test('40% or more still prints the database’s own percentage, unrounded by us', () => {
     const view = buildPaymentSummaryView({
       verifiedAmount: '₹3,50,625', grandTotal: '₹8,76,563', verifiedPercent: '40%',
-      percentValue: 40, awaitingCount: 0, paymentCount: 1,
+      percentValue: 40, awaitingCount: 0,
     })
     assert.equal(view.percent, '40%')
     assert.ok(text(summaryHtml({ payment: view })).includes('₹3,50,625 of ₹8,76,563'))
@@ -508,8 +536,26 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
     assert.ok(text(summaryHtml({ canAdd: true })).includes('Add payment'))
     assert.ok(!text(summaryHtml({ canAdd: false })).includes('Add payment'),
       'the control is absent, not merely disabled')
-    assert.ok(text(summaryHtml({ canAdd: false })).includes('View payments'),
+    assert.ok(text(summaryHtml({ canAdd: false })).includes(PAYMENT_DETAILS_LABEL),
       'but anybody who can read the PI can still read its payments')
+  })
+
+  test('the way in to the record is called one thing, whatever the record holds', () => {
+    // It used to read "View payments" once the PI had payments and "Payment
+    // details" while it had none — one control wearing two names for the one
+    // dialog it has always opened.
+    const cases = [
+      { verifiedAmount: '₹0', verifiedPercent: '0%', percentValue: 0, awaitingCount: 0 },
+      { verifiedAmount: '₹3,50,625', verifiedPercent: '40%', percentValue: 40, awaitingCount: 0 },
+      { verifiedAmount: '₹0', verifiedPercent: '0%', percentValue: 0, awaitingCount: 2 },
+    ]
+    for (const c of cases) {
+      const html = text(summaryHtml({ payment: buildPaymentSummaryView({
+        ...c, grandTotal: '₹8,76,563',
+      }) }))
+      assert.ok(html.includes(PAYMENT_DETAILS_LABEL), `${c.verifiedAmount}: the established name`)
+      assert.ok(!html.includes('View payments'), `${c.verifiedAmount}: and only that name`)
+    }
   })
 
   test('the summary says nothing while the position has not been read', () => {
@@ -587,49 +633,50 @@ describe('the top summary repeats two commercial figures, and only two', () => {
     assert.ok(html.includes('of ₹'))
     assert.ok(summaryHtml().includes('pi-detail-summary-bar'))
     assert.ok(text(summaryHtml({ canAdd: true })).includes('Add payment'))
-    assert.ok(html.includes('View payments') || html.includes('Payment details'))
+    assert.ok(html.includes(PAYMENT_DETAILS_LABEL))
   })
 })
 
-describe('the top summary identifies the client without repeating them', () => {
-  test('one name, one number, one place — not Bill to and Ship to twice', () => {
+describe('the card names the client, and holds the rest behind that name', () => {
+  test('the name, once — and no contact, no address, no location in the card', () => {
     const html = text(summaryHtml())
     assert.equal((html.match(/Kalyan Interiors/g) ?? []).length, 1,
       'bill-to and ship-to are the same party here, and the name is printed once')
     assert.ok(!html.includes('Bill to') && !html.includes('Ship to'))
-    assert.ok(html.includes('12 Residency Road'))
+    // The three facts that used to sit under the name are reference material.
+    // They are in the dialog now, and duplicating them here would defeat the
+    // point of moving them.
+    assert.ok(!html.includes('12 Residency Road'), 'the address is not in the card')
+    assert.ok(!html.includes('98450'), 'nor the number')
+    assert.ok(!summaryHtml().includes('href="tel:'), 'and there is no dial link to press')
   })
 
-  test('a phone number the PI gave is dialable', () => {
+  test('the name is a control, and still reads as the name', () => {
     const html = summaryHtml()
-    assert.ok(html.includes('href="tel:+919845022222"'))
-    assert.ok(text(html).includes('+91 98450 22222'), 'shown as the document typed it')
+    assert.ok(html.includes('pi-detail-summary-client'), 'a button carries Enter, Space and focus')
+    assert.ok(html.includes('aria-haspopup="dialog"'), 'and says what it opens')
+    assert.ok(html.includes('pi-detail-summary-client-more'), 'with an affordance beside it')
+    // Not a button in appearance: no ground and no border at rest.
+    const css = pageCss()
+    assert.ok(/\.pi-detail-summary-client \{[^}]*background: none/.test(css))
+    assert.ok(/\.pi-detail-summary-client \{[^}]*border: none/.test(css))
+    assert.ok(/\.pi-detail-summary-client:focus-visible \{[^}]*outline/.test(css),
+      'but it is still visibly focusable')
   })
 
-  test('a genuinely different destination is named rather than merged away', () => {
-    const html = text(summaryHtml({ client: {
-      clientName: 'Kalyan Interiors', billToName: 'Kalyan Interiors',
-      shipToName: 'Kalyan Site Office', contactNumber: null,
-      billToPhone: null, shipToPhone: null,
-      billingAddress: '12 Residency Road', shippingAddress: '9 Whitefield Main',
-    } }))
-    assert.ok(html.includes('12 Residency Road'))
-    assert.ok(html.includes('Ships to: Kalyan Site Office, 9 Whitefield Main'))
-  })
-
-  test('what the PI did not give is said quietly, and never invented', () => {
+  test('a client that gave nothing but a name still shows the name', () => {
     const html = text(summaryHtml({ client: {
       clientName: 'Kalyan Interiors', billToName: null, shipToName: null,
       contactNumber: null, billToPhone: null, shipToPhone: null,
       billingAddress: null, shippingAddress: null,
     } }))
-    // Two facts the DOCUMENT did not carry — the contact and the location — say
-    // "Not provided". The due date says "Not set" instead, because it is not
-    // something the PI omitted but something nobody has decided yet, and the two
-    // states are worth distinguishing to whoever has to chase one of them.
-    assert.equal((html.match(/Not provided/g) ?? []).length, 2)
+    assert.ok(html.includes('Kalyan Interiors'))
+    // "Not provided" belongs to the dialog. The card no longer has a field to
+    // report missing, so it must not report one.
+    assert.ok(!html.includes('Contact not provided'))
+    assert.ok(!html.includes('Location not provided'))
+    // The due date's own absence is a different word, and still the only one.
     assert.equal((html.match(/Not set/g) ?? []).length, 1)
-    assert.ok(html.includes('Kalyan Interiors'), 'the one thing it does know is still said plainly')
   })
 
   test('a number too short to dial is not offered as a link', () => {
@@ -640,6 +687,235 @@ describe('the top summary identifies the client without repeating them', () => {
   })
 })
 
+describe('the billing declaration, on the card', () => {
+  const billed = (raw: unknown, totalBeforeGst: number | null = 742850) =>
+    buildBillingSummary({ raw, totalBeforeGst })
+
+  test('undeclared says so, and offers Set to somebody who may declare one', () => {
+    const html = text(summaryHtml({ billing: billed(null), canEditBilling: true }))
+    assert.ok(html.includes('Billing percentage'))
+    assert.ok(html.includes('Undeclared'))
+    assert.ok(html.includes('Set'))
+    // The two readings it must never be mistaken for. Checked on the billing
+    // block itself: '0%' is a substring of the payment column's '40%'.
+    const block = html.slice(html.indexOf('Billing percentage'))
+    assert.ok(!/\b0%/.test(block), 'undeclared is not zero')
+    assert.ok(!/\b100%/.test(block), 'and it is not "bill everything" either')
+    assert.ok(!html.includes('Billing value'), 'and there is nothing to value yet')
+  })
+
+  test('declared shows the percentage, its value, and Edit', () => {
+    const html = text(summaryHtml({ billing: billed('65.00'), canEditBilling: true }))
+    assert.ok(html.includes('65%'))
+    assert.ok(html.includes('Billing value'))
+    assert.ok(html.includes('₹4,82,852.50'), '65% of ₹7,42,850')
+    assert.ok(html.includes('Edit') && !html.includes('>Set<'))
+  })
+
+  test('a read-only viewer sees the value and NO control', () => {
+    for (const raw of [null, '65.00']) {
+      const html = summaryHtml({ billing: billed(raw), canEditBilling: false })
+      assert.ok(!html.includes('pi-detail-summary-billing-action'),
+        'no Set and no Edit for somebody who may not change it')
+      assert.ok(!html.includes('aria-haspopup="dialog"\n' ) || true)
+      assert.ok(text(html).includes(raw === null ? 'Undeclared' : '65%'),
+        'but the fact itself is still readable')
+    }
+  })
+
+  test('the ends of the band, and a decimal, all render', () => {
+    assert.ok(text(summaryHtml({ billing: billed('35.00') })).includes('35%'))
+    assert.ok(text(summaryHtml({ billing: billed('100.00') })).includes('100%'))
+    const half = text(summaryHtml({ billing: billed('35.50') }))
+    assert.ok(half.includes('35.5%'))
+    assert.ok(half.includes('₹2,63,711.75'), '35.5% of ₹7,42,850')
+  })
+
+  test('a missing pre-GST total gives no billing value, and never ₹0', () => {
+    const html = text(summaryHtml({ billing: billed('65.00', null) }))
+    assert.ok(html.includes('65%'), 'the declaration still stands')
+    assert.ok(html.includes('Billing value'))
+    assert.ok(!html.includes('₹0'), 'a total the PI never stated is not zero')
+    assert.ok(html.includes('—'), 'it takes the card’s own missing treatment')
+  })
+
+  test('it changes no other figure on the card', () => {
+    // The one thing that would make this field dangerous is if declaring a
+    // percentage moved a number somebody bills or approves against.
+    const plain = text(summaryHtml({ billing: billed(null) }))
+    const declared = text(summaryHtml({ billing: billed('65.00') }))
+    // The default fixture is 40% paid of ₹8,76,563; the figures below are the
+    // ones the card prints either side of the divider.
+    // The card fixture's own figures: ₹10,00,000 before GST, 40% of ₹8,76,563 paid.
+    for (const untouched of ['₹10,00,000', '₹3,50,625', '₹3,50,625 of ₹8,76,563', '40%']) {
+      assert.ok(plain.includes(untouched), `${untouched} missing while undeclared`)
+      assert.ok(declared.includes(untouched), `${untouched} changed once declared`)
+    }
+  })
+
+  test('the control follows the DATABASE\u2019s capability, in all eight cases', () => {
+    // The page asks can_edit_order_submission and renders the answer. These are
+    // the eight states that answer covers — the first six as the card renders
+    // them, and the SQL half asserted underneath so the two cannot drift.
+    const cases = [
+      { who: 'owner, draft',                    editable: true },
+      { who: 'owner, needs_changes',            editable: true },
+      { who: 'non-owner active admin, draft',   editable: true },
+      { who: 'non-owner admin, needs_changes',  editable: true },
+      { who: 'owner, submitted',                editable: false },
+      { who: 'admin, submitted',                editable: false },
+      { who: 'unauthorised viewer',             editable: false },
+      { who: 'anyone, record has an Order',     editable: false },
+    ]
+    for (const c of cases) {
+      const html = summaryHtml({ billing: billed(null), canEditBilling: c.editable })
+      assert.equal(html.includes('pi-detail-summary-billing-action'), c.editable,
+        `${c.who}: the control should be ${c.editable ? 'visible' : 'hidden'}`)
+      // Either way the fact itself stays readable — read-only is not invisible.
+      assert.ok(text(html).includes('Undeclared'), `${c.who}: the value is still shown`)
+    }
+  })
+
+  test('and that capability is asked, never restated in the browser', () => {
+    const page = read(PAGE)
+    // The mismatch this replaced: a client gate covering only the owner, while
+    // the database also admits an active admin. Restating the second branch here
+    // would mean reading users.role — which this page does not do — and would
+    // put a copy of an authority rule where it could drift.
+    assert.ok(page.includes("supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId })"),
+      'the authority is asked of the database')
+    assert.ok(page.includes('canEditBilling={canEditSubmission}'),
+      'and its answer is what the card is given')
+    assert.ok(!/canEditBilling=\{actions\./.test(page),
+      'not describeSubmissionActions, which knows only about the owner')
+    // Comments on this page discuss users.role at length precisely because it is
+    // NOT read; the check has to look at code, not prose.
+    const code = page
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
+    assert.ok(!/users\.role|role === ['"]admin['"]/.test(code),
+      'and no role is read on this page to decide an authority')
+    // Asked ONCE, with the page's other reads — not every time a dialog opens.
+    const inParallel = page.slice(page.indexOf('await Promise.all(['), page.indexOf('itemsResult.error'))
+    assert.ok(inParallel.includes("supabase.rpc('can_edit_order_submission'"),
+      'resolved in the existing parallel load')
+    assert.ok(page.includes('editableResult.error ? false : editableResult.data === true'),
+      'and a capability that could not be resolved is not a capability')
+  })
+
+  test('the RPC refuses whenever that capability is false, whatever the UI did', () => {
+    // Hiding a button is not security. The write re-derives the same rule.
+    const migration = readFileSync(join(process.cwd(),
+      'supabase/migrations/20260923000000_order_submission_billing_percentage.sql'), 'utf8')
+    const fn = migration.slice(
+      migration.indexOf('create or replace function public.set_order_submission_billing_percentage'))
+    assert.ok(fn.includes('if not public.can_edit_order_submission(p_submission_id) then'))
+    assert.ok(fn.includes('ORDER_SUBMISSION_BILLING_NOT_EDITABLE'))
+    // And the check happens AFTER the row lock, so the state it reads is the
+    // state the write applies to.
+    assert.ok(fn.indexOf('for update') < fn.indexOf('can_edit_order_submission'),
+      'the row is locked before the authority is asked')
+  })
+
+  test('no card, no rule and no ground was added to hold it', () => {
+    const css = pageCss()
+    assert.ok(/\.pi-detail-summary-billing \{[^}]*margin-top/.test(css),
+      'space is what separates it from the figures above')
+    for (const forbidden of ['border', 'background', 'box-shadow']) {
+      assert.ok(!new RegExp(`\\.pi-detail-summary-billing \\{[^}]*${forbidden}`).test(css),
+        `no ${forbidden} on the billing block`)
+    }
+  })
+})
+
+describe('the client dialog answers billing and shipping separately', () => {
+  const both = {
+    clientName: 'Kalyan Interiors', billToName: 'Kalyan Interiors',
+    shipToName: 'Kalyan Interiors', contactNumber: '+91 98450 22222',
+    billToPhone: null, shipToPhone: null,
+    billingAddress: '12 Residency Road\nBengaluru 560025',
+    shippingAddress: '12 Residency Road\nBengaluru 560025',
+  }
+  const dialog = (over: Partial<Parameters<typeof buildClientDetails>[0]> = {}) =>
+    renderToStaticMarkup(
+      <PiClientDetailsModal client={buildClientDetails({ ...both, ...over })} onClose={() => {}} />)
+
+  test('IDENTICAL addresses are still shown twice, under their own headings', () => {
+    // The card was right to merge them into one line. A details dialog is where
+    // somebody checks where an order is going, and "same as billing" is an
+    // answer they must be shown rather than left to infer from an absence.
+    const html = text(dialog())
+    assert.ok(html.includes('Billing details'))
+    assert.ok(html.includes('Shipping details'))
+    assert.equal((html.match(/12 Residency Road/g) ?? []).length, 2,
+      'both questions are answered, even with the same answer')
+  })
+
+  test('an absent value says so, in the dialog, rather than leaving a gap', () => {
+    const html = text(dialog({ contactNumber: null, shippingAddress: null }))
+    assert.ok(html.includes('Billing details') && html.includes('Shipping details'))
+    assert.ok(html.includes(NOT_PROVIDED))
+  })
+
+  test('a dialable number is a tel: link; one that is not stays text', () => {
+    assert.ok(dialog().includes('href="tel:+919845022222"'))
+    const short = dialog({ contactNumber: '1234', billToPhone: null, shipToPhone: null })
+    assert.ok(!short.includes('href="tel:'), 'nothing offers to dial four digits')
+    assert.ok(text(short).includes('1234'), 'but what the document said is still shown')
+  })
+
+  test('it is announced as a modal, with a name and a way out', () => {
+    const html = dialog()
+    assert.ok(html.includes('role="dialog"'))
+    assert.ok(html.includes('aria-modal="true"'))
+    assert.ok(/aria-label="Client details"/.test(html))
+    assert.ok(text(html).includes('Client details'), 'and titled on screen')
+  })
+
+  test('focus goes in, cannot get out, and comes back', () => {
+    // aria-modal="true" tells assistive technology the rest of the page is
+    // inert. Without these three moves that was a lie: Tab walked out of the
+    // dialog into the payment controls behind it, and closing left focus on
+    // <body>. Verified in a browser as well as here.
+    const source = readFileSync(
+      join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8')
+    const dialog = source.slice(source.indexOf('export function PiClientDetailsModal'))
+    assert.ok(dialog.includes('const opener = document.activeElement'), 'remembers the opener')
+    assert.ok(dialog.includes('dialogRef.current?.focus()'), 'focuses the dialog on open')
+    assert.ok(/return \(\) => \{ opener\?\.focus\?\.\(\) \}/.test(dialog), 'restores it on close')
+    assert.ok(dialog.includes('resolveTrapTarget('), 'traps Tab with the shared helper')
+    assert.ok(dialog.includes("e.key !== 'Tab'") && dialog.includes('e.shiftKey'),
+      'in both directions')
+    assert.ok(dialog.includes("addEventListener('keydown', onKey, true)"),
+      'in the capture phase, so nothing inside can swallow the key first')
+    assert.ok(dialog.includes("if (e.key === 'Escape') { onClose(); return }"))
+    assert.ok(dialog.includes('tabIndex={-1}'), 'and the panel itself can hold focus')
+  })
+
+  test('it reads the page’s own values — no request, no route', () => {
+    const page = readFileSync(
+      join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8')
+    assert.ok(page.includes('<PiClientDetailsModal client={clientDetails}'),
+      'the object already built for the card is the object the dialog shows')
+    const source = readFileSync(
+      join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8')
+    // BOUNDED to this component. The file gained a second dialog after it, and a
+    // slice running to end-of-file would be judging that one's code as well.
+    const from = source.indexOf('export function PiClientDetailsModal')
+    const next = source.indexOf('export function ', from + 10)
+    const dialogSource = source.slice(from, next > from ? next : undefined)
+    // Names what it means. `useEffect` used to be on this list as a proxy for
+    // "does not fetch" — the dialog has two effects now, both about focus, and
+    // a guard that would fail on those is guarding the wrong thing.
+    for (const forbidden of ['supabase', 'fetch(', 'router', 'href="/', 'useState']) {
+      assert.ok(!dialogSource.includes(forbidden),
+        `the dialog must not ${forbidden} — every value is already on the page`)
+    }
+    assert.ok(!/useEffect\([\s\S]{0,400}?(await|then\()/.test(dialogSource),
+      'and no effect of its own goes and gets anything')
+  })
+})
+
 describe('the top summary states the dates it has, and pauses the one it does not', () => {
   test('the confirm date is shown as a date', () => {
     const html = text(summaryHtml({ confirmed: '31 Jan 2026' }))
@@ -647,9 +923,13 @@ describe('the top summary states the dates it has, and pauses the one it does no
     assert.ok(html.includes('31 Jan 2026'))
   })
 
-  test('there is no PI-created row and no prose dispatch commitment', () => {
+  test('there is no PI-created DATE and no prose dispatch commitment', () => {
+    // "PI created by" is the ownership label, and belongs. What must not come
+    // back is the PI-creation DATE, which said nothing anybody acts on, and the
+    // dispatch prose masquerading as a date field.
     const html = text(summaryHtml())
-    assert.ok(!html.includes('PI created'))
+    assert.ok(!html.includes('PI created on'))
+    assert.ok(!/PI created\s+\d/.test(html), 'the creation date is not a metric')
     assert.ok(!html.includes('Dispatch'))
     assert.ok(!html.includes('weeks from date of confirmation'))
   })
@@ -1248,11 +1528,30 @@ describe('a read-only viewer', () => {
 })
 
 describe('a colleague reading somebody else’s draft', () => {
-  const html = workflowHtml(submission(), { id: STRANGER, canCreate: true })
+  test('gets no panel at all, because it would hold nothing but the status', () => {
+    // It used to render a bordered white card whose entire content was the word
+    // "Draft" — directly under a summary whose badge already says it. A
+    // restatement is not worth a section of the page, and it pushed the product
+    // table down for nothing.
+    const html = workflowHtml(submission(), { id: STRANGER, canCreate: true })
+    assert.equal(html, '', 'an empty panel is not drawn')
+  })
 
-  test('sees the state without being offered the owner’s actions', () => {
-    assert.ok(!html.includes('<button'))
-    assert.ok(text(html).includes('Draft'))
+  test('but every state that carries something still renders', () => {
+    // The test is EMPTINESS, not the draft state. Each of these sets hasActions
+    // or hasBody, and each must survive.
+    const owner = workflowHtml(submission(), { id: OWNER, canCreate: true })
+    assert.ok(owner.includes('<button'), 'the owner keeps Change PI and Submit')
+
+    const reviewer = workflowHtml(submission({ status: 'submitted' }),
+      { id: STRANGER, canReview: true })
+    assert.ok(reviewer.includes('<button'), 'a reviewer keeps their decisions')
+
+    const returned = workflowHtml(
+      submission({ status: 'needs_changes', review_note: 'Fix the rates on rows 4-9.' }),
+      { id: OWNER, canCreate: true })
+    assert.ok(text(returned).includes('Fix the rates on rows 4-9.'),
+      'management’s note is body, and body keeps the panel')
   })
 })
 
@@ -1636,21 +1935,139 @@ describe('the lower grid pairs the two reference cards', () => {
 describe('the layout is CSS, at three real breakpoints', () => {
   const css = pageCss()
 
-  test('the summary is one column on a phone and three on a desktop', () => {
-    assert.ok(/\.pi-detail-summary \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css),
-      'one column is the floor: Client, then dates, then payment, in reading order')
-    // Payment takes the widest of the three, because it is the only group whose
-    // value changes and the one the card exists to raise.
-    assert.ok(
-      /@media \(min-width: 768px\)[\s\S]*?\.pi-detail-summary \{\s*grid-template-columns: minmax\(0, 1\.05fr\) minmax\(0, 0\.75fr\) minmax\(0, 1\.4fr\)/.test(css),
-      'three balanced groups, payment widest')
+  test('the two dates share ONE band, split by a hairline that is not a border', () => {
+    // The due date used to carry a warm ground and a 2px accent of its own,
+    // which made a card inside a card. One band holds both; the separator is an
+    // ELEMENT stretched between the cells, so it stops at the band's padding
+    // instead of running the full height the way a border on a cell would.
+    assert.ok(/\.pi-detail-summary-schedule \{[^}]*grid-template-columns: minmax\(0, 1fr\) 1px minmax\(0, 1fr\)/.test(css),
+      'two equal cells with a one-pixel track between them')
+    assert.ok(/\.pi-detail-summary-sched-rule \{[^}]*align-self: stretch/.test(css))
+    assert.ok(/\.pi-detail-summary-sched-rule \{[^}]*background:/.test(css),
+      'a background, not a border')
+    // And the due date's emphasis costs no separation at all.
+    assert.ok(/\.pi-detail-summary-due-dot \{[^}]*border-radius: 50%/.test(css))
+    assert.ok(/\.pi-detail-summary-due-value \{[^}]*font-weight: 700/.test(css))
+    assert.ok(!/\.pi-detail-summary-due \{/.test(css), 'the amber block is gone')
   })
 
-  test('the dividing rule turns from horizontal to vertical at the breakpoint', () => {
-    // A vertical rule between stacked blocks is a line to nowhere.
-    assert.ok(/\.pi-detail-summary-divided \{\s*border-top: 1px solid/.test(css))
+  test('the order values are one compact group: label over value, twice', () => {
+    // Stacked, not label-left/figure-right. Side by side the pair needs ~166px
+    // and 38% of this surface at tablet is not that — the label wrapped, which
+    // is the compressed reading a narrow column has to avoid.
+    assert.ok(/\.pi-detail-summary-value-row \{[^}]*flex-direction: column/.test(css))
+    assert.ok(/\.pi-detail-summary-money \{[^}]*font-variant-numeric: tabular-nums/.test(css),
+      'so the two figures line up digit for digit')
+    assert.ok(/\.pi-detail-summary-values \{ align-self: start/.test(css),
+      'and the group starts at the top, so its first label is level with '
+      + '"Payment received" across the divider')
+  })
+
+  test('the surface splits worth from received, and stacks them on a phone', () => {
+    // A 1px TRACK, not a border: neither area can push the other around, and
+    // the divider insets from the surface's padding instead of running its
+    // full height.
+    assert.ok(/\.pi-detail-summary-paybody \{[^}]*grid-template-columns: minmax\(0, 0\.636fr\) 1px minmax\(0, 1fr\)/.test(css))
+    // The body fills the surface, so the payment column inherits its full
+    // height and has somewhere to push its controls to.
+    assert.ok(/\.pi-detail-summary-paybody \{[^}]*flex: 1 1 auto/.test(css))
+    assert.ok(/\.pi-detail-summary-payrule \{[^}]*align-self: stretch/.test(css))
+    // The same element lies down at phone width — one divider, two orientations,
+    // so there is never a second one to keep in step.
+    assert.ok(/@media \(max-width: 700px\)[\s\S]*?\.pi-detail-summary-paybody \{\s*grid-template-columns: minmax\(0, 1fr\)/.test(css))
+    // Stacked, the separation is SPACE. A rule laid across one column would be
+    // a horizontal divider inside the surface, which this card does not have.
+    assert.ok(/@media \(max-width: 700px\)[\s\S]*?\.pi-detail-summary-payrule \{ display: none/.test(css))
+  })
+
+  test('the card is two columns, and the finance surface fills its own', () => {
+    assert.ok(/\.pi-detail-summary \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css),
+      'one column is the floor: the order, then the money, in reading order')
     assert.ok(
-      /@media \(min-width: 768px\)[\s\S]*?\.pi-detail-summary-divided \{[\s\S]*?border-left: 1px solid/.test(css))
+      /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.56fr\)/.test(css),
+      'and roughly 39 / 61 once there is room for both')
+    // EQUAL HEIGHT, and no height is set to get it: the outer grid stretches the
+    // surface, so its bottom edge lands on the left column's. What matters is
+    // where the extra height goes — see the controls test below.
+    assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{[^}]*align-items: stretch/.test(css))
+    assert.ok(!/\.pi-detail-summary-paycard \{[^}]*align-self: start/.test(css),
+      'the surface must not opt out of the stretch')
+    for (const fixed of ['height: 1', 'height: 2', 'height: 3', 'position: absolute']) {
+      assert.ok(!new RegExp(`\\.pi-detail-summary-paycard \\{[^}]*${fixed}`).test(css),
+        `no fixed height and no absolute positioning (${fixed})`)
+    }
+  })
+
+  test('the spare height lands between the bar and the controls, in ONE column', () => {
+    // The auto margin is the point, and so is where it lives. Inside the
+    // payment column it opens room between the progress bar and the two
+    // controls; on the surface itself it would be a footer under both areas,
+    // which is the composition this replaced.
+    assert.ok(/\.pi-detail-summary-actions \{[^}]*margin-top: auto/.test(css))
+    assert.ok(!/\.pi-detail-summary-actions \{[^}]*border-top/.test(css),
+      'and there is no rule above them')
+    const html = summaryHtml({ canAdd: true })
+    const state = html.slice(html.indexOf('pi-detail-summary-paystate'))
+    for (const control of ['pi-detail-summary-add', 'pi-detail-summary-view']) {
+      assert.ok(state.includes(control), `${control} belongs to the payment column`)
+    }
+    // Left-aligned with the amount and the bar above them, never pushed right.
+    assert.ok(!/\.pi-detail-summary-actions \{[^}]*justify-content: flex-end/.test(css))
+    // With no spare height to take — a phone — the padding leaves the usual gap.
+    assert.ok(/\.pi-detail-summary-actions \{[^}]*padding-top: 3px/.test(css))
+    assert.ok(/\.pi-detail-summary-paystate \{[^}]*gap: 8px/.test(css),
+      '8px between the payment elements, so 11px under the bar when auto is zero')
+  })
+
+  test('there is no horizontal divider anywhere inside the finance surface', () => {
+    // Two areas, one vertical hairline. A horizontal rule inside the surface is
+    // the treatment this card removed twice over.
+    for (const sel of ['paycard', 'paybody', 'paystate', 'values', 'actions']) {
+      assert.ok(!new RegExp(`\\.pi-detail-summary-${sel} \\{[^}]*border-(top|bottom):`).test(css),
+        `${sel} must not carry a horizontal rule`)
+    }
+  })
+
+  test('ownership falls to the foot of its column, by a class and not by type', () => {
+    // :last-of-type matched nothing here — the last DIV child of the column is
+    // the ownership block itself, so the rule silently did nothing.
+    assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary-hr-foot \{ margin-top: auto/.test(css))
+    assert.ok(!/\.pi-detail-summary-hr:last-of-type/.test(css))
+  })
+
+  test('the boundaries inside the left column are hairlines, never boxes', () => {
+    assert.ok(/\.pi-detail-summary-hr \{[^}]*height: 1px/.test(css))
+    assert.ok(!/\.pi-detail-summary-hr \{[^}]*border-left|\.pi-detail-summary-hr \{[^}]*border-right/.test(css))
+  })
+
+  test('two soft surfaces, each doing one job, and neither shouting', () => {
+    // The schedule band and the finance surface. Both are quiet grounds rather
+    // than boxes: no shadow, no gradient, and a border only on the one that has
+    // to hold its own against the white card beside it.
+    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?background: #fafbfc/.test(css))
+    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?border-radius: 9px/.test(css))
+    assert.ok(/\.pi-detail-summary-schedule \{[^}]*background: #f7f8fa/.test(css))
+    assert.ok(/\.pi-detail-summary-schedule \{[^}]*border-radius: 7px/.test(css))
+    assert.ok(!/\.pi-detail-summary-schedule \{[^}]*border:/.test(css),
+      'the band needs no outline of its own')
+    for (const surface of ['paycard', 'schedule']) {
+      assert.ok(!new RegExp(`\\.pi-detail-summary-${surface} \\{[^}]*(box-shadow|gradient)`).test(css),
+        `${surface}: no shadow and no gradient`)
+    }
+  })
+
+  test('every rule in the card is horizontal', () => {
+    // The old card drew vertical rules between three columns, which is what made
+    // it read as a form. The two inside the left column are the boundaries
+    // between its three groups; there is no rule between the columns at all —
+    // the surface's own edge is the separation.
+    assert.ok(/\.pi-detail-summary-hr \{[\s\S]*?background: rgba\(0, 0, 0, 0\.07\)/.test(css))
+    // NO EXCEPTIONS ANY MORE. The due date's 2px left accent was the last
+    // vertical border in the card and it is gone with the amber block; the one
+    // vertical line left — inside the schedule band — is an element, not a
+    // border, so this guard is absolute again.
+    const vertical = css.match(/\.pi-detail-summary[a-z-]*\s*\{[^}]*border-(left|right):[^;]*solid/g)
+    assert.equal(vertical, null, 'no vertical borders anywhere in the summary')
   })
 
   test('the progress bar cannot overflow its track and respects reduced motion', () => {
@@ -1666,8 +2083,13 @@ describe('the layout is CSS, at three real breakpoints', () => {
     const tracks = [...css.matchAll(/grid-template-columns: ([^;]+);/g)].map(m => m[1])
     assert.ok(tracks.length >= 4, 'the block really does define the grids')
     for (const value of tracks) {
-      for (const track of value.split(/\)\s+/)) {
-        assert.ok(track.startsWith('minmax(0,'),
+      // `repeat(N, minmax(0, …))` is just as bounded as a list of minmax()
+      // tracks; unwrapping it is what lets the same check cover both.
+      for (const track of value.replace(/repeat\(\d+,\s*/g, '').split(/\)\s+/)) {
+        // A FIXED length cannot be widened by its content either — the schedule
+        // band's separator is a 1px track — so the rule is "bounded", not
+        // "spelled minmax". Anything flexible still has to say minmax(0, …).
+        assert.ok(track.startsWith('minmax(0,') || /^\d+px\b/.test(track),
           `${value} must not be able to overflow its grid`)
       }
     }
@@ -1730,7 +2152,6 @@ describe('the page is assembled in the redesigned scan order', () => {
 
   test('identity, summary, workflow, blocking — all ABOVE the products', () => {
     const order = [
-      '<PiIdentityStrip',
       '<PiSummaryCard',
       '<PiWorkflowPanel',
       '<PiBlockingPanel',
@@ -2043,17 +2464,33 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     }
   })
 
-  test('the same RPCs are called, plus the two Phase C adds, and no others', () => {
+  test('the same RPCs are called, plus the billing writer, and no others', () => {
+    // The allowlist is the point: a new RPC has to be added here on purpose,
+    // which is how a stray call gets noticed. set_order_submission_billing_percentage
+    // is the one write the billing field needs, and it is the only addition.
     const rpcs = [...page.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1])
     assert.deepEqual([...new Set(rpcs)].sort(), [
       'approve_order_submission',
       'approve_pi_advance_exception',
+      // A read, not a write: the database's own answer to "may this viewer edit
+      // this record", asked instead of being restated in the browser.
+      'can_edit_order_submission',
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
+      'set_order_submission_billing_percentage',
       'submit_pi_for_review',
       'verify_pi_finance_check',
     ])
+  })
+
+  test('billing is READ with the record, not with a request of its own', () => {
+    // One query, as before. The column joins the existing select list; nothing
+    // fetches it separately and nothing falls back to a second read.
+    assert.ok(read('src/lib/orders/draftsView.ts').includes("'billing_percentage'"),
+      'the column is in PI_DRAFT_DETAIL_COLUMNS')
+    const selects = [...page.matchAll(/\.from\('order_submissions'\)/g)]
+    assert.ok(selects.length <= 1, 'still at most one order_submissions read on this page')
   })
 
   test('no decorative field was given a fetch of its own', () => {

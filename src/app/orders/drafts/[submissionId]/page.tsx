@@ -109,6 +109,8 @@ import {
   type PiThumbnailProps,
 } from '@/components/orders/piPreview'
 import {
+  PiBillingPercentageModal,
+  PiClientDetailsModal,
   PiSubmitConfirmModal,
   PiNoteModal,
   PiFinanceVerifyModal,
@@ -206,9 +208,10 @@ import {
 import {
   describeAdvanceForReview,
   buildApprovalSummary,
-  buildClientSummary,
+  buildBillingSummary,
+  buildClientDetails,
   buildDateSummary,
-  buildIdentityFacts,
+  buildOwnership,
   buildPaymentSummaryView,
   commercialBreakdownRows,
   summaryCommercialFigures,
@@ -220,7 +223,6 @@ import {
   PiActivityTimeline,
   PiAdvanceBand,
   PiBlockingPanel,
-  PiIdentityStrip,
   PiLowerGrid,
   PiSummaryCard,
   PiSavedStrip,
@@ -334,6 +336,20 @@ function PiDraftDetailPageInner() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   /** Which payment dialog is open, if either. The summary card opens both. */
   const [paymentDialog, setPaymentDialog] = useState<'details' | 'add' | null>(null)
+  // The client dialog behind the name in the summary card. Nothing is
+  // fetched for it — it reads the submission the page already holds.
+  const [clientDialog, setClientDialog] = useState(false)
+  // The billing-percentage editor, and its own in-flight and failure state. It
+  // writes, so it cannot share the read-only client dialog's shape.
+  /**
+   * can_edit_order_submission's own answer for this viewer and this record.
+   * Resolved with the page's other reads and refreshed by every reload, so a
+   * record that leaves draft stops offering the control without a new request.
+   */
+  const [canEditSubmission, setCanEditSubmission] = useState(false)
+  const [billingDialog, setBillingDialog] = useState(false)
+  const [billingSaving, setBillingSaving] = useState(false)
+  const [billingFailure, setBillingFailure] = useState<string | null>(null)
 
   /**
    * WHO IS LOOKING, AND WHAT THEY MAY DO — resolved for the SIGNED-IN account.
@@ -424,7 +440,7 @@ function PiDraftDetailPageInner() {
     // not distinguish them, and neither does this branch.
     if (!submission) { setLoad({ kind: 'unavailable' }); return }
 
-    const [itemsResult, imagesResult] = await Promise.all([
+    const [itemsResult, imagesResult, editableResult] = await Promise.all([
       supabase
         .from('order_submission_items')
         .select(PI_DRAFT_ITEM_COLUMNS)
@@ -435,9 +451,30 @@ function PiDraftDetailPageInner() {
         .select(PI_DRAFT_ITEM_IMAGE_COLUMNS)
         .eq('submission_id', submissionId)
         .order('position', { ascending: true }),
+      /**
+       * MAY THIS VIEWER STILL EDIT THIS RECORD — asked of the database, which is
+       * the only thing that actually decides.
+       *
+       * describeSubmissionActions answers this for the OWNER, and correctly, but
+       * can_edit_order_submission also admits an active admin. Restating that
+       * second branch in the browser would mean reading users.role here, which
+       * this page deliberately does not do, and would put a copy of an authority
+       * rule somewhere it could drift from the original. So the original is
+       * called instead: it is `security definer`, granted to `authenticated`,
+       * revoked from anon, and takes nothing but a submission id.
+       *
+       * IN THE EXISTING PARALLEL LOAD, not on demand: one more round trip that
+       * already overlaps two others, rather than a request each time a dialog
+       * opens. A failure resolves to false — the control disappears, and the RPC
+       * behind it would refuse anyway.
+       */
+      supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId }),
     ])
 
     if (itemsResult.error || imagesResult.error) { setLoad({ kind: 'failed' }); return }
+
+    // FAIL CLOSED. A capability that could not be resolved is not a capability.
+    setCanEditSubmission(editableResult.error ? false : editableResult.data === true)
 
     const products = persistedProducts((itemsResult.data ?? []) as unknown as PersistedItem[])
     const images = (imagesResult.data ?? []) as unknown as PersistedItemImage[]
@@ -772,6 +809,38 @@ function PiDraftDetailPageInner() {
    * on the positive path is friction for its own sake. The refusal is the one
    * that needs words.
    */
+  /**
+   * DECLARE, CHANGE OR CLEAR THE BILLING PERCENTAGE.
+   *
+   * Not through runAction: that one owns the workflow dialog and this editor
+   * keeps its own in-flight and failure state, so a validation refusal can be
+   * shown inside the dialog with the typed value still on screen.
+   *
+   * `null` is the clear. The RPC re-derives the authority and the bounds, so a
+   * refusal here is the database's answer and not a second opinion.
+   */
+  const saveBillingPercentage = useCallback(async (value: number | null) => {
+    if (billingSaving) return
+    setBillingSaving(true)
+    setBillingFailure(null)
+    try {
+      const { error } = await supabase.rpc('set_order_submission_billing_percentage', {
+        p_submission_id: submissionId,
+        p_percentage: value,
+      })
+      if (error) {
+        setBillingFailure(
+          (error as { message?: string }).message
+          ?? 'The billing percentage could not be saved.')
+        return
+      }
+      setBillingDialog(false)
+      await loadDraft({ quiet: true })
+    } finally {
+      setBillingSaving(false)
+    }
+  }, [billingSaving, supabase, submissionId, loadDraft])
+
   const approveException = useCallback(() => runAction('approve_exception', async () => {
     const { error } = await supabase.rpc('approve_pi_advance_exception', {
       p_submission_id: submissionId,
@@ -1090,11 +1159,11 @@ function PiDraftDetailPageInner() {
     ? null
     : `${formatMoney(payments.verified_amount)} · ${formatPercent(payments.verified_percent)}`
 
-  const identityFacts = buildIdentityFacts({
-    savedAt,
+  const ownership = buildOwnership({
     documentAuthor,
     submitterName: draft.submitterName,
     submittedAt,
+    savedAt,
   })
 
   /**
@@ -1135,7 +1204,7 @@ function PiDraftDetailPageInner() {
     },
   )
 
-  const clientSummary = buildClientSummary({
+  const clientDetails = buildClientDetails({
     clientName: submission.client_name,
     billToName: submission.bill_to_name,
     shipToName: submission.ship_to_name,
@@ -1172,6 +1241,20 @@ function PiDraftDetailPageInner() {
   const summaryFigures = summaryCommercialFigures(commercialRows)
 
   /**
+   * The billing declaration, and what it comes to.
+   *
+   * FROM THE COLUMN, NOT THE ROW. `commercialRows` carries FORMATTED strings —
+   * '₹7,42,850' — and arithmetic on those is how a figure quietly loses its
+   * paise. toNumber(submission.total_before_gst) is the authoritative number,
+   * the same one the breakdown formatted, and a null stays null so a PI with no
+   * pre-tax total shows the missing treatment rather than ₹0.
+   */
+  const billingSummary = buildBillingSummary({
+    raw: submission.billing_percentage,
+    totalBeforeGst: toNumber(submission.total_before_gst),
+  })
+
+  /**
    * The compact payment block. Every figure is the RPC's, already summed in
    * numeric; the only thing derived here is how many rows Finance has not
    * decided yet, which is a count of rows and not a sum of money.
@@ -1187,7 +1270,6 @@ function PiDraftDetailPageInner() {
     percentValue: Number(payments.verified_percent ?? 0),
     awaitingCount: (payments.payments ?? []).filter(
       row => row.allocation_status === 'active' && isAwaitingVerification(row.status)).length,
-    paymentCount: (payments.payments ?? []).length,
   })
 
   /**
@@ -1253,20 +1335,26 @@ function PiDraftDetailPageInner() {
             The layout header above already carries the client name. This is the
             state, the size of the record, when it last moved, and the file it
             came from — one line, not a card. */}
-        <PiIdentityStrip
-          statusLabel={draftStatusLabel(submission.status)}
-          tone={tone}
-          facts={identityFacts}
-          workbookName={workbookName}
-        />
-
         {/* ── 2. The top summary ──
             Who the client is and how to reach them, when the order was
             confirmed and when it is due, and how much VERIFIED money has
             arrived against what the order is worth — with the way in to every
             payment record, and to recording another, beside the figure. */}
         <PiSummaryCard
-          client={clientSummary}
+          client={clientDetails}
+          onOpenClient={() => setClientDialog(true)}
+          billing={billingSummary}
+          /* THE DATABASE'S OWN ANSWER, not a second opinion. can_edit_order_submission
+             covers the owner AND an active admin, in draft and needs_changes
+             only; every other state is read-only for everyone. The RPC behind
+             the dialog re-derives exactly this, so the control and the write
+             cannot disagree. */
+          canEditBilling={canEditSubmission}
+          onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
+          ownership={ownership}
+          statusLabel={draftStatusLabel(submission.status)}
+          tone={tone}
+          workbookName={workbookName}
           dates={summaryDates}
           figures={summaryFigures}
           payment={paymentSummary}
@@ -1479,6 +1567,23 @@ function PiDraftDetailPageInner() {
           rows with their status, mode, reference and rejection note — now in the
           dialog the rest of the application already uses, so the page answers
           "how much has been paid" in exactly one place. */}
+      {/* The client's contact and both parties, behind the name in the card.
+          No request: clientDetails came off the submission already on screen. */}
+      {clientDialog && (
+        <PiClientDetailsModal client={clientDetails} onClose={() => setClientDialog(false)} />
+      )}
+
+      {billingDialog && (
+        <PiBillingPercentageModal
+          current={billingSummary.value}
+          saving={billingSaving}
+          failure={billingFailure}
+          onCancel={() => { if (!billingSaving) setBillingDialog(false) }}
+          onSave={value => { void saveBillingPercentage(value) }}
+          onClear={() => { void saveBillingPercentage(null) }}
+        />
+      )}
+
       {paymentDialog === 'details' && (
         <PiPaymentDetailsModal
           summary={payments}
