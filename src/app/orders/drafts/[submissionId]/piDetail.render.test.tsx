@@ -753,6 +753,70 @@ describe('the billing declaration, on the card', () => {
     }
   })
 
+  test('the control follows the DATABASE\u2019s capability, in all eight cases', () => {
+    // The page asks can_edit_order_submission and renders the answer. These are
+    // the eight states that answer covers — the first six as the card renders
+    // them, and the SQL half asserted underneath so the two cannot drift.
+    const cases = [
+      { who: 'owner, draft',                    editable: true },
+      { who: 'owner, needs_changes',            editable: true },
+      { who: 'non-owner active admin, draft',   editable: true },
+      { who: 'non-owner admin, needs_changes',  editable: true },
+      { who: 'owner, submitted',                editable: false },
+      { who: 'admin, submitted',                editable: false },
+      { who: 'unauthorised viewer',             editable: false },
+      { who: 'anyone, record has an Order',     editable: false },
+    ]
+    for (const c of cases) {
+      const html = summaryHtml({ billing: billed(null), canEditBilling: c.editable })
+      assert.equal(html.includes('pi-detail-summary-billing-action'), c.editable,
+        `${c.who}: the control should be ${c.editable ? 'visible' : 'hidden'}`)
+      // Either way the fact itself stays readable — read-only is not invisible.
+      assert.ok(text(html).includes('Undeclared'), `${c.who}: the value is still shown`)
+    }
+  })
+
+  test('and that capability is asked, never restated in the browser', () => {
+    const page = read(PAGE)
+    // The mismatch this replaced: a client gate covering only the owner, while
+    // the database also admits an active admin. Restating the second branch here
+    // would mean reading users.role — which this page does not do — and would
+    // put a copy of an authority rule where it could drift.
+    assert.ok(page.includes("supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId })"),
+      'the authority is asked of the database')
+    assert.ok(page.includes('canEditBilling={canEditSubmission}'),
+      'and its answer is what the card is given')
+    assert.ok(!/canEditBilling=\{actions\./.test(page),
+      'not describeSubmissionActions, which knows only about the owner')
+    // Comments on this page discuss users.role at length precisely because it is
+    // NOT read; the check has to look at code, not prose.
+    const code = page
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
+    assert.ok(!/users\.role|role === ['"]admin['"]/.test(code),
+      'and no role is read on this page to decide an authority')
+    // Asked ONCE, with the page's other reads — not every time a dialog opens.
+    const inParallel = page.slice(page.indexOf('await Promise.all(['), page.indexOf('itemsResult.error'))
+    assert.ok(inParallel.includes("supabase.rpc('can_edit_order_submission'"),
+      'resolved in the existing parallel load')
+    assert.ok(page.includes('editableResult.error ? false : editableResult.data === true'),
+      'and a capability that could not be resolved is not a capability')
+  })
+
+  test('the RPC refuses whenever that capability is false, whatever the UI did', () => {
+    // Hiding a button is not security. The write re-derives the same rule.
+    const migration = readFileSync(join(process.cwd(),
+      'supabase/migrations/20260923000000_order_submission_billing_percentage.sql'), 'utf8')
+    const fn = migration.slice(
+      migration.indexOf('create or replace function public.set_order_submission_billing_percentage'))
+    assert.ok(fn.includes('if not public.can_edit_order_submission(p_submission_id) then'))
+    assert.ok(fn.includes('ORDER_SUBMISSION_BILLING_NOT_EDITABLE'))
+    // And the check happens AFTER the row lock, so the state it reads is the
+    // state the write applies to.
+    assert.ok(fn.indexOf('for update') < fn.indexOf('can_edit_order_submission'),
+      'the row is locked before the authority is asked')
+  })
+
   test('no card, no rule and no ground was added to hold it', () => {
     const css = pageCss()
     assert.ok(/\.pi-detail-summary-billing \{[^}]*margin-top/.test(css),
@@ -2408,6 +2472,9 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     assert.deepEqual([...new Set(rpcs)].sort(), [
       'approve_order_submission',
       'approve_pi_advance_exception',
+      // A read, not a write: the database's own answer to "may this viewer edit
+      // this record", asked instead of being restated in the browser.
+      'can_edit_order_submission',
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',

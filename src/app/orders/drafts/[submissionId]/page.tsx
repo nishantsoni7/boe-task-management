@@ -341,6 +341,12 @@ function PiDraftDetailPageInner() {
   const [clientDialog, setClientDialog] = useState(false)
   // The billing-percentage editor, and its own in-flight and failure state. It
   // writes, so it cannot share the read-only client dialog's shape.
+  /**
+   * can_edit_order_submission's own answer for this viewer and this record.
+   * Resolved with the page's other reads and refreshed by every reload, so a
+   * record that leaves draft stops offering the control without a new request.
+   */
+  const [canEditSubmission, setCanEditSubmission] = useState(false)
   const [billingDialog, setBillingDialog] = useState(false)
   const [billingSaving, setBillingSaving] = useState(false)
   const [billingFailure, setBillingFailure] = useState<string | null>(null)
@@ -434,7 +440,7 @@ function PiDraftDetailPageInner() {
     // not distinguish them, and neither does this branch.
     if (!submission) { setLoad({ kind: 'unavailable' }); return }
 
-    const [itemsResult, imagesResult] = await Promise.all([
+    const [itemsResult, imagesResult, editableResult] = await Promise.all([
       supabase
         .from('order_submission_items')
         .select(PI_DRAFT_ITEM_COLUMNS)
@@ -445,9 +451,30 @@ function PiDraftDetailPageInner() {
         .select(PI_DRAFT_ITEM_IMAGE_COLUMNS)
         .eq('submission_id', submissionId)
         .order('position', { ascending: true }),
+      /**
+       * MAY THIS VIEWER STILL EDIT THIS RECORD — asked of the database, which is
+       * the only thing that actually decides.
+       *
+       * describeSubmissionActions answers this for the OWNER, and correctly, but
+       * can_edit_order_submission also admits an active admin. Restating that
+       * second branch in the browser would mean reading users.role here, which
+       * this page deliberately does not do, and would put a copy of an authority
+       * rule somewhere it could drift from the original. So the original is
+       * called instead: it is `security definer`, granted to `authenticated`,
+       * revoked from anon, and takes nothing but a submission id.
+       *
+       * IN THE EXISTING PARALLEL LOAD, not on demand: one more round trip that
+       * already overlaps two others, rather than a request each time a dialog
+       * opens. A failure resolves to false — the control disappears, and the RPC
+       * behind it would refuse anyway.
+       */
+      supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId }),
     ])
 
     if (itemsResult.error || imagesResult.error) { setLoad({ kind: 'failed' }); return }
+
+    // FAIL CLOSED. A capability that could not be resolved is not a capability.
+    setCanEditSubmission(editableResult.error ? false : editableResult.data === true)
 
     const products = persistedProducts((itemsResult.data ?? []) as unknown as PersistedItem[])
     const images = (imagesResult.data ?? []) as unknown as PersistedItemImage[]
@@ -1317,12 +1344,12 @@ function PiDraftDetailPageInner() {
           client={clientDetails}
           onOpenClient={() => setClientDialog(true)}
           billing={billingSummary}
-          /* The SAME rule the RPC applies, as far as this page can see it:
-             draft/needs_changes and the owner. It is deliberately narrower than
-             the server, which also admits an active admin — this page resolves
-             no roles, and a control that is absent for somebody who could have
-             used it is the safe direction of that difference. */
-          canEditBilling={actions.canChangePi}
+          /* THE DATABASE'S OWN ANSWER, not a second opinion. can_edit_order_submission
+             covers the owner AND an active admin, in draft and needs_changes
+             only; every other state is read-only for everyone. The RPC behind
+             the dialog re-derives exactly this, so the control and the write
+             cannot disagree. */
+          canEditBilling={canEditSubmission}
           onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
           ownership={ownership}
           statusLabel={draftStatusLabel(submission.status)}

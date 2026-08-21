@@ -374,7 +374,17 @@ describe('the detail page renders only what it fetched', () => {
     // money, no state transition, and gated by can_edit_order_submission — the
     // existing draft/needs_changes owner-or-admin rule, unwidened. A SUBMITTED
     // record refuses it like every other edit.
-    const rpcs = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
+    // READ-ONLY CAPABILITY PROBES ARE NOT WRITES, and are named here rather than
+    // folded into the list below — a write allowlist that quietly accepted
+    // read-shaped names would stop being a write allowlist.
+    // can_edit_order_submission is `stable`, takes a submission id, and returns
+    // a boolean; it is the authority this page asks instead of restating.
+    const READ_ONLY_RPCS = ['can_edit_order_submission']
+    const called = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
+    for (const probe of READ_ONLY_RPCS) {
+      assert.ok(called.includes(probe), `${probe} should be the capability this page asks`)
+    }
+    const rpcs = called.filter(name => !READ_ONLY_RPCS.includes(name))
     assert.deepEqual(rpcs, [
       'approve_order_submission',
       'approve_pi_advance_exception',
