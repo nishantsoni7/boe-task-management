@@ -64,36 +64,52 @@ export type PiDetailTone = 'neutral' | 'blue' | 'amber' | 'red' | 'green'
  * be sixty characters long, and it gets its own quiet file treatment beside the
  * line rather than being allowed to push everything else onto a second row.
  */
-export function buildIdentityFacts(input: {
-  /** Already formatted. This module does no date work. */
-  savedAt: string
+export type PiOwnership = {
+  /** Whose PI this is, for the avatar and the name. Null when nobody is named. */
+  name: string | null
+  /** "Submitted 03 Aug 2026, 09:30 AM" — already formatted by the caller. */
+  when: string
+}
+
+/**
+ * WHO THIS PI BELONGS TO, as one group rather than a strip of loose facts.
+ *
+ * It used to be a dot-separated line above the card — "Submitted … by R. Sharma
+ * · PI by R. Sharma" — which printed the same person twice on the common PI and
+ * left the card's own identity band with only the client in it. The name, the
+ * timestamp and the status now sit together inside the card, beside the client
+ * they belong next to.
+ *
+ * THE NAME IS THE DOCUMENT'S OWN AUTHOR where the PI named one — that is what
+ * "PI created by" means, and it is a fact about the document rather than about
+ * the record's progress. The submitter is the fallback, because a PI that named
+ * nobody was still put there by somebody.
+ *
+ * AND IT IS NEVER SAID TWICE. When the submitter IS the named creator — which is
+ * the ordinary case — the timestamp line drops the "by …" it would otherwise
+ * carry, because the avatar beside it already answers who.
+ */
+export function buildOwnership(input: {
   /** order_submissions.source_created_by — whoever the PI document itself named. */
   documentAuthor: string | null
   /** Resolved display name of the person who submitted it, when it was. */
   submitterName: string | null
+  /** Already formatted. This module does no date work. */
   submittedAt: string | null
-}): string[] {
-  // THE PRODUCT COUNT IS NOT HERE ANY MORE. The Products card states it on its
-  // own header, three lines further down, and a strip that opened with it made
-  // the reader's first fact about this record the size of its table rather than
-  // where the record stands.
-  const facts: string[] = []
+  savedAt: string
+}): PiOwnership {
+  const name = input.documentAuthor ?? input.submitterName ?? null
 
-  // Submitted supersedes saved as "the last thing that happened to this record",
-  // so the two are never printed side by side.
-  if (input.submittedAt) {
-    facts.push(
-      input.submitterName
-        ? `Submitted ${input.submittedAt} by ${input.submitterName}`
-        : `Submitted ${input.submittedAt}`,
-    )
-  } else {
-    facts.push(`Saved ${input.savedAt}`)
+  if (!input.submittedAt) return { name, when: `Saved ${input.savedAt}` }
+
+  const submitter = input.submitterName
+  const attribute = submitter !== null && submitter !== name
+  return {
+    name,
+    when: attribute
+      ? `Submitted ${input.submittedAt} by ${submitter}`
+      : `Submitted ${input.submittedAt}`,
   }
-
-  if (input.documentAuthor) facts.push(`PI by ${input.documentAuthor}`)
-
-  return facts
 }
 
 // ── 2. Order overview ─────────────────────────────────────────────────────────

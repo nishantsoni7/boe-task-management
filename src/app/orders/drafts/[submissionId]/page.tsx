@@ -208,7 +208,7 @@ import {
   buildApprovalSummary,
   buildClientSummary,
   buildDateSummary,
-  buildIdentityFacts,
+  buildOwnership,
   buildPaymentSummaryView,
   commercialBreakdownRows,
   summaryCommercialFigures,
@@ -220,7 +220,6 @@ import {
   PiActivityTimeline,
   PiAdvanceBand,
   PiBlockingPanel,
-  PiIdentityStrip,
   PiLowerGrid,
   PiSummaryCard,
   PiSavedStrip,
@@ -1090,11 +1089,11 @@ function PiDraftDetailPageInner() {
     ? null
     : `${formatMoney(payments.verified_amount)} · ${formatPercent(payments.verified_percent)}`
 
-  const identityFacts = buildIdentityFacts({
-    savedAt,
+  const ownership = buildOwnership({
     documentAuthor,
     submitterName: draft.submitterName,
     submittedAt,
+    savedAt,
   })
 
   /**
@@ -1253,13 +1252,6 @@ function PiDraftDetailPageInner() {
             The layout header above already carries the client name. This is the
             state, the size of the record, when it last moved, and the file it
             came from — one line, not a card. */}
-        <PiIdentityStrip
-          statusLabel={draftStatusLabel(submission.status)}
-          tone={tone}
-          facts={identityFacts}
-          workbookName={workbookName}
-        />
-
         {/* ── 2. The top summary ──
             Who the client is and how to reach them, when the order was
             confirmed and when it is due, and how much VERIFIED money has
@@ -1267,6 +1259,10 @@ function PiDraftDetailPageInner() {
             payment record, and to recording another, beside the figure. */}
         <PiSummaryCard
           client={clientSummary}
+          ownership={ownership}
+          statusLabel={draftStatusLabel(submission.status)}
+          tone={tone}
+          workbookName={workbookName}
           dates={summaryDates}
           figures={summaryFigures}
           payment={paymentSummary}

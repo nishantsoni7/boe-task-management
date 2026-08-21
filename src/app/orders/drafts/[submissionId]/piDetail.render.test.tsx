@@ -27,7 +27,6 @@ import {
   PiActivityTimeline,
   PiAdvanceBand,
   PiBlockingPanel,
-  PiIdentityStrip,
   PiLowerGrid,
   PiSummaryCard,
   PiStoredCopyNote,
@@ -39,7 +38,7 @@ import {
   buildClientSummary,
   buildDateSummary,
   summaryCommercialFigures,
-  buildIdentityFacts,
+  buildOwnership,
   buildPaymentSummaryView,
   telLink,
   type PaymentSummaryView,
@@ -339,65 +338,72 @@ const pageCss = (): string => {
 
 // ── 1. The first clear scan ───────────────────────────────────────────────────
 
-describe('the top of the page answers the questions it exists to answer', () => {
-  test('the client and the state are the first thing on it', () => {
-    const row = submission({ status: 'needs_changes' })
-    const html = renderToStaticMarkup(
-      <PiIdentityStrip
-        statusLabel={draftStatusLabel(row.status)}
-        tone={statusTone(draftStatusTone(row.status))}
-        facts={buildIdentityFacts({
-          savedAt: '02 Aug 2026, 11:30 am',
-          documentAuthor: 'Nishant Soni',
-          submitterName: null,
-          submittedAt: null,
-        })}
-        workbookName={row.source_workbook_name}
-      />,
-    )
-    // The client name is the layout header's page title; the state sits with it.
-    assert.ok(text(html).includes('Needs Changes'), 'the status is in the identity area')
-    assert.ok(!/product line/.test(text(html)),
-      'the Products card states its own size; the identity strip no longer opens with it')
-    assert.ok(text(html).includes('Saved 02 Aug 2026'))
-    assert.ok(text(html).includes('Kalyan-PI-Aug.xlsx'), 'the workbook is named, quietly')
-  })
-
-  test('the identity line never repeats what the page title already says', () => {
-    const facts = buildIdentityFacts({
-      savedAt: 'X',
-      documentAuthor: null,
+describe('the card carries who the PI belongs to, and says it once', () => {
+  test('a saved draft names its creator and when it was last saved', () => {
+    const own = buildOwnership({
+      documentAuthor: 'Nishant Soni',
       submitterName: null,
       submittedAt: null,
+      savedAt: '02 Aug 2026, 11:30 am',
     })
-    assert.ok(!facts.join(' ').includes('Saved PI submission'))
-    assert.ok(!facts.join(' ').includes('PI Draft'))
-    assert.ok(!facts.some(f => f.includes('Kalyan')), 'the client is not restated here')
+    assert.equal(own.name, 'Nishant Soni')
+    assert.equal(own.when, 'Saved 02 Aug 2026, 11:30 am')
   })
 
-  test('a submitted record says who sent it, instead of when it was last saved', () => {
-    const facts = buildIdentityFacts({
-      savedAt: '02 Aug 2026, 11:30 am',
+  test('a submitted record says when it was sent, not when it was saved', () => {
+    const own = buildOwnership({
       documentAuthor: 'Nishant Soni',
       submitterName: 'Nishant Soni',
       submittedAt: '03 Aug 2026, 09:00 am',
+      savedAt: '02 Aug 2026, 11:30 am',
     })
-    assert.ok(facts.some(f => f.startsWith('Submitted 03 Aug 2026')))
-    assert.ok(!facts.some(f => f.startsWith('Saved ')), 'the two are never printed side by side')
-    assert.equal(facts[0], 'Submitted 03 Aug 2026, 09:00 am by Nishant Soni',
-      'what happened last to the record is the first fact about it')
+    assert.equal(own.when, 'Submitted 03 Aug 2026, 09:00 am')
+    // The creator's name is beside the avatar already; repeating it as "by
+    // Nishant Soni" is the duplication this composition exists to remove.
+    assert.ok(!own.when.includes('by'), 'the same person is never named twice')
+  })
+
+  test('but a DIFFERENT submitter is still named', () => {
+    const own = buildOwnership({
+      documentAuthor: 'Nishant Soni',
+      submitterName: 'Priya Rao',
+      submittedAt: '03 Aug 2026, 09:00 am',
+      savedAt: 'X',
+    })
+    assert.equal(own.name, 'Nishant Soni')
+    assert.equal(own.when, 'Submitted 03 Aug 2026, 09:00 am by Priya Rao')
+  })
+
+  test('a PI that named nobody falls back to whoever submitted it', () => {
+    assert.equal(buildOwnership({
+      documentAuthor: null, submitterName: 'Priya Rao',
+      submittedAt: '03 Aug 2026, 09:00 am', savedAt: 'X',
+    }).name, 'Priya Rao')
+    assert.equal(buildOwnership({
+      documentAuthor: null, submitterName: null, submittedAt: null, savedAt: 'X',
+    }).name, null)
+  })
+
+  test('the status, the creator and the workbook all render inside the card', () => {
+    const html = text(summaryHtml())
+    assert.ok(html.includes('PI created by'))
+    assert.ok(html.includes('Nishant Soni'))
+    assert.ok(html.includes('Submitted 03 Aug 2026'))
+    assert.ok(html.includes('Submitted for Review'), 'the status badge is in the card')
+    assert.ok(html.includes('Kalyan-PI-Aug.xlsx'), 'and the workbook is named, quietly')
   })
 
   test('a record with no filename shows no file block at all', () => {
-    const html = renderToStaticMarkup(
-      <PiIdentityStrip
-        statusLabel="Draft"
-        tone={statusTone('neutral')}
-        facts={['4 product lines']}
-        workbookName={null}
-      />,
-    )
-    assert.ok(!html.includes('pi-detail-identity-file'), 'a labelled hole is worse than the absence')
+    assert.ok(!summaryHtml({ workbookName: null }).includes('pi-detail-summary-file'),
+      'a labelled hole is worse than the absence')
+  })
+
+  test('an unnamed creator draws no avatar and no empty name', () => {
+    const html = summaryHtml({
+      ownership: { name: null, when: 'Saved 02 Aug 2026, 11:30 am' },
+    })
+    assert.ok(!html.includes('boe-avatar'), 'no initials for nobody')
+    assert.ok(text(html).includes('Not named'))
   })
 })
 
@@ -420,8 +426,19 @@ const summaryHtml = (over: {
   confirmed?: string | null
   dates?: ReturnType<typeof buildDateSummary>
   figures?: ReturnType<typeof summaryCommercialFigures>
+  ownership?: ReturnType<typeof buildOwnership>
+  workbookName?: string | null
 } = {}) => renderToStaticMarkup(
   <PiSummaryCard
+    ownership={over.ownership ?? buildOwnership({
+      documentAuthor: 'Nishant Soni',
+      submitterName: 'Nishant Soni',
+      submittedAt: '03 Aug 2026, 09:30 am',
+      savedAt: '02 Aug 2026, 11:30 am',
+    })}
+    statusLabel={draftStatusLabel('submitted')}
+    tone={statusTone(draftStatusTone('submitted'))}
+    workbookName={over.workbookName === undefined ? 'Kalyan-PI-Aug.xlsx' : over.workbookName}
     client={buildClientSummary(over.client ?? {
       clientName: 'Kalyan Interiors',
       billToName: 'Kalyan Interiors',
@@ -623,11 +640,15 @@ describe('the top summary identifies the client without repeating them', () => {
       contactNumber: null, billToPhone: null, shipToPhone: null,
       billingAddress: null, shippingAddress: null,
     } }))
-    // Two facts the DOCUMENT did not carry — the contact and the location — say
-    // "Not provided". The due date says "Not set" instead, because it is not
-    // something the PI omitted but something nobody has decided yet, and the two
-    // states are worth distinguishing to whoever has to chase one of them.
-    assert.equal((html.match(/Not provided/g) ?? []).length, 2)
+    // Each absence NAMES ITSELF now — "Contact not provided", not a bare "Not
+    // provided" whose subject you have to infer from position. That matters more
+    // in the new composition, where the two sit on one line rather than in two
+    // labelled rows.
+    assert.ok(html.includes('Contact not provided'))
+    assert.ok(html.includes('Location not provided'))
+    // The due date says "Not set" instead: not something the PI omitted, but
+    // something nobody has decided yet, and worth distinguishing to whoever has
+    // to chase one of them.
     assert.equal((html.match(/Not set/g) ?? []).length, 1)
     assert.ok(html.includes('Kalyan Interiors'), 'the one thing it does know is still said plainly')
   })
@@ -647,9 +668,13 @@ describe('the top summary states the dates it has, and pauses the one it does no
     assert.ok(html.includes('31 Jan 2026'))
   })
 
-  test('there is no PI-created row and no prose dispatch commitment', () => {
+  test('there is no PI-created DATE and no prose dispatch commitment', () => {
+    // "PI created by" is the ownership label, and belongs. What must not come
+    // back is the PI-creation DATE, which said nothing anybody acts on, and the
+    // dispatch prose masquerading as a date field.
     const html = text(summaryHtml())
-    assert.ok(!html.includes('PI created'))
+    assert.ok(!html.includes('PI created on'))
+    assert.ok(!/PI created\s+\d/.test(html), 'the creation date is not a metric')
     assert.ok(!html.includes('Dispatch'))
     assert.ok(!html.includes('weeks from date of confirmation'))
   })
@@ -1636,21 +1661,31 @@ describe('the lower grid pairs the two reference cards', () => {
 describe('the layout is CSS, at three real breakpoints', () => {
   const css = pageCss()
 
-  test('the summary is one column on a phone and three on a desktop', () => {
-    assert.ok(/\.pi-detail-summary \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css),
-      'one column is the floor: Client, then dates, then payment, in reading order')
-    // Payment takes the widest of the three, because it is the only group whose
-    // value changes and the one the card exists to raise.
+  test('the metrics go two-up on a phone, 2x2 on a tablet, five across on a desktop', () => {
+    assert.ok(/\.pi-detail-summary-metrics \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css),
+      'two columns is the floor, so four short metrics never become four tall rows')
     assert.ok(
-      /@media \(min-width: 768px\)[\s\S]*?\.pi-detail-summary \{\s*grid-template-columns: minmax\(0, 1\.05fr\) minmax\(0, 0\.75fr\) minmax\(0, 1\.4fr\)/.test(css),
-      'three balanced groups, payment widest')
+      /@media \(min-width: 768px\)[\s\S]*?\.pi-detail-summary-metrics \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 1\.6fr\)/.test(css),
+      'a deliberate 2x2 of metrics beside payment on a tablet, not five squeezed groups')
+    assert.ok(
+      /@media \(min-width: 1180px\)[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\) minmax\(0, 2\.5fr\)/.test(css),
+      'and payment widest on the one row — the width at which its figure and both controls fit one line')
   })
 
-  test('the dividing rule turns from horizontal to vertical at the breakpoint', () => {
-    // A vertical rule between stacked blocks is a line to nowhere.
-    assert.ok(/\.pi-detail-summary-divided \{\s*border-top: 1px solid/.test(css))
-    assert.ok(
-      /@media \(min-width: 768px\)[\s\S]*?\.pi-detail-summary-divided \{[\s\S]*?border-left: 1px solid/.test(css))
+  test('payment spans the full width until it has a column of its own', () => {
+    assert.ok(/\.pi-detail-summary-payment \{[\s\S]*?grid-column: 1 \/ -1/.test(css),
+      'full width beneath the metrics on phone and tablet')
+    assert.ok(/@media \(min-width: 1180px\)[\s\S]*?\.pi-detail-summary-payment \{[\s\S]*?grid-column: auto/.test(css),
+      'and it joins the row only where there is room for it')
+  })
+
+  test('there is exactly one rule in the card, and it is horizontal', () => {
+    // The old card drew vertical rules between three columns, which is what made
+    // it read as a form. One hairline separates the identity band from the
+    // metrics; nothing else in the card is bordered.
+    assert.ok(/\.pi-detail-summary-metrics \{[\s\S]*?border-top: 1px solid/.test(css))
+    const summaryRules = css.match(/\.pi-detail-summary[^{]*\{[^}]*border-(left|right): [^;]*solid/g)
+    assert.equal(summaryRules, null, 'no vertical rules anywhere in the summary')
   })
 
   test('the progress bar cannot overflow its track and respects reduced motion', () => {
@@ -1666,7 +1701,9 @@ describe('the layout is CSS, at three real breakpoints', () => {
     const tracks = [...css.matchAll(/grid-template-columns: ([^;]+);/g)].map(m => m[1])
     assert.ok(tracks.length >= 4, 'the block really does define the grids')
     for (const value of tracks) {
-      for (const track of value.split(/\)\s+/)) {
+      // `repeat(N, minmax(0, …))` is just as bounded as a list of minmax()
+      // tracks; unwrapping it is what lets the same check cover both.
+      for (const track of value.replace(/repeat\(\d+,\s*/g, '').split(/\)\s+/)) {
         assert.ok(track.startsWith('minmax(0,'),
           `${value} must not be able to overflow its grid`)
       }
@@ -1730,7 +1767,6 @@ describe('the page is assembled in the redesigned scan order', () => {
 
   test('identity, summary, workflow, blocking — all ABOVE the products', () => {
     const order = [
-      '<PiIdentityStrip',
       '<PiSummaryCard',
       '<PiWorkflowPanel',
       '<PiBlockingPanel',

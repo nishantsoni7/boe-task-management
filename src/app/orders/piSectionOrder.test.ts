@@ -109,8 +109,8 @@ describe('the two PI screens put the answer above the product table', () => {
     const s = stackOf('src/app/orders/drafts/[submissionId]/page.tsx',
       byClassName('pi-detail-stack'))
     // Siblings in the page stack: nested into any card, these would not be found.
-    assert.ok(at(s, 'PiIdentityStrip') < at(s, 'PiSummaryCard'),
-      'the state of the record still reads first')
+    // The identity strip is gone: status, creator, timestamp and workbook all
+    // live inside the summary card now, so the page opens with the card itself.
     assert.ok(at(s, 'PiSummaryCard') < at(s, 'PiWorkflowPanel'),
       'who, when and how much paid — above the controls that act on them')
     assert.ok(at(s, 'PiSummaryCard') < at(s, 'PiProductTableHead'),

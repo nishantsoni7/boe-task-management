@@ -1007,22 +1007,29 @@ describe('the page identity is a strip, not a card that repeats the title', () =
       'a fourth restatement of what this record is')
   })
 
-  test('the status badge sits with the identity, above the summary', () => {
-    assert.ok(page.includes('<PiIdentityStrip'))
+  test('the status badge lives inside the card, with the record’s owner', () => {
+    // It used to sit in a strip ABOVE the card, beside a dot-separated line of
+    // facts. Status, creator, timestamp and workbook are one group now, so the
+    // page opens with a card rather than with metadata floating over one.
     assert.ok(page.includes('statusLabel={draftStatusLabel(submission.status)}'))
     assert.ok(page.includes('const tone = statusTone(draftStatusTone(submission.status))'),
       'the badge takes the drafts list’s own status vocabulary')
     assert.ok(page.includes('tone={tone}'))
-    assert.ok(page.indexOf('<PiIdentityStrip') < page.indexOf('<PiSummaryCard'))
+    assert.ok(!page.includes('<PiIdentityStrip'), 'the loose strip is gone')
+    assert.ok(read(DETAIL_SECTIONS).includes('<PiStatusBadge'),
+      'and the badge renders in the card')
   })
 
-  test('the strip carries the facts the old metadata band carried', () => {
+  test('the ownership facts the old strip carried all survive, in one group', () => {
     const view = read(DETAIL_VIEW)
-    for (const fact of ['product line', 'Saved ', 'Submitted ', 'PI by ']) {
+    for (const fact of ['Saved ', 'Submitted ']) {
       assert.ok(view.includes(fact), `${fact} must survive the redesign`)
     }
     assert.ok(page.includes('documentAuthor,'),
       'including whoever the PI document itself named')
+    assert.ok(page.includes('ownership={ownership}'))
+    assert.ok(page.includes('workbookName={workbookName}'),
+      'and the workbook moved into the card rather than being dropped')
   })
 
   test('an absent filename shows no block at all', () => {
@@ -1045,11 +1052,16 @@ describe('the top summary answers four questions and repeats none of them', () =
   const sections = read(DETAIL_SECTIONS)
   const view = read(DETAIL_VIEW)
 
-  test('three groups: the client, the dates, and what has been paid', () => {
-    for (const label of ['Client', 'Order dates', 'Payment received']) {
-      assert.ok(sections.includes(label), `${label} must be one of the three`)
+  test('two levels: who it is and whose it is, then what it is worth', () => {
+    // The card used to be three columns of unequal content with rules between
+    // them. It is an identity band and a metric row now.
+    for (const label of ['Client', 'PI created by', 'Payment received']) {
+      assert.ok(sections.includes(label), `${label} must be in the card`)
     }
-    assert.equal((sections.match(/<section className="pi-detail-summary-group/g) ?? []).length, 3)
+    assert.ok(sections.includes('pi-detail-summary-identity'))
+    assert.ok(sections.includes('pi-detail-summary-metrics'))
+    assert.ok(!sections.includes('pi-detail-summary-divided'),
+      'the vertical rules that made it read as a form are gone')
   })
 
   test('the client name is printed once, and the destinations are not two fields', () => {

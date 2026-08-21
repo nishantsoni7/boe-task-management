@@ -2371,79 +2371,302 @@ body {
   padding-bottom: 24px;
 }
 
-/* ── Page identity ────────────────────────────────────────────────────────────
-   The layout header already carries the client name. This strip carries the
-   status and the short line of facts about the record, so neither is a card of
-   its own and neither repeats the title above it. */
+/* ── The top summary ──────────────────────────────────────────────────────────
+   TWO LEVELS, NOT THREE COLUMNS.
 
-.pi-detail-identity {
+   The old card put Client, Order dates and Payment side by side with vertical
+   rules between them. Three columns of unequal content is a form: the two on
+   the left ran out of things to say a third of the way down while payment was
+   squeezed into the right, and the rules drew attention to the emptiness rather
+   than away from it.
+
+   What replaced it is a band and a row. The band carries the two IDENTITIES —
+   who the order is for and whose PI it is — because those are the same kind of
+   fact and belong on one line. The row carries the five MEASUREMENTS, each a
+   label over a value, so they align with one another however long the values
+   are. One hairline separates the two, and there are no vertical rules at all.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.pi-detail-summary {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 20px 16px;
+}
+
+/* ── Level 1: the identity band ───────────────────────────────────────────── */
+
+.pi-detail-summary-identity {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding-bottom: 13px;
+}
+
+.pi-detail-summary-party {
+  min-width: 0;
+  flex: 1 1 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Ownership hugs the right edge and stays right-aligned, so the band reads as
+   two anchored facts rather than two columns of a grid. */
+.pi-detail-summary-owner {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  text-align: right;
+}
+
+.pi-detail-summary-owner-line {
+  display: flex;
   align-items: center;
-  gap: 8px 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 8px;
   min-width: 0;
 }
 
-.pi-detail-identity-meta {
+/* Each group holds its own line; only the two groups wrap against each other. */
+/* The amount, what it is of, and the bar measuring it — one column, so the bar
+   sits under the figure rather than under the buttons beside it. */
+.pi-detail-summary-figure {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 8px;
+  flex-direction: column;
+  gap: 5px;
   min-width: 0;
+  flex: 1 1 190px;
 }
 
-/* The original workbook, in a quiet file treatment: a fact about the document,
-   not a control and not a heading. */
-.pi-detail-identity-file {
+.pi-detail-summary-owner-label {
+  font-size: 11px;
+  color: #8c94a6;
+  white-space: nowrap;
+}
+
+.pi-detail-summary-who,
+.pi-detail-summary-state {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  min-width: 0;
+}
+
+.pi-detail-summary-owner-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #111318;
+  line-height: 1.3;
+}
+
+.pi-detail-summary-owner-when {
+  font-size: 11.5px;
+  color: #8c94a6;
+  line-height: 1.35;
+}
+
+/* ── The client's one supporting line ─────────────────────────────────────── */
+
+/* Contact and place on ONE line, wrapping as a unit. Two absences take one row
+   between them here; as two stacked fields they took two, which is how the old
+   card's left third came to be mostly "Not provided". */
+.pi-detail-summary-contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 7px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.pi-detail-summary-tel,
+.pi-detail-summary-place,
+.pi-detail-summary-absent {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pi-detail-summary-tel {
+  color: #5585e8;
+  text-decoration: none;
+}
+
+.pi-detail-summary-tel:hover { text-decoration: underline; }
+
+.pi-detail-summary-place {
+  color: #4a5261;
+  min-width: 0;
+}
+
+/* An absence is stated once, quietly, and never in the weight a real value
+   would take. */
+.pi-detail-summary-absent {
+  color: #8c94a6;
+}
+
+.pi-detail-summary-dot {
+  color: #c3c9d4;
+}
+
+/* The separator earns its place only while both sides are on one line. */
+@media (max-width: 420px) {
+  .pi-detail-summary-dot { display: none; }
+  .pi-detail-summary-contact { gap: 1px 7px; }
+  .pi-detail-summary-tel,
+  .pi-detail-summary-place,
+  .pi-detail-summary-absent { flex-basis: 100%; }
+}
+
+.pi-detail-summary-file {
+  max-width: 170px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   min-width: 0;
   max-width: 100%;
-  padding: 3px 9px;
-  border-radius: 6px;
+  padding: 2px 8px;
+  border-radius: 5px;
   background: rgba(0, 0, 0, 0.035);
   border: 1px solid rgba(0, 0, 0, 0.07);
 }
 
-.pi-detail-identity-file-name {
+.pi-detail-summary-file-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* ── The top summary ─────────────────────────────────────────────────────────
-   One card answering the four questions a saved PI is opened for: who the
-   client is and how to reach them, when the order was confirmed and when it is
-   due, and how much VERIFIED money has arrived against what it is worth.
+/* ── Level 2: the metric row ──────────────────────────────────────────────── */
 
-   THREE GROUPS, AND PAYMENT GETS THE MOST ROOM. Payment is the only group on
-   this card whose value changes, it carries a figure, a bar, a percentage and
-   two controls, and it is what the card exists to put above the fold. The other
-   two are reference. Below the breakpoint the three stack in reading order —
-   Client, then dates, then payment — and the dividing rules become horizontal,
-   because a vertical rule between stacked blocks is a line to nowhere. */
-
-.pi-detail-summary {
+/* ONE hairline in the whole card. Phones get two columns for the four compact
+   metrics, with payment across the full width beneath them. */
+.pi-detail-summary-metrics {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-  padding: 16px 20px 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 18px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
 }
 
-.pi-detail-summary-group {
+.pi-detail-summary-metric {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 }
 
-/* Stacked: a rule above each group after the first. Becomes a vertical rule at
-   the breakpoint below. */
-.pi-detail-summary-divided {
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-  padding-top: 14px;
+/* Label over value, identically in all five groups, so the row aligns on the
+   label baseline however long a figure runs. */
+.pi-detail-summary-metric-label {
+  font-size: 11px;
+  color: #8c94a6;
+  line-height: 1.3;
+}
+
+.pi-detail-summary-metric-value {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #111318;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Absent is the same size as present — it occupies the row it would occupy
+   anyway — but never carries a real value's weight or colour. */
+.pi-detail-summary-metric-absent {
+  font-size: 13px;
+  color: #8c94a6;
+  line-height: 1.35;
+}
+
+.pi-detail-summary-metric-note {
+  font-size: 11px;
+  color: #8c94a6;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* ── The payment group ────────────────────────────────────────────────────── */
+
+/* Full width on a phone, beneath the four metrics. The amount, the bar and the
+   two controls are one block: an amount at the top of a column with its buttons
+   at the bottom read as two unrelated things. */
+.pi-detail-summary-payment {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pi-detail-summary-received {
+  font-size: 19px;
+  font-weight: 700;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.pi-detail-summary-oftotal {
+  font-size: 11.5px;
+  color: #4a5261;
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-detail-summary-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pi-detail-summary-percent {
+  font-size: 12px;
+  font-weight: 700;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pi-detail-summary-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: rgba(69, 168, 112, 0.07);
+  border: 1px solid rgba(69, 168, 112, 0.2);
+}
+
+/* Amount left, actions right, on one line wherever there is room for it. They
+   wrap as a unit on a narrow column, which keeps the buttons under the figure
+   they belong to rather than under the progress bar. */
+.pi-detail-summary-payhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.pi-detail-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 2px;
+  flex-shrink: 0;
 }
 
 /* ── The payment block ─────────────────────────────────────────────────────── */
@@ -2560,19 +2783,84 @@ body {
 
 .pi-detail-summary-view:hover { background: #f8f9fb; }
 
+/* TABLET — the four metrics get a deliberate 4-up row rather than being
+   squeezed, and payment takes the full width beneath them. Compressing five
+   groups into one row at this width is what made the production card feel
+   crowded on the right. */
+/* TABLET — a deliberate 2x2 of metrics with payment beside them, spanning both
+   rows. Four across with payment on its own row beneath was TALLER than the
+   three-column card this replaces; two-by-two fills the height payment needs
+   anyway, which is where the space was going. */
 @media (min-width: 768px) {
-  /* Payment takes the widest column; the dates need the least. */
-  .pi-detail-summary {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.75fr) minmax(0, 1.4fr);
-    column-gap: 26px;
-    row-gap: 0;
+  /* Ownership keeps its place BESIDE the client here by stacking its own two
+     groups instead of dropping below them. Left to wrap as one line it pushed
+     the whole block onto a second flex row, which cost more height than the
+     stack it was avoiding. */
+  .pi-detail-summary-owner {
+    flex: 0 1 auto;
+    min-width: 0;
   }
 
-  .pi-detail-summary-divided {
-    border-top: none;
-    padding-top: 0;
-    border-left: 1px solid rgba(0, 0, 0, 0.08);
-    padding-left: 26px;
+  .pi-detail-summary-owner-line {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
+  .pi-detail-summary-metrics {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr);
+    column-gap: 22px;
+    row-gap: 12px;
+  }
+
+  .pi-detail-summary-payment {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+}
+
+/* DESKTOP — all five on one line, payment widest.
+   2.5fr is not a taste judgement: it is the width at which the amount and both
+   controls fit on ONE line. Below it they wrap, which adds a row to the tallest
+   group in the row and made the whole card taller than the three-column one it
+   replaced, while leaving a band of dead space under the four short metrics. */
+@media (min-width: 1180px) {
+  /* Wide enough for who-and-when and state-and-provenance to share one line. */
+  .pi-detail-summary-owner-line {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px 8px;
+  }
+
+  /* At this width the figure and the actions share one line; the figure
+     shrinks rather than the pair wrapping, because wrapping costs a whole row
+     in the tallest group of the row. */
+  .pi-detail-summary-payhead {
+    flex-wrap: nowrap;
+  }
+
+  /* The pair is one control group and never stacks: nowrap on the row above
+     would otherwise squeeze the buttons into a column. */
+  .pi-detail-summary-actions {
+    flex-wrap: nowrap;
+  }
+
+  .pi-detail-summary-figure {
+    flex: 1 1 150px;
+  }
+
+  .pi-detail-summary-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 2.5fr);
+    column-gap: 24px;
+    align-items: start;
+  }
+
+  .pi-detail-summary-payment {
+    /* BOTH are reset. The tablet rule spans two rows; leaving grid-row set here
+       kept payment two rows tall at desktop and forced the four metrics to
+       stretch to match it. */
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 
