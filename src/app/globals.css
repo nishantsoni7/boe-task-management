@@ -2402,14 +2402,14 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 7px;
 }
 
 .pi-detail-summary-party {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 /* The boundaries inside the column are hairlines, never boxes and never a
@@ -2439,7 +2439,7 @@ body {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   align-items: flex-start;
 }
 
@@ -2478,10 +2478,10 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 7px;
+  gap: 1px 7px;
   min-width: 0;
   font-size: 12.5px;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .pi-detail-summary-tel,
@@ -2533,7 +2533,7 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 5px;
 }
 
 /* The two dates side by side, CAPPED rather than stretched. Left to fill their
@@ -2543,7 +2543,7 @@ body {
 .pi-detail-summary-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px 20px;
+  gap: 8px 20px;
   min-width: 0;
   max-width: 380px;
 }
@@ -2768,11 +2768,21 @@ body {
 
 /* Both controls on one row beneath the bar, compact and left-aligned with the
    figure they act on. */
+/* THE CONTROLS SIT AT THE FOOT of the surface. The auto margin takes whatever
+   room the ledger left over, so the buttons meet the bottom edge instead of
+   leaving a pool of empty ground beneath them — and where there is no room to
+   take (a phone, or an awaiting-verification line filling the surface) it
+   collapses to nothing and the padding below is the whole separation.
+
+   The padding is the FLOOR on that separation: auto can go to zero, and the
+   bar must never end up sitting on the buttons. 8px here plus the surface's
+   own 3px gap is 11px between the track and the controls at worst. */
 .pi-detail-summary-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 1px;
+  margin-top: auto;
+  padding-top: 8px;
 }
 
 .pi-detail-summary-add,

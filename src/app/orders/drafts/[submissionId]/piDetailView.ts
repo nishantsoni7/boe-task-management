@@ -894,8 +894,6 @@ export type PaymentSummaryView = {
   barPercent: number
   /** How many rows Finance has not decided yet, for the one-line note. */
   awaitingCount: number
-  /** Whether there is anything at all to open. */
-  hasDetail: boolean
 }
 
 /**
@@ -914,7 +912,6 @@ export function buildPaymentSummaryView(input: {
   /** The raw percentage, for the bar only. */
   percentValue: number | null
   awaitingCount: number
-  paymentCount: number
 }): PaymentSummaryView {
   const raw = input.percentValue
   const barPercent = raw === null || !Number.isFinite(raw)
@@ -927,6 +924,5 @@ export function buildPaymentSummaryView(input: {
     percent: input.verifiedPercent,
     barPercent,
     awaitingCount: input.awaitingCount,
-    hasDetail: input.paymentCount > 0 || input.awaitingCount > 0,
   }
 }

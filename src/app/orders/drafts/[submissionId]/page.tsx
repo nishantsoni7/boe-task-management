@@ -1186,7 +1186,6 @@ function PiDraftDetailPageInner() {
     percentValue: Number(payments.verified_percent ?? 0),
     awaitingCount: (payments.payments ?? []).filter(
       row => row.allocation_status === 'active' && isAwaitingVerification(row.status)).length,
-    paymentCount: (payments.payments ?? []).length,
   })
 
   /**

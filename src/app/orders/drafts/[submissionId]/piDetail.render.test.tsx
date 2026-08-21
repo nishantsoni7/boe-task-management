@@ -464,14 +464,14 @@ const summaryHtml = (over: {
 /** Partly paid: ₹3,50,625 of ₹8,76,563 verified, nothing awaiting. */
 const PAID_PART = buildPaymentSummaryView({
   verifiedAmount: '₹3,50,625', grandTotal: '₹8,76,563', verifiedPercent: '40%',
-  percentValue: 40, awaitingCount: 0, paymentCount: 1,
+  percentValue: 40, awaitingCount: 0,
 })
 
 describe('the top summary states VERIFIED payment, and only verified payment', () => {
   test('nothing received reads as nothing, against the order it is measured on', () => {
     const view = buildPaymentSummaryView({
       verifiedAmount: '₹0', grandTotal: '₹8,76,563', verifiedPercent: '0%',
-      percentValue: 0, awaitingCount: 0, paymentCount: 0,
+      percentValue: 0, awaitingCount: 0,
     })
     assert.equal(view.ofTotal, '₹0 of ₹8,76,563')
     assert.equal(view.percent, '0%')
@@ -483,7 +483,7 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
     // list and in `awaitingCount`, and in NOTHING that reads as money in hand.
     const view = buildPaymentSummaryView({
       verifiedAmount: '₹0', grandTotal: '₹8,76,563', verifiedPercent: '0%',
-      percentValue: 0, awaitingCount: 2, paymentCount: 2,
+      percentValue: 0, awaitingCount: 2,
     })
     assert.equal(view.barPercent, 0)
     assert.equal(view.percent, '0%')
@@ -498,7 +498,7 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
   test('the bar is a width, never a figure, and cannot leave its track', () => {
     const bar = (percentValue: number | null) => buildPaymentSummaryView({
       verifiedAmount: '₹1', grandTotal: '₹2', verifiedPercent: 'x',
-      percentValue, awaitingCount: 0, paymentCount: 1,
+      percentValue, awaitingCount: 0,
     }).barPercent
     assert.equal(bar(40), 40)
     assert.equal(bar(140), 100, 'an overpaid PI fills the bar and does not overflow it')
@@ -510,7 +510,7 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
   test('40% or more still prints the database’s own percentage, unrounded by us', () => {
     const view = buildPaymentSummaryView({
       verifiedAmount: '₹3,50,625', grandTotal: '₹8,76,563', verifiedPercent: '40%',
-      percentValue: 40, awaitingCount: 0, paymentCount: 1,
+      percentValue: 40, awaitingCount: 0,
     })
     assert.equal(view.percent, '40%')
     assert.ok(text(summaryHtml({ payment: view })).includes('₹3,50,625 of ₹8,76,563'))
@@ -533,14 +533,18 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
   test('the way in to the record is called one thing, whatever the record holds', () => {
     // It used to read "View payments" once the PI had payments and "Payment
     // details" while it had none — one control wearing two names for the one
-    // dialog it has always opened. paymentCount is what used to switch them.
-    for (const paymentCount of [0, 3]) {
+    // dialog it has always opened.
+    const cases = [
+      { verifiedAmount: '₹0', verifiedPercent: '0%', percentValue: 0, awaitingCount: 0 },
+      { verifiedAmount: '₹3,50,625', verifiedPercent: '40%', percentValue: 40, awaitingCount: 0 },
+      { verifiedAmount: '₹0', verifiedPercent: '0%', percentValue: 0, awaitingCount: 2 },
+    ]
+    for (const c of cases) {
       const html = text(summaryHtml({ payment: buildPaymentSummaryView({
-        verifiedAmount: '₹3,50,625', grandTotal: '₹8,76,563', verifiedPercent: '40%',
-        percentValue: 40, awaitingCount: 0, paymentCount,
+        ...c, grandTotal: '₹8,76,563',
       }) }))
-      assert.ok(html.includes(PAYMENT_DETAILS_LABEL), `${paymentCount}: the established name`)
-      assert.ok(!html.includes('View payments'), `${paymentCount}: and only that name`)
+      assert.ok(html.includes(PAYMENT_DETAILS_LABEL), `${c.verifiedAmount}: the established name`)
+      assert.ok(!html.includes('View payments'), `${c.verifiedAmount}: and only that name`)
     }
   })
 
@@ -1724,6 +1728,16 @@ describe('the layout is CSS, at three real breakpoints', () => {
     assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{[^}]*align-items: stretch/.test(css))
     assert.ok(/\.pi-detail-summary-paycard \{[^}]*height: 100%/.test(css))
     assert.ok(/\.pi-detail-summary-paycard \{[^}]*justify-content: flex-start/.test(css))
+  })
+
+  test('the controls fall to the foot of the surface, but never onto the bar', () => {
+    // Two rules doing two jobs. `auto` takes whatever room the ledger left, so
+    // the buttons meet the bottom edge rather than leaving a pool of empty
+    // ground under them. `padding-top` is the FLOOR when there is no room to
+    // take — a phone, or an awaiting line filling the surface — because auto
+    // collapses to zero there and the bar would otherwise sit on the buttons.
+    assert.ok(/\.pi-detail-summary-actions \{[^}]*margin-top: auto/.test(css))
+    assert.ok(/\.pi-detail-summary-actions \{[^}]*padding-top: 8px/.test(css))
   })
 
   test('ownership falls to the foot of its column, by a class and not by type', () => {
