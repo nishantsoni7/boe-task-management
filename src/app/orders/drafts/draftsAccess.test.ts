@@ -1057,7 +1057,9 @@ describe('the top summary answers four questions and repeats none of them', () =
     // them. It is an identity band, then a body split by SUBJECT: when the
     // order moves on one side, what it is worth and what has been paid on the
     // other.
-    for (const label of ['Client', 'PI created by', 'Order dates', 'Payment received']) {
+    for (const label of [
+      'Client', 'PI created by', 'Order dates', 'Financial summary', 'Payment received',
+    ]) {
       assert.ok(sections.includes(label), `${label} must be in the card`)
     }
     assert.ok(sections.includes('pi-detail-summary-identity'))

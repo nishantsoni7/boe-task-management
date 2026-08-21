@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import {
+  PAYMENT_DETAILS_LABEL,
   PiActivityTimeline,
   PiAdvanceBand,
   PiBlockingPanel,
@@ -525,8 +526,22 @@ describe('the top summary states VERIFIED payment, and only verified payment', (
     assert.ok(text(summaryHtml({ canAdd: true })).includes('Add payment'))
     assert.ok(!text(summaryHtml({ canAdd: false })).includes('Add payment'),
       'the control is absent, not merely disabled')
-    assert.ok(text(summaryHtml({ canAdd: false })).includes('View payments'),
+    assert.ok(text(summaryHtml({ canAdd: false })).includes(PAYMENT_DETAILS_LABEL),
       'but anybody who can read the PI can still read its payments')
+  })
+
+  test('the way in to the record is called one thing, whatever the record holds', () => {
+    // It used to read "View payments" once the PI had payments and "Payment
+    // details" while it had none — one control wearing two names for the one
+    // dialog it has always opened. paymentCount is what used to switch them.
+    for (const paymentCount of [0, 3]) {
+      const html = text(summaryHtml({ payment: buildPaymentSummaryView({
+        verifiedAmount: '₹3,50,625', grandTotal: '₹8,76,563', verifiedPercent: '40%',
+        percentValue: 40, awaitingCount: 0, paymentCount,
+      }) }))
+      assert.ok(html.includes(PAYMENT_DETAILS_LABEL), `${paymentCount}: the established name`)
+      assert.ok(!html.includes('View payments'), `${paymentCount}: and only that name`)
+    }
   })
 
   test('the summary says nothing while the position has not been read', () => {
@@ -604,7 +619,7 @@ describe('the top summary repeats two commercial figures, and only two', () => {
     assert.ok(html.includes('of ₹'))
     assert.ok(summaryHtml().includes('pi-detail-summary-bar'))
     assert.ok(text(summaryHtml({ canAdd: true })).includes('Add payment'))
-    assert.ok(html.includes('View payments') || html.includes('Payment details'))
+    assert.ok(html.includes(PAYMENT_DETAILS_LABEL))
   })
 })
 
@@ -1695,6 +1710,14 @@ describe('the layout is CSS, at three real breakpoints', () => {
       'each figure row puts its label left and its figure right')
     assert.ok(/\.pi-detail-summary-money \{[^}]*font-variant-numeric: tabular-nums/.test(css),
       'and the figures are tabular, so they line up digit for digit')
+  })
+
+  test('the dates sit at the top of the finance surface, never centred against it', () => {
+    // Centring split the leftover space above and below the dates, which reads
+    // as a floating block beside a box. Both areas start on the same line.
+    assert.ok(
+      /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary-body \{[^}]*align-items: start/.test(css),
+      'the two areas share a top edge')
   })
 
   test('dates and finance separate only when there is room for both', () => {

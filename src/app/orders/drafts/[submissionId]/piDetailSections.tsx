@@ -79,6 +79,16 @@ export const TONE_STYLE: Record<PiDetailTone, ToneStyle> = {
 /** The status vocabulary of the drafts list is the same one, by another name. */
 export const statusTone = (tone: PiDraftStatusTone): ToneStyle => TONE_STYLE[tone]
 
+/**
+ * The one name for the control that opens the payment record.
+ *
+ * It used to read "View payments" when the PI had payments and "Payment
+ * details" when it had none — one control wearing two names depending on state.
+ * Both press the same thing: PiPaymentDetailsModal, which is also what the page
+ * calls it (`setPaymentDialog('details')`). So the established name is the name.
+ */
+export const PAYMENT_DETAILS_LABEL = 'Payment details'
+
 /** A small state chip. Present, legible, and never a banner. */
 export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle }) {
   return (
@@ -263,6 +273,11 @@ export function PiSummaryCard({
               instead of a figure in its own right. */}
           <section className="pi-detail-summary-paycard">
 
+            {/* Names the surface for what it is. Quiet, and on the same footing
+                as "Order dates" opposite it, so the card reads as two named
+                subjects rather than one named area and one anonymous box. */}
+            <div className="pi-detail-summary-finlabel">Financial summary</div>
+
             {/* The order's worth, as label-left / figure-right rows — the same
                 idiom the Commercial breakdown card below uses, because these are
                 two lines OF that breakdown. Side by side as label-over-value
@@ -355,8 +370,11 @@ export function PiSummaryCard({
                       Add payment
                     </button>
                   )}
+                  {/* ONE label, always. It opens PiPaymentDetailsModal in
+                      either case, so wording that changed with the record made
+                      the same control look like two. */}
                   <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
-                    {payment.hasDetail ? 'View payments' : 'Payment details'}
+                    {PAYMENT_DETAILS_LABEL}
                   </button>
                 </div>
               </>
