@@ -1734,23 +1734,30 @@ function OrderRequestsPageInner() {
       if (!session) { router.push('/login'); return }
       setCurrentUserId(session.user.id)
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      // ── THREE INDEPENDENT READS, ISSUED TOGETHER ──
+      //
+      // The profile, the assignee options and the request list ran one after the
+      // next, so the page waited for the sum of three latencies before it drew
+      // anything. Not one of them needs another's answer: the assignee list is
+      // resolve_permission-backed in the database, and the advance aggregates
+      // are RLS-scoped rather than role-scoped, which is why loadRequests
+      // already takes no role.
+      const [{ data: me }, { data: assigneesData }] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', session.user.id)
+          .single(),
+        // Sales team + explicitly authorised Order Assignees only — never every
+        // active user. resolve_permission-backed, so overrides never need to be
+        // read directly by a non-admin client (employee_permission_overrides
+        // RLS only allows a user to read their own row).
+        supabase.rpc('list_eligible_order_assignees'),
+        loadRequests(),
+      ])
+
       setProfile(me as UserProfile)
-
-      // Sales team + explicitly authorised Order Assignees only — never every
-      // active user. resolve_permission-backed, so overrides never need to be
-      // read directly by a non-admin client (employee_permission_overrides
-      // RLS only allows a user to read their own row).
-      const { data: assigneesData } = await supabase.rpc('list_eligible_order_assignees')
       setAssigneeOptions((assigneesData ?? []) as AssigneeOption[])
-
-      // The advance aggregates are RLS-scoped, not role-scoped, so this no
-      // longer needs the freshly-read role handed in.
-      await loadRequests()
       setPageLoading(false)
 
       // Reclaim any of this user's own abandoned upload-stage drafts (an

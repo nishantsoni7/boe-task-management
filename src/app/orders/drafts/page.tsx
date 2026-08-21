@@ -222,16 +222,26 @@ export default function PiDraftsPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
-
-      // Module entry is enforced by the Orders layout above this page, and row
-      // visibility by RLS below it. What is resolved here is only whether to
-      // offer the "New Order" button — an entry point, not an authority.
-      const permissions = await getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => [])
+      // ── The profile and the permissions, together ──
+      //
+      // Neither needs the other's answer; both need only the session's user id.
+      // Awaiting them in turn made the page wait for the sum of two latencies
+      // before it could even start reading the drafts.
+      //
+      // The DRAFT LIST still comes after, and has to: which ids it resolves
+      // names for depends on whether this viewer is a reviewer, which is what
+      // the permissions answer.
+      const [{ data: me }, permissions] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', session.user.id)
+          .single(),
+        // Module entry is enforced by the Orders layout above this page, and row
+        // visibility by RLS below it. What is resolved here is only whether to
+        // offer the "New Order" button — an entry point, not an authority.
+        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+      ])
       const caps = deriveOrdersCapabilities((me as UserProfile | null)?.role, permissions)
 
       if (!active) return

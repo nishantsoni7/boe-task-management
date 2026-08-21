@@ -240,11 +240,19 @@ export default function AllOrdersPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      // ── The profile and the list, together ──
+      //
+      // The list is scoped by RLS, not by the role being read beside it, so
+      // waiting for one before starting the other bought nothing but a second
+      // round trip. Neither query changed.
+      const [{ data: me }] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', session.user.id)
+          .single(),
+        loadOrders(),
+      ])
 
       setProfile(me as UserProfile)
 
@@ -258,7 +266,6 @@ export default function AllOrdersPage() {
         router.replace('/orders/all')
       }
 
-      await loadOrders()
       setPageLoading(false)
     }
     init()

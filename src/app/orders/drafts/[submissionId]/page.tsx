@@ -589,24 +589,28 @@ function PiDraftDetailPageInner() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
-
-      // A failed permission read resolves to no capabilities, so the page falls
-      // back to what it has always been — a read-only record — rather than
+      // THE PROFILE JOINS THE TWO PERMISSION READS rather than preceding them.
+      // All three need only the session's user id, and the draft below needs
+      // the capabilities, so this is the difference between three waits and two.
+      //
+      // A failed permission read still resolves to no capabilities, so the page
+      // falls back to what it has always been — a read-only record — rather than
       // offering a control the caller may not have.
-      const role = (me as UserProfile | null)?.role
-      // TWO MODULES, TWO READS, because this screen now carries two authorities
-      // that must not imply one another. A failure on either resolves to no
+      //
+      // TWO MODULES, TWO READS, because this screen carries two authorities that
+      // must not imply one another. A failure on either resolves to no
       // capabilities for that module alone, so a Finance outage cannot cost
       // somebody their PI review controls and vice versa.
-      const [ordersPermissions, financePermissions] = await Promise.all([
+      const [{ data: me }, ordersPermissions, financePermissions] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', session.user.id)
+          .single(),
         getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
         getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
       ])
+      const role = (me as UserProfile | null)?.role
       const caps = deriveOrdersCapabilities(role, ordersPermissions)
       const financeCaps = deriveFinanceCapabilities(role, financePermissions)
 

@@ -766,18 +766,32 @@ export default function OrderDetailPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      // ── THE PROFILE, THE PERMISSIONS AND THE ORDER, TOGETHER ──
+      //
+      // They ran one after the next, so this page waited for three latencies
+      // before it drew anything — and none of the three needs another's answer.
+      // Every row loadOrder reads is scoped by RLS, not by the capabilities
+      // being resolved beside it.
+      //
+      // NOTHING ABOUT AUTHORITY CHANGED. ordersCaps still starts empty, is still
+      // resolved by resolve_effective_permissions in the database, and is still
+      // in hand before any amendment control can render: pageLoading is not
+      // cleared until all three have landed.
+      const [{ data: me }, ordersPerms] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', session.user.id)
+          .single(),
+        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+        loadOrder(),
+      ])
 
       setProfile(me as UserProfile)
-
-      const ordersPerms = await getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => [])
       setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
-      await loadOrder()
 
+      // This one genuinely depends on the profile, and is asked only of an
+      // admin — for whom it decides a single temporary, testing-phase control.
       if ((me as UserProfile | null)?.role === 'admin') {
         const { data: s } = await supabase.rpc('get_test_data_cleanup_settings')
         const settings = s as { enabled?: boolean; permanently_disabled?: boolean } | null
