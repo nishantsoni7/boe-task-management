@@ -413,6 +413,7 @@ const summaryHtml = (over: {
   payment?: PaymentSummaryView | null
   canAdd?: boolean
   confirmed?: string | null
+  dates?: ReturnType<typeof buildDateSummary>
 } = {}) => renderToStaticMarkup(
   <PiSummaryCard
     client={buildClientSummary(over.client ?? {
@@ -425,7 +426,7 @@ const summaryHtml = (over: {
       billingAddress: '12 Residency Road\nBengaluru 560025',
       shippingAddress: null,
     })}
-    dates={buildDateSummary({ confirmed: over.confirmed ?? '31 Jan 2026' })}
+    dates={over.dates ?? buildDateSummary({ confirmed: over.confirmed ?? '31 Jan 2026' })}
     payment={over.payment === undefined ? PAID_PART : over.payment}
     canAdd={over.canAdd ?? false}
     onOpenPayments={() => {}}
@@ -543,9 +544,12 @@ describe('the top summary identifies the client without repeating them', () => {
       contactNumber: null, billToPhone: null, shipToPhone: null,
       billingAddress: null, shippingAddress: null,
     } }))
-    // Three: the contact, the location, and the due date — which has no column
-    // to come from at all. Each is a fact the record genuinely lacks.
-    assert.equal((html.match(/Not provided/g) ?? []).length, 3)
+    // Two facts the DOCUMENT did not carry — the contact and the location — say
+    // "Not provided". The due date says "Not set" instead, because it is not
+    // something the PI omitted but something nobody has decided yet, and the two
+    // states are worth distinguishing to whoever has to chase one of them.
+    assert.equal((html.match(/Not provided/g) ?? []).length, 2)
+    assert.equal((html.match(/Not set/g) ?? []).length, 1)
     assert.ok(html.includes('Kalyan Interiors'), 'the one thing it does know is still said plainly')
   })
 
@@ -571,12 +575,35 @@ describe('the top summary states the dates it has, and pauses the one it does no
     assert.ok(!html.includes('weeks from date of confirmation'))
   })
 
-  test('the due date is a row with no value, because no column holds one', () => {
+  test('an absent due date renders “Not set”, never a date derived from prose', () => {
     const dates = buildDateSummary({ confirmed: '31 Jan 2026' })
     assert.deepEqual(dates.map(d => d.key), ['confirmed', 'due'])
-    assert.equal(dates[1].value, null,
-      'order_submissions has no due-date column; nothing here derives one')
-    assert.ok(text(summaryHtml()).includes('Due date'))
+    assert.equal(dates[1].value, null)
+
+    const html = text(summaryHtml({
+      dates: buildDateSummary({
+        confirmed: '31 Jan 2026', commitment: '6 weeks from date of confirmation',
+      }),
+    }))
+    assert.ok(html.includes('Due date'))
+    assert.ok(html.includes('Not set'))
+    // The commitment is on screen, as supporting text under the empty row, and
+    // prefixed so it cannot be read as the date itself.
+    assert.ok(html.includes('Commitment: 6 weeks from date of confirmation'))
+    assert.ok(!/Due date\s*6 weeks/.test(html), 'the prose never occupies the date slot')
+  })
+
+  test('a stored due date renders as a date, and drops the commitment line', () => {
+    const html = text(summaryHtml({
+      dates: buildDateSummary({
+        confirmed: '31 Jan 2026', due: '25 Mar 2026',
+        commitment: '6 weeks from date of confirmation',
+      }),
+    }))
+    assert.ok(html.includes('25 Mar 2026'))
+    assert.ok(!html.includes('Not set'))
+    assert.ok(!html.includes('Commitment:'),
+      'one answer beside a real date, not two')
   })
 
   test('a confirm date the PI never gave says so rather than showing a dash', () => {

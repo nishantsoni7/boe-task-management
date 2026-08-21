@@ -228,7 +228,18 @@ export function PiSummaryCard({
                   {date.value}
                 </div>
               ) : (
-                <div style={{ fontSize: '12.5px', color: colors.muted }}>{NOT_PROVIDED}</div>
+                <div style={{ fontSize: '12.5px', color: colors.muted }}>{date.absent}</div>
+              )}
+              {/* The commitment the document stated, under an absent due date
+                  only. Muted, prefixed, and at the size of supporting text — it
+                  is prose about a lead time, and it must never read as the date
+                  the row above it does not have. */}
+              {date.note && (
+                <div style={{
+                  fontSize: '11.5px', color: colors.muted, lineHeight: 1.4, marginTop: '1px',
+                }}>
+                  {date.note}
+                </div>
               )}
             </div>
           ))}

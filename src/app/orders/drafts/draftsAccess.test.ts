@@ -52,6 +52,7 @@ import {
   persistedImageUrlMaps,
   persistedProducts,
   toNumber,
+  PI_DRAFT_DETAIL_COLUMNS,
   type PersistedItem,
   type PersistedItemImage,
   type PersistedSubmission,
@@ -1078,15 +1079,45 @@ describe('the top summary answers four questions and repeats none of them', () =
     assert.equal(telLink('12345'), null, 'a fragment is not a phone number')
   })
 
-  test('the confirm date is the shared builder’s, and no due date is invented', () => {
-    assert.ok(page.includes("buildDateSummary({ confirmed: omitDash(headerValue('confirmed')) })"),
+  test('the confirm date is the shared builder’s, and the due date is a stored column', () => {
+    assert.ok(page.includes("confirmed: omitDash(headerValue('confirmed'))"),
       'the same formatted date both PI screens print')
-    // order_submissions has no due-date column. dispatch_commitment is TEXT and
-    // holds prose as often as a date, so nothing here derives one.
-    assert.equal(buildDateSummary({ confirmed: '31 Jan 2026' })[1].value, null)
+    // The due date comes from order_submissions.due_date, read separately so a
+    // build deployed before migration 20260922000000 still renders. It is never
+    // derived from the prose beside it.
+    assert.ok(page.includes('due: draft.dueDate'), 'the stored column, not a derivation')
     assert.ok(!page.includes("headerValue('dispatch')"),
-      'the prose dispatch commitment is not in the summary')
-    assert.ok(!page.includes("headerValue('created')"), 'and neither is the PI-created date')
+      'the prose dispatch commitment is not read as a date')
+    assert.ok(!page.includes("headerValue('created')"), 'and the PI-created date is not shown')
+  })
+
+  test('a missing due date says “Not set”, with the commitment only as support', () => {
+    const none = buildDateSummary({ confirmed: '31 Jan 2026' })[1]
+    assert.equal(none.value, null)
+    assert.equal(none.absent, 'Not set', 'not "Not provided" — nobody has decided one')
+
+    const prose = buildDateSummary({
+      confirmed: '31 Jan 2026', commitment: '6 weeks from date of confirmation',
+    })[1]
+    assert.equal(prose.value, null, 'prose is never promoted to a date')
+    assert.equal(prose.note, 'Commitment: 6 weeks from date of confirmation')
+
+    // Beside a real date the commitment is not repeated: one answer, not two.
+    const dated = buildDateSummary({
+      confirmed: '31 Jan 2026', due: '25 Mar 2026', commitment: '6 weeks from date of confirmation',
+    })[1]
+    assert.equal(dated.value, '25 Mar 2026')
+    assert.equal(dated.note, null)
+  })
+
+  test('the page reads due_date tolerantly, so it cannot break before the migration', () => {
+    // A column that does not exist yet makes PostgREST reject the WHOLE row
+    // read. Naming it in PI_DRAFT_DETAIL_COLUMNS would take the page down
+    // between the deploy and the migration; a separate read degrades to
+    // "Not set" instead.
+    assert.ok(!PI_DRAFT_DETAIL_COLUMNS.includes('due_date'),
+      'due_date must not be in the main submission select yet')
+    assert.ok(page.includes("dueResult.error"), 'a refusal resolves to no due date')
   })
 
   test('what the summary no longer spends space on', () => {
@@ -1728,10 +1759,10 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     // behind it.
     assert.equal((source.match(/<PiSummaryCard/g) ?? []).length, 1)
     assert.ok(!source.includes('<PiPaymentCard'), 'the standalone payments section is gone')
-    assert.ok(source.indexOf('<PiSummaryCard') < source.indexOf('<PiWorkflowPanel'),
-      'immediately below the page header and its actions')
-    assert.ok(source.indexOf('<PiSummaryCard') < source.indexOf('<PiProductTableHead'),
-      'and above the first product row')
+    // WHERE it sits is checked in src/app/orders/piSectionOrder.test.ts, against
+    // the parsed JSX tree. The string comparison that used to be here said
+    // nothing about nesting, and passed just as happily with the card moved
+    // INSIDE the products card.
   })
 
   test('moving the card changed nothing it is gated on', () => {

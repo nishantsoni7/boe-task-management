@@ -852,11 +852,50 @@ describe('the RPC payload', () => {
     assert.equal(h.bill_to_name, 'Sample Buyer Ltd')
   })
 
-  test('dates are ISO, and a worded commitment stays words', () => {
+  test('dates are ISO, and a worded commitment stays words with no due date', () => {
     const h = headerOf(plan([product()]))
     assert.equal(h.creation_date, '2026-08-16')
     assert.equal(h.order_confirmation_date, '2026-08-20')
     assert.equal(h.dispatch_commitment, '6 weeks from date of confirmation')
+    // The prose is stored verbatim and yields NO due date. Nothing adds six
+    // weeks to anything: a lead time is not a delivery date until somebody says
+    // which day it lands on.
+    assert.equal(h.due_date, null)
+  })
+
+  test('a real Excel date in the dispatch cell becomes the due date', () => {
+    // What the parser hands over for a cell that held a date serial: `.iso` set,
+    // and `.text` the same string. Both the date and the original text are kept.
+    const built = buildSubmissionPlan({
+      submissionId: SUBMISSION,
+      workbook: workbook([product()], {
+        header: header({
+          dispatchCommitment: { iso: '2026-09-30', text: '2026-09-30', source: 'serial' },
+        }),
+      }),
+      warnings: [], blockingIssues: [], source,
+    })
+    const h = built.payload.header as Record<string, unknown>
+    assert.equal(h.due_date, '2026-09-30')
+    assert.equal(h.dispatch_commitment, '2026-09-30', 'the source text is still stored')
+  })
+
+  test('an Excel duration in the dispatch cell never becomes a due date', () => {
+    // 90 typed as a lead time is converted by excelSerialToIso to 1900-03-30 —
+    // ISO-shaped, and refused. See src/lib/orders/dueDate.test.ts for the
+    // mechanism and every boundary.
+    for (const iso of ['1900-03-01', '1900-03-30', '1900-04-29', '1900-12-30']) {
+      const built = buildSubmissionPlan({
+        submissionId: SUBMISSION,
+        workbook: workbook([product()], {
+          header: header({ dispatchCommitment: { iso, text: iso, source: 'serial' } }),
+        }),
+        warnings: [], blockingIssues: [], source,
+      })
+      const h = built.payload.header as Record<string, unknown>
+      assert.equal(h.due_date, null, `${iso} is a duration, not a due date`)
+      assert.equal(h.dispatch_commitment, iso, 'and the stored text is left alone')
+    }
   })
 
   test('a worded confirmation date is not forced into a date column', () => {

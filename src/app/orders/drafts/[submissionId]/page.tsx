@@ -170,6 +170,7 @@ import {
   buildHeaderRows,
   buildImageViewerItems,
   formatInr,
+  formatPiDate,
   orDash,
   viewerNav,
   type PiDiagnosticEntry,
@@ -233,6 +234,13 @@ const MOBILE_BREAKPOINT = 768
 /** Everything the screen renders, assembled from the four reads. */
 type Draft = {
   submission: PersistedSubmission
+  /**
+   * order_submissions.due_date, read separately so a build that predates
+   * migration 20260922000000 still renders. Null both when the PI has no due
+   * date and when the column does not exist yet — the screen says the same
+   * thing for both, which is the honest answer in each case.
+   */
+  dueDate: string | null
   products: PersistedProduct[]
   representativeByRow: ReadonlyMap<number, string>
   customizationByRow: ReadonlyMap<number, readonly string[]>
@@ -422,7 +430,7 @@ function PiDraftDetailPageInner() {
     // not distinguish them, and neither does this branch.
     if (!submission) { setLoad({ kind: 'unavailable' }); return }
 
-    const [itemsResult, imagesResult] = await Promise.all([
+    const [itemsResult, imagesResult, dueResult] = await Promise.all([
       supabase
         .from('order_submission_items')
         .select(PI_DRAFT_ITEM_COLUMNS)
@@ -433,9 +441,35 @@ function PiDraftDetailPageInner() {
         .select(PI_DRAFT_ITEM_IMAGE_COLUMNS)
         .eq('submission_id', submissionId)
         .order('position', { ascending: true }),
+      /**
+       * THE DUE DATE IS READ SEPARATELY, AND A FAILURE HERE IS NOT A PAGE
+       * FAILURE.
+       *
+       * `due_date` is added by migration 20260922000000. Application code and
+       * database migrations do not deploy together — a preview or a production
+       * build can be live for minutes or days before the migration is applied —
+       * and a column named in PI_DRAFT_DETAIL_COLUMNS that does not exist yet
+       * makes PostgREST reject the WHOLE submission read (42703). That would
+       * take the entire PI page down over a field that is allowed to be absent.
+       *
+       * So it is asked for on its own, by primary key, alongside the reads this
+       * page already makes — no added round trip — and a refusal resolves to no
+       * due date, which renders exactly as it renders for the many PIs that
+       * genuinely have none. Once the migration is applied everywhere, this can
+       * be folded into PI_DRAFT_DETAIL_COLUMNS and deleted.
+       */
+      supabase
+        .from('order_submissions')
+        .select('due_date')
+        .eq('id', submissionId)
+        .maybeSingle(),
     ])
 
     if (itemsResult.error || imagesResult.error) { setLoad({ kind: 'failed' }); return }
+
+    const dueDate = dueResult.error
+      ? null
+      : ((dueResult.data as { due_date?: string | null } | null)?.due_date ?? null)
 
     const products = persistedProducts((itemsResult.data ?? []) as unknown as PersistedItem[])
     const images = (imagesResult.data ?? []) as unknown as PersistedItemImage[]
@@ -520,6 +554,7 @@ function PiDraftDetailPageInner() {
       kind: 'ready',
       draft: {
         submission: row,
+        dueDate,
         financeVerifierName: row.finance_verified_by
           ? namesById.get(row.finance_verified_by) ?? null : null,
         orderDisplayNumber,
@@ -1144,7 +1179,19 @@ function PiDraftDetailPageInner() {
     shippingAddress: submission.shipping_address,
   })
 
-  const summaryDates = buildDateSummary({ confirmed: omitDash(headerValue('confirmed')) })
+  const summaryDates = buildDateSummary({
+    confirmed: omitDash(headerValue('confirmed')),
+    // The stored column, formatted by the same date format the rest of the page
+    // uses. Nothing derives it; loadDraft either read one or it did not.
+    // formatPiDate takes the parser's date shape and re-spells the ISO string
+    // WITHOUT constructing a Date — the same timezone-safe path every other date
+    // on this page uses, so a 25 March due date reads as 25 March in Jaipur and
+    // in a CI runner alike.
+    due: draft.dueDate
+      ? formatPiDate({ iso: draft.dueDate, text: draft.dueDate, source: 'serial' })
+      : null,
+    commitment: submission.dispatch_commitment,
+  })
 
   /**
    * The compact payment block. Every figure is the RPC's, already summed in

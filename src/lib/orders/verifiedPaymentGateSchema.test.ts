@@ -91,9 +91,18 @@ describe('the migration is one file, in the right place, editing nothing applied
     }
   })
 
-  test('it is the first migration after the applied hotfix, and the only one', () => {
+  test('it is the first migration after the applied hotfix, and is a single file', () => {
+    // WHAT THIS PROTECTS: Phase 3 arrives as ONE migration rather than being
+    // split across several, and it is the next thing applied after the hotfix.
+    //
+    // It deliberately does NOT assert that nothing may ever follow it. It used
+    // to, by comparing the whole tail to [FILE], which made the guard fail the
+    // first time any later, unrelated change added a migration of its own —
+    // reporting a normal addition as a Phase 3 defect.
     const after = files.filter(f => f > HOTFIX)
-    assert.deepEqual(after, [FILE], 'Phase 3 is one migration, not several')
+    assert.equal(after[0], FILE, 'Phase 3 is the next migration after the hotfix')
+    assert.equal(after.filter(f => f.includes('verified_payment_gate')).length, 1,
+      'Phase 3 is one migration, not several')
   })
 
   test('no two migrations share a version prefix', () => {

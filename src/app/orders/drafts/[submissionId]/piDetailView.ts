@@ -39,6 +39,11 @@ import {
 } from '@/lib/orders/finalApproval'
 import { draftStatusLabel } from '@/lib/orders/draftsView'
 import { PAYMENT_POSITION_LABEL, type PaymentPosition } from '@/lib/orders/paymentGate'
+import {
+  COMMITMENT_PREFIX,
+  DUE_DATE_ABSENT,
+  supportingCommitment,
+} from '@/lib/orders/dueDate'
 import type { PiAmountRow } from '@/lib/pi/previewView'
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
@@ -761,32 +766,59 @@ export function buildClientSummary(input: {
 export type DateSummary = {
   key: 'confirmed' | 'due'
   label: string
-  /** null prints NOT_PROVIDED quietly. Nothing here ever invents a date. */
+  /** null prints the absent wording quietly. Nothing here invents a date. */
   value: string | null
+  /** What to say when there is no value. */
+  absent: string
+  /**
+   * A muted second line under an absent due date — the commitment the document
+   * actually stated, prefixed so it can never be misread as a date. Null on
+   * every other row and whenever there is a real date to show.
+   */
+  note?: string | null
 }
 
 /**
  * The two dates the summary states.
  *
- * DUE DATE IS DELIBERATELY UNBOUND. `order_submissions` has no due-date column.
- * The nearest thing the workbook carries is E113, which the parser reads as a
- * date and which reaches the database through `dispatch_commitment` — a TEXT
- * column that holds an ISO date when the cell was a real date and prose ("6
- * weeks from date of confirmation") when it was not. Deriving a due date from
- * that means deciding which of those two shapes is authoritative, and storing
- * the result in a typed column; both are data-model decisions, not layout ones.
- * So the row is drawn and says `Not provided`, and the day a due date exists,
- * only the value passed here changes.
+ * THE DUE DATE IS A STORED COLUMN AND NOTHING ELSE. `due_date` is written only
+ * from an explicit, plausible calendar date — see src/lib/orders/dueDate.ts and
+ * migration 20260922000000. This function does not parse it, validate it or
+ * derive it; by the time a value arrives here the rule has already been applied
+ * by the save path or by the backfill.
+ *
+ * WHEN THERE IS NONE, the row says `Not set` and, if the PI carried one, the
+ * commitment is shown beneath as `Commitment: 6 weeks from date of
+ * confirmation`. That text is prose and is presented as prose. It is never
+ * turned into a date, and no duration is ever added to anything.
  */
 export function buildDateSummary(input: {
   /** Already formatted by the shared header builder, or null. */
   confirmed: string | null
-  /** Reserved. Pass a formatted date the day one is stored; never derive one. */
+  /** The formatted due date, or null when the record has none. */
   due?: string | null
+  /** order_submissions.dispatch_commitment, verbatim. */
+  commitment?: string | null
 }): DateSummary[] {
+  const due = input.due ?? null
+  // The commitment is supporting text for an ABSENT due date only. Beside a real
+  // date it would be a second, vaguer answer to a question already answered.
+  const note = due === null ? supportingCommitment(input.commitment) : null
+
   return [
-    { key: 'confirmed', label: 'Confirm date', value: input.confirmed ?? null },
-    { key: 'due', label: 'Due date', value: input.due ?? null },
+    {
+      key: 'confirmed',
+      label: 'Confirm date',
+      value: input.confirmed ?? null,
+      absent: NOT_PROVIDED,
+    },
+    {
+      key: 'due',
+      label: 'Due date',
+      value: due,
+      absent: DUE_DATE_ABSENT,
+      note: note === null ? null : `${COMMITMENT_PREFIX} ${note}`,
+    },
   ]
 }
 
