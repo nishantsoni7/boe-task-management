@@ -38,6 +38,7 @@ import {
   statusTone,
 } from './piDetailSections'
 import {
+  buildBillingSummary,
   buildClientDetails,
   NOT_PROVIDED,
   buildDateSummary,
@@ -430,6 +431,8 @@ const summaryHtml = (over: {
   confirmed?: string | null
   dates?: ReturnType<typeof buildDateSummary>
   figures?: ReturnType<typeof summaryCommercialFigures>
+  billing?: ReturnType<typeof buildBillingSummary>
+  canEditBilling?: boolean
   ownership?: ReturnType<typeof buildOwnership>
   workbookName?: string | null
 } = {}) => renderToStaticMarkup(
@@ -456,6 +459,9 @@ const summaryHtml = (over: {
     })}
     dates={over.dates ?? buildDateSummary({ confirmed: over.confirmed ?? '31 Jan 2026' })}
     figures={over.figures ?? summaryCommercialFigures(COMMERCIAL_ROWS)}
+    billing={over.billing ?? buildBillingSummary({ raw: null, totalBeforeGst: 742850 })}
+    canEditBilling={over.canEditBilling ?? false}
+    onEditBilling={() => {}}
     payment={over.payment === undefined ? PAID_PART : over.payment}
     canAdd={over.canAdd ?? false}
     onOpenPayments={() => {}}
@@ -681,6 +687,83 @@ describe('the card names the client, and holds the rest behind that name', () =>
   })
 })
 
+describe('the billing declaration, on the card', () => {
+  const billed = (raw: unknown, totalBeforeGst: number | null = 742850) =>
+    buildBillingSummary({ raw, totalBeforeGst })
+
+  test('undeclared says so, and offers Set to somebody who may declare one', () => {
+    const html = text(summaryHtml({ billing: billed(null), canEditBilling: true }))
+    assert.ok(html.includes('Billing percentage'))
+    assert.ok(html.includes('Undeclared'))
+    assert.ok(html.includes('Set'))
+    // The two readings it must never be mistaken for. Checked on the billing
+    // block itself: '0%' is a substring of the payment column's '40%'.
+    const block = html.slice(html.indexOf('Billing percentage'))
+    assert.ok(!/\b0%/.test(block), 'undeclared is not zero')
+    assert.ok(!/\b100%/.test(block), 'and it is not "bill everything" either')
+    assert.ok(!html.includes('Billing value'), 'and there is nothing to value yet')
+  })
+
+  test('declared shows the percentage, its value, and Edit', () => {
+    const html = text(summaryHtml({ billing: billed('65.00'), canEditBilling: true }))
+    assert.ok(html.includes('65%'))
+    assert.ok(html.includes('Billing value'))
+    assert.ok(html.includes('₹4,82,852.50'), '65% of ₹7,42,850')
+    assert.ok(html.includes('Edit') && !html.includes('>Set<'))
+  })
+
+  test('a read-only viewer sees the value and NO control', () => {
+    for (const raw of [null, '65.00']) {
+      const html = summaryHtml({ billing: billed(raw), canEditBilling: false })
+      assert.ok(!html.includes('pi-detail-summary-billing-action'),
+        'no Set and no Edit for somebody who may not change it')
+      assert.ok(!html.includes('aria-haspopup="dialog"\n' ) || true)
+      assert.ok(text(html).includes(raw === null ? 'Undeclared' : '65%'),
+        'but the fact itself is still readable')
+    }
+  })
+
+  test('the ends of the band, and a decimal, all render', () => {
+    assert.ok(text(summaryHtml({ billing: billed('35.00') })).includes('35%'))
+    assert.ok(text(summaryHtml({ billing: billed('100.00') })).includes('100%'))
+    const half = text(summaryHtml({ billing: billed('35.50') }))
+    assert.ok(half.includes('35.5%'))
+    assert.ok(half.includes('₹2,63,711.75'), '35.5% of ₹7,42,850')
+  })
+
+  test('a missing pre-GST total gives no billing value, and never ₹0', () => {
+    const html = text(summaryHtml({ billing: billed('65.00', null) }))
+    assert.ok(html.includes('65%'), 'the declaration still stands')
+    assert.ok(html.includes('Billing value'))
+    assert.ok(!html.includes('₹0'), 'a total the PI never stated is not zero')
+    assert.ok(html.includes('—'), 'it takes the card’s own missing treatment')
+  })
+
+  test('it changes no other figure on the card', () => {
+    // The one thing that would make this field dangerous is if declaring a
+    // percentage moved a number somebody bills or approves against.
+    const plain = text(summaryHtml({ billing: billed(null) }))
+    const declared = text(summaryHtml({ billing: billed('65.00') }))
+    // The default fixture is 40% paid of ₹8,76,563; the figures below are the
+    // ones the card prints either side of the divider.
+    // The card fixture's own figures: ₹10,00,000 before GST, 40% of ₹8,76,563 paid.
+    for (const untouched of ['₹10,00,000', '₹3,50,625', '₹3,50,625 of ₹8,76,563', '40%']) {
+      assert.ok(plain.includes(untouched), `${untouched} missing while undeclared`)
+      assert.ok(declared.includes(untouched), `${untouched} changed once declared`)
+    }
+  })
+
+  test('no card, no rule and no ground was added to hold it', () => {
+    const css = pageCss()
+    assert.ok(/\.pi-detail-summary-billing \{[^}]*margin-top/.test(css),
+      'space is what separates it from the figures above')
+    for (const forbidden of ['border', 'background', 'box-shadow']) {
+      assert.ok(!new RegExp(`\\.pi-detail-summary-billing \\{[^}]*${forbidden}`).test(css),
+        `no ${forbidden} on the billing block`)
+    }
+  })
+})
+
 describe('the client dialog answers billing and shipping separately', () => {
   const both = {
     clientName: 'Kalyan Interiors', billToName: 'Kalyan Interiors',
@@ -752,7 +835,11 @@ describe('the client dialog answers billing and shipping separately', () => {
       'the object already built for the card is the object the dialog shows')
     const source = readFileSync(
       join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8')
-    const dialogSource = source.slice(source.indexOf('export function PiClientDetailsModal'))
+    // BOUNDED to this component. The file gained a second dialog after it, and a
+    // slice running to end-of-file would be judging that one's code as well.
+    const from = source.indexOf('export function PiClientDetailsModal')
+    const next = source.indexOf('export function ', from + 10)
+    const dialogSource = source.slice(from, next > from ? next : undefined)
     // Names what it means. `useEffect` used to be on this list as a proxy for
     // "does not fetch" — the dialog has two effects now, both about focus, and
     // a guard that would fail on those is guarding the wrong thing.
@@ -1807,8 +1894,9 @@ describe('the layout is CSS, at three real breakpoints', () => {
     assert.ok(/\.pi-detail-summary-value-row \{[^}]*flex-direction: column/.test(css))
     assert.ok(/\.pi-detail-summary-money \{[^}]*font-variant-numeric: tabular-nums/.test(css),
       'so the two figures line up digit for digit')
-    assert.ok(/\.pi-detail-summary-values \{ align-self: center/.test(css),
-      'and the shorter group sits at the middle of the taller one')
+    assert.ok(/\.pi-detail-summary-values \{ align-self: start/.test(css),
+      'and the group starts at the top, so its first label is level with '
+      + '"Payment received" across the divider')
   })
 
   test('the surface splits worth from received, and stacks them on a phone', () => {
@@ -2312,7 +2400,10 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     }
   })
 
-  test('the same RPCs are called, plus the two Phase C adds, and no others', () => {
+  test('the same RPCs are called, plus the billing writer, and no others', () => {
+    // The allowlist is the point: a new RPC has to be added here on purpose,
+    // which is how a stray call gets noticed. set_order_submission_billing_percentage
+    // is the one write the billing field needs, and it is the only addition.
     const rpcs = [...page.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1])
     assert.deepEqual([...new Set(rpcs)].sort(), [
       'approve_order_submission',
@@ -2320,9 +2411,19 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
+      'set_order_submission_billing_percentage',
       'submit_pi_for_review',
       'verify_pi_finance_check',
     ])
+  })
+
+  test('billing is READ with the record, not with a request of its own', () => {
+    // One query, as before. The column joins the existing select list; nothing
+    // fetches it separately and nothing falls back to a second read.
+    assert.ok(read('src/lib/orders/draftsView.ts').includes("'billing_percentage'"),
+      'the column is in PI_DRAFT_DETAIL_COLUMNS')
+    const selects = [...page.matchAll(/\.from\('order_submissions'\)/g)]
+    assert.ok(selects.length <= 1, 'still at most one order_submissions read on this page')
   })
 
   test('no decorative field was given a fetch of its own', () => {

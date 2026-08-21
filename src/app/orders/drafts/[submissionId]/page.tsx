@@ -109,6 +109,7 @@ import {
   type PiThumbnailProps,
 } from '@/components/orders/piPreview'
 import {
+  PiBillingPercentageModal,
   PiClientDetailsModal,
   PiSubmitConfirmModal,
   PiNoteModal,
@@ -207,6 +208,7 @@ import {
 import {
   describeAdvanceForReview,
   buildApprovalSummary,
+  buildBillingSummary,
   buildClientDetails,
   buildDateSummary,
   buildOwnership,
@@ -337,6 +339,11 @@ function PiDraftDetailPageInner() {
   // The client dialog behind the name in the summary card. Nothing is
   // fetched for it — it reads the submission the page already holds.
   const [clientDialog, setClientDialog] = useState(false)
+  // The billing-percentage editor, and its own in-flight and failure state. It
+  // writes, so it cannot share the read-only client dialog's shape.
+  const [billingDialog, setBillingDialog] = useState(false)
+  const [billingSaving, setBillingSaving] = useState(false)
+  const [billingFailure, setBillingFailure] = useState<string | null>(null)
 
   /**
    * WHO IS LOOKING, AND WHAT THEY MAY DO — resolved for the SIGNED-IN account.
@@ -775,6 +782,38 @@ function PiDraftDetailPageInner() {
    * on the positive path is friction for its own sake. The refusal is the one
    * that needs words.
    */
+  /**
+   * DECLARE, CHANGE OR CLEAR THE BILLING PERCENTAGE.
+   *
+   * Not through runAction: that one owns the workflow dialog and this editor
+   * keeps its own in-flight and failure state, so a validation refusal can be
+   * shown inside the dialog with the typed value still on screen.
+   *
+   * `null` is the clear. The RPC re-derives the authority and the bounds, so a
+   * refusal here is the database's answer and not a second opinion.
+   */
+  const saveBillingPercentage = useCallback(async (value: number | null) => {
+    if (billingSaving) return
+    setBillingSaving(true)
+    setBillingFailure(null)
+    try {
+      const { error } = await supabase.rpc('set_order_submission_billing_percentage', {
+        p_submission_id: submissionId,
+        p_percentage: value,
+      })
+      if (error) {
+        setBillingFailure(
+          (error as { message?: string }).message
+          ?? 'The billing percentage could not be saved.')
+        return
+      }
+      setBillingDialog(false)
+      await loadDraft({ quiet: true })
+    } finally {
+      setBillingSaving(false)
+    }
+  }, [billingSaving, supabase, submissionId, loadDraft])
+
   const approveException = useCallback(() => runAction('approve_exception', async () => {
     const { error } = await supabase.rpc('approve_pi_advance_exception', {
       p_submission_id: submissionId,
@@ -1175,6 +1214,20 @@ function PiDraftDetailPageInner() {
   const summaryFigures = summaryCommercialFigures(commercialRows)
 
   /**
+   * The billing declaration, and what it comes to.
+   *
+   * FROM THE COLUMN, NOT THE ROW. `commercialRows` carries FORMATTED strings —
+   * '₹7,42,850' — and arithmetic on those is how a figure quietly loses its
+   * paise. toNumber(submission.total_before_gst) is the authoritative number,
+   * the same one the breakdown formatted, and a null stays null so a PI with no
+   * pre-tax total shows the missing treatment rather than ₹0.
+   */
+  const billingSummary = buildBillingSummary({
+    raw: submission.billing_percentage,
+    totalBeforeGst: toNumber(submission.total_before_gst),
+  })
+
+  /**
    * The compact payment block. Every figure is the RPC's, already summed in
    * numeric; the only thing derived here is how many rows Finance has not
    * decided yet, which is a count of rows and not a sum of money.
@@ -1263,6 +1316,14 @@ function PiDraftDetailPageInner() {
         <PiSummaryCard
           client={clientDetails}
           onOpenClient={() => setClientDialog(true)}
+          billing={billingSummary}
+          /* The SAME rule the RPC applies, as far as this page can see it:
+             draft/needs_changes and the owner. It is deliberately narrower than
+             the server, which also admits an active admin — this page resolves
+             no roles, and a control that is absent for somebody who could have
+             used it is the safe direction of that difference. */
+          canEditBilling={actions.canChangePi}
+          onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
           ownership={ownership}
           statusLabel={draftStatusLabel(submission.status)}
           tone={tone}
@@ -1483,6 +1544,17 @@ function PiDraftDetailPageInner() {
           No request: clientDetails came off the submission already on screen. */}
       {clientDialog && (
         <PiClientDetailsModal client={clientDetails} onClose={() => setClientDialog(false)} />
+      )}
+
+      {billingDialog && (
+        <PiBillingPercentageModal
+          current={billingSummary.value}
+          saving={billingSaving}
+          failure={billingFailure}
+          onCancel={() => { if (!billingSaving) setBillingDialog(false) }}
+          onSave={value => { void saveBillingPercentage(value) }}
+          onClear={() => { void saveBillingPercentage(null) }}
+        />
       )}
 
       {paymentDialog === 'details' && (

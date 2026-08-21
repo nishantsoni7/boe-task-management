@@ -2694,9 +2694,11 @@ body {
   flex: 1 1 auto;
 }
 
-/* The shorter group sits at the MIDDLE of the taller one rather than at its
-   top, which is what stops the left of the surface reading as half empty. */
-.pi-detail-summary-values { align-self: center; }
+/* THE GROUP NOW FILLS ITS COLUMN. Centring was right when it held two figures
+   against a much taller payment column; with billing beneath them it has the
+   height to use, and starting at the top keeps its first label level with
+   "Payment received" across the divider. */
+.pi-detail-summary-values { align-self: start; }
 
 /* An element, not a border — and inset top and bottom, so it divides the
    content rather than standing up as a wall the height of the surface. */
@@ -2741,6 +2743,45 @@ body {
   flex-direction: column;
   gap: 1px;
   min-width: 0;
+}
+
+/* THE BILLING DECLARATION sits below the figures it is measured against, told
+   apart by SPACE — not by a rule, a border or a ground. The gap is what says
+   "a different kind of fact"; the label and figure treatments are the ones the
+   two commercial values already use. */
+.pi-detail-summary-billing { margin-top: 6px; }
+
+/* Label and the Set/Edit control on one line, so the trigger belongs to the
+   thing it edits rather than floating at the column's edge. */
+.pi-detail-summary-billing-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* A control that reads as a link, not a button: it sits inside a group of
+   figures and must not compete with Add payment across the divider. */
+.pi-detail-summary-billing-action {
+  flex-shrink: 0;
+  margin: -2px -4px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5585e8;
+  cursor: pointer;
+}
+
+.pi-detail-summary-billing-action:hover { background: rgba(85, 133, 232, 0.09); }
+
+.pi-detail-summary-billing-action:focus-visible {
+  outline: 2px solid rgba(85, 133, 232, 0.6);
+  outline-offset: 1px;
 }
 
 /* Tabular, so the two figures line up digit for digit with each other and with
@@ -2935,6 +2976,10 @@ body {
   .pi-detail-summary-payrule { display: none; }
 
   .pi-detail-summary-values { align-self: stretch; }
+
+  /* Stacked, the label and its control have the full width, so the control can
+     sit at the far end of the row without drifting away from its label. */
+  .pi-detail-summary-billing-head { gap: 16px; }
 }
 
 @media (min-width: 900px) {

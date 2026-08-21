@@ -364,10 +364,16 @@ describe('the detail page renders only what it fetched', () => {
     // and chooses the standard or the reduced-payment route, so a browser can
     // neither declare an advance nor claim a payment position.
     //
-    // Phase C adds the last two: verify_pi_finance_check records the finance
-    // sign-off and nothing else, and approve_order_submission is the ONE
-    // authoritative approval door — it is the only thing on this screen that
-    // creates an Order, and the browser reaches it by id alone.
+    // Phase C adds two: verify_pi_finance_check records the finance sign-off and
+    // nothing else, and approve_order_submission is the ONE authoritative
+    // approval door — the only thing on this screen that creates an Order, and
+    // the browser reaches it by id alone.
+    //
+    // set_order_submission_billing_percentage is the one write here that is NOT
+    // a status move, and it is deliberately narrow: one column on one row, no
+    // money, no state transition, and gated by can_edit_order_submission — the
+    // existing draft/needs_changes owner-or-admin rule, unwidened. A SUBMITTED
+    // record refuses it like every other edit.
     const rpcs = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
     assert.deepEqual(rpcs, [
       'approve_order_submission',
@@ -375,6 +381,7 @@ describe('the detail page renders only what it fetched', () => {
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
+      'set_order_submission_billing_percentage',
       'submit_pi_for_review',
       'verify_pi_finance_check',
     ])
@@ -389,6 +396,19 @@ describe('the detail page renders only what it fetched', () => {
       assert.ok(!rpcs.some(name => name.includes(forbidden)),
         `${forbidden} belongs to no phase this page can reach`)
     }
+  })
+
+  test('the billing writer introduces no new authority, and no new gate', () => {
+    // The whole safety of this field is that it reuses the rule that already
+    // governs editing a PI. A second authority function, or a submitted-state
+    // exception, would be the thing to catch here.
+    const migration = read('supabase/migrations/20260923000000_order_submission_billing_percentage.sql')
+    assert.ok(migration.includes('if not public.can_edit_order_submission(p_submission_id) then'))
+    assert.ok(!migration.includes('can_declare_billing_percentage'))
+    assert.ok(!/status\s*=\s*'submitted'/.test(migration),
+      'nothing here makes a submitted record editable')
+    // And the field is optional: no submission or approval path may refuse over it.
+    assert.ok(!/billing[\s\S]{0,80}cannot be submitted/i.test(migration))
   })
 
   // ── The writes this page reaches INDIRECTLY ────────────────────────────────

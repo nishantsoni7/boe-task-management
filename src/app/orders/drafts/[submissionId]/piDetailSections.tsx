@@ -54,6 +54,9 @@ import {
   STORED_COPY_NOTE,
   describeRequestedException,
   type ApprovedOrderView,
+  BILLING_LABEL,
+  BILLING_VALUE_LABEL,
+  type BillingSummary,
   type ClientDetails,
   type DateSummary,
   type PiOwnership,
@@ -130,7 +133,8 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
  */
 export function PiSummaryCard({
   client, onOpenClient, ownership, statusLabel, tone, workbookName,
-  dates, figures, payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
+  dates, figures, billing, canEditBilling, onEditBilling,
+  payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
 }: {
   client: ClientDetails
   /** Opens the client dialog. The card carries the name; the dialog carries
@@ -145,6 +149,16 @@ export function PiSummaryCard({
   dates: readonly DateSummary[]
   /** The two commercial figures, picked out of the breakdown's own rows. */
   figures: readonly SummaryFigure[]
+  /** The billing declaration, and what it comes to. */
+  billing: BillingSummary
+  /**
+   * Whether THIS viewer may declare one — describeSubmissionActions' answer,
+   * which is draft/needs_changes and owner-or-admin. Hiding the control is not
+   * the security: set_order_submission_billing_percentage re-derives the same
+   * rule against the record's own state.
+   */
+  canEditBilling: boolean
+  onEditBilling: () => void
   /** null only while the payment summary has not been read yet. */
   payment: PaymentSummaryView | null
   canAdd: boolean
@@ -311,6 +325,48 @@ export function PiSummaryCard({
                   </div>
                 </div>
               ))}
+
+              {/* ── The billing declaration ──
+                  Below the two figures it is measured against, in space this
+                  column already had. Not another card and not behind a rule: a
+                  wider gap above it is what says "a different kind of fact",
+                  and the label treatment is the figures' own. */}
+              <div className="pi-detail-summary-value-row pi-detail-summary-billing">
+                <div className="pi-detail-summary-billing-head">
+                  <span className="pi-detail-summary-metric-label">{BILLING_LABEL}</span>
+                  {canEditBilling && (
+                    <button
+                      type="button"
+                      onClick={onEditBilling}
+                      className="pi-detail-summary-billing-action"
+                      aria-haspopup="dialog"
+                      aria-label={`${billing.action} ${BILLING_LABEL.toLowerCase()}`}
+                    >
+                      {billing.action}
+                    </button>
+                  )}
+                </div>
+                {/* UNDECLARED IS MUTED, and says so in words. Not 0%, not an em
+                    dash — nobody has decided yet. */}
+                <div className={billing.declared
+                  ? 'pi-detail-summary-money'
+                  : 'pi-detail-summary-metric-absent'}>
+                  {billing.percent}
+                </div>
+              </div>
+
+              {/* Only where there is a percentage to measure. A missing pre-GST
+                  total shows the card's own missing treatment, never ₹0. */}
+              {billing.declared && (
+                <div className="pi-detail-summary-value-row">
+                  <div className="pi-detail-summary-metric-label">{BILLING_VALUE_LABEL}</div>
+                  <div className={billing.amountMissing
+                    ? 'pi-detail-summary-metric-absent'
+                    : 'pi-detail-summary-money'}>
+                    {billing.amount}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="pi-detail-summary-payrule" role="presentation" />

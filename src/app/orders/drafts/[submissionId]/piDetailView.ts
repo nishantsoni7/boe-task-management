@@ -44,7 +44,12 @@ import {
   DUE_DATE_ABSENT,
   supportingCommitment,
 } from '@/lib/orders/dueDate'
-import type { PiAmountRow } from '@/lib/pi/previewView'
+import {
+  billingValue,
+  formatBillingPercentage,
+  readBillingPercentage,
+} from '@/lib/orders/billingPercentage'
+import { formatInr, type PiAmountRow } from '@/lib/pi/previewView'
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
 
@@ -375,6 +380,63 @@ export function summaryCommercialFigures(rows: readonly PiAmountRow[]): SummaryF
     if (!row) return []
     return [{ key, label: SUMMARY_FIGURE_LABEL[key], value: row.value, kind: row.kind }]
   })
+}
+
+/**
+ * The billing declaration, as the card shows it.
+ *
+ * TWO STATES, NEVER THREE. Either a percentage was declared — and then there is
+ * a value to go with it — or it was not, and the card says `Undeclared` and
+ * shows no figure at all. There is no third state where a percentage exists but
+ * its value is unknown, because the value is derived from a total the record
+ * either has or does not.
+ *
+ * WHY `value` MAY BE MISSING WHILE `percent` IS DECLARED. total_before_gst is
+ * nullable. A PI whose workbook never stated a pre-tax total cannot produce a
+ * billing value, and the card must say so with its existing missing treatment
+ * rather than print ₹0 — a figure somebody would act on.
+ *
+ * NOTHING HERE DECIDES WHO MAY EDIT IT. `canEdit` is handed in, resolved from
+ * the same describeSubmissionActions the rest of the page uses, and enforced
+ * again by the RPC. See set_order_submission_billing_percentage.
+ */
+export type BillingSummary = {
+  /** `65%`, `35.5%`, or the undeclared wording. Never `0%`. */
+  percent: string
+  /** True when somebody has actually declared one. */
+  declared: boolean
+  /** The raw number, for the editor to start from. Null when undeclared. */
+  value: number | null
+  /** The billed amount, formatted — or null when there is nothing to show. */
+  amount: string | null
+  /** True when a percentage is declared but the pre-GST total is missing. */
+  amountMissing: boolean
+  /** `Set` for an undeclared record, `Edit` for a declared one. */
+  action: string
+}
+
+export const BILLING_LABEL = 'Billing percentage'
+export const BILLING_VALUE_LABEL = 'Billing value'
+
+export function buildBillingSummary(input: {
+  /** The stored column, as PostgREST returned it. */
+  raw: unknown
+  /** The authoritative pre-GST total, as a number. Never a formatted string. */
+  totalBeforeGst: number | null
+}): BillingSummary {
+  const value = readBillingPercentage(input.raw)
+  const declared = value !== null
+  const amount = billingValue({ totalBeforeGst: input.totalBeforeGst, percentage: value })
+  return {
+    percent: formatBillingPercentage(value),
+    declared,
+    value,
+    // formatInr renders a null as the em dash the rest of the card uses for a
+    // figure the record does not have.
+    amount: declared ? formatInr(amount) : null,
+    amountMissing: declared && amount === null,
+    action: declared ? 'Edit' : 'Set',
+  }
 }
 
 // ── 3. Workflow and actions ───────────────────────────────────────────────────
