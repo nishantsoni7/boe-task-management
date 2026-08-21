@@ -93,21 +93,34 @@ describe('the migration takes its place without disturbing anything applied', ()
     assert.ok(FILE > BILLING, `${FILE} must sort after ${BILLING}`)
   })
 
-  test('it is the newest migration in the directory', () => {
-    const newest = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort().at(-1)
-    assert.equal(newest, FILE)
+  test('nothing was slipped in between it and the last applied migration', () => {
+    // Not "it is the newest": later phases on this same branch legitimately add
+    // their own files after it — the document-generation phase supersedes one
+    // of the policies created here, and must therefore sort AFTER it. What must
+    // stay true is that this file is the FIRST thing after the applied history.
+    const files = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
+    assert.equal(files[files.indexOf(BILLING) + 1], FILE)
   })
 
   test('no applied migration has been modified on this branch', () => {
     // The authority is git, not a checksum this repository maintains: an edit
     // to an applied migration would silently change what the remote database is
     // believed to contain.
+    //
+    // A file that does not exist at origin/main is NEW, not edited — later
+    // phases on this branch add their own, and adding one is the whole point.
     const changed = execFileSync('git', ['diff', '--name-only', 'origin/main', '--', 'supabase/migrations'], {
       encoding: 'utf8',
       cwd: process.cwd(),
     }).split('\n').map(s => s.trim()).filter(Boolean)
 
-    const edited = changed.filter(path => !path.endsWith(FILE))
+    const atBase = new Set(
+      execFileSync('git', ['ls-tree', '--name-only', 'origin/main:supabase/migrations'], {
+        encoding: 'utf8',
+        cwd: process.cwd(),
+      }).split('\n').map(s => s.trim()).filter(Boolean))
+
+    const edited = changed.filter(path => atBase.has(path.split('/').pop() ?? path))
     assert.deepEqual(edited, [], `applied migrations were edited: ${edited.join(', ')}`)
   })
 
