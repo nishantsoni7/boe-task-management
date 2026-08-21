@@ -84,9 +84,13 @@ describe('the migration takes its place without disturbing anything applied', ()
     assert.ok(FILE > HANDOFF, 'it supersedes a policy the handoff created, so it must sort after it')
   })
 
-  test('it is the newest migration in the directory', () => {
-    const newest = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort().at(-1)
-    assert.equal(newest, FILE)
+  test('nothing was slipped in between it and the handoff it supersedes', () => {
+    // Not "it is the newest": a later phase on this same branch adds its own
+    // file, which is what a branch of several phases looks like. What must stay
+    // true is that this one lands immediately after the migration whose storage
+    // policy it narrows.
+    const files = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
+    assert.equal(files[files.indexOf(HANDOFF) + 1], FILE)
   })
 
   test('no applied migration has been modified on this branch', () => {

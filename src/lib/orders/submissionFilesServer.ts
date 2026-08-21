@@ -330,11 +330,60 @@ export async function removeAllObjectsForSubmission(
   if (!SUBMISSION_ID_RE.test(submissionId)) {
     throw new Error('A valid submissionId is required.')
   }
+  return removeAllObjectsUnderPrefix(service, `submissions/${submissionId}`, recordedPaths, options)
+}
 
+/**
+ * Remove every storage object belonging solely to one CONFIRMED ORDER — its
+ * generated documents, under the reserved orders/{order_id}/versions/ prefix.
+ *
+ * A SIBLING OF THE ABOVE, not a widening of it. The two prefixes belong to
+ * different records with different lifetimes: a PI's files may be removed while
+ * its Order still exists, and an Order's documents are removed only when the
+ * Order itself is. Keeping them separate means neither call can ever reach into
+ * the other's territory, whatever it is handed.
+ *
+ * WHY THIS EXISTS AT ALL. Test Data Cleanup deletes the Order, and generated
+ * documents are the only files an Order owns in its own right. Without this they
+ * would survive every record that referred to them — unreachable through any
+ * policy, since publication is what authorizes a read and the version row is
+ * gone, but present in the bucket forever.
+ */
+export async function removeAllObjectsForOrder(
+  service: SupabaseClient,
+  orderId: string,
+  /** The keys the register itself names, read by the caller from the database. */
+  recordedPaths: readonly string[],
+  options: { onRemoveAttempt?: () => void } = {},
+): Promise<SubmissionObjectRemoval> {
+  if (!SUBMISSION_ID_RE.test(orderId)) {
+    throw new Error('A valid orderId is required.')
+  }
+  return removeAllObjectsUnderPrefix(service, `orders/${orderId}`, recordedPaths, options)
+}
+
+/**
+ * The shared body: sweep one prefix, remove what is under it, and report
+ * honestly.
+ *
+ * EXTRACTED RATHER THAN DUPLICATED. Every subtlety in here — the strict prefix
+ * confinement on both sources, the "a recorded key the sweep did not find is
+ * already gone" rule that makes a retry converge, marking before the request
+ * rather than after it, a batch that never rejects — was learned once and is
+ * expensive to re-learn. Two copies would be two chances to lose one of them.
+ *
+ * THE PREFIX IS NEVER A CALLER'S STRING. Both entry points above build it from a
+ * validated uuid, so nothing outside this module can name a prefix to sweep.
+ */
+async function removeAllObjectsUnderPrefix(
+  service: SupabaseClient,
+  prefix: string,
+  recordedPaths: readonly string[],
+  options: { onRemoveAttempt?: () => void } = {},
+): Promise<SubmissionObjectRemoval> {
   /** Set before the first destructive request, never cleared. */
   let removalAttempted = false
 
-  const prefix = `submissions/${submissionId}`
   const inPrefix = (path: unknown): path is string =>
     typeof path === 'string' && path.startsWith(`${prefix}/`)
 

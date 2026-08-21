@@ -569,9 +569,13 @@ describe('one route owns claim -> storage -> finalize', () => {
   test('the flag is set by a callback that runs BEFORE each remove request', () => {
     assert.ok(route.includes('const markRemovalAttempt = () => { storageRemovalAttempted = true }'))
     assert.ok(route.includes('onRemoveAttempt: markRemovalAttempt'))
-    // Both destructive helpers, not just the PI one.
-    assert.equal((route.match(/onRemoveAttempt: markRemovalAttempt/g) ?? []).length, 2,
-      'PI files AND Order Request attachments')
+    // EVERY destructive helper, not just the PI one. Three of them now: the
+    // Order Request's attachments, the PI's own files, and — since Confirmed
+    // Orders gained generated documents — the Order's own
+    // orders/{order_id}/versions/ prefix, which belongs to no PI and which
+    // nothing else would ever remove.
+    assert.equal((route.match(/onRemoveAttempt: markRemovalAttempt/g) ?? []).length, 3,
+      'Order Request attachments, PI files AND the Order’s generated documents')
   })
 
   test('the returned fact is read too, as defence in depth', () => {
