@@ -2,7 +2,7 @@
 
 # Module Architecture
 
-Last Updated: 10 August 2026
+Last Updated: September 2026 — Order Management module added; earlier sections unchanged.
 
 ---
 
@@ -724,3 +724,158 @@ engine, which keeps rollback cheap.
 
 **No V2 features in V1**: no role templates, department-role editors, scopes,
 approval chains, access-history screens, or permission exports.
+
+---
+
+# ORDER MANAGEMENT MODULE
+
+*September 2026. Marked **(branch)** where the work is complete on
+`claude/confirmed-order-handoff-performance` but not merged and not applied.*
+
+## Screens
+
+| Route | File | What it is |
+| --- | --- | --- |
+| `/orders` | `src/app/orders/page.tsx` | Dashboard — running Orders and five figures |
+| `/orders/all` | `src/app/orders/all/page.tsx` | Every Order the viewer may see |
+| `/orders/[id]` | `src/app/orders/[id]/page.tsx` | One Confirmed Order |
+| `/orders/drafts` | `src/app/orders/drafts/page.tsx` | PI drafts and submissions |
+| `/orders/drafts/[submissionId]` | `.../[submissionId]/page.tsx` | One PI — review, decisions, payments, approval |
+| `/orders/import` | `src/app/orders/import/page.tsx` | Upload a PI workbook and read it back |
+| `/orders/requests` | `src/app/orders/requests/page.tsx` | Order Requests list |
+| `/orders/requests/[id]` | `src/app/orders/requests/[id]/page.tsx` | One Order Request |
+| `/orders/notifications` | `src/app/orders/notifications/page.tsx` | Module notifications |
+
+`src/app/orders/layout.tsx` is a guard on the critical path of all nine: it
+renders a loading state instead of its children until it has confirmed module
+entry, so every round trip it spends is spent by every route.
+
+## API routes
+
+| Route | Runtime | What it does |
+| --- | --- | --- |
+| `/api/orders/[id]` | node | one Order, server-side |
+| `/api/orders/import/process-draft` | node | **the trusted parse** — downloads the workbook, re-parses it server-side, persists only its own reading |
+| `/api/orders/[id]/documents` **(branch)** | node, `maxDuration = 60` | request → claim → generate → publish |
+| `/api/orders/test-data-cleanup` | node | claim → storage removal → finalize |
+| `/api/orders/requests/*`, `/api/orders/submissions/*`, `/api/orders/notify` | node | attachments, deletion, notifications |
+
+## Tables
+
+| Table | What it holds |
+| --- | --- |
+| `orders` | the Confirmed Order register. **No DELETE policy**, and `orders_prevent_delete` refuses every path including the service role |
+| `order_activity_log` | the Order's own trail |
+| `order_change_requests` | proposed amendments |
+| `order_submissions` | the PI record |
+| `order_submission_items` / `_item_images` | its product lines and photographs |
+| `order_submission_activity` | the PI's **review** trail — deliberately not visible through the Order door |
+| `order_requests` / `_attachments` / `_activity` | the older Order Request flow |
+| `order_number_cycle` | single-row, admin-configured next number. RLS on, **no policies at all** |
+| `test_data_cleanup_claims` / `_audit` | the cleanup protocol |
+| `order_document_versions` **(branch)** | the document register |
+| `order_number_cycle_resets` **(branch)** | a permanent audit of every reset |
+
+## Storage — `order-files`
+
+Private, 10 MiB per object, and **no UPDATE policy for any role**. That is what
+makes a stored object immutable and what defeats upsert; every generation path
+is built around it rather than asking for an exception.
+
+```
+submissions/{submission_id}/original/{uuid}.xlsx        the uploaded workbook
+submissions/{submission_id}/images/{item_id}.{ext}      extracted photographs
+orders/{order_id}/versions/{v}/attempts/{n}/approved.xlsx   (branch)
+orders/{order_id}/versions/{v}/attempts/{n}/approved.pdf    (branch)
+```
+
+Attempt-scoped, because objects are immutable: every write goes to a key nothing
+has ever occupied, so a retry never needs upsert. Reads are always **short-lived
+signed URLs** minted through the reader's own session — the bucket is never
+public and no page embeds a URL.
+
+## Permission actions (`orders`)
+
+| Action | Means | Protected |
+| --- | --- | --- |
+| `view` | module entry only — never company-wide sight | no |
+| `view_all` | company-wide sight of every Order | **yes** |
+| `create` | upload and own a PI | no |
+| `approve` | convert an Order **Request** (older, unrelated to PI approval) | no |
+| `approve_order` | **PI approval** — the management approval authority | **yes**, deny-by-default |
+| `approve_advance_exception` | settle a reduced-payment exception | **yes** |
+| `manage` | amend a Confirmed Order directly | **yes** |
+| `can_be_order_assignee` | eligibility other people's forms read | per-employee |
+
+Finance carries two that Order Management depends on: `finance.allocate`
+(record a payment against a PI) and `finance.approve` (verify one).
+
+## The visibility predicates
+
+Two doors, deliberately separate, and neither implies the other:
+
+| Predicate | Means | Admits |
+| --- | --- | --- |
+| `can_view_order_submission(uuid)` | **PI review** visibility | the owner, the named reviewer, an `orders.approve_order` holder, an admin, a finance verifier on a submitted/approved record |
+| `can_view_order(uuid)` **(branch)** | **Order** visibility | whatever the `orders` SELECT policies admit: admin, operations, requester, assignee, `orders.view_all` |
+| `can_view_order_submission_via_order(uuid)` **(branch)** | the Order door onto an approved PI | a viewer of the Order the PI became — and never a draft |
+
+`can_view_order` is **SECURITY INVOKER**, which is the design and not an
+oversight: it *asks* the `orders` policies rather than restating them, so it can
+never drift from the rule it stands for. The consequence is that it must not be
+called from inside a SECURITY DEFINER function, where the current user is the
+table owner and row security is bypassed.
+
+## Document generation *(branch)*
+
+```
+src/lib/orders/orderDocuments.ts       states, paths, the view model, the
+                                       failure allow-list
+src/lib/orders/confirmedExcel.ts       which workbook, and proving it is that one
+src/lib/orders/confirmedWorkbook.ts    the ZIP surgery and its safety gate
+src/lib/orders/confirmedPdf.ts         what the PDF says, and where pages break
+src/lib/orders/confirmedPdfRender.ts   pdfkit + sharp; decides nothing
+src/app/api/orders/[id]/documents/     the worker
+```
+
+The split between `confirmedPdf` and `confirmedPdfRender` is deliberate:
+everything that could be **wrong** about the document — a figure disagreeing
+with the PI, a row lost at a page break, a header that does not repeat — is
+decided in a pure module with no PDF library in its import graph, and is tested
+without producing a byte of binary.
+
+`request` is authorized **as the caller** by two RLS policies; `claim`,
+`complete` and `fail` are SECURITY DEFINER and revoked from every client role.
+
+## Where the shared PI logic lives
+
+Nothing about a PI is implemented twice. The import preview, the PI detail
+screen, the Order handoff and the confirmed PDF all read the same builders:
+
+```
+src/lib/pi/workbookReader.ts      the archive and cell layer
+src/lib/pi/masterSheetParser.ts   the template, its fingerprint, its diagnostics
+src/lib/pi/previewView.ts         what a figure IS — formatting, the commercial rows
+src/lib/orders/draftsView.ts      persisted rows → the shapes those builders take
+src/lib/finance/piPaymentView.ts  the payment position, from the database's own sums
+src/components/orders/piPreview.tsx  the card, the table head, the thumbnails, the viewer
+```
+
+`src/lib/pi/previewView.ts`, `masterSheetParser.ts` and `piPreview.tsx` are held
+**byte-for-byte** against their Phase-C base by `finalApprovalScope.test.ts`,
+because they are shared across two screens and a change to any of them changes
+both.
+
+## Testing
+
+Order Management is tested at three levels, and the boundaries are deliberate:
+
+* **Pure unit tests** for every view model, formatter and state machine.
+* **Repository checks** (`*Schema.test.ts`) that read the migrations themselves,
+  because every promise a migration makes lives in SQL and fails silently — in
+  the permissive direction — if a later change relaxes it. TypeScript sees none
+  of it.
+* **Behavioural assertion scripts** in `supabase/tests/*.sql`, run by hand
+  against a controlled database inside one transaction that ends in `ROLLBACK`.
+  These are where RLS is actually exercised, and they matter because a source
+  guard proves a policy exists, not that it refuses the right person.

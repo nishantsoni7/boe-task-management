@@ -2,7 +2,7 @@
 
 # Current Roadmap
 
-Last Updated: June 2026 (updated after Task Cancellation implementation)
+Last Updated: September 2026 — Order Management is the active focus.
 
 ---
 
@@ -306,6 +306,10 @@ The following items require deliberate review before modification:
 
 # NEXT IMMEDIATE WORK
 
+> **SUPERSEDED — September 2026.** The paragraph below named Sample Tracking as
+> the current focus. It is kept for the record; the active focus is now Order
+> Management, for the reasons in the section that follows.
+
 Current Focus:
 
 Sample Tracking Module
@@ -315,3 +319,61 @@ Current Goal:
 Complete the end-to-end sample lifecycle and notification workflows before shifting major attention to Attendance and Payroll.
 
 All development efforts should remain focused on finishing active modules before introducing major new systems.
+
+---
+
+# ACTIVE FOCUS — ORDER MANAGEMENT
+
+*September 2026.*
+
+Order Management is the module under active development. It is the one place in
+the business where a document a client signs, money the client pays, and a
+permanent register of Order numbers all meet — so it is also the module where a
+defect is least recoverable, and it gets the attention accordingly.
+
+## Where it stands
+
+**In production.** A PI workbook is uploaded, parsed server-side, reviewed,
+verified by Finance, and approved — and approval is the single atomic act that
+creates the Confirmed Order, allocates its permanent four-digit number, and
+moves the PI's payment allocations onto it. The PI now also carries a real due
+date (PR #46) and a declared billing percentage (PR #47), both of which follow
+it onto the Order.
+
+**On `claude/confirmed-order-handoff-performance`, not merged and not applied.**
+The Confirmed Order's operational handoff from its PI; the document-generation
+register and its claim protocol; confirmed Excel and confirmed PDF generation;
+the safeguards a controlled test-data cleanup needs and a gated way back to
+Order number 0001; and a startup-latency pass across every Order screen.
+
+**Planned, in order.**
+
+1. **Apply the four branch migrations** to production, in order, and confirm the
+   handoff and the documents against real records. Nothing on that branch has
+   been applied anywhere, and the preview is not testable until it has been.
+2. **Run the controlled test-data cleanup.** Every Order Management record today
+   is test data, and real numbering must begin at `0001`. The tooling is
+   complete and audited; running it is a decision, not a deployment. It is
+   deliberately not something a development session performs.
+3. **A licensed Unicode font asset**, so the confirmed PDF can print `₹` instead
+   of `Rs.`. A presentation limitation today, not a functional one.
+4. **Amendment-driven document versions** — a second version of an Order's
+   documents after an approved amendment. The register already supports it; no
+   screen offers it yet.
+
+## What must not change while this work continues
+
+These are settled and are not open questions:
+
+* **A confirmed Order number is permanent and is never reused**, including when
+  the Order is cancelled. Drafts and failed approvals receive and consume no
+  number.
+* **Approval stays atomic, and stays separate from document generation.** Nothing
+  slow may move inside it.
+* **Order-side commercial values come from the linked approved PI.** GST and the
+  pre-GST total are not to be duplicated onto `orders`.
+* **`order-files` has no UPDATE policy**, so stored objects are immutable and a
+  Supabase upsert cannot replace one. Every generation path is built around that
+  rather than asking for an exception to it.
+* **Awaiting-verification payments are excluded from verified totals**, on every
+  screen and in every document.

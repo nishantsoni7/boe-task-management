@@ -2,7 +2,7 @@
 
 # Current System State
 
-Last Updated: June 2026 (updated after Task Cancellation implementation)
+Last Updated: September 2026 — Order Management state, routes, storage and permissions. See "Order Management — where it stands".
 
 ---
 
@@ -794,12 +794,28 @@ a failed approval rolls the advancement back and **consumes no number**.
 | `total_product_value` | `gross_product_amount` |
 | `status` | `'running'` |
 | `source_order_submission_id` | the submission (unique, immutable, NO ACTION FK) |
-| `due_date`, `lead_source`, `notes`, `assigned_to` | left null — see below |
+| `due_date` | the submission's own `due_date` — **superseded, see below** |
+| `billing_percentage` | the submission's declared percentage — **added later, see below** |
+| `lead_source`, `notes`, `assigned_to` | left null — see below |
 
-`due_date` is deliberately null: `dispatch_commitment` is free text ("45 days")
-and there is no safe conversion to a date. `notes` is deliberately empty:
-addresses, the commercial breakdown and the advance terms all live on the
-submission, which the Order names.
+> **CORRECTED — September 2026.** The paragraph that stood here said `due_date`
+> is deliberately null, because `dispatch_commitment` is free text ("45 days")
+> and there is no safe conversion to a date. **That is no longer true**, and the
+> reasoning behind it has been superseded rather than abandoned:
+>
+> `20260922000000_order_submission_due_date.sql` (PR #46, production) added
+> `order_submissions.due_date` — a real `date` column, written **only** from an
+> explicit, plausible calendar date the PI itself states. It is never derived
+> from the prose beside it, and a PI that states only "45 days" still carries a
+> null due date and shows its commitment as words. `approve_order_submission()`
+> then carries that column across to `orders.due_date`.
+>
+> So an Order created from a PI now has a due date whenever the PI stated one,
+> and null otherwise — and the free-text commitment is still never converted.
+> The rule the old paragraph protected is intact; only its conclusion moved.
+
+`notes` is deliberately empty: addresses, the commercial breakdown and the
+advance terms all live on the submission, which the Order names.
 
 ### Still excluded
 
@@ -1053,3 +1069,167 @@ Order and real PI impossible to claim; no orphan in either database or storage;
 Order Request and payment cleanups unchanged; and Order 0001 reissued to a new
 Order afterwards.
 
+
+---
+
+## Order Management — where it stands, September 2026
+
+**Read this section for the status of anything below it.** Order Management is
+now the module under active development, and the work sits at three different
+levels of doneness. Nothing here blurs them.
+
+| Level | Meaning |
+| --- | --- |
+| **Production** | Merged to `main` and applied to the production database. |
+| **Branch** | Complete on `claude/confirmed-order-handoff-performance`, reviewed as a draft PR, **not merged and not applied anywhere**. |
+| **Planned** | Decided, not built. |
+
+### Production
+
+* **PR #46 — the two PI screens, and a real due date.**
+  `20260922000000_order_submission_due_date.sql`. `order_submissions.due_date`
+  is a stored `date`, written only from an explicit, plausible calendar date the
+  PI states, backfilled for existing rows and never derived from
+  `dispatch_commitment`. `approve_order_submission()` was re-emitted to carry it
+  onto `orders.due_date`, and `dueDateContinuity.test.ts` diffs the re-emitted
+  function against the applied one to prove the due date is the *only* thing
+  that moved in a 435-line SECURITY DEFINER function that allocates Order
+  numbers and moves money.
+* **PR #47 — the PI summary, and a declared billing percentage.**
+  `20260923000000_order_submission_billing_percentage.sql`. Both
+  `order_submissions` and `orders` gain `billing_percentage numeric(5,2)`,
+  nullable, bounded to 35–100 by a CHECK. **Undeclared is a real state** — not
+  0, not 100 — and no row is backfilled. `set_order_submission_billing_percentage()`
+  is the only writer; `approve_order_submission()` was re-emitted again to carry
+  it across, with `billingContinuity.test.ts` proving the same single-difference
+  property.
+
+### Branch — `claude/confirmed-order-handoff-performance`
+
+Three migrations, **none applied**:
+`20260924000000_order_submission_confirmed_order_handoff.sql`,
+`20260925000000_order_document_generation.sql`,
+`20260926000000_order_number_cycle_reset.sql`.
+
+* **The Confirmed Order handoff.** `/orders/[id]` shows the approved PI it came
+  from: the client and both parties, the schedule, Total before GST, the billing
+  percentage and its derived value, the product lines with their photographs,
+  the full commercial breakdown, and a download of the original uploaded
+  workbook. Order-side commercial values are **read from the linked PI**, not
+  duplicated onto `orders` — that is a standing decision, and GST and the
+  pre-GST total have no `orders` column and are not to be given one.
+* **A second visibility door, deliberately separate from the first.**
+  `can_view_order(uuid)` is SECURITY **INVOKER** so it asks the existing `orders`
+  SELECT policies rather than restating them. `can_view_order_submission_via_order()`
+  composes it with the PI→Order link. PI-REVIEW visibility
+  (`can_view_order_submission`) is untouched: holding `orders.approve_order`
+  still confers no Order standing, and an operations lead still holds no PI
+  review access.
+* **Document generation.** `public.order_document_versions` is a register of
+  user-facing document versions with an atomic, token-bearing claim. `ready` is
+  impossible without both files — a CHECK constraint, not a convention. A
+  version is a business fact; an attempt is a technical one and lives in
+  `attempt_count`, never as a second row.
+* **Confirmed Excel.** The client's own workbook with the Order number written
+  into `B20`, by ZIP surgery on the existing OOXML/fflate toolkit. Every other
+  entry comes back with the bytes it went in with, and the rebuilt package is
+  re-opened and validated before it is published.
+* **Confirmed PDF.** A BOE-designed rendering on the existing pdfkit + sharp
+  setup, byte-deterministic for one model. **Amounts read `Rs.`, not `₹`** — the
+  built-in PDF fonts cover Latin-1 only and this repository owns no licensed
+  Unicode font asset. A presentation limitation, printed on the document itself;
+  no figure is affected.
+* **The number reset.** `reset_confirmed_order_number_cycle(claim_token)` returns
+  the cycle to 1 behind six gates. **It has not been run and this branch runs
+  nothing.**
+* **Performance.** Every Order screen's startup was parallelized. No query was
+  dropped, cached or derived, and no authority moved out of the database.
+
+### Planned
+
+* A licensed Unicode font asset, so the confirmed PDF can print `₹`.
+* The controlled test-data cleanup itself — the tooling is ready; running it is
+  a decision, not a deployment.
+
+---
+
+## Order Management — routes, storage and permissions
+
+### Routes (production, unless marked)
+
+| Route | What it is |
+| --- | --- |
+| `/orders` | Dashboard: running Orders, five figures above them |
+| `/orders/all` | Every Order the viewer may see, filtered and sorted |
+| `/orders/[id]` | One Confirmed Order. **Branch:** gains the approved-PI handoff and the documents card |
+| `/orders/drafts` | PI drafts and submissions |
+| `/orders/drafts/[submissionId]` | One PI: review, decisions, payments, approval |
+| `/orders/import` | Upload a PI workbook and read it back |
+| `/orders/requests` | Order Requests list |
+| `/orders/requests/[id]` | One Order Request |
+| `/orders/notifications` | Order Management notifications |
+
+API routes: `/api/orders/[id]`, `/api/orders/import/process-draft`,
+`/api/orders/notify`, `/api/orders/requests/*`, `/api/orders/submissions/*`,
+`/api/orders/test-data-cleanup`, and — **branch** —
+`POST /api/orders/[id]/documents`.
+
+### Storage — the `order-files` bucket
+
+**Private, 10 MiB per object, and it has NO UPDATE POLICY.** That last fact is
+load-bearing: with no UPDATE policy a Supabase upsert cannot replace a stored
+object, which is what makes "the workbook the approver read is the workbook the
+employee uploaded" true.
+
+| Key shape | Written by | Read by |
+| --- | --- | --- |
+| `submissions/{id}/original/{uuid}.xlsx` | the PI owner, while it is a draft | PI reviewers; **branch:** also viewers of the Order it became |
+| `submissions/{id}/images/{item_id}.{ext}` | the save route | as above |
+| `orders/{order_id}/versions/{v}/attempts/{n}/approved.xlsx` | **branch** — the server, `upsert:false` | viewers of the Order, and **only once a ready version names it** |
+| `orders/{order_id}/versions/{v}/attempts/{n}/approved.pdf` | as above | as above |
+
+The attempt-scoped shape exists because objects are immutable: every write goes
+to a key nothing has ever occupied, so a retry never needs upsert. **Publication,
+not location, is what authorizes a read** — a partial attempt's output is named
+by nothing and is unreachable by every client role, permanently.
+
+### Permission model
+
+| Action | Means |
+| --- | --- |
+| `orders.view` | module entry only — **never** company-wide sight of every Order |
+| `orders.view_all` | company-wide sight. Protected; no preset grants it |
+| `orders.create` | upload and own a PI |
+| `orders.approve` | convert an Order **Request** (older, unrelated to PI approval) |
+| `orders.approve_order` | **PI approval** — the management approval authority. Protected, deny-by-default, granted per employee |
+| `orders.approve_advance_exception` | settle a reduced-payment exception. Independent of the above **in both directions** |
+| `orders.manage` | amend a Confirmed Order directly |
+| `finance.allocate` | record a payment against a PI |
+| `finance.approve` | verify a payment |
+
+Order visibility itself is the OR of the `orders` SELECT policies: an active
+admin, the operations team, the requester, the assigned user, or an
+`orders.view_all` holder. **Branch:** `can_view_order()` is the single predicate
+that stands for exactly that, by asking those policies rather than restating
+them.
+
+### Document generation architecture (branch)
+
+```
+  request  ── as the CALLER, so two RLS policies decide
+     │        (a SECURITY DEFINER function could not ask "may this person see
+     │         this Order" honestly: inside one, the current user is the table
+     │         owner, who bypasses row-level security)
+     ▼
+  claim    ── as the SERVER. One atomic UPDATE with the eligibility test in its
+     │        WHERE clause; a stale claim is reclaimable after 15 minutes and a
+     │        takeover mints a new token, locking the old worker out
+     ▼
+  generate ── confirmed Excel, then confirmed PDF, then both uploads
+     ▼
+  complete ── only with a live token, and only with BOTH files
+```
+
+Retry never creates an Order, never allocates a number and never moves a payment
+allocation — asserted structurally in the migration, and behaviourally in
+`supabase/tests/order_document_generation_assertions.sql`.

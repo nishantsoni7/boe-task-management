@@ -2,7 +2,7 @@
 
 # Business Rules
 
-Last Updated: June 2026
+Last Updated: September 2026 — Order Management rules added; earlier sections unchanged.
 
 ---
 
@@ -644,3 +644,146 @@ This document should remain the primary source of operational rules for BOE Task
 10. **Module access on/off is not a second authority.** Off = No Access,
     On = Viewer. There is no separate visibility field.
 11. **Migrations 901 and 902 deploy together**, 901 first, nothing between.
+
+---
+
+# ORDER MANAGEMENT RULES
+
+*September 2026. Everything in this section is production unless marked
+**(branch)** — meaning complete on `claude/confirmed-order-handoff-performance`,
+not merged and not applied.*
+
+## PI submission
+
+* A PI enters the system as an **uploaded workbook**, and the browser's reading
+  of it is never an input. The server re-parses the same file and persists only
+  what **its own** parse produced. A client that lied about a price, a quantity
+  or an image mapping changes nothing, because none of those words cross the
+  wire.
+* **The workbook is immutable once submitted.** `order-files` has no UPDATE
+  policy for any role, and the write predicate admits only the owner while the
+  record is a draft or has been returned. A reviewer reads every file and writes
+  none — which is what keeps "the workbook the approver read is the workbook the
+  employee uploaded" true.
+* A figure the workbook states is **never repaired**. Where quantity × rate
+  disagrees with the stored line total, both are reported and the workbook's
+  value is what is kept. Substituting our arithmetic would make the record
+  disagree with the document the client was sent.
+* **A cost's MEANING is a column, not an inference from its amount.** "Not
+  applicable" and "Included" both add zero and are opposite answers to "was the
+  client charged for packing?".
+
+## Payment
+
+* Money is recorded against a PI as a **payment plus an allocation**. The
+  payment row carries the proof and the Finance history; the allocation says how
+  much of it belongs to which target.
+* **Only Finance-verified money counts.** A payment awaiting verification is
+  excluded from every verified total, on every screen and in every document —
+  and where it exists it is *reported* alongside, never folded in.
+* A payment may legitimately be **split across targets**, so a total is always
+  the sum of *allocated* figures, never of whole ledger amounts.
+* **The money MOVES; it is never copied.** At approval the PI's active
+  allocations are re-pointed onto the new Order in one UPDATE — same ids, same
+  payments, same amounts, same provenance. A reversed allocation stays with the
+  PI it was reversed against.
+
+## The reduced-payment exception
+
+* The standard requirement is **40% of the grand total**, as an exact amount and
+  never a rounded percentage: 40% of ₹100.01 is ₹40.004, and ₹40.00 — which
+  displays as "40%" — does not meet it. The outstanding figure a person is shown
+  is rounded **up**, so paying it always closes the gate.
+* An exception is a **commercial decision**, settled by
+  `orders.approve_advance_exception`, which is **independent of PI approval in
+  both directions**. Reviewing a PI and settling its terms are two decisions on
+  one record and the business keeps them assignable to different people.
+* **Money is tested before the decision that stands in for money.** A PI that
+  reaches 40% while an exception request sits in a queue is approved on the
+  standard route; the request simply stops mattering.
+
+## Billing percentage
+
+* It is how much of a PI's **pre-GST** value should be billed — a commercial
+  decision somebody declares. Not a discount, not a payment percentage, and not
+  anything the workbook carries.
+* **Undeclared is a real state.** Not 0 and not 100. Nothing is backfilled and
+  the screen says `Undeclared`.
+* **The floor is 35 and the ceiling is 100.** A business rule, enforced in the
+  form, the RPC and a CHECK constraint. Rejected rather than repaired: somebody
+  who typed 30 meant 30, and saving 35 on their behalf would record a decision
+  nobody took.
+* **The value is `total_before_gst` × the percentage, and nothing else.** Never
+  the grand total, which carries tax the percentage says nothing about. A PI with
+  no stated pre-tax total produces **no** billing value and says so — never ₹0.
+* It follows the PI onto the Order at approval and is **read-only there**: by
+  then the PI is approved and the RPC that writes it refuses.
+
+## Approval
+
+* Approval is **one atomic act** that approves the PI, creates exactly one
+  Confirmed Order, allocates its number and moves the money. Either all of it
+  happens or none of it does.
+* It requires `orders.approve_order` — a protected, deny-by-default action,
+  granted per employee. It is **not** `orders.approve`, which means "convert an
+  Order Request" and is a different, older authority.
+* It requires **Finance verification**, and that verification **goes stale the
+  moment the record moves**.
+* **One submission, one Order, in both directions** — two partial unique indexes,
+  not a convention in the function that writes them.
+* A failed approval **consumes nothing**: the number cycle advances inside the
+  caller's transaction and rolls back with it.
+
+## Order numbering
+
+* A confirmed Order number is **four digits, permanent, and never reused** —
+  including when the Order is cancelled. A cancelled Order is a row like any
+  other and keeps its number forever.
+* **Drafts and failed approvals receive and consume no number.**
+* The next number is an **admin decision** held in a single-row cycle table.
+  There is exactly one allocator, it is reachable only through an INSERT
+  trigger, and it is revoked from every role. Nothing in a browser generates,
+  guesses or reads a number — no `max(display_number) + 1`, in any form.
+* A cleanup gives back only the numbers it freed **from the top of the range**,
+  because an administrator who set the cycle to 1000 has said something and
+  deleting a test Order is not a reason to unsay it.
+* **(branch)** The cycle may be returned to **1** only through
+  `reset_confirmed_order_number_cycle()`, and only when: an active admin asks;
+  a **finalized** cleanup claim names the occasion (which is also proof the
+  storage removal completed); **not one Order row remains**; no PI is submitted
+  or approved; and no payment allocation still points at an Order or a PI. It
+  deletes nothing, renumbers nothing, is idempotent, and is permanently audited
+  with the evidence each gate saw.
+
+## Order continuity — what follows a PI onto its Order
+
+| Fact | Where it lives afterwards |
+| --- | --- |
+| Client name, confirm date, due date | copied onto `orders` |
+| Grand total, gross product amount | copied onto `orders` |
+| Billing percentage | copied onto `orders` |
+| Payments and allocations | **moved**, never copied |
+| GST, total before GST, the commercial breakdown | **stay on the PI**, read from there |
+| Product lines and photographs | **stay on the PI**, read from there |
+| Addresses, contact, both parties | **stay on the PI**, read from there |
+
+**Order-side commercial values come from the linked approved PI.** GST and the
+pre-GST total have no `orders` column and are not to be given one: a second copy
+could disagree with the document the client agreed to.
+
+## Confirmed documents *(branch)*
+
+* A **version** is a business fact — the documents as they stand, or as they
+  stand after an approved amendment. An **attempt** is a technical fact. A
+  failed attempt increases attempt history and produces **no** user-facing
+  version, and a retry never advances the version number.
+* An Order is **document-ready only when both the Excel and the PDF exist.** The
+  database refuses to record any other state.
+* **Publication, not location, makes a file downloadable.** An object is readable
+  only when a ready version row names it, so a partial attempt's output is
+  unreachable by every client role, permanently.
+* **The original uploaded PI is never overwritten.** It is read; the confirmed
+  copy goes to a different key entirely.
+* Generating and retrying require the **management approval authority**; viewing
+  and downloading follow **Order visibility**. PI-review access alone reaches
+  neither.
