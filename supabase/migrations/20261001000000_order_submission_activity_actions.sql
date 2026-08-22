@@ -80,7 +80,14 @@ alter table public.order_submission_activity
     -- ── 20260930000000: the owner's correction request and its answer ──
     'correction_requested',
     'correction_resolved',
-    'correction_rejected'
+    'correction_rejected',
+
+    -- ── 20261002000000: product descriptive fields and ordering ──
+    -- Declared HERE rather than in that migration only because this one is the
+    -- action set's home and the two ship together. The rule stands: a migration
+    -- that logs a new action must see it declared before it can be applied.
+    'product_details_updated',
+    'product_details_amended_by_admin'
   ));
 
 comment on constraint order_submission_activity_action_check on public.order_submission_activity is
@@ -113,6 +120,7 @@ begin
     'client_details_updated', 'client_details_amended_by_admin',
     'schedule_terms_updated', 'schedule_terms_amended_by_admin',
     'correction_requested', 'correction_resolved', 'correction_rejected',
+    'product_details_updated', 'product_details_amended_by_admin',
     'submission_created', 'parse_replaced', 'submitted', 'changes_requested',
     'rejected', 'advance_exception_requested', 'advance_exception_approved',
     'advance_exception_rejected', 'finance_verified', 'approved',
