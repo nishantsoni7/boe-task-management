@@ -29,7 +29,7 @@
 // NOTHING HERE DECIDES AUTHORITY. These are dialogs; the RPCs behind them
 // re-derive the actor, the permission and the record's state in the database.
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -812,6 +812,7 @@ export function PiFinanceVerifyModal({
   client,
   grandTotal,
   advanceLabel,
+  incompleteSummary = null,
   saving,
   failure,
   onCancel,
@@ -821,6 +822,17 @@ export function PiFinanceVerifyModal({
   grandTotal: string
   /** The advance condition this PI was submitted under, already worded. */
   advanceLabel: string
+  /**
+   * piReadiness('submission').summary, when the record is still short of
+   * something, or null.
+   *
+   * SHOWN AND NOT ENFORCED. Nothing here refuses a verification: finance is
+   * signing off on the FIGURES, and whether the PI carries a client name is
+   * not their decision to make. But approval will refuse for it, so a verifier
+   * who cannot see it signs off and then watches the approval stall — one more
+   * round trip that the same shared list can prevent by simply being visible.
+   */
+  incompleteSummary?: string | null
   saving: boolean
   failure: string | null
   onCancel: () => void
@@ -858,6 +870,23 @@ export function PiFinanceVerifyModal({
               <span style={KEY_STYLE}>Advance</span>
               <span style={{ color: colors.primary, fontWeight: 600, textAlign: 'right' }}>{advanceLabel}</span>
             </div>
+          </div>
+
+          {incompleteSummary !== null && (
+            <div style={{
+              padding: '9px 11px', borderRadius: '7px',
+              border: `1px solid ${colors.border}`, background: colors.raised,
+              fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55,
+            }}>
+              <strong style={{ color: colors.primary, fontWeight: 600 }}>
+                {incompleteSummary}
+              </strong>{' '}
+              Verifying is still yours to do — this is about the figures — but the
+              PI cannot be approved until it is supplied.
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           </div>
 
           <div style={{
@@ -1269,21 +1298,35 @@ export function PiClientDetailsModal({ client, onClose }: {
  * nothing like a typo, so it is never one keystroke away from Save.
  */
 export function PiBillingPercentageModal({
-  current, saving, failure, onCancel, onSave, onClear,
+  current, saving, failure, requireReason = false, onCancel, onSave, onClear,
 }: {
   /** The declared percentage, or null while undeclared. */
   current: number | null
   saving: boolean
   failure: string | null
+  /**
+   * True when this edit is an ADMIN AMENDMENT AFTER SUBMISSION, which the
+   * database requires a reason for.
+   *
+   * Asked for here rather than only refused by the RPC, because being told
+   * "a reason is required" after typing a percentage and pressing Save is a
+   * worse way to learn it than being shown the field. The database remains the
+   * authority — ORDER_SUBMISSION_BILLING_REASON_REQUIRED still refuses a write
+   * that arrives without one.
+   */
+  requireReason?: boolean
   onCancel: () => void
-  onSave: (value: number) => void
-  onClear: () => void
+  onSave: (value: number, reason: string | null) => void
+  onClear: (reason: string | null) => void
 }) {
   useScrollLock(true)
   const dialogRef = useRef<HTMLDivElement>(null)
   const inputId = useId()
   const errorId = useId()
+  const reasonId = useId()
   const [raw, setRaw] = useState(current === null ? '' : String(current))
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
   const [confirmClear, setConfirmClear] = useState(false)
   // Nothing is said about the value until the person has stopped typing it for
   // the first time; an error appearing under a half-typed "3" is noise.
@@ -1323,7 +1366,8 @@ export function PiBillingPercentageModal({
     // The guard is here as well as on the button: Enter in a text input submits
     // a form whatever the button's disabled state says.
     if (!canSave || !parsed.ok) return
-    onSave(parsed.value)
+    if (requireReason && trimmedReason === '') return
+    onSave(parsed.value, requireReason ? trimmedReason : null)
   }
 
   const showError = touched && !parsed.ok && parsed.reason !== 'empty'
@@ -1381,12 +1425,44 @@ export function PiBillingPercentageModal({
               : <div style={{ fontSize: '11.5px', color: colors.muted }}>{BILLING_RANGE_HELP}</div>}
           </div>
 
+          {/* ── The reason, when this is an amendment ──
+              Shown only for an admin editing a PI that has left the owner's
+              hands. It is not decoration and not a formality: this record has
+              been reviewed, may have money against it, and may already have a
+              confirmed Order and generated documents. Whoever reads the trail
+              later needs to know why the figure moved, and the person moving it
+              is the only one who can say. */}
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity against this PI{current !== null ? ' and its Order' : ''}. Required.
+              </div>
+            </div>
+          )}
+
           {failure && (
             <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave || (requireReason && trimmedReason === '')}>
               {saving ? 'Saving…' : 'Save'}
             </button>
             <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
@@ -1398,8 +1474,9 @@ export function PiBillingPercentageModal({
               <span style={{ marginLeft: 'auto' }}>
                 {confirmClear ? (
                   <button
-                    type="button" className="boe-btn boe-btn-ghost" disabled={saving}
-                    onClick={onClear}
+                    type="button" className="boe-btn boe-btn-ghost"
+                    disabled={saving || (requireReason && trimmedReason === '')}
+                    onClick={() => onClear(requireReason ? trimmedReason : null)}
                     style={{ color: '#b3541e' }}
                   >
                     Confirm — return to {BILLING_UNDECLARED}
@@ -1414,6 +1491,1175 @@ export function PiBillingPercentageModal({
                 )}
               </span>
             )}
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Editing the client and party details ──────────────────────────────────────
+
+/** The ten fields this editor owns, in the order they are shown. */
+export const PI_CLIENT_FIELDS = [
+  { key: 'client_name',      label: 'Client name',       group: 'client', required: true,  multiline: false },
+  { key: 'contact_number',   label: 'Contact number',    group: 'client', required: false, multiline: false },
+  { key: 'bill_to_name',     label: 'Bill to',           group: 'bill',   required: false, multiline: false },
+  { key: 'bill_to_phone',    label: 'Billing phone',     group: 'bill',   required: false, multiline: false },
+  { key: 'bill_to_gst',      label: 'Billing GST',       group: 'bill',   required: false, multiline: false },
+  { key: 'billing_address',  label: 'Billing address',   group: 'bill',   required: false, multiline: true  },
+  { key: 'ship_to_name',     label: 'Ship to',           group: 'ship',   required: false, multiline: false },
+  { key: 'ship_to_phone',    label: 'Shipping phone',    group: 'ship',   required: false, multiline: false },
+  { key: 'ship_to_gst',      label: 'Shipping GST',      group: 'ship',   required: false, multiline: false },
+  { key: 'shipping_address', label: 'Shipping address',  group: 'ship',   required: false, multiline: true  },
+] as const
+
+export type PiClientFieldKey = typeof PI_CLIENT_FIELDS[number]['key']
+export type PiClientFieldValues = Partial<Record<PiClientFieldKey, string | null>>
+
+/**
+ * The schedule and terms fields, and the RPC that owns them.
+ *
+ * A SEPARATE SECTION WITH ITS OWN SAVE, not one giant form. Each section is one
+ * RPC and therefore one transaction: a save either lands whole or not at all.
+ * Combining them would mean two round trips behind one button, and a failure
+ * between them would leave the PI half-updated with nothing to say so.
+ *
+ * Billing percentage is NOT in this list and is no longer shown here either.
+ * It has its own dialog and its own RPC, carrying a range, a precision rule and
+ * a clear-confirmation none of these five need. It used to appear at the foot
+ * of this form as a read-only line with a Change button, which made one dialog
+ * the way into two unrelated edits and left the reader unsure which Save
+ * applied to what. Its control now sits beside its own label on the card.
+ */
+export const PI_SCHEDULE_FIELDS = [
+  { key: 'order_confirmation_date', label: 'Confirm date',        kind: 'date',     required: false },
+  { key: 'due_date',                label: 'Due date',            kind: 'date',     required: false },
+  { key: 'dispatch_commitment',     label: 'Dispatch commitment', kind: 'text',     required: false },
+  { key: 'payment_terms',           label: 'Payment terms',       kind: 'textarea', required: false },
+  { key: 'billing_terms',           label: 'Billing terms',       kind: 'textarea', required: false },
+] as const
+
+export type PiScheduleFieldKey = typeof PI_SCHEDULE_FIELDS[number]['key']
+export type PiScheduleFieldValues = Partial<Record<PiScheduleFieldKey, string | null>>
+
+/**
+ * THE PRODUCT FIELDS A FORM MAY OWN — and the ones it must never pretend to.
+ *
+ * Everything here is DESCRIPTIVE: what the piece is called, what it is made of,
+ * how big it is, what was asked for. None of it enters an arithmetic.
+ *
+ * Quantity, rate and the line total are absent, and their absence is the point.
+ * They are inputs to formulas that live in the PI workbook and have never been
+ * read by this system — the parser transcribes the results and raises a warning
+ * when its own two derivations disagree. A text box over any of them would be
+ * this system inventing a figure the spreadsheet did not produce. They are
+ * corrected by correcting the workbook, which is what PI_CHANGE_PI_ONLY says on
+ * every screen that shows a product line.
+ */
+export const PI_PRODUCT_FIELDS = [
+  { key: 'item_sequence',       label: 'Line number',        kind: 'text',     hint: 'As printed on the PI' },
+  { key: 'source_product_code', label: 'Product code',       kind: 'text',     hint: '' },
+  { key: 'product_name',        label: 'Product name',       kind: 'textarea', hint: '' },
+  { key: 'dimensions',          label: 'Dimensions',         kind: 'textarea', hint: '' },
+  { key: 'material',            label: 'Material',           kind: 'textarea', hint: '' },
+  { key: 'customization',       label: 'Specification note', kind: 'textarea', hint: 'Customization and finishing notes' },
+] as const
+
+export type PiProductFieldKey = typeof PI_PRODUCT_FIELDS[number]['key']
+export type PiProductFieldValues = Partial<Record<PiProductFieldKey, string | null>>
+
+/**
+ * WHAT A FORM CANNOT FIX, said in the reader's words.
+ *
+ * Rendered wherever product lines are shown, so nobody hunts for an edit control
+ * that was never going to exist. This is not a limitation of the editor — it is
+ * what "the workbook computes and BOE transcribes" means in practice.
+ */
+export const PI_CHANGE_PI_ONLY: readonly string[] = [
+  'Quantity',
+  'Rate or unit cost',
+  'Adding a product',
+  'Removing a product',
+  'Discount, design fees, fabric, packing, transport or GST',
+  'Product image',
+]
+
+/** Which part of the PI an editor is showing. */
+export type PiEditSection = 'client' | 'schedule' | 'products'
+
+export const PI_EDIT_SECTIONS: readonly { key: PiEditSection; title: string }[] = [
+  { key: 'client',   title: 'Client and addresses' },
+  { key: 'schedule', title: 'Dates and terms' },
+  { key: 'products', title: 'Product details' },
+]
+
+const PI_CLIENT_GROUPS = [
+  { key: 'client', title: 'Client' },
+  { key: 'bill',   title: 'Bill to' },
+  { key: 'ship',   title: 'Ship to' },
+] as const
+
+/**
+ * SUPPLYING WHAT THE WORKBOOK DID NOT CARRY.
+ *
+ * A parser reads a human-authored spreadsheet, and a spreadsheet can be
+ * incomplete. Before this existed, a PI imported without a client name could
+ * never acquire one: the detail screen said "Not provided", no payment could be
+ * attributed to it, and nothing in the product could fix that.
+ *
+ * ONE DIALOG, NOT TEN EDIT LINKS. The summary is read far more often than it is
+ * corrected, and scattering small controls through it would put an editing
+ * affordance beside every value a reader is trying to scan.
+ *
+ * WHAT IT SENDS. Only the fields that actually CHANGED — an absent key means
+ * "leave that column alone", which is what lets two people correct different
+ * halves of the same PI without overwriting one another. The version travels
+ * with the write, so a stale dialog is refused rather than silently winning.
+ *
+ * WHAT IT DOES NOT OFFER. No total, no status, no date of record, no payment
+ * figure. Those are calculated or controlled elsewhere and a text box beside
+ * them would be a lie about who decides them.
+ */
+export function PiClientDetailsEditModal({
+  current, saving, failure, requireReason = false, missingKeys = [], onCancel, onSave,
+}: {
+  current: PiClientFieldValues
+  saving: boolean
+  failure: string | null
+  /** True when this is an admin amendment after submission. */
+  requireReason?: boolean
+  /** Fields the readiness check says are missing, marked for the reader. */
+  missingKeys?: readonly string[]
+  onCancel: () => void
+  onSave: (changed: PiClientFieldValues, reason: string | null) => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const reasonId = useId()
+
+  const initial = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const f of PI_CLIENT_FIELDS) out[f.key] = current[f.key] ?? ''
+    return out
+  }, [current])
+
+  const [values, setValues] = useState<Record<string, string>>(initial)
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
+
+  // Only what MOVED. Trimmed on both sides so re-typing the same value with a
+  // stray space is not an amendment, which would otherwise write an activity
+  // entry saying nothing changed.
+  const changed = useMemo(() => {
+    const out: PiClientFieldValues = {}
+    for (const f of PI_CLIENT_FIELDS) {
+      const next = (values[f.key] ?? '').trim()
+      const prev = (current[f.key] ?? '').trim()
+      if (next !== prev) out[f.key] = next === '' ? null : next
+    }
+    return out
+  }, [values, current])
+
+  const changedCount = Object.keys(changed).length
+  const clientNameEmptied = 'client_name' in changed && changed.client_name === null
+  const canSave = !saving
+    && changedCount > 0
+    && !clientNameEmptied
+    && (!requireReason || trimmedReason !== '')
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(changed, requireReason ? trimmedReason : null)
+  }
+
+  return (
+    // A backdrop click is inert: this holds typed input, by the BOE form-modal rule.
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        /* NAMED FOR THE SECTION IT EDITS. All three editors carried the same
+           aria-label, so a screen-reader user opening any of them from the
+           three separate controls heard one undifferentiated "Edit PI details". */
+        aria-label="Edit client details"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '560px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Edit PI details"
+          subtitle="Client and addresses"
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '16px',
+            padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
+          }}
+        >
+          {PI_CLIENT_GROUPS.map(group => (
+            <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+              <div style={{
+                fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em',
+                textTransform: 'uppercase', color: colors.muted,
+              }}>
+                {group.title}
+              </div>
+              {/* One column on a phone, two where there is room — the address
+                  fields span both because a wrapped address is hard to read. */}
+              <div style={{
+                display: 'grid', gap: '9px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              }}>
+                {PI_CLIENT_FIELDS.filter(f => f.group === group.key).map(f => {
+                  const isMissing = missingKeys.includes(f.key)
+                    && (values[f.key] ?? '').trim() === ''
+                  return (
+                    <label
+                      key={f.key}
+                      style={{
+                        display: 'flex', flexDirection: 'column', gap: '4px',
+                        gridColumn: f.multiline ? '1 / -1' : undefined,
+                      }}
+                    >
+                      <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                        {f.label}
+                        {f.required && (
+                          <span aria-hidden="true" style={{ color: '#b3541e' }}> *</span>
+                        )}
+                      </span>
+                      {f.multiline ? (
+                        <textarea
+                          value={values[f.key] ?? ''}
+                          onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                          disabled={saving}
+                          rows={2}
+                          maxLength={500}
+                          style={{
+                            padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                            border: `1px solid ${isMissing ? '#b3541e' : colors.border}`,
+                            borderRadius: '7px', background: colors.base,
+                            color: colors.primary, fontFamily: 'inherit',
+                          }}
+                        />
+                      ) : (
+                        <input
+                          type={f.key.includes('phone') || f.key === 'contact_number' ? 'tel' : 'text'}
+                          value={values[f.key] ?? ''}
+                          onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                          disabled={saving}
+                          maxLength={500}
+                          style={{
+                            padding: '7px 10px', fontSize: '13px',
+                            border: `1px solid ${isMissing ? '#b3541e' : colors.border}`,
+                            borderRadius: '7px', background: colors.base, color: colors.primary,
+                          }}
+                        />
+                      )}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+
+          {/* A submitted PI must keep a client name — the database refuses to
+              clear it. Said here so the reader learns it before pressing Save. */}
+          {clientNameEmptied && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>
+              A client name is required. Payments and submission both depend on it.
+            </div>
+          )}
+
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity with what changed. Required.
+              </div>
+            </div>
+          )}
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            {/* What will be written, before it is written. */}
+            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+              {changedCount === 0
+                ? 'No changes yet'
+                : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
+            </span>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * THE DATES AND TERMS SECTION.
+ *
+ * Deliberately the same dialog shape as the client-details editor: same header,
+ * same "n fields will change" counter, same reason field where an amendment
+ * needs one, same rule that only what MOVED is sent. Two editors that behaved
+ * differently would be two sets of habits for a reader to learn.
+ *
+ * Billing percentage appears here as a READ-ONLY line with its own control,
+ * because it is edited through its own RPC. Showing it in the section a reader
+ * expects it in, while sending it somewhere else, is the honest arrangement:
+ * the grouping is about where a person looks, not about which function writes.
+ */
+export function PiScheduleTermsEditModal({
+  current, saving, failure, requireReason = false, onCancel, onSave,
+}: {
+  current: PiScheduleFieldValues
+  saving: boolean
+  failure: string | null
+  requireReason?: boolean
+  onCancel: () => void
+  onSave: (changed: PiScheduleFieldValues, reason: string | null) => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const reasonId = useId()
+
+  const initial = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const f of PI_SCHEDULE_FIELDS) out[f.key] = current[f.key] ?? ''
+    return out
+  }, [current])
+
+  const [values, setValues] = useState<Record<string, string>>(initial)
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
+
+  const changed = useMemo(() => {
+    const out: PiScheduleFieldValues = {}
+    for (const f of PI_SCHEDULE_FIELDS) {
+      const next = (values[f.key] ?? '').trim()
+      const prev = (current[f.key] ?? '').trim()
+      if (next !== prev) out[f.key] = next === '' ? null : next
+    }
+    return out
+  }, [values, current])
+
+  const changedCount = Object.keys(changed).length
+  const canSave = !saving && changedCount > 0 && (!requireReason || trimmedReason !== '')
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(changed, requireReason ? trimmedReason : null)
+  }
+
+  return (
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit dates and terms"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '520px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Edit PI details"
+          subtitle="Dates and terms"
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '14px',
+            padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
+          }}
+        >
+          <div style={{
+            display: 'grid', gap: '9px',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          }}>
+            {PI_SCHEDULE_FIELDS.map(f => (
+              <label
+                key={f.key}
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: '4px',
+                  gridColumn: f.kind === 'textarea' ? '1 / -1' : undefined,
+                }}
+              >
+                <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                  {f.label}
+                </span>
+                {f.kind === 'textarea' ? (
+                  <textarea
+                    value={values[f.key] ?? ''}
+                    onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    disabled={saving}
+                    rows={2}
+                    maxLength={500}
+                    style={{
+                      padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                    }}
+                  />
+                ) : (
+                  <input
+                    /* A real date input, so the browser enforces the calendar
+                       shape the RPC insists on. The RPC re-checks it anyway:
+                       PostgreSQL would otherwise accept 'yesterday' and store a
+                       relative date. */
+                    type={f.kind === 'date' ? 'date' : 'text'}
+                    value={values[f.key] ?? ''}
+                    onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    disabled={saving}
+                    maxLength={f.kind === 'date' ? undefined : 500}
+                    style={{
+                      padding: '7px 10px', fontSize: '13px',
+                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      background: colors.base, color: colors.primary,
+                    }}
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity with what changed. Required.
+              </div>
+            </div>
+          )}
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+              {changedCount === 0
+                ? 'No changes yet'
+                : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
+            </span>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── The owner's correction request ───────────────────────────────────────────
+
+/** The sections a correction can be asked about — the editor's own, plus one. */
+export const PI_CORRECTION_SECTIONS = [
+  { key: 'client',     label: 'Client and addresses' },
+  { key: 'schedule',   label: 'Dates and terms' },
+  { key: 'products',   label: 'Products' },
+  { key: 'commercial', label: 'Commercial values' },
+  // Because a real reader will find something the four above do not cover, and
+  // forcing them into the wrong one loses the information.
+  { key: 'other',      label: 'Something else' },
+] as const
+
+export type PiCorrectionSection = typeof PI_CORRECTION_SECTIONS[number]['key']
+
+/**
+ * ASKING FOR A CORRECTION TO A PI THAT HAS LEFT YOUR HANDS.
+ *
+ * The owner may edit a draft. Once it goes to management it stops being theirs
+ * to change — and until this existed, the person who wrote the PI and is
+ * usually the one who spots the error in it had nowhere to say so.
+ *
+ * THIS CHANGES NOTHING. It is a message, recorded permanently, that reaches the
+ * people who can act on it. The dialog says so in as many words, because a form
+ * that looks like an editor and silently does not save would be worse than no
+ * form at all.
+ *
+ * All three fields are required. The reason is not ceremony: this record has
+ * been reviewed and may carry money against it, and "please change the address"
+ * without a why is not something an admin can act on confidently.
+ */
+export function PiRequestCorrectionModal({
+  saving, failure, onCancel, onSubmit,
+}: {
+  saving: boolean
+  failure: string | null
+  onCancel: () => void
+  onSubmit: (section: PiCorrectionSection, change: string, reason: string) => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const sectionId = useId()
+  const changeId = useId()
+  const reasonId = useId()
+
+  const [section, setSection] = useState<PiCorrectionSection>('client')
+  const [change, setChange] = useState('')
+  const [reason, setReason] = useState('')
+
+  const trimmedChange = change.trim()
+  const trimmedReason = reason.trim()
+  const canSubmit = !saving && trimmedChange !== '' && trimmedReason !== ''
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSubmit) return
+    onSubmit(section, trimmedChange, trimmedReason)
+  }
+
+  return (
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Request a correction"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '480px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Request a correction"
+          subtitle="This PI has been submitted"
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{ display: 'flex', flexDirection: 'column', gap: '13px', padding: '16px 18px 18px' }}
+        >
+          {/* SAID PLAINLY. A form that looked like an editor and quietly saved
+              nothing would be worse than no form. */}
+          <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
+            This does not change the PI. It records what you believe is wrong and
+            sends it to an administrator, who can make the correction.
+          </div>
+
+          <label htmlFor={sectionId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+              Which part
+            </span>
+            <select
+              id={sectionId}
+              value={section}
+              onChange={e => setSection(e.target.value as PiCorrectionSection)}
+              disabled={saving}
+              style={{
+                padding: '7px 10px', fontSize: '13px',
+                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                background: colors.base, color: colors.primary,
+              }}
+            >
+              {PI_CORRECTION_SECTIONS.map(s => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label htmlFor={changeId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+              What should be corrected
+              <span aria-hidden="true" style={{ color: '#b3541e' }}> *</span>
+            </span>
+            <textarea
+              id={changeId}
+              value={change}
+              onChange={e => setChange(e.target.value)}
+              disabled={saving}
+              rows={3}
+              maxLength={1000}
+              placeholder="e.g. the shipping address is our old warehouse"
+              style={{
+                padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                background: colors.base, color: colors.primary, fontFamily: 'inherit',
+              }}
+            />
+          </label>
+
+          <label htmlFor={reasonId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+              Why
+              <span aria-hidden="true" style={{ color: '#b3541e' }}> *</span>
+            </span>
+            <textarea
+              id={reasonId}
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              disabled={saving}
+              rows={2}
+              maxLength={1000}
+              placeholder="e.g. we moved in July, after the PI was written"
+              style={{
+                padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                background: colors.base, color: colors.primary, fontFamily: 'inherit',
+              }}
+            />
+          </label>
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSubmit}>
+              {saving ? 'Sending…' : 'Send request'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── The product line editor ──────────────────────────────────────────────────
+
+/**
+ * ONE LINE, ONE TRANSACTION.
+ *
+ * update_order_submission_item_details writes ONE product line. A dialog that
+ * edited several at once would be several round trips behind one button, and a
+ * failure between them would leave the PI half-corrected with nothing on screen
+ * to say which half — the exact reason the client and schedule sections were
+ * split rather than merged. So this dialog is opened from a row, and it edits
+ * that row.
+ *
+ * WHAT IS NOT ON IT. No quantity, no rate, no line total, and no way to add or
+ * remove a line. Those are not withheld as a permission matter and are not
+ * shown greyed out — a disabled text box over a price invites somebody to ask
+ * who can enable it, and the answer is nobody. They are stated as what they are:
+ * values the workbook computes, corrected by replacing the workbook.
+ */
+export function PiProductEditModal({
+  line, current, saving, failure, requireReason = false,
+  onCancel, onSave, onChangePi,
+}: {
+  /** How the reader identifies this row: its number and name as stored. */
+  line: { sequence: string | null; name: string | null; quantity: string; rate: string; total: string }
+  current: PiProductFieldValues
+  saving: boolean
+  failure: string | null
+  /** True when this is an admin amendment after submission. */
+  requireReason?: boolean
+  onCancel: () => void
+  onSave: (changed: PiProductFieldValues, reason: string | null) => void
+  /** Opens Change PI, when this reader may use it. Null hides the control. */
+  onChangePi: (() => void) | null
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const reasonId = useId()
+
+  const initial = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const f of PI_PRODUCT_FIELDS) out[f.key] = current[f.key] ?? ''
+    return out
+  }, [current])
+
+  const [values, setValues] = useState<Record<string, string>>(initial)
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
+
+  const changed = useMemo(() => {
+    const out: PiProductFieldValues = {}
+    for (const f of PI_PRODUCT_FIELDS) {
+      const next = (values[f.key] ?? '').trim()
+      const prev = (current[f.key] ?? '').trim()
+      if (next !== prev) out[f.key] = next === '' ? null : next
+    }
+    return out
+  }, [values, current])
+
+  const changedCount = Object.keys(changed).length
+  const canSave = !saving && changedCount > 0 && (!requireReason || trimmedReason !== '')
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(changed, requireReason ? trimmedReason : null)
+  }
+
+  return (
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit product line"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '540px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Edit PI details"
+          subtitle={line.name?.trim()
+            ? `Product line ${line.sequence ?? ''}`.trim()
+            : 'Product line'}
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '14px',
+            padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
+          }}
+        >
+          <div style={{
+            display: 'grid', gap: '9px',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          }}>
+            {PI_PRODUCT_FIELDS.map(f => (
+              <label
+                key={f.key}
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: '4px',
+                  gridColumn: f.kind === 'textarea' ? '1 / -1' : undefined,
+                }}
+              >
+                <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                  {f.label}
+                </span>
+                {f.kind === 'textarea' ? (
+                  <textarea
+                    value={values[f.key] ?? ''}
+                    onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    disabled={saving}
+                    rows={2}
+                    maxLength={500}
+                    style={{
+                      padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                    }}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={values[f.key] ?? ''}
+                    onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    disabled={saving}
+                    maxLength={120}
+                    style={{
+                      padding: '7px 10px', fontSize: '13px',
+                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      background: colors.base, color: colors.primary,
+                    }}
+                  />
+                )}
+                {f.hint !== '' && (
+                  <span style={{ fontSize: '11px', color: colors.muted }}>{f.hint}</span>
+                )}
+              </label>
+            ))}
+          </div>
+
+          {/* ── THE FIGURES, SHOWN AND NOT OFFERED ──
+              Read-only text, never a disabled input. A greyed-out box over a
+              price reads as "somebody could turn this on"; this reads as what is
+              true — the workbook computed these, and correcting them means
+              correcting the workbook. */}
+          <div style={{
+            padding: '10px 12px', borderRadius: '7px',
+            border: `1px solid ${colors.border}`, background: colors.raised,
+            display: 'flex', flexDirection: 'column', gap: '7px',
+          }}>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              {[
+                { label: 'Quantity', value: line.quantity },
+                { label: 'Rate', value: line.rate },
+                { label: 'Line total', value: line.total },
+              ].map(f => (
+                <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ fontSize: '11px', color: colors.muted }}>{f.label}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+                    {f.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5 }}>
+              These come from the PI workbook’s own formulas. To change a quantity,
+              a rate, or which products are on this PI, upload a corrected workbook.
+            </div>
+            {onChangePi && (
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost"
+                style={{ alignSelf: 'flex-start' }}
+                onClick={onChangePi}
+                disabled={saving}
+              >
+                Change PI
+              </button>
+            )}
+          </div>
+
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity with what changed. Required.
+              </div>
+            </div>
+          )}
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+              {changedCount === 0
+                ? 'No changes yet'
+                : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
+            </span>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * THE ORDER OF THE LINES.
+ *
+ * Its own dialog and its own RPC, because reordering is one write over every
+ * line at once and editing is one write over one line. Combining them would
+ * mean a save that partly reordered and partly renamed, with no single answer
+ * to "did it work".
+ *
+ * The list is moved with buttons rather than dragged: this same screen is read
+ * on a phone, and a drag target that works with a mouse is frequently
+ * unreachable with a thumb.
+ */
+export function PiProductReorderModal({
+  lines, saving, failure, requireReason = false, onCancel, onSave,
+}: {
+  lines: readonly { id: string; sequence: string | null; name: string | null }[]
+  saving: boolean
+  failure: string | null
+  requireReason?: boolean
+  onCancel: () => void
+  onSave: (orderedIds: string[], reason: string | null) => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const reasonId = useId()
+
+  const originalIds = useMemo(() => lines.map(l => l.id), [lines])
+  const [ids, setIds] = useState<string[]>(originalIds)
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
+
+  const byId = useMemo(() => new Map(lines.map(l => [l.id, l])), [lines])
+  const moved = ids.some((id, i) => id !== originalIds[i])
+  const canSave = !saving && moved && (!requireReason || trimmedReason !== '')
+
+  const move = (index: number, delta: number) => {
+    const to = index + delta
+    if (to < 0 || to >= ids.length) return
+    setIds(prev => {
+      const next = [...prev]
+      const [item] = next.splice(index, 1)
+      next.splice(to, 0, item)
+      return next
+    })
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(ids, requireReason ? trimmedReason : null)
+  }
+
+  return (
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Reorder product lines"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '520px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Edit PI details"
+          subtitle="Order of the product lines"
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '14px',
+            padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
+          }}
+        >
+          <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5 }}>
+            This changes the order the lines are printed in. It adds nothing,
+            removes nothing, and moves no figure.
+          </div>
+
+          <ol style={{
+            listStyle: 'none', margin: 0, padding: 0,
+            border: `1px solid ${colors.border}`, borderRadius: '7px', overflow: 'hidden',
+          }}>
+            {ids.map((id, i) => {
+              const line = byId.get(id)
+              return (
+                <li
+                  key={id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '9px 11px',
+                    borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
+                    background: colors.base,
+                  }}
+                >
+                  <span style={{
+                    fontSize: '11px', color: colors.muted, fontFamily: 'var(--font-mono)',
+                    minWidth: '28px',
+                  }}>
+                    {i + 1}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: '12.5px', color: colors.primary }}>
+                    {line?.name?.trim() || line?.sequence?.trim() || 'Untitled line'}
+                  </span>
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost"
+                    aria-label={`Move ${line?.name?.trim() || 'this line'} up`}
+                    onClick={() => move(i, -1)}
+                    disabled={saving || i === 0}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost"
+                    aria-label={`Move ${line?.name?.trim() || 'this line'} down`}
+                    onClick={() => move(i, 1)}
+                    disabled={saving || i === ids.length - 1}
+                  >
+                    ↓
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity. Required.
+              </div>
+            </div>
+          )}
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save order'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+              {moved ? 'The order will change' : 'No changes yet'}
+            </span>
           </div>
         </form>
       </div>

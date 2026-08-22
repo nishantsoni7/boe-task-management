@@ -110,7 +110,13 @@ import {
 } from '@/components/orders/piPreview'
 import {
   PiBillingPercentageModal,
+  PiClientDetailsEditModal,
+  PiProductEditModal,
+  PiProductReorderModal,
+  PI_CHANGE_PI_ONLY,
   PiClientDetailsModal,
+  PiRequestCorrectionModal,
+  PiScheduleTermsEditModal,
   PiSubmitConfirmModal,
   PiNoteModal,
   PiFinanceVerifyModal,
@@ -118,6 +124,14 @@ import {
   type PiNoteIntent,
 } from '@/components/orders/piReviewModals'
 import { colors } from '@/lib/tokens'
+import type {
+  PiClientFieldValues,
+  PiCorrectionSection,
+  PiEditSection,
+  PiProductFieldValues,
+  PiScheduleFieldValues,
+} from '@/components/orders/piReviewModals'
+import { piReadiness, piReadinessIsEditable } from '@/lib/orders/piReadiness'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -347,6 +361,41 @@ function PiDraftDetailPageInner() {
    * record that leaves draft stops offering the control without a new request.
    */
   const [canEditSubmission, setCanEditSubmission] = useState(false)
+  /**
+   * can_admin_edit_order_submission's answer: an ACTIVE ADMIN, at any stage.
+   *
+   * Kept as its own value rather than folded into the one above, because the
+   * two are not the same authority and the difference is visible to the reader:
+   * an admin amending a submitted PI must give a reason, and an owner shaping
+   * their own draft must not be asked for one.
+   */
+  const [canAdminAmend, setCanAdminAmend] = useState(false)
+  /** null = closed; otherwise the section being edited. */
+  const [editSection, setEditSection] = useState<PiEditSection | null>(null)
+  /**
+   * WHICH PRODUCT LINE, not just "the products section".
+   *
+   * update_order_submission_item_details writes ONE line, so the dialog is
+   * opened against one line and the id is the state. Reordering is a separate
+   * write over every line at once, so it is a separate flag rather than a
+   * fourth section.
+   */
+  const [productEditId, setProductEditId] = useState<string | null>(null)
+  const [reorderOpen, setReorderOpen] = useState(false)
+  const [productSaving, setProductSaving] = useState(false)
+  const [productFailure, setProductFailure] = useState<string | null>(null)
+  const clientEditOpen = editSection === 'client'
+  const [clientSaving, setClientSaving] = useState(false)
+  const [clientFailure, setClientFailure] = useState<string | null>(null)
+  /**
+   * The row version the page last READ, held separately from the load state so
+   * the save callback can close over it without depending on where the
+   * submission binding happens to be derived.
+   */
+  const [rowVersion, setRowVersion] = useState<number | null>(null)
+  const [correctionOpen, setCorrectionOpen] = useState(false)
+  const [correctionSaving, setCorrectionSaving] = useState(false)
+  const [correctionFailure, setCorrectionFailure] = useState<string | null>(null)
   const [billingDialog, setBillingDialog] = useState(false)
   const [billingSaving, setBillingSaving] = useState(false)
   const [billingFailure, setBillingFailure] = useState<string | null>(null)
@@ -440,7 +489,7 @@ function PiDraftDetailPageInner() {
     // not distinguish them, and neither does this branch.
     if (!submission) { setLoad({ kind: 'unavailable' }); return }
 
-    const [itemsResult, imagesResult, editableResult] = await Promise.all([
+    const [itemsResult, imagesResult, editableResult, adminEditResult] = await Promise.all([
       supabase
         .from('order_submission_items')
         .select(PI_DRAFT_ITEM_COLUMNS)
@@ -469,12 +518,19 @@ function PiDraftDetailPageInner() {
        * behind it would refuse anyway.
        */
       supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId }),
+      // THE SECOND AUTHORITY, asked separately because it answers a different
+      // question. can_edit_order_submission is the OWNER rule and is false the
+      // moment a PI is submitted — for everybody, admins included, because the
+      // actor test sits behind the state test. An active admin may correct a PI
+      // at any stage, and only can_admin_edit_order_submission knows that.
+      supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId }),
     ])
 
     if (itemsResult.error || imagesResult.error) { setLoad({ kind: 'failed' }); return }
 
     // FAIL CLOSED. A capability that could not be resolved is not a capability.
     setCanEditSubmission(editableResult.error ? false : editableResult.data === true)
+    setCanAdminAmend(adminEditResult.error ? false : adminEditResult.data === true)
 
     const products = persistedProducts((itemsResult.data ?? []) as unknown as PersistedItem[])
     const images = (imagesResult.data ?? []) as unknown as PersistedItemImage[]
@@ -555,6 +611,9 @@ function PiDraftDetailPageInner() {
       orderDisplayNumber = typeof number === 'string' && number.trim() !== '' ? number.trim() : null
     }
 
+    // The version this render is based on, for optimistic concurrency.
+    setRowVersion(typeof row.row_version === 'number' ? row.row_version : null)
+
     setLoad({
       kind: 'ready',
       draft: {
@@ -589,24 +648,28 @@ function PiDraftDetailPageInner() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
-
-      // A failed permission read resolves to no capabilities, so the page falls
-      // back to what it has always been — a read-only record — rather than
+      // THE PROFILE JOINS THE TWO PERMISSION READS rather than preceding them.
+      // All three need only the session's user id, and the draft below needs
+      // the capabilities, so this is the difference between three waits and two.
+      //
+      // A failed permission read still resolves to no capabilities, so the page
+      // falls back to what it has always been — a read-only record — rather than
       // offering a control the caller may not have.
-      const role = (me as UserProfile | null)?.role
-      // TWO MODULES, TWO READS, because this screen now carries two authorities
-      // that must not imply one another. A failure on either resolves to no
+      //
+      // TWO MODULES, TWO READS, because this screen carries two authorities that
+      // must not imply one another. A failure on either resolves to no
       // capabilities for that module alone, so a Finance outage cannot cost
       // somebody their PI review controls and vice versa.
-      const [ordersPermissions, financePermissions] = await Promise.all([
+      const [{ data: me }, ordersPermissions, financePermissions] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', session.user.id)
+          .single(),
         getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
         getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
       ])
+      const role = (me as UserProfile | null)?.role
       const caps = deriveOrdersCapabilities(role, ordersPermissions)
       const financeCaps = deriveFinanceCapabilities(role, financePermissions)
 
@@ -819,7 +882,7 @@ function PiDraftDetailPageInner() {
    * `null` is the clear. The RPC re-derives the authority and the bounds, so a
    * refusal here is the database's answer and not a second opinion.
    */
-  const saveBillingPercentage = useCallback(async (value: number | null) => {
+  const saveBillingPercentage = useCallback(async (value: number | null, reason?: string | null) => {
     if (billingSaving) return
     setBillingSaving(true)
     setBillingFailure(null)
@@ -827,6 +890,11 @@ function PiDraftDetailPageInner() {
       const { error } = await supabase.rpc('set_order_submission_billing_percentage', {
         p_submission_id: submissionId,
         p_percentage: value,
+        // THE REASON TRAVELS WITH THE WRITE. The database decides whether it is
+        // required — an owner shaping a draft needs none, an admin amending a
+        // submitted PI does — so this passes whatever was collected and lets
+        // ORDER_SUBMISSION_BILLING_REASON_REQUIRED be the authority on it.
+        p_reason: reason ?? null,
       })
       if (error) {
         setBillingFailure(
@@ -840,6 +908,179 @@ function PiDraftDetailPageInner() {
       setBillingSaving(false)
     }
   }, [billingSaving, supabase, submissionId, loadDraft])
+
+  /**
+   * SUPPLY OR CORRECT THE CLIENT AND PARTY DETAILS.
+   *
+   * Sends only what changed, and the row version it was read at. The RPC
+   * re-derives the authority, the staleness and every field rule, so a refusal
+   * here is the database's answer and this shows it rather than substituting a
+   * sentence of its own — that substitution is exactly what made a missing
+   * environment variable look like a refusal on the Order screen.
+   */
+  const saveClientDetails = useCallback(async (
+    changed: PiClientFieldValues,
+    reason: string | null,
+  ) => {
+    if (clientSaving) return
+    setClientSaving(true)
+    setClientFailure(null)
+    try {
+      const { error } = await supabase.rpc('update_order_submission_client_details', {
+        p_submission_id: submissionId,
+        p_fields: changed,
+        // The version this dialog was opened at. A concurrent edit moves it and
+        // the write is refused instead of silently winning.
+        p_expected_version: rowVersion,
+        p_reason: reason,
+      })
+      if (error) {
+        setClientFailure((error as { message?: string }).message
+          ?? 'The details could not be saved.')
+        return
+      }
+      setEditSection(null)
+      await loadDraft({ quiet: true })
+    } finally {
+      setClientSaving(false)
+    }
+  }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
+
+  /**
+   * SAVE THE DATES AND TERMS.
+   *
+   * Its own RPC and therefore its own transaction, exactly like the client
+   * section. One dialog per section rather than one form over both: a single
+   * button firing two round trips could leave the PI half-updated with nothing
+   * on screen to say which half.
+   */
+  const saveScheduleTerms = useCallback(async (
+    changed: PiScheduleFieldValues,
+    reason: string | null,
+  ) => {
+    if (clientSaving) return
+    setClientSaving(true)
+    setClientFailure(null)
+    try {
+      const { error } = await supabase.rpc('update_order_submission_schedule_terms', {
+        p_submission_id: submissionId,
+        p_fields: changed,
+        p_expected_version: rowVersion,
+        p_reason: reason,
+      })
+      if (error) {
+        setClientFailure((error as { message?: string }).message
+          ?? 'The dates and terms could not be saved.')
+        return
+      }
+      setEditSection(null)
+      await loadDraft({ quiet: true })
+    } finally {
+      setClientSaving(false)
+    }
+  }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
+
+  /**
+   * CORRECT ONE PRODUCT LINE'S DESCRIPTION.
+   *
+   * Its own RPC, its own transaction, and its own row version — the item's, not
+   * the submission's. The RPC refuses every money key BY NAME with the reason,
+   * so a payload that somehow carried a quantity is rejected rather than
+   * quietly ignored; this sends only descriptive fields in the first place.
+   */
+  const saveProductDetails = useCallback(async (
+    itemId: string,
+    changed: PiProductFieldValues,
+    reason: string | null,
+  ) => {
+    if (productSaving) return
+    setProductSaving(true)
+    setProductFailure(null)
+    try {
+      const { error } = await supabase.rpc('update_order_submission_item_details', {
+        p_item_id: itemId,
+        p_fields: changed,
+        p_expected_version: rowVersion,
+        p_reason: reason,
+      })
+      if (error) {
+        setProductFailure((error as { message?: string }).message
+          ?? 'The product line could not be saved.')
+        return
+      }
+      setProductEditId(null)
+      await loadDraft({ quiet: true })
+    } finally {
+      setProductSaving(false)
+    }
+  }, [productSaving, supabase, rowVersion, loadDraft])
+
+  /**
+   * CHANGE THE ORDER THE LINES ARE PRINTED IN.
+   *
+   * One write over every line, so it cannot half-apply. The RPC requires the
+   * full set of ids — a partial list is refused — which is what stops a stale
+   * dialog from dropping a line that was added since it opened.
+   */
+  const saveProductOrder = useCallback(async (
+    orderedIds: string[],
+    reason: string | null,
+  ) => {
+    if (productSaving) return
+    setProductSaving(true)
+    setProductFailure(null)
+    try {
+      const { error } = await supabase.rpc('reorder_order_submission_items', {
+        p_submission_id: submissionId,
+        p_item_ids: orderedIds,
+        p_expected_version: rowVersion,
+        p_reason: reason,
+      })
+      if (error) {
+        setProductFailure((error as { message?: string }).message
+          ?? 'The order of the lines could not be saved.')
+        return
+      }
+      setReorderOpen(false)
+      await loadDraft({ quiet: true })
+    } finally {
+      setProductSaving(false)
+    }
+  }, [productSaving, supabase, submissionId, rowVersion, loadDraft])
+
+  /**
+   * THE OWNER ASKS FOR A CORRECTION.
+   *
+   * Writes no PI data — the RPC is proved not to, and the dialog says so. The
+   * notification goes through the SAME server route the exception events use,
+   * which resolves recipients from the database's own authority rather than
+   * letting a browser name who hears about it.
+   */
+  const sendCorrectionRequest = useCallback(async (
+    section: PiCorrectionSection, change: string, reason: string,
+  ) => {
+    if (correctionSaving) return
+    setCorrectionSaving(true)
+    setCorrectionFailure(null)
+    try {
+      const { error } = await supabase.rpc('request_order_submission_correction', {
+        p_submission_id: submissionId,
+        p_section: section,
+        p_requested_change: change,
+        p_reason: reason,
+      })
+      if (error) {
+        setCorrectionFailure((error as { message?: string }).message
+          ?? 'The request could not be sent.')
+        return
+      }
+      setCorrectionOpen(false)
+      void notifyPiSubmission({ event: 'pi_correction_requested', submissionId })
+      await loadDraft({ quiet: true })
+    } finally {
+      setCorrectionSaving(false)
+    }
+  }, [correctionSaving, supabase, submissionId, loadDraft])
 
   const approveException = useCallback(() => runAction('approve_exception', async () => {
     const { error } = await supabase.rpc('approve_pi_advance_exception', {
@@ -1101,6 +1342,39 @@ function PiDraftDetailPageInner() {
   // pi_submission_payment_summary() resolved the position in numeric, in the
   // same order approve_order_submission() resolves it; a null summary means it
   // could not be read at all and the control fails closed.
+  /**
+   * THE WHOLE REMAINING DISTANCE, asked once and answered for every surface.
+   *
+   * The dead end manual testing found was not one missing field — it was
+   * learning about them ONE REFUSAL AT A TIME. Submitting named the client;
+   * fixing that named a product line; fixing that named an image. Every round
+   * trip a fresh disappointment, and no screen able to say how far there was
+   * left to go.
+   *
+   * So the same list is computed here and read by every surface below: the
+   * submit control, the finance dialog and the approval control. It is NOT the
+   * enforcement — submit_pi_for_review and approve_order_submission re-derive
+   * all of it under a row lock — it is the difference between being told the
+   * whole thing and being told the first thing.
+   *
+   * `hasRepresentativeImage` is read from the URLs the page already resolved,
+   * so a picture whose object has gone missing counts as missing here rather
+   * than only showing as a broken thumbnail beside a line that looks complete.
+   */
+  const submissionReadiness = piReadiness(
+    'submission',
+    {
+      client_name: submission.client_name ?? null,
+      source_workbook_path: submission.source_workbook_path ?? null,
+      parse_blocking_issues: draft.blocking,
+    },
+    products.map(p => ({
+      item_sequence: p.itemSequence === null ? null : 1,
+      product_name: p.productName,
+      hasRepresentativeImage: draft.representativeByRow.has(p.row),
+    })),
+  )
+
   const readiness = describeApprovalReadiness({
     status: submission.status,
     financeVerified,
@@ -1109,6 +1383,9 @@ function PiDraftDetailPageInner() {
     hasBlockingIssues: draft.blocking.length > 0,
     productCount: products.length,
     deletionClaimed: submission.deletion_claim_token !== null,
+    // The same list every other surface reads. Last of the blockers, because
+    // everything above it is a larger obstacle than a missing field.
+    incompleteSummary: submissionReadiness.ready ? null : submissionReadiness.summary,
   })
 
   /**
@@ -1185,6 +1462,39 @@ function PiDraftDetailPageInner() {
    * products; the card is now a dialog the summary opens, so the answer is
    * resolved here and passed to both. Not one input to it changed.
    */
+  /**
+   * WHAT THIS PI STILL NEEDS — the shared answer, so this screen and the
+   * payment and submission gates cannot disagree about the same record.
+   *
+   * Computed for the PAYMENT purpose because that is the gate a reader meets
+   * first, and it is where the reported dead end was: no client name, no
+   * payment, and nothing on the page offering a way to supply one.
+   */
+  /**
+   * Does the signed-in account own this PI?
+   *
+   * Read from the record, not from a role. The correction RPC re-derives
+   * exactly this — created_by or submitted_by — so the control and the write
+   * cannot disagree about who the owner is.
+   */
+  /**
+   * MAY A FORM WRITE A PRODUCT LINE HERE.
+   *
+   * The same two authorities every other section uses: the owner rule for a
+   * draft, the admin rule for every stage after it. Kept as one name because it
+   * is asked in four places in the markup below, and four copies of the same
+   * expression is four chances for one of them to drift.
+   */
+  const canEditProducts = canEditSubmission || canAdminAmend
+
+  const ownsSubmission = viewerId !== null && (
+    submission.created_by === viewerId || submission.submitted_by === viewerId)
+
+  const paymentReadiness = piReadiness('payment', {
+    client_name: submission.client_name ?? null,
+    source_workbook_path: null,
+  })
+
   const canAddPayment = canAddPiPayment(
     {
       userId: viewerId,
@@ -1349,8 +1659,29 @@ function PiDraftDetailPageInner() {
              only; every other state is read-only for everyone. The RPC behind
              the dialog re-derives exactly this, so the control and the write
              cannot disagree. */
-          canEditBilling={canEditSubmission}
+          canEditBilling={canEditSubmission || canAdminAmend}
           onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
+          /* The same two authorities the billing control uses. The owner rule
+             covers a draft; the admin rule covers every stage after it. */
+          canEditDetails={canEditSubmission || canAdminAmend}
+          onEditDetails={() => { setClientFailure(null); setEditSection('client') }}
+          onEditSchedule={() => { setClientFailure(null); setEditSection('schedule') }}
+          /* The owner's channel, offered only where they have no edit door:
+             they own this PI and it has left their hands. The RPC re-derives
+             both halves of that. */
+          onRequestCorrection={
+            !canEditSubmission && !canAdminAmend && ownsSubmission
+              ? () => { setCorrectionFailure(null); setCorrectionOpen(true) }
+              : null
+          }
+          /* Only offered where something can actually be fixed by a form —
+             piReadinessIsEditable is false for a list of workbook problems, and
+             pointing at an editor for those would be a lie. */
+          missingSummary={
+            paymentReadiness.ready || !piReadinessIsEditable(paymentReadiness)
+              ? null
+              : paymentReadiness.summary
+          }
           ownership={ownership}
           statusLabel={draftStatusLabel(submission.status)}
           tone={tone}
@@ -1376,6 +1707,20 @@ function PiDraftDetailPageInner() {
           employeeReply={employeeReply}
           advanceRefusal={advanceRefusal}
           blockingCount={draft.blocking.length}
+          /* The same list the approval control and the finance dialog read.
+             Offered only where submitting is the question: a reviewer looking
+             at a submitted PI is not the person who fills these in. */
+          readiness={actions.canSubmit ? submissionReadiness : null}
+          onFixReadiness={
+            canEditSubmission || canAdminAmend
+              ? section => {
+                  setClientFailure(null)
+                  setProductFailure(null)
+                  if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
+                  setEditSection(section)
+                }
+              : null
+          }
           acting={acting}
           onChangePi={() => router.push(changePiHref(submissionId))}
           onSubmit={() => { setActionFailure(null); setDialog('submit') }}
@@ -1418,6 +1763,18 @@ function PiDraftDetailPageInner() {
                 <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
                   {products.length} line{products.length !== 1 ? 's' : ''}
                 </span>
+                {/* Reordering is one write over every line, so it is its own
+                    control and its own dialog — never a side effect of editing
+                    one row. Offered only where a form may write at all. */}
+                {canEditProducts && products.length > 1 && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost"
+                    onClick={() => { setProductFailure(null); setReorderOpen(true) }}
+                  >
+                    Reorder
+                  </button>
+                )}
               </div>
             }
           />
@@ -1475,6 +1832,17 @@ function PiDraftDetailPageInner() {
                       {formatInr(p.lineTotal)}
                     </span>
                   </div>
+
+                  {canEditProducts && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-ghost"
+                      style={{ alignSelf: 'flex-start' }}
+                      onClick={() => { setProductFailure(null); setProductEditId(p.id) }}
+                    >
+                      Edit details
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -1496,6 +1864,23 @@ function PiDraftDetailPageInner() {
                         <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
                           {orDash(p.productName)}
                         </MultilineText>
+                        {/* INSIDE THE PRODUCT CELL, not in a tenth column.
+                            PiProductTableHead is shared with the upload preview,
+                            which has nothing to edit; a tenth cell here would
+                            leave that table one heading short of its rows, and
+                            widening the shared head would put an empty column on
+                            a screen that can never fill it. */}
+                        {canEditProducts && (
+                          <button
+                            type="button"
+                            className="boe-btn boe-btn-ghost"
+                            style={{ marginTop: '4px' }}
+                            aria-label={`Edit ${p.productName?.trim() || 'this product line'}`}
+                            onClick={() => { setProductFailure(null); setProductEditId(p.id) }}
+                          >
+                            Edit
+                          </button>
+                        )}
                       </td>
                       <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.secondary }}>
                         {p.quantity ?? '—'}
@@ -1527,6 +1912,41 @@ function PiDraftDetailPageInner() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ── WHAT NO FORM ON THIS PAGE CAN FIX ──
+              Stated once, under the lines, wherever an editing control is
+              offered. Without it a reader who has just corrected a product name
+              reasonably concludes the quantity beside it is one click away —
+              and then hunts for a control that was never going to exist. It is
+              not a permission notice: nobody can type these figures, because
+              they are the output of formulas in the workbook that this system
+              transcribes rather than computes. */}
+          {canEditProducts && products.length > 0 && (
+            <div style={{
+              padding: '11px 16px 13px',
+              borderTop: `1px solid ${colors.border}`,
+              display: 'flex', flexDirection: 'column', gap: '6px',
+            }}>
+              <div style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                Changing these needs a corrected PI workbook
+              </div>
+              <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55 }}>
+                {PI_CHANGE_PI_ONLY.join(' · ')}
+              </div>
+              <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.55 }}>
+                These come from the workbook’s own formulas. Upload a corrected
+                file and everything on this PI is read again from it.
+              </div>
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost"
+                style={{ alignSelf: 'flex-start', marginTop: '2px' }}
+                onClick={() => router.push(changePiHref(submissionId))}
+              >
+                Change PI
+              </button>
             </div>
           )}
         </PiCard>
@@ -1578,9 +1998,115 @@ function PiDraftDetailPageInner() {
           current={billingSummary.value}
           saving={billingSaving}
           failure={billingFailure}
+          /* A reason is required exactly when this is an ADMIN AMENDMENT of a
+             PI the owner can no longer edit. `canEditSubmission` is the owner
+             rule, so its being false while the admin authority is true is
+             precisely the after-submission case the database asks about. */
+          requireReason={canAdminAmend && !canEditSubmission}
           onCancel={() => { if (!billingSaving) setBillingDialog(false) }}
-          onSave={value => { void saveBillingPercentage(value) }}
-          onClear={() => { void saveBillingPercentage(null) }}
+          onSave={(value, reason) => { void saveBillingPercentage(value, reason) }}
+          onClear={reason => { void saveBillingPercentage(null, reason) }}
+        />
+      )}
+
+      {clientEditOpen && (
+        <PiClientDetailsEditModal
+          current={{
+            client_name:      submission.client_name ?? null,
+            contact_number:   submission.contact_number ?? null,
+            bill_to_name:     submission.bill_to_name ?? null,
+            bill_to_phone:    submission.bill_to_phone ?? null,
+            bill_to_gst:      submission.bill_to_gst ?? null,
+            billing_address:  submission.billing_address ?? null,
+            ship_to_name:     submission.ship_to_name ?? null,
+            ship_to_phone:    submission.ship_to_phone ?? null,
+            ship_to_gst:      submission.ship_to_gst ?? null,
+            shipping_address: submission.shipping_address ?? null,
+          }}
+          saving={clientSaving}
+          failure={clientFailure}
+          /* A reason is required exactly when this is an ADMIN AMENDMENT of a
+             PI the owner can no longer edit — the same condition the database
+             applies, asked here so the reader learns it before typing. */
+          requireReason={canAdminAmend && !canEditSubmission}
+          missingKeys={paymentReadiness.missing.map(m => m.key)}
+          onCancel={() => { if (!clientSaving) setEditSection(null) }}
+          onSave={(changed, reason) => { void saveClientDetails(changed, reason) }}
+        />
+      )}
+
+      {/* ── The product line editor ──
+          Keyed on the line, not on a section: one line, one RPC, one
+          transaction. A line that disappears under an open dialog — a Change PI
+          landing in another tab — closes it rather than saving into nothing. */}
+      {productEditId !== null && (() => {
+        const line = products.find(p => p.id === productEditId)
+        if (!line) return null
+        return (
+          <PiProductEditModal
+            line={{
+              sequence: line.itemSequence,
+              name:     line.productName,
+              quantity: line.quantity === null ? '—' : String(line.quantity),
+              rate:     formatInr(line.costPerPiece),
+              total:    formatInr(line.lineTotal),
+            }}
+            current={{
+              item_sequence:       line.itemSequence,
+              source_product_code: line.sourceProductCode,
+              product_name:        line.productName,
+              dimensions:          line.dimensions,
+              material:            line.material,
+              customization:       line.customization,
+            }}
+            saving={productSaving}
+            failure={productFailure}
+            requireReason={canAdminAmend && !canEditSubmission}
+            onCancel={() => { if (!productSaving) setProductEditId(null) }}
+            onSave={(changed, reason) => { void saveProductDetails(line.id, changed, reason) }}
+            onChangePi={() => router.push(changePiHref(submissionId))}
+          />
+        )
+      })()}
+
+      {reorderOpen && (
+        <PiProductReorderModal
+          lines={products.map(p => ({
+            id: p.id, sequence: p.itemSequence, name: p.productName,
+          }))}
+          saving={productSaving}
+          failure={productFailure}
+          requireReason={canAdminAmend && !canEditSubmission}
+          onCancel={() => { if (!productSaving) setReorderOpen(false) }}
+          onSave={(ids, reason) => { void saveProductOrder(ids, reason) }}
+        />
+      )}
+
+      {correctionOpen && (
+        <PiRequestCorrectionModal
+          saving={correctionSaving}
+          failure={correctionFailure}
+          onCancel={() => { if (!correctionSaving) setCorrectionOpen(false) }}
+          onSubmit={(section, change, reason) => {
+            void sendCorrectionRequest(section, change, reason)
+          }}
+        />
+      )}
+
+      {editSection === 'schedule' && (
+        <PiScheduleTermsEditModal
+          current={{
+            order_confirmation_date: submission.order_confirmation_date ?? null,
+            due_date:                submission.due_date ?? null,
+            dispatch_commitment:     submission.dispatch_commitment ?? null,
+            payment_terms:           submission.payment_terms ?? null,
+            billing_terms:           submission.billing_terms ?? null,
+          }}
+          saving={clientSaving}
+          failure={clientFailure}
+          requireReason={canAdminAmend && !canEditSubmission}
+          onCancel={() => { if (!clientSaving) setEditSection(null) }}
+          onSave={(changed, reason) => { void saveScheduleTerms(changed, reason) }}
         />
       )}
 
@@ -1636,6 +2162,11 @@ function PiDraftDetailPageInner() {
           client={clientLabel}
           grandTotal={grandTotalLabel}
           advanceLabel={verifiedPaymentLabel ?? advanceLabel}
+          /* The same list the submit control and the approval control read.
+             Not a refusal — finance signs off on the figures — but the thing
+             that will stop the approval, said before the sign-off rather than
+             after it. */
+          incompleteSummary={submissionReadiness.ready ? null : submissionReadiness.summary}
           saving={acting}
           failure={actionFailure}
           onCancel={closeDialog}

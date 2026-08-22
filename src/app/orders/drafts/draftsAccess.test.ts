@@ -371,15 +371,26 @@ describe('the detail page renders only what it fetched', () => {
     //
     // set_order_submission_billing_percentage is the one write here that is NOT
     // a status move, and it is deliberately narrow: one column on one row, no
-    // money, no state transition, and gated by can_edit_order_submission — the
-    // existing draft/needs_changes owner-or-admin rule, unwidened. A SUBMITTED
-    // record refuses it like every other edit.
+    // money, no state transition.
+    //
+    // ITS AUTHORITY WIDENED IN 20260927000000, and only its. It used to be
+    // gated by can_edit_order_submission alone — draft/needs_changes, no Order,
+    // owner or admin — under which a submitted record refused it like every
+    // other edit. Manual testing showed that also refused an ACTIVE ADMIN, for
+    // whom the business rule has since been revised: an admin may correct PI
+    // business information at any stage, giving a reason once the PI has left
+    // the owner's hands.
+    //
+    // The new authority is a SEPARATE predicate, can_admin_edit_order_submission.
+    // can_edit_order_submission is untouched, so no OTHER write path on this
+    // page gained anything — which is the whole reason it was added beside the
+    // owner rule instead of inside it.
     // READ-ONLY CAPABILITY PROBES ARE NOT WRITES, and are named here rather than
     // folded into the list below — a write allowlist that quietly accepted
     // read-shaped names would stop being a write allowlist.
-    // can_edit_order_submission is `stable`, takes a submission id, and returns
-    // a boolean; it is the authority this page asks instead of restating.
-    const READ_ONLY_RPCS = ['can_edit_order_submission']
+    // Both are `stable`, take a submission id, and return a boolean; they are
+    // the authorities this page asks instead of restating.
+    const READ_ONLY_RPCS = ['can_admin_edit_order_submission', 'can_edit_order_submission']
     const called = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
     for (const probe of READ_ONLY_RPCS) {
       assert.ok(called.includes(probe), `${probe} should be the capability this page asks`)
@@ -390,9 +401,42 @@ describe('the detail page renders only what it fetched', () => {
       'approve_pi_advance_exception',
       'reject_order_submission',
       'reject_pi_advance_exception',
+      // The order the product lines are printed in (20261002000000). One write
+      // over EVERY line, so it cannot half-apply, and it requires the full set
+      // of ids — a partial list is refused, which is what stops a stale dialog
+      // from dropping a line that was added since it opened. It moves no figure
+      // and neither adds nor removes a line.
+      'reorder_order_submission_items',
       'request_order_submission_changes',
+      // The owner's correction request (20260930000000). It changes NO PI
+      // data — the migration asserts that of its own definition at apply time —
+      // and is the owner's channel for a record that has left their hands.
+      'request_order_submission_correction',
       'set_order_submission_billing_percentage',
       'submit_pi_for_review',
+      // update_order_submission_client_details (20260928000000) writes ten
+      // named TEXT columns — client, contact, and the two parties — and
+      // nothing else. Its allow-list is enforced in the database, not here:
+      // an unrecognised key is REFUSED rather than ignored, so a caller
+      // cannot reach a total, a status, a payment or the Order link through
+      // it. Authority is the owner rule OR the active-admin rule, and it
+      // carries optimistic concurrency so two editors cannot silently
+      // overwrite each other.
+      'update_order_submission_client_details',
+      // One product line's DESCRIPTION (20261002000000): its number, code,
+      // name, dimensions, material and specification note. Quantity, rate and
+      // the line total are refused BY NAME with the reason — they are outputs
+      // of formulas in the PI workbook that this system transcribes rather
+      // than computes, and correcting one means correcting the workbook. The
+      // dialog does not render them as disabled inputs either, which would
+      // read as a permission somebody could be granted.
+      'update_order_submission_item_details',
+      // The schedule and terms editor (20260929000000): confirm date, due date,
+      // dispatch commitment, payment terms, billing terms. Its own RPC and so
+      // its own transaction — one dialog per section, because a single button
+      // firing two round trips could leave the PI half-updated. It refuses
+      // billing_percentage BY NAME and points at that value's own RPC.
+      'update_order_submission_schedule_terms',
       'verify_pi_finance_check',
     ])
     // Still unreachable from a browser, in any phase: the number allocator, and

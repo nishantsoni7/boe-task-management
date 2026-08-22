@@ -2,7 +2,7 @@
 
 # Business Rules
 
-Last Updated: June 2026
+Last Updated: September 2026 — Order Management rules added; earlier sections unchanged.
 
 ---
 
@@ -644,3 +644,371 @@ This document should remain the primary source of operational rules for BOE Task
 10. **Module access on/off is not a second authority.** Off = No Access,
     On = Viewer. There is no separate visibility field.
 11. **Migrations 901 and 902 deploy together**, 901 first, nothing between.
+
+---
+
+# ORDER MANAGEMENT RULES
+
+*September 2026. Everything in this section is production unless marked
+**(branch)** — meaning complete on `claude/confirmed-order-handoff-performance`,
+not merged and not applied.*
+
+## PI submission
+
+* A PI enters the system as an **uploaded workbook**, and the browser's reading
+  of it is never an input. The server re-parses the same file and persists only
+  what **its own** parse produced. A client that lied about a price, a quantity
+  or an image mapping changes nothing, because none of those words cross the
+  wire.
+* **The workbook is immutable once submitted.** `order-files` has no UPDATE
+  policy for any role, and the write predicate admits only the owner while the
+  record is a draft or has been returned. A reviewer reads every file and writes
+  none — which is what keeps "the workbook the approver read is the workbook the
+  employee uploaded" true.
+* A figure the workbook states is **never repaired**. Where quantity × rate
+  disagrees with the stored line total, both are reported and the workbook's
+  value is what is kept. Substituting our arithmetic would make the record
+  disagree with the document the client was sent.
+* **A cost's MEANING is a column, not an inference from its amount.** "Not
+  applicable" and "Included" both add zero and are opposite answers to "was the
+  client charged for packing?".
+
+## Payment
+
+* Money is recorded against a PI as a **payment plus an allocation**. The
+  payment row carries the proof and the Finance history; the allocation says how
+  much of it belongs to which target.
+* **Only Finance-verified money counts.** A payment awaiting verification is
+  excluded from every verified total, on every screen and in every document —
+  and where it exists it is *reported* alongside, never folded in.
+* A payment may legitimately be **split across targets**, so a total is always
+  the sum of *allocated* figures, never of whole ledger amounts.
+* **The money MOVES; it is never copied.** At approval the PI's active
+  allocations are re-pointed onto the new Order in one UPDATE — same ids, same
+  payments, same amounts, same provenance. A reversed allocation stays with the
+  PI it was reversed against.
+
+## The reduced-payment exception
+
+* The standard requirement is **40% of the grand total**, as an exact amount and
+  never a rounded percentage: 40% of ₹100.01 is ₹40.004, and ₹40.00 — which
+  displays as "40%" — does not meet it. The outstanding figure a person is shown
+  is rounded **up**, so paying it always closes the gate.
+* An exception is a **commercial decision**, settled by
+  `orders.approve_advance_exception`, which is **independent of PI approval in
+  both directions**. Reviewing a PI and settling its terms are two decisions on
+  one record and the business keeps them assignable to different people.
+* **Money is tested before the decision that stands in for money.** A PI that
+  reaches 40% while an exception request sits in a queue is approved on the
+  standard route; the request simply stops mattering.
+
+## Billing percentage
+
+* It is how much of a PI's **pre-GST** value should be billed — a commercial
+  decision somebody declares. Not a discount, not a payment percentage, and not
+  anything the workbook carries.
+* **Undeclared is a real state.** Not 0 and not 100. Nothing is backfilled and
+  the screen says `Undeclared`.
+* **The floor is 35 and the ceiling is 100.** A business rule, enforced in the
+  form, the RPC and a CHECK constraint. Rejected rather than repaired: somebody
+  who typed 30 meant 30, and saving 35 on their behalf would record a decision
+  nobody took.
+* **The value is `total_before_gst` × the percentage, and nothing else.** Never
+  the grand total, which carries tax the percentage says nothing about. A PI with
+  no stated pre-tax total produces **no** billing value and says so — never ₹0.
+* It follows the PI onto the Order at approval and is **read-only there**: by
+  then the PI is approved and the RPC that writes it refuses.
+
+## Approval
+
+* Approval is **one atomic act** that approves the PI, creates exactly one
+  Confirmed Order, allocates its number and moves the money. Either all of it
+  happens or none of it does.
+* It requires `orders.approve_order` — a protected, deny-by-default action,
+  granted per employee. It is **not** `orders.approve`, which means "convert an
+  Order Request" and is a different, older authority.
+* It requires **Finance verification**, and that verification **goes stale the
+  moment the record moves**.
+* **One submission, one Order, in both directions** — two partial unique indexes,
+  not a convention in the function that writes them.
+* A failed approval **consumes nothing**: the number cycle advances inside the
+  caller's transaction and rolls back with it.
+
+## Order numbering
+
+* A confirmed Order number is **four digits, permanent, and never reused** —
+  including when the Order is cancelled. A cancelled Order is a row like any
+  other and keeps its number forever.
+* **Drafts and failed approvals receive and consume no number.**
+* The next number is an **admin decision** held in a single-row cycle table.
+  There is exactly one allocator, it is reachable only through an INSERT
+  trigger, and it is revoked from every role. Nothing in a browser generates,
+  guesses or reads a number — no `max(display_number) + 1`, in any form.
+* A cleanup gives back only the numbers it freed **from the top of the range**,
+  because an administrator who set the cycle to 1000 has said something and
+  deleting a test Order is not a reason to unsay it.
+* **(branch)** The cycle may be returned to **1** only through
+  `reset_confirmed_order_number_cycle()`, and only when: an active admin asks;
+  a **finalized** cleanup claim names the occasion (which is also proof the
+  storage removal completed); **not one Order row remains**; no PI is submitted
+  or approved; and no payment allocation still points at an Order or a PI. It
+  deletes nothing, renumbers nothing, is idempotent, and is permanently audited
+  with the evidence each gate saw.
+
+## Order continuity — what follows a PI onto its Order
+
+| Fact | Where it lives afterwards |
+| --- | --- |
+| Client name, confirm date, due date | copied onto `orders` |
+| Grand total, gross product amount | copied onto `orders` |
+| Billing percentage | copied onto `orders` |
+| Payments and allocations | **moved**, never copied |
+| GST, total before GST, the commercial breakdown | **stay on the PI**, read from there |
+| Product lines and photographs | **stay on the PI**, read from there |
+| Addresses, contact, both parties | **stay on the PI**, read from there |
+
+**Order-side commercial values come from the linked approved PI.** GST and the
+pre-GST total have no `orders` column and are not to be given one: a second copy
+could disagree with the document the client agreed to.
+
+## Confirmed documents *(branch)*
+
+* A **version** is a business fact — the documents as they stand, or as they
+  stand after an approved amendment. An **attempt** is a technical fact. A
+  failed attempt increases attempt history and produces **no** user-facing
+  version, and a retry never advances the version number.
+* An Order is **document-ready only when both the Excel and the PDF exist.** The
+  database refuses to record any other state.
+* **Publication, not location, makes a file downloadable.** An object is readable
+  only when a ready version row names it, so a partial attempt's output is
+  unreachable by every client role, permanently.
+* **The original uploaded PI is never overwritten.** It is read; the confirmed
+  copy goes to a different key entirely.
+* Generating and retrying require the **management approval authority**; viewing
+  and downloading follow **Order visibility**. PI-review access alone reaches
+  neither.
+
+---
+
+## PI EDITING AUTHORITY — REVISED, SEPTEMBER 2026
+
+> **SUPERSEDES** the earlier rule that a submitted PI is read-only for
+> everyone, admins included. That rule was found during manual testing to be
+> stricter than intended: it made a PI imported with missing information
+> permanently uncorrectable, which dead-ended the workflow.
+
+### The owner
+
+May add, edit, remove or correct PI business information while the PI is
+**draft** or **needs_changes**. No reason is asked — a draft is theirs to
+shape, and a mandatory reason on every keystroke of ordinary work is a
+ritual, not an audit trail.
+
+Once submitted to management the owner may no longer modify the PI directly.
+They may send a **correction request** naming the field or section, the change
+they want and a mandatory reason, recorded in Activity and visible to the
+reviewing admin. *(Not yet implemented — see 03_Development_History.)*
+
+### The active admin
+
+May add, edit, remove or correct PI business information **at any stage** —
+draft, submitted, needs changes, rejected, approved, and after the confirmed
+Order exists. Editing after submission **requires a reason**, bounded at 500
+characters and recorded in Activity.
+
+"Active" is load-bearing: `role = 'admin' AND is_active AND NOT is_deleted`.
+A deactivated admin is not an admin.
+
+### Nobody else
+
+Reviewers, Finance verifiers, managers and permission holders gain **no**
+editing authority from being able to view, review, verify payment or approve.
+Holding `orders.approve_order` is not editing authority. Each authority stays
+separate.
+
+### How the authority is expressed
+
+Two predicates, deliberately not one:
+
+| Predicate | Answers |
+|---|---|
+| `can_edit_order_submission(uuid)` | the OWNER rule — draft/needs_changes, no Order, owner or admin |
+| `can_admin_edit_order_submission(uuid)` | active admin, **any stage** |
+
+The owner rule is **unwidened**. It gates many other write paths — items,
+images, files, submission itself — and widening it would have handed an admin
+all of them at once, unaudited. Each write path adopts the admin authority
+deliberately. As of `20261003000000` five have: the billing percentage, client
+and party details, dates and terms, product descriptions, and the workbook
+itself.
+
+### Billing percentage
+
+Owner may set, change or clear it in draft/needs_changes; an active admin at
+any stage, with a reason after submission. 35–100 or NULL (`Undeclared`).
+Unrelated to GST, Grand Total, payment percentage, advance requirement and
+approval eligibility. An unchanged value writes nothing and logs nothing.
+Owner and admin edits are **different actions** in Activity —
+`billing_percentage_set` and `billing_percentage_amended_by_admin` — so a
+reader scanning the trail sees the difference without opening anything.
+
+When an Order exists the value is mirrored onto it in the same transaction,
+and its ready confirmed documents are marked superseded.
+
+### Amendment and confirmed documents
+
+An amendment **never** mutates a generated file. A ready version gains
+`superseded_at` and `superseded_reason`: its files stay downloadable, its
+status stays `ready`, and regeneration produces the next version. Supersession
+is idempotent — the first thing that invalidated a version is the true answer.
+
+The Order number, `source_order_submission_id` and payment allocation
+identities and amounts are preserved by every amendment.
+
+### The two kinds of correction
+
+**This is the approved model, and it decides where every correction goes.**
+
+Everything a PI says about MONEY is the output of formulas that live in the
+uploaded workbook. The parser transcribes those results — it reads
+`subtotal_after_discount` from I116, `total_before_gst` from I120, `grand_total`
+from I122 — and derives only two figures of its own, raising a WARNING and
+keeping the workbook's number when its arithmetic disagrees. **BOE has never
+computed a PI total and must not start.** Recreating those formulas in
+PostgreSQL or React would be inventing figures the spreadsheet did not produce.
+
+So there are exactly two correction paths:
+
+| | **A. Direct edit** (`Edit PI Details`) | **B. Change PI** (replace the workbook) |
+|---|---|---|
+| What | Non-commercial description | Anything a formula touches |
+| Fields | Client name, contact, billing and shipping details, confirm date, due date, dispatch commitment, payment terms, billing terms, billing percentage, product code, product name, dimensions, material, specification note, product line order | Quantity, rate or unit cost, adding a product, removing a product, discount or design fees, fabric cost, packing cost, transportation or freight, GST, any other money-related input, **and the product image** |
+| Where | One RPC per section, each its own transaction | The import route, under a processing lease |
+
+Every screen showing a product line states path B's list under it, so nobody
+hunts for a control that was never going to exist. The money figures are
+rendered as **text, never as disabled inputs** — a greyed-out box over a price
+reads as a permission somebody could be granted, and the answer is nobody.
+
+**Product image is path B, deliberately.** A line's picture is an anchored
+drawing tied to its row through the workbook's relationship parts; replacing
+one safely means rewriting `xl/drawings/`, its `_rels`, and the media entry,
+with no way to prove afterwards that the anchor still points where it did. The
+existing Change PI worker already replaces images correctly, content-addressed
+and verified by bytes, so images go through it.
+
+### What an editor may change
+
+| Section | Migration | Columns |
+|---|---|---|
+| Client and party details | `20260928000000` | `client_name`, `contact_number`, bill-to / ship-to name, phone, GST, address — ten text columns |
+| Dates and terms | `20260929000000` | `order_confirmation_date`, `due_date`, `dispatch_commitment`, `payment_terms`, `billing_terms` |
+| Billing percentage | `20260923000000` + `20260927000000` | `billing_percentage`, its own RPC and its own range rules |
+| Product descriptions | `20261002000000` | per line: `item_sequence`, `source_product_code`, `product_name`, `dimensions`, `material`, `customization` |
+| Product line order | `20261002000000` | `sort_order`, one write over every line |
+
+Each is a database allow-list where an unrecognised key is **refused**, not
+ignored — a payload carrying `quantity` is rejected BY NAME with the reason,
+never silently dropped. Dates are validated for ISO shape *before* the cast,
+because PostgreSQL otherwise accepts `'yesterday'`, `'today'`, `'infinity'` and
+`'epoch'` and stores a relative date.
+
+One line is one RPC and one transaction. A dialog editing several at once would
+be several round trips behind one button, and a failure between them leaves the
+PI half-corrected with nothing on screen saying which half.
+
+### Change PI — the workbook replaced
+
+`replace_order_submission_parse` has always existed and could not run once a PI
+left draft, **for anybody**: `assert_order_submission_editor` judges STAGE
+BEFORE ACTOR, so its admin branch was structurally unreachable — the same defect
+`20260927000000` found in the billing percentage. `20261003000000` adds
+`assert_order_submission_workbook_editor` **beside** it rather than widening it,
+and re-emits both the replacement and the processing lease, which asked the same
+predicate and would otherwise have refused an admin a lease before they ever
+reached the write.
+
+| Stage | Who | Reason |
+|---|---|---|
+| draft / needs_changes, no Order | owner, or an active admin | not required |
+| anything after that | **active admin only** | **mandatory**, at most 500 characters |
+
+Holding `orders.approve_order`, being the finance verifier, or owning the PI
+grants nothing past draft. Authority is re-derived from the ACTOR ID, never from
+`auth.uid()`, because the import worker runs as the service role.
+
+Once a PI has left draft, a replacement additionally:
+
+* **clears the finance verification.** `20260915000000`'s trigger fires on a
+  STATUS CHANGE, and a replacement is not one — a submitted PI stays submitted —
+  so a sign-off made against the previous figures would otherwise stand against
+  the new ones.
+* **carries the corrected values onto the linked Order** — client name, confirm
+  date, due date, total value, product value, billing percentage — and touches
+  nothing else. Not the Order id, not the confirmed number, not
+  `source_order_submission_id`, not the status, not one payment and not one
+  allocation. No second Order is created and nothing is re-allocated.
+* **supersedes the ready document pair** and records the reason in both the PI's
+  Activity and the Order's.
+* **keeps the previous workbook.** A draft re-upload tidies up after itself; an
+  amendment does not, because that file is what finance verified, what
+  management approved and what the confirmed documents were generated from.
+
+The reduced-advance exception needs **no** invalidation:
+`order_submission_exception_current()` derives currency from the grand total, the
+workbook hash and both terms, all of which a replacement moves. A declared
+advance amount is cleared by `20260917000000`'s existing trigger whenever the
+grand total is replaced.
+
+A replay — the same file, the same fingerprint — supersedes nothing, clears
+nothing and logs nothing. Pressing Retry after a timeout is not an amendment.
+
+Every edit carries the row version it was read at (`order_submissions.row_version`,
+a monotonic counter — **not** a timestamp, because `now()` is transaction-scoped
+and cannot distinguish two writes in one transaction). A stale write is refused
+with `ORDER_SUBMISSION_STALE` rather than silently winning.
+
+A submitted PI may not have its client name cleared: `ORDER_SUBMISSION_CLIENT_NAME_REQUIRED`
+says so in words, ahead of the CHECK constraint that would otherwise surface as
+a catalog identifier.
+
+### Readiness
+
+`piReadiness()` is the single shared answer to "can this PI take a payment /
+be submitted", listing everything missing **at once** rather than one refusal
+at a time. Every requirement it reports mirrors an existing database gate;
+optional fields are never reported. It is not the enforcement — the database
+re-derives all of it under a row lock.
+
+One computation is read by four surfaces: the payment control, the submit
+control, the finance dialog and the approval control. The finance dialog SHOWS
+it and is not refused by it — finance signs off on the figures, and whether the
+PI carries a client name is not their decision — but approval refuses for it, so
+a verifier who could not see it would sign off and then watch the approval
+stall. On the approval control it is the **last** blocker: everything above it
+is somebody else's outstanding task and a larger obstacle, and reporting an
+absent client name ahead of an unverified PI reads as though it were the only
+thing wrong.
+
+### Corrections and the confirmed documents
+
+A direct edit reaches the generated files. The confirmed PDF is rendered from
+the record, so it carries every correction already. The confirmed Excel is the
+uploaded workbook itself with cells rewritten in place — ZIP surgery, because a
+round trip through any spreadsheet library loses the anchored photographs,
+merged blocks and print setup — and `CONFIRMED_EDITABLE_CELLS` names the ten
+cells a correction may reach.
+
+Every one is a cell `masterSheetParser` already READS, so the reference a
+correction writes to is the reference the import read from. Excluded, and each
+for its own reason: every commercial cell (they are formula outputs);
+`due_date`, `payment_terms` and `billing_terms` (editable on the record with no
+template cell); `order_confirmation_date` at A113 (a DATE cell — every write
+here is an inline string, and text would change the cell's type and strip its
+number format, so the corrected date reaches the PDF only); `client_name`
+(derived at import from `bill_to_name`, which owns B25); and product rows
+(locating a line's row by position is the guess this approach exists to avoid).
+
+A field outside that contract is **refused**, not ignored. A formula found in a
+correction target refuses the whole document rather than publishing it with one
+correction quietly missing.

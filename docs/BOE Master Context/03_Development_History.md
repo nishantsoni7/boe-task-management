@@ -606,3 +606,335 @@ and three notification types for the exception request and its two outcomes.
 
 Detail: `docs/Module Docs/FINANCE_ORDER_WORKFLOW.md` §11 and
 `docs/Module Docs/PAYMENT_PHASE_PROGRESS.md`.
+
+---
+
+## PR #46 — Rework the two PI screens, and give the PI a real due date
+
+*Merged to `main`. Applied. `20260922000000_order_submission_due_date.sql`.*
+
+**The defect.** A PI states when it is due. Nothing carried that anywhere: the
+Order it became had `due_date` null, and the earlier design note said that was
+deliberate because `dispatch_commitment` is free text ("45 days") with no safe
+conversion to a date.
+
+That reasoning was right about the prose and wrong about the conclusion. Some
+PIs state an explicit calendar date. Refusing to read *any* of them because
+*some* say "45 days" threw away the ones that were unambiguous.
+
+**What changed.** `order_submissions.due_date` — a real `date`, written **only**
+from an explicit, plausible calendar date, backfilled for existing rows under
+the same rule, and never derived from the prose beside it. A PI that states only
+"45 days" still carries a null due date and shows its commitment as words:
+`Commitment: 6 weeks from date of confirmation`, prefixed so it can never be
+misread as a date.
+
+**The risky part was not the two lines that motivated it.**
+`approve_order_submission()` is a 435-line SECURITY DEFINER function that
+allocates Order numbers and moves money, and re-emitting it to add one column
+meant a dropped `security definer`, a changed `search_path`, a lost row lock or
+a quietly altered payment gate would all still compile and still pass every
+behavioural test. So `dueDateContinuity.test.ts` diffs the re-emitted text
+against the applied one and requires the **only** differences to be the
+`due_date` column, its value, and the comment introducing them.
+
+---
+
+## PR #47 — Recompose the PI summary, and give the PI a declared billing percentage
+
+*Merged to `main`. Applied. `20260923000000_order_submission_billing_percentage.sql`.*
+
+**What it is.** How much of a PI's **pre-GST** value should be billed. A
+commercial decision somebody takes and declares — not a discount, not a payment
+percentage, and not anything the workbook carries.
+
+**Undeclared is a real state.** Not 0, not 100. A PI nobody has decided about
+and a PI somebody decided to bill in full are different facts, and collapsing
+them would make the second unprovable. The column is nullable, no row is
+backfilled, and the screen says `Undeclared` rather than showing a figure
+nobody chose.
+
+**The floor is 35 and it is a business rule, not a technical one.** Below 35% is
+outside what this business bills against a proforma. It is enforced in three
+places that must agree — the form, the RPC, and a CHECK constraint — and
+`billingPercentage.test.ts` pins every boundary so they cannot drift. The
+constraint is the one that actually holds; the other two exist so a person is
+told why before the database has to refuse them.
+
+**The value is derived from `total_before_gst` and nothing else.** Not the grand
+total, which includes tax the percentage says nothing about; not the product
+value, which is before the costs the subtotal already absorbed. Substituting
+either would produce a plausible figure that answers a different question. A PI
+whose workbook never stated a pre-tax total produces **no** billing value and
+says so, rather than printing ₹0.
+
+`billingContinuity.test.ts` applies the same single-difference proof to the
+second re-emission of `approve_order_submission()`.
+
+---
+
+## Branch — `claude/confirmed-order-handoff-performance`
+
+*Draft PR. **Not merged. Three migrations, none applied to any database.***
+
+Everything in this section is complete on the branch and reviewed as a draft. It
+is recorded here so the history is continuous; it is **not production**, and no
+statement below should be read as describing the live system.
+
+### The Confirmed Order operational handoff
+
+An Order created by approving a PI carried five facts: the client name, the two
+dates, the grand total and the gross product amount, plus the billing
+percentage. That is deliberately all of it — the PI stays the authority for its
+own commercial detail — but it left `/orders/[id]` unable to tell an operations
+reader what the order actually **is**.
+
+The facts all existed. What was missing was **permission**, and the shape of
+that problem is the interesting part: PI visibility is REVIEW visibility (the
+owner, the named reviewer, an `orders.approve_order` holder, a finance
+verifier), while ORDER visibility is a different question with a different
+answer (admin, operations, requester, assignee, `orders.view_all`). An
+operations lead who runs every Order in the building is in the second set and
+not the first.
+
+Widening the PI door would have handed drafts, returned records and review notes
+to people entitled to none of them. So a **second, narrower door** was added,
+and it only opens onto a submission that has already become an Order:
+
+* `can_view_order(uuid)` — SECURITY **INVOKER**, so it *asks* the existing
+  `orders` policies rather than restating them. A restatement would drift the
+  first time a policy moved, silently and permissively.
+* `confirmed_order_id_for_submission(uuid)` — resolves the link and authorizes
+  nothing.
+* `can_view_order_submission_via_order(uuid)` — the two composed.
+
+Four additive SELECT policies follow. Nothing existing is dropped or narrowed,
+no write policy is added, and a draft cannot come through the door because the
+door **is** the Order.
+
+### Document generation
+
+Approval is atomic and must stay small — it holds a row lock on the submission,
+advances the number cycle and rewrites allocations — so a workbook rewrite or a
+PDF render inside it would mean a storage timeout could cost a business an Order
+number. Generation is therefore separate, and `public.order_document_versions`
+is what records that it is owed, who is doing it, whether it finished, and what
+to show somebody while it has not.
+
+A **version** is a business fact; an **attempt** is a technical one. A run that
+fell over increments `attempt_count` and produces no version anybody can
+download, and a retry does not advance the version number.
+
+`ready` is impossible without both files — a CHECK constraint, not a convention.
+
+**Two defects were found by running the migration against a real PostgreSQL**,
+and both are the kind that read correctly:
+
+1. The request began as a SECURITY DEFINER function that checked
+   `can_view_order()`. Inside a definer the current user is the function's
+   **owner**, who bypasses row-level security — so the check answered `true` for
+   every Order in the business. It is now an ordinary client write decided by
+   two RLS policies, and what that write can do is almost nothing: INSERT
+   reaches two columns and UPDATE three.
+2. `select *` and `returning *` need SELECT on every column including
+   `claim_token`, which is granted to no client role — so under the caller's own
+   privileges they are refused outright. The function names its columns.
+
+### Confirmed Excel
+
+The client's own workbook, with the Order number in `B20`. **Not** a round trip
+through a spreadsheet library: that rebuilds the file from the library's model
+of a workbook, and a BOE PI is mostly things that model does not carry —
+anchored photographs, merged blocks, print setup, hidden rows, drawing
+relationships. It would return a file that opens, looks approximately right, and
+has lost the images.
+
+So: ZIP surgery on the OOXML/fflate toolkit the repository already has. The
+value goes in as an **inline** string, which is why it is safe — a shared string
+would mean editing `sharedStrings.xml` and shifting an index every other cell is
+measured against. The rebuilt package is re-opened and validated: same entries in
+the same order, every image byte-for-byte, the **formula count unchanged across
+the whole package**, every relationship still resolving, and the rewritten part
+actually different.
+
+### Confirmed PDF
+
+A BOE-designed rendering on the existing pdfkit + sharp setup. Pagination is
+explicit and decided in a pure function, because pdfkit will start a page
+between a product's name and its price with no table head above the remainder.
+
+Two defects, both caught by rendering real PDFs and reading the bytes back: a
+two-page plan came out as **six** pages because pdfkit adds one whenever a text
+call crosses the bottom margin (the footer is deliberately drawn in that band);
+and two renders of one model produced different bytes because pdfkit stamps the
+clock, which would have made the recorded hash a timestamp rather than an
+identity.
+
+**Amounts read `Rs.`, not `₹`.** The built-in PDF fonts cover Latin-1 and this
+repository owns no licensed Unicode font asset. A presentation limitation,
+printed on the document itself, and a one-line change the day a licensed font
+lands.
+
+### Cleanup safeguards and the number reset
+
+The existing cleanup protocol was audited and holds up. Two things were missing:
+
+* It **could not reach 0001**. `finalize_test_data_cleanup()` reclaims numbers
+  from the top of the range, which lands on 1 only if Orders happen to be
+  cleaned in descending order. `reset_confirmed_order_number_cycle(claim_token)`
+  is a separate, audited act behind six gates, and the race with a concurrent
+  approval is closed by locking the same cycle row the allocator locks — not by
+  a check, which would be stale by the time the write happened.
+* A defect this branch introduced: the new register holds a **no-cascade**
+  foreign key to `orders`, so a cleanup would have failed on it *after* the
+  files were gone. Closed with a BEFORE DELETE trigger, without re-emitting
+  `finalize_test_data_cleanup()`.
+
+### Performance
+
+Every Order screen opened the same way — session, then profile, then
+permissions, then records — and only the first is load-bearing. Sequential round
+trips before content, measured from the source at `origin/main` and here:
+`/orders` 7 → 4, `/orders/[id]` 8 → 5, both request screens 7 → 4.
+
+No query was dropped, cached or derived, and no capability moved out of the
+database. Two improvements were made and then **reverted** rather than weaken
+byte-exact guards protecting the PI preview and the import screen.
+
+### Manual testing, September 2026 — two failures and their causes
+
+Nishant tested the preview after applying `20260924`–`20260926`. Three problems
+came back. Two had exact causes; both are fixed on this branch.
+
+**Document generation showed "That could not be done just now."**
+
+Not a permission problem, though the sentence implied one and sent the
+investigation there. `serviceClient()` read
+`process.env.SUPABASE_SERVICE_ROLE_KEY!` — a non-null assertion over a value
+the type system cannot vouch for. supabase-js throws `supabaseKey is required.`
+when it is absent or empty, and that construction sat **outside** the route's
+try/catch. The throw escaped, Next returned a bare 500 with no `message`, and
+the card printed its own fallback sentence in place of a diagnosis it never
+had. A deployment fault was rendered as a user refusal.
+
+Fixed three ways, because any one of them alone would let it recur through a
+different door: the client is built from a checked value and the route answers
+`SERVER_NOT_CONFIGURED`; every error response now carries a `message`, which
+two did not; and an outermost try/catch means nothing escapes unlabelled. The
+client resolves a **code** against a table the bundle owns and never renders
+the server's prose.
+
+**Billing percentage Set/Edit failed.**
+
+`can_edit_order_submission()` ANDs its actor test *behind* its state tests, so
+the admin branch is unreachable once a PI is submitted or acquires an Order. An
+active admin was never able to correct a submitted PI; the rule had simply not
+been exercised against one. Fixed in `20260927000000` by adding
+`can_admin_edit_order_submission` **beside** the owner rule rather than
+widening it — see 05_Business_Rules.
+
+**PI data could not be corrected after import.**
+
+A workbook imported without a client name left the PI showing "Not provided"
+and no payment could be attributed to it. Fixed in two parts: `piReadiness()`
+gives every surface one shared answer listing everything missing at once, and
+`20260928000000` makes the client and party section editable, with a direct
+**Add client details** action on the summary where something is missing.
+
+The editing write path is deliberately **one section**, not the whole PI. Client
+and party details are ten text columns that feed no total; the commercial inputs
+and product rows are different in kind and need atomic recalculation plus a
+re-evaluated payment position. Those remain open.
+
+One defect was found by this migration's own assertions before it shipped: the
+first cut used `updated_at` for optimistic concurrency, and `now()` is
+transaction-scoped, so two writes in one transaction stamped the identical value
+and a stale edit compared equal to a fresh one. Replaced with an explicit
+monotonic `row_version` counter.
+
+**The correction model was then settled, and the rest of the branch follows it.**
+
+Two paths, approved rather than inferred: a direct edit for anything
+descriptive, and Change PI for anything a workbook formula touches. The reason
+the split exists at all is that BOE has never computed a PI total — the parser
+transcribes what the spreadsheet produced and warns when its own two derivations
+disagree — so recreating those formulas in PostgreSQL or React would be
+inventing figures. See 05_Business_Rules for the field-by-field table.
+
+`20260929000000` opened dates and terms, `20260930000000` gave the owner a
+correction-request channel for a PI that has left their hands, `20261002000000`
+opened the product descriptions and their order, and `20261001000000` closed a
+latent defect the others would each have hit.
+
+**The activity constraint had already been broken, invisibly.**
+
+`order_submission_activity.action` carries a CLOSED check constraint by design.
+`20260923000000` — applied to production — logs `billing_percentage_set` and
+never declared it, so every successful billing write on it fails at the moment
+it records what it did. Nobody noticed because it could not be reached: the
+authority bug refused first, for everybody. Fixing the authority would have
+exposed this to the next person who pressed Save. `20261001000000` restates the
+set and a source-parsing test holds the two lists together.
+
+That defect was found only because the local verification schema was corrected.
+Over a hundred behavioural assertions had passed against a stub table that would
+accept any string. **A stub more permissive than the real schema does not prove
+less than the real thing — it proves the wrong thing, confidently.**
+
+**Change PI could not run past draft, for anybody.**
+
+The same stage-before-actor shape, in a second place:
+`assert_order_submission_editor` refuses on state before it looks at the actor,
+so no admin could ever replace the workbook of a submitted PI. And fixing that
+alone would have changed nothing visible —
+`begin_order_submission_processing` asked the same predicate and would have
+refused the lease first. `20261003000000` adds
+`assert_order_submission_workbook_editor` beside the old one and re-emits both
+functions, each differing in exactly the documented places; two continuity tests
+undo those edits and require the applied definitions back line for line.
+
+**What a replacement means after submission** is the substance of that
+migration: the finance verification is cleared (the existing trigger fires on a
+status change, and a replacement is not one), the corrected values follow onto
+the Order without its identity moving, the ready documents are superseded while
+their files stay downloadable, and the previous workbook is KEPT — it is what
+finance verified and management approved.
+
+**Corrections now reach the generated Excel.** It was the stored workbook with
+one cell filled in, so a corrected phone number never appeared in it.
+`CONFIRMED_EDITABLE_CELLS` maps ten fields to cells the parser already reads;
+nothing commercial is offered, and a field outside the contract is refused
+rather than ignored.
+
+---
+
+## Branch migrations — status
+
+| Migration | Applied | What it carries |
+|---|---|---|
+| `20260924000000` | yes | Confirmed Order handoff — `can_view_order`, four additive SELECT policies |
+| `20260925000000` | yes | Document register, claim protocol, publication |
+| `20260926000000` | yes | Order-number cycle reset (six-gated; never invoked) |
+| `20260927000000` | **NO** | Admin amendment authority, `supersede_order_documents`, 3-arg billing RPC |
+| `20260928000000` | **NO** | Client and party details, `row_version` |
+| `20260929000000` | **NO** | Dates and terms; ISO-shape date check |
+| `20260930000000` | **NO** | Owner correction requests |
+| `20261001000000` | **NO** | The activity action set, extended — **fixes an applied defect** |
+| `20261002000000` | **NO** | Product descriptions and ordering; money refused by name |
+| `20261003000000` | **NO** | Change PI authority, and what a replacement means after submission |
+
+The unapplied migrations must be applied **in order**. `20261001000000` in
+particular must precede `20261002000000` and `20261003000000`, which log actions
+it declares — each of those refuses to apply otherwise, and says which
+dependency is missing.
+
+## Deployment configuration
+
+**No new secret is needed.** The service-role credential is
+`SUPABASE_SERVICE_ROLE_KEY`, established by reading the repository rather than
+assumed: the name appears over a hundred times across `src/`, it is the name in
+`.env.example`, and no other variant exists anywhere in the codebase or the
+docs. A route that could not find it was looking correctly and finding nothing,
+which is a deployment gap and not a naming disagreement. If document generation
+or PI saving reports `SERVER_NOT_CONFIGURED` on the preview, that variable is
+absent from the environment and needs adding under exactly that name.

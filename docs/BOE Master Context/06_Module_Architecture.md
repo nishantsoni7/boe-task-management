@@ -2,7 +2,7 @@
 
 # Module Architecture
 
-Last Updated: 10 August 2026
+Last Updated: September 2026 — Order Management module added; earlier sections unchanged.
 
 ---
 
@@ -724,3 +724,231 @@ engine, which keeps rollback cheap.
 
 **No V2 features in V1**: no role templates, department-role editors, scopes,
 approval chains, access-history screens, or permission exports.
+
+---
+
+# ORDER MANAGEMENT MODULE
+
+*September 2026. Marked **(branch)** where the work is complete on
+`claude/confirmed-order-handoff-performance` but not merged and not applied.*
+
+## Screens
+
+| Route | File | What it is |
+| --- | --- | --- |
+| `/orders` | `src/app/orders/page.tsx` | Dashboard — running Orders and five figures |
+| `/orders/all` | `src/app/orders/all/page.tsx` | Every Order the viewer may see |
+| `/orders/[id]` | `src/app/orders/[id]/page.tsx` | One Confirmed Order |
+| `/orders/drafts` | `src/app/orders/drafts/page.tsx` | PI drafts and submissions |
+| `/orders/drafts/[submissionId]` | `.../[submissionId]/page.tsx` | One PI — review, decisions, payments, approval |
+| `/orders/import` | `src/app/orders/import/page.tsx` | Upload a PI workbook and read it back |
+| `/orders/requests` | `src/app/orders/requests/page.tsx` | Order Requests list |
+| `/orders/requests/[id]` | `src/app/orders/requests/[id]/page.tsx` | One Order Request |
+| `/orders/notifications` | `src/app/orders/notifications/page.tsx` | Module notifications |
+
+`src/app/orders/layout.tsx` is a guard on the critical path of all nine: it
+renders a loading state instead of its children until it has confirmed module
+entry, so every round trip it spends is spent by every route.
+
+## API routes
+
+| Route | Runtime | What it does |
+| --- | --- | --- |
+| `/api/orders/[id]` | node | one Order, server-side |
+| `/api/orders/import/process-draft` | node | **the trusted parse** — downloads the workbook, re-parses it server-side, persists only its own reading |
+| `/api/orders/[id]/documents` **(branch)** | node, `maxDuration = 60` | request → claim → generate → publish |
+| `/api/orders/test-data-cleanup` | node | claim → storage removal → finalize |
+| `/api/orders/requests/*`, `/api/orders/submissions/*`, `/api/orders/notify` | node | attachments, deletion, notifications |
+
+## Tables
+
+| Table | What it holds |
+| --- | --- |
+| `orders` | the Confirmed Order register. **No DELETE policy**, and `orders_prevent_delete` refuses every path including the service role |
+| `order_activity_log` | the Order's own trail |
+| `order_change_requests` | proposed amendments |
+| `order_submissions` | the PI record |
+| `order_submission_items` / `_item_images` | its product lines and photographs |
+| `order_submission_activity` | the PI's **review** trail — deliberately not visible through the Order door |
+| `order_requests` / `_attachments` / `_activity` | the older Order Request flow |
+| `order_number_cycle` | single-row, admin-configured next number. RLS on, **no policies at all** |
+| `test_data_cleanup_claims` / `_audit` | the cleanup protocol |
+| `order_document_versions` **(branch)** | the document register |
+| `order_number_cycle_resets` **(branch)** | a permanent audit of every reset |
+
+## Storage — `order-files`
+
+Private, 10 MiB per object, and **no UPDATE policy for any role**. That is what
+makes a stored object immutable and what defeats upsert; every generation path
+is built around it rather than asking for an exception.
+
+```
+submissions/{submission_id}/original/{uuid}.xlsx        the uploaded workbook
+submissions/{submission_id}/images/{item_id}.{ext}      extracted photographs
+orders/{order_id}/versions/{v}/attempts/{n}/approved.xlsx   (branch)
+orders/{order_id}/versions/{v}/attempts/{n}/approved.pdf    (branch)
+```
+
+Attempt-scoped, because objects are immutable: every write goes to a key nothing
+has ever occupied, so a retry never needs upsert. Reads are always **short-lived
+signed URLs** minted through the reader's own session — the bucket is never
+public and no page embeds a URL.
+
+## Permission actions (`orders`)
+
+| Action | Means | Protected |
+| --- | --- | --- |
+| `view` | module entry only — never company-wide sight | no |
+| `view_all` | company-wide sight of every Order | **yes** |
+| `create` | upload and own a PI | no |
+| `approve` | convert an Order **Request** (older, unrelated to PI approval) | no |
+| `approve_order` | **PI approval** — the management approval authority | **yes**, deny-by-default |
+| `approve_advance_exception` | settle a reduced-payment exception | **yes** |
+| `manage` | amend a Confirmed Order directly | **yes** |
+| `can_be_order_assignee` | eligibility other people's forms read | per-employee |
+
+Finance carries two that Order Management depends on: `finance.allocate`
+(record a payment against a PI) and `finance.approve` (verify one).
+
+## The visibility predicates
+
+Two doors, deliberately separate, and neither implies the other:
+
+| Predicate | Means | Admits |
+| --- | --- | --- |
+| `can_view_order_submission(uuid)` | **PI review** visibility | the owner, the named reviewer, an `orders.approve_order` holder, an admin, a finance verifier on a submitted/approved record |
+| `can_view_order(uuid)` **(branch)** | **Order** visibility | whatever the `orders` SELECT policies admit: admin, operations, requester, assignee, `orders.view_all` |
+| `can_view_order_submission_via_order(uuid)` **(branch)** | the Order door onto an approved PI | a viewer of the Order the PI became — and never a draft |
+
+`can_view_order` is **SECURITY INVOKER**, which is the design and not an
+oversight: it *asks* the `orders` policies rather than restating them, so it can
+never drift from the rule it stands for. The consequence is that it must not be
+called from inside a SECURITY DEFINER function, where the current user is the
+table owner and row security is bypassed.
+
+## Document generation *(branch)*
+
+```
+src/lib/orders/orderDocuments.ts       states, paths, the view model, the
+                                       failure allow-list
+src/lib/orders/confirmedExcel.ts       which workbook, and proving it is that one
+src/lib/orders/confirmedWorkbook.ts    the ZIP surgery and its safety gate
+src/lib/orders/confirmedPdf.ts         what the PDF says, and where pages break
+src/lib/orders/confirmedPdfRender.ts   pdfkit + sharp; decides nothing
+src/app/api/orders/[id]/documents/     the worker
+```
+
+The split between `confirmedPdf` and `confirmedPdfRender` is deliberate:
+everything that could be **wrong** about the document — a figure disagreeing
+with the PI, a row lost at a page break, a header that does not repeat — is
+decided in a pure module with no PDF library in its import graph, and is tested
+without producing a byte of binary.
+
+`request` is authorized **as the caller** by two RLS policies; `claim`,
+`complete` and `fail` are SECURITY DEFINER and revoked from every client role.
+
+## Where the shared PI logic lives
+
+Nothing about a PI is implemented twice. The import preview, the PI detail
+screen, the Order handoff and the confirmed PDF all read the same builders:
+
+```
+src/lib/pi/workbookReader.ts      the archive and cell layer
+src/lib/pi/masterSheetParser.ts   the template, its fingerprint, its diagnostics
+src/lib/pi/previewView.ts         what a figure IS — formatting, the commercial rows
+src/lib/orders/draftsView.ts      persisted rows → the shapes those builders take
+src/lib/finance/piPaymentView.ts  the payment position, from the database's own sums
+src/components/orders/piPreview.tsx  the card, the table head, the thumbnails, the viewer
+```
+
+`src/lib/pi/previewView.ts`, `masterSheetParser.ts` and `piPreview.tsx` are held
+**byte-for-byte** against their Phase-C base by `finalApprovalScope.test.ts`,
+because they are shared across two screens and a change to any of them changes
+both.
+
+## Testing
+
+Order Management is tested at several levels, and the boundaries are
+deliberate:
+
+* **Pure unit tests** for every view model, formatter and state machine.
+* **Repository checks** (`*Schema.test.ts`) that read the migrations themselves,
+  because every promise a migration makes lives in SQL and fails silently — in
+  the permissive direction — if a later change relaxes it. TypeScript sees none
+  of it.
+* **Behavioural assertion scripts** in `supabase/tests/*_assertions.sql`, run by
+  hand against a controlled database inside one transaction that ends in
+  `ROLLBACK`. These are where RLS is actually exercised, and they matter because
+  a source guard proves a policy exists, not that it refuses the right person.
+  They need fixture rows, so they belong on a scratch database — never on
+  production.
+* **Read-only posture checks** — `order_confirmed_handoff_posture.sql` (16
+  checks) for the three document migrations and `order_pi_editing_posture.sql`
+  (48) for the seven editing ones — which close the gap the level above leaves
+  open. The assertion scripts prove the behaviour *somewhere*;
+  nothing else asks whether those properties survived the trip to the database
+  people actually use. It writes nothing at all — every check is a catalog read,
+  with no transaction to roll back and no fixture to clean up — which is what
+  makes it safe to run against production, where the question matters most. Run
+  them immediately after applying their migrations. Every check in both has been
+  mutation-tested; a check that cannot fail is not a check. What the editing one
+  catches, proved by breaking each: a server-only RPC granted to a browser role,
+  an editor revoked from employees, an exposed `claim_token`, a client-writable
+  `superseded_at`, the owner rule widened with the admin rule, an action dropped
+  from the closed set, that set opened entirely, and an unpinned `search_path`.
+
+  Their read-only promise is itself enforced: `postureScripts.test.ts` refuses a
+  write statement or a transaction in either file. It strips comments **and
+  string literals** before scanning — the scripts describe the writes they do
+  not perform, both in prose and in their failure messages, and a scan of the
+  raw text fails on the very sentence promising the property it checks.
+* **A read-only eligibility diagnostic**,
+  `supabase/tests/order_pi_handoff_eligibility.sql`, which answers the question
+  the PI handoff actually provokes in use: *why is the Approved PI panel not on
+  this Order?* It sorts every Order into eligible and ineligible and names the
+  reason for each, and it flags approved PIs that produced no Order — a state
+  `approve_order_submission()` writes in one transaction and which therefore
+  should never exist. Four SELECTs, no writes, safe on production.
+* **A shared readiness answer**, `src/lib/orders/piReadiness.ts`. Every surface
+  that asks "can this PI take a payment / be submitted" reads the same list, so
+  they cannot disagree about the same record, and the list names everything
+  missing at once instead of one item per refusal. Each requirement mirrors a
+  named database gate; optional fields are never reported, and several tests
+  exist only to prove those absences.
+* **Behavioural assertions for every editing path**, each one rolled-back
+  transaction on a scratch database:
+
+  | Script | Checks | What it exercises |
+  |---|---|---|
+  | `order_submission_admin_amendment_assertions.sql` | 30 | the billing percentage, section A of which is the exact failure manual testing found |
+  | `order_submission_client_details_assertions.sql` | 41 | the ten client and party columns, and `row_version` |
+  | `order_submission_schedule_terms_assertions.sql` | 36 | dates and terms, including the ISO-shape check that keeps `'yesterday'` out |
+  | `order_submission_correction_requests_assertions.sql` | 20 | the owner's correction channel |
+  | `order_submission_product_edit_assertions.sql` | 28 | product descriptions, and money refused BY NAME |
+  | `order_submission_change_pi_assertions.sql` | 77 | Change PI: the authority, the lease, what a replacement means after submission, exception staleness, the allocation it must not touch, and all 24 activity actions written |
+
+  232 checks in total. They run against a local PostgreSQL 16 schema built from
+  the migrations plus a stub of what precedes them, and that stub is part of the
+  method rather than a convenience: the first version of it did **not** carry
+  `order_submission_activity`'s CHECK constraint, and over a hundred assertions
+  passed against a table that would accept any string. **A stub more permissive
+  than the real schema does not prove less than the real thing — it proves the
+  wrong thing, confidently.**
+
+* **Continuity tests for every re-emitted function.** `create or replace` cannot
+  change a signature, so a phase that must alter one line of a 250-line SECURITY
+  DEFINER function restates the whole thing — and a dropped row lock, a changed
+  `search_path` or a quietly widened write would all still compile and still
+  pass every behavioural test. `dueDateContinuity`, `billingContinuity`,
+  `amendmentContinuity` and `changePiContinuity` each state the claim as an
+  OPERATION: take the re-emitted text, undo the documented edits, and require
+  the applied definition back line for line. Anything else that was touched
+  survives the undo and appears as a difference.
+
+* **Mutation testing, as a matter of course.** Every property above has been
+  proved to fail when the property is broken. Three separate mistakes in this
+  branch were caught only that way: a test that derived its expected field list
+  from the code under test (adding a `quantity` field passed until the list was
+  written out independently), an identity guard whose regex knew `x =` but not
+  `set x =`, and a byte-for-byte guard that had to become an undo when the card
+  it pinned was deliberately asked to change.

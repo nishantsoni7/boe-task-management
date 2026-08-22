@@ -146,35 +146,41 @@ export default function OrdersDashboardPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
+  /**
+   * The list and the five figures above it.
+   *
+   * ALL SIX TOGETHER. The list used to be awaited on its own and the stats
+   * issued afterwards, which made the dashboard exactly as slow as its slowest
+   * query PLUS its list — for no reason, because not one of the six depends on
+   * another's answer. Every query below is the query it always was; only the
+   * waiting changed.
+   *
+   * AND EVERY FIGURE IS STILL THE DATABASE'S. It would be tempting to derive
+   * `runningValue` from the list, which already carries total_value for exactly
+   * the running Orders — but the list and the count answer to the SAME RLS and
+   * a derived figure would silently become a client-side aggregate the day one
+   * of them gains a limit. The counts stay counts.
+   */
   const loadData = async () => {
     setListLoading(true)
 
-    // Running orders list
-    const { data: runningData } = await supabase
-      .from('orders')
-      .select(`
-        id, display_number, client_name, assigned_to, due_date, total_value, status,
-        assigned_to_user:users!assigned_to(full_name)
-      `)
-      .eq('status', 'running')
-      .order('due_date', { ascending: true, nullsFirst: false })
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mapped: Order[] = ((runningData ?? []) as any[]).map(o => ({
-      ...o,
-      assigned_to_name: o.assigned_to_user?.full_name ?? undefined,
-      assigned_to_user: undefined,
-    }))
-    setOrders(mapped)
-
-    // Stats queries in parallel
     const [
+      { data: runningData },
       { count: activeCount },
       { data: runningValueData },
       { count: readyCount },
       { count: unlinkedCount },
       { count: overdueCount },
     ] = await Promise.all([
+      supabase
+        .from('orders')
+        .select(`
+          id, display_number, client_name, assigned_to, due_date, total_value, status,
+          assigned_to_user:users!assigned_to(full_name)
+        `)
+        .eq('status', 'running')
+        .order('due_date', { ascending: true, nullsFirst: false }),
+
       supabase.from('orders').select('*', { count: 'exact', head: true })
         .in('status', ['running', 'on_hold', 'ready_for_dispatch']),
       supabase.from('orders').select('total_value').eq('status', 'running'),
@@ -190,6 +196,14 @@ export default function OrdersDashboardPage() {
         .in('status', ['running', 'on_hold'])
         .lt('due_date', new Date().toISOString().slice(0, 10)),
     ])
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mapped: Order[] = ((runningData ?? []) as any[]).map(o => ({
+      ...o,
+      assigned_to_name: o.assigned_to_user?.full_name ?? undefined,
+      assigned_to_user: undefined,
+    }))
+    setOrders(mapped)
 
     const runningValue = (runningValueData ?? []).reduce(
       (sum: number, o: { total_value: number | null }) => sum + (o.total_value ?? 0), 0
@@ -211,22 +225,33 @@ export default function OrdersDashboardPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
-
-      setProfile(me as UserProfile)
-
-      const [financePerms, ordersPerms] = await Promise.all([
+      // ── ONE ROUND TRIP, NOT FOUR ──
+      //
+      // The profile, the two permission resolvers and the dashboard's own data
+      // used to run one after the next, so the page waited for the sum of four
+      // latencies before it showed anything. NONE OF THEM DEPENDS ON ANOTHER'S
+      // ANSWER: each needs only the session's user id, and every row the load
+      // returns is scoped by RLS rather than by the role being resolved beside
+      // it.
+      //
+      // NOTHING ABOUT AUTHORITY CHANGED. The capabilities are still resolved by
+      // resolve_effective_permissions in the database and are still applied
+      // before any control renders — pageLoading is not cleared until all four
+      // have landed. What was removed is the waiting, not a check.
+      const [{ data: me }, financePerms, ordersPerms] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', session.user.id)
+          .single(),
         getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
         getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+        loadData(),
       ])
+
+      setProfile(me as UserProfile)
       setFinanceCaps(deriveFinanceCapabilities(me?.role, financePerms))
       setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
-
-      await loadData()
       setPageLoading(false)
     }
     init()
@@ -370,7 +395,19 @@ export default function OrdersDashboardPage() {
                         cursor: 'pointer',
                         transition: 'background 0.1s',
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
+                      /* HOVER IS THE EARLIEST HONEST SIGNAL that this row is
+                         about to be opened, and prefetching the Order detail
+                         route on it means the code for that screen is already
+                         in hand when the click lands. It fetches the ROUTE, not
+                         the Order: no record, no permission and no file is read
+                         until the page mounts and asks under the reader's own
+                         session, so this can neither leak a row nor show a
+                         stale one. Next de-duplicates repeated prefetches, so
+                         moving down a list of forty costs forty cache hits. */
+                      onMouseEnter={e => {
+                        router.prefetch(`/orders/${o.id}`)
+                        ;(e.currentTarget as HTMLTableRowElement).style.background = colors.raised
+                      }}
                       onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
                     >
                       <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>

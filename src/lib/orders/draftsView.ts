@@ -218,8 +218,20 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   ship_to_phone: string | null
   billing_address: string | null
   shipping_address: string | null
+  // Optional on the TYPE because these two are newly READ, not newly written:
+  // the parser has stored them since 20260908000000, but fixtures built before
+  // the detail page asked for them do not carry the keys.
+  bill_to_gst?: string | null
+  ship_to_gst?: string | null
+  payment_terms?: string | null
+  billing_terms?: string | null
+
+  /** Optimistic-concurrency counter — see PI_DRAFT_DETAIL_COLUMNS. */
+  row_version?: number | null
 
   source_workbook_name: string | null
+  /** The stored key. Optional so a fixture written before this read still types. */
+  source_workbook_path?: string | null
 
   gross_product_amount: number | string | null
   discount_amount: number | string | null
@@ -273,6 +285,12 @@ export type PersistedItem = {
   id: string
   source_row: number
   item_sequence: string | null
+  /**
+   * OPTIONAL, because a payload built before the product editor existed does
+   * not carry it. Absent reads as "no code", which is what a line without one
+   * has always meant — not as a missing field the caller forgot.
+   */
+  source_product_code?: string | null
   product_name: string | null
   quantity: number | string | null
   dimensions: string | null
@@ -348,7 +366,27 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // these has been written by the save route since the table was created.
   'contact_number', 'bill_to_phone', 'ship_to_phone',
   'billing_address', 'shipping_address',
+  // The two tax numbers, read with everything else. Editable through
+  // update_order_submission_client_details (20260928000000) and previously
+  // written by the parser but never surfaced.
+  'bill_to_gst', 'ship_to_gst',
+  // The two agreed arrangements (20260921000000). Editable through
+  // update_order_submission_schedule_terms; read here so the editor can
+  // prefill them and the detail page can show them.
+  'payment_terms', 'billing_terms',
+  // The optimistic-concurrency counter (20260928000000). Read here so an
+  // editor can send back the version it opened at; a concurrent edit moves it
+  // and the second write is refused rather than silently winning.
+  'row_version',
   'source_workbook_name',
+  // WHETHER A WORKBOOK IS STORED AT ALL, which source_workbook_name cannot
+  // answer: the save route deliberately writes NULL there, because a PI is
+  // named after its client and a body-supplied filename is unverified text. So
+  // a null name is the normal case and says nothing. The PATH is the fact, and
+  // piReadiness('submission') needs it — submit_pi_for_review refuses a PI with
+  // no stored workbook, and a screen that could not see that would be listing
+  // everything except the one thing no editor can fix.
+  'source_workbook_path',
   'gross_product_amount', 'discount_amount', 'subtotal_after_discount',
   'fabric_cost', 'fabric_cost_meaning', 'fabric_cost_text',
   'packing_cost', 'packing_cost_meaning', 'packing_cost_text',
@@ -369,8 +407,10 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
 ].join(', ')
 
 export const PI_DRAFT_ITEM_COLUMNS = [
-  'id', 'source_row', 'item_sequence', 'product_name', 'quantity',
-  'dimensions', 'material', 'customization', 'cost_per_piece',
+  // source_product_code is read for the product editor: a form that could not
+  // show the code it was about to change would be editing blind.
+  'id', 'source_row', 'item_sequence', 'source_product_code', 'product_name',
+  'quantity', 'dimensions', 'material', 'customization', 'cost_per_piece',
   'total_amount', 'sort_order',
 ].join(', ')
 
@@ -560,6 +600,45 @@ const dateValue = (iso: string | null): PiDateValue | null =>
   iso ? { iso, text: iso, source: 'serial' } : null
 
 /**
+ * EXACTLY the columns persistedHeader reads, and no more.
+ *
+ * A `Pick` rather than the whole row, so a caller that legitimately selects
+ * FEWER columns still type-checks — /orders/[id] reads the approved PI a
+ * Confirmed Order came from and has no business pulling that PI's review notes,
+ * its advance decision or its deletion reservation. Every existing caller passes
+ * a full PersistedSubmission, which satisfies this by construction.
+ */
+export type PersistedHeaderSource = Pick<
+  PersistedSubmission,
+  | 'client_name'
+  | 'creation_date'
+  | 'source_created_by'
+  | 'bill_to_name'
+  | 'ship_to_name'
+  | 'order_confirmation_date'
+  | 'dispatch_commitment'
+>
+
+/** EXACTLY the columns persistedCommercial reads. Same reasoning as above. */
+export type PersistedCommercialSource = Pick<
+  PersistedSubmission,
+  | 'gross_product_amount'
+  | 'discount_amount'
+  | 'subtotal_after_discount'
+  | 'fabric_cost'
+  | 'fabric_cost_meaning'
+  | 'fabric_cost_text'
+  | 'packing_cost'
+  | 'packing_cost_meaning'
+  | 'packing_cost_text'
+  | 'transportation_amount'
+  | 'transportation_text'
+  | 'total_before_gst'
+  | 'gst_amount'
+  | 'grand_total'
+>
+
+/**
  * The persisted header, in the parser's own shape, so buildHeaderRows decides
  * which fields appear and how they are worded — here as on the import screen.
  *
@@ -571,7 +650,7 @@ const dateValue = (iso: string | null): PiDateValue | null =>
  * often as a date), so it is rebuilt as a text-sourced value and formatPiDate
  * returns the words unchanged.
  */
-export function persistedHeader(row: PersistedSubmission): PiHeader {
+export function persistedHeader(row: PersistedHeaderSource): PiHeader {
   const commitment = text(row.dispatch_commitment)
   return {
     sourceOrderNumber: null,
@@ -643,7 +722,7 @@ export function persistedCost(
  * and that is computed by the shared helper from the grand total, exactly as it
  * is on the import preview.
  */
-export function persistedCommercial(row: PersistedSubmission): PiCommercialSummary {
+export function persistedCommercial(row: PersistedCommercialSource): PiCommercialSummary {
   const gross = toNumber(row.gross_product_amount) ?? 0
   const discount = toNumber(row.discount_amount) ?? 0
 
@@ -676,6 +755,7 @@ export type PersistedProduct = {
   /** The worksheet row, which is what the viewer and the table agree on. */
   row: number
   itemSequence: string | null
+  sourceProductCode: string | null
   productName: string | null
   quantity: number | null
   dimensions: string | null
@@ -699,6 +779,7 @@ export function persistedProducts(items: readonly PersistedItem[]): PersistedPro
       id: item.id,
       row: item.source_row,
       itemSequence: text(item.item_sequence),
+      sourceProductCode: text(item.source_product_code),
       productName: text(item.product_name),
       quantity: toNumber(item.quantity),
       dimensions: text(item.dimensions),

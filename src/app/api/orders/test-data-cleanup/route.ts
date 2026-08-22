@@ -1,7 +1,10 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { removeAllObjectsForSubmission } from '@/lib/orders/submissionFilesServer'
+import {
+  removeAllObjectsForOrder,
+  removeAllObjectsForSubmission,
+} from '@/lib/orders/submissionFilesServer'
 import { removeAllObjectsForRequest } from '@/lib/orderRequestAttachmentsServer'
 
 // Test Data Cleanup, as ONE request that owns the whole destructive sequence.
@@ -282,6 +285,46 @@ export async function POST(req: NextRequest) {
       }
     }
   }
+
+  /**
+   * ── The Order's own generated documents ──
+   *
+   * A CONFIRMED ORDER OWNS FILES IN ITS OWN RIGHT — the confirmed Excel and PDF,
+   * under orders/{order_id}/versions/. They belong to no PI, so the sweep above
+   * cannot reach them, and nothing else ever removes them: publication is what
+   * authorizes a read, so once the register row is gone they are unreachable
+   * through any policy while still sitting in the bucket forever.
+   *
+   * THE PREFIX IS DERIVED FROM THE CLAIM, never from a request. The claim froze
+   * this Order id when every gate passed; a browser cannot name a prefix to
+   * sweep, here or anywhere in this protocol.
+   *
+   * The RECORDED keys come from the register through an admin-only, read-only
+   * RPC; the sweep finds the rest, including an unpublished attempt's output
+   * that no version row names.
+   */
+  if (claim?.order_id) {
+    const { data: docPaths } = await authClient.rpc(
+      'order_document_storage_paths', { p_order_id: claim.order_id })
+
+    try {
+      const removal = await removeAllObjectsForOrder(
+        service, claim.order_id, (docPaths as string[] | null) ?? [],
+        { onRemoveAttempt: markRemovalAttempt })
+      if (removal.removalAttempted) storageRemovalAttempted = true
+      confirmedRemoved += removal.removed.length
+      if (removal.failed.length > 0) {
+        timing.sweep = Date.now() - sweepStarted
+        return await storageFailed('order_documents')
+      }
+    } catch {
+      // A SETTLED failure, exactly as above: every request this sweep started
+      // has finished before this line is reached.
+      timing.sweep = Date.now() - sweepStarted
+      return await storageFailed('order_document_storage_unreadable')
+    }
+  }
+
   timing.sweep = Date.now() - sweepStarted
 
   // ── Step 3. The point of no return, on the claim that froze the records.

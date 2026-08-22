@@ -66,19 +66,89 @@ const IMPORT_PAGE = 'src/app/orders/import/page.tsx'
 const PREVIEW_VIEW = 'src/lib/pi/previewView.ts'
 const PARSER = 'src/lib/pi/masterSheetParser.ts'
 
+
+/**
+ * The Products card with every editing affordance taken back out.
+ *
+ * A block is `{canEditProducts …}` through the `)}` that closes it at the same
+ * indentation, together with the JSX comment introducing it and one blank line
+ * separating it from what came before. Indentation-delimited rather than
+ * brace-counted on purpose: the markup is formatted, and a scan that counted
+ * braces would have to understand template literals and arrow bodies to be
+ * right about where a block ends.
+ */
+function withoutEditingBlocks(source: string): string {
+  const lines = source.split('\n')
+  const drop = new Set<number>()
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim().startsWith('{canEditProducts')) continue
+    const indent = lines[i].length - lines[i].trimStart().length
+    let end = -1
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j]
+      if (l.trim() === ')}' && l.length - l.trimStart().length === indent) { end = j; break }
+    }
+    assert.notEqual(end, -1, `an editing block opened at line ${i} is never closed`)
+    for (let j = i; j <= end; j++) drop.add(j)
+
+    // The JSX comment above it, when there is one, and one blank separator.
+    let k = i - 1
+    if (k >= 0 && lines[k].trim().endsWith('*/}')) {
+      while (k >= 0) {
+        drop.add(k)
+        if (lines[k].trim().startsWith('{/*')) break
+        k--
+      }
+      k--
+    }
+    if (k >= 0 && lines[k].trim() === '' && !drop.has(k)) drop.add(k)
+    i = end
+  }
+
+  return lines.filter((_, i) => !drop.has(i)).join('\n')
+}
+
 // ── The product table ─────────────────────────────────────────────────────────
 
 describe('the PI product table is byte-for-byte what it was', () => {
-  test('the whole Products card on the detail page is unchanged', () => {
+  test('the Products card gained editing controls and changed nothing else', () => {
     const base = atBase(DETAIL_PAGE)
     if (base === null) return
 
+    // WHY THIS IS NO LONGER A PLAIN EQUALITY. The card was pinned byte-for-byte
+    // to prove a performance pass had not disturbed it. It has since been asked
+    // to carry the product editor — an Edit control on each line, a Reorder
+    // control, and the statement of what only a corrected workbook can fix.
+    //
+    // The guarantee is kept in the form that still has teeth: UNDO THE
+    // ADDITIONS AND THE ORIGINAL MUST COME BACK, line for line. Every editing
+    // affordance sits inside a `{canEditProducts && …}` block, so removing
+    // those blocks — and the JSX comments introducing them — must leave exactly
+    // what origin/main renders. A changed column, a moved style, a dropped
+    // mobile card or a figure rendered differently all survive the undo and
+    // show up here.
     const MARKERS = ['{/* Products */}', '{/* ── 6. The lower information grid ──'] as const
-    assert.equal(
-      region(now(DETAIL_PAGE), ...MARKERS, 'current'),
-      region(base, ...MARKERS, 'base'),
-      'the mobile cards, the desktop table, every column and every style are unchanged',
-    )
+    const undone = withoutEditingBlocks(region(now(DETAIL_PAGE), ...MARKERS, 'current'))
+
+    assert.equal(undone, region(base, ...MARKERS, 'base'),
+      'the mobile cards, the desktop table, every column and every style are unchanged')
+  })
+
+  test('and the editing controls really are there', () => {
+    const MARKERS = ['{/* Products */}', '{/* ── 6. The lower information grid ──'] as const
+    const card = region(now(DETAIL_PAGE), ...MARKERS, 'current')
+    // Four affordances, no more: reorder, the mobile line control, the desktop
+    // line control, and the note naming what needs a corrected workbook. A
+    // fifth would mean the undo above was written around something new.
+    assert.equal((card.match(/\{canEditProducts /g) ?? []).length, 4)
+    assert.ok(card.includes('setReorderOpen(true)'))
+    assert.ok(card.includes('setProductEditId(p.id)'))
+    assert.ok(card.includes('PI_CHANGE_PI_ONLY'))
+    // NO FIGURE ACQUIRED A CONTROL. The card renders quantities, rates and line
+    // totals as it always did — as text.
+    assert.ok(!/<input|<textarea/.test(card),
+      'a form control appeared in the product table')
   })
 
   test('the shared table head and thumbnails are untouched', () => {

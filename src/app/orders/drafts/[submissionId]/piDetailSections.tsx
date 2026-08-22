@@ -18,7 +18,7 @@
 
 import {
   AlertTriangle, Ban, CheckCircle2, ChevronRight, ExternalLink, FileSpreadsheet,
-  History, Info, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
+  History, Info, Pencil, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
@@ -47,6 +47,7 @@ import {
   type AdvanceView,
 } from '@/lib/orders/advanceRequirement'
 import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, type PiDiagnosticEntry } from '@/lib/pi/previewView'
+import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
 import {
   ADVANCE_BAND_TITLE,
@@ -134,6 +135,7 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
 export function PiSummaryCard({
   client, onOpenClient, ownership, statusLabel, tone, workbookName,
   dates, figures, billing, canEditBilling, onEditBilling,
+  canEditDetails, onEditDetails, onEditSchedule, onRequestCorrection, missingSummary,
   payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
 }: {
   client: ClientDetails
@@ -159,6 +161,32 @@ export function PiSummaryCard({
    */
   canEditBilling: boolean
   onEditBilling: () => void
+  /**
+   * Whether this viewer may correct the client and party details — the owner in
+   * draft/needs_changes, or an active admin at any stage. As everywhere else on
+   * this page, hiding the control is not the security:
+   * update_order_submission_client_details re-derives the whole rule.
+   */
+  canEditDetails: boolean
+  onEditDetails: () => void
+  /** Opens the dates-and-terms section of the same editor. */
+  onEditSchedule: () => void
+  /**
+   * The OWNER's channel for a PI that has left their hands, or null.
+   *
+   * Shown INSTEAD OF the edit controls, never alongside them: the two answer
+   * the same impulse, and offering both would suggest the owner has a choice
+   * about which one works.
+   */
+  onRequestCorrection: (() => void) | null
+  /**
+   * What this PI still needs before it can take a payment, as one sentence.
+   *
+   * Null when nothing is missing. Present, this is the whole point of the
+   * panel: a workbook imported without a client name used to leave the reader
+   * with "Not provided" and a payment refusal, and no way to connect the two.
+   */
+  missingSummary: string | null
   /** null only while the payment summary has not been read yet. */
   payment: PaymentSummaryView | null
   canAdd: boolean
@@ -169,6 +197,34 @@ export function PiSummaryCard({
 }) {
   return (
     <PiCard>
+      {/* ── What is still missing, and the way to fix it ──
+          Above the summary rather than beside the field, because it is about
+          the record as a whole and because a reader who cannot proceed needs to
+          meet this before they go looking for the reason. */}
+      {missingSummary && (
+        <div
+          role="status"
+          style={{
+            display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center',
+            padding: '10px 18px', fontSize: '12.5px',
+            background: '#fdf6ee', borderBottom: `1px solid ${colors.border}`,
+            color: '#8a4b12',
+          }}
+        >
+          <span style={{ flex: '1 1 240px', minWidth: 0 }}>{missingSummary}</span>
+          {canEditDetails && (
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onEditDetails}>
+              Add client details
+            </button>
+          )}
+          {!canEditDetails && onRequestCorrection && (
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onRequestCorrection}>
+              Request correction
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="pi-detail-summary">
 
         {/* ── The left column: everything ABOUT the order ──
@@ -203,6 +259,41 @@ export function PiSummaryCard({
               </MultilineText>
               <ChevronRight size={15} strokeWidth={2.2} className="pi-detail-summary-client-more" />
             </button>
+
+            {/* ── THE WAY TO CORRECT WHAT THIS NAMES, BESIDE THE NAME ──
+                The name has always opened a READ-ONLY dialog; the editor was
+                reachable only from the missing-data strip, so a reader looking
+                at a wrong phone number on a complete PI had nowhere to go. A
+                sibling control rather than something inside the name: a button
+                cannot be nested in a button, and the name must keep carrying
+                Enter, Space and focus for the dialog it already opens.
+
+                The owner's correction channel takes the same slot when they may
+                no longer edit — never both, because the two answer the same
+                impulse and offering each would suggest a choice about which
+                one works. */}
+            {canEditDetails && (
+              <button
+                type="button"
+                onClick={onEditDetails}
+                className="pi-detail-summary-inline-action"
+                aria-haspopup="dialog"
+                aria-label="Edit customer details"
+              >
+                <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
+                Edit
+              </button>
+            )}
+            {!canEditDetails && onRequestCorrection && (
+              <button
+                type="button"
+                onClick={onRequestCorrection}
+                className="pi-detail-summary-inline-action"
+                aria-haspopup="dialog"
+              >
+                Request correction
+              </button>
+            )}
           </div>
 
           {/* ── ONE SCHEDULE BAND, not two treatments ──
@@ -214,6 +305,26 @@ export function PiSummaryCard({
               padding, and the emphasis the due date still needs is carried by a
               dot and a heavier figure rather than by a ground of its own. */}
           <section className="pi-detail-summary-schedule">
+            {/* ── THE DATES ARE EDITED WHERE THE DATES ARE ──
+                This control used to read "Dates and terms" and sat in the
+                FINANCE surface, two columns away from the values it changes and
+                between the billing label and the billing control. It belongs
+                here. Rendered only when there is something to press, so a
+                read-only viewer still sees the band exactly as it was. */}
+            {canEditDetails && (
+              <div className="pi-detail-summary-sched-head">
+                <button
+                  type="button"
+                  onClick={onEditSchedule}
+                  className="pi-detail-summary-inline-action"
+                  aria-haspopup="dialog"
+                  aria-label="Edit dates and terms"
+                >
+                  <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
+                  Edit
+                </button>
+              </div>
+            )}
             {dates.flatMap((date, i) => [
               i > 0
                 ? <div key={`${date.key}-rule`} className="pi-detail-summary-sched-rule" role="presentation" />
@@ -332,6 +443,11 @@ export function PiSummaryCard({
                   wider gap above it is what says "a different kind of fact",
                   and the label treatment is the figures' own. */}
               <div className="pi-detail-summary-value-row pi-detail-summary-billing">
+                {/* ── THE LABEL AND ITS OWN CONTROL, AND NOTHING ELSE ──
+                    Two unrelated buttons used to sit between them — the dates
+                    editor and the correction channel — so the control nearest
+                    "Billing percentage" was the one that did not change it.
+                    Both have moved beside the things they do change. */}
                 <div className="pi-detail-summary-billing-head">
                   <span className="pi-detail-summary-metric-label">{BILLING_LABEL}</span>
                   {canEditBilling && (
@@ -520,6 +636,22 @@ function QuotedNote({ heading, body, tone }: {
  * survive an approved advance exception: accepting a 0% advance says nothing
  * about whether the products, quantities, rates, dates or addresses are right.
  */
+/**
+ * Is anything still missing, and can a form fix it?
+ *
+ * Split out so the button, its title and the panel below it cannot disagree
+ * about the answer — three copies of `readiness !== null && !readiness.ready`
+ * is three chances for one of them to drift.
+ */
+function readinessState(readiness: PiReadiness | null) {
+  const blocked = readiness !== null && !readiness.ready
+  return {
+    blocked,
+    summary: blocked ? readiness.summary : null,
+    missing: blocked ? readiness.missing : [],
+  }
+}
+
 export function PiWorkflowPanel({
   panel,
   actions,
@@ -528,6 +660,8 @@ export function PiWorkflowPanel({
   employeeReply,
   advanceRefusal,
   blockingCount,
+  readiness,
+  onFixReadiness,
   acting,
   finance,
   approvalBlocker,
@@ -556,6 +690,21 @@ export function PiWorkflowPanel({
    */
   advanceRefusal: { reason: string | null; instruction: string } | null
   blockingCount: number
+  /**
+   * EVERYTHING STILL MISSING, in one list, for the person who would submit.
+   *
+   * Before this, each requirement was discovered by being refused: submitting
+   * named the client, fixing that named a product line, fixing that named an
+   * image. The list is the whole remaining distance, computed once by
+   * piReadiness and read identically by the approval control below and by the
+   * finance dialog — which is what stops three surfaces disagreeing about
+   * whether a record is ready.
+   *
+   * Null on a record where submitting is not the question.
+   */
+  readiness: PiReadiness | null
+  /** Opens the editor at the first section a form can actually fix, or null. */
+  onFixReadiness: ((section: PiRequirement['section']) => void) | null
   acting: boolean
   /**
    * Where finance verification stands — for EVERY viewer who can read the PI,
@@ -586,6 +735,19 @@ export function PiWorkflowPanel({
   const isReviewer = actions.canRequestChanges || actions.canReject
   const ownerActions = actions.canSubmit || actions.canChangePi
   const hasActions = isReviewer || ownerActions
+
+  const {
+    blocked: readinessBlocked,
+    summary: readinessSummary,
+    missing: readinessMissing,
+  } = readinessState(readiness)
+
+  // SHOWN AND DISABLED, never hidden. A control that vanishes takes the reason
+  // with it; a disabled one with the list above it says what to do next.
+  const submitBlocked = readinessBlocked
+  const submitTitle = blockingCount > 0
+    ? 'Fix the issues in the PI first'
+    : (readinessSummary ?? undefined)
   const hasBody = Boolean(
     panel.instruction || reviewNote || employeeReply || advanceRefusal
     || finance || approvedOrder || (isReviewer && approvalBlocker),
@@ -624,6 +786,53 @@ export function PiWorkflowPanel({
           )}
         </div>
 
+        {/* ── WHAT IS STILL MISSING, ALL OF IT, BEFORE ANYTHING IS PRESSED ──
+            Above the actions rather than beside the button: it is a list, and a
+            list does not fit in a tooltip. Each entry that a form can fix is a
+            way in to that form; each one that only a corrected workbook can fix
+            says so instead of offering a control that would refuse. */}
+        {ownerActions && readinessBlocked && (
+          <div style={{
+            margin: '10px 0 0', padding: '10px 12px', borderRadius: '8px',
+            border: `1px solid ${colors.border}`, background: colors.raised,
+            display: 'flex', flexDirection: 'column', gap: '6px',
+          }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+              {readinessSummary}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {readinessMissing.map(requirement => (
+                <li key={requirement.key} style={{ fontSize: '11.5px', color: colors.secondary }}>
+                  {requirement.label}
+                  {requirement.needsReimport
+                    ? ' — a corrected workbook is needed'
+                    : ''}
+                  {/* NO "Add" FOR AN INCOMPLETE PRODUCT LINE, on purpose. The
+                      list counts them rather than naming them — eleven lines
+                      each missing an image is one sentence a reader can act on
+                      and eleven sentences is a wall — so a button here would
+                      have to guess which row it meant. Each line carries its
+                      own Edit control in the table below, where the reader can
+                      see which one is short of what. */}
+                  {!requirement.needsReimport
+                    && requirement.section !== 'products'
+                    && onFixReadiness && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-ghost"
+                      style={{ marginLeft: '8px' }}
+                      onClick={() => onFixReadiness(requirement.section)}
+                      disabled={acting}
+                    >
+                      Add
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {hasActions && (
           <div className="pi-detail-workflow-actions">
             {ownerActions && (
@@ -635,8 +844,8 @@ export function PiWorkflowPanel({
                 <button
                   className="boe-btn boe-btn-primary"
                   onClick={onSubmit}
-                  disabled={acting || blockingCount > 0}
-                  title={blockingCount > 0 ? 'Fix the issues in the PI first' : undefined}
+                  disabled={acting || blockingCount > 0 || submitBlocked}
+                  title={submitTitle}
                 >
                   <Send size={13} strokeWidth={2} />
                   {submitButtonLabel(status)}

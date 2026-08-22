@@ -1,6 +1,6 @@
-import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { adminClient, type AdminSupabaseClient } from '@/lib/supabase/admin'
 import { parseBoePiWorkbook } from '@/lib/pi/masterSheetParser'
 import { PI_MAX_WORKBOOK_BYTES } from '@/lib/pi/workbookReader'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
@@ -62,20 +62,29 @@ export const runtime = 'nodejs'
 type ProcessRequest = {
   submissionId?: unknown
   sourceWorkbookPath?: unknown
+  /**
+   * WHY THIS PI IS BEING REPLACED. Required once the PI has left draft, ignored
+   * before that — a draft is its owner's to shape, and a mandatory reason on
+   * every re-upload of ordinary work is a ritual rather than an audit trail.
+   * The database re-derives both the requirement and the authority; this is
+   * checked here as well so an employee is told before a 10 MB download.
+   */
+  changeReason?: unknown
 }
+
+/** Matches assert_order_submission_workbook_editor. Kept in one place. */
+export const CHANGE_REASON_MAX = 500
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-/** The privileged client. Declared as a function so its INFERRED type can be
- *  named — `ReturnType<typeof createServiceClient>` resolves to the generic
- *  default instantiation, which is not the same type. */
-function serviceClient() {
-  return createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
-}
-type ServiceClient = ReturnType<typeof serviceClient>
+// THE PRIVILEGED CLIENT COMES FROM ONE PLACE, and it is checked.
+//
+// This route used to build it inline with two non-null assertions. When either
+// variable was absent, `createClient(url, undefined)` threw `supabaseKey is
+// required.` at module scope of the handler — before any try/catch — and the
+// employee saw a bare 500 with no `message` for the browser to render. The
+// helper answers whether it is configured instead of asserting that it is.
+type ServiceClient = AdminSupabaseClient
 
 /**
  * Did the lease acquisition fail because somebody else holds it?
@@ -109,12 +118,36 @@ export async function POST(req: NextRequest) {
 
   const submissionId = typeof body.submissionId === 'string' ? body.submissionId : ''
   const workbookPath = typeof body.sourceWorkbookPath === 'string' ? body.sourceWorkbookPath : ''
+  const changeReason = typeof body.changeReason === 'string' ? body.changeReason.trim() : ''
 
   if (!isUuid(submissionId)) {
     return fail(400, 'BAD_REQUEST', 'A valid submission id is required.')
   }
 
-  const service = serviceClient()
+  // ── THE SERVER IS CONFIGURED, or it says so plainly ──
+  //
+  // Named variables and a message a person can act on, rather than a bare 500.
+  // The names are safe to print: they are the names, never the values.
+  //
+  // NEITHER LOGGED NOR RETURNED, and both halves are deliberate.
+  //
+  // Not returned, because /orders/[id]/documents already settled that question
+  // for this codebase: a caller learns the deployment is misconfigured, not
+  // which of its settings is absent. Not logged, because this handler is the
+  // one place a PI's bytes are held in memory and it has a standing rule —
+  // enforced by processDraftRoute.test.ts — that it writes to no console sink
+  // at all, so no future edit can start logging beside a client name or a price.
+  //
+  // The operator is not left blind: the same absent variable breaks the
+  // confirmed-document route, which DOES log the names, and the message below
+  // tells the employee this is a server setting to report rather than a refusal
+  // to work around.
+  const admin = adminClient()
+  if (!admin.ok) {
+    return fail(500, 'SERVER_NOT_CONFIGURED',
+      'Saving a PI is not configured on this deployment. This is a server setting, not something you can fix — please report it.')
+  }
+  const service = admin.client
 
   // ── 2-3. The actor is real, active and not soft-deleted ──
   const { data: me, error: meErr } = await service
@@ -152,12 +185,34 @@ export async function POST(req: NextRequest) {
   if (subErr) return fail(500, 'LOOKUP_FAILED', 'Could not load this draft.')
   if (!submission) return fail(404, 'NOT_FOUND', 'This draft no longer exists.')
 
-  const owns = submission.created_by === user.id || submission.submitted_by === user.id
-  if (!owns && me.role !== 'admin') {
-    return fail(403, 'NOT_OWNED', 'This draft belongs to someone else.')
-  }
-  if (!['draft', 'needs_changes'].includes(submission.status) || submission.order_id) {
-    return fail(409, 'NOT_EDITABLE', 'This submission can no longer be changed.')
+  // WHICH OF THE TWO CASES IS THIS. The same boundary the database draws:
+  // everything the owner rule does not cover is an amendment.
+  const afterSubmission =
+    !['draft', 'needs_changes'].includes(submission.status) || Boolean(submission.order_id)
+
+  if (!afterSubmission) {
+    const owns = submission.created_by === user.id || submission.submitted_by === user.id
+    if (!owns && me.role !== 'admin') {
+      return fail(403, 'NOT_OWNED', 'This draft belongs to someone else.')
+    }
+  } else {
+    // ── PAST DRAFT: ACTIVE ADMIN ONLY, WITH A REASON ──
+    //
+    // Owning the PI is not enough and never becomes enough; neither is holding
+    // orders.approve_order. assert_order_submission_workbook_editor re-derives
+    // all of this under a row lock and is the real boundary — this exists so
+    // the refusal arrives before a 10 MB download and says which rule it is.
+    if (me.role !== 'admin') {
+      return fail(409, 'NOT_EDITABLE', 'This submission can no longer be changed.')
+    }
+    if (changeReason === '') {
+      return fail(400, 'CHANGE_REASON_REQUIRED',
+        'Replacing the PI of a submitted record needs a reason.')
+    }
+    if (changeReason.length > CHANGE_REASON_MAX) {
+      return fail(400, 'CHANGE_REASON_TOO_LONG',
+        `The reason may be at most ${CHANGE_REASON_MAX} characters.`)
+    }
   }
 
   // ── 6. The path must be THIS submission's workbook key ──
@@ -194,6 +249,9 @@ export async function POST(req: NextRequest) {
   try {
     return await processUnderLease({
       service, submissionId, workbookPath, actorId: user.id, processingToken,
+      afterSubmission,
+      changeReason: afterSubmission ? changeReason : null,
+      submissionStatus: String(submission.status),
       priorWorkbookPath: typeof submission.source_workbook_path === 'string'
         ? submission.source_workbook_path
         : null,
@@ -219,9 +277,13 @@ async function processUnderLease(ctx: {
   workbookPath: string
   actorId: string
   processingToken: string
+  afterSubmission: boolean
+  changeReason: string | null
+  submissionStatus: string
   priorWorkbookPath: string | null
 }): Promise<NextResponse> {
-  const { service, submissionId, workbookPath, actorId, processingToken } = ctx
+  const { service, submissionId, workbookPath, actorId, processingToken,
+          afterSubmission, changeReason } = ctx
 
   // ── 8. Download it privately ──
   const download = await service.storage.from('order-files').download(workbookPath)
@@ -311,6 +373,13 @@ async function processUnderLease(ctx: {
   // change and defeat the replay suppression entirely. It also never reaches a
   // browser — the payload is built and consumed entirely on this server.
   plan.payload.processing_token = processingToken
+
+  // THE REASON, alongside the token and for the same reason: `create or replace`
+  // cannot change a signature, so both travel in the payload built entirely on
+  // this server. Attached AFTER the fingerprint, like the token — a reason is
+  // not part of what makes two uploads the same file, and including it would
+  // make an otherwise identical retry look like a change.
+  if (changeReason) plan.payload.change_reason = changeReason
 
   // The image paths this draft points at TODAY. Needed twice: to know which
   // uploads are new (so a failed attempt cleans up only its own), and to know
@@ -425,9 +494,18 @@ async function processUnderLease(ctx: {
   // CURRENT original is never in this list — it is the path just recorded —
   // and only a key inside THIS submission's own original/ folder qualifies, so
   // a corrupt or foreign stored value cannot direct a delete anywhere else.
+  //
+  // AND NOT AT ALL FOR AN AMENDMENT. Once a PI has been submitted, its workbook
+  // is the file other people made decisions against: what finance verified,
+  // what management approved, what the confirmed documents were generated from.
+  // Deleting it because an admin corrected a rate would destroy the record of
+  // what was approved, and no amount of Activity text substitutes for the file
+  // itself. A draft re-upload still tidies up after itself, because nobody has
+  // yet relied on the file it is replacing.
   const priorWorkbook = ctx.priorWorkbookPath
   const obsoleteWorkbook =
-    priorWorkbook
+    !afterSubmission
+    && priorWorkbook
     && priorWorkbook !== workbookPath
     && isWorkbookPathFor(priorWorkbook, submissionId)
       ? [priorWorkbook]
@@ -435,11 +513,19 @@ async function processUnderLease(ctx: {
 
   await removeObjects(service, [...obsoleteImages, ...obsoleteWorkbook])
 
-  // ── 19. Counts, never content ──
+  // ── 20. Counts and consequences, never content ──
+  //
+  // An amendment reports WHAT IT COST, because the person who confirmed it is
+  // entitled to know: whether a finance verification was cleared and how many
+  // ready document versions stopped being current. Counts and booleans only —
+  // no name, no figure, no path.
   const result = (replaced ?? {}) as Record<string, unknown>
+  const num = (v: unknown) => (typeof v === 'number' ? v : 0)
   return NextResponse.json({
     submissionId,
-    status: 'draft',
+    // The real status, not an assumption. This route is no longer only a draft
+    // path, and a caller that read 'draft' for an approved PI would be lied to.
+    status: ctx.submissionStatus,
     itemCount: plan.counts.items,
     representativeImageCount: plan.counts.representativeImages,
     customizationImageCount: plan.counts.customizationImages,
@@ -448,6 +534,11 @@ async function processUnderLease(ctx: {
     savedItemCount: typeof result.item_count === 'number' ? result.item_count : plan.counts.items,
     // Stated explicitly so no caller can read a saved draft as a placed order.
     orderNumberAssigned: false,
+    // ── What replacing this PI actually did ──
+    afterSubmission: result.after_submission === true,
+    financeVerificationCleared: result.finance_verification_cleared === true,
+    supersededDocuments: num(result.superseded_documents),
+    unchanged: result.unchanged === true,
   })
 }
 

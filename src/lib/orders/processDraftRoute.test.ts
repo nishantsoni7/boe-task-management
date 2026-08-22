@@ -417,7 +417,16 @@ describe('a retry converges instead of duplicating', () => {
   test('the route never advances the status', () => {
     assert.ok(!route.includes('submit_order_submission'))
     assert.ok(!route.includes("status: 'submitted'"))
-    assert.ok(route.includes("status: 'draft'"), 'the response says draft, and only draft')
+    // IT ECHOES, IT DOES NOT DECIDE. The route once answered 'draft' literally,
+    // which was true while it was only a draft path. It now also serves an
+    // admin correcting a submitted or approved PI, and answering 'draft' there
+    // would be a lie about a record other people are deciding against. So the
+    // status it reports is the one it READ, and it still writes none.
+    assert.ok(route.includes('status: ctx.submissionStatus'),
+      'the response echoes the status it read')
+    assert.ok(!/\.update\(\s*\{[^}]*status/.test(route),
+      'the route must never write a status')
+    assert.ok(!route.includes("'approve_order_submission'"))
   })
 })
 
@@ -582,8 +591,28 @@ describe('nothing sensitive is logged or returned', () => {
 // ══ 10. The service role never reaches the browser ═══════════════════════════
 
 describe('service-role isolation', () => {
-  test('the route is the only place the key is read', () => {
-    assert.ok(route.includes('process.env.SUPABASE_SERVICE_ROLE_KEY'))
+  test('the service key is read in exactly one module, and this route uses it', () => {
+    // It used to be read here, behind two non-null assertions: when either
+    // variable was absent `createClient(url, undefined)` threw at the top of the
+    // handler, outside any try/catch, and the employee got a bare 500 with no
+    // message for the browser to render. The read moved into one checked helper
+    // that ANSWERS whether it is configured; the guarantee this test protects —
+    // one server-only reader — is unchanged and now provable in one place.
+    assert.ok(!route.includes('process.env.SUPABASE_SERVICE_ROLE_KEY'),
+      'the route must not read the key itself')
+    assert.ok(route.includes("from '@/lib/supabase/admin'"))
+    assert.ok(route.includes('adminClient()'))
+    assert.match(raw('src/lib/supabase/admin.ts'), /process\.env\.SUPABASE_SERVICE_ROLE_KEY/)
+    assert.ok(route.includes("fail(500, 'SERVER_NOT_CONFIGURED'"),
+      'a missing variable is a named, renderable failure')
+    // AND THE NAMES GO NOWHERE. /orders/[id]/documents settled this for the
+    // codebase: a caller learns the deployment is misconfigured, not which of
+    // its settings is absent. This route additionally logs nothing at all, so
+    // it neither returns them nor writes them — the operator diagnoses from the
+    // document route's log, which does carry the names.
+    assert.ok(!route.includes('admin.missing'),
+      'the missing variable names must not reach a response or a log')
+    assert.ok(!route.includes('ADMIN_CLIENT_ENV'))
   })
 
   test('no client file references the service key or the privileged RPC', () => {
@@ -671,5 +700,106 @@ describe('unsupported image formats are refused, not skipped', () => {
 
   test('the client maps the refusal to a visible message', () => {
     assert.ok(read(FLOW).includes('IMAGE_FORMAT_UNSUPPORTED'))
+  })
+})
+
+// ══ 12. CHANGE PI — the same route, once the PI has left draft ═══════════════
+//
+// This handler stopped being only a draft path. An active admin may replace the
+// workbook of a submitted or approved PI, because a commercial value can only
+// be corrected by correcting the spreadsheet that computes it. What follows
+// pins the four things that separate that from an ordinary re-upload.
+
+describe('the route mirrors the database’s workbook authority', () => {
+  test('the owner rule still applies only before submission', () => {
+    // The old code asked one question for every case: owner, and draft, and no
+    // Order. That refused an admin correcting a submitted PI — and refused them
+    // BEFORE the RPC, so fixing only the database would have changed nothing.
+    assert.ok(route.includes('const afterSubmission ='),
+      'the route must decide which of the two cases it is in')
+    assert.match(route,
+      /const afterSubmission =\s*!\['draft', 'needs_changes'\]\.includes\(submission\.status\) \|\| Boolean\(submission\.order_id\)/,
+      'and draw the same boundary the database draws')
+    assert.ok(route.includes("fail(403, 'NOT_OWNED'"), 'a non-owner is still refused a draft')
+  })
+
+  test('past draft it is an active admin, with a reason, or nothing', () => {
+    const at = route.indexOf('} else {')
+    const branch = route.slice(at, route.indexOf('// ── 6.', at))
+    assert.ok(branch.includes("me.role !== 'admin'"), 'only an admin')
+    assert.ok(branch.includes("fail(409, 'NOT_EDITABLE'"))
+    assert.ok(branch.includes("fail(400, 'CHANGE_REASON_REQUIRED'"))
+    assert.ok(branch.includes("fail(400, 'CHANGE_REASON_TOO_LONG'"))
+    // Holding orders.approve_order, or being the finance verifier, grants
+    // nothing here. Neither is consulted at all.
+    assert.ok(!branch.includes('approve_order'), 'approval rights are not editing rights')
+    assert.ok(!branch.includes('finance_verified'), 'verifying is not editing')
+  })
+
+  test('the refusal arrives before a single byte is downloaded', () => {
+    const reasonAt = route.indexOf("fail(400, 'CHANGE_REASON_REQUIRED'")
+    const leaseAt = route.indexOf("service.rpc('begin_order_submission_processing'")
+    const downloadAt = route.indexOf('download(workbookPath)')
+    assert.ok(reasonAt > 0 && reasonAt < leaseAt && leaseAt < downloadAt,
+      'an employee is told the reason is missing before a 10 MB download')
+  })
+
+  test('the reason travels in the payload, after the fingerprint', () => {
+    // Same argument as the lease token: a reason is not part of what makes two
+    // uploads the same file, so including it in the fingerprint would make an
+    // otherwise identical retry look like a change and defeat replay suppression.
+    const fingerprintAt = route.indexOf('buildSubmissionPlan({')
+    const reasonAt = route.indexOf('plan.payload.change_reason = changeReason')
+    assert.ok(reasonAt > fingerprintAt, 'the reason is attached after the plan is built')
+    assert.ok(route.includes('if (changeReason) plan.payload.change_reason = changeReason'))
+    // And never for a draft: the route passes null in that case.
+    assert.ok(route.includes('changeReason: afterSubmission ? changeReason : null'))
+  })
+
+  test('the reason is trimmed once, and bounded to the database’s limit', () => {
+    assert.ok(route.includes("typeof body.changeReason === 'string' ? body.changeReason.trim() : ''"))
+    assert.ok(route.includes('export const CHANGE_REASON_MAX = 500'))
+    const migration = raw('supabase/migrations/20261003000000_order_submission_change_pi.sql')
+    assert.match(migration, /length\(coalesce\(v_reason, ''\)\) > 500/,
+      'the route’s limit must be the database’s limit')
+  })
+})
+
+describe('an amendment never destroys the file a decision was made against', () => {
+  test('the superseded workbook is deleted only for a draft', () => {
+    assert.match(route, /const obsoleteWorkbook =\s*!afterSubmission/,
+      'a submitted PI keeps its previous workbook')
+    // The current one is never a candidate, before or after this change.
+    assert.ok(route.includes('priorWorkbook !== workbookPath'))
+    assert.ok(route.includes('isWorkbookPathFor(priorWorkbook, submissionId)'))
+  })
+
+  test('nothing on any path deletes the workbook that was just uploaded', () => {
+    const removeAt = route.indexOf('await removeObjects(service, [...obsoleteImages')
+    const body = route.slice(0, removeAt)
+    assert.ok(!body.includes('removeObjects(service, [workbookPath])'))
+  })
+})
+
+describe('an amendment reports what it cost', () => {
+  test('the response carries the impact, as counts and booleans', () => {
+    const returnAt = route.lastIndexOf('return NextResponse.json({')
+    const body = route.slice(returnAt)
+    for (const key of ['afterSubmission', 'financeVerificationCleared',
+                       'supersededDocuments', 'unchanged']) {
+      assert.ok(body.includes(key), `${key} must be reported`)
+    }
+    // Still counts and booleans only — nothing about who verified, which
+    // documents, or what changed in the figures.
+    for (const forbidden of ['reason', 'verifiedBy', 'excel', 'pdf', 'total']) {
+      assert.ok(!body.toLowerCase().includes(forbidden.toLowerCase()),
+        `${forbidden} must not be returned`)
+    }
+  })
+
+  test('the impact is read from the database’s answer, never assumed', () => {
+    assert.ok(route.includes("result.after_submission === true"))
+    assert.ok(route.includes("result.finance_verification_cleared === true"))
+    assert.ok(route.includes('num(result.superseded_documents)'))
   })
 })

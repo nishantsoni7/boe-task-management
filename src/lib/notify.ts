@@ -112,6 +112,12 @@ export type PiSubmissionNotifyEvent =
   | 'pi_exception_requested'
   | 'pi_exception_approved'
   | 'pi_exception_rejected'
+  // The owner's correction request and its answer (20260930000000). Same
+  // contract as the three above: the payload is one id, and the recipients are
+  // resolved server-side from the database's own authority.
+  | 'pi_correction_requested'
+  | 'pi_correction_resolved'
+  | 'pi_correction_rejected'
 
 export type PiSubmissionNotifyPayload = {
   event: PiSubmissionNotifyEvent

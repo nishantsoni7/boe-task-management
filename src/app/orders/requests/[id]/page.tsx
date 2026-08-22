@@ -772,21 +772,34 @@ function OrderRequestDetailPageInner() {
       if (!session) { router.push('/login'); return }
       setCurrentUserId(session.user.id)
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      // ── FIVE INDEPENDENT READS, ISSUED TOGETHER ──
+      //
+      // The profile and the assignee options were awaited one after the other
+      // and only then did the record, its payments and its attachments start —
+      // three latencies of waiting for answers that depend on nothing but the
+      // session. The record's own three were already parallel; now all five are.
+      //
+      // Every one of them is scoped by RLS rather than by the role being read
+      // beside it, and the assignee list is resolve_permission-backed in the
+      // database, so no ordering between them was ever load-bearing.
+      const [{ data: me }, { data: assigneesData }, loaded] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', session.user.id)
+          .single(),
+        // Sales team + explicitly authorised Order Assignees only — never every
+        // active user. Needed by the Edit / Resubmit / Reapply form's assignee
+        // dropdown; resolve_permission-backed, so overrides never need to be read
+        // directly by a non-admin client.
+        supabase.rpc('list_eligible_order_assignees'),
+        loadRequest(),
+        loadPayments(),
+        loadAttachments(),
+      ])
+
       setProfile(me as UserProfile)
-
-      // Sales team + explicitly authorised Order Assignees only — never every
-      // active user. Needed by the Edit / Resubmit / Reapply form's assignee
-      // dropdown; resolve_permission-backed, so overrides never need to be read
-      // directly by a non-admin client.
-      const { data: assigneesData } = await supabase.rpc('list_eligible_order_assignees')
       setAssigneeOptions((assigneesData ?? []) as AssigneeOption[])
-
-      const [loaded] = await Promise.all([loadRequest(), loadPayments(), loadAttachments()])
       setPageLoading(false)
 
       // ── Deep links ──────────────────────────────────────────────────────────

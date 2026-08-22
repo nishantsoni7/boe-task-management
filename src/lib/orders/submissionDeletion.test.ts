@@ -629,8 +629,32 @@ describe('the storage sweep takes this submission’s files and nothing else', (
   const helper = read('src/lib/orders/submissionFilesServer.ts')
 
   test('it sweeps the submission’s own prefix, recursively', () => {
-    assert.ok(helper.includes('const prefix = `submissions/${submissionId}`'))
+    // The shared body moved into removeAllObjectsUnderPrefix when Confirmed
+    // Order documents gained a sibling remover. THE PROPERTY IS UNCHANGED and is
+    // asserted in its new form: this entry point builds `submissions/{id}` from
+    // a uuid it validated itself, and hands it to the same recursive sweep.
+    assert.ok(helper.includes('removeAllObjectsUnderPrefix(service, `submissions/${submissionId}`'))
     assert.ok(helper.includes('sweepPrefix(service, prefix, LIST_CONCURRENCY)'))
+  })
+
+  test('AND NO CALLER CAN NAME A PREFIX. Every one is built from a validated uuid', () => {
+    // The shared body is not exported, so nothing outside the module can reach
+    // it, and both entry points refuse an id that is not a uuid before building
+    // anything.
+    assert.ok(!helper.includes('export async function removeAllObjectsUnderPrefix'))
+    const calls = [...helper.matchAll(/removeAllObjectsUnderPrefix\(service, ([^,]+),/g)].map(m => m[1])
+    assert.deepEqual(calls, ['`submissions/${submissionId}`', '`orders/${orderId}`'])
+    assert.ok(helper.includes("if (!SUBMISSION_ID_RE.test(submissionId))"))
+    assert.ok(helper.includes("if (!SUBMISSION_ID_RE.test(orderId))"))
+  })
+
+  test('an Order’s documents are swept by their OWN prefix, never the PI’s', () => {
+    // Two records with different lifetimes: a PI's files may be removed while
+    // its Order lives on, and an Order's documents go only when the Order does.
+    // Neither call can reach into the other's territory, whatever it is handed.
+    assert.ok(helper.includes('export async function removeAllObjectsForOrder'))
+    assert.ok(!helper.includes('`orders/${submissionId}`'))
+    assert.ok(!helper.includes('`submissions/${orderId}`'))
   })
 
   test('it also takes the paths the record names, so nothing recorded is missed', () => {
