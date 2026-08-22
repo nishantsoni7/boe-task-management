@@ -142,9 +142,26 @@ export function OrderPiNoSource() {
 export function OrderPiSummaryCard({
   client, onOpenClient, dates, figures, billing,
   workbookName, onDownloadWorkbook, downloading, downloadError,
+  onOpenPi,
 }: {
   client: ClientDetails
   onOpenClient: () => void
+  /**
+   * Opens the approved PI this Order was created from.
+   *
+   * THE DOOR ALREADY EXISTS IN THE DATABASE and nothing used it.
+   * can_view_order_submission_via_order (20260924000000 §3) was added precisely
+   * so that "this submission became an Order the caller may see" is a way onto
+   * the PI — separate from PI-REVIEW visibility, and false for every draft,
+   * returned or rejected submission, because none of them has an Order. This is
+   * the control that walks through it.
+   *
+   * IT AUTHORIZES NOTHING. The PI screen re-reads the submission under this
+   * reader's own RLS and refuses anything they may not open; the id in the URL
+   * is not a capability. Omitted when the Order has no source PI, in which case
+   * there is nothing to open.
+   */
+  onOpenPi?: () => void
   dates: readonly DateSummary[]
   /** Whatever handoffFigures kept. May be empty, and that is a valid card. */
   figures: readonly SummaryFigure[]
@@ -158,7 +175,20 @@ export function OrderPiSummaryCard({
 }) {
   return (
     <PiCard>
-      <PiCardHeader title={ORDER_PI_SECTION_TITLE} />
+      <PiCardHeader
+        title={ORDER_PI_SECTION_TITLE}
+        right={onOpenPi && (
+          <button
+            type="button"
+            onClick={onOpenPi}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '4px 10px', fontSize: '11.5px', fontWeight: 600, whiteSpace: 'nowrap' }}
+            title="Open the approved PI this Order was created from"
+          >
+            Open PI
+          </button>
+        )}
+      />
       <div className="pi-detail-summary">
 
         <div className="pi-detail-summary-left">

@@ -205,3 +205,36 @@ describe('neither screen reveals a record it could not already read', () => {
     assert.ok(view.includes('allocated_order_id, allocated_order_number, is_order_allocated'))
   })
 })
+
+describe('the trail runs both ways between an Order and its PI', () => {
+  test('the Order offers the approved PI it was created from', () => {
+    // THE DOOR EXISTED IN THE DATABASE AND NOTHING USED IT.
+    // can_view_order_submission_via_order (20260924000000 §3) was added so that
+    // "this submission became an Order the caller may see" is a way onto the PI,
+    // deliberately separate from PI-REVIEW visibility. Until this control there
+    // was no way to walk through it, so the trail ran one way only: a PI could
+    // reach its Order, and the Order could not reach its PI.
+    const page = readFileSync(ORDER_PAGE, 'utf8')
+    assert.ok(page.includes('piSubmissionHref(piHandoff.submissionId)'))
+    assert.ok(page.includes('onOpenPi={'))
+  })
+
+  test('and offers it only for an Order that HAS one', () => {
+    // The control hangs off the `ready` handoff branch. An Order created from an
+    // Order Request has no source PI, and gets no door to a record that does not
+    // exist — `none` renders nothing at all, exactly as before.
+    const page = readFileSync(ORDER_PAGE, 'utf8')
+    const readyBranch = page.slice(page.indexOf("piHandoff.kind === 'ready'"))
+    assert.ok(readyBranch.indexOf('onOpenPi={') < readyBranch.indexOf('<OrderPiProducts'),
+      'the PI door belongs to the summary card inside the ready branch')
+
+    const sections = readFileSync('src/app/orders/[id]/OrderPiSections.tsx', 'utf8')
+    assert.ok(sections.includes('right={onOpenPi && ('),
+      'no control is drawn when no PI was handed over')
+  })
+
+  test('the PI already offered its Order, and that is unchanged', () => {
+    const piPage = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
+    assert.ok(piPage.includes('onOpenOrder={'))
+  })
+})

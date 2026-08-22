@@ -28,7 +28,7 @@ import {
   NO_FINANCE_CAPABILITIES,
   type FinanceCapabilities,
 } from '@/lib/permissions/finance'
-import { financePaymentHref } from '@/lib/finance/crossModuleLinks'
+import { financePaymentHref, piSubmissionHref } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
@@ -182,12 +182,37 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   cancelled:          { label: 'Cancelled',           bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
 }
 
-const PAYMENT_STATUS_META: Record<string, { label: string; color: string }> = {
-  pending_approval:    { label: 'Pending',             color: '#92400E' },
-  approved_unlinked:   { label: 'Order No. Pending',   color: '#9A3412' },
-  approved_linked:     { label: 'Received',            color: '#166534' },
-  needs_clarification: { label: 'Needs Clarification', color: '#1E40AF' },
-  rejected:            { label: 'Rejected',            color: '#991B1B' },
+/**
+ * THE COLOUR of a payment status. The WORDS come from piPaymentStatusLabel, the
+ * same map the PI payment card reads, so one state cannot be called two things
+ * on two screens.
+ *
+ * WHAT THIS CORRECTED. This screen had its own label map, and three of its five
+ * entries disagreed with the PI's for the same stored value:
+ *
+ *   pending_approval    said "Pending". The product's word for that state is
+ *                       AWAITING VERIFICATION — the business rule names it — and
+ *                       "Pending" reads as though the money itself is pending
+ *                       rather than Finance's look at it.
+ *   approved_unlinked   said "Order No. Pending". On an ORDER's own screen that
+ *                       is close to false: the money is attached to this Order,
+ *                       by an allocation, which is precisely how PI conversion
+ *                       moves it. Whether the payment row ALSO carries a legacy
+ *                       order_id is Finance bookkeeping and says nothing to
+ *                       somebody reading their Order.
+ *   approved_linked     said "Received", which is the word the summary above now
+ *                       uses for verified + awaiting together. Two meanings for
+ *                       one word on one screen.
+ *
+ * Both approved statuses now read "Verified", exactly as they do on the PI.
+ * The palette is this screen's own and is unchanged.
+ */
+const PAYMENT_STATUS_COLOR: Record<string, string> = {
+  pending_approval:    '#92400E',
+  approved_unlinked:   '#166534',
+  approved_linked:     '#166534',
+  needs_clarification: '#1E40AF',
+  rejected:            '#991B1B',
 }
 
 /** The width below which the PI product table becomes a stack of cards. The
@@ -1423,10 +1448,9 @@ export default function OrderDetailPage() {
             payment states its full amount underneath, so nothing is hidden and
             the two agree.
 
-            STATUS WORDING NOW MATCHES THE PI. piPaymentStatusLabel is the same
-            map the PI payment card reads, so `pending_approval` reads "Awaiting
-            Verification" on both screens rather than "Pending" on one of them.
-            The colours are this screen's existing ones, unchanged. */}
+            STATUS WORDING NOW MATCHES THE PI — see PAYMENT_STATUS_COLOR above
+            for the three labels that disagreed and why each was wrong here. The
+            colours are this screen's existing ones, unchanged. */}
         <SectionCard title={`Payments (${payments.length})`}>
           {payments.length === 0 ? (
             <div style={{ color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
@@ -1458,7 +1482,11 @@ export default function OrderDetailPage() {
                 </thead>
                 <tbody>
                   {payments.map(p => {
-                    const pmeta = PAYMENT_STATUS_META[p.status] ?? { label: piPaymentStatusLabel(p.status), color: colors.muted }
+                    // One vocabulary, from the PI card's own map. An
+                    // unrecognised status says what it is rather than being
+                    // relabelled as something friendlier that might be untrue.
+                    const statusLabel = piPaymentStatusLabel(p.status)
+                    const statusColor = PAYMENT_STATUS_COLOR[p.status] ?? colors.muted
                     return (
                       <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                         <td style={{ padding: '10px 12px', color: colors.primary, wordBreak: 'break-word', minWidth: '140px' }}>
@@ -1483,8 +1511,8 @@ export default function OrderDetailPage() {
                         <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
                           {PAYMENT_MODE_LABEL[p.payment_mode] ?? p.payment_mode ?? '—'}
                         </td>
-                        <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, fontSize: '12px', color: pmeta.color }}>
-                          {pmeta.label}
+                        <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, fontSize: '12px', color: statusColor }}>
+                          {statusLabel}
                         </td>
                         {/* THE FINANCE RECORD — a payment's proof, its verification
                             history and its complete allocation across every target
@@ -1571,6 +1599,12 @@ export default function OrderDetailPage() {
               onDownloadWorkbook={downloadWorkbook}
               downloading={wbBusy}
               downloadError={wbError}
+              // The way back to the PI this Order came from. The database has
+              // had this door since 20260924000000 — can_view_order_submission_via_order
+              // exists so that seeing the Order is a way onto its approved PI —
+              // and nothing in the interface used it, so the trail ran one way
+              // only. The PI screen still decides for itself under RLS.
+              onOpenPi={() => router.push(piSubmissionHref(piHandoff.submissionId))}
             />
 
             <OrderPiProducts

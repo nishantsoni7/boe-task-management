@@ -24,8 +24,10 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import { mergeOrderPayments, type OrderAllocationRow } from '@/lib/orders/orderPayments'
+import { piPaymentStatusLabel } from './piPaymentView'
 import {
   buildOrderFinancePosition,
   progressWidth,
@@ -348,5 +350,41 @@ describe('withExactAmounts', () => {
     assert.equal(rows[0].exactAmount, '400000')
     assert.equal(rows[0].exactAllocatedAmount, '400000')
     assert.equal(rows[0].isPartialShare, false)
+  })
+})
+
+// ── One vocabulary across both screens ───────────────────────────────────────
+
+describe('a payment status is called the same thing on the Order and on the PI', () => {
+  const page = readFileSync('src/app/orders/[id]/page.tsx', 'utf8')
+
+  test('the Order screen takes its labels from the PI card\'s own map', () => {
+    assert.ok(page.includes('piPaymentStatusLabel(p.status)'),
+      'the label comes from the shared map, not a second one on this page')
+  })
+
+  test('the three labels that disagreed are gone', () => {
+    // Same stored value, two different words on two screens:
+    //   'Pending'           for pending_approval, where the product says
+    //                       "Awaiting Verification"
+    //   'Order No. Pending' for approved_unlinked, which on an ORDER's own
+    //                       screen is close to false — the money IS on this
+    //                       Order, by the allocation PI conversion moved
+    //   'Received'          for approved_linked, which is now the summary's word
+    //                       for verified + awaiting together
+    for (const stale of ["label: 'Pending'", "'Order No. Pending'", "label: 'Received'"]) {
+      assert.ok(!page.includes(stale), `${stale} must not be a payment label here`)
+    }
+  })
+
+  test('both verified statuses read alike, because both are verified money', () => {
+    assert.equal(piPaymentStatusLabel('approved_unlinked'), piPaymentStatusLabel('approved_linked'))
+    assert.equal(piPaymentStatusLabel('approved_unlinked'), 'Verified')
+    assert.equal(piPaymentStatusLabel('pending_approval'), 'Awaiting Verification')
+  })
+
+  test('and the colours are still this screen\'s own', () => {
+    assert.ok(page.includes('const PAYMENT_STATUS_COLOR'))
+    assert.ok(page.includes("rejected:            '#991B1B'"), 'the existing palette is unchanged')
   })
 })
