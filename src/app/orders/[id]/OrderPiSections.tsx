@@ -57,6 +57,7 @@ import {
   ORDER_DOCUMENTS_RETRY_LABEL,
   ORDER_DOCUMENTS_TITLE,
   ORDER_DOCUMENTS_WORKING,
+  ORDER_DOCUMENTS_REGENERATE_LABEL,
   type OrderDocumentTone,
   type OrderDocumentsView,
 } from '@/lib/orders/orderDocuments'
@@ -535,6 +536,17 @@ export function OrderDocumentsCard({
                 {view.statusLabel}
               </span>
             )}
+            {view.outdated && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center',
+                padding: '3px 10px', borderRadius: '5px',
+                fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
+                background: colors.amberTint, color: colors.amber,
+                border: '1px solid rgba(190,140,40,0.28)',
+              }}>
+                Not current
+              </span>
+            )}
             {view.version !== null && (
               <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
                 Version {view.version}
@@ -557,6 +569,18 @@ export function OrderDocumentsCard({
         {view.working && (
           <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
             {ORDER_DOCUMENTS_WORKING}
+          </div>
+        )}
+
+        {/* ── STALE, NOT BROKEN ──
+            Amber and not red, above the downloads and not in place of them.
+            The files exist, they still open, and they are still exactly what
+            somebody may have sent a client last week — hiding them would
+            destroy the only record of what this Order looked like then. What
+            changed is the PI behind them. */}
+        {view.outdatedNote && (
+          <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
+            {view.outdatedNote}
           </div>
         )}
 
@@ -611,7 +635,12 @@ export function OrderDocumentsCard({
                 ? 'Starting…'
                 : view.failure
                   ? ORDER_DOCUMENTS_RETRY_LABEL
-                  : ORDER_DOCUMENTS_GENERATE_LABEL}
+                  : view.outdated
+                    // NOT "Try again": nothing failed. The next version is a
+                    // fresh render of figures that have since moved, and the
+                    // label says that rather than implying a retry.
+                    ? ORDER_DOCUMENTS_REGENERATE_LABEL
+                    : ORDER_DOCUMENTS_GENERATE_LABEL}
             </button>
           </div>
         )}

@@ -117,6 +117,12 @@ export const ORDER_DOCUMENT_COLUMNS = [
   'last_error_code', 'last_error_message',
   'excel_path', 'pdf_path', 'excel_sha256', 'pdf_sha256', 'excel_bytes', 'pdf_bytes',
   'created_at', 'updated_at',
+  // WHEN A READY VERSION STOPPED BEING CURRENT, and the prewritten phrase saying
+  // why (20260927000000). The files are untouched and still download; what
+  // changed is the PI behind them. Both columns are readable by every role that
+  // can read the register and writable by none — only supersede_order_documents
+  // sets them.
+  'superseded_at', 'superseded_reason',
 ].join(', ')
 
 export type OrderDocumentRow = {
@@ -137,6 +143,11 @@ export type OrderDocumentRow = {
   pdf_bytes: number | string | null
   created_at: string
   updated_at: string
+  /** Set once, when the PI behind this version changed. Optional so a fixture
+   *  written before the column existed still types; absent reads as current. */
+  superseded_at?: string | null
+  /** A short phrase chosen by the caller from a fixed set. Never free text. */
+  superseded_reason?: string | null
 }
 
 // ── What the screen says ──────────────────────────────────────────────────────
@@ -147,6 +158,29 @@ export const ORDER_DOCUMENTS_NONE =
   'No documents have been generated for this Order yet.'
 
 export const ORDER_DOCUMENTS_GENERATE_LABEL = 'Generate documents'
+export const ORDER_DOCUMENTS_REGENERATE_LABEL = 'Generate the current version'
+
+/**
+ * WHAT A SUPERSEDED VERSION IS, said without alarming anybody.
+ *
+ * It is NOT a failure and NOT a loss: both files exist, both still download,
+ * and they are still exactly what was generated. What changed is the PI behind
+ * them, so they now describe an earlier state of this Order.
+ *
+ * The reason is chosen by the server from a fixed set, never supplied by a user
+ * — this column is rendered — and an unrecognised value falls back to the
+ * neutral phrase rather than being printed through.
+ */
+export const ORDER_DOCUMENTS_OUTDATED_REASON: Record<string, string> = {
+  billing_percentage_changed: 'the billing percentage was changed',
+  pi_data_amended: 'the PI behind them was corrected',
+}
+export const ORDER_DOCUMENTS_OUTDATED_FALLBACK = 'the PI behind them changed'
+
+export const orderDocumentsOutdatedNote = (reason: string | null): string =>
+  `These documents are no longer current: ${
+    ORDER_DOCUMENTS_OUTDATED_REASON[reason ?? ''] ?? ORDER_DOCUMENTS_OUTDATED_FALLBACK
+  }. They are still the files that were generated and can still be downloaded.`
 export const ORDER_DOCUMENTS_RETRY_LABEL = 'Try again'
 export const ORDER_DOCUMENTS_EXCEL_LABEL = 'Confirmed Excel'
 export const ORDER_DOCUMENTS_PDF_LABEL = 'Confirmed PDF'
@@ -205,6 +239,17 @@ export type OrderDocumentsView = {
   /** How many attempts this version has taken. Shown only when it is more than
    *  one, because "attempt 1" is not information. */
   attempts: number | null
+  /**
+   * True when the version being shown is READY but no longer current.
+   *
+   * Deliberately separate from `downloadable`, which stays true: a superseded
+   * pair is still the files that were generated and is still what somebody sent
+   * to a client last week. Hiding the download would destroy the only copy of
+   * what the Order looked like then.
+   */
+  outdated: boolean
+  /** The whole sentence, or null. Never a bare reason code. */
+  outdatedNote: string | null
 }
 
 /**
@@ -240,6 +285,7 @@ export function buildOrderDocumentsView(rows: readonly OrderDocumentRow[]): Orde
       version: null, status: null, statusLabel: null, tone: null,
       downloadable: false, excelPath: null, pdfPath: null,
       working: false, failure: null, attempts: null,
+      outdated: false, outdatedNote: null,
     }
   }
 
@@ -256,6 +302,11 @@ export function buildOrderDocumentsView(rows: readonly OrderDocumentRow[]): Orde
   // not coming.
   const failed = latest.status === 'failed'
 
+  // Only a READY version can be stale — the database constrains that too — so a
+  // pending or failed row never reports itself outdated, which would be two
+  // problems on screen where there is one.
+  const outdated = downloadable && (shown.superseded_at ?? null) !== null
+
   return {
     version: shown.version,
     status,
@@ -267,6 +318,12 @@ export function buildOrderDocumentsView(rows: readonly OrderDocumentRow[]): Orde
     working,
     failure: failed ? failureText(latest) : null,
     attempts: latest.attempt_count > 1 ? latest.attempt_count : null,
+    // A FACT ABOUT THE VERSION BEING SHOWN, not about the newest row — the
+    // opposite of `working` and `failure` above, and for the opposite reason.
+    // Those describe what is happening now; this describes what the reader is
+    // about to download.
+    outdated,
+    outdatedNote: outdated ? orderDocumentsOutdatedNote(shown.superseded_reason ?? null) : null,
   }
 }
 
