@@ -53,6 +53,9 @@ const phase3b = migrationByContent(
   /create table public\.order_submission_item_images\b/i,
   'creating public.order_submission_item_images',
 )
+/** The one migration allowed to restate the lease. See the exception below. */
+const CHANGE_PI = '20261003000000_order_submission_change_pi.sql'
+
 const phase2 = migrationByContent(
   /create table public\.order_submissions\b/i,
   'creating public.order_submissions',
@@ -76,8 +79,22 @@ describe('the migration itself', () => {
       const later = readFileSync(join(MIGRATIONS_DIR, file), 'utf8')
       assert.ok(!/create table public\.order_submission_item_images\b/.test(later),
         `${file} must not redefine the image table`)
-      assert.ok(!later.includes('begin_order_submission_processing('),
-        `${file} must not redefine the processing lease`)
+      // THE ONE DOCUMENTED EXCEPTION, and it is narrower than it looks.
+      //
+      // 20261003000000 re-emits the lease so an ACTIVE ADMIN can take one on a
+      // PI that has left draft — without that, the Change PI authority it adds
+      // would be unreachable, because the lease refused first. It changes ONE
+      // line: which assert it calls. changePiContinuity.test.ts holds the two
+      // texts together by undoing that swap and requiring this file's version
+      // back, so the TTL, the takeover rule and the 55P03 busy signal cannot
+      // drift here without failing there.
+      //
+      // The exception is by NAME. A second file redefining the lease still
+      // fails, which is what this assertion was written to catch.
+      if (file !== CHANGE_PI) {
+        assert.ok(!later.includes('begin_order_submission_processing('),
+          `${file} must not redefine the processing lease`)
+      }
     }
   })
 

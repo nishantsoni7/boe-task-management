@@ -283,6 +283,12 @@ export type PersistedItem = {
   id: string
   source_row: number
   item_sequence: string | null
+  /**
+   * OPTIONAL, because a payload built before the product editor existed does
+   * not carry it. Absent reads as "no code", which is what a line without one
+   * has always meant — not as a missing field the caller forgot.
+   */
+  source_product_code?: string | null
   product_name: string | null
   quantity: number | string | null
   dimensions: string | null
@@ -391,8 +397,10 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
 ].join(', ')
 
 export const PI_DRAFT_ITEM_COLUMNS = [
-  'id', 'source_row', 'item_sequence', 'product_name', 'quantity',
-  'dimensions', 'material', 'customization', 'cost_per_piece',
+  // source_product_code is read for the product editor: a form that could not
+  // show the code it was about to change would be editing blind.
+  'id', 'source_row', 'item_sequence', 'source_product_code', 'product_name',
+  'quantity', 'dimensions', 'material', 'customization', 'cost_per_piece',
   'total_amount', 'sort_order',
 ].join(', ')
 
@@ -737,6 +745,7 @@ export type PersistedProduct = {
   /** The worksheet row, which is what the viewer and the table agree on. */
   row: number
   itemSequence: string | null
+  sourceProductCode: string | null
   productName: string | null
   quantity: number | null
   dimensions: string | null
@@ -760,6 +769,7 @@ export function persistedProducts(items: readonly PersistedItem[]): PersistedPro
       id: item.id,
       row: item.source_row,
       itemSequence: text(item.item_sequence),
+      sourceProductCode: text(item.source_product_code),
       productName: text(item.product_name),
       quantity: toNumber(item.quantity),
       dimensions: text(item.dimensions),

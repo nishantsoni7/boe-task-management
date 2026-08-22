@@ -111,6 +111,9 @@ import {
 import {
   PiBillingPercentageModal,
   PiClientDetailsEditModal,
+  PiProductEditModal,
+  PiProductReorderModal,
+  PI_CHANGE_PI_ONLY,
   PiClientDetailsModal,
   PiRequestCorrectionModal,
   PiScheduleTermsEditModal,
@@ -125,6 +128,7 @@ import type {
   PiClientFieldValues,
   PiCorrectionSection,
   PiEditSection,
+  PiProductFieldValues,
   PiScheduleFieldValues,
 } from '@/components/orders/piReviewModals'
 import { piReadiness, piReadinessIsEditable } from '@/lib/orders/piReadiness'
@@ -368,6 +372,18 @@ function PiDraftDetailPageInner() {
   const [canAdminAmend, setCanAdminAmend] = useState(false)
   /** null = closed; otherwise the section being edited. */
   const [editSection, setEditSection] = useState<PiEditSection | null>(null)
+  /**
+   * WHICH PRODUCT LINE, not just "the products section".
+   *
+   * update_order_submission_item_details writes ONE line, so the dialog is
+   * opened against one line and the id is the state. Reordering is a separate
+   * write over every line at once, so it is a separate flag rather than a
+   * fourth section.
+   */
+  const [productEditId, setProductEditId] = useState<string | null>(null)
+  const [reorderOpen, setReorderOpen] = useState(false)
+  const [productSaving, setProductSaving] = useState(false)
+  const [productFailure, setProductFailure] = useState<string | null>(null)
   const clientEditOpen = editSection === 'client'
   const [clientSaving, setClientSaving] = useState(false)
   const [clientFailure, setClientFailure] = useState<string | null>(null)
@@ -965,6 +981,74 @@ function PiDraftDetailPageInner() {
   }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
 
   /**
+   * CORRECT ONE PRODUCT LINE'S DESCRIPTION.
+   *
+   * Its own RPC, its own transaction, and its own row version — the item's, not
+   * the submission's. The RPC refuses every money key BY NAME with the reason,
+   * so a payload that somehow carried a quantity is rejected rather than
+   * quietly ignored; this sends only descriptive fields in the first place.
+   */
+  const saveProductDetails = useCallback(async (
+    itemId: string,
+    changed: PiProductFieldValues,
+    reason: string | null,
+  ) => {
+    if (productSaving) return
+    setProductSaving(true)
+    setProductFailure(null)
+    try {
+      const { error } = await supabase.rpc('update_order_submission_item_details', {
+        p_item_id: itemId,
+        p_fields: changed,
+        p_expected_version: rowVersion,
+        p_reason: reason,
+      })
+      if (error) {
+        setProductFailure((error as { message?: string }).message
+          ?? 'The product line could not be saved.')
+        return
+      }
+      setProductEditId(null)
+      await loadDraft({ quiet: true })
+    } finally {
+      setProductSaving(false)
+    }
+  }, [productSaving, supabase, rowVersion, loadDraft])
+
+  /**
+   * CHANGE THE ORDER THE LINES ARE PRINTED IN.
+   *
+   * One write over every line, so it cannot half-apply. The RPC requires the
+   * full set of ids — a partial list is refused — which is what stops a stale
+   * dialog from dropping a line that was added since it opened.
+   */
+  const saveProductOrder = useCallback(async (
+    orderedIds: string[],
+    reason: string | null,
+  ) => {
+    if (productSaving) return
+    setProductSaving(true)
+    setProductFailure(null)
+    try {
+      const { error } = await supabase.rpc('reorder_order_submission_items', {
+        p_submission_id: submissionId,
+        p_item_ids: orderedIds,
+        p_expected_version: rowVersion,
+        p_reason: reason,
+      })
+      if (error) {
+        setProductFailure((error as { message?: string }).message
+          ?? 'The order of the lines could not be saved.')
+        return
+      }
+      setReorderOpen(false)
+      await loadDraft({ quiet: true })
+    } finally {
+      setProductSaving(false)
+    }
+  }, [productSaving, supabase, submissionId, rowVersion, loadDraft])
+
+  /**
    * THE OWNER ASKS FOR A CORRECTION.
    *
    * Writes no PI data — the RPC is proved not to, and the dialog says so. The
@@ -1357,6 +1441,16 @@ function PiDraftDetailPageInner() {
    * exactly this — created_by or submitted_by — so the control and the write
    * cannot disagree about who the owner is.
    */
+  /**
+   * MAY A FORM WRITE A PRODUCT LINE HERE.
+   *
+   * The same two authorities every other section uses: the owner rule for a
+   * draft, the admin rule for every stage after it. Kept as one name because it
+   * is asked in four places in the markup below, and four copies of the same
+   * expression is four chances for one of them to drift.
+   */
+  const canEditProducts = canEditSubmission || canAdminAmend
+
   const ownsSubmission = viewerId !== null && (
     submission.created_by === viewerId || submission.submitted_by === viewerId)
 
@@ -1619,6 +1713,18 @@ function PiDraftDetailPageInner() {
                 <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
                   {products.length} line{products.length !== 1 ? 's' : ''}
                 </span>
+                {/* Reordering is one write over every line, so it is its own
+                    control and its own dialog — never a side effect of editing
+                    one row. Offered only where a form may write at all. */}
+                {canEditProducts && products.length > 1 && (
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost"
+                    onClick={() => { setProductFailure(null); setReorderOpen(true) }}
+                  >
+                    Reorder
+                  </button>
+                )}
               </div>
             }
           />
@@ -1676,6 +1782,17 @@ function PiDraftDetailPageInner() {
                       {formatInr(p.lineTotal)}
                     </span>
                   </div>
+
+                  {canEditProducts && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-ghost"
+                      style={{ alignSelf: 'flex-start' }}
+                      onClick={() => { setProductFailure(null); setProductEditId(p.id) }}
+                    >
+                      Edit details
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -1697,6 +1814,23 @@ function PiDraftDetailPageInner() {
                         <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
                           {orDash(p.productName)}
                         </MultilineText>
+                        {/* INSIDE THE PRODUCT CELL, not in a tenth column.
+                            PiProductTableHead is shared with the upload preview,
+                            which has nothing to edit; a tenth cell here would
+                            leave that table one heading short of its rows, and
+                            widening the shared head would put an empty column on
+                            a screen that can never fill it. */}
+                        {canEditProducts && (
+                          <button
+                            type="button"
+                            className="boe-btn boe-btn-ghost"
+                            style={{ marginTop: '4px' }}
+                            aria-label={`Edit ${p.productName?.trim() || 'this product line'}`}
+                            onClick={() => { setProductFailure(null); setProductEditId(p.id) }}
+                          >
+                            Edit
+                          </button>
+                        )}
                       </td>
                       <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.secondary }}>
                         {p.quantity ?? '—'}
@@ -1728,6 +1862,41 @@ function PiDraftDetailPageInner() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ── WHAT NO FORM ON THIS PAGE CAN FIX ──
+              Stated once, under the lines, wherever an editing control is
+              offered. Without it a reader who has just corrected a product name
+              reasonably concludes the quantity beside it is one click away —
+              and then hunts for a control that was never going to exist. It is
+              not a permission notice: nobody can type these figures, because
+              they are the output of formulas in the workbook that this system
+              transcribes rather than computes. */}
+          {canEditProducts && products.length > 0 && (
+            <div style={{
+              padding: '11px 16px 13px',
+              borderTop: `1px solid ${colors.border}`,
+              display: 'flex', flexDirection: 'column', gap: '6px',
+            }}>
+              <div style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                Changing these needs a corrected PI workbook
+              </div>
+              <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55 }}>
+                {PI_CHANGE_PI_ONLY.join(' · ')}
+              </div>
+              <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.55 }}>
+                These come from the workbook’s own formulas. Upload a corrected
+                file and everything on this PI is read again from it.
+              </div>
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost"
+                style={{ alignSelf: 'flex-start', marginTop: '2px' }}
+                onClick={() => router.push(changePiHref(submissionId))}
+              >
+                Change PI
+              </button>
             </div>
           )}
         </PiCard>
@@ -1813,6 +1982,53 @@ function PiDraftDetailPageInner() {
           missingKeys={paymentReadiness.missing.map(m => m.key)}
           onCancel={() => { if (!clientSaving) setEditSection(null) }}
           onSave={(changed, reason) => { void saveClientDetails(changed, reason) }}
+        />
+      )}
+
+      {/* ── The product line editor ──
+          Keyed on the line, not on a section: one line, one RPC, one
+          transaction. A line that disappears under an open dialog — a Change PI
+          landing in another tab — closes it rather than saving into nothing. */}
+      {productEditId !== null && (() => {
+        const line = products.find(p => p.id === productEditId)
+        if (!line) return null
+        return (
+          <PiProductEditModal
+            line={{
+              sequence: line.itemSequence,
+              name:     line.productName,
+              quantity: line.quantity === null ? '—' : String(line.quantity),
+              rate:     formatInr(line.costPerPiece),
+              total:    formatInr(line.lineTotal),
+            }}
+            current={{
+              item_sequence:       line.itemSequence,
+              source_product_code: line.sourceProductCode,
+              product_name:        line.productName,
+              dimensions:          line.dimensions,
+              material:            line.material,
+              customization:       line.customization,
+            }}
+            saving={productSaving}
+            failure={productFailure}
+            requireReason={canAdminAmend && !canEditSubmission}
+            onCancel={() => { if (!productSaving) setProductEditId(null) }}
+            onSave={(changed, reason) => { void saveProductDetails(line.id, changed, reason) }}
+            onChangePi={() => router.push(changePiHref(submissionId))}
+          />
+        )
+      })()}
+
+      {reorderOpen && (
+        <PiProductReorderModal
+          lines={products.map(p => ({
+            id: p.id, sequence: p.itemSequence, name: p.productName,
+          }))}
+          saving={productSaving}
+          failure={productFailure}
+          requireReason={canAdminAmend && !canEditSubmission}
+          onCancel={() => { if (!productSaving) setReorderOpen(false) }}
+          onSave={(ids, reason) => { void saveProductOrder(ids, reason) }}
         />
       )}
 

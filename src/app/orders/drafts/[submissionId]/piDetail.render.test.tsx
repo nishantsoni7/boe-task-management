@@ -2497,6 +2497,11 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'can_edit_order_submission',
       'reject_order_submission',
       'reject_pi_advance_exception',
+      // The order the lines are printed in (20261002000000). One write over
+      // every line at once, so it cannot half-apply, and it requires the full
+      // set of ids — a partial list is refused. It adds nothing, removes
+      // nothing and moves no figure.
+      'reorder_order_submission_items',
       'request_order_submission_changes',
       'request_order_submission_correction',
       'set_order_submission_billing_percentage',
@@ -2506,6 +2511,11 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       // the answer to a PI imported without a client name — which previously
       // dead-ended the workflow with no way anywhere to fix it.
       'update_order_submission_client_details',
+      // One product line's DESCRIPTION (20261002000000): number, code, name,
+      // dimensions, material, specification note. Quantity, rate and the line
+      // total are refused BY NAME with the reason — the workbook's formulas
+      // produce them and this system transcribes rather than computes them.
+      'update_order_submission_item_details',
       'update_order_submission_schedule_terms',
       'verify_pi_finance_check',
     ])

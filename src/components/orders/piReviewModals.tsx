@@ -1512,12 +1512,55 @@ export const PI_SCHEDULE_FIELDS = [
 export type PiScheduleFieldKey = typeof PI_SCHEDULE_FIELDS[number]['key']
 export type PiScheduleFieldValues = Partial<Record<PiScheduleFieldKey, string | null>>
 
+/**
+ * THE PRODUCT FIELDS A FORM MAY OWN — and the ones it must never pretend to.
+ *
+ * Everything here is DESCRIPTIVE: what the piece is called, what it is made of,
+ * how big it is, what was asked for. None of it enters an arithmetic.
+ *
+ * Quantity, rate and the line total are absent, and their absence is the point.
+ * They are inputs to formulas that live in the PI workbook and have never been
+ * read by this system — the parser transcribes the results and raises a warning
+ * when its own two derivations disagree. A text box over any of them would be
+ * this system inventing a figure the spreadsheet did not produce. They are
+ * corrected by correcting the workbook, which is what PI_CHANGE_PI_ONLY says on
+ * every screen that shows a product line.
+ */
+export const PI_PRODUCT_FIELDS = [
+  { key: 'item_sequence',       label: 'Line number',        kind: 'text',     hint: 'As printed on the PI' },
+  { key: 'source_product_code', label: 'Product code',       kind: 'text',     hint: '' },
+  { key: 'product_name',        label: 'Product name',       kind: 'textarea', hint: '' },
+  { key: 'dimensions',          label: 'Dimensions',         kind: 'textarea', hint: '' },
+  { key: 'material',            label: 'Material',           kind: 'textarea', hint: '' },
+  { key: 'customization',       label: 'Specification note', kind: 'textarea', hint: 'Customization and finishing notes' },
+] as const
+
+export type PiProductFieldKey = typeof PI_PRODUCT_FIELDS[number]['key']
+export type PiProductFieldValues = Partial<Record<PiProductFieldKey, string | null>>
+
+/**
+ * WHAT A FORM CANNOT FIX, said in the reader's words.
+ *
+ * Rendered wherever product lines are shown, so nobody hunts for an edit control
+ * that was never going to exist. This is not a limitation of the editor — it is
+ * what "the workbook computes and BOE transcribes" means in practice.
+ */
+export const PI_CHANGE_PI_ONLY: readonly string[] = [
+  'Quantity',
+  'Rate or unit cost',
+  'Adding a product',
+  'Removing a product',
+  'Discount, design fees, fabric, packing, transport or GST',
+  'Product image',
+]
+
 /** Which part of the PI an editor is showing. */
-export type PiEditSection = 'client' | 'schedule'
+export type PiEditSection = 'client' | 'schedule' | 'products'
 
 export const PI_EDIT_SECTIONS: readonly { key: PiEditSection; title: string }[] = [
   { key: 'client',   title: 'Client and addresses' },
   { key: 'schedule', title: 'Dates and terms' },
+  { key: 'products', title: 'Product details' },
 ]
 
 const PI_CLIENT_GROUPS = [
@@ -2169,6 +2212,448 @@ export function PiRequestCorrectionModal({
             <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
               Cancel
             </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── The product line editor ──────────────────────────────────────────────────
+
+/**
+ * ONE LINE, ONE TRANSACTION.
+ *
+ * update_order_submission_item_details writes ONE product line. A dialog that
+ * edited several at once would be several round trips behind one button, and a
+ * failure between them would leave the PI half-corrected with nothing on screen
+ * to say which half — the exact reason the client and schedule sections were
+ * split rather than merged. So this dialog is opened from a row, and it edits
+ * that row.
+ *
+ * WHAT IS NOT ON IT. No quantity, no rate, no line total, and no way to add or
+ * remove a line. Those are not withheld as a permission matter and are not
+ * shown greyed out — a disabled text box over a price invites somebody to ask
+ * who can enable it, and the answer is nobody. They are stated as what they are:
+ * values the workbook computes, corrected by replacing the workbook.
+ */
+export function PiProductEditModal({
+  line, current, saving, failure, requireReason = false,
+  onCancel, onSave, onChangePi,
+}: {
+  /** How the reader identifies this row: its number and name as stored. */
+  line: { sequence: string | null; name: string | null; quantity: string; rate: string; total: string }
+  current: PiProductFieldValues
+  saving: boolean
+  failure: string | null
+  /** True when this is an admin amendment after submission. */
+  requireReason?: boolean
+  onCancel: () => void
+  onSave: (changed: PiProductFieldValues, reason: string | null) => void
+  /** Opens Change PI, when this reader may use it. Null hides the control. */
+  onChangePi: (() => void) | null
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const reasonId = useId()
+
+  const initial = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const f of PI_PRODUCT_FIELDS) out[f.key] = current[f.key] ?? ''
+    return out
+  }, [current])
+
+  const [values, setValues] = useState<Record<string, string>>(initial)
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
+
+  const changed = useMemo(() => {
+    const out: PiProductFieldValues = {}
+    for (const f of PI_PRODUCT_FIELDS) {
+      const next = (values[f.key] ?? '').trim()
+      const prev = (current[f.key] ?? '').trim()
+      if (next !== prev) out[f.key] = next === '' ? null : next
+    }
+    return out
+  }, [values, current])
+
+  const changedCount = Object.keys(changed).length
+  const canSave = !saving && changedCount > 0 && (!requireReason || trimmedReason !== '')
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(changed, requireReason ? trimmedReason : null)
+  }
+
+  return (
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit product line"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '540px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Edit PI details"
+          subtitle={line.name?.trim()
+            ? `Product line ${line.sequence ?? ''}`.trim()
+            : 'Product line'}
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '14px',
+            padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
+          }}
+        >
+          <div style={{
+            display: 'grid', gap: '9px',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          }}>
+            {PI_PRODUCT_FIELDS.map(f => (
+              <label
+                key={f.key}
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: '4px',
+                  gridColumn: f.kind === 'textarea' ? '1 / -1' : undefined,
+                }}
+              >
+                <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                  {f.label}
+                </span>
+                {f.kind === 'textarea' ? (
+                  <textarea
+                    value={values[f.key] ?? ''}
+                    onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    disabled={saving}
+                    rows={2}
+                    maxLength={500}
+                    style={{
+                      padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                    }}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={values[f.key] ?? ''}
+                    onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    disabled={saving}
+                    maxLength={120}
+                    style={{
+                      padding: '7px 10px', fontSize: '13px',
+                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      background: colors.base, color: colors.primary,
+                    }}
+                  />
+                )}
+                {f.hint !== '' && (
+                  <span style={{ fontSize: '11px', color: colors.muted }}>{f.hint}</span>
+                )}
+              </label>
+            ))}
+          </div>
+
+          {/* ── THE FIGURES, SHOWN AND NOT OFFERED ──
+              Read-only text, never a disabled input. A greyed-out box over a
+              price reads as "somebody could turn this on"; this reads as what is
+              true — the workbook computed these, and correcting them means
+              correcting the workbook. */}
+          <div style={{
+            padding: '10px 12px', borderRadius: '7px',
+            border: `1px solid ${colors.border}`, background: colors.raised,
+            display: 'flex', flexDirection: 'column', gap: '7px',
+          }}>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              {[
+                { label: 'Quantity', value: line.quantity },
+                { label: 'Rate', value: line.rate },
+                { label: 'Line total', value: line.total },
+              ].map(f => (
+                <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ fontSize: '11px', color: colors.muted }}>{f.label}</span>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+                    {f.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5 }}>
+              These come from the PI workbook’s own formulas. To change a quantity,
+              a rate, or which products are on this PI, upload a corrected workbook.
+            </div>
+            {onChangePi && (
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost"
+                style={{ alignSelf: 'flex-start' }}
+                onClick={onChangePi}
+                disabled={saving}
+              >
+                Change PI
+              </button>
+            )}
+          </div>
+
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity with what changed. Required.
+              </div>
+            </div>
+          )}
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+              {changedCount === 0
+                ? 'No changes yet'
+                : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
+            </span>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * THE ORDER OF THE LINES.
+ *
+ * Its own dialog and its own RPC, because reordering is one write over every
+ * line at once and editing is one write over one line. Combining them would
+ * mean a save that partly reordered and partly renamed, with no single answer
+ * to "did it work".
+ *
+ * The list is moved with buttons rather than dragged: this same screen is read
+ * on a phone, and a drag target that works with a mouse is frequently
+ * unreachable with a thumb.
+ */
+export function PiProductReorderModal({
+  lines, saving, failure, requireReason = false, onCancel, onSave,
+}: {
+  lines: readonly { id: string; sequence: string | null; name: string | null }[]
+  saving: boolean
+  failure: string | null
+  requireReason?: boolean
+  onCancel: () => void
+  onSave: (orderedIds: string[], reason: string | null) => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const reasonId = useId()
+
+  const originalIds = useMemo(() => lines.map(l => l.id), [lines])
+  const [ids, setIds] = useState<string[]>(originalIds)
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
+
+  const byId = useMemo(() => new Map(lines.map(l => [l.id, l])), [lines])
+  const moved = ids.some((id, i) => id !== originalIds[i])
+  const canSave = !saving && moved && (!requireReason || trimmedReason !== '')
+
+  const move = (index: number, delta: number) => {
+    const to = index + delta
+    if (to < 0 || to >= ids.length) return
+    setIds(prev => {
+      const next = [...prev]
+      const [item] = next.splice(index, 1)
+      next.splice(to, 0, item)
+      return next
+    })
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(ids, requireReason ? trimmedReason : null)
+  }
+
+  return (
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Reorder product lines"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '520px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Edit PI details"
+          subtitle="Order of the product lines"
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '14px',
+            padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
+          }}
+        >
+          <div style={{ fontSize: '11.5px', color: colors.secondary, lineHeight: 1.5 }}>
+            This changes the order the lines are printed in. It adds nothing,
+            removes nothing, and moves no figure.
+          </div>
+
+          <ol style={{
+            listStyle: 'none', margin: 0, padding: 0,
+            border: `1px solid ${colors.border}`, borderRadius: '7px', overflow: 'hidden',
+          }}>
+            {ids.map((id, i) => {
+              const line = byId.get(id)
+              return (
+                <li
+                  key={id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '9px 11px',
+                    borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
+                    background: colors.base,
+                  }}
+                >
+                  <span style={{
+                    fontSize: '11px', color: colors.muted, fontFamily: 'var(--font-mono)',
+                    minWidth: '28px',
+                  }}>
+                    {i + 1}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: '12.5px', color: colors.primary }}>
+                    {line?.name?.trim() || line?.sequence?.trim() || 'Untitled line'}
+                  </span>
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost"
+                    aria-label={`Move ${line?.name?.trim() || 'this line'} up`}
+                    onClick={() => move(i, -1)}
+                    disabled={saving || i === 0}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost"
+                    aria-label={`Move ${line?.name?.trim() || 'this line'} down`}
+                    onClick={() => move(i, 1)}
+                    disabled={saving || i === ids.length - 1}
+                  >
+                    ↓
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity. Required.
+              </div>
+            </div>
+          )}
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save order'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+              {moved ? 'The order will change' : 'No changes yet'}
+            </span>
           </div>
         </form>
       </div>

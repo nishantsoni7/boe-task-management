@@ -223,7 +223,12 @@ describe('no Order screen waits more than it must', () => {
       // update_order_submission_schedule_terms. They run when somebody presses
       // Save in the editor, so the count grew and the startup path did not.
       // 22 -> 23: request_order_submission_correction, another SAVE.
-      [DRAFTS]: 4, [PI_DETAIL]: 23, [REQUESTS]: 18, [REQUEST_DETAIL]: 7, [IMPORT]: 5,
+      // 23 -> 25: update_order_submission_item_details and
+      // reorder_order_submission_items — the product editor, and both SAVES
+      // again. One runs when a line's description is saved, the other when the
+      // lines are reordered; neither is on the startup path, so the page still
+      // waits exactly as many times as it did.
+      [DRAFTS]: 4, [PI_DETAIL]: 25, [REQUESTS]: 18, [REQUEST_DETAIL]: 7, [IMPORT]: 5,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)
