@@ -104,7 +104,9 @@ describe('who may generate', () => {
 
   test('the service client is created only AFTER the request was authorized', () => {
     const requestAt = route.indexOf("rpc('request_order_document_generation'")
-    const serviceAt = route.indexOf('serviceClient()', route.indexOf('export async function POST'))
+    // The construction moved to the shared helper; the ORDERING property it
+    // guards is unchanged and is what matters.
+    const serviceAt = route.indexOf('adminClient()', route.indexOf('async function handle'))
     assert.ok(requestAt > 0 && serviceAt > requestAt,
       'privileged credentials must not be in hand before the caller has been authorized')
   })
@@ -282,8 +284,17 @@ describe('when generation fails', () => {
 // ══ 6. Credentials and privacy ═══════════════════════════════════════════════
 
 describe('what never leaves the server', () => {
-  test('the service-role key is read from the environment and never returned', () => {
-    assert.ok(route.includes('process.env.SUPABASE_SERVICE_ROLE_KEY'))
+  test('the service-role key is read by the shared helper and never returned', () => {
+    // The route no longer touches process.env at all: it asks
+    // @/lib/supabase/admin, which reads BOE's ONE canonical credential name
+    // (SUPABASE_SERVICE_ROLE_KEY) and reports absence instead of throwing.
+    // adminClient.test.ts holds the properties of the helper itself.
+    assert.ok(route.includes("from '@/lib/supabase/admin'"))
+    assert.ok(route.includes('adminClient()'))
+    assert.ok(!/process\.env\.SUPABASE_SERVICE_ROLE_KEY/.test(
+      route.replace(/\/\*[\s\S]*?\*\//g, '')
+           .split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')),
+      'the route must reach the credential only through the helper')
     const responses = [...route.matchAll(/NextResponse\.json\(([\s\S]*?)\)/g)].map(m => m[1])
     for (const body of responses) {
       // `claim.version` legitimately reads a field off the claim result; what
@@ -304,10 +315,26 @@ describe('what never leaves the server', () => {
     assert.ok(uses > 0 && uses <= 6, `the token is referenced ${uses} times; it should stay local`)
   })
 
-  test('nothing is logged at all — no client name, no path, no byte', () => {
-    assert.ok(!route.includes('console.log'))
-    assert.ok(!route.includes('console.error'))
-    assert.ok(!route.includes('console.warn'))
+  test('the ONLY thing logged is which configuration is absent', () => {
+    // NARROWED, deliberately, when the config guard was added. The original
+    // rule was "no logging at all", which was the right rule while the route
+    // had nothing an operator could act on.
+    //
+    // A deployment missing SUPABASE_SERVICE_ROLE_KEY is different in kind: it
+    // is nobody's data and it is the one fault an operator must be able to
+    // diagnose from a log. What is written is the NAME of the absent variable
+    // — never its value, and never anything belonging to the Order.
+    const logs = [...route.matchAll(/console\.(log|error|warn|info)\(([^\n]*)/g)]
+    assert.equal(logs.length, 1, 'exactly one log line, and it is the config one')
+    const [, level, args] = logs[0]
+    assert.equal(level, 'error')
+    assert.ok(args.includes('admin.missing.join'), 'it logs the missing NAMES')
+    for (const forbidden of [
+      'client_name', 'excelPath', 'pdfPath', 'token', 'sha', 'Sha',
+      'process.env', 'bytes', 'orderId', 'address',
+    ]) {
+      assert.ok(!args.includes(forbidden), `the log line carries ${forbidden}`)
+    }
   })
 
   test('a response carries a status, a version and a prewritten message, and no more', () => {
@@ -392,18 +419,23 @@ describe('the PDF the route produces', () => {
 
 describe('a deployment with no service-role key', () => {
   test('the client is built from a CHECKED value, never a `!` assertion', () => {
-    assert.ok(!route.includes('process.env.SUPABASE_SERVICE_ROLE_KEY!'),
-      'the non-null assertion is what threw; it must not return')
-    assert.ok(!route.includes('process.env.NEXT_PUBLIC_SUPABASE_URL!'))
-    assert.ok(route.includes('if (!url || !key) return null'),
-      'serviceClient must report absence, not throw it')
+    // The construction now lives in ONE shared helper rather than being
+    // repeated per route, and the helper returns a result instead of throwing.
+    // The property is the same and the blast radius is smaller.
+    assert.ok(route.includes("import { adminClient, type AdminSupabaseClient } from '@/lib/supabase/admin'"))
+    assert.ok(!route.includes('createServiceClient('),
+      'the route must not build its own privileged client')
+    const helper = readFileSync(
+      join(process.cwd(), 'src/lib/supabase/admin.ts'), 'utf8')
+    assert.ok(helper.includes('if (missing.length > 0) return { ok: false, missing }'),
+      'the helper must report absence, not throw it')
   })
 
   test('the route REFUSES with its own code before touching the client', () => {
     assert.ok(route.includes("'SERVER_NOT_CONFIGURED'"))
-    const guard = route.indexOf('if (!service)')
+    const guard = route.indexOf('if (!admin.ok)')
     const firstUse = route.indexOf('service\n    .rpc(')
-    assert.ok(guard > 0, 'the null client must be guarded')
+    assert.ok(guard > 0, 'the not-ok result must be handled')
     assert.ok(guard < firstUse || firstUse === -1,
       'the guard must come before the first use of the client')
   })

@@ -1,9 +1,9 @@
-import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { createClient } from '@/lib/supabase/server'
+import { adminClient, type AdminSupabaseClient } from '@/lib/supabase/admin'
 import {
   ORDER_DOCUMENTS_GENERIC_FAILURE,
   ORDER_DOCUMENT_FAILURES,
@@ -80,33 +80,23 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 /**
- * The privileged client — or null when this deployment has not been given the
- * service role key.
+ * The privileged client, from the ONE shared helper.
  *
- * THIS RETURNS NULL RATHER THAN THROWING, and that is the fix for a real defect
- * rather than a stylistic preference.
+ * This route used to build its own, with `process.env.SUPABASE_SERVICE_ROLE_KEY!`
+ * — a non-null assertion the type system cannot vouch for. supabase-js throws
+ * `supabaseKey is required.` when that value is absent, the construction sat
+ * OUTSIDE this route's try/catch, and the escaped throw became a bare 500 with
+ * no message. A missing environment variable was reported to the reader as a
+ * refusal.
  *
- * It used to be `process.env.SUPABASE_SERVICE_ROLE_KEY!` — a non-null assertion
- * over a value the type system cannot actually vouch for. When the variable is
- * absent or empty, supabase-js throws `supabaseKey is required.` at the moment
- * of construction, and that construction sat OUTSIDE this route's try/catch. The
- * throw therefore escaped the handler entirely: Next returned a bare 500 whose
- * body carries no `message`, the client's `body?.message` came back undefined,
- * and the card fell back to its own generic sentence — "That could not be done
- * just now." A missing environment variable was being reported as though it
- * were a refusal, which sent everybody looking at permissions.
- *
- * A missing key is a DEPLOYMENT fault, not a user fault, and it now says so.
- * The two sibling routes in this module (test-data-cleanup, submissions/delete)
- * already guarded this way; this one is now consistent with them.
+ * SUPABASE_SERVICE_ROLE_KEY is and always was BOE's canonical server credential
+ * — 104 uses across src/, documented in .env.example, with no other variant
+ * anywhere. Nothing here needs a new secret; what was missing was a checked way
+ * to read the existing one. `adminClient()` returns a result instead of
+ * throwing, so a configuration fault is a value this route must handle rather
+ * than an exception it might not.
  */
-function serviceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) return null
-  return createServiceClient(url, key)
-}
-type ServiceClient = NonNullable<ReturnType<typeof serviceClient>>
+type ServiceClient = AdminSupabaseClient
 
 const fail = (status: number, code: string, message: string) =>
   NextResponse.json({ error: code, message }, { status })
@@ -182,11 +172,16 @@ async function handle(req: NextRequest, { params }: { params: Promise<{ id: stri
   // missing SUPABASE_SERVICE_ROLE_KEY cannot generate anything, and it must say
   // that in its own words: this is the one failure here that no retry, no
   // permission and no different Order will resolve.
-  const service = serviceClient()
-  if (!service) {
+  const admin = adminClient()
+  if (!admin.ok) {
+    // The NAMES of the missing variables go to the server log, where an
+    // operator needs them. They do not go in the response: a caller learns that
+    // the deployment is misconfigured, not which of its settings is absent.
+    console.error('[orders/documents] not configured; missing:', admin.missing.join(', '))
     return fail(503, 'SERVER_NOT_CONFIGURED',
       'Document generation is not configured on this deployment. This is a server setting, not something you can fix — please report it.')
   }
+  const service = admin.client
 
   const { data: claimed, error: claimError } = await service
     .rpc('claim_order_document_generation', { p_order_id: orderId })
