@@ -196,8 +196,8 @@ describe('the Order screen reads, and never writes, the payment tables', () => {
   test('both reads are anchored to this one Order', () => {
     assert.ok(page.includes(".from('finance_payment_requests')"))
     assert.ok(page.includes(".from('finance_payment_allocations')"))
-    const allocRead = page.slice(page.indexOf(".from('finance_payment_allocations')"), 
-                                 page.indexOf('setPayments(mergeOrderPayments('))
+    const allocRead = page.slice(page.indexOf(".from('finance_payment_allocations')"),
+                                 page.indexOf('setPayments(withExactAmounts('))
     assert.ok(allocRead.includes(".eq('order_id', id)"),
       'the allocation read is bounded by the Order, never unbounded')
     assert.ok(allocRead.includes(".eq('status', 'active')"))
@@ -212,9 +212,32 @@ describe('the Order screen reads, and never writes, the payment tables', () => {
 
   test('the merge is the shared one, not a second copy on the page', () => {
     assert.ok(page.includes('mergeOrderPayments('))
-    assert.ok(page.includes('receivedFromPayments(payments)'))
     assert.ok(!/payments\s*\n?\s*\.filter\(p => p\.status/.test(page),
       'the old inline "approved_linked only" sum must be gone')
+  })
+
+  test('the page states its finance position, and computes none of it', () => {
+    // receivedFromPayments(payments) — a float sum of one figure — was what this
+    // line used to pin. The screen now takes its WHOLE position from the shared
+    // exact-decimal builder, which is the only thing that can agree with the
+    // `numeric` totals pi_submission_payment_summary() computes for the PI this
+    // Order was approved from. See orderFinancePosition.ts.
+    assert.ok(page.includes('withExactAmounts('),
+      'the exact `numeric` strings must be re-read from the source rows')
+    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'),
+      'every figure comes from the one shared builder')
+  })
+
+  test('no money is added, subtracted or percentaged on the page itself', () => {
+    // The three float expressions this screen used to carry. Their absence is
+    // the regression guard: reintroducing any of them is how the Order and its
+    // PI would start printing different figures for the same money again.
+    assert.ok(!page.includes('(order.total_value ?? 0) - received'),
+      'the pending balance is the builder\'s, computed in exact decimal')
+    assert.ok(!/Math\.round\(\(received \/ order\.total_value\)/.test(page),
+      'the percentage is the builder\'s, and is truncated rather than rounded')
+    assert.ok(!page.includes('receivedFromPayments('),
+      'the single-figure float sum is no longer what this screen reports')
   })
 
   test('no write reaches either payment table from this screen', () => {

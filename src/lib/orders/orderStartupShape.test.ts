@@ -212,8 +212,16 @@ describe('no Order screen waits more than it must', () => {
     // from this pass: the Confirmed Order handoff and the document register are
     // new READS on a screen that previously showed neither. Its startup still
     // waits three times, not seventeen.
+    //
+    // DETAIL 17 -> 18: the 'finance' effective-permission resolve, which decides
+    // ONE thing — whether a payment row draws a link into its Finance record.
+    // It was added INSIDE the page's existing Promise.all, alongside the
+    // 'orders' resolve it already made, so the count grew and the number of
+    // times the page waits did NOT: the test above still requires exactly three,
+    // and a fourth independent call in a group that already waits for the
+    // slowest costs no latency.
     const expected: Record<string, number> = {
-      [GUARD]: 2, [DASHBOARD]: 9, [ALL]: 2, [DETAIL]: 17,
+      [GUARD]: 2, [DASHBOARD]: 9, [ALL]: 2, [DETAIL]: 18,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
