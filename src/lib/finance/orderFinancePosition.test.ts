@@ -27,7 +27,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import { mergeOrderPayments, type OrderAllocationRow } from '@/lib/orders/orderPayments'
-import { piPaymentStatusLabel } from './piPaymentView'
+import { formatMoney, piPaymentStatusLabel } from './piPaymentView'
 import {
   buildOrderFinancePosition,
   progressWidth,
@@ -386,5 +386,76 @@ describe('a payment status is called the same thing on the Order and on the PI',
   test('and the colours are still this screen\'s own', () => {
     assert.ok(page.includes('const PAYMENT_STATUS_COLOR'))
     assert.ok(page.includes("rejected:            '#991B1B'"), 'the existing palette is unchanged')
+  })
+})
+
+// ── One money formatter across both modules ──────────────────────────────────
+
+describe('the same amount renders the same way everywhere', () => {
+  const FILES = [
+    'src/app/orders/[id]/page.tsx',
+    'src/app/orders/[id]/OrderAmendmentModals.tsx',
+    'src/app/finance/page.tsx',
+    'src/app/finance/received/ReceivedPaymentsView.tsx',
+  ]
+
+  test('every Order and Finance screen formats money through formatMoney', () => {
+    for (const file of FILES) {
+      const source = readFileSync(file, 'utf8')
+      assert.ok(source.includes('const fmtAmount = formatMoney'),
+        `${file} must not keep a money formatter of its own`)
+    }
+  })
+
+  test('the three formatters that disagreed are gone from those screens', () => {
+    // formatINR uses maximumFractionDigits: 2 with NO minimum, and a bare
+    // toLocaleString defaults to a maximum of three — so one Received Payments
+    // row could read "₹1,000.5" in its Amount column and "₹1,000.50" in the
+    // Allocation cell beside it. The same money, on the same line, twice.
+    for (const file of FILES) {
+      const source = readFileSync(file, 'utf8')
+      assert.ok(!/formatINR\(/.test(source), `${file} must not call formatINR`)
+      assert.ok(!/'₹' \+ n\.toLocaleString/.test(source),
+        `${file} must not build a currency string by hand`)
+    }
+  })
+
+  test('formatMoney states money to the paise, always', () => {
+    // A finance figure is reconciled against a bank statement. Ragged decimals
+    // do not line up in a tabular-nums column and do not reconcile by eye.
+    assert.equal(formatMoney(1000), '₹1,000.00')
+    assert.equal(formatMoney(1000.5), '₹1,000.50')
+    assert.equal(formatMoney('1000.50'), '₹1,000.50')
+    assert.equal(formatMoney(1000.55), '₹1,000.55')
+  })
+
+  test('and says "—" for a figure that is absent or unreadable, never ₹0.00', () => {
+    // "We have no figure" and "the figure is nought" are different statements
+    // about money, and a screen must not collapse them.
+    for (const absent of [null, undefined, '', 'NaN', Number.NaN]) {
+      assert.equal(formatMoney(absent as string), '—', String(absent))
+    }
+  })
+
+  test('it accepts the STRING form `numeric` actually arrives as', () => {
+    // PostgREST sends numeric as a string precisely so it is not rounded by
+    // JSON's double. formatINR took a number only, so every caller had to
+    // convert first — a lossy step at exactly the wrong boundary.
+    assert.equal(formatMoney('400000.00'), '₹4,00,000.00')
+    assert.equal(formatMoney('1234567.89'), '₹12,34,567.89')
+  })
+
+  test('display is exact across the range money in this system occupies', () => {
+    // formatMoney is THE formatting boundary and converts through Number(), so
+    // it is exact only below 2^53 — around ₹90,071 crore, against
+    // orders.total_value being numeric(12,2), i.e. capped at ₹9,999 crore. Every
+    // figure the business can store formats exactly.
+    //
+    // The ARITHMETIC never goes through a double at all: totals are summed in
+    // exactMoney's bigint decimals and only the finished figure reaches here.
+    // This test states where the guarantee ends rather than implying there is
+    // no end to it.
+    assert.equal(formatMoney('9999999999.99'), '₹9,99,99,99,999.99')
+    assert.ok(Number('9999999999.99') < Number.MAX_SAFE_INTEGER)
   })
 })

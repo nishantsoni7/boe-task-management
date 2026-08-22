@@ -9,7 +9,7 @@ import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
-import { formatINR, isValidAmount } from '@/lib/currency'
+import { isValidAmount } from '@/lib/currency'
 import { notifyFinance } from '@/lib/notify'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import {
@@ -272,9 +272,28 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function fmtAmount(n: number) {
-  return formatINR(n)
-}
+// ONE MONEY FORMATTER for Order Management and Finance — formatMoney, the same
+// one the PI payment card and the Order's payment summary read.
+//
+// THE DEFECT THIS CLOSES. Three formatters were in use across the two modules
+// and each rendered the same amount differently:
+//
+//   formatINR         maximumFractionDigits: 2 with NO minimum, so ₹1,000 and
+//                     ₹1,000.5 and ₹1,000.55 — ragged decimals that do not line
+//                     up in a tabular-nums column
+//   toLocaleString    default maximumFractionDigits: 3, so a legacy amount with
+//                     more precision than paise printed ₹1,000.555
+//   formatMoney       always two decimal places
+//
+// So one Received Payments row could read "₹1,000.5" in its Amount column and
+// "₹1,000.50" in the Allocation cell beside it — the same money, on the same
+// line, twice. Money on a finance screen is stated to the paise or it is not
+// reconcilable against a bank statement.
+//
+// formatMoney also accepts a STRING, which formatINR cannot: `numeric` crosses
+// the wire as a string precisely so it is not rounded by JSON's double, and a
+// formatter that only takes a number forces a lossy conversion at the boundary.
+const fmtAmount = formatMoney
 
 // Maps the approved_linked-requires-order_id CHECK constraint violation to a
 // clear message instead of surfacing the raw Postgres error.

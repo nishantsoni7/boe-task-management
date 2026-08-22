@@ -11,7 +11,8 @@ import { compressImageFile } from '@/lib/attachment-utils'
 import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
-import { formatINR, groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
+import { groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
+import { formatMoney } from '@/lib/finance/piPaymentView'
 import { notifyFinance } from '@/lib/notify'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import {
@@ -193,9 +194,28 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function fmtAmount(n: number) {
-  return formatINR(n)
-}
+// ONE MONEY FORMATTER for Order Management and Finance — formatMoney, the same
+// one the PI payment card and the Order's payment summary read.
+//
+// THE DEFECT THIS CLOSES. Three formatters were in use across the two modules
+// and each rendered the same amount differently:
+//
+//   formatINR         maximumFractionDigits: 2 with NO minimum, so ₹1,000 and
+//                     ₹1,000.5 and ₹1,000.55 — ragged decimals that do not line
+//                     up in a tabular-nums column
+//   toLocaleString    default maximumFractionDigits: 3, so a legacy amount with
+//                     more precision than paise printed ₹1,000.555
+//   formatMoney       always two decimal places
+//
+// So one Received Payments row could read "₹1,000.5" in its Amount column and
+// "₹1,000.50" in the Allocation cell beside it — the same money, on the same
+// line, twice. Money on a finance screen is stated to the paise or it is not
+// reconcilable against a bank statement.
+//
+// formatMoney also accepts a STRING, which formatINR cannot: `numeric` crosses
+// the wire as a string precisely so it is not rounded by JSON's double, and a
+// formatter that only takes a number forces a lossy conversion at the boundary.
+const fmtAmount = formatMoney
 
 // Order No. display for both employee and admin views: shows the real number
 // once one exists, otherwise a concise state describing why not. A new_order
