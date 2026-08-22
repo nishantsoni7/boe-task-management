@@ -218,10 +218,11 @@ describe('no Order screen waits more than it must', () => {
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
       // the page waits did not.
-      // PI_DETAIL 20 -> 21: update_order_submission_client_details. A SAVE,
-      // not a load — it runs when somebody presses Save in the details editor,
-      // so the count grew and the startup path did not.
-      [DRAFTS]: 4, [PI_DETAIL]: 21, [REQUESTS]: 18, [REQUEST_DETAIL]: 7, [IMPORT]: 5,
+      // PI_DETAIL 20 -> 22, both SAVES rather than loads:
+      // update_order_submission_client_details and
+      // update_order_submission_schedule_terms. They run when somebody presses
+      // Save in the editor, so the count grew and the startup path did not.
+      [DRAFTS]: 4, [PI_DETAIL]: 22, [REQUESTS]: 18, [REQUEST_DETAIL]: 7, [IMPORT]: 5,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

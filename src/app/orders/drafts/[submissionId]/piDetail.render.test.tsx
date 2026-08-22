@@ -441,6 +441,7 @@ const summaryHtml = (over: {
   <PiSummaryCard
     canEditDetails={over.canEditDetails ?? false}
     onEditDetails={() => {}}
+    onEditSchedule={() => {}}
     missingSummary={over.missingSummary ?? null}
     ownership={over.ownership ?? buildOwnership({
       documentAuthor: 'Nishant Soni',
@@ -2502,6 +2503,7 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       // the answer to a PI imported without a client name — which previously
       // dead-ended the workflow with no way anywhere to fix it.
       'update_order_submission_client_details',
+      'update_order_submission_schedule_terms',
       'verify_pi_finance_check',
     ])
   })

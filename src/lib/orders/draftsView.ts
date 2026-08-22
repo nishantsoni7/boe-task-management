@@ -223,6 +223,8 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   // the detail page asked for them do not carry the keys.
   bill_to_gst?: string | null
   ship_to_gst?: string | null
+  payment_terms?: string | null
+  billing_terms?: string | null
 
   /** Optimistic-concurrency counter — see PI_DRAFT_DETAIL_COLUMNS. */
   row_version?: number | null
@@ -360,6 +362,10 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // update_order_submission_client_details (20260928000000) and previously
   // written by the parser but never surfaced.
   'bill_to_gst', 'ship_to_gst',
+  // The two agreed arrangements (20260921000000). Editable through
+  // update_order_submission_schedule_terms; read here so the editor can
+  // prefill them and the detail page can show them.
+  'payment_terms', 'billing_terms',
   // The optimistic-concurrency counter (20260928000000). Read here so an
   // editor can send back the version it opened at; a concurrent edit moves it
   // and the second write is refused rather than silently winning.

@@ -112,6 +112,7 @@ import {
   PiBillingPercentageModal,
   PiClientDetailsEditModal,
   PiClientDetailsModal,
+  PiScheduleTermsEditModal,
   PiSubmitConfirmModal,
   PiNoteModal,
   PiFinanceVerifyModal,
@@ -119,7 +120,11 @@ import {
   type PiNoteIntent,
 } from '@/components/orders/piReviewModals'
 import { colors } from '@/lib/tokens'
-import type { PiClientFieldValues } from '@/components/orders/piReviewModals'
+import type {
+  PiClientFieldValues,
+  PiEditSection,
+  PiScheduleFieldValues,
+} from '@/components/orders/piReviewModals'
 import { piReadiness, piReadinessIsEditable } from '@/lib/orders/piReadiness'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -359,7 +364,9 @@ function PiDraftDetailPageInner() {
    * their own draft must not be asked for one.
    */
   const [canAdminAmend, setCanAdminAmend] = useState(false)
-  const [clientEditOpen, setClientEditOpen] = useState(false)
+  /** null = closed; otherwise the section being edited. */
+  const [editSection, setEditSection] = useState<PiEditSection | null>(null)
+  const clientEditOpen = editSection === 'client'
   const [clientSaving, setClientSaving] = useState(false)
   const [clientFailure, setClientFailure] = useState<string | null>(null)
   /**
@@ -911,7 +918,41 @@ function PiDraftDetailPageInner() {
           ?? 'The details could not be saved.')
         return
       }
-      setClientEditOpen(false)
+      setEditSection(null)
+      await loadDraft({ quiet: true })
+    } finally {
+      setClientSaving(false)
+    }
+  }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
+
+  /**
+   * SAVE THE DATES AND TERMS.
+   *
+   * Its own RPC and therefore its own transaction, exactly like the client
+   * section. One dialog per section rather than one form over both: a single
+   * button firing two round trips could leave the PI half-updated with nothing
+   * on screen to say which half.
+   */
+  const saveScheduleTerms = useCallback(async (
+    changed: PiScheduleFieldValues,
+    reason: string | null,
+  ) => {
+    if (clientSaving) return
+    setClientSaving(true)
+    setClientFailure(null)
+    try {
+      const { error } = await supabase.rpc('update_order_submission_schedule_terms', {
+        p_submission_id: submissionId,
+        p_fields: changed,
+        p_expected_version: rowVersion,
+        p_reason: reason,
+      })
+      if (error) {
+        setClientFailure((error as { message?: string }).message
+          ?? 'The dates and terms could not be saved.')
+        return
+      }
+      setEditSection(null)
       await loadDraft({ quiet: true })
     } finally {
       setClientSaving(false)
@@ -1444,7 +1485,8 @@ function PiDraftDetailPageInner() {
           /* The same two authorities the billing control uses. The owner rule
              covers a draft; the admin rule covers every stage after it. */
           canEditDetails={canEditSubmission || canAdminAmend}
-          onEditDetails={() => { setClientFailure(null); setClientEditOpen(true) }}
+          onEditDetails={() => { setClientFailure(null); setEditSection('client') }}
+          onEditSchedule={() => { setClientFailure(null); setEditSection('schedule') }}
           /* Only offered where something can actually be fixed by a form —
              piReadinessIsEditable is false for a list of workbook problems, and
              pointing at an editor for those would be a lie. */
@@ -1712,8 +1754,32 @@ function PiDraftDetailPageInner() {
              applies, asked here so the reader learns it before typing. */
           requireReason={canAdminAmend && !canEditSubmission}
           missingKeys={paymentReadiness.missing.map(m => m.key)}
-          onCancel={() => { if (!clientSaving) setClientEditOpen(false) }}
+          onCancel={() => { if (!clientSaving) setEditSection(null) }}
           onSave={(changed, reason) => { void saveClientDetails(changed, reason) }}
+        />
+      )}
+
+      {editSection === 'schedule' && (
+        <PiScheduleTermsEditModal
+          current={{
+            order_confirmation_date: submission.order_confirmation_date ?? null,
+            due_date:                submission.due_date ?? null,
+            dispatch_commitment:     submission.dispatch_commitment ?? null,
+            payment_terms:           submission.payment_terms ?? null,
+            billing_terms:           submission.billing_terms ?? null,
+          }}
+          billingLabel={billingSummary.percent}
+          saving={clientSaving}
+          failure={clientFailure}
+          requireReason={canAdminAmend && !canEditSubmission}
+          onCancel={() => { if (!clientSaving) setEditSection(null) }}
+          onSave={(changed, reason) => { void saveScheduleTerms(changed, reason) }}
+          /* Billing percentage keeps its own dialog and its own rules. */
+          onEditBilling={
+            canEditSubmission || canAdminAmend
+              ? () => { setEditSection(null); setBillingFailure(null); setBillingDialog(true) }
+              : null
+          }
         />
       )}
 

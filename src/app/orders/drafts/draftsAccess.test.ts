@@ -413,6 +413,12 @@ describe('the detail page renders only what it fetched', () => {
       // carries optimistic concurrency so two editors cannot silently
       // overwrite each other.
       'update_order_submission_client_details',
+      // The schedule and terms editor (20260929000000): confirm date, due date,
+      // dispatch commitment, payment terms, billing terms. Its own RPC and so
+      // its own transaction — one dialog per section, because a single button
+      // firing two round trips could leave the PI half-updated. It refuses
+      // billing_percentage BY NAME and points at that value's own RPC.
+      'update_order_submission_schedule_terms',
       'verify_pi_finance_check',
     ])
     // Still unreachable from a browser, in any phase: the number allocator, and

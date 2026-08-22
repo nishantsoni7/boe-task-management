@@ -1488,6 +1488,38 @@ export const PI_CLIENT_FIELDS = [
 export type PiClientFieldKey = typeof PI_CLIENT_FIELDS[number]['key']
 export type PiClientFieldValues = Partial<Record<PiClientFieldKey, string | null>>
 
+/**
+ * The schedule and terms fields, and the RPC that owns them.
+ *
+ * A SEPARATE SECTION WITH ITS OWN SAVE, not one giant form. Each section is one
+ * RPC and therefore one transaction: a save either lands whole or not at all.
+ * Combining them would mean two round trips behind one button, and a failure
+ * between them would leave the PI half-updated with nothing to say so.
+ *
+ * Billing percentage is shown in this section but is NOT in this list. It has
+ * its own dialog and its own RPC, carrying a range, a precision rule and a
+ * clear-confirmation none of these five need. Duplicating those here would be a
+ * second implementation to keep in step.
+ */
+export const PI_SCHEDULE_FIELDS = [
+  { key: 'order_confirmation_date', label: 'Confirm date',        kind: 'date',     required: false },
+  { key: 'due_date',                label: 'Due date',            kind: 'date',     required: false },
+  { key: 'dispatch_commitment',     label: 'Dispatch commitment', kind: 'text',     required: false },
+  { key: 'payment_terms',           label: 'Payment terms',       kind: 'textarea', required: false },
+  { key: 'billing_terms',           label: 'Billing terms',       kind: 'textarea', required: false },
+] as const
+
+export type PiScheduleFieldKey = typeof PI_SCHEDULE_FIELDS[number]['key']
+export type PiScheduleFieldValues = Partial<Record<PiScheduleFieldKey, string | null>>
+
+/** Which part of the PI an editor is showing. */
+export type PiEditSection = 'client' | 'schedule'
+
+export const PI_EDIT_SECTIONS: readonly { key: PiEditSection; title: string }[] = [
+  { key: 'client',   title: 'Client and addresses' },
+  { key: 'schedule', title: 'Dates and terms' },
+]
+
 const PI_CLIENT_GROUPS = [
   { key: 'client', title: 'Client' },
   { key: 'bill',   title: 'Bill to' },
@@ -1722,6 +1754,230 @@ export function PiClientDetailsEditModal({
               Cancel
             </button>
             {/* What will be written, before it is written. */}
+            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+              {changedCount === 0
+                ? 'No changes yet'
+                : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
+            </span>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * THE DATES AND TERMS SECTION.
+ *
+ * Deliberately the same dialog shape as the client-details editor: same header,
+ * same "n fields will change" counter, same reason field where an amendment
+ * needs one, same rule that only what MOVED is sent. Two editors that behaved
+ * differently would be two sets of habits for a reader to learn.
+ *
+ * Billing percentage appears here as a READ-ONLY line with its own control,
+ * because it is edited through its own RPC. Showing it in the section a reader
+ * expects it in, while sending it somewhere else, is the honest arrangement:
+ * the grouping is about where a person looks, not about which function writes.
+ */
+export function PiScheduleTermsEditModal({
+  current, billingLabel, saving, failure, requireReason = false,
+  onCancel, onSave, onEditBilling,
+}: {
+  current: PiScheduleFieldValues
+  /** The declared billing percentage as text, for the read-only line. */
+  billingLabel: string
+  saving: boolean
+  failure: string | null
+  requireReason?: boolean
+  onCancel: () => void
+  onSave: (changed: PiScheduleFieldValues, reason: string | null) => void
+  /** Opens the billing dialog, which owns that value's rules. */
+  onEditBilling: (() => void) | null
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const reasonId = useId()
+
+  const initial = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const f of PI_SCHEDULE_FIELDS) out[f.key] = current[f.key] ?? ''
+    return out
+  }, [current])
+
+  const [values, setValues] = useState<Record<string, string>>(initial)
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
+
+  const changed = useMemo(() => {
+    const out: PiScheduleFieldValues = {}
+    for (const f of PI_SCHEDULE_FIELDS) {
+      const next = (values[f.key] ?? '').trim()
+      const prev = (current[f.key] ?? '').trim()
+      if (next !== prev) out[f.key] = next === '' ? null : next
+    }
+    return out
+  }, [values, current])
+
+  const changedCount = Object.keys(changed).length
+  const canSave = !saving && changedCount > 0 && (!requireReason || trimmedReason !== '')
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(changed, requireReason ? trimmedReason : null)
+  }
+
+  return (
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit dates and terms"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '520px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Edit PI details"
+          subtitle="Dates and terms"
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '14px',
+            padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
+          }}
+        >
+          <div style={{
+            display: 'grid', gap: '9px',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          }}>
+            {PI_SCHEDULE_FIELDS.map(f => (
+              <label
+                key={f.key}
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: '4px',
+                  gridColumn: f.kind === 'textarea' ? '1 / -1' : undefined,
+                }}
+              >
+                <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                  {f.label}
+                </span>
+                {f.kind === 'textarea' ? (
+                  <textarea
+                    value={values[f.key] ?? ''}
+                    onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    disabled={saving}
+                    rows={2}
+                    maxLength={500}
+                    style={{
+                      padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                    }}
+                  />
+                ) : (
+                  <input
+                    /* A real date input, so the browser enforces the calendar
+                       shape the RPC insists on. The RPC re-checks it anyway:
+                       PostgreSQL would otherwise accept 'yesterday' and store a
+                       relative date. */
+                    type={f.kind === 'date' ? 'date' : 'text'}
+                    value={values[f.key] ?? ''}
+                    onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    disabled={saving}
+                    maxLength={f.kind === 'date' ? undefined : 500}
+                    style={{
+                      padding: '7px 10px', fontSize: '13px',
+                      border: `1px solid ${colors.border}`, borderRadius: '7px',
+                      background: colors.base, color: colors.primary,
+                    }}
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+
+          {/* Shown where a reader expects it, written by its own RPC. */}
+          <div style={{
+            display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
+            padding: '9px 11px', borderRadius: '7px',
+            border: `1px solid ${colors.border}`, background: colors.raised,
+          }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+              {BILLING_LABEL}
+            </span>
+            <span style={{ fontSize: '13px', color: colors.secondary }}>{billingLabel}</span>
+            {onEditBilling && (
+              <button
+                type="button"
+                className="boe-btn boe-btn-ghost"
+                style={{ marginLeft: 'auto' }}
+                onClick={onEditBilling}
+                disabled={saving}
+              >
+                Change
+              </button>
+            )}
+          </div>
+
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity with what changed. Required.
+              </div>
+            </div>
+          )}
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
             <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
               {changedCount === 0
                 ? 'No changes yet'

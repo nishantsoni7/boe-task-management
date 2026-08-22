@@ -134,7 +134,7 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
 export function PiSummaryCard({
   client, onOpenClient, ownership, statusLabel, tone, workbookName,
   dates, figures, billing, canEditBilling, onEditBilling,
-  canEditDetails, onEditDetails, missingSummary,
+  canEditDetails, onEditDetails, onEditSchedule, missingSummary,
   payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
 }: {
   client: ClientDetails
@@ -168,6 +168,8 @@ export function PiSummaryCard({
    */
   canEditDetails: boolean
   onEditDetails: () => void
+  /** Opens the dates-and-terms section of the same editor. */
+  onEditSchedule: () => void
   /**
    * What this PI still needs before it can take a payment, as one sentence.
    *
@@ -374,6 +376,16 @@ export function PiSummaryCard({
               <div className="pi-detail-summary-value-row pi-detail-summary-billing">
                 <div className="pi-detail-summary-billing-head">
                   <span className="pi-detail-summary-metric-label">{BILLING_LABEL}</span>
+                  {canEditDetails && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-ghost"
+                      onClick={onEditSchedule}
+                      style={{ fontSize: '11.5px' }}
+                    >
+                      Dates and terms
+                    </button>
+                  )}
                   {canEditBilling && (
                     <button
                       type="button"
