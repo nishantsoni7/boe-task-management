@@ -278,6 +278,16 @@ export const APPROVAL_BLOCKED_NO_LINES =
   'This PI has no stored product lines.'
 export const APPROVAL_BLOCKED_DELETION =
   'This PI is reserved for deletion.'
+/**
+ * The PI is missing something an approved Order would then be missing too.
+ *
+ * DELIBERATELY CARRIES THE SPECIFIC LIST rather than a fixed sentence: the
+ * reviewer is being asked why they cannot approve, and "something is missing"
+ * is the answer that sends them hunting. piReadiness already names the whole
+ * remaining distance in one line, so that line is what appears here.
+ */
+export const approvalBlockedIncomplete = (summary: string): string =>
+  `${summary} An Order created from it would be missing the same thing.`
 
 export type ApprovalReadinessInput = {
   status: string
@@ -297,6 +307,15 @@ export type ApprovalReadinessInput = {
   neededForStandard: string | number | null
   hasBlockingIssues: boolean
   productCount: number
+  /**
+   * piReadiness('submission').summary, or null when the PI is complete.
+   *
+   * MIRRORED, NEVER COMPUTED HERE. approve_order_submission re-derives the
+   * client name and the product lines under a row lock and refuses on its own;
+   * this exists so the reviewer reads the reason beside the disabled control
+   * instead of discovering it by pressing the button.
+   */
+  incompleteSummary?: string | null
   /** order_submissions.deletion_claim_token — set while a deletion is in flight. */
   deletionClaimed: boolean
 }
@@ -370,6 +389,14 @@ export function describeApprovalReadiness(input: ApprovalReadinessInput): Approv
 
   if (input.hasBlockingIssues) return blocked(APPROVAL_BLOCKED_BLOCKING_ISSUES)
   if (input.productCount === 0) return blocked(APPROVAL_BLOCKED_NO_LINES)
+
+  // LAST, and on purpose. Everything above is somebody else's outstanding task
+  // — finance has not signed off, the money has not arrived, the workbook has
+  // problems — and each is a bigger obstacle than a missing field. Reporting an
+  // absent client name ahead of an unverified PI would put the smallest thing
+  // first and read as though it were the only one.
+  const incomplete = input.incompleteSummary ?? null
+  if (incomplete !== null) return blocked(approvalBlockedIncomplete(incomplete))
 
   return { ready: true, blocker: null }
 }

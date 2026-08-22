@@ -230,6 +230,8 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   row_version?: number | null
 
   source_workbook_name: string | null
+  /** The stored key. Optional so a fixture written before this read still types. */
+  source_workbook_path?: string | null
 
   gross_product_amount: number | string | null
   discount_amount: number | string | null
@@ -377,6 +379,14 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // and the second write is refused rather than silently winning.
   'row_version',
   'source_workbook_name',
+  // WHETHER A WORKBOOK IS STORED AT ALL, which source_workbook_name cannot
+  // answer: the save route deliberately writes NULL there, because a PI is
+  // named after its client and a body-supplied filename is unverified text. So
+  // a null name is the normal case and says nothing. The PATH is the fact, and
+  // piReadiness('submission') needs it — submit_pi_for_review refuses a PI with
+  // no stored workbook, and a screen that could not see that would be listing
+  // everything except the one thing no editor can fix.
+  'source_workbook_path',
   'gross_product_amount', 'discount_amount', 'subtotal_after_discount',
   'fabric_cost', 'fabric_cost_meaning', 'fabric_cost_text',
   'packing_cost', 'packing_cost_meaning', 'packing_cost_text',

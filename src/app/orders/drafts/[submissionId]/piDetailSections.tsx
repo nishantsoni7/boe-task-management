@@ -47,6 +47,7 @@ import {
   type AdvanceView,
 } from '@/lib/orders/advanceRequirement'
 import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, type PiDiagnosticEntry } from '@/lib/pi/previewView'
+import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
 import {
   ADVANCE_BAND_TITLE,
@@ -595,6 +596,22 @@ function QuotedNote({ heading, body, tone }: {
  * survive an approved advance exception: accepting a 0% advance says nothing
  * about whether the products, quantities, rates, dates or addresses are right.
  */
+/**
+ * Is anything still missing, and can a form fix it?
+ *
+ * Split out so the button, its title and the panel below it cannot disagree
+ * about the answer — three copies of `readiness !== null && !readiness.ready`
+ * is three chances for one of them to drift.
+ */
+function readinessState(readiness: PiReadiness | null) {
+  const blocked = readiness !== null && !readiness.ready
+  return {
+    blocked,
+    summary: blocked ? readiness.summary : null,
+    missing: blocked ? readiness.missing : [],
+  }
+}
+
 export function PiWorkflowPanel({
   panel,
   actions,
@@ -603,6 +620,8 @@ export function PiWorkflowPanel({
   employeeReply,
   advanceRefusal,
   blockingCount,
+  readiness,
+  onFixReadiness,
   acting,
   finance,
   approvalBlocker,
@@ -631,6 +650,21 @@ export function PiWorkflowPanel({
    */
   advanceRefusal: { reason: string | null; instruction: string } | null
   blockingCount: number
+  /**
+   * EVERYTHING STILL MISSING, in one list, for the person who would submit.
+   *
+   * Before this, each requirement was discovered by being refused: submitting
+   * named the client, fixing that named a product line, fixing that named an
+   * image. The list is the whole remaining distance, computed once by
+   * piReadiness and read identically by the approval control below and by the
+   * finance dialog — which is what stops three surfaces disagreeing about
+   * whether a record is ready.
+   *
+   * Null on a record where submitting is not the question.
+   */
+  readiness: PiReadiness | null
+  /** Opens the editor at the first section a form can actually fix, or null. */
+  onFixReadiness: ((section: PiRequirement['section']) => void) | null
   acting: boolean
   /**
    * Where finance verification stands — for EVERY viewer who can read the PI,
@@ -661,6 +695,19 @@ export function PiWorkflowPanel({
   const isReviewer = actions.canRequestChanges || actions.canReject
   const ownerActions = actions.canSubmit || actions.canChangePi
   const hasActions = isReviewer || ownerActions
+
+  const {
+    blocked: readinessBlocked,
+    summary: readinessSummary,
+    missing: readinessMissing,
+  } = readinessState(readiness)
+
+  // SHOWN AND DISABLED, never hidden. A control that vanishes takes the reason
+  // with it; a disabled one with the list above it says what to do next.
+  const submitBlocked = readinessBlocked
+  const submitTitle = blockingCount > 0
+    ? 'Fix the issues in the PI first'
+    : (readinessSummary ?? undefined)
   const hasBody = Boolean(
     panel.instruction || reviewNote || employeeReply || advanceRefusal
     || finance || approvedOrder || (isReviewer && approvalBlocker),
@@ -699,6 +746,53 @@ export function PiWorkflowPanel({
           )}
         </div>
 
+        {/* ── WHAT IS STILL MISSING, ALL OF IT, BEFORE ANYTHING IS PRESSED ──
+            Above the actions rather than beside the button: it is a list, and a
+            list does not fit in a tooltip. Each entry that a form can fix is a
+            way in to that form; each one that only a corrected workbook can fix
+            says so instead of offering a control that would refuse. */}
+        {ownerActions && readinessBlocked && (
+          <div style={{
+            margin: '10px 0 0', padding: '10px 12px', borderRadius: '8px',
+            border: `1px solid ${colors.border}`, background: colors.raised,
+            display: 'flex', flexDirection: 'column', gap: '6px',
+          }}>
+            <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+              {readinessSummary}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {readinessMissing.map(requirement => (
+                <li key={requirement.key} style={{ fontSize: '11.5px', color: colors.secondary }}>
+                  {requirement.label}
+                  {requirement.needsReimport
+                    ? ' — a corrected workbook is needed'
+                    : ''}
+                  {/* NO "Add" FOR AN INCOMPLETE PRODUCT LINE, on purpose. The
+                      list counts them rather than naming them — eleven lines
+                      each missing an image is one sentence a reader can act on
+                      and eleven sentences is a wall — so a button here would
+                      have to guess which row it meant. Each line carries its
+                      own Edit control in the table below, where the reader can
+                      see which one is short of what. */}
+                  {!requirement.needsReimport
+                    && requirement.section !== 'products'
+                    && onFixReadiness && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-ghost"
+                      style={{ marginLeft: '8px' }}
+                      onClick={() => onFixReadiness(requirement.section)}
+                      disabled={acting}
+                    >
+                      Add
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {hasActions && (
           <div className="pi-detail-workflow-actions">
             {ownerActions && (
@@ -710,8 +804,8 @@ export function PiWorkflowPanel({
                 <button
                   className="boe-btn boe-btn-primary"
                   onClick={onSubmit}
-                  disabled={acting || blockingCount > 0}
-                  title={blockingCount > 0 ? 'Fix the issues in the PI first' : undefined}
+                  disabled={acting || blockingCount > 0 || submitBlocked}
+                  title={submitTitle}
                 >
                   <Send size={13} strokeWidth={2} />
                   {submitButtonLabel(status)}

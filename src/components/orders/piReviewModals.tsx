@@ -812,6 +812,7 @@ export function PiFinanceVerifyModal({
   client,
   grandTotal,
   advanceLabel,
+  incompleteSummary = null,
   saving,
   failure,
   onCancel,
@@ -821,6 +822,17 @@ export function PiFinanceVerifyModal({
   grandTotal: string
   /** The advance condition this PI was submitted under, already worded. */
   advanceLabel: string
+  /**
+   * piReadiness('submission').summary, when the record is still short of
+   * something, or null.
+   *
+   * SHOWN AND NOT ENFORCED. Nothing here refuses a verification: finance is
+   * signing off on the FIGURES, and whether the PI carries a client name is
+   * not their decision to make. But approval will refuse for it, so a verifier
+   * who cannot see it signs off and then watches the approval stall — one more
+   * round trip that the same shared list can prevent by simply being visible.
+   */
+  incompleteSummary?: string | null
   saving: boolean
   failure: string | null
   onCancel: () => void
@@ -858,6 +870,23 @@ export function PiFinanceVerifyModal({
               <span style={KEY_STYLE}>Advance</span>
               <span style={{ color: colors.primary, fontWeight: 600, textAlign: 'right' }}>{advanceLabel}</span>
             </div>
+          </div>
+
+          {incompleteSummary !== null && (
+            <div style={{
+              padding: '9px 11px', borderRadius: '7px',
+              border: `1px solid ${colors.border}`, background: colors.raised,
+              fontSize: '11.5px', color: colors.secondary, lineHeight: 1.55,
+            }}>
+              <strong style={{ color: colors.primary, fontWeight: 600 }}>
+                {incompleteSummary}
+              </strong>{' '}
+              Verifying is still yours to do — this is about the figures — but the
+              PI cannot be approved until it is supplied.
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           </div>
 
           <div style={{

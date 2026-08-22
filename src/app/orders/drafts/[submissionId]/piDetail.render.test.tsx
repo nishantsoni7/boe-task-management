@@ -25,6 +25,7 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
+import { piReadiness, type PiReadiness, type PiRequirement } from '@/lib/orders/piReadiness'
 import {
   PAYMENT_DETAILS_LABEL,
   PiActivityTimeline,
@@ -242,6 +243,9 @@ function viewerState(row: PersistedSubmission, viewer: {
  */
 function workflowHtml(row: PersistedSubmission, viewer: Parameters<typeof viewerState>[1], opts: {
   employeeReply?: string | null
+  /** What piReadiness('submission') said, when a test is about that list. */
+  readiness?: PiReadiness | null
+  onFixReadiness?: ((section: PiRequirement['section']) => void) | null
 } = {}): string {
   const { actions, advance, advanceActions, panel, finance, readiness, approvedOrder } =
     viewerState(row, viewer)
@@ -256,6 +260,8 @@ function workflowHtml(row: PersistedSubmission, viewer: Parameters<typeof viewer
       advanceRefusal={refused
         ? { reason: advance.rejectionReason, instruction: ADVANCE_REJECTED_INSTRUCTION }
         : null}
+      readiness={opts.readiness ?? null}
+      onFixReadiness={opts.onFixReadiness ?? null}
       blockingCount={0}
       acting={false}
       finance={finance}
@@ -2425,6 +2431,8 @@ describe('the Phase C additions introduce no page-level overflow', () => {
             panel: state.panel,
             actions: state.actions,
             status: verified.status,
+            readiness: null,
+            onFixReadiness: null,
             reviewNote: null,
             employeeReply: null,
             advanceRefusal: null,

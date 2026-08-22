@@ -1342,6 +1342,39 @@ function PiDraftDetailPageInner() {
   // pi_submission_payment_summary() resolved the position in numeric, in the
   // same order approve_order_submission() resolves it; a null summary means it
   // could not be read at all and the control fails closed.
+  /**
+   * THE WHOLE REMAINING DISTANCE, asked once and answered for every surface.
+   *
+   * The dead end manual testing found was not one missing field — it was
+   * learning about them ONE REFUSAL AT A TIME. Submitting named the client;
+   * fixing that named a product line; fixing that named an image. Every round
+   * trip a fresh disappointment, and no screen able to say how far there was
+   * left to go.
+   *
+   * So the same list is computed here and read by every surface below: the
+   * submit control, the finance dialog and the approval control. It is NOT the
+   * enforcement — submit_pi_for_review and approve_order_submission re-derive
+   * all of it under a row lock — it is the difference between being told the
+   * whole thing and being told the first thing.
+   *
+   * `hasRepresentativeImage` is read from the URLs the page already resolved,
+   * so a picture whose object has gone missing counts as missing here rather
+   * than only showing as a broken thumbnail beside a line that looks complete.
+   */
+  const submissionReadiness = piReadiness(
+    'submission',
+    {
+      client_name: submission.client_name ?? null,
+      source_workbook_path: submission.source_workbook_path ?? null,
+      parse_blocking_issues: draft.blocking,
+    },
+    products.map(p => ({
+      item_sequence: p.itemSequence === null ? null : 1,
+      product_name: p.productName,
+      hasRepresentativeImage: draft.representativeByRow.has(p.row),
+    })),
+  )
+
   const readiness = describeApprovalReadiness({
     status: submission.status,
     financeVerified,
@@ -1350,6 +1383,9 @@ function PiDraftDetailPageInner() {
     hasBlockingIssues: draft.blocking.length > 0,
     productCount: products.length,
     deletionClaimed: submission.deletion_claim_token !== null,
+    // The same list every other surface reads. Last of the blockers, because
+    // everything above it is a larger obstacle than a missing field.
+    incompleteSummary: submissionReadiness.ready ? null : submissionReadiness.summary,
   })
 
   /**
@@ -1671,6 +1707,20 @@ function PiDraftDetailPageInner() {
           employeeReply={employeeReply}
           advanceRefusal={advanceRefusal}
           blockingCount={draft.blocking.length}
+          /* The same list the approval control and the finance dialog read.
+             Offered only where submitting is the question: a reviewer looking
+             at a submitted PI is not the person who fills these in. */
+          readiness={actions.canSubmit ? submissionReadiness : null}
+          onFixReadiness={
+            canEditSubmission || canAdminAmend
+              ? section => {
+                  setClientFailure(null)
+                  setProductFailure(null)
+                  if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
+                  setEditSection(section)
+                }
+              : null
+          }
           acting={acting}
           onChangePi={() => router.push(changePiHref(submissionId))}
           onSubmit={() => { setActionFailure(null); setDialog('submit') }}
@@ -2119,6 +2169,11 @@ function PiDraftDetailPageInner() {
           client={clientLabel}
           grandTotal={grandTotalLabel}
           advanceLabel={verifiedPaymentLabel ?? advanceLabel}
+          /* The same list the submit control and the approval control read.
+             Not a refusal — finance signs off on the figures — but the thing
+             that will stop the approval, said before the sign-off rather than
+             after it. */
+          incompleteSummary={submissionReadiness.ready ? null : submissionReadiness.summary}
           saving={acting}
           failure={actionFailure}
           onCancel={closeDialog}
