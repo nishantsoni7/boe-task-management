@@ -1269,21 +1269,35 @@ export function PiClientDetailsModal({ client, onClose }: {
  * nothing like a typo, so it is never one keystroke away from Save.
  */
 export function PiBillingPercentageModal({
-  current, saving, failure, onCancel, onSave, onClear,
+  current, saving, failure, requireReason = false, onCancel, onSave, onClear,
 }: {
   /** The declared percentage, or null while undeclared. */
   current: number | null
   saving: boolean
   failure: string | null
+  /**
+   * True when this edit is an ADMIN AMENDMENT AFTER SUBMISSION, which the
+   * database requires a reason for.
+   *
+   * Asked for here rather than only refused by the RPC, because being told
+   * "a reason is required" after typing a percentage and pressing Save is a
+   * worse way to learn it than being shown the field. The database remains the
+   * authority — ORDER_SUBMISSION_BILLING_REASON_REQUIRED still refuses a write
+   * that arrives without one.
+   */
+  requireReason?: boolean
   onCancel: () => void
-  onSave: (value: number) => void
-  onClear: () => void
+  onSave: (value: number, reason: string | null) => void
+  onClear: (reason: string | null) => void
 }) {
   useScrollLock(true)
   const dialogRef = useRef<HTMLDivElement>(null)
   const inputId = useId()
   const errorId = useId()
+  const reasonId = useId()
   const [raw, setRaw] = useState(current === null ? '' : String(current))
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
   const [confirmClear, setConfirmClear] = useState(false)
   // Nothing is said about the value until the person has stopped typing it for
   // the first time; an error appearing under a half-typed "3" is noise.
@@ -1323,7 +1337,8 @@ export function PiBillingPercentageModal({
     // The guard is here as well as on the button: Enter in a text input submits
     // a form whatever the button's disabled state says.
     if (!canSave || !parsed.ok) return
-    onSave(parsed.value)
+    if (requireReason && trimmedReason === '') return
+    onSave(parsed.value, requireReason ? trimmedReason : null)
   }
 
   const showError = touched && !parsed.ok && parsed.reason !== 'empty'
@@ -1381,12 +1396,44 @@ export function PiBillingPercentageModal({
               : <div style={{ fontSize: '11.5px', color: colors.muted }}>{BILLING_RANGE_HELP}</div>}
           </div>
 
+          {/* ── The reason, when this is an amendment ──
+              Shown only for an admin editing a PI that has left the owner's
+              hands. It is not decoration and not a formality: this record has
+              been reviewed, may have money against it, and may already have a
+              confirmed Order and generated documents. Whoever reads the trail
+              later needs to know why the figure moved, and the person moving it
+              is the only one who can say. */}
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity against this PI{current !== null ? ' and its Order' : ''}. Required.
+              </div>
+            </div>
+          )}
+
           {failure && (
             <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
           )}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave || (requireReason && trimmedReason === '')}>
               {saving ? 'Saving…' : 'Save'}
             </button>
             <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
@@ -1398,8 +1445,9 @@ export function PiBillingPercentageModal({
               <span style={{ marginLeft: 'auto' }}>
                 {confirmClear ? (
                   <button
-                    type="button" className="boe-btn boe-btn-ghost" disabled={saving}
-                    onClick={onClear}
+                    type="button" className="boe-btn boe-btn-ghost"
+                    disabled={saving || (requireReason && trimmedReason === '')}
+                    onClick={() => onClear(requireReason ? trimmedReason : null)}
                     style={{ color: '#b3541e' }}
                   >
                     Confirm — return to {BILLING_UNDECLARED}

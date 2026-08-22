@@ -784,8 +784,16 @@ describe('the billing declaration, on the card', () => {
     // put a copy of an authority rule where it could drift.
     assert.ok(page.includes("supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId })"),
       'the authority is asked of the database')
-    assert.ok(page.includes('canEditBilling={canEditSubmission}'),
-      'and its answer is what the card is given')
+    assert.ok(page.includes("supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId })"),
+      'and so is the admin authority, which the owner rule cannot answer')
+    // BOTH answers, ORed. can_edit_order_submission is the OWNER rule and goes
+    // false the moment a PI is submitted — for admins too, because its actor
+    // test sits behind its state test. That is exactly the defect manual
+    // testing found: an active admin was shown no control on a submitted PI,
+    // and the RPC behind it refused anyway. The second probe is what carries
+    // the revised rule, and it is still ASKED, not restated.
+    assert.ok(page.includes('canEditBilling={canEditSubmission || canAdminAmend}'),
+      'and both answers together are what the card is given')
     assert.ok(!/canEditBilling=\{actions\./.test(page),
       'not describeSubmissionActions, which knows only about the owner')
     // Comments on this page discuss users.role at length precisely because it is
@@ -2474,6 +2482,10 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'approve_pi_advance_exception',
       // A read, not a write: the database's own answer to "may this viewer edit
       // this record", asked instead of being restated in the browser.
+      // Two capability reads, not one. The second carries the revised rule that
+      // an ACTIVE ADMIN may amend a PI at any stage; the first remains the
+      // owner rule and is deliberately unwidened.
+      'can_admin_edit_order_submission',
       'can_edit_order_submission',
       'reject_order_submission',
       'reject_pi_advance_exception',

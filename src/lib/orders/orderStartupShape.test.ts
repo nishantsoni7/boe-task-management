@@ -214,7 +214,11 @@ describe('no Order screen waits more than it must', () => {
     // waits three times, not seventeen.
     const expected: Record<string, number> = {
       [GUARD]: 2, [DASHBOARD]: 9, [ALL]: 2, [DETAIL]: 17,
-      [DRAFTS]: 4, [PI_DETAIL]: 19, [REQUESTS]: 18, [REQUEST_DETAIL]: 7, [IMPORT]: 5,
+      // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
+      // capability probe added in 20260927000000. It is resolved INSIDE the
+      // page's existing Promise.all, so the count grew and the number of times
+      // the page waits did not.
+      [DRAFTS]: 4, [PI_DETAIL]: 20, [REQUESTS]: 18, [REQUEST_DETAIL]: 7, [IMPORT]: 5,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

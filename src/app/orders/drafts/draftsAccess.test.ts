@@ -371,15 +371,26 @@ describe('the detail page renders only what it fetched', () => {
     //
     // set_order_submission_billing_percentage is the one write here that is NOT
     // a status move, and it is deliberately narrow: one column on one row, no
-    // money, no state transition, and gated by can_edit_order_submission — the
-    // existing draft/needs_changes owner-or-admin rule, unwidened. A SUBMITTED
-    // record refuses it like every other edit.
+    // money, no state transition.
+    //
+    // ITS AUTHORITY WIDENED IN 20260927000000, and only its. It used to be
+    // gated by can_edit_order_submission alone — draft/needs_changes, no Order,
+    // owner or admin — under which a submitted record refused it like every
+    // other edit. Manual testing showed that also refused an ACTIVE ADMIN, for
+    // whom the business rule has since been revised: an admin may correct PI
+    // business information at any stage, giving a reason once the PI has left
+    // the owner's hands.
+    //
+    // The new authority is a SEPARATE predicate, can_admin_edit_order_submission.
+    // can_edit_order_submission is untouched, so no OTHER write path on this
+    // page gained anything — which is the whole reason it was added beside the
+    // owner rule instead of inside it.
     // READ-ONLY CAPABILITY PROBES ARE NOT WRITES, and are named here rather than
     // folded into the list below — a write allowlist that quietly accepted
     // read-shaped names would stop being a write allowlist.
-    // can_edit_order_submission is `stable`, takes a submission id, and returns
-    // a boolean; it is the authority this page asks instead of restating.
-    const READ_ONLY_RPCS = ['can_edit_order_submission']
+    // Both are `stable`, take a submission id, and return a boolean; they are
+    // the authorities this page asks instead of restating.
+    const READ_ONLY_RPCS = ['can_admin_edit_order_submission', 'can_edit_order_submission']
     const called = [...new Set([...source.matchAll(/\.rpc\('([^']+)'/g)].map(m => m[1]))].sort()
     for (const probe of READ_ONLY_RPCS) {
       assert.ok(called.includes(probe), `${probe} should be the capability this page asks`)

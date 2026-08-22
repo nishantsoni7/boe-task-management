@@ -347,6 +347,15 @@ function PiDraftDetailPageInner() {
    * record that leaves draft stops offering the control without a new request.
    */
   const [canEditSubmission, setCanEditSubmission] = useState(false)
+  /**
+   * can_admin_edit_order_submission's answer: an ACTIVE ADMIN, at any stage.
+   *
+   * Kept as its own value rather than folded into the one above, because the
+   * two are not the same authority and the difference is visible to the reader:
+   * an admin amending a submitted PI must give a reason, and an owner shaping
+   * their own draft must not be asked for one.
+   */
+  const [canAdminAmend, setCanAdminAmend] = useState(false)
   const [billingDialog, setBillingDialog] = useState(false)
   const [billingSaving, setBillingSaving] = useState(false)
   const [billingFailure, setBillingFailure] = useState<string | null>(null)
@@ -440,7 +449,7 @@ function PiDraftDetailPageInner() {
     // not distinguish them, and neither does this branch.
     if (!submission) { setLoad({ kind: 'unavailable' }); return }
 
-    const [itemsResult, imagesResult, editableResult] = await Promise.all([
+    const [itemsResult, imagesResult, editableResult, adminEditResult] = await Promise.all([
       supabase
         .from('order_submission_items')
         .select(PI_DRAFT_ITEM_COLUMNS)
@@ -469,12 +478,19 @@ function PiDraftDetailPageInner() {
        * behind it would refuse anyway.
        */
       supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId }),
+      // THE SECOND AUTHORITY, asked separately because it answers a different
+      // question. can_edit_order_submission is the OWNER rule and is false the
+      // moment a PI is submitted — for everybody, admins included, because the
+      // actor test sits behind the state test. An active admin may correct a PI
+      // at any stage, and only can_admin_edit_order_submission knows that.
+      supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId }),
     ])
 
     if (itemsResult.error || imagesResult.error) { setLoad({ kind: 'failed' }); return }
 
     // FAIL CLOSED. A capability that could not be resolved is not a capability.
     setCanEditSubmission(editableResult.error ? false : editableResult.data === true)
+    setCanAdminAmend(adminEditResult.error ? false : adminEditResult.data === true)
 
     const products = persistedProducts((itemsResult.data ?? []) as unknown as PersistedItem[])
     const images = (imagesResult.data ?? []) as unknown as PersistedItemImage[]
@@ -823,7 +839,7 @@ function PiDraftDetailPageInner() {
    * `null` is the clear. The RPC re-derives the authority and the bounds, so a
    * refusal here is the database's answer and not a second opinion.
    */
-  const saveBillingPercentage = useCallback(async (value: number | null) => {
+  const saveBillingPercentage = useCallback(async (value: number | null, reason?: string | null) => {
     if (billingSaving) return
     setBillingSaving(true)
     setBillingFailure(null)
@@ -831,6 +847,11 @@ function PiDraftDetailPageInner() {
       const { error } = await supabase.rpc('set_order_submission_billing_percentage', {
         p_submission_id: submissionId,
         p_percentage: value,
+        // THE REASON TRAVELS WITH THE WRITE. The database decides whether it is
+        // required — an owner shaping a draft needs none, an admin amending a
+        // submitted PI does — so this passes whatever was collected and lets
+        // ORDER_SUBMISSION_BILLING_REASON_REQUIRED be the authority on it.
+        p_reason: reason ?? null,
       })
       if (error) {
         setBillingFailure(
@@ -1353,7 +1374,7 @@ function PiDraftDetailPageInner() {
              only; every other state is read-only for everyone. The RPC behind
              the dialog re-derives exactly this, so the control and the write
              cannot disagree. */
-          canEditBilling={canEditSubmission}
+          canEditBilling={canEditSubmission || canAdminAmend}
           onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
           ownership={ownership}
           statusLabel={draftStatusLabel(submission.status)}
@@ -1582,9 +1603,14 @@ function PiDraftDetailPageInner() {
           current={billingSummary.value}
           saving={billingSaving}
           failure={billingFailure}
+          /* A reason is required exactly when this is an ADMIN AMENDMENT of a
+             PI the owner can no longer edit. `canEditSubmission` is the owner
+             rule, so its being false while the admin authority is true is
+             precisely the after-submission case the database asks about. */
+          requireReason={canAdminAmend && !canEditSubmission}
           onCancel={() => { if (!billingSaving) setBillingDialog(false) }}
-          onSave={value => { void saveBillingPercentage(value) }}
-          onClear={() => { void saveBillingPercentage(null) }}
+          onSave={(value, reason) => { void saveBillingPercentage(value, reason) }}
+          onClear={reason => { void saveBillingPercentage(null, reason) }}
         />
       )}
 
