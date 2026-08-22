@@ -83,7 +83,12 @@ end $$;
 create or replace function public.assert_order_submission_workbook_editor(
   p_submission_id uuid,
   p_actor_id      uuid,
-  p_reason        text default null
+  p_reason        text default null,
+  -- FALSE for the lease, which runs before the reason has been carried this
+  -- far and only needs to know whether this employee may proceed at all. The
+  -- replacement itself always asks with it TRUE, so a reason is never optional
+  -- in the write that records one.
+  p_require_reason boolean default true
 )
 returns jsonb
 language plpgsql
@@ -168,12 +173,12 @@ begin
   end if;
 
   v_reason := nullif(btrim(coalesce(p_reason, '')), '');
-  if v_reason is null then
+  if v_reason is null and coalesce(p_require_reason, true) then
     raise exception
       'ORDER_SUBMISSION_WORKBOOK_REASON_REQUIRED: replacing the PI of a submitted record needs a reason'
       using errcode = 'P0001';
   end if;
-  if length(v_reason) > 500 then
+  if length(coalesce(v_reason, '')) > 500 then
     raise exception
       'ORDER_SUBMISSION_WORKBOOK_REASON_TOO_LONG: the reason may be at most 500 characters'
       using errcode = 'P0001';
@@ -185,10 +190,10 @@ begin
 end;
 $$;
 
-comment on function public.assert_order_submission_workbook_editor(uuid, uuid, text) is
+comment on function public.assert_order_submission_workbook_editor(uuid, uuid, text, boolean) is
   'Decides whether p_actor_id may replace this PI''s workbook, and returns {after_submission, is_admin_amendment, reason, status, order_id}. Owner or admin while draft/needs_changes with no Order; ACTIVE ADMIN ONLY thereafter, with a mandatory reason of at most 500 characters. Re-derives admin status from p_actor_id, never from auth.uid(), because the import worker runs as the service role. Deliberately separate from assert_order_submission_editor, which keeps the owner-only rule for every other caller.';
 
-revoke execute on function public.assert_order_submission_workbook_editor(uuid, uuid, text)
+revoke execute on function public.assert_order_submission_workbook_editor(uuid, uuid, text, boolean)
   from public, anon, authenticated, service_role;
 
 
@@ -566,6 +571,76 @@ comment on function public.replace_order_submission_parse(uuid, uuid, jsonb) is
   'SERVICE ROLE ONLY. Writes the parsed commercial snapshot, every product line and every normalized product image of a PI submission. Not callable by anon or authenticated, because these values must come from parsing the uploaded workbook server-side and never from a browser. p_actor_id is re-validated against the database, not trusted. Since 20261003000000 an ACTIVE ADMIN may also run it after submission, with a reason in payload.change_reason: that clears any finance verification, carries the corrected figures onto the linked Order without touching its identity, and supersedes the current confirmed documents.';
 
 
+-- ═══ 2b. Taking the lease ══════════════════════════════════════════════════
+--
+-- begin_order_submission_processing is the gate BEFORE the gate: it takes the
+-- single processing lease, and it too asked assert_order_submission_editor. An
+-- admin correcting a submitted PI would therefore have been refused a lease and
+-- never reached the replacement at all — the new authority would have been
+-- unreachable through the only route that calls it.
+--
+-- RE-EMITTED WITH ONE LINE CHANGED, for the same reason section 2 is re-emitted
+-- whole. Nothing about the TTL, the takeover rule or the 55P03 busy signal
+-- moves.
+create or replace function public.begin_order_submission_processing(
+  p_submission_id uuid,
+  p_actor_id      uuid,
+  p_token         uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_sub      public.order_submissions%rowtype;
+  v_took_over boolean := false;
+begin
+  if p_token is null then
+    raise exception 'ORDER_SUBMISSION_PROCESSING_TOKEN_REQUIRED: a processing token is required'
+      using errcode = 'P0001';
+  end if;
+
+  select * into v_sub from public.order_submissions where id = p_submission_id for update;
+  if not found then
+    raise exception 'Order submission % not found', p_submission_id using errcode = 'P0002';
+  end if;
+
+  -- Active, not deleted, holds orders.create, and may replace THIS workbook at
+  -- THIS stage. Asked without the reason: the lease runs before the reason has
+  -- been carried this far, and a lease grants nothing on its own — the
+  -- replacement asks again, with it required.
+  perform public.assert_order_submission_workbook_editor(
+    p_submission_id, p_actor_id, null, false);
+
+  if v_sub.processing_token is not null then
+    if v_sub.processing_started_at > now() - public.order_submission_processing_ttl() then
+      -- 55P03 is lock_not_available: a retryable "busy", not a failure.
+      raise exception
+        'ORDER_SUBMISSION_PROCESSING_BUSY: this submission is already being processed'
+        using errcode = '55P03';
+    end if;
+    -- Past the expiry the previous processor is presumed dead. Taking over
+    -- invalidates its token, so a process that wakes up late can no longer
+    -- release this lease or replace the parse behind the new processor's back.
+    v_took_over := true;
+  end if;
+
+  update public.order_submissions
+     set processing_token = p_token,
+         processing_started_at = now()
+   where id = p_submission_id;
+
+  return jsonb_build_object('acquired', true, 'took_over', v_took_over);
+end;
+$$;
+
+revoke execute on function public.begin_order_submission_processing(uuid, uuid, uuid)
+  from public, anon, authenticated;
+grant  execute on function public.begin_order_submission_processing(uuid, uuid, uuid)
+  to service_role;
+
+
 -- ═══ 3. What this migration promises ═══════════════════════════════════════
 do $$
 declare
@@ -584,7 +659,7 @@ begin
 
   -- ── Neither function may be reachable by a browser role ──
   if has_function_privilege('authenticated',
-       'public.assert_order_submission_workbook_editor(uuid, uuid, text)', 'execute')
+       'public.assert_order_submission_workbook_editor(uuid, uuid, text, boolean)', 'execute')
      or has_function_privilege('authenticated',
        'public.replace_order_submission_parse(uuid, uuid, jsonb)', 'execute') then
     raise exception 'a browser role can reach the workbook replacement path';

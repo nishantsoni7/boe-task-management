@@ -489,27 +489,102 @@ begin
   else failures := array_append(failures, 'G5: an allocation appeared'); n_fail := n_fail + 1; end if;
 
 
-  -- ═══ H. PRIVILEGES ═════════════════════════════════════════════════════
+  -- ═══ H. THE LEASE IS THE GATE BEFORE THE GATE ══════════════════════════
+  --
+  -- begin_order_submission_processing asked the OLD predicate, so an admin
+  -- correcting a submitted PI would have been refused a lease and never reached
+  -- the replacement at all. These prove the lease now agrees with it — and that
+  -- it did not become a way past it.
+
+  update public.order_submissions set processing_token = null, processing_started_at = null
+   where id in (k_subm, k_appr, k_draft);
+
+  begin
+    v_res := public.begin_order_submission_processing(k_subm, u_owner, gen_random_uuid());
+    failures := array_append(failures, 'H1: the owner took a lease on a submitted PI'); n_fail := n_fail + 1;
+  exception when others then
+    if sqlerrm like '%NOT_EDITABLE%' then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'H1: ' || sqlerrm); n_fail := n_fail + 1; end if;
+  end;
+
+  -- The admin gets one WITHOUT a reason: a lease grants nothing on its own, and
+  -- the replacement asks again with the reason required.
+  begin
+    v_res := public.begin_order_submission_processing(k_subm, u_admin, t_subm);
+    if (v_res ->> 'acquired')::boolean then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'H2: ' || v_res::text); n_fail := n_fail + 1; end if;
+  exception when others then
+    failures := array_append(failures, 'H2: an admin was refused a lease -> ' || sqlerrm); n_fail := n_fail + 1;
+  end;
+
+  -- Holding the lease is still not permission to replace without a reason.
+  begin
+    v_res := public.replace_order_submission_parse(k_subm, u_admin, jsonb_build_object(
+      'processing_token', t_subm::text,
+      'header', '{}'::jsonb, 'source', '{}'::jsonb, 'commercial', '{}'::jsonb,
+      'items', '[]'::jsonb, 'item_images', '[]'::jsonb));
+    failures := array_append(failures, 'H3: the lease was accepted in place of a reason'); n_fail := n_fail + 1;
+  exception when others then
+    if sqlerrm like '%REASON_REQUIRED%' then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'H3: ' || sqlerrm); n_fail := n_fail + 1; end if;
+  end;
+
+  -- And the busy signal still works, unchanged.
+  begin
+    v_res := public.begin_order_submission_processing(k_subm, u_admin, gen_random_uuid());
+    failures := array_append(failures, 'H4: a second lease was granted'); n_fail := n_fail + 1;
+  exception when others then
+    if sqlerrm like '%PROCESSING_BUSY%' then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'H4: ' || sqlerrm); n_fail := n_fail + 1; end if;
+  end;
+
+  -- The owner still takes one on their own draft: the ordinary import path is
+  -- untouched.
+  begin
+    v_res := public.begin_order_submission_processing(k_draft, u_owner, t_draft);
+    if (v_res ->> 'acquired')::boolean then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'H5: ' || v_res::text); n_fail := n_fail + 1; end if;
+  exception when others then
+    failures := array_append(failures, 'H5: the owner lost their own draft -> ' || sqlerrm); n_fail := n_fail + 1;
+  end;
+
+  -- A colleague who does not own the draft still cannot.
+  begin
+    update public.order_submissions set processing_token = null where id = k_draft;
+    v_res := public.begin_order_submission_processing(k_draft, u_other, gen_random_uuid());
+    failures := array_append(failures, 'H6: a non-owner took a lease on a draft'); n_fail := n_fail + 1;
+  exception when others then
+    if sqlerrm like '%NOT_OWNED%' then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'H6: ' || sqlerrm); n_fail := n_fail + 1; end if;
+  end;
+
+
+  -- ═══ I. PRIVILEGES ═════════════════════════════════════════════════════
 
   if not has_function_privilege('authenticated',
-       'public.assert_order_submission_workbook_editor(uuid, uuid, text)', 'execute')
+       'public.assert_order_submission_workbook_editor(uuid, uuid, text, boolean)', 'execute')
   then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'H1: a browser role can call the workbook editor'); n_fail := n_fail + 1; end if;
+  else failures := array_append(failures, 'I1: a browser role can call the workbook editor'); n_fail := n_fail + 1; end if;
 
   if not has_function_privilege('authenticated',
        'public.replace_order_submission_parse(uuid, uuid, jsonb)', 'execute')
   then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'H2: a browser role can replace a parse'); n_fail := n_fail + 1; end if;
+  else failures := array_append(failures, 'I2: a browser role can replace a parse'); n_fail := n_fail + 1; end if;
 
   if has_function_privilege('service_role',
        'public.replace_order_submission_parse(uuid, uuid, jsonb)', 'execute')
   then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'H3: the import worker lost its grant'); n_fail := n_fail + 1; end if;
+  else failures := array_append(failures, 'I3: the import worker lost its grant'); n_fail := n_fail + 1; end if;
+
+  if not has_function_privilege('authenticated',
+       'public.begin_order_submission_processing(uuid, uuid, uuid)', 'execute')
+  then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'I4: a browser role can take a lease'); n_fail := n_fail + 1; end if;
 
   select prosecdef into v_bool from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'assert_order_submission_workbook_editor';
   if v_bool then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'H4: the workbook editor is not SECURITY DEFINER'); n_fail := n_fail + 1; end if;
+  else failures := array_append(failures, 'I5: the workbook editor is not SECURITY DEFINER'); n_fail := n_fail + 1; end if;
 
 
   if n_fail = 0 then

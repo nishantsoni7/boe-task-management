@@ -218,8 +218,76 @@ describe('the re-emitted workbook replacement differs by the amendment and nothi
   test('the new authority is not reachable by a browser role', () => {
     const sql = read(CHANGE_PI)
     assert.match(sql,
-      /revoke execute on function public\.assert_order_submission_workbook_editor\(uuid, uuid, text\)\s*\n\s*from public, anon, authenticated, service_role;/)
+      /revoke execute on function public\.assert_order_submission_workbook_editor\(uuid, uuid, text, boolean\)\s*\n\s*from public, anon, authenticated, service_role;/)
     assert.ok(!/grant\s+execute on function public\.assert_order_submission_workbook_editor/.test(sql),
       'the workbook editor must not be granted to anybody')
+  })
+})
+
+/**
+ * THE LEASE IS THE GATE BEFORE THE GATE.
+ *
+ * begin_order_submission_processing asked the same stage-before-actor predicate,
+ * so leaving it alone would have made the new authority unreachable: an admin
+ * would be refused a lease and never arrive at the replacement. It is re-emitted
+ * too, and the same continuity argument applies — the TTL, the takeover rule and
+ * the 55P03 busy signal are what a careless restatement would lose.
+ */
+describe('the re-emitted lease differs by its authority line and nothing else', () => {
+  const LEASE_SOURCE = '20260909000000_order_submission_item_images.sql'
+
+  function leaseFn(file: string): string {
+    const sql = read(file)
+    const start = sql.search(
+      /create\s+or\s+replace\s+function\s+public\.begin_order_submission_processing\s*\(/i)
+    assert.ok(start >= 0, `begin_order_submission_processing is not defined in ${file}`)
+    const at = sql.indexOf('\n$$;', start)
+    assert.ok(at > start, `no closing dollar tag in ${file}`)
+    return sql.slice(start, at + 4)
+  }
+
+  const appliedLease   = leaseFn(LEASE_SOURCE)
+  const reemittedLease = leaseFn(CHANGE_PI)
+
+  test('swapping the authority line back restores the applied function exactly', () => {
+    const undone = executable(reemittedLease)
+      .filter(l => l !== 'v_amend := public.assert_order_submission_workbook_editor(')
+      .map(l => l === 'perform public.assert_order_submission_workbook_editor('
+        ? 'perform public.assert_order_submission_editor(p_submission_id, p_actor_id);'
+        : l)
+      .filter(l => l !== 'p_submission_id, p_actor_id, null, false);')
+
+    assert.deepEqual(undone, executable(appliedLease),
+      'the lease must differ from the applied one only in which assert it calls')
+  })
+
+  test('the lease still refuses, still expires and still reports busy', () => {
+    for (const invariant of [
+      'for update',                                  // the lock, before any judgement
+      'ORDER_SUBMISSION_PROCESSING_BUSY',            // the retryable signal
+      "using errcode = '55P03'",                     // ...with the code the route reads
+      'order_submission_processing_ttl()',           // the takeover boundary
+      'processing_started_at',
+    ]) {
+      assert.ok(appliedLease.includes(invariant), `${invariant} should be in the applied lease`)
+      assert.ok(reemittedLease.includes(invariant), `${invariant} must survive the re-emission`)
+    }
+    assert.ok(!reemittedLease.includes('assert_order_submission_editor('),
+      'the lease must no longer call the stage-before-actor assert')
+  })
+
+  test('the lease asks WITHOUT the reason, and the replacement asks WITH it', () => {
+    // A lease grants nothing on its own. If it ever started requiring a reason,
+    // an admin would have to justify a correction before finding out whether the
+    // file even parses; if the replacement ever stopped requiring one, an
+    // amendment would land unexplained.
+    assert.match(reemittedLease, /assert_order_submission_workbook_editor\(\s*p_submission_id, p_actor_id, null, false\)/)
+    assert.match(reemitted, /assert_order_submission_workbook_editor\(\s*p_submission_id, p_actor_id,\s*nullif\(btrim\(coalesce\(p_payload ->> 'change_reason'/)
+  })
+
+  test('its privileges are restated unchanged', () => {
+    const sql = read(CHANGE_PI)
+    assert.match(sql, /revoke execute on function public\.begin_order_submission_processing\(uuid, uuid, uuid\)\s*\n\s*from public, anon, authenticated;/)
+    assert.match(sql, /grant\s+execute on function public\.begin_order_submission_processing\(uuid, uuid, uuid\)\s*\n\s*to service_role;/)
   })
 })
