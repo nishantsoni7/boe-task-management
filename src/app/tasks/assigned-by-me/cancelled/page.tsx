@@ -13,6 +13,18 @@ import { ExternalLink, Star, Search, Ban } from 'lucide-react'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { idParam, optionParam, textParam } from '@/lib/listState'
+import { fetchAllRows } from '@/lib/supabasePaging'
+
+/**
+ * What the screen says when the archive could not be read in full.
+ *
+ * Deliberately not an empty list: an empty archive is a statement about
+ * somebody's work, and a failed or truncated read is a statement about the
+ * request. The two must never look the same.
+ */
+const ARCHIVE_LOAD_ERROR =
+  'This list could not be loaded in full. Check your connection and try again.'
+
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -215,6 +227,7 @@ function AssignedByMeCancelledContent() {
   const { viewAsUserId } = useViewAs()
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [allTasks,     setAllTasks]     = useState<Task[]>([])
+  const [loadError,    setLoadError]    = useState<string | null>(null)
   const [userId,       setUserId]       = useState<string>('')
   const [userMap,      setUserMap]      = useState<Record<string, string>>({})
   const [loading,      setLoading]      = useState(true)
@@ -248,19 +261,38 @@ function AssignedByMeCancelledContent() {
       const uid = viewAsUserId ?? loggedInId
       setUserId(uid)
 
-      const [{ data: profileData }, { data: tasks }, { data: userData }] = await Promise.all([
+      // THE ARCHIVE IS PAGED, BECAUSE POSTGREST TRUNCATES SILENTLY. A plain
+      // .select() is capped at 1000 rows with no error and no warning — see
+      // src/lib/supabasePaging.ts. An archive of finished work only ever grows
+      // and reads newest-first, so past 1000 the OLDEST records quietly stop
+      // appearing: exactly the ones somebody opens this page to find.
+      //
+      // fetchAllRows pages it and REPORTS truncation instead of under-reporting.
+      // The whole set stays in memory, so this page's search and filters work
+      // exactly as before — which is why this and not server-side paging:
+      // narrowing one page in the browser would hide every match beyond it.
+      //
+      // The secondary sort on `id` is required, not cosmetic: range() maps to
+      // LIMIT/OFFSET, which promises nothing about row order unless the ordering
+      // is unique, so two rows sharing a timestamp could swap between pages —
+      // showing one twice and losing the other.
+      const [{ data: profileData }, taskResult, { data: userData }] = await Promise.all([
         supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
-        supabase.from('tasks').select(TASK_COLUMNS)
+        fetchAllRows<Task>((from, to) => supabase.from('tasks').select(TASK_COLUMNS)
           .eq('created_by', uid)
           .not('assigned_to', 'is', null)
           .neq('assigned_to', uid)
           .eq('status', 'cancelled')
-          .order('cancelled_at', { ascending: false, nullsFirst: false }),
+          .order('cancelled_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false })
+          .range(from, to)),
         supabase.from('users').select('id, full_name'),
       ])
 
       if (profileData) setProfile(profileData as UserProfile)
-      setAllTasks((tasks ?? []) as unknown as Task[])
+      // A FAILED OR TRUNCATED READ IS NOT AN EMPTY ARCHIVE.
+      setLoadError(taskResult.ok && !taskResult.truncated ? null : ARCHIVE_LOAD_ERROR)
+      setAllTasks(taskResult.ok ? (taskResult.rows as unknown as Task[]) : [])
       if (userData) {
         const map: Record<string, string> = {}
         for (const u of userData) map[u.id] = u.full_name
@@ -356,6 +388,22 @@ function AssignedByMeCancelledContent() {
         {/* Two-column: task list + info panel */}
         <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
+            {/* A FAILED OR TRUNCATED READ, SAID OUT LOUD. Without this the
+                screen shows its empty state — a statement about somebody's work
+                — when the truth is that the request did not finish. Above the
+                list, not instead of it, so whatever loaded stays usable. */}
+            {loadError && (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                  padding: '10px 14px', marginBottom: '10px', borderRadius: '8px',
+                  background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+                }}
+              >
+                <span style={{ flex: 1, minWidth: '200px' }}>{loadError}</span>
+              </div>
+            )}
             {visibleTasks.length === 0 ? (
               <EmptyState />
             ) : (
