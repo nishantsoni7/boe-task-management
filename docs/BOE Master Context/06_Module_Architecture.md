@@ -875,7 +875,19 @@ Order Management is tested at three levels, and the boundaries are deliberate:
   because every promise a migration makes lives in SQL and fails silently — in
   the permissive direction — if a later change relaxes it. TypeScript sees none
   of it.
-* **Behavioural assertion scripts** in `supabase/tests/*.sql`, run by hand
-  against a controlled database inside one transaction that ends in `ROLLBACK`.
-  These are where RLS is actually exercised, and they matter because a source
-  guard proves a policy exists, not that it refuses the right person.
+* **Behavioural assertion scripts** in `supabase/tests/*_assertions.sql`, run by
+  hand against a controlled database inside one transaction that ends in
+  `ROLLBACK`. These are where RLS is actually exercised, and they matter because
+  a source guard proves a policy exists, not that it refuses the right person.
+  They need fixture rows, so they belong on a scratch database — never on
+  production.
+* **A read-only posture check**,
+  `supabase/tests/order_confirmed_handoff_posture.sql`, which closes the gap the
+  level above leaves open. The assertion scripts prove the behaviour *somewhere*;
+  nothing else asks whether those properties survived the trip to the database
+  people actually use. It writes nothing at all — every check is a catalog read,
+  with no transaction to roll back and no fixture to clean up — which is what
+  makes it safe to run against production, where the question matters most. Run
+  it immediately after applying the three Order-document migrations. Each of its
+  sixteen checks has been mutation-tested; a check that cannot fail is not a
+  check.
