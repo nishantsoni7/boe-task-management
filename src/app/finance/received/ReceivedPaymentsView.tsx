@@ -27,7 +27,7 @@ import {
   pageCount,
   pageRange,
   resultSummary,
-  searchFilter,
+  receivedPaymentsSearchFilter,
   type LinkageFilter,
 } from '@/app/finance/receivedPaymentsQuery'
 import {
@@ -1489,7 +1489,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   const filters = useMemo(() => {
     const dates = dateRange(dateFrom, dateTo)
     return {
-      search: searchFilter(search),
+      search: receivedPaymentsSearchFilter(search),
       linkage,
       dateFrom: dates.from,
       dateTo: dates.to,

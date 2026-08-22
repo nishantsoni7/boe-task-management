@@ -42,7 +42,18 @@ export type StatusTab<K extends string> = {
   label: string
   Icon: LucideIcon
   accent: TabAccent
-  count: number
+  /**
+   * How many records the tab holds, or NULL when that is not yet known.
+   *
+   * NULL IS A REAL ANSWER, not a missing one. A tab counted by the database can
+   * be in flight, or its count query can fail while the list itself loaded
+   * fine — and a confident `0` on a tab that actually holds records is worse
+   * than no number at all: it tells somebody the work is done. It renders as a
+   * dash, which reads as "not known" rather than as "none".
+   *
+   * Callers that count in memory pass a number and are unaffected.
+   */
+  count: number | null
 }
 
 export function StatusTabs<K extends string>({
@@ -98,7 +109,7 @@ export function StatusTabs<K extends string>({
                 color: accent.color, fontSize: '10px', fontWeight: 700,
                 lineHeight: '15px', textAlign: 'center',
               }}>
-                {count}
+                {count ?? '—'}
               </span>
             </button>
           )

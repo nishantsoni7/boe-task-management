@@ -40,7 +40,7 @@ import {
   pageRange,
   resultSummary,
   sanitizeSearchTerm,
-  searchFilter,
+  receivedPaymentsSearchFilter as searchFilter,
 } from './receivedPaymentsQuery'
 
 // ── 1. The list is bounded ────────────────────────────────────────────────────

@@ -1,22 +1,17 @@
 // ── What the Received Payments list asks the database ─────────────────────────
 //
-// The pure half of the two Finance list pages: what a search term is allowed to
-// become, which linkage a filter narrows to, and how a page of results is
-// bounded. No Supabase import, no React — so every rule here is testable
-// directly, and the two pages cannot grow separate versions of it.
+// What is SPECIFIC to Received Payments: which columns a search matches, what
+// the linkage filter means, and what an allocation state narrows to. The rules
+// it shares with every other paged Finance list — paging, search sanitizing,
+// date bounds, the result line — live in ./listQuery and are re-exported here so
+// a caller needs one import for the whole read.
 //
 // THREE DEFECTS THIS FILE EXISTS TO CLOSE
 // ---------------------------------------
 //
-// 1. THE LIST WAS UNBOUNDED, AND POSTGREST TRUNCATES SILENTLY.
-//    The query carried no .range() and no .limit(). PostgREST caps a response at
-//    1000 rows on this project — a CAP, not an error: no error field, no
-//    warning, and a plausible-looking array (src/lib/supabasePaging.ts documents
-//    the day this cost the Performance module three quarters of its data). The
-//    list is ordered created_at DESC, so at 1001 approved payments the OLDEST
-//    would begin disappearing from Finance with the row count beside them
-//    reading a confident "1000 payments". Money is exactly the wrong thing to
-//    lose quietly, so the list is now paged and says what page it is on.
+// 1. THE LIST WAS UNBOUNDED, AND POSTGREST TRUNCATES SILENTLY. See ./listQuery:
+//    at 1001 approved payments the OLDEST would begin disappearing from Finance
+//    with the row count beside them reading a confident "1000 payments".
 //
 // 2. THE LINKAGE FILTER COULD NOT SEE AN ALLOCATED PAYMENT.
 //    resolveLinkedAgainst (paymentRouting.ts) learned in Phase 3 to read a
@@ -38,38 +33,24 @@
 // -------------------
 // It shapes a read. It authorizes nothing: RECEIVED_PAYMENTS_SOURCE is a
 // security_invoker view, so every filter below narrows a set RLS has ALREADY
-// decided the caller may see. A filter that matched every row in the table would
-// still return only that caller's rows.
+// decided the caller may see.
 
+import { dateBound, sanitizeSearchTerm, searchFilter, type QueryClause } from './listQuery'
 import type { PaymentLinkageMode } from './paymentRouting'
 
-// ── Paging ────────────────────────────────────────────────────────────────────
-
-/**
- * Rows per page.
- *
- * 50, matching the other paged lists in the product (tasks/all,
- * attendance/records, attendance/correction-log) so a Finance page behaves like
- * every other long list here. Comfortably under PostgREST's 1000-row ceiling,
- * which is the point: a page can never be silently truncated.
- */
-export const RECEIVED_PAYMENTS_PAGE_SIZE = 50
-
-/** The inclusive `range(from, to)` bounds for a 1-based page number. */
-export function pageRange(page: number, pageSize = RECEIVED_PAYMENTS_PAGE_SIZE): { from: number; to: number } {
-  // A page below 1 is a URL somebody typed, not a state the controls produce.
-  // It reads as the first page rather than as a negative offset, which
-  // PostgREST would refuse.
-  const safe = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1
-  const from = (safe - 1) * pageSize
-  return { from, to: from + pageSize - 1 }
-}
-
-/** How many pages a total row count makes. Always at least one, so "Page 1 of 1" is the empty state. */
-export function pageCount(total: number | null, pageSize = RECEIVED_PAYMENTS_PAGE_SIZE): number {
-  if (total === null || !Number.isFinite(total) || total <= 0) return 1
-  return Math.max(1, Math.ceil(total / pageSize))
-}
+// The shared rules, re-exported so a caller needs one import for the whole read.
+export {
+  FINANCE_PAGE_SIZE as RECEIVED_PAYMENTS_PAGE_SIZE,
+  clampPage,
+  dateBound,
+  dateRange,
+  pageCount,
+  pageRange,
+  resultSummary,
+  sanitizeSearchTerm,
+  searchFilter,
+} from './listQuery'
+export type { QueryClause } from './listQuery'
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
@@ -77,7 +58,7 @@ export function pageCount(total: number | null, pageSize = RECEIVED_PAYMENTS_PAG
  * The columns a search term is matched against, in the order a reader would
  * expect them to be tried.
  *
- * `request_number` LEADS, and its absence was the defect: it is the first column
+ * `request_number` LEADS, and its absence was defect 3: it is the first column
  * the table draws, and a Finance user reading a payment reference off an email
  * types exactly that. `allocated_order_number` is here for the same reason —
  * the row displays it, so the row must be findable by it.
@@ -90,44 +71,9 @@ export const RECEIVED_PAYMENTS_SEARCH_COLUMNS = [
   'allocated_order_number',
 ] as const
 
-/**
- * A search term reduced to something that cannot change the SHAPE of a
- * PostgREST filter.
- *
- * `or=(a.ilike.*x*,b.ilike.*x*)` is a structured string, so a term containing a
- * comma, a bracket, a quote or a backslash would not merely fail to match — it
- * would be parsed as more filter, and the query would come back describing a
- * question nobody asked. `%` and `_` are ilike's own wildcards and are stripped
- * for the same reason: a term is a literal, and a reader typing `100%` is
- * searching for a string, not asking to match everything.
- *
- * STRIPPED, NOT REJECTED. Somebody pasting "REQ-2026-0024, ORD-7" is looking for
- * something; giving them the results for the characters that remain is more
- * useful than an error, and the term they typed is still in the box in front of
- * them. Returns '' when nothing usable is left, which callers treat as no search
- * at all rather than as a search for the empty string.
- */
-export function sanitizeSearchTerm(raw: string): string {
-  return raw
-    .replace(/[,()"'\\%_*]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-/**
- * The PostgREST `or=` filter for a sanitized term, or NULL for no search.
- *
- * NULL and not an empty string: an empty filter would still be sent, and
- * `or=()` is a parse error rather than a no-op. A caller that gets null simply
- * does not call `.or()`.
- */
-export function searchFilter(
-  raw: string,
-  columns: readonly string[] = RECEIVED_PAYMENTS_SEARCH_COLUMNS,
-): string | null {
-  const term = sanitizeSearchTerm(raw)
-  if (term === '') return null
-  return columns.map(column => `${column}.ilike.*${term}*`).join(',')
+/** The `or=` filter for a term across every column this list searches. */
+export function receivedPaymentsSearchFilter(raw: string): string | null {
+  return searchFilter(raw, RECEIVED_PAYMENTS_SEARCH_COLUMNS)
 }
 
 // ── The linkage narrowing, inside a page that is already one linkage mode ─────
@@ -156,21 +102,11 @@ export function isLinkageFilter(value: string): value is LinkageFilter {
 /**
  * The linkage narrowing as PostgREST filters.
  *
- * Returned as a LIST of clauses rather than applied here, so this module needs
- * no Supabase import and the caller decides how to attach them. Each entry is
- * either an `or` group or a plain `is` equality; the caller applies every one,
- * and they compose as AND — which is what a narrowing means.
- *
  * THE ORDER BRANCH INCLUDES THE ALLOCATION, which is defect 2 above. The REQUEST
  * branch is its exact complement within the page: an Order Request linkage
  * counts only when NEITHER Order attachment is present, mirroring
  * resolveLinkedAgainst's priority so a row can satisfy exactly one of the two.
  */
-export type QueryClause =
-  | { kind: 'or'; filters: string }
-  | { kind: 'isNull'; column: string }
-  | { kind: 'notNull'; column: string }
-
 export function linkageFilterClauses(filter: LinkageFilter): QueryClause[] {
   if (filter === 'order') {
     return [{ kind: 'or', filters: 'order_id.not.is.null,allocated_order_id.not.is.null' }]
@@ -185,45 +121,6 @@ export function linkageFilterClauses(filter: LinkageFilter): QueryClause[] {
   return []
 }
 
-// ── Date range ────────────────────────────────────────────────────────────────
-
-/**
- * A date bound, or null when the box is empty or holds something that is not a
- * date.
- *
- * Validated rather than passed through: an unparseable value sent as a filter
- * makes PostgREST refuse the whole request, so a half-typed date in a live-bound
- * input would blank the list instead of leaving it alone. `YYYY-MM-DD` is what
- * <input type="date"> produces and what payment_date stores.
- */
-export function dateBound(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const text = raw.trim()
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null
-  // Rejects 2026-13-45. Date.parse accepts an ISO date and yields NaN otherwise.
-  const parsed = new Date(`${text}T00:00:00Z`)
-  if (Number.isNaN(parsed.getTime())) return null
-  // Round-trips only for a real calendar date: 2026-02-31 normalises to March.
-  return parsed.toISOString().slice(0, 10) === text ? text : null
-}
-
-/**
- * The two bounds, in order, whatever order they were typed in.
- *
- * SWAPPED RATHER THAN REFUSED when `to` is before `from`. Somebody who filled
- * the boxes the other way round meant the range between the two dates, and an
- * empty list would be a silent, confusing answer to a reasonable action.
- */
-export function dateRange(fromRaw: string | null | undefined, toRaw: string | null | undefined): {
-  from: string | null
-  to: string | null
-} {
-  const from = dateBound(fromRaw)
-  const to = dateBound(toRaw)
-  if (from && to && to < from) return { from: to, to: from }
-  return { from, to }
-}
-
 // ── What the toolbar says it is doing ────────────────────────────────────────
 
 /** True when anything is narrowing the list, so the page can offer to clear it. */
@@ -232,41 +129,95 @@ export function isNarrowed(state: {
   linkage: LinkageFilter
   dateFrom: string | null
   dateTo: string | null
+  allocation?: AllocationFilter
 }): boolean {
   return sanitizeSearchTerm(state.search) !== ''
     || state.linkage !== 'all'
     || dateBound(state.dateFrom) !== null
     || dateBound(state.dateTo) !== null
+    || (state.allocation !== undefined && state.allocation !== 'all')
+}
+
+// ── The allocation narrowing ─────────────────────────────────────────────────
+//
+// HOW MUCH OF A PAYMENT HAS BEEN GIVEN A HOME — Finance's question, and only
+// Finance's: an Order screen reads its own allocations, so it can never say what
+// the REST of a payment is doing.
+//
+// THIS IS THE ONE NARROWING THAT NEEDS THE DATABASE TO CHANGE, and that is why
+// it is gated. finance_received_payments deliberately exposes no allocated
+// amount and no split (20260921000000 §8a), so the state cannot be filtered
+// server-side against the projection as it stands. Filtering it in the browser
+// is not an alternative: over a PAGED list that narrows fifty rows and silently
+// hides every match on page two, which is precisely the class of defect the
+// paging was introduced to end.
+//
+// So the states below are computed by a forward-only migration that adds
+// `allocated_total` to the projection, and `allocationFilterAvailable` reports
+// whether that migration has been applied. Until it has, the control is not
+// offered at all — see the note on it. Nothing degrades to a wrong answer.
+
+export type AllocationFilter = 'all' | 'unallocated' | 'partial' | 'full' | 'over'
+
+export const ALLOCATION_FILTER_OPTIONS: { value: AllocationFilter; label: string }[] = [
+  { value: 'all',         label: 'Any allocation' },
+  { value: 'unallocated', label: 'Unallocated' },
+  { value: 'partial',     label: 'Partly allocated' },
+  { value: 'full',        label: 'Fully allocated' },
+  // Kept, because the state is real even though the database refuses to create
+  // it: the capacity trigger (20260918000000 §2) rejects an allocation that
+  // would exceed its payment, so a row in this state is a signal that something
+  // is wrong and must be findable rather than rounded into "Fully".
+  { value: 'over',        label: 'Over-allocated' },
+]
+
+export function isAllocationFilter(value: string): value is AllocationFilter {
+  return ALLOCATION_FILTER_OPTIONS.some(o => o.value === value)
 }
 
 /**
- * The row-count line beside the toolbar.
+ * The projection column the allocation narrowing reads.
  *
- * SAYS "of N" ONLY WHEN N IS KNOWN. The count comes from PostgREST's exact
- * count, and a caller that could not read one gets null — in which case the line
- * describes the page it has rather than inventing a total. Both the mode and the
- * narrowing change the total, so the wording never claims a filtered count is
- * the whole set.
+ * `allocated_total` — the sum of a payment's ACTIVE allocations, computed in
+ * `numeric` in the view. Named once so the filter, the availability probe and
+ * the select list cannot disagree about it.
  */
-export function resultSummary(input: {
-  loading: boolean
-  shown: number
-  total: number | null
-  narrowed: boolean
-  page: number
-  pages: number
-}): string {
-  if (input.loading) return 'Loading…'
-  if (input.total === 0) return input.narrowed ? 'No matches' : 'No payments'
+export const ALLOCATED_TOTAL_COLUMN = 'allocated_total'
 
-  const noun = (n: number) => `payment${n === 1 ? '' : 's'}`
-  const scope = input.total === null
-    ? `${input.shown} ${noun(input.shown)}`
-    : input.narrowed
-      ? `${input.total} matching ${noun(input.total)}`
-      : `${input.total} ${noun(input.total)}`
+/**
+ * The allocation narrowing as PostgREST filters.
+ *
+ * COMPARED AGAINST THE PAYMENT'S OWN AMOUNT, not against a constant, so the
+ * boundaries are exact at any figure. PostgREST cannot compare two columns in a
+ * filter, so the comparison is expressed as a boolean the VIEW computes —
+ * `allocation_state` — for the three states that need it, and a plain numeric
+ * test for the one that does not.
+ *
+ * `unallocated` IS A ZERO TEST, not an "is null" test. A payment with no
+ * allocations sums to 0 through the view's coalesce, and null would mean the
+ * column is missing rather than the money being free.
+ */
+export function allocationFilterClauses(filter: AllocationFilter): QueryClause[] {
+  if (filter === 'all') return []
+  return [{ kind: 'eq', column: 'allocation_state', value: filter }]
+}
 
-  return input.pages > 1 ? `${scope} · page ${input.page} of ${input.pages}` : scope
+/**
+ * Whether the allocation control may be offered.
+ *
+ * FAILS CLOSED. The projection gains `allocation_state` only when the
+ * forward-only migration is applied; until then a probe of the view does not
+ * return the column and this is false, so the control is not drawn and no query
+ * is ever built against a column that does not exist. A filter that silently
+ * matched nothing, or a request PostgREST refused outright, would both be worse
+ * than an absent control.
+ */
+export function allocationFilterAvailable(
+  probe: { columns: readonly string[] } | null | undefined,
+): boolean {
+  if (!probe) return false
+  return probe.columns.includes('allocation_state')
+    && probe.columns.includes(ALLOCATED_TOTAL_COLUMN)
 }
 
 // ── Re-export, so a caller needs one import for the whole read ───────────────
