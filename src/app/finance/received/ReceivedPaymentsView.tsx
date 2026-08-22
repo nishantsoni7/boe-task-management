@@ -19,6 +19,31 @@ import {
   resolveLinkedAgainst,
   type LinkedAgainst,
 } from '@/app/finance/paymentRouting'
+import {
+  LINKAGE_FILTER_OPTIONS,
+  dateRange,
+  isNarrowed,
+  linkageFilterClauses,
+  pageCount,
+  pageRange,
+  resultSummary,
+  searchFilter,
+  type LinkageFilter,
+} from '@/app/finance/receivedPaymentsQuery'
+import {
+  ALLOCATION_STATE_LABEL,
+  PENDING_ALLOCATION_SUMMARY,
+  summarizePaymentAllocations,
+  type PaymentAllocationRow,
+  type PaymentAllocationSummary,
+} from '@/lib/finance/paymentAllocations'
+import { formatMoney } from '@/lib/finance/piPaymentView'
+import {
+  canOpenOrderRecord,
+  orderDetailHref,
+  piSubmissionHref,
+} from '@/lib/finance/crossModuleLinks'
+import { deriveOrdersCapabilities, NO_ORDERS_CAPABILITIES } from '@/lib/permissions/orders'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -90,6 +115,16 @@ type LinkTarget =
     }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+/**
+ * How long the search box waits before asking the database.
+ *
+ * Search is answered server-side now, so without this every keystroke would be
+ * a round trip. 250ms is below the threshold at which typing feels laggy and
+ * comfortably above the interval between keystrokes, so an ordinary search term
+ * costs ONE query rather than one per character.
+ */
+const SEARCH_DEBOUNCE_MS = 250
 
 const PAYMENT_MODE_LABEL: Record<string, string> = {
   bank_transfer: 'Bank Transfer',
@@ -172,13 +207,15 @@ const MODE_META: Record<ReceivedPaymentsMode, {
 // control alongside search — deliberately not a revived tab strip. Non-Linked
 // Payments needs none: every row there is linked to nothing by definition, so
 // there is nothing left to narrow.
-type LinkageFilter = 'all' | 'order' | 'request'
-
-const LINKAGE_FILTER_OPTIONS: { value: LinkageFilter; label: string }[] = [
-  { value: 'all',     label: 'All linked' },
-  { value: 'order',   label: 'Confirmed Order' },
-  { value: 'request', label: 'Order Request' },
-]
+//
+// THE FILTER AND ITS PREDICATES NOW LIVE IN ../receivedPaymentsQuery, with the
+// paging, the search columns and the date bounds. They moved out of this file
+// because the narrowing had drifted from the badge beside it: this page tested
+// `order_id` alone, while resolveLinkedAgainst had learned in Phase 3 to read a
+// Confirmed Order out of an ACTIVE ALLOCATION. A payment attached to an Order by
+// allocation — which is every payment PI conversion moves — displayed
+// "Order ORD-…" in its row and then matched NEITHER narrowing. Stating the rule
+// once, in a module with tests, is what stops that happening again.
 
 const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
   running:            { label: 'Running',             color: '#1E40AF' },
@@ -331,7 +368,7 @@ const LINKED_AGAINST_STYLE: Record<LinkedAgainst['kind'], { bg: string; color: s
   none:    { bg: '#FFF7ED',       color: '#9A3412',   border: '#FED7AA' },
 }
 
-function LinkedAgainstBadge({ target }: { target: LinkedAgainst }) {
+function LinkedAgainstBadge({ target, interactive }: { target: LinkedAgainst; interactive?: boolean }) {
   const s = LINKED_AGAINST_STYLE[target.kind]
   return (
     <span
@@ -340,6 +377,10 @@ function LinkedAgainstBadge({ target }: { target: LinkedAgainst }) {
         display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
         background: s.bg, color: s.color, border: `1px solid ${s.border}`,
         fontSize: '11px', fontWeight: target.kind === 'none' ? 600 : 700, whiteSpace: 'nowrap',
+        // Underlined only when it is actually a door, so a badge never looks
+        // clickable to a reader who has nowhere to go.
+        textDecoration: interactive ? 'underline' : undefined,
+        textUnderlineOffset: interactive ? '2px' : undefined,
       }}
     >
       {target.kind === 'none' ? (
@@ -355,6 +396,162 @@ function LinkedAgainstBadge({ target }: { target: LinkedAgainst }) {
   )
 }
 
+// ── Allocation cell ───────────────────────────────────────────────────────────
+//
+// How much of one payment has been given a home, in one small cell. Finance's
+// question and only Finance's: an Order screen reads its own allocations, so it
+// can never say what the REST of a payment is doing.
+//
+// The four real states get a coloured word; `unknown` gets a muted sentence
+// about the reader rather than about the money. That asymmetry is the point —
+// see paymentAllocations.ts on why "we cannot show you" must never be rendered
+// as "Unallocated".
+
+const ALLOCATION_STATE_STYLE: Record<PaymentAllocationSummary['state'], { color: string; weight: number }> = {
+  unknown:     { color: colors.muted, weight: 500 },
+  unallocated: { color: '#9A3412',    weight: 700 },
+  partial:     { color: colors.blue,  weight: 700 },
+  full:        { color: colors.green, weight: 700 },
+  over:        { color: colors.red,   weight: 700 },
+}
+
+function AllocationCell({ summary }: { summary: PaymentAllocationSummary }) {
+  const style = ALLOCATION_STATE_STYLE[summary.state]
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: '11.5px', fontWeight: style.weight, color: style.color, whiteSpace: 'nowrap' }}>
+        {ALLOCATION_STATE_LABEL[summary.state]}
+      </div>
+      {/* The figure only where it adds something the word does not. "Fully
+          allocated" and "Unallocated" already state the whole amount; a
+          part-allocated payment is the one case where the reader needs the
+          number, because the remainder is what needs acting on. */}
+      {summary.state === 'partial' && summary.unallocated && (
+        <div style={{ fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+          {formatMoney(summary.unallocated)} free
+        </div>
+      )}
+      {summary.state === 'over' && summary.allocated && (
+        <div style={{ fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+          {formatMoney(summary.allocated)} allocated
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Allocation panel ──────────────────────────────────────────────────────────
+//
+// The claims against ONE payment, listed inside its detail modal.
+//
+// IT DOES NOT RESTATE THE PAYMENT. The amount, the date, the mode, the proof and
+// the client are all in the panel beside this one; repeating them per allocation
+// would read as several payments where there is one. Each line is a share of a
+// sum already on screen, and the totals underneath reconcile to it.
+//
+// A TARGET IS NAMED ONLY WHEN THE READER COULD NAME IT. Whether money is
+// allocated is derived from the ALLOCATION, so somebody who may not open the
+// Order still sees that the money is spoken for and loses only its number —
+// the same choice the finance_received_payments projection makes.
+
+function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }: {
+  summary: PaymentAllocationSummary
+  amount: number
+  canOpenLinkedRecord: boolean
+  onOpen: (href: string) => void
+}) {
+  if (summary.state === 'unknown') {
+    return (
+      <div style={{ fontSize: '12.5px', color: colors.muted, lineHeight: 1.55 }}>
+        {ALLOCATION_STATE_LABEL.unknown}. Allocations are shown to Finance users who can
+        see every payment record; this payment&apos;s own details are unaffected.
+      </div>
+    )
+  }
+
+  if (summary.targets.length === 0) {
+    return (
+      <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
+        <strong style={{ color: '#9A3412' }}>{ALLOCATION_STATE_LABEL.unallocated}.</strong>{' '}
+        The whole of {formatMoney(String(amount))} is still free to be assigned to a PI or an Order.
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {summary.targets.map(target => {
+          const href = target.kind === 'order'
+            ? orderDetailHref(target.targetId)
+            : piSubmissionHref(target.targetId)
+          const name = target.label ?? (target.kind === 'order' ? 'A Confirmed Order' : 'A PI submission')
+          return (
+            <div
+              key={target.allocationId}
+              style={{
+                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                gap: '12px', flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '6px' }}>
+                  {target.kind === 'order' ? 'Order' : 'PI'}
+                </span>
+                {/* Linked only when this reader holds Orders module entry AND the
+                    target could be named. A link labelled "A Confirmed Order"
+                    would be a door with no sign on it. */}
+                {canOpenLinkedRecord && target.label ? (
+                  <button
+                    onClick={() => onOpen(href)}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      fontSize: '13px', fontWeight: 600, color: colors.blue,
+                      textDecoration: 'underline', textUnderlineOffset: '2px', wordBreak: 'break-word',
+                    }}
+                  >
+                    {name}
+                  </button>
+                ) : (
+                  <span style={{ fontSize: '13px', color: colors.primary, wordBreak: 'break-word' }}>{name}</span>
+                )}
+              </div>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                {formatMoney(target.amount)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* The two totals, so the lines above visibly reconcile to the payment. */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap',
+        borderTop: `1px solid ${colors.border}`, paddingTop: '10px',
+        fontSize: '12px', color: colors.secondary,
+      }}>
+        <span>
+          Allocated{' '}
+          <strong style={{ color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+            {formatMoney(summary.allocated)}
+          </strong>
+        </span>
+        <span>
+          {summary.state === 'over' ? 'Over the payment by ' : 'Unallocated '}
+          <strong style={{
+            color: summary.state === 'over' ? colors.red
+              : summary.unallocated && summary.unallocated !== '0' ? '#9A3412'
+              : colors.muted,
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {formatMoney(summary.unallocated)}
+          </strong>
+        </span>
+      </div>
+    </>
+  )
+}
+
 // ── Details modal ─────────────────────────────────────────────────────────────
 
 function DetailsModal({
@@ -363,6 +560,9 @@ function DetailsModal({
   mayCorrectPayments,
   supabase,
   onCorrected,
+  allocation,
+  canOpenLinkedRecord,
+  onOpenLinked,
 }: {
   request: PaymentRequest
   onClose: () => void
@@ -370,6 +570,11 @@ function DetailsModal({
   mayCorrectPayments?: boolean
   supabase?: ReturnType<typeof createClient>
   onCorrected?: () => void
+  /** This payment's live allocations, from the list's one bounded read. */
+  allocation: PaymentAllocationSummary
+  /** orders.view — module entry, so a target is a door rather than a dead link. */
+  canOpenLinkedRecord: boolean
+  onOpenLinked: (href: string) => void
 }) {
   // Every row on this page is approved_linked or approved_unlinked (the page
   // query is scoped to exactly those two statuses), so this is always true
@@ -478,6 +683,21 @@ function DetailsModal({
 
   const right = (
     <>
+      {/* ── Where this money went ──
+          The payment is ONE record; this lists the claims against it without
+          restating the payment itself. A payment split across two Orders appears
+          here as two allocations of one sum — never as two payments, which is
+          exactly the duplication the allocation table exists to avoid. */}
+      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <SectionHeader>Allocation</SectionHeader>
+        <AllocationPanel
+          summary={allocation}
+          amount={r.amount}
+          canOpenLinkedRecord={canOpenLinkedRecord}
+          onOpen={onOpenLinked}
+        />
+      </div>
+
       {/* Activity panel — same bordered shell as the Payment Requests page's
           detail modal. */}
       {supabase && (
@@ -1000,11 +1220,14 @@ const TH_STYLE: React.CSSProperties = {
 function ReceivedPaymentsTable({
   rows,
   canManage,
+  canOpenLinkedRecord,
+  allocations,
   highlightId,
   onView,
   onEdit,
   onLink,
   onUnlink,
+  onOpenLinked,
 }: {
   rows: PaymentRequest[]
   /**
@@ -1012,11 +1235,21 @@ function ReceivedPaymentsTable({
    * correction of an approved financial record — the finance.manage authority.
    */
   canManage: boolean
+  /**
+   * May open Order Management at all — orders.view, the same module entry
+   * /orders/layout.tsx enforces. A DRAWING rule and never an authorization one:
+   * the Order page re-reads its own row under this reader's RLS and shows "not
+   * available" for one they may not open, so the link grants nothing.
+   */
+  canOpenLinkedRecord: boolean
+  /** How much of each payment has a home. Absent until the second read lands. */
+  allocations: Map<string, PaymentAllocationSummary>
   highlightId?: string | null
   onView:   (r: PaymentRequest) => void
   onEdit:   (r: PaymentRequest) => void
   onLink:   (r: PaymentRequest) => void
   onUnlink: (r: PaymentRequest) => void
+  onOpenLinked: (href: string) => void
 }) {
   const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
 
@@ -1030,6 +1263,7 @@ function ReceivedPaymentsTable({
             <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
             <th style={TH_STYLE}>Payment Date</th>
             <th style={TH_STYLE}>Linked Against</th>
+            <th style={TH_STYLE}>Allocation</th>
             <th style={TH_STYLE}>Payment Mode</th>
             <th style={TH_STYLE}>Confirmed By</th>
             <th style={{ ...TH_STYLE, textAlign: 'right' }}>Action</th>
@@ -1041,6 +1275,10 @@ function ReceivedPaymentsTable({
             const isLinked = target.kind === 'order'
             const isRequestLinked = target.kind === 'request'
             const isHighlighted = r.id === highlightId
+            // The Order this row names, by the SAME priority resolveLinkedAgainst
+            // uses: the legacy link first, then an active allocation. Null when
+            // the row is attached to an Order Request or to nothing.
+            const linkedOrderId = isLinked ? (r.order_id ?? r.allocated_order_id) : null
             return (
               <tr
                 key={r.id}
@@ -1066,7 +1304,34 @@ function ReceivedPaymentsTable({
                     then "Not linked". Never blank, and never a pending label
                     while a real request number is available. */}
                 <td style={TD}>
-                  <LinkedAgainstBadge target={target} />
+                  {/* THE DOOR INTO THE OTHER MODULE. A payment attached to a
+                      Confirmed Order — by the legacy link OR by an active
+                      allocation, which is how PI conversion moves money —
+                      becomes a button to that Order. An Order Request has no
+                      detail route of its own here, so it stays a plain badge
+                      rather than a link that goes nowhere. */}
+                  {linkedOrderId && canOpenLinkedRecord ? (
+                    <button
+                      onClick={e => { e.stopPropagation(); onOpenLinked(orderDetailHref(linkedOrderId)) }}
+                      title={`Open ${target.label}`}
+                      style={{
+                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                        font: 'inherit', textAlign: 'left',
+                      }}
+                    >
+                      <LinkedAgainstBadge target={target} interactive />
+                    </button>
+                  ) : (
+                    <LinkedAgainstBadge target={target} />
+                  )}
+                </td>
+                {/* How much of this payment has been given a home — the
+                    question Finance asks that no Order screen can answer, since
+                    an Order reads only its own allocations. "Not visible to
+                    you" when this reader may not see every allocation: an empty
+                    list is not evidence that money is unallocated. */}
+                <td style={TD}>
+                  <AllocationCell summary={allocations.get(r.id) ?? PENDING_ALLOCATION_SUMMARY(r.id)} />
                 </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
@@ -1184,7 +1449,28 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   const [unlinkError,    setUnlinkError]    = useState<string | null>(null)
   const [search,         setSearch]         = useState('')
   const [linkage,        setLinkage]        = useState<LinkageFilter>('all')
+  const [dateFrom,       setDateFrom]       = useState('')
+  const [dateTo,         setDateTo]         = useState('')
   const [highlightId,    setHighlightId]    = useState<string | null>(null)
+  // ── Paging ──
+  // The list was UNBOUNDED, and PostgREST truncates silently at 1000 rows: no
+  // error, no warning, a plausible-looking array. Ordered created_at DESC, the
+  // 1001st approved payment would have started pushing the OLDEST ones out of
+  // Finance with the count beside them reading a confident "1000". `total` is
+  // the database's exact count, so the line under the toolbar describes the
+  // whole set rather than the length of what happened to load.
+  const [page,           setPage]           = useState(1)
+  const [total,          setTotal]          = useState<number | null>(null)
+  // How much of each payment on THIS PAGE has been given a home. A second
+  // bounded read keyed on the ids already on screen — one query for the page,
+  // never one per row. Absent until it lands, and absent is `unknown`, never
+  // "Unallocated": see paymentAllocations.ts on why those must not collapse.
+  const [allocations,    setAllocations]    = useState<Map<string, PaymentAllocationSummary>>(new Map())
+  // Orders authority, resolved beside the Finance one in the same parallel
+  // group. It decides ONE thing: whether a linked row offers a door into the
+  // Order or PI it names. It grants nothing — the destination re-reads its own
+  // record under this reader's RLS and refuses anything they may not open.
+  const [ordersCaps,     setOrdersCaps]     = useState(NO_ORDERS_CAPABILITIES)
 
   const meta         = MODE_META[mode]
   const router       = useRouter()
@@ -1196,7 +1482,36 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   // the bottom of init) so it can never re-fire and reopen a closed modal.
   const deepLinkHandled = useRef(false)
 
+  // The narrowing, as the DATABASE will be asked it. Held in a ref as well as
+  // in state so the loader always reads the CURRENT filters rather than the ones
+  // its closure was created with — a search typed quickly would otherwise
+  // re-issue an older query and paint a stale page over a newer one.
+  const filters = useMemo(() => {
+    const dates = dateRange(dateFrom, dateTo)
+    return {
+      search: searchFilter(search),
+      linkage,
+      dateFrom: dates.from,
+      dateTo: dates.to,
+    }
+  }, [search, linkage, dateFrom, dateTo])
+
+  // Guards against an out-of-order response. Each load claims a number; only the
+  // newest one is allowed to write to state. Without this, a slow query for
+  // "REQ" can land after a fast one for "REQ-2026" and repaint the wider result
+  // under a narrower search box.
+  const loadToken = useRef(0)
+
+  /**
+   * Whether an EMPTY allocation list is conclusive for this reader — resolved
+   * once, held as a PROMISE so the allocation read can await it instead of
+   * racing it. Defaults to a resolved `false`, which is the safe answer: a
+   * payment is only ever called "Unallocated" on evidence, never on a gap.
+   */
+  const canViewAllRef = useRef<Promise<boolean>>(Promise.resolve(false))
+
   const loadRequests = async () => {
+    const token = ++loadToken.current
     setListLoading(true)
     // Same approved-only scope as before the split; the linkage predicate is
     // what makes the two pages disjoint. Filtered in the database rather than
@@ -1208,6 +1523,9 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
     // payment record. It is security_invoker, so RLS still decides what loads.
     // EVERY MUTATION ON THIS PAGE STILL WRITES TO finance_payment_requests by
     // the row's own id, which the projection carries through unchanged.
+    //
+    // `count: 'exact'` so the toolbar states the size of the WHOLE narrowed set
+    // rather than the length of the page in hand.
     const base = supabase
       .from(RECEIVED_PAYMENTS_SOURCE)
       .select(`
@@ -1217,16 +1535,51 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
         status, payment_against, submitted_by, admin_note, created_at,
         submitted_by_name, approved_by_name,
         allocated_order_id, allocated_order_number, is_order_allocated
-      `)
+      `, { count: 'exact' })
       .in('status', CONFIRMED_PAYMENT_STATUSES as unknown as string[])
 
     // Either linkage counts. Filtered in the database rather than in the browser
     // so neither page ever holds the other's rows — and through the SAME
     // applyLinkageScope the sidebar counts use, so the list and the number
     // beside its nav entry are one predicate, not two that must be kept in step.
-    const scoped = applyLinkageScope(base, mode)
+    let scoped = applyLinkageScope(base, mode)
 
-    const { data } = await scoped.order('created_at', { ascending: false })
+    // ── THE NARROWING, IN THE DATABASE ──
+    //
+    // Search and the linkage filter used to run in the BROWSER, over whatever
+    // the unbounded query happened to return. Both had to move here the moment
+    // the list became paged: filtering a page after the fact narrows only the
+    // fifty rows in hand and silently hides every match on page two.
+    //
+    // Every clause narrows a set RLS has ALREADY decided this caller may see —
+    // RECEIVED_PAYMENTS_SOURCE is security_invoker — so no filter here can widen
+    // anything. The search term is sanitized into a literal before it reaches a
+    // filter group (see sanitizeSearchTerm): a comma or a bracket in a term
+    // would otherwise be parsed as MORE FILTER rather than as text to match.
+    if (filters.search) scoped = scoped.or(filters.search)
+
+    for (const clause of linkageFilterClauses(mode === 'linked' ? filters.linkage : 'all')) {
+      if (clause.kind === 'or') scoped = scoped.or(clause.filters)
+      else if (clause.kind === 'isNull') scoped = scoped.is(clause.column, null)
+      else scoped = scoped.not(clause.column, 'is', null)
+    }
+
+    if (filters.dateFrom) scoped = scoped.gte('payment_date', filters.dateFrom)
+    if (filters.dateTo)   scoped = scoped.lte('payment_date', filters.dateTo)
+
+    // ORDERED BY created_at AND THEN BY id. range() maps to LIMIT/OFFSET, which
+    // makes no promise about row order unless the ordering is deterministic —
+    // two payments recorded in the same instant could otherwise swap between
+    // pages, showing one twice and hiding the other.
+    const range = pageRange(page)
+    const { data, count } = await scoped
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(range.from, range.to)
+
+    // A newer load has already been issued; this answer is stale and must not
+    // repaint the screen underneath it.
+    if (token !== loadToken.current) return
 
     // The two submitter/approver names arrive already flattened — the projection
     // joins users itself, so what used to be two embedded resources to unwrap is
@@ -1241,7 +1594,72 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
       approved_by_name:  r.approved_by_name  ?? undefined,
     }))
     setRequests(mapped)
+    setTotal(count ?? null)
     setListLoading(false)
+
+    // ── HOW MUCH OF EACH PAYMENT HAS A HOME ──
+    //
+    // Started AFTER the list, because it is keyed on the ids the list just
+    // returned — and deliberately NOT awaited before the table paints. The rows
+    // are already correct without it; this only fills one column and one panel
+    // in the details modal, and blocking the whole list on it would trade a
+    // visible table for a spinner.
+    //
+    // ONE QUERY FOR THE PAGE, never one per row, and bounded twice over: the
+    // page is at most 50 ids, and the read is anchored to exactly those.
+    loadAllocations(mapped, token)
+  }
+
+  /**
+   * The allocations behind one page of payments.
+   *
+   * finance_payment_allocations under its own RLS — admin, finance.view_all, the
+   * payment's own submitter, a PI participant or an Order participant. It is not
+   * read through finance_received_payments, which exposes no allocated amount
+   * and no split by design; and being able to SEE an allocation grants no
+   * authority over one, because that table carries no INSERT, UPDATE or DELETE
+   * policy for any role.
+   *
+   * A REFUSAL IS NOT AN ANSWER ABOUT THE MONEY. When the read fails, or when
+   * this reader cannot see every allocation, each payment reports `unknown`
+   * rather than `unallocated` — see paymentAllocations.ts. Telling a Finance
+   * user that verified money is sitting in suspense when it is merely invisible
+   * to them would be the worse failure by far.
+   */
+  const loadAllocations = async (rows: readonly PaymentRequest[], token: number) => {
+    if (rows.length === 0) {
+      if (token === loadToken.current) setAllocations(new Map())
+      return
+    }
+
+    const [{ data, error }, emptyIsConclusive] = await Promise.all([
+      supabase
+        .from('finance_payment_allocations')
+        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id')
+        .in('payment_request_id', rows.map(r => r.id))
+        .eq('status', 'active'),
+      canViewAllRef.current,
+    ])
+
+    if (token !== loadToken.current) return
+
+    setAllocations(summarizePaymentAllocations(rows, (data ?? []) as PaymentAllocationRow[], {
+      readable: !error,
+      // Only a reader who can see EVERY allocation may be told "unallocated" on
+      // the strength of an empty list. This is the protected finance.view_all
+      // action, with admins short-circuiting inside deriveFinanceCapabilities —
+      // exactly the two cases whose RLS returns the complete set.
+      emptyIsConclusive,
+      // The Confirmed Order number the projection already resolved, so naming an
+      // allocation's target costs no additional read. A PI submission has no
+      // number on this row and is named by its target only when the reader can
+      // open it, which the PI page decides for itself.
+      labels: new Map(
+        rows
+          .filter(r => r.allocated_order_id && r.allocated_order_number)
+          .map(r => [r.allocated_order_id as string, r.allocated_order_number as string]),
+      ),
+    }))
   }
 
   // Every mutation on this page — link, unlink, edit, status correction — can
@@ -1259,25 +1677,86 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: me } = await supabase
+      // ── THE PROFILE, BOTH PERMISSION SETS AND THE LIST, TOGETHER ──
+      //
+      // This ran one after the next — session, then profile, then permissions,
+      // then the list — so the page waited for four latencies end to end before
+      // it drew anything, and none of the last three needs another's answer.
+      // Every row the list reads is scoped by RLS, not by the capabilities being
+      // resolved beside it.
+      //
+      // NOTHING ABOUT AUTHORITY CHANGED. `caps` still starts empty and is still
+      // widened only once resolve_effective_permissions answers, so no
+      // correction control can flash before it is authorized: pageLoading is not
+      // cleared until every one of these has landed. A failed resolve still
+      // falls back to NO capabilities rather than to the role.
+      const profilePromise = supabase
         .from('users')
         .select(USER_PROFILE_COLUMNS)
         .eq('id', session.user.id)
         .single()
+      const financePromise = getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => [])
+      const ordersPromise = getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => [])
+
+      // THE ALLOCATION READ'S SAFETY FLAG, PUBLISHED BEFORE IT IS NEEDED.
+      // loadAllocations must know whether an EMPTY allocation list is conclusive
+      // for this reader, and that answer depends on both calls above. Handing it
+      // the PROMISE rather than the value is what lets the list start now: the
+      // allocation read already runs after the list, so by the time it awaits
+      // this, the answer is in flight or already there, and it never has to
+      // guess.
+      canViewAllRef.current = Promise.all([profilePromise, financePromise])
+        .then(([{ data: who }, perms]) =>
+          deriveFinanceCapabilities((who as UserProfile | null)?.role, perms).canViewAllFinance)
+        .catch(() => false)
+
+      const [{ data: me }, financePerms, ordersPerms] = await Promise.all([
+        profilePromise,
+        financePromise,
+        ordersPromise,
+        loadRequests(),
+      ])
 
       setProfile(me as UserProfile)
-
-      // Resolved before the list first renders. A failed resolve falls back
-      // to no capabilities rather than to the role.
-      const financePerms = await getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => [])
       setCaps(deriveFinanceCapabilities(me?.role, financePerms))
+      setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
 
-      await loadRequests()
       setPageLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Re-read when the narrowing or the page changes ───────────────────────────
+  //
+  // Search and the filters are answered by the DATABASE now, so a change to any
+  // of them is a new query rather than a re-filter of rows already in hand. The
+  // search box is DEBOUNCED — `filters.search` is derived from the raw term, so
+  // without this every keystroke would be a round trip — and the other controls
+  // are not, because each is a single deliberate click.
+  //
+  // Skipped entirely until the first load has finished, so the mount does not
+  // issue the same query twice.
+  useEffect(() => {
+    if (pageLoading) return
+    const timer = setTimeout(() => { loadRequests() }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.search, filters.linkage, filters.dateFrom, filters.dateTo, page])
+
+  // A narrowing change moves the reader back to page one — staying on page four
+  // of a result set that now has one page would show an empty table over a
+  // filter that matches plenty.
+  //
+  // Done in the EVENT HANDLER rather than in an effect watching the filters.
+  // An effect would set state during a render it also caused, which is the
+  // cascading-render pattern react-hooks/set-state-in-effect exists to catch;
+  // here the page reset is simply part of what changing a filter means.
+  const narrowBy = <T,>(set: (value: T) => void) => (value: T) => { set(value); setPage(1) }
+  const applySearch   = narrowBy(setSearch)
+  const applyLinkage  = narrowBy(setLinkage)
+  const applyDateFrom = narrowBy(setDateFrom)
+  const applyDateTo   = narrowBy(setDateTo)
 
   // ── Deep-link resolution (?payment=&action=link|edit) ────────────────────────
   // Runs exactly once, once `requests` is loaded. Sources: the Admin Action
@@ -1286,34 +1765,80 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   // still satisfies the same rule the manual button uses — a stale, already
   // linked, or not-permitted payment is simply highlighted, never a fatal error.
   useEffect(() => {
-    const resolveDeepLink = () => {
+    const resolveDeepLink = async () => {
       if (pageLoading || deepLinkHandled.current) return
       deepLinkHandled.current = true
 
       const paymentId = searchParams.get('payment')
       const action     = searchParams.get('action')
-      if (paymentId) {
-        const match = requests.find(r => r.id === paymentId)
-        if (match) {
+      if (!paymentId) return
+
+      // ── THE ROW MAY NOT BE ON THIS PAGE ──
+      //
+      // Before the list was paged it held every approved payment, so a deep
+      // link's target was always among the loaded rows. Now it is one page of
+      // fifty, and a link into a payment recorded months ago would silently do
+      // nothing — no modal, no highlight, and no explanation.
+      //
+      // So a miss is followed by ONE read for that ONE payment, by its id. It is
+      // the same security_invoker projection the list reads, so RLS decides
+      // exactly as it does for the list: a payment this reader may not see comes
+      // back empty and the page simply shows its first page, which is what a
+      // stale or unauthorized link has always done here. Nothing is highlighted
+      // in that case, because the row is genuinely not on screen — but the
+      // record the link was for does open.
+      let match = requests.find(r => r.id === paymentId) ?? null
+      const onThisPage = match !== null
+
+      if (!match) {
+        const { data } = await supabase
+          .from(RECEIVED_PAYMENTS_SOURCE)
+          .select(`
+            id, request_number, client_name, amount, payment_date, payment_mode,
+            received_in, proof_note, order_number, order_id,
+            order_request_id, order_request_number, sales_note,
+            status, payment_against, submitted_by, admin_note, created_at,
+            submitted_by_name, approved_by_name,
+            allocated_order_id, allocated_order_number, is_order_allocated
+          `)
+          .eq('id', paymentId)
+          .maybeSingle()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row = data as any
+        match = row
+          ? { ...row,
+              submitted_by_name: row.submitted_by_name ?? undefined,
+              approved_by_name:  row.approved_by_name  ?? undefined } as PaymentRequest
+          : null
+      }
+
+      if (match) {
+        if (onThisPage) {
           setHighlightId(match.id)
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
-          if (caps.canManageFinance && action === 'link' && !match.order_id && !match.order_request_id) {
-            setLinkRequest(match)
-          } else if (caps.canManageFinance && action === 'edit') {
-            // Editing a received payment is admin-only here, exactly as the
-            // table's own Edit button is.
-            setEditRequest(match)
-          } else if (action === 'edit' || action === 'link') {
-            // Not permitted (or no longer eligible): fall back to the read-only
-            // view rather than silently doing nothing.
-            setDetailRequest(match)
-          }
         }
-        // Drop the deep-link params so a refresh or back-navigation can't
-        // reopen the modal.
-        router.replace(meta.path)
+        if (caps.canManageFinance && action === 'link' && !match.order_id && !match.order_request_id) {
+          setLinkRequest(match)
+        } else if (caps.canManageFinance && action === 'edit') {
+          // Editing a received payment is admin-only here, exactly as the
+          // table's own Edit button is.
+          setEditRequest(match)
+        } else if (action === 'edit' || action === 'link') {
+          // Not permitted (or no longer eligible): fall back to the read-only
+          // view rather than silently doing nothing.
+          setDetailRequest(match)
+        } else if (!onThisPage) {
+          // A bare ?payment= link used to be answered by highlighting the row.
+          // When the row is on another page there is nothing to highlight, so
+          // the record itself is opened instead of nothing happening at all.
+          setDetailRequest(match)
+        }
       }
+
+      // Drop the deep-link params so a refresh or back-navigation can't
+      // reopen the modal.
+      router.replace(meta.path)
     }
     resolveDeepLink()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1357,25 +1882,27 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
     refreshAfterMutation()
   }
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return requests.filter(r => {
-      const matchesSearch = !q || (
-        r.client_name.toLowerCase().includes(q) ||
-        (r.order_number ?? '').toLowerCase().includes(q) ||
-        (r.order_request_number ?? '').toLowerCase().includes(q)
-      )
-      if (!matchesSearch) return false
-      // Linked Payments only — narrows to one of the two linkage targets. Both
-      // filters are no-ops on Non-Linked Payments, which never renders the
-      // control (every row there is linked to nothing).
-      if (linkage === 'order')   return !!r.order_id
-      if (linkage === 'request') return !r.order_id && !!r.order_request_id
-      return true
-    })
-  }, [requests, search, linkage])
+  // THE ROWS ARE THE ANSWER, not a starting point to filter.
+  //
+  // This used to hold a client-side search and linkage filter over whatever the
+  // unbounded query returned. Both were wrong in their own way — the search
+  // could not find a payment by the request number the table leads with, and the
+  // linkage filter tested `order_id` alone, so a payment attached to an Order by
+  // ALLOCATION matched neither narrowing while displaying that Order in its own
+  // row. Both now run in the database, where they also survive paging: filtering
+  // a page after the fact would narrow fifty rows and silently hide every match
+  // on page two.
+  const visible = requests
+  const narrowed = isNarrowed({ search, linkage, dateFrom: filters.dateFrom, dateTo: filters.dateTo })
+  const pages = pageCount(total)
 
-  const narrowed = search.trim() !== '' || linkage !== 'all'
+  const clearFilters = () => {
+    setSearch('')
+    setLinkage('all')
+    setDateFrom('')
+    setDateTo('')
+    setPage(1)
+  }
 
   if (pageLoading) return <LoadingScreen />
 
@@ -1407,11 +1934,11 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
             type="text"
             placeholder={meta.searchPlaceholder}
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => applySearch(e.target.value)}
             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
           />
           {search && (
-            <button onClick={() => setSearch('')} aria-label="Clear search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
+            <button onClick={() => applySearch('')} aria-label="Clear search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
           )}
         </div>
 
@@ -1424,7 +1951,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
             className="boe-input"
             aria-label="Filter by linkage type"
             value={linkage}
-            onChange={e => setLinkage(e.target.value as LinkageFilter)}
+            onChange={e => applyLinkage(e.target.value as LinkageFilter)}
             style={{ fontSize: '12px', padding: '6px 10px', width: 'auto', flexShrink: 0 }}
           >
             {LINKAGE_FILTER_OPTIONS.map(o => (
@@ -1433,12 +1960,57 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           </select>
         )}
 
-        <div style={{ marginLeft: 'auto', fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
-          {listLoading
-            ? 'Loading…'
-            : narrowed
-              ? `${visible.length} of ${requests.length} visible`
-              : `${visible.length} payment${visible.length !== 1 ? 's' : ''}`}
+        {/* ── When the money arrived ──
+            Bounds the list by payment_date, which is the date Finance
+            reconciles against — not created_at, which is when somebody typed it
+            in. Either bound alone is a valid open-ended range, and a pair typed
+            the wrong way round is read as the range between them rather than
+            answered with an empty table. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          <label htmlFor="payment-date-from" style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
+            Paid
+          </label>
+          <input
+            id="payment-date-from"
+            type="date"
+            className="boe-input"
+            aria-label="Payments on or after"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={e => applyDateFrom(e.target.value)}
+            style={{ fontSize: '12px', padding: '5px 8px', width: 'auto' }}
+          />
+          <span style={{ fontSize: '11px', color: colors.muted }}>to</span>
+          <input
+            id="payment-date-to"
+            type="date"
+            className="boe-input"
+            aria-label="Payments on or before"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={e => applyDateTo(e.target.value)}
+            style={{ fontSize: '12px', padding: '5px 8px', width: 'auto' }}
+          />
+        </div>
+
+        {narrowed && (
+          <button
+            onClick={clearFilters}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '5px 10px', fontSize: '11px', flexShrink: 0 }}
+          >
+            Clear filters
+          </button>
+        )}
+
+        {/* The size of the WHOLE narrowed set, from the database's exact count —
+            not the length of the page in hand, which would understate it the
+            moment there is more than one page. */}
+        <div
+          aria-live="polite"
+          style={{ marginLeft: 'auto', fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}
+        >
+          {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
         </div>
       </div>
 
@@ -1447,19 +2019,70 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
         {listLoading ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
         ) : visible.length === 0 ? (
-          <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
-            {narrowed ? 'No payments match the current filters.' : meta.empty}
+          /* TWO DIFFERENT EMPTIES, said differently. "No payments" is a
+             statement about the business; "nothing matches" is a statement
+             about the filter, and it offers the way out. Confusing the two
+             sends somebody hunting for a payment that is merely filtered. */
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
+            {narrowed ? (
+              <>
+                No payments match the current filters.
+                <div style={{ marginTop: '10px' }}>
+                  <button onClick={clearFilters} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
+                    Clear filters
+                  </button>
+                </div>
+              </>
+            ) : meta.empty}
           </div>
         ) : (
           <ReceivedPaymentsTable
             rows={visible}
             canManage={caps.canManageFinance}
+            canOpenLinkedRecord={canOpenOrderRecord(ordersCaps.canAccessOrdersModule)}
+            allocations={allocations}
             highlightId={highlightId}
             onView={r  => setDetailRequest(r)}
             onEdit={r  => setEditRequest(r)}
             onLink={r  => setLinkRequest(r)}
             onUnlink={r => { setUnlinkTarget(r); setUnlinkReason(''); setUnlinkError(null) }}
+            onOpenLinked={href => router.push(href)}
           />
+        )}
+
+        {/* ── Paging ──
+            Rendered only when there is more than one page, so a short list
+            looks exactly as it always has. Deep-linkable navigation is
+            unchanged: ?payment= still resolves to whichever page holds the row
+            through the parent /finance/received route. */}
+        {!listLoading && pages > 1 && (
+          <nav
+            aria-label="Payment pages"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px',
+              padding: '10px 12px', borderTop: `1px solid ${colors.border}`,
+            }}
+          >
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '5px 12px', fontSize: '12px', opacity: page <= 1 ? 0.5 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
+            >
+              Previous
+            </button>
+            <span style={{ fontSize: '12px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+              Page {page} of {pages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(pages, p + 1))}
+              disabled={page >= pages}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '5px 12px', fontSize: '12px', opacity: page >= pages ? 0.5 : 1, cursor: page >= pages ? 'not-allowed' : 'pointer' }}
+            >
+              Next
+            </button>
+          </nav>
         )}
       </div>
 
@@ -1472,6 +2095,9 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           mayCorrectPayments={caps.canCorrectOrReversePayment}
           supabase={supabase}
           onCorrected={() => { setDetailRequest(null); refreshAfterMutation() }}
+          allocation={allocations.get(detailRequest.id) ?? PENDING_ALLOCATION_SUMMARY(detailRequest.id)}
+          canOpenLinkedRecord={canOpenOrderRecord(ordersCaps.canAccessOrdersModule)}
+          onOpenLinked={href => router.push(href)}
         />
       )}
 
