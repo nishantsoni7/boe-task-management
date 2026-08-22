@@ -20,7 +20,11 @@ import {
   type LinkedAgainst,
 } from '@/app/finance/paymentRouting'
 import {
+  ALLOCATION_FILTER_OPTIONS,
   LINKAGE_FILTER_OPTIONS,
+  allocationFilterAvailable,
+  allocationFilterClauses,
+  ALLOCATED_TOTAL_COLUMN,
   dateRange,
   isNarrowed,
   linkageFilterClauses,
@@ -28,6 +32,7 @@ import {
   pageRange,
   resultSummary,
   receivedPaymentsSearchFilter,
+  type AllocationFilter,
   type LinkageFilter,
 } from '@/app/finance/receivedPaymentsQuery'
 import {
@@ -1451,6 +1456,21 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   const [linkage,        setLinkage]        = useState<LinkageFilter>('all')
   const [dateFrom,       setDateFrom]       = useState('')
   const [dateTo,         setDateTo]         = useState('')
+  // ── The allocation narrowing ──
+  // How much of a payment has been given a home — the queue that needs somebody
+  // to act. Answered by the DATABASE, because a state computed over the fifty
+  // rows in hand would narrow those fifty and hide every match on page two.
+  //
+  // GATED TWICE, and both gates matter. The projection gains `allocation_state`
+  // only when 20261004000000 is applied, so `allocationReady` probes for it and
+  // the control is not drawn until it is there — an un-migrated database behaves
+  // exactly as it did before, with no query ever built against a missing column.
+  // And the control is offered only to a reader who can see EVERY allocation,
+  // because the view is security_invoker: a reader who may see a payment but not
+  // its allocations sums to zero and would read "Unallocated" for money that is
+  // fully spoken for.
+  const [allocation,     setAllocation]     = useState<AllocationFilter>('all')
+  const [allocationReady, setAllocationReady] = useState(false)
   const [highlightId,    setHighlightId]    = useState<string | null>(null)
   // ── Paging ──
   // The list was UNBOUNDED, and PostgREST truncates silently at 1000 rows: no
@@ -1486,6 +1506,18 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   // in state so the loader always reads the CURRENT filters rather than the ones
   // its closure was created with — a search typed quickly would otherwise
   // re-issue an older query and paint a stale page over a newer one.
+  /**
+   * Whether the allocation control is offered at all.
+   *
+   * BOTH GATES. The column has to exist (the migration is applied) AND this
+   * reader has to be able to see every allocation, so that the security_invoker
+   * sum behind the state IS the true sum for them. A reader holding
+   * finance.view without finance.view_all would otherwise be shown a filter
+   * that calls fully-allocated money "Unallocated" — the exact confusion
+   * paymentAllocations.ts refuses to make on the per-payment panel.
+   */
+  const allocationOffered = allocationReady && caps.canViewAllFinance
+
   const filters = useMemo(() => {
     const dates = dateRange(dateFrom, dateTo)
     return {
@@ -1493,8 +1525,10 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
       linkage,
       dateFrom: dates.from,
       dateTo: dates.to,
+      // Never sent unless the column is there AND this reader may trust it.
+      allocation: allocationOffered ? allocation : ('all' as AllocationFilter),
     }
-  }, [search, linkage, dateFrom, dateTo])
+  }, [search, linkage, dateFrom, dateTo, allocation, allocationOffered])
 
   // Guards against an out-of-order response. Each load claims a number; only the
   // newest one is allowed to write to state. Without this, a slow query for
@@ -1566,6 +1600,10 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
 
     if (filters.dateFrom) scoped = scoped.gte('payment_date', filters.dateFrom)
     if (filters.dateTo)   scoped = scoped.lte('payment_date', filters.dateTo)
+
+    for (const clause of allocationFilterClauses(filters.allocation)) {
+      if (clause.kind === 'eq') scoped = scoped.eq(clause.column, clause.value)
+    }
 
     // ORDERED BY created_at AND THEN BY id. range() maps to LIMIT/OFFSET, which
     // makes no promise about row order unless the ordering is deterministic —
@@ -1698,6 +1736,24 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
       const financePromise = getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => [])
       const ordersPromise = getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => [])
 
+      // ── IS THE ALLOCATION COLUMN THERE? ──
+      //
+      // One row, two columns, asked once. The projection gains allocation_state
+      // only when 20261004000000 is applied; until then this errors and the
+      // control is never drawn, so an un-migrated database behaves exactly as it
+      // did before and no query is ever built against a column that does not
+      // exist. A filter that silently matched nothing, or a request PostgREST
+      // refused outright, would both be worse than an absent control.
+      //
+      // In this group, so it costs no wait.
+      const allocationProbe = supabase
+        .from(RECEIVED_PAYMENTS_SOURCE)
+        .select(`id, ${ALLOCATED_TOTAL_COLUMN}, allocation_state`)
+        .limit(1)
+        .then((result: { error: unknown }) => allocationFilterAvailable(
+          result.error ? null : { columns: [ALLOCATED_TOTAL_COLUMN, 'allocation_state'] }))
+        .catch(() => false)
+
       // THE ALLOCATION READ'S SAFETY FLAG, PUBLISHED BEFORE IT IS NEEDED.
       // loadAllocations must know whether an EMPTY allocation list is conclusive
       // for this reader, and that answer depends on both calls above. Handing it
@@ -1710,13 +1766,15 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           deriveFinanceCapabilities((who as UserProfile | null)?.role, perms).canViewAllFinance)
         .catch(() => false)
 
-      const [{ data: me }, financePerms, ordersPerms] = await Promise.all([
+      const [{ data: me }, financePerms, ordersPerms, allocationAvailable] = await Promise.all([
         profilePromise,
         financePromise,
         ordersPromise,
+        allocationProbe,
         loadRequests(),
       ])
 
+      setAllocationReady(allocationAvailable)
       setProfile(me as UserProfile)
       setCaps(deriveFinanceCapabilities(me?.role, financePerms))
       setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
@@ -1742,7 +1800,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
     const timer = setTimeout(() => { loadRequests() }, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search, filters.linkage, filters.dateFrom, filters.dateTo, page])
+  }, [filters.search, filters.linkage, filters.dateFrom, filters.dateTo, filters.allocation, page])
 
   // A narrowing change moves the reader back to page one — staying on page four
   // of a result set that now has one page would show an empty table over a
@@ -1757,6 +1815,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   const applyLinkage  = narrowBy(setLinkage)
   const applyDateFrom = narrowBy(setDateFrom)
   const applyDateTo   = narrowBy(setDateTo)
+  const applyAllocation = narrowBy(setAllocation)
 
   // ── Deep-link resolution (?payment=&action=link|edit) ────────────────────────
   // Runs exactly once, once `requests` is loaded. Sources: the Admin Action
@@ -1893,7 +1952,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   // a page after the fact would narrow fifty rows and silently hide every match
   // on page two.
   const visible = requests
-  const narrowed = isNarrowed({ search, linkage, dateFrom: filters.dateFrom, dateTo: filters.dateTo })
+  const narrowed = isNarrowed({ search, linkage, dateFrom: filters.dateFrom, dateTo: filters.dateTo, allocation: filters.allocation })
   const pages = pageCount(total)
 
   const clearFilters = () => {
@@ -1901,6 +1960,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
     setLinkage('all')
     setDateFrom('')
     setDateTo('')
+    setAllocation('all')
     setPage(1)
   }
 
@@ -1955,6 +2015,29 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
             style={{ fontSize: '12px', padding: '6px 10px', width: 'auto', flexShrink: 0 }}
           >
             {LINKAGE_FILTER_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        )}
+
+        {/* ── How much of it has a home ──
+            Answered by the database across the WHOLE narrowed set, so it
+            composes correctly with search, the date range, the linkage filter
+            and paging — a state computed over the loaded page would narrow
+            fifty rows and hide every match on page two.
+
+            Drawn only when the projection carries the column AND this reader can
+            see every allocation. Both gates are load-bearing; see
+            `allocationOffered`. */}
+        {allocationOffered && (
+          <select
+            className="boe-input"
+            aria-label="Filter by allocation state"
+            value={allocation}
+            onChange={e => applyAllocation(e.target.value as AllocationFilter)}
+            style={{ fontSize: '12px', padding: '6px 10px', width: 'auto', flexShrink: 0 }}
+          >
+            {ALLOCATION_FILTER_OPTIONS.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>

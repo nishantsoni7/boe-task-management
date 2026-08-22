@@ -926,12 +926,42 @@ describe('the executable assertions exist and cover this phase', () => {
 describe('the Finance linkage projection', () => {
   const view = sql.split('create view public.finance_received_payments')[1]?.split('§9.')[0] ?? ''
 
-  test('it exists, and in THIS migration rather than a later corrective one', () => {
-    assert.ok(view.length > 0, 'the projection must be part of the unapplied Phase 3 migration')
+  test('it exists, and every later migration that touches it keeps its contract', () => {
+    assert.ok(view.length > 0, 'the projection must be defined in this migration')
+
+    // THIS RULE CHANGED WHEN THE MIGRATION WAS APPLIED, and deliberately.
+    //
+    // It used to forbid ANY later migration from naming finance_received_payments
+    // at all: while 20260921000000 was still unapplied, a later file mentioning
+    // the view could only be compensating for a defect that should have been
+    // fixed in the file itself, which was never going to be deployed as written.
+    //
+    // That premise is gone. The migration is applied and is now immutable, so a
+    // later forward-only migration is the ONLY way the projection can ever
+    // change — 20261004000000 adds allocated_total and allocation_state exactly
+    // that way. Forbidding it outright would forbid maintenance.
+    //
+    // What still matters is the CONTRACT, so that is what is asserted of every
+    // later file that touches the view: it stays a VIEW, never a table or a
+    // materialized copy, and it stays SECURITY INVOKER. A replace that dropped
+    // that option would make the view evaluate as its OWNER and show every
+    // caller every payment in the company — which is the failure this whole
+    // section exists to prevent, whichever file causes it.
     const later = readdirSync(MIGRATIONS).filter(f => f > FILE && f.endsWith('.sql'))
     for (const f of later) {
-      assert.ok(!migration(f).includes('finance_received_payments'),
-        `${f} must not compensate for an unapplied migration`)
+      const text = migration(f)
+      if (!text.includes('finance_received_payments')) continue
+
+      assert.ok(!/create (table|materialized view) public\.finance_received_payments/.test(text),
+        `${f} must not turn the projection into a table or a materialized copy`)
+
+      if (/create (or replace )?view public\.finance_received_payments/.test(text)) {
+        assert.match(text, /create or replace view public\.finance_received_payments\s*\n\s*with \(security_invoker = true\)/,
+          `${f} must redefine the projection as a security_invoker view`)
+        assert.ok(!/security definer/i.test(
+          text.split('create or replace view public.finance_received_payments')[1] ?? ''),
+          `${f} must not make the projection SECURITY DEFINER`)
+      }
     }
   })
 

@@ -28,7 +28,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import {
+  ALLOCATED_TOTAL_COLUMN,
+  ALLOCATION_FILTER_OPTIONS,
   LINKAGE_FILTER_OPTIONS,
+  allocationFilterAvailable,
+  allocationFilterClauses,
+  isAllocationFilter,
+  type AllocationFilter,
   RECEIVED_PAYMENTS_PAGE_SIZE,
   RECEIVED_PAYMENTS_SEARCH_COLUMNS,
   dateBound,
@@ -270,5 +276,189 @@ describe('what the toolbar says it is doing', () => {
       'No payments')
     assert.equal(resultSummary({ loading: false, shown: 0, total: 0, narrowed: true, page: 1, pages: 1 }),
       'No matches')
+  })
+})
+
+// ── The allocation narrowing ─────────────────────────────────────────────────
+
+describe('the allocation filter is gated, and fails closed', () => {
+  test('it is unavailable until the projection carries the column', () => {
+    // The control must not be drawn against a database where 20261004000000 has
+    // not been applied: a query naming a missing column is refused outright by
+    // PostgREST, which would blank the list rather than narrow it.
+    assert.equal(allocationFilterAvailable(null), false)
+    assert.equal(allocationFilterAvailable(undefined), false)
+    assert.equal(allocationFilterAvailable({ columns: [] }), false)
+  })
+
+  test('a half-applied projection is still unavailable', () => {
+    // Both columns or neither. One without the other is a state no migration
+    // produces, and guessing which half is missing is not this module's job.
+    assert.equal(allocationFilterAvailable({ columns: ['allocation_state'] }), false)
+    assert.equal(allocationFilterAvailable({ columns: [ALLOCATED_TOTAL_COLUMN] }), false)
+  })
+
+  test('and available once both columns are there', () => {
+    assert.equal(allocationFilterAvailable({
+      columns: ['id', ALLOCATED_TOTAL_COLUMN, 'allocation_state'],
+    }), true)
+  })
+
+  test('the page draws the control only when the reader can trust it', () => {
+    // The view is security_invoker, so the sum behind the state is evaluated as
+    // the CALLER. A reader who may see a payment but not its allocations sums to
+    // zero and would be shown "Unallocated" for money that is fully spoken for.
+    // finance.view_all (and admin, which short-circuits inside the helper) are
+    // exactly the readers for whom the invoker sum IS the true sum.
+    const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
+    assert.ok(view.includes('const allocationOffered = allocationReady && caps.canViewAllFinance'),
+      'both gates must be required')
+    assert.ok(view.includes('{allocationOffered && ('),
+      'the control is drawn only when offered')
+  })
+
+  test('and never sends the filter when it is not offered', () => {
+    const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
+    assert.ok(view.includes("allocation: allocationOffered ? allocation : ('all' as AllocationFilter)"),
+      'an ungated reader must query as if no allocation filter existed')
+  })
+})
+
+describe('what each allocation state narrows to', () => {
+  test('"all" narrows nothing', () => {
+    assert.deepEqual(allocationFilterClauses('all'), [])
+  })
+
+  test('every other state is one equality against the view column', () => {
+    // A single eq, not a numeric comparison assembled here: PostgREST cannot
+    // compare two columns in a filter, so the comparison against the payment's
+    // own amount is the VIEW's job. That is the whole reason the state is a
+    // column.
+    for (const state of ['unallocated', 'partial', 'full', 'over'] as const) {
+      assert.deepEqual(allocationFilterClauses(state),
+        [{ kind: 'eq', column: 'allocation_state', value: state }], state)
+    }
+  })
+
+  test('the four real states are all offered, over-allocation included', () => {
+    // The capacity trigger refuses to CREATE an over-allocation, so a row in
+    // that state means something has gone wrong — which is exactly why it must
+    // be findable rather than rounded into "Fully".
+    const offered = ALLOCATION_FILTER_OPTIONS.map(o => o.value)
+    for (const state of ['all', 'unallocated', 'partial', 'full', 'over']) {
+      assert.ok(offered.includes(state as AllocationFilter), state)
+    }
+  })
+
+  test('every offered option is a state the module implements', () => {
+    for (const option of ALLOCATION_FILTER_OPTIONS) {
+      assert.ok(isAllocationFilter(option.value), option.value)
+    }
+    assert.ok(!isAllocationFilter('mostly'))
+  })
+})
+
+describe('the allocation state composes with every other narrowing', () => {
+  test('it counts as a narrowing, so "Clear filters" appears', () => {
+    const base = { search: '', linkage: 'all' as const, dateFrom: null, dateTo: null }
+    assert.equal(isNarrowed({ ...base, allocation: 'all' }), false)
+    assert.equal(isNarrowed({ ...base, allocation: 'unallocated' }), true)
+  })
+
+  test('an absent allocation filter does not make a plain list look narrowed', () => {
+    // Readers who are not offered the control pass nothing, and the toolbar must
+    // not then claim the list is filtered.
+    assert.equal(isNarrowed({ search: '', linkage: 'all', dateFrom: null, dateTo: null }), false)
+  })
+
+  test('it is applied as its own clause, alongside the others', () => {
+    // Search, linkage, dates and allocation all narrow the same query and
+    // compose as AND. Each is a separate clause, so none can overwrite another.
+    const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
+    const loader = view.slice(view.indexOf('const loadRequests'), view.indexOf('const loadAllocations'))
+    for (const applied of [
+      'if (filters.search) scoped = scoped.or(filters.search)',
+      'linkageFilterClauses(',
+      "scoped.gte('payment_date', filters.dateFrom)",
+      "scoped.lte('payment_date', filters.dateTo)",
+      'allocationFilterClauses(filters.allocation)',
+    ]) {
+      assert.ok(loader.includes(applied), applied)
+    }
+    // And the page range is applied to the same query, so the narrowing is what
+    // is paged — not the page that is narrowed.
+    assert.ok(loader.includes('.range(range.from, range.to)'))
+  })
+
+  test('changing it returns the reader to page one', () => {
+    const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
+    assert.ok(view.includes('const applyAllocation = narrowBy(setAllocation)'),
+      'narrowing must reset the page, or page four of a one-page result shows nothing')
+    assert.ok(view.includes('filters.allocation, page]'),
+      'a change to the allocation filter must re-issue the query')
+  })
+})
+
+describe('the migration that backs the filter', () => {
+  const sql = readFileSync(
+    'supabase/migrations/20261004000000_finance_received_payments_allocation_state.sql', 'utf8')
+
+  test('is forward-only, after the last applied migration', () => {
+    // 20261003000000 is the last migration the deployment has applied. Anything
+    // this project adds has to come after it and may never edit an applied file.
+    assert.ok('20261004000000' > '20261003000000')
+  })
+
+  test('keeps the projection security_invoker', () => {
+    // The single most important line: without it the view would evaluate as its
+    // OWNER and show every caller every payment in the company.
+    assert.ok(sql.includes('with (security_invoker = true)'))
+    assert.ok(sql.includes('must remain security_invoker=true'),
+      'and asserts it at apply time')
+  })
+
+  test('stores nothing — it adds a projection, not a second ledger', () => {
+    assert.ok(!/alter table[\s\S]{0,80}add column/i.test(sql),
+      'no table may gain a stored total')
+    assert.ok(sql.includes('must not be stored on finance_payment_requests'),
+      'and the migration asserts that too')
+  })
+
+  test('counts ACTIVE allocations only', () => {
+    // A reversed allocation is a withdrawn claim; its money is free again.
+    const totals = sql.slice(sql.indexOf('select sum(a.allocated_amount)'))
+    assert.ok(totals.includes("a.status = 'active'"))
+  })
+
+  test('sums in numeric, never through a float', () => {
+    assert.ok(sql.includes('SUMMED IN `numeric`'))
+    assert.ok(!/::float|::double precision/.test(sql))
+  })
+
+  test('adds no index, because the one it needs already exists', () => {
+    assert.ok(!/create\s+index/i.test(sql), 'no new index may be created')
+    assert.ok(sql.includes('finance_payment_allocations_payment_active_idx'),
+      'and it names the index it relies on, asserting the index is still there')
+  })
+
+  test('creates, drops and alters no policy', () => {
+    for (const forbidden of [/create\s+policy/i, /drop\s+policy/i, /alter\s+policy/i]) {
+      assert.ok(!forbidden.test(sql), String(forbidden))
+    }
+  })
+
+  test('has a stated rollback', () => {
+    assert.ok(sql.includes('ROLLBACK'))
+    assert.ok(sql.includes('drop view public.finance_received_payments;'),
+      'CREATE OR REPLACE cannot drop a column, so the rollback has to say so')
+  })
+
+  test('an assertion file exists for it', () => {
+    const assertions = readFileSync(
+      'supabase/tests/finance_received_payments_allocation_state_assertions.sql', 'utf8')
+    assert.ok(assertions.includes('rollback;'), 'assertions must not leave fixtures behind')
+    assert.ok(assertions.includes('ALL ASSERTIONS PASSED'))
+    // The equality case is the one a float or an epsilon comparison gets wrong.
+    assert.ok(assertions.includes('THE EQUALITY CASE'))
   })
 })
