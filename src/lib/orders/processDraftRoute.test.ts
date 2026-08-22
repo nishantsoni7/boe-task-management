@@ -605,6 +605,14 @@ describe('service-role isolation', () => {
     assert.match(raw('src/lib/supabase/admin.ts'), /process\.env\.SUPABASE_SERVICE_ROLE_KEY/)
     assert.ok(route.includes("fail(500, 'SERVER_NOT_CONFIGURED'"),
       'a missing variable is a named, renderable failure')
+    // AND THE NAMES GO NOWHERE. /orders/[id]/documents settled this for the
+    // codebase: a caller learns the deployment is misconfigured, not which of
+    // its settings is absent. This route additionally logs nothing at all, so
+    // it neither returns them nor writes them — the operator diagnoses from the
+    // document route's log, which does carry the names.
+    assert.ok(!route.includes('admin.missing'),
+      'the missing variable names must not reach a response or a log')
+    assert.ok(!route.includes('ADMIN_CLIENT_ENV'))
   })
 
   test('no client file references the service key or the privileged RPC', () => {

@@ -852,21 +852,89 @@ transaction-scoped, so two writes in one transaction stamped the identical value
 and a stale edit compared equal to a fresh one. Replaced with an explicit
 monotonic `row_version` counter.
 
-> **Still open on this branch.** Editing for schedule/terms, products and
-> commercial inputs; the owner correction-request flow; and extending
-> confirmed-workbook generation to apply edited values to the generated copy.
+**The correction model was then settled, and the rest of the branch follows it.**
+
+Two paths, approved rather than inferred: a direct edit for anything
+descriptive, and Change PI for anything a workbook formula touches. The reason
+the split exists at all is that BOE has never computed a PI total — the parser
+transcribes what the spreadsheet produced and warns when its own two derivations
+disagree — so recreating those formulas in PostgreSQL or React would be
+inventing figures. See 05_Business_Rules for the field-by-field table.
+
+`20260929000000` opened dates and terms, `20260930000000` gave the owner a
+correction-request channel for a PI that has left their hands, `20261002000000`
+opened the product descriptions and their order, and `20261001000000` closed a
+latent defect the others would each have hit.
+
+**The activity constraint had already been broken, invisibly.**
+
+`order_submission_activity.action` carries a CLOSED check constraint by design.
+`20260923000000` — applied to production — logs `billing_percentage_set` and
+never declared it, so every successful billing write on it fails at the moment
+it records what it did. Nobody noticed because it could not be reached: the
+authority bug refused first, for everybody. Fixing the authority would have
+exposed this to the next person who pressed Save. `20261001000000` restates the
+set and a source-parsing test holds the two lists together.
+
+That defect was found only because the local verification schema was corrected.
+Over a hundred behavioural assertions had passed against a stub table that would
+accept any string. **A stub more permissive than the real schema does not prove
+less than the real thing — it proves the wrong thing, confidently.**
+
+**Change PI could not run past draft, for anybody.**
+
+The same stage-before-actor shape, in a second place:
+`assert_order_submission_editor` refuses on state before it looks at the actor,
+so no admin could ever replace the workbook of a submitted PI. And fixing that
+alone would have changed nothing visible —
+`begin_order_submission_processing` asked the same predicate and would have
+refused the lease first. `20261003000000` adds
+`assert_order_submission_workbook_editor` beside the old one and re-emits both
+functions, each differing in exactly the documented places; two continuity tests
+undo those edits and require the applied definitions back line for line.
+
+**What a replacement means after submission** is the substance of that
+migration: the finance verification is cleared (the existing trigger fires on a
+status change, and a replacement is not one), the corrected values follow onto
+the Order without its identity moving, the ready documents are superseded while
+their files stay downloadable, and the previous workbook is KEPT — it is what
+finance verified and management approved.
+
+**Corrections now reach the generated Excel.** It was the stored workbook with
+one cell filled in, so a corrected phone number never appeared in it.
+`CONFIRMED_EDITABLE_CELLS` maps ten fields to cells the parser already reads;
+nothing commercial is offered, and a field outside the contract is refused
+rather than ignored.
 
 ---
 
 ## Branch migrations — status
 
-| Migration | Applied |
-|---|---|
-| `20260924000000` | yes |
-| `20260925000000` | yes |
-| `20260926000000` | yes |
-| `20260927000000` | **NO** |
-| `20260928000000` | **NO** |
+| Migration | Applied | What it carries |
+|---|---|---|
+| `20260924000000` | yes | Confirmed Order handoff — `can_view_order`, four additive SELECT policies |
+| `20260925000000` | yes | Document register, claim protocol, publication |
+| `20260926000000` | yes | Order-number cycle reset (six-gated; never invoked) |
+| `20260927000000` | **NO** | Admin amendment authority, `supersede_order_documents`, 3-arg billing RPC |
+| `20260928000000` | **NO** | Client and party details, `row_version` |
+| `20260929000000` | **NO** | Dates and terms; ISO-shape date check |
+| `20260930000000` | **NO** | Owner correction requests |
+| `20261001000000` | **NO** | The activity action set, extended — **fixes an applied defect** |
+| `20261002000000` | **NO** | Product descriptions and ordering; money refused by name |
+| `20261003000000` | **NO** | Change PI authority, and what a replacement means after submission |
 
-Both unapplied migrations must be applied, in order, before the preview can
-exercise the billing-percentage fix or the client-details editor.
+The unapplied migrations must be applied **in order**. `20261001000000` in
+particular must precede `20261002000000` and `20261003000000`, which log actions
+it declares — each of those refuses to apply otherwise, and says which
+dependency is missing.
+
+## Deployment configuration
+
+**No new secret is needed.** The service-role credential is
+`SUPABASE_SERVICE_ROLE_KEY`, established by reading the repository rather than
+assumed: the name appears over a hundred times across `src/`, it is the name in
+`.env.example`, and no other variant exists anywhere in the codebase or the
+docs. A route that could not find it was looking correctly and finding nothing,
+which is a deployment gap and not a naming disagreement. If document generation
+or PI saving reports `SERVER_NOT_CONFIGURED` on the preview, that variable is
+absent from the environment and needs adding under exactly that name.

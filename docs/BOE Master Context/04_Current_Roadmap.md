@@ -340,26 +340,42 @@ moves the PI's payment allocations onto it. The PI now also carries a real due
 date (PR #46) and a declared billing percentage (PR #47), both of which follow
 it onto the Order.
 
-**On `claude/confirmed-order-handoff-performance`, not merged and not applied.**
-The Confirmed Order's operational handoff from its PI; the document-generation
-register and its claim protocol; confirmed Excel and confirmed PDF generation;
-the safeguards a controlled test-data cleanup needs and a gated way back to
-Order number 0001; and a startup-latency pass across every Order screen.
+**On `claude/confirmed-order-handoff-performance`, not merged.** The Confirmed
+Order's operational handoff from its PI; the document-generation register and
+its claim protocol; confirmed Excel and confirmed PDF generation; the safeguards
+a controlled test-data cleanup needs and a gated way back to Order number 0001;
+a startup-latency pass across every Order screen; and — after manual testing
+found a PI that could not be corrected and a billing write that could not
+succeed — **the whole correction story**: what a person may edit directly, what
+requires a corrected workbook, and who may do either at which stage.
+
+Three of the branch's ten migrations are applied to the linked project; seven
+are not. 03_Development_History carries the table and the ordering constraint.
 
 **Planned, in order.**
 
-1. **Apply the four branch migrations** to production, in order, and confirm the
-   handoff and the documents against real records. Nothing on that branch has
-   been applied anywhere, and the preview is not testable until it has been.
+1. **Apply the seven remaining branch migrations** to production, in order, and
+   confirm the handoff, the documents and the editors against real records.
+   `20261001000000` must precede the two after it — it declares the Activity
+   actions they log, and both refuse to apply otherwise, naming the dependency.
+   It also **fixes a defect already in production**: `20260923000000` logs
+   `billing_percentage_set` without declaring it, so every successful billing
+   write fails at the moment it records what it did.
 2. **Run the controlled test-data cleanup.** Every Order Management record today
    is test data, and real numbering must begin at `0001`. The tooling is
    complete and audited; running it is a decision, not a deployment. It is
    deliberately not something a development session performs.
 3. **A licensed Unicode font asset**, so the confirmed PDF can print `₹` instead
    of `Rs.`. A presentation limitation today, not a functional one.
-4. **Amendment-driven document versions** — a second version of an Order's
-   documents after an approved amendment. The register already supports it; no
-   screen offers it yet.
+4. **Amendment-driven document versions.** The register supports it, a
+   superseded pair now reads as stale rather than broken on the Order screen,
+   and Change PI supersedes automatically. What is still manual is asking for
+   the next version — the control exists, nothing triggers it on its own.
+5. **A confirmed-Excel path for the confirm date and the product rows.** Ten
+   header cells now carry a direct edit into the generated workbook. `A113` is
+   a DATE cell and every write here is an inline string, so a corrected confirm
+   date reaches the PDF and not the Excel; product rows are not located at all.
+   Both are deliberate limits, not oversights — 05_Business_Rules says why.
 
 ## What must not change while this work continues
 
@@ -377,3 +393,12 @@ These are settled and are not open questions:
   rather than asking for an exception to it.
 * **Awaiting-verification payments are excluded from verified totals**, on every
   screen and in every document.
+* **BOE never computes a PI total.** Every commercial figure is the output of a
+  formula in the uploaded workbook; the parser transcribes it and warns when its
+  own two derivations disagree. Recreating those formulas in PostgreSQL or React
+  is not a shortcut to be taken later — it is the thing the two-path correction
+  model exists to prevent.
+* **A generated document is never mutated.** A version that stops being current
+  is marked superseded and keeps its files; the next version is a new one.
+* **An amendment never moves an Order's identity.** Not its id, not its
+  confirmed number, not the PI it names, not one payment and not one allocation.

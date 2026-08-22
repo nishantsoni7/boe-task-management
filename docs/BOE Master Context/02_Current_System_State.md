@@ -819,18 +819,24 @@ advance terms all live on the submission, which the Order names.
 
 ### Still excluded
 
-- **No numbered `.xlsx` and no PDF.** The repository has no facility that can
-  edit the uploaded workbook without destroying its images, merged cells and
-  print settings, and no faithful Excel-to-PDF converter. The reserved path
-  `orders/{order_id}/versions/{n}/approved.xlsx` stays unwritten. **This is the
-  next bounded phase.** Nothing in the employee UI mentions a pending document.
+- **No numbered `.xlsx` and no PDF** — *superseded by the branch above.* Both
+  are now generated: the Excel by rewriting named cells of the stored workbook
+  in place (ZIP surgery, so the anchored photographs, merged blocks and print
+  setup survive), the PDF rendered from the record. Versions live in
+  `order_document_versions` under a claim protocol with a 15-minute TTL. This
+  bullet stands for production, where the register does not yet exist.
 - **No Order product lines.** Orders have never had product-line storage. The
   approved submission and its items remain the authoritative PI snapshot,
   reached through `order_submissions.order_id`.
 - No payment linking, split-payment allocation, payment recording or
   reconciliation.
-- No post-approval commercial amendment (an approved PI is terminal; changing an
-  Order's terms is `amend_order()`'s job).
+- No post-approval commercial amendment — *narrowed by the branch above.* An
+  approved PI remains terminal to its owner and to every reviewer. An ACTIVE
+  ADMIN may correct it, with a mandatory reason: descriptively through
+  `Edit PI Details`, or commercially by replacing the workbook through Change
+  PI. Neither creates a second Order, moves an Order number, re-allocates a
+  payment or rewrites a generated file. `amend_order()` remains the way to
+  change an Order's own terms.
 - No production tracking, dispatch gate or notification.
 
 ### The payment gate on final approval (Phase 3, `20260921000000`, unapplied)
@@ -1106,10 +1112,18 @@ levels of doneness. Nothing here blurs them.
 
 ### Branch — `claude/confirmed-order-handoff-performance`
 
-Three migrations, **none applied**:
-`20260924000000_order_submission_confirmed_order_handoff.sql`,
-`20260925000000_order_document_generation.sql`,
-`20260926000000_order_number_cycle_reset.sql`.
+Ten migrations. `20260924000000`, `20260925000000` and `20260926000000` are
+applied to the linked project; **the other seven are not** — see the status
+table in 03_Development_History, which also records why `20261001000000` must
+precede the two after it.
+
+The branch now covers three things beyond the handoff itself: **the confirmed
+Excel and PDF**, **correcting a PI after import** (a direct edit for anything
+descriptive, Change PI for anything a workbook formula touches — 05_Business_Rules
+has the field-by-field table), and **an admin's authority to correct a PI after
+it has been submitted or approved**, with the Order's identity, its number, its
+payments and its allocations all preserved and its ready documents superseded
+rather than overwritten.
 
 * **The Confirmed Order handoff.** `/orders/[id]` shows the approved PI it came
   from: the client and both parties, the schedule, Total before GST, the billing

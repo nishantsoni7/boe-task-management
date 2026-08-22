@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { adminClient, ADMIN_CLIENT_ENV, type AdminSupabaseClient } from '@/lib/supabase/admin'
+import { adminClient, type AdminSupabaseClient } from '@/lib/supabase/admin'
 import { parseBoePiWorkbook } from '@/lib/pi/masterSheetParser'
 import { PI_MAX_WORKBOOK_BYTES } from '@/lib/pi/workbookReader'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
@@ -129,17 +129,23 @@ export async function POST(req: NextRequest) {
   // Named variables and a message a person can act on, rather than a bare 500.
   // The names are safe to print: they are the names, never the values.
   //
-  // NOT LOGGED, unlike the documents route. This handler is the one place a PI's
-  // bytes are held in memory, and it has a standing rule — enforced by
-  // processDraftRoute.test.ts — that it writes to no console sink at all, so
-  // that no future edit can start logging beside a client name or a price. The
-  // response already names the missing variables to the employee who hit it,
-  // which is what an administrator needs to hear.
+  // NEITHER LOGGED NOR RETURNED, and both halves are deliberate.
+  //
+  // Not returned, because /orders/[id]/documents already settled that question
+  // for this codebase: a caller learns the deployment is misconfigured, not
+  // which of its settings is absent. Not logged, because this handler is the
+  // one place a PI's bytes are held in memory and it has a standing rule —
+  // enforced by processDraftRoute.test.ts — that it writes to no console sink
+  // at all, so no future edit can start logging beside a client name or a price.
+  //
+  // The operator is not left blind: the same absent variable breaks the
+  // confirmed-document route, which DOES log the names, and the message below
+  // tells the employee this is a server setting to report rather than a refusal
+  // to work around.
   const admin = adminClient()
   if (!admin.ok) {
     return fail(500, 'SERVER_NOT_CONFIGURED',
-      'This server is missing configuration needed to save a PI. Please contact an administrator.',
-      { missing: ADMIN_CLIENT_ENV.filter(n => admin.missing.includes(n)) })
+      'Saving a PI is not configured on this deployment. This is a server setting, not something you can fix — please report it.')
   }
   const service = admin.client
 

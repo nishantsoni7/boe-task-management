@@ -868,7 +868,8 @@ both.
 
 ## Testing
 
-Order Management is tested at three levels, and the boundaries are deliberate:
+Order Management is tested at several levels, and the boundaries are
+deliberate:
 
 * **Pure unit tests** for every view model, formatter and state machine.
 * **Repository checks** (`*Schema.test.ts`) that read the migrations themselves,
@@ -904,7 +905,40 @@ Order Management is tested at three levels, and the boundaries are deliberate:
   missing at once instead of one item per refusal. Each requirement mirrors a
   named database gate; optional fields are never reported, and several tests
   exist only to prove those absences.
-* **Behavioural assertions for admin amendment**,
-  `supabase/tests/order_submission_admin_amendment_assertions.sql` — 30 checks
-  in one rolled-back transaction, section A of which is the exact
-  billing-percentage failure manual testing found.
+* **Behavioural assertions for every editing path**, each one rolled-back
+  transaction on a scratch database:
+
+  | Script | Checks | What it exercises |
+  |---|---|---|
+  | `order_submission_admin_amendment_assertions.sql` | 30 | the billing percentage, section A of which is the exact failure manual testing found |
+  | `order_submission_client_details_assertions.sql` | 41 | the ten client and party columns, and `row_version` |
+  | `order_submission_schedule_terms_assertions.sql` | 36 | dates and terms, including the ISO-shape check that keeps `'yesterday'` out |
+  | `order_submission_correction_requests_assertions.sql` | 20 | the owner's correction channel |
+  | `order_submission_product_edit_assertions.sql` | 28 | product descriptions, and money refused BY NAME |
+  | `order_submission_change_pi_assertions.sql` | 62 | Change PI: the authority, the lease, and what a replacement means after submission |
+
+  210 checks in total. They run against a local PostgreSQL 16 schema built from
+  the migrations plus a stub of what precedes them, and that stub is part of the
+  method rather than a convenience: the first version of it did **not** carry
+  `order_submission_activity`'s CHECK constraint, and over a hundred assertions
+  passed against a table that would accept any string. **A stub more permissive
+  than the real schema does not prove less than the real thing — it proves the
+  wrong thing, confidently.**
+
+* **Continuity tests for every re-emitted function.** `create or replace` cannot
+  change a signature, so a phase that must alter one line of a 250-line SECURITY
+  DEFINER function restates the whole thing — and a dropped row lock, a changed
+  `search_path` or a quietly widened write would all still compile and still
+  pass every behavioural test. `dueDateContinuity`, `billingContinuity`,
+  `amendmentContinuity` and `changePiContinuity` each state the claim as an
+  OPERATION: take the re-emitted text, undo the documented edits, and require
+  the applied definition back line for line. Anything else that was touched
+  survives the undo and appears as a difference.
+
+* **Mutation testing, as a matter of course.** Every property above has been
+  proved to fail when the property is broken. Three separate mistakes in this
+  branch were caught only that way: a test that derived its expected field list
+  from the code under test (adding a `quantity` field passed until the list was
+  written out independently), an identity guard whose regex knew `x =` but not
+  `set x =`, and a byte-for-byte guard that had to become an undo when the card
+  it pinned was deliberately asked to change.
