@@ -2102,18 +2102,11 @@ function PiDraftDetailPageInner() {
             payment_terms:           submission.payment_terms ?? null,
             billing_terms:           submission.billing_terms ?? null,
           }}
-          billingLabel={billingSummary.percent}
           saving={clientSaving}
           failure={clientFailure}
           requireReason={canAdminAmend && !canEditSubmission}
           onCancel={() => { if (!clientSaving) setEditSection(null) }}
           onSave={(changed, reason) => { void saveScheduleTerms(changed, reason) }}
-          /* Billing percentage keeps its own dialog and its own rules. */
-          onEditBilling={
-            canEditSubmission || canAdminAmend
-              ? () => { setEditSection(null); setBillingFailure(null); setBillingDialog(true) }
-              : null
-          }
         />
       )}
 

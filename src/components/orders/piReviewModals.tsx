@@ -1525,10 +1525,12 @@ export type PiClientFieldValues = Partial<Record<PiClientFieldKey, string | null
  * Combining them would mean two round trips behind one button, and a failure
  * between them would leave the PI half-updated with nothing to say so.
  *
- * Billing percentage is shown in this section but is NOT in this list. It has
- * its own dialog and its own RPC, carrying a range, a precision rule and a
- * clear-confirmation none of these five need. Duplicating those here would be a
- * second implementation to keep in step.
+ * Billing percentage is NOT in this list and is no longer shown here either.
+ * It has its own dialog and its own RPC, carrying a range, a precision rule and
+ * a clear-confirmation none of these five need. It used to appear at the foot
+ * of this form as a read-only line with a Change button, which made one dialog
+ * the way into two unrelated edits and left the reader unsure which Save
+ * applied to what. Its control now sits beside its own label on the card.
  */
 export const PI_SCHEDULE_FIELDS = [
   { key: 'order_confirmation_date', label: 'Confirm date',        kind: 'date',     required: false },
@@ -1698,7 +1700,10 @@ export function PiClientDetailsEditModal({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Edit PI details"
+        /* NAMED FOR THE SECTION IT EDITS. All three editors carried the same
+           aria-label, so a screen-reader user opening any of them from the
+           three separate controls heard one undifferentiated "Edit PI details". */
+        aria-label="Edit client details"
         tabIndex={-1}
         style={{ ...PANEL, maxWidth: '560px', outline: 'none' }}
       >
@@ -1852,19 +1857,14 @@ export function PiClientDetailsEditModal({
  * the grouping is about where a person looks, not about which function writes.
  */
 export function PiScheduleTermsEditModal({
-  current, billingLabel, saving, failure, requireReason = false,
-  onCancel, onSave, onEditBilling,
+  current, saving, failure, requireReason = false, onCancel, onSave,
 }: {
   current: PiScheduleFieldValues
-  /** The declared billing percentage as text, for the read-only line. */
-  billingLabel: string
   saving: boolean
   failure: string | null
   requireReason?: boolean
   onCancel: () => void
   onSave: (changed: PiScheduleFieldValues, reason: string | null) => void
-  /** Opens the billing dialog, which owns that value's rules. */
-  onEditBilling: (() => void) | null
 }) {
   useScrollLock(true)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -1989,29 +1989,6 @@ export function PiScheduleTermsEditModal({
                 )}
               </label>
             ))}
-          </div>
-
-          {/* Shown where a reader expects it, written by its own RPC. */}
-          <div style={{
-            display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
-            padding: '9px 11px', borderRadius: '7px',
-            border: `1px solid ${colors.border}`, background: colors.raised,
-          }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
-              {BILLING_LABEL}
-            </span>
-            <span style={{ fontSize: '13px', color: colors.secondary }}>{billingLabel}</span>
-            {onEditBilling && (
-              <button
-                type="button"
-                className="boe-btn boe-btn-ghost"
-                style={{ marginLeft: 'auto' }}
-                onClick={onEditBilling}
-                disabled={saving}
-              >
-                Change
-              </button>
-            )}
           </div>
 
           {requireReason && (

@@ -18,7 +18,7 @@
 
 import {
   AlertTriangle, Ban, CheckCircle2, ChevronRight, ExternalLink, FileSpreadsheet,
-  History, Info, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
+  History, Info, Pencil, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
@@ -259,6 +259,41 @@ export function PiSummaryCard({
               </MultilineText>
               <ChevronRight size={15} strokeWidth={2.2} className="pi-detail-summary-client-more" />
             </button>
+
+            {/* ── THE WAY TO CORRECT WHAT THIS NAMES, BESIDE THE NAME ──
+                The name has always opened a READ-ONLY dialog; the editor was
+                reachable only from the missing-data strip, so a reader looking
+                at a wrong phone number on a complete PI had nowhere to go. A
+                sibling control rather than something inside the name: a button
+                cannot be nested in a button, and the name must keep carrying
+                Enter, Space and focus for the dialog it already opens.
+
+                The owner's correction channel takes the same slot when they may
+                no longer edit — never both, because the two answer the same
+                impulse and offering each would suggest a choice about which
+                one works. */}
+            {canEditDetails && (
+              <button
+                type="button"
+                onClick={onEditDetails}
+                className="pi-detail-summary-inline-action"
+                aria-haspopup="dialog"
+                aria-label="Edit customer details"
+              >
+                <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
+                Edit
+              </button>
+            )}
+            {!canEditDetails && onRequestCorrection && (
+              <button
+                type="button"
+                onClick={onRequestCorrection}
+                className="pi-detail-summary-inline-action"
+                aria-haspopup="dialog"
+              >
+                Request correction
+              </button>
+            )}
           </div>
 
           {/* ── ONE SCHEDULE BAND, not two treatments ──
@@ -270,6 +305,26 @@ export function PiSummaryCard({
               padding, and the emphasis the due date still needs is carried by a
               dot and a heavier figure rather than by a ground of its own. */}
           <section className="pi-detail-summary-schedule">
+            {/* ── THE DATES ARE EDITED WHERE THE DATES ARE ──
+                This control used to read "Dates and terms" and sat in the
+                FINANCE surface, two columns away from the values it changes and
+                between the billing label and the billing control. It belongs
+                here. Rendered only when there is something to press, so a
+                read-only viewer still sees the band exactly as it was. */}
+            {canEditDetails && (
+              <div className="pi-detail-summary-sched-head">
+                <button
+                  type="button"
+                  onClick={onEditSchedule}
+                  className="pi-detail-summary-inline-action"
+                  aria-haspopup="dialog"
+                  aria-label="Edit dates and terms"
+                >
+                  <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
+                  Edit
+                </button>
+              </div>
+            )}
             {dates.flatMap((date, i) => [
               i > 0
                 ? <div key={`${date.key}-rule`} className="pi-detail-summary-sched-rule" role="presentation" />
@@ -388,28 +443,13 @@ export function PiSummaryCard({
                   wider gap above it is what says "a different kind of fact",
                   and the label treatment is the figures' own. */}
               <div className="pi-detail-summary-value-row pi-detail-summary-billing">
+                {/* ── THE LABEL AND ITS OWN CONTROL, AND NOTHING ELSE ──
+                    Two unrelated buttons used to sit between them — the dates
+                    editor and the correction channel — so the control nearest
+                    "Billing percentage" was the one that did not change it.
+                    Both have moved beside the things they do change. */}
                 <div className="pi-detail-summary-billing-head">
                   <span className="pi-detail-summary-metric-label">{BILLING_LABEL}</span>
-                  {canEditDetails && (
-                    <button
-                      type="button"
-                      className="boe-btn boe-btn-ghost"
-                      onClick={onEditSchedule}
-                      style={{ fontSize: '11.5px' }}
-                    >
-                      Dates and terms
-                    </button>
-                  )}
-                  {!canEditDetails && onRequestCorrection && (
-                    <button
-                      type="button"
-                      className="boe-btn boe-btn-ghost"
-                      onClick={onRequestCorrection}
-                      style={{ fontSize: '11.5px' }}
-                    >
-                      Request correction
-                    </button>
-                  )}
                   {canEditBilling && (
                     <button
                       type="button"

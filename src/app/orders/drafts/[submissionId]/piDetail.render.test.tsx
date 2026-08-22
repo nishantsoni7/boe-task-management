@@ -25,7 +25,7 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
-import { piReadiness, type PiReadiness, type PiRequirement } from '@/lib/orders/piReadiness'
+import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import {
   PAYMENT_DETAILS_LABEL,
   PiActivityTimeline,
@@ -39,6 +39,7 @@ import {
   statusTone,
 } from './piDetailSections'
 import {
+  BILLING_VALUE_LABEL,
   buildBillingSummary,
   buildClientDetails,
   NOT_PROVIDED,
@@ -2575,5 +2576,209 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       }
     }
     assert.ok(read(PAGE).includes('describeSubmissionFailure(error, action).message'))
+  })
+})
+
+// ══ THREE EDIT CONTROLS, EACH BESIDE WHAT IT CHANGES ═════════════════════════
+//
+// The card grew three separate editing responsibilities and put all three
+// controls in one place — the finance surface — where only one of them belonged.
+// "Dates and terms" sat between the billing label and the billing control, so
+// the button nearest "Billing percentage" was the one that did not change it;
+// the client editor was reachable only from the missing-data strip, which meant
+// a wrong phone number on an otherwise complete PI had no way in at all.
+//
+// What these tests hold is the arrangement, not the styling: each control next
+// to the information it modifies, and no control offering an edit it does not
+// perform.
+
+describe('each edit control sits beside what it edits', () => {
+  /**
+   * The markup between two named regions.
+   *
+   * Boundaries are given EXPLICITLY rather than guessed from "the next element
+   * with a summary class": the name button carries such a class itself, so a
+   * guess stops a few characters in and cuts off the control this is looking
+   * for. The card's regions appear in a known order, so naming both ends is
+   * both simpler and correct.
+   */
+  const region = (html: string, from: string, to: string): string => {
+    const start = html.indexOf(`class="${from}"`)
+    assert.notEqual(start, -1, `no .${from} in the card`)
+    const end = html.indexOf(to, start)
+    assert.notEqual(end, -1, `no .${to} after .${from}`)
+    return html.slice(start, end)
+  }
+
+  const editable = { canEditDetails: true, canEditBilling: true }
+
+  test('the client editor is reachable from the customer area', () => {
+    const html = summaryHtml(editable)
+    const party = region(html, 'pi-detail-summary-party', 'pi-detail-summary-schedule')
+    assert.match(party, /aria-label="Edit customer details"/,
+      'the control beside the name must open the client editor')
+    // And it is a SIBLING of the name, not inside it: a button cannot be nested
+    // in a button, and the name must keep opening the read-only dialog.
+    assert.ok(!/pi-detail-summary-client"[^>]*>[\s\S]{0,400}?aria-label="Edit customer details"[\s\S]{0,80}?<\/button>\s*<\/button>/.test(html),
+      'the edit control must not be nested inside the name button')
+  })
+
+  test('the client editor is NOT reachable without permission', () => {
+    const html = summaryHtml({ canEditDetails: false })
+    assert.ok(!html.includes('aria-label="Edit customer details"'))
+  })
+
+  test('the owner’s correction channel takes the same slot, and never both', () => {
+    const html = summaryHtml({ canEditDetails: false, onRequestCorrection: () => {} })
+    const party = region(html, 'pi-detail-summary-party', 'pi-detail-summary-schedule')
+    assert.match(party, /Request correction/)
+    assert.ok(!party.includes('aria-label="Edit customer details"'))
+
+    // With permission it is the editor, and the correction channel is gone from
+    // the customer area — the two answer the same impulse.
+    const both = region(summaryHtml({ ...editable, onRequestCorrection: () => {} }),
+                        'pi-detail-summary-party', 'pi-detail-summary-schedule')
+    assert.match(both, /aria-label="Edit customer details"/)
+    assert.ok(!both.includes('Request correction'))
+  })
+
+  test('the dates editor is reachable from the date card, not from Finance', () => {
+    const html = summaryHtml(editable)
+    assert.match(html, /pi-detail-summary-sched-head/,
+      'the schedule band carries its own control')
+    assert.match(html, /aria-label="Edit dates and terms"/)
+
+    const headAt = html.indexOf('pi-detail-summary-sched-head')
+    const bodyAt = html.indexOf('pi-detail-summary-paybody')
+    assert.ok(headAt !== -1 && bodyAt !== -1 && headAt < bodyAt,
+      'the dates control is in the left column, above the finance surface')
+  })
+
+  test('“Dates and terms” has left the Finance surface entirely', () => {
+    // The specific arrangement this correction removed: a button that edits the
+    // dates, sitting between the billing label and the billing control.
+    for (const html of [summaryHtml(editable), summaryHtml({ canEditDetails: true })]) {
+      const body = html.slice(html.indexOf('pi-detail-summary-paybody'))
+      assert.ok(!body.includes('Dates and terms'),
+        'the finance surface still offers the dates editor')
+      assert.ok(!body.includes('aria-label="Edit dates and terms"'))
+    }
+  })
+
+  test('the dates card has no control where there is nothing to press', () => {
+    const html = summaryHtml({ canEditDetails: false })
+    assert.ok(!html.includes('pi-detail-summary-sched-head'),
+      'a read-only viewer sees the band exactly as it was — no reserved space')
+  })
+
+  test('the billing control is the FIRST thing after its own label', () => {
+    const html = summaryHtml(editable)
+    const head = html.slice(html.indexOf('pi-detail-summary-billing-head'))
+    const label = head.indexOf('Billing percentage')
+    const action = head.indexOf('pi-detail-summary-billing-action')
+    assert.ok(label !== -1 && action !== -1 && label < action)
+
+    // Measured to the START of the action's own tag, not to its class
+    // attribute: its `<button` necessarily sits between the label text and its
+    // className, so comparing against the attribute would count the control
+    // itself as something in the way.
+    const tag = head.lastIndexOf('<button', action)
+    assert.ok(tag > label, 'the billing control opens before its own label')
+    const between = head.slice(label, tag)
+    assert.ok(!between.includes('<button'),
+      'another control sits between the billing label and its own control')
+  })
+
+  test('the billing control is absent where billing may not be declared', () => {
+    const html = summaryHtml({ canEditDetails: true, canEditBilling: false })
+    assert.ok(!html.includes('pi-detail-summary-billing-action'))
+    // …and the dates control is unaffected: the two authorities are separate.
+    assert.match(html, /aria-label="Edit dates and terms"/)
+  })
+
+  test('Billing value still reads below the percentage', () => {
+    const declared = buildBillingSummary({ raw: 60, totalBeforeGst: 742850 })
+    const html = summaryHtml({ ...editable, billing: declared })
+    const percentAt = html.indexOf('60%')
+    const valueAt = html.indexOf(BILLING_VALUE_LABEL)
+    assert.ok(percentAt !== -1 && valueAt !== -1 && percentAt < valueAt,
+      'the value must follow the percentage it is derived from')
+  })
+
+  test('exactly three edit controls, and no fourth', () => {
+    // A fourth would mean an edit had been added to this card without being
+    // given a home beside the thing it changes.
+    const html = summaryHtml({ ...editable, onRequestCorrection: () => {} })
+    const inline = (html.match(/pi-detail-summary-inline-action/g) ?? []).length
+    const billing = (html.match(/pi-detail-summary-billing-action/g) ?? []).length
+    assert.equal(inline, 2, 'customer and dates')
+    assert.equal(billing, 1, 'billing percentage')
+  })
+})
+
+describe('the finance divider is not crowded against its content', () => {
+  const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+
+  test('the grid gap gives each side visible room', () => {
+    const rule = css.slice(css.indexOf('.pi-detail-summary-paybody {'))
+      .slice(0, css.slice(css.indexOf('.pi-detail-summary-paybody {')).indexOf('}'))
+    const gap = /gap:\s*0\s+(\d+)px/.exec(rule)
+    assert.ok(gap, 'the paybody must set a horizontal gap')
+    assert.ok(Number(gap[1]) >= 16,
+      `the divider has only ${Number(gap[1]) / 2}px on each side`)
+  })
+
+  test('the rule still takes no horizontal margin of its own', () => {
+    // A margin on a 1px TRACK overflows it and silently steals width from both
+    // columns, which is what pulled the split off its intended proportion. The
+    // gap is the mechanism; this is the constraint that keeps it the mechanism.
+    const rule = css.slice(css.indexOf('.pi-detail-summary-payrule {'))
+      .slice(0, css.slice(css.indexOf('.pi-detail-summary-payrule {')).indexOf('}'))
+    assert.match(rule, /margin:\s*\d+px\s+0\s*;/, 'vertical inset only')
+  })
+
+  test('the two columns keep their proportions', () => {
+    const rule = css.slice(css.indexOf('.pi-detail-summary-paybody {'))
+      .slice(0, css.slice(css.indexOf('.pi-detail-summary-paybody {')).indexOf('}'))
+    assert.match(rule, /grid-template-columns:\s*minmax\(0, 0\.636fr\) 1px minmax\(0, 1fr\)/)
+  })
+
+  test('at phone width the rule is gone and the areas stack', () => {
+    const mobile = css.slice(css.indexOf('@media (max-width: 700px)'))
+    assert.match(mobile, /\.pi-detail-summary-payrule \{ display: none; \}/)
+    assert.match(mobile, /\.pi-detail-summary-paybody \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/)
+  })
+})
+
+describe('the three dialogs stay separate', () => {
+  const modals = readFileSync(
+    join(process.cwd(), 'src/components/orders/piReviewModals.tsx'), 'utf8')
+
+  test('the dates dialog no longer offers billing percentage', () => {
+    const start = modals.indexOf('export function PiScheduleTermsEditModal')
+    const end = modals.indexOf('export function', start + 10)
+    const body = modals.slice(start, end)
+    assert.ok(!body.includes('onEditBilling'),
+      'one dialog must not be the way into two unrelated edits')
+    assert.ok(!body.includes('BILLING_LABEL'))
+    assert.ok(!body.includes('billingLabel'))
+  })
+
+  test('the dates dialog still carries all five schedule fields', () => {
+    const start = modals.indexOf('export function PiScheduleTermsEditModal')
+    const end = modals.indexOf('export function', start + 10)
+    assert.match(modals.slice(start, end), /PI_SCHEDULE_FIELDS\.map/)
+    for (const field of ['order_confirmation_date', 'due_date', 'dispatch_commitment',
+                         'payment_terms', 'billing_terms']) {
+      assert.ok(modals.includes(`'${field}'`), `${field} left the schedule editor`)
+    }
+  })
+
+  test('each dialog announces the section it edits', () => {
+    // All three shared one aria-label, so a screen-reader user opening any of
+    // them from three different controls heard the same undifferentiated name.
+    for (const label of ['Edit client details', 'Edit dates and terms', 'Edit product line']) {
+      assert.ok(modals.includes(`aria-label="${label}"`), `no dialog named "${label}"`)
+    }
   })
 })

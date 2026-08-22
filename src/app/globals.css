@@ -2408,11 +2408,46 @@ body {
   gap: 16px;
 }
 
+/* THE NAME AND ITS EDIT CONTROL SHARE A LINE. Column before this: the row now
+   carries the name and, at the far end, the one control that changes what the
+   name introduces. `baseline` rather than `center` so a two-line client name
+   keeps the control level with its FIRST line, where the eye already is. */
 .pi-detail-summary-party {
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* ── THE ONE COMPACT EDIT CONTROL, used in three places ──
+   Beside the client name, at the head of the schedule band, and — as
+   .pi-detail-summary-billing-action, which predates it and keeps its own
+   name — beside the billing label. A control that reads as a link rather than
+   a button: each sits inside reading matter and must not compete with the
+   card's real actions. */
+.pi-detail-summary-inline-action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -2px -4px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5585e8;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pi-detail-summary-inline-action:hover { background: rgba(85, 133, 232, 0.09); }
+
+.pi-detail-summary-inline-action:focus-visible {
+  outline: 2px solid rgba(85, 133, 232, 0.6);
+  outline-offset: 1px;
 }
 
 /* THE NAME IS A CONTROL AND STILL LOOKS LIKE THE NAME. A button gives Enter,
@@ -2426,6 +2461,10 @@ body {
   gap: 5px;
   max-width: 100%;
   min-width: 0;
+  /* THE NAME TAKES THE SLACK, the control beside it takes none. Without this
+     the two split the row and a long client name wraps early to leave space
+     nothing needs — the Edit control is `flex-shrink: 0` and already sized. */
+  flex: 1 1 auto;
   margin: -3px -6px;
   padding: 3px 6px;
   border: none;
@@ -2565,6 +2604,10 @@ body {
    soft neutral surface; the split is a hairline that stops inside the band's own
    padding; and the emphasis the due date still needs is a dot and a heavier
    figure, which cost no separation at all. */
+/* THE BAND IS A GRID OF TWO CELLS AND A HAIRLINE, and now optionally carries a
+   header row above them. `grid-template-columns` is unchanged; the header
+   spans all three tracks, so a viewer who cannot edit sees exactly the band
+   that was here before — no reserved space, no shifted baseline. */
 .pi-detail-summary-schedule {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
@@ -2574,6 +2617,15 @@ body {
   padding: 8px 12px 9px;
   border-radius: 7px;
   background: #f7f8fa;
+}
+
+/* Right-aligned and captionless. A heading here would name what the two labels
+   under it already say. */
+.pi-detail-summary-sched-head {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 2px;
 }
 
 .pi-detail-summary-sched-cell {
@@ -2687,7 +2739,12 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 0.636fr) 1px minmax(0, 1fr);
   align-items: stretch;
-  gap: 0 5px;
+  /* THE GAP IS WHAT SEPARATES THE RULE FROM THE CONTENT, because horizontal
+     margins on a 1px TRACK overflow it and quietly steal width from both
+     columns. At 5px the figures on each side sat ~2px from the hairline and
+     read as crowded against it; 20px gives each side 10px, which is enough to
+     see and small enough that the two columns keep their 38 / 60 split. */
+  gap: 0 20px;
   min-width: 0;
   /* Fills the surface, so the payment column below inherits its full height and
      has room to push its controls to the foot. */
@@ -2752,12 +2809,18 @@ body {
 .pi-detail-summary-billing { margin-top: 6px; }
 
 /* Label and the Set/Edit control on one line, so the trigger belongs to the
-   thing it edits rather than floating at the column's edge. */
+   thing it edits rather than floating at the column's edge.
+
+   `flex-start`, not `space-between`. Space-between was right while this row
+   held one label and one control at opposite ends; it then acquired two
+   unrelated buttons, and pushing everything apart put the dates editor NEAREST
+   the billing label. Those have moved away, and the control that remains now
+   sits immediately after the words it belongs to. */
 .pi-detail-summary-billing-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -2977,9 +3040,9 @@ body {
 
   .pi-detail-summary-values { align-self: stretch; }
 
-  /* Stacked, the label and its control have the full width, so the control can
-     sit at the far end of the row without drifting away from its label. */
-  .pi-detail-summary-billing-head { gap: 16px; }
+  /* Stacked, the row has the full width — and the control still sits beside
+     its label rather than drifting to the far end of it. Nothing to widen. */
+  .pi-detail-summary-billing-head { gap: 8px; }
 }
 
 @media (min-width: 900px) {
