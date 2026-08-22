@@ -434,6 +434,7 @@ const summaryHtml = (over: {
   billing?: ReturnType<typeof buildBillingSummary>
   canEditBilling?: boolean
   canEditDetails?: boolean
+  onRequestCorrection?: (() => void) | null
   missingSummary?: string | null
   ownership?: ReturnType<typeof buildOwnership>
   workbookName?: string | null
@@ -442,6 +443,7 @@ const summaryHtml = (over: {
     canEditDetails={over.canEditDetails ?? false}
     onEditDetails={() => {}}
     onEditSchedule={() => {}}
+    onRequestCorrection={over.onRequestCorrection ?? null}
     missingSummary={over.missingSummary ?? null}
     ownership={over.ownership ?? buildOwnership({
       documentAuthor: 'Nishant Soni',
@@ -2496,6 +2498,7 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
+      'request_order_submission_correction',
       'set_order_submission_billing_percentage',
       'submit_pi_for_review',
       // The client and party details editor (20260928000000). The one write on

@@ -112,6 +112,7 @@ import {
   PiBillingPercentageModal,
   PiClientDetailsEditModal,
   PiClientDetailsModal,
+  PiRequestCorrectionModal,
   PiScheduleTermsEditModal,
   PiSubmitConfirmModal,
   PiNoteModal,
@@ -122,6 +123,7 @@ import {
 import { colors } from '@/lib/tokens'
 import type {
   PiClientFieldValues,
+  PiCorrectionSection,
   PiEditSection,
   PiScheduleFieldValues,
 } from '@/components/orders/piReviewModals'
@@ -375,6 +377,9 @@ function PiDraftDetailPageInner() {
    * submission binding happens to be derived.
    */
   const [rowVersion, setRowVersion] = useState<number | null>(null)
+  const [correctionOpen, setCorrectionOpen] = useState(false)
+  const [correctionSaving, setCorrectionSaving] = useState(false)
+  const [correctionFailure, setCorrectionFailure] = useState<string | null>(null)
   const [billingDialog, setBillingDialog] = useState(false)
   const [billingSaving, setBillingSaving] = useState(false)
   const [billingFailure, setBillingFailure] = useState<string | null>(null)
@@ -959,6 +964,40 @@ function PiDraftDetailPageInner() {
     }
   }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
 
+  /**
+   * THE OWNER ASKS FOR A CORRECTION.
+   *
+   * Writes no PI data — the RPC is proved not to, and the dialog says so. The
+   * notification goes through the SAME server route the exception events use,
+   * which resolves recipients from the database's own authority rather than
+   * letting a browser name who hears about it.
+   */
+  const sendCorrectionRequest = useCallback(async (
+    section: PiCorrectionSection, change: string, reason: string,
+  ) => {
+    if (correctionSaving) return
+    setCorrectionSaving(true)
+    setCorrectionFailure(null)
+    try {
+      const { error } = await supabase.rpc('request_order_submission_correction', {
+        p_submission_id: submissionId,
+        p_section: section,
+        p_requested_change: change,
+        p_reason: reason,
+      })
+      if (error) {
+        setCorrectionFailure((error as { message?: string }).message
+          ?? 'The request could not be sent.')
+        return
+      }
+      setCorrectionOpen(false)
+      void notifyPiSubmission({ event: 'pi_correction_requested', submissionId })
+      await loadDraft({ quiet: true })
+    } finally {
+      setCorrectionSaving(false)
+    }
+  }, [correctionSaving, supabase, submissionId, loadDraft])
+
   const approveException = useCallback(() => runAction('approve_exception', async () => {
     const { error } = await supabase.rpc('approve_pi_advance_exception', {
       p_submission_id: submissionId,
@@ -1311,6 +1350,16 @@ function PiDraftDetailPageInner() {
    * first, and it is where the reported dead end was: no client name, no
    * payment, and nothing on the page offering a way to supply one.
    */
+  /**
+   * Does the signed-in account own this PI?
+   *
+   * Read from the record, not from a role. The correction RPC re-derives
+   * exactly this — created_by or submitted_by — so the control and the write
+   * cannot disagree about who the owner is.
+   */
+  const ownsSubmission = viewerId !== null && (
+    submission.created_by === viewerId || submission.submitted_by === viewerId)
+
   const paymentReadiness = piReadiness('payment', {
     client_name: submission.client_name ?? null,
     source_workbook_path: null,
@@ -1487,6 +1536,14 @@ function PiDraftDetailPageInner() {
           canEditDetails={canEditSubmission || canAdminAmend}
           onEditDetails={() => { setClientFailure(null); setEditSection('client') }}
           onEditSchedule={() => { setClientFailure(null); setEditSection('schedule') }}
+          /* The owner's channel, offered only where they have no edit door:
+             they own this PI and it has left their hands. The RPC re-derives
+             both halves of that. */
+          onRequestCorrection={
+            !canEditSubmission && !canAdminAmend && ownsSubmission
+              ? () => { setCorrectionFailure(null); setCorrectionOpen(true) }
+              : null
+          }
           /* Only offered where something can actually be fixed by a form —
              piReadinessIsEditable is false for a list of workbook problems, and
              pointing at an editor for those would be a lie. */
@@ -1756,6 +1813,17 @@ function PiDraftDetailPageInner() {
           missingKeys={paymentReadiness.missing.map(m => m.key)}
           onCancel={() => { if (!clientSaving) setEditSection(null) }}
           onSave={(changed, reason) => { void saveClientDetails(changed, reason) }}
+        />
+      )}
+
+      {correctionOpen && (
+        <PiRequestCorrectionModal
+          saving={correctionSaving}
+          failure={correctionFailure}
+          onCancel={() => { if (!correctionSaving) setCorrectionOpen(false) }}
+          onSubmit={(section, change, reason) => {
+            void sendCorrectionRequest(section, change, reason)
+          }}
         />
       )}
 

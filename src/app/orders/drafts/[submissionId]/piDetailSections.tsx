@@ -134,7 +134,7 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
 export function PiSummaryCard({
   client, onOpenClient, ownership, statusLabel, tone, workbookName,
   dates, figures, billing, canEditBilling, onEditBilling,
-  canEditDetails, onEditDetails, onEditSchedule, missingSummary,
+  canEditDetails, onEditDetails, onEditSchedule, onRequestCorrection, missingSummary,
   payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
 }: {
   client: ClientDetails
@@ -171,6 +171,14 @@ export function PiSummaryCard({
   /** Opens the dates-and-terms section of the same editor. */
   onEditSchedule: () => void
   /**
+   * The OWNER's channel for a PI that has left their hands, or null.
+   *
+   * Shown INSTEAD OF the edit controls, never alongside them: the two answer
+   * the same impulse, and offering both would suggest the owner has a choice
+   * about which one works.
+   */
+  onRequestCorrection: (() => void) | null
+  /**
    * What this PI still needs before it can take a payment, as one sentence.
    *
    * Null when nothing is missing. Present, this is the whole point of the
@@ -206,6 +214,11 @@ export function PiSummaryCard({
           {canEditDetails && (
             <button type="button" className="boe-btn boe-btn-ghost" onClick={onEditDetails}>
               Add client details
+            </button>
+          )}
+          {!canEditDetails && onRequestCorrection && (
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onRequestCorrection}>
+              Request correction
             </button>
           )}
         </div>
@@ -384,6 +397,16 @@ export function PiSummaryCard({
                       style={{ fontSize: '11.5px' }}
                     >
                       Dates and terms
+                    </button>
+                  )}
+                  {!canEditDetails && onRequestCorrection && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-ghost"
+                      onClick={onRequestCorrection}
+                      style={{ fontSize: '11.5px' }}
+                    >
+                      Request correction
                     </button>
                   )}
                   {canEditBilling && (

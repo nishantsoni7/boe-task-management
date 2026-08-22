@@ -1989,3 +1989,189 @@ export function PiScheduleTermsEditModal({
     </div>
   )
 }
+
+// ── The owner's correction request ───────────────────────────────────────────
+
+/** The sections a correction can be asked about — the editor's own, plus one. */
+export const PI_CORRECTION_SECTIONS = [
+  { key: 'client',     label: 'Client and addresses' },
+  { key: 'schedule',   label: 'Dates and terms' },
+  { key: 'products',   label: 'Products' },
+  { key: 'commercial', label: 'Commercial values' },
+  // Because a real reader will find something the four above do not cover, and
+  // forcing them into the wrong one loses the information.
+  { key: 'other',      label: 'Something else' },
+] as const
+
+export type PiCorrectionSection = typeof PI_CORRECTION_SECTIONS[number]['key']
+
+/**
+ * ASKING FOR A CORRECTION TO A PI THAT HAS LEFT YOUR HANDS.
+ *
+ * The owner may edit a draft. Once it goes to management it stops being theirs
+ * to change — and until this existed, the person who wrote the PI and is
+ * usually the one who spots the error in it had nowhere to say so.
+ *
+ * THIS CHANGES NOTHING. It is a message, recorded permanently, that reaches the
+ * people who can act on it. The dialog says so in as many words, because a form
+ * that looks like an editor and silently does not save would be worse than no
+ * form at all.
+ *
+ * All three fields are required. The reason is not ceremony: this record has
+ * been reviewed and may carry money against it, and "please change the address"
+ * without a why is not something an admin can act on confidently.
+ */
+export function PiRequestCorrectionModal({
+  saving, failure, onCancel, onSubmit,
+}: {
+  saving: boolean
+  failure: string | null
+  onCancel: () => void
+  onSubmit: (section: PiCorrectionSection, change: string, reason: string) => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const sectionId = useId()
+  const changeId = useId()
+  const reasonId = useId()
+
+  const [section, setSection] = useState<PiCorrectionSection>('client')
+  const [change, setChange] = useState('')
+  const [reason, setReason] = useState('')
+
+  const trimmedChange = change.trim()
+  const trimmedReason = reason.trim()
+  const canSubmit = !saving && trimmedChange !== '' && trimmedReason !== ''
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSubmit) return
+    onSubmit(section, trimmedChange, trimmedReason)
+  }
+
+  return (
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Request a correction"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '480px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Request a correction"
+          subtitle="This PI has been submitted"
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{ display: 'flex', flexDirection: 'column', gap: '13px', padding: '16px 18px 18px' }}
+        >
+          {/* SAID PLAINLY. A form that looked like an editor and quietly saved
+              nothing would be worse than no form. */}
+          <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
+            This does not change the PI. It records what you believe is wrong and
+            sends it to an administrator, who can make the correction.
+          </div>
+
+          <label htmlFor={sectionId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+              Which part
+            </span>
+            <select
+              id={sectionId}
+              value={section}
+              onChange={e => setSection(e.target.value as PiCorrectionSection)}
+              disabled={saving}
+              style={{
+                padding: '7px 10px', fontSize: '13px',
+                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                background: colors.base, color: colors.primary,
+              }}
+            >
+              {PI_CORRECTION_SECTIONS.map(s => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label htmlFor={changeId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+              What should be corrected
+              <span aria-hidden="true" style={{ color: '#b3541e' }}> *</span>
+            </span>
+            <textarea
+              id={changeId}
+              value={change}
+              onChange={e => setChange(e.target.value)}
+              disabled={saving}
+              rows={3}
+              maxLength={1000}
+              placeholder="e.g. the shipping address is our old warehouse"
+              style={{
+                padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                background: colors.base, color: colors.primary, fontFamily: 'inherit',
+              }}
+            />
+          </label>
+
+          <label htmlFor={reasonId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+              Why
+              <span aria-hidden="true" style={{ color: '#b3541e' }}> *</span>
+            </span>
+            <textarea
+              id={reasonId}
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              disabled={saving}
+              rows={2}
+              maxLength={1000}
+              placeholder="e.g. we moved in July, after the PI was written"
+              style={{
+                padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                border: `1px solid ${colors.border}`, borderRadius: '7px',
+                background: colors.base, color: colors.primary, fontFamily: 'inherit',
+              }}
+            />
+          </label>
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSubmit}>
+              {saving ? 'Sending…' : 'Send request'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}

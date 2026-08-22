@@ -31,6 +31,12 @@ export type PiSubmissionNotifyEvent =
   | 'pi_exception_requested'
   | 'pi_exception_approved'
   | 'pi_exception_rejected'
+  // The owner's correction request, and its answer. Same shape as the three
+  // above deliberately: recipients resolved server-side from the database's own
+  // authority, never named by the browser.
+  | 'pi_correction_requested'
+  | 'pi_correction_resolved'
+  | 'pi_correction_rejected'
 
 type NotifRow = {
   user_id: string
@@ -112,6 +118,29 @@ export async function POST(req: NextRequest) {
     push(owner, `Approval to proceed below 40% was granted for ${clientName}.`)
   } else if (event === 'pi_exception_rejected') {
     push(owner, `Approval to proceed below 40% was refused for ${clientName}.`)
+  } else if (event === 'pi_correction_requested') {
+    // WHO CAN ACT ON IT. Only an active admin may amend a submitted PI, so an
+    // admin is the truthful recipient. orders.approve_order holders are told
+    // too: they are the people reviewing this record right now, and a pending
+    // correction is something a reviewer needs to know before deciding.
+    const { data: admins } = await supabase
+      .from('users').select('id')
+      .eq('role', 'admin').eq('is_active', true).neq('is_deleted', true)
+    for (const row of (admins ?? []) as { id: string }[]) {
+      push(row.id, `${clientName}: the PI owner has asked for a correction.`)
+    }
+    const { data: reviewers } = await supabase
+      .rpc('users_with_module_permission', {
+        p_module_key: 'orders', p_action_key: 'approve_order',
+      })
+    for (const row of (reviewers ?? []) as ({ user_id?: string } | string)[]) {
+      push(typeof row === 'string' ? row : row.user_id,
+        `${clientName}: the PI owner has asked for a correction.`)
+    }
+  } else if (event === 'pi_correction_resolved') {
+    push(owner, `Your correction request for ${clientName} was actioned.`)
+  } else if (event === 'pi_correction_rejected') {
+    push(owner, `Your correction request for ${clientName} was not actioned.`)
   } else {
     return NextResponse.json({ error: 'Unknown event' }, { status: 400 })
   }

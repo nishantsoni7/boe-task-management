@@ -402,6 +402,10 @@ describe('the detail page renders only what it fetched', () => {
       'reject_order_submission',
       'reject_pi_advance_exception',
       'request_order_submission_changes',
+      // The owner's correction request (20260930000000). It changes NO PI
+      // data — the migration asserts that of its own definition at apply time —
+      // and is the owner's channel for a record that has left their hands.
+      'request_order_submission_correction',
       'set_order_submission_billing_percentage',
       'submit_pi_for_review',
       // update_order_submission_client_details (20260928000000) writes ten

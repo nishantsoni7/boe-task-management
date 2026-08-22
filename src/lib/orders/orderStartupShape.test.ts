@@ -222,7 +222,8 @@ describe('no Order screen waits more than it must', () => {
       // update_order_submission_client_details and
       // update_order_submission_schedule_terms. They run when somebody presses
       // Save in the editor, so the count grew and the startup path did not.
-      [DRAFTS]: 4, [PI_DETAIL]: 22, [REQUESTS]: 18, [REQUEST_DETAIL]: 7, [IMPORT]: 5,
+      // 22 -> 23: request_order_submission_correction, another SAVE.
+      [DRAFTS]: 4, [PI_DETAIL]: 23, [REQUESTS]: 18, [REQUEST_DETAIL]: 7, [IMPORT]: 5,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)
