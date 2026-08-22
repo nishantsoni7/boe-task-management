@@ -898,3 +898,13 @@ Order Management is tested at three levels, and the boundaries are deliberate:
   reason for each, and it flags approved PIs that produced no Order — a state
   `approve_order_submission()` writes in one transaction and which therefore
   should never exist. Four SELECTs, no writes, safe on production.
+* **A shared readiness answer**, `src/lib/orders/piReadiness.ts`. Every surface
+  that asks "can this PI take a payment / be submitted" reads the same list, so
+  they cannot disagree about the same record, and the list names everything
+  missing at once instead of one item per refusal. Each requirement mirrors a
+  named database gate; optional fields are never reported, and several tests
+  exist only to prove those absences.
+* **Behavioural assertions for admin amendment**,
+  `supabase/tests/order_submission_admin_amendment_assertions.sql` — 30 checks
+  in one rolled-back transaction, section A of which is the exact
+  billing-percentage failure manual testing found.

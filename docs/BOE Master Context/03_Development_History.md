@@ -800,3 +800,59 @@ trips before content, measured from the source at `origin/main` and here:
 No query was dropped, cached or derived, and no capability moved out of the
 database. Two improvements were made and then **reverted** rather than weaken
 byte-exact guards protecting the PI preview and the import screen.
+
+### Manual testing, September 2026 — two failures and their causes
+
+Nishant tested the preview after applying `20260924`–`20260926`. Three problems
+came back. Two had exact causes; both are fixed on this branch.
+
+**Document generation showed "That could not be done just now."**
+
+Not a permission problem, though the sentence implied one and sent the
+investigation there. `serviceClient()` read
+`process.env.SUPABASE_SERVICE_ROLE_KEY!` — a non-null assertion over a value
+the type system cannot vouch for. supabase-js throws `supabaseKey is required.`
+when it is absent or empty, and that construction sat **outside** the route's
+try/catch. The throw escaped, Next returned a bare 500 with no `message`, and
+the card printed its own fallback sentence in place of a diagnosis it never
+had. A deployment fault was rendered as a user refusal.
+
+Fixed three ways, because any one of them alone would let it recur through a
+different door: the client is built from a checked value and the route answers
+`SERVER_NOT_CONFIGURED`; every error response now carries a `message`, which
+two did not; and an outermost try/catch means nothing escapes unlabelled. The
+client resolves a **code** against a table the bundle owns and never renders
+the server's prose.
+
+**Billing percentage Set/Edit failed.**
+
+`can_edit_order_submission()` ANDs its actor test *behind* its state tests, so
+the admin branch is unreachable once a PI is submitted or acquires an Order. An
+active admin was never able to correct a submitted PI; the rule had simply not
+been exercised against one. Fixed in `20260927000000` by adding
+`can_admin_edit_order_submission` **beside** the owner rule rather than
+widening it — see 05_Business_Rules.
+
+**PI data could not be corrected after import.**
+
+A workbook imported without a client name left the PI showing "Not provided"
+and no payment could be attributed to it. `piReadiness()` now gives every
+surface one shared answer listing everything missing at once, but the editor
+that would supply the values is **not yet built**.
+
+> **Still open on this branch.** The general PI field editor (client and
+> addresses, dates and terms, products, commercial inputs), the owner
+> correction-request flow, and extending confirmed-workbook generation to apply
+> edited values to the generated copy. Migration `20260927000000` is **not
+> applied to any database**.
+
+---
+
+## Branch migrations — status
+
+| Migration | Applied |
+|---|---|
+| `20260924000000` | yes |
+| `20260925000000` | yes |
+| `20260926000000` | yes |
+| `20260927000000` | **NO — must be applied before the preview exercises the billing fix** |

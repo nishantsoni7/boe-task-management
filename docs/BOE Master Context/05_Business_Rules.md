@@ -787,3 +787,86 @@ could disagree with the document the client agreed to.
 * Generating and retrying require the **management approval authority**; viewing
   and downloading follow **Order visibility**. PI-review access alone reaches
   neither.
+
+---
+
+## PI EDITING AUTHORITY — REVISED, SEPTEMBER 2026
+
+> **SUPERSEDES** the earlier rule that a submitted PI is read-only for
+> everyone, admins included. That rule was found during manual testing to be
+> stricter than intended: it made a PI imported with missing information
+> permanently uncorrectable, which dead-ended the workflow.
+
+### The owner
+
+May add, edit, remove or correct PI business information while the PI is
+**draft** or **needs_changes**. No reason is asked — a draft is theirs to
+shape, and a mandatory reason on every keystroke of ordinary work is a
+ritual, not an audit trail.
+
+Once submitted to management the owner may no longer modify the PI directly.
+They may send a **correction request** naming the field or section, the change
+they want and a mandatory reason, recorded in Activity and visible to the
+reviewing admin. *(Not yet implemented — see 03_Development_History.)*
+
+### The active admin
+
+May add, edit, remove or correct PI business information **at any stage** —
+draft, submitted, needs changes, rejected, approved, and after the confirmed
+Order exists. Editing after submission **requires a reason**, bounded at 500
+characters and recorded in Activity.
+
+"Active" is load-bearing: `role = 'admin' AND is_active AND NOT is_deleted`.
+A deactivated admin is not an admin.
+
+### Nobody else
+
+Reviewers, Finance verifiers, managers and permission holders gain **no**
+editing authority from being able to view, review, verify payment or approve.
+Holding `orders.approve_order` is not editing authority. Each authority stays
+separate.
+
+### How the authority is expressed
+
+Two predicates, deliberately not one:
+
+| Predicate | Answers |
+|---|---|
+| `can_edit_order_submission(uuid)` | the OWNER rule — draft/needs_changes, no Order, owner or admin |
+| `can_admin_edit_order_submission(uuid)` | active admin, **any stage** |
+
+The owner rule is **unwidened**. It gates many other write paths — items,
+images, files, submission itself — and widening it would have handed an admin
+all of them at once, unaudited. Each write path adopts the admin authority
+deliberately. As of `20260927000000` exactly one has: the billing percentage.
+
+### Billing percentage
+
+Owner may set, change or clear it in draft/needs_changes; an active admin at
+any stage, with a reason after submission. 35–100 or NULL (`Undeclared`).
+Unrelated to GST, Grand Total, payment percentage, advance requirement and
+approval eligibility. An unchanged value writes nothing and logs nothing.
+Owner and admin edits are **different actions** in Activity —
+`billing_percentage_set` and `billing_percentage_amended_by_admin` — so a
+reader scanning the trail sees the difference without opening anything.
+
+When an Order exists the value is mirrored onto it in the same transaction,
+and its ready confirmed documents are marked superseded.
+
+### Amendment and confirmed documents
+
+An amendment **never** mutates a generated file. A ready version gains
+`superseded_at` and `superseded_reason`: its files stay downloadable, its
+status stays `ready`, and regeneration produces the next version. Supersession
+is idempotent — the first thing that invalidated a version is the true answer.
+
+The Order number, `source_order_submission_id` and payment allocation
+identities and amounts are preserved by every amendment.
+
+### Readiness
+
+`piReadiness()` is the single shared answer to "can this PI take a payment /
+be submitted", listing everything missing **at once** rather than one refusal
+at a time. Every requirement it reports mirrors an existing database gate;
+optional fields are never reported. It is not the enforcement — the database
+re-derives all of it under a row lock.
